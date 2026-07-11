@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""Builder codegen via Cursor Agent SDK (cloud runtime).
+"""Builder codegen via Cursor Agent SDK.
 
-Uses a Cursor-hosted cloud agent against this GitHub repo with auto_create_pr.
-Requires CURSOR_API_KEY (user or team service-account key).
+Default runtime in Actions is **local** (edits the checked-out workspace; Builder
+App commits + opens the PR). Cloud (`CURSOR_RUNTIME=cloud`) needs the Cursor
+account's GitHub integration to see this repo.
 """
 
 from __future__ import annotations
 
 import os
 import re
+import subprocess
 import time
 from pathlib import Path
 from typing import Any
@@ -17,6 +19,14 @@ from urllib.parse import urlparse
 from github_api import GitHubError, api, post_issue_comment, split_repo
 
 DEFAULT_CURSOR_MODEL = "composer-2.5"
+SKIP_PATH_PREFIXES = (
+    ".git/",
+    ".venv/",
+    "trace/",
+    ".agent/",
+    "__pycache__/",
+    "node_modules/",
+)
 
 
 def cursor_api_key() -> str | None:
@@ -26,6 +36,16 @@ def cursor_api_key() -> str | None:
 
 def cursor_model() -> str:
     return (os.environ.get("CURSOR_MODEL") or DEFAULT_CURSOR_MODEL).strip()
+
+
+def cursor_runtime() -> str:
+    """local (default in CI) | cloud."""
+    forced = (os.environ.get("CURSOR_RUNTIME") or "").strip().lower()
+    if forced in {"local", "cloud"}:
+        return forced
+    if os.environ.get("GITHUB_ACTIONS", "").lower() in {"1", "true"}:
+        return "local"
+    return "local"
 
 
 def _repo_https_url(repo: str) -> str:
@@ -55,6 +75,7 @@ def build_prompt(
     title: str,
     body: str,
     brief: Path,
+    runtime: str,
 ) -> str:
     brief_text = brief.read_text(encoding="utf-8") if brief.is_file() else ""
     design = Path("docs/DESIGN.md")
@@ -62,18 +83,33 @@ def build_prompt(
     brand = Path(".github/copilot-instructions.md")
     brand_text = brand.read_text(encoding="utf-8")[:4000] if brand.is_file() else ""
     parent = _parent_context(repo, body)
+    if runtime == "local":
+        ship_rules = (
+            "Hard rules (local Actions checkout):\n"
+            "- Edit files in this workspace only; do NOT git commit, push, or open a PR\n"
+            "- The Builder workflow will commit your file changes and open the PR\n"
+            f"- Stay in scope of issue #{issue}; no drive-by refactors\n"
+            "- Add/update tests under tests/ when behavior changes\n"
+            "- Follow brutal-minimalist brand rules below for any UI work\n"
+            "- Live site reference: https://saberistic.com/\n"
+            "- Do not modify .github/workflows agent orchestration unless required\n"
+        )
+    else:
+        ship_rules = (
+            "Hard rules (cloud):\n"
+            f"- PR title like `builder: {title} (#{issue})`\n"
+            f"- PR body MUST include `Closes #{issue}`\n"
+            f"- Commit messages MUST include `builder(#{issue}): …`\n"
+            "- Never push to main/master; only work on a feature branch\n"
+            "- Stay in scope of this issue; no drive-by refactors\n"
+            "- Add/update tests under tests/ when behavior changes\n"
+            "- Follow brutal-minimalist brand rules below for any UI work\n"
+            "- Live site reference: https://saberistic.com/\n"
+        )
     return (
         f"You are the Builder agent for `{repo}`.\n"
-        f"Implement GitHub issue #{issue} end-to-end on a new branch and open a PR.\n\n"
-        "Hard rules:\n"
-        f"- PR title like `builder: {title} (#{issue})`\n"
-        f"- PR body MUST include `Closes #{issue}`\n"
-        f"- Commit messages MUST include `builder(#{issue}): …`\n"
-        "- Never push to main/master; only work on a feature branch\n"
-        "- Stay in scope of this issue; no drive-by refactors\n"
-        "- Add/update tests under tests/ when behavior changes\n"
-        "- Follow brutal-minimalist brand rules below for any UI work\n"
-        "- Live site reference: https://saberistic.com/\n\n"
+        f"Implement GitHub issue #{issue}.\n\n"
+        f"{ship_rules}\n"
         f"## Issue #{issue}: {title}\n"
         f"{body.strip() or '(empty)'}\n"
         f"{parent}\n"
@@ -103,38 +139,233 @@ def _wait_for_linked_pr(repo: str, issue: int, *, timeout_s: int = 180) -> dict 
     return None
 
 
-def build_with_cursor(
+def _should_skip(rel: str) -> bool:
+    return any(rel.startswith(p) or f"/{p}" in f"/{rel}" for p in SKIP_PATH_PREFIXES)
+
+
+def _collect_changed_files(root: Path) -> list[tuple[str, str]]:
+    """Return (path, content) for tracked+untracked changes vs HEAD."""
+    proc = subprocess.run(
+        ["git", "status", "--porcelain", "-u"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise GitHubError(f"git status failed: {proc.stderr.strip()}")
+    paths: list[str] = []
+    for line in proc.stdout.splitlines():
+        if len(line) < 4:
+            continue
+        entry = line[3:].strip()
+        if " -> " in entry:
+            entry = entry.split(" -> ", 1)[1].strip()
+        entry = entry.strip('"')
+        if not entry or _should_skip(entry):
+            continue
+        paths.append(entry)
+    # Also include modified tracked files if porcelain missed somehow
+    diff = subprocess.run(
+        ["git", "diff", "--name-only", "HEAD"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    for line in (diff.stdout or "").splitlines():
+        rel = line.strip()
+        if rel and not _should_skip(rel):
+            paths.append(rel)
+
+    unique: list[str] = []
+    seen: set[str] = set()
+    for p in paths:
+        if p not in seen:
+            seen.add(p)
+            unique.append(p)
+
+    from codegen_models import MAX_FILES, MAX_FILE_CHARS
+
+    if not unique:
+        raise GitHubError("Cursor local agent finished but changed no files")
+    if len(unique) > MAX_FILES:
+        raise GitHubError(
+            f"Cursor changed too many files ({len(unique)} > {MAX_FILES}): "
+            + ", ".join(unique[:20])
+        )
+
+    out: list[tuple[str, str]] = []
+    for rel in unique:
+        path = root / rel
+        if not path.is_file():
+            # deleted file — skip for now (Builder Contents API path is put-only)
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if len(text) > MAX_FILE_CHARS:
+            raise GitHubError(f"file too large after Cursor edit: {rel}")
+        out.append((rel, text))
+    if not out:
+        raise GitHubError("Cursor local agent produced no readable file contents")
+    return out
+
+
+def _slugify(text: str, limit: int = 40) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    return (slug or "work")[:limit]
+
+
+def _build_local(
     repo: str,
     issue: int,
     *,
     title: str,
     body: str,
     brief: Path,
+    model: str,
+    key: str,
 ) -> dict[str, Any]:
-    key = cursor_api_key()
-    if not key:
-        raise GitHubError("missing CURSOR_API_KEY for Cursor SDK codegen")
+    from cursor_sdk import Agent, CursorAgentError, LocalAgentOptions
+    from codegen_models import ensure_branch, linked_open_prs, put_file
 
+    root = Path.cwd()
+    prompt = build_prompt(
+        repo=repo,
+        issue=issue,
+        title=title,
+        body=body,
+        brief=brief,
+        runtime="local",
+    )
+    agent_id = ""
+    run_id = ""
     try:
-        from cursor_sdk import (
-            Agent,
-            CloudAgentOptions,
-            CloudRepository,
-            CursorAgentError,
-        )
-    except ImportError as exc:
+        with Agent.create(
+            model=model,
+            api_key=key,
+            name=f"builder-{issue}",
+            local=LocalAgentOptions(cwd=str(root)),
+        ) as agent:
+            agent_id = str(getattr(agent, "agent_id", "") or "")
+            run = agent.send(prompt)
+            run_id = str(getattr(run, "id", "") or "")
+            result = run.wait()
+    except CursorAgentError as exc:
+        retryable = getattr(exc, "is_retryable", False)
         raise GitHubError(
-            "cursor-sdk is not installed; pip install -r requirements-agents.txt"
+            f"Cursor SDK local startup failed (retryable={retryable}): {exc}"
         ) from exc
 
-    model = cursor_model()
+    status = getattr(result, "status", None)
+    if status != "finished":
+        raise GitHubError(
+            f"Cursor local run did not finish: status={status!r} "
+            f"agent_id={getattr(result, 'agent_id', agent_id)} "
+            f"run_id={getattr(result, 'id', run_id)} "
+            f"result={getattr(result, 'result', '')[:500]!r}"
+        )
+
+    files = _collect_changed_files(root)
+    owner, name = split_repo(repo)
+    default = api("GET", f"/repos/{owner}/{name}").get("default_branch") or "main"
+    ref = api("GET", f"/repos/{owner}/{name}/git/ref/heads/{default}")
+    base_sha = ref["object"]["sha"]
+    branch = f"builder/{issue}-{_slugify(title)}"
+    ensure_branch(repo, branch, base_sha)
+    commit_message = f"builder(#{issue}): implement via Cursor SDK"
+    for path, content in files:
+        put_file(repo, branch, path, content, f"{commit_message} ({path})")
+
+    prs = linked_open_prs(repo, issue)
+    if prs:
+        pr_number = int(prs[0]["number"])
+        created = False
+    else:
+        pr = api(
+            "POST",
+            f"/repos/{owner}/{name}/pulls",
+            body={
+                "title": f"builder: {title} (#{issue})",
+                "head": branch,
+                "base": default,
+                "body": (
+                    f"Closes #{issue}\n\n"
+                    f"{(getattr(result, 'result', '') or 'Cursor local agent change.')[:2000]}\n\n"
+                    "### Codegen\n"
+                    "- provider: `cursor`\n"
+                    f"- runtime: `local`\n"
+                    f"- model: `{model}`\n"
+                    f"- agent_id: `{getattr(result, 'agent_id', agent_id)}`\n"
+                    f"- run_id: `{getattr(result, 'id', run_id)}`\n"
+                    f"- files: {', '.join(f'`{p}`' for p, _ in files)}\n"
+                ),
+            },
+        )
+        pr_number = int(pr["number"])
+        created = True
+
+    comment = (
+        "### builder_result\n"
+        "- kind: `cursor`\n"
+        "- runtime: `local`\n"
+        f"- model: `{model}`\n"
+        f"- agent_id: `{getattr(result, 'agent_id', agent_id)}`\n"
+        f"- run_id: `{getattr(result, 'id', run_id)}`\n"
+        f"- branch: `{branch}`\n"
+        f"- pr: #{pr_number}\n"
+        f"- files: {', '.join(f'`{p}`' for p, _ in files)}\n"
+        f"- created_pr: `{str(created).lower()}`\n"
+        f"- summary: {(getattr(result, 'result', '') or '')[:500]}\n"
+    )
+    post_issue_comment(repo, issue, comment)
+    return {
+        "provider": "cursor",
+        "model": model,
+        "runtime": "local",
+        "ui_design": False,
+        "branch": branch,
+        "pr": pr_number,
+        "files": [p for p, _ in files],
+        "created_pr": created,
+        "agent_id": getattr(result, "agent_id", agent_id),
+        "run_id": getattr(result, "id", run_id),
+    }
+
+
+def _build_cloud(
+    repo: str,
+    issue: int,
+    *,
+    title: str,
+    body: str,
+    brief: Path,
+    model: str,
+    key: str,
+) -> dict[str, Any]:
+    from cursor_sdk import (
+        Agent,
+        CloudAgentOptions,
+        CloudRepository,
+        CursorAgentError,
+    )
+
     prompt = build_prompt(
-        repo=repo, issue=issue, title=title, body=body, brief=brief
+        repo=repo,
+        issue=issue,
+        title=title,
+        body=body,
+        brief=brief,
+        runtime="cloud",
     )
     repo_url = _repo_https_url(repo)
     owner, name = split_repo(repo)
     default = api("GET", f"/repos/{owner}/{name}").get("default_branch") or "main"
+    # Prefer SHA so Cursor does not need to resolve the branch name separately.
+    ref = api("GET", f"/repos/{owner}/{name}/git/ref/heads/{default}")
+    base_sha = ref["object"]["sha"]
 
+    agent_id = ""
+    run_id = ""
     try:
         with Agent.create(
             model=model,
@@ -144,31 +375,32 @@ def build_with_cursor(
                 repos=[
                     CloudRepository(
                         url=repo_url,
-                        starting_ref=default,
+                        starting_ref=base_sha,
                     )
                 ],
                 auto_create_pr=True,
                 skip_reviewer_request=True,
             ),
         ) as agent:
-            agent_id = getattr(agent, "agent_id", None) or getattr(
-                agent, "agentId", None
-            )
+            agent_id = str(getattr(agent, "agent_id", "") or "")
             run = agent.send(prompt)
-            run_id = getattr(run, "id", None)
+            run_id = str(getattr(run, "id", "") or "")
             result = run.wait()
     except CursorAgentError as exc:
         retryable = getattr(exc, "is_retryable", False)
         raise GitHubError(
-            f"Cursor SDK startup failed (retryable={retryable}): {exc}"
+            "Cursor SDK cloud startup failed "
+            f"(retryable={retryable}): {exc}. "
+            "Connect GitHub for this Cursor account to saberistic-team/agent-web, "
+            "or set CURSOR_RUNTIME=local (default in Actions)."
         ) from exc
 
     status = getattr(result, "status", None)
     if status != "finished":
         raise GitHubError(
             f"Cursor cloud run did not finish: status={status!r} "
-            f"agent_id={getattr(result, 'agent_id', '')} "
-            f"run_id={getattr(result, 'id', '')} "
+            f"agent_id={getattr(result, 'agent_id', agent_id)} "
+            f"run_id={getattr(result, 'id', run_id)} "
             f"result={getattr(result, 'result', '')[:500]!r}"
         )
 
@@ -191,13 +423,12 @@ def build_with_cursor(
             created = False
         else:
             raise GitHubError(
-                "Cursor run finished but no PR was found. "
-                f"agent_id={getattr(result, 'agent_id', '')} "
-                f"run_id={getattr(result, 'id', '')} "
+                "Cursor cloud run finished but no PR was found. "
+                f"agent_id={getattr(result, 'agent_id', agent_id)} "
+                f"run_id={getattr(result, 'id', run_id)} "
                 f"git={git!r}"
             )
 
-    # Ensure issue linkage for Gate / Reviewer if Cursor omitted Closes.
     try:
         pr = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}")
         pr_body = pr.get("body") or ""
@@ -209,10 +440,11 @@ def build_with_cursor(
                     "body": (
                         f"Closes #{issue}\n\n{pr_body}".strip()
                         + "\n\n### Codegen\n"
-                        f"- provider: `cursor`\n"
+                        "- provider: `cursor`\n"
+                        "- runtime: `cloud`\n"
                         f"- model: `{model}`\n"
-                        f"- agent_id: `{getattr(result, 'agent_id', '')}`\n"
-                        f"- run_id: `{getattr(result, 'id', '')}`\n"
+                        f"- agent_id: `{getattr(result, 'agent_id', agent_id)}`\n"
+                        f"- run_id: `{getattr(result, 'id', run_id)}`\n"
                     )
                 },
             )
@@ -222,9 +454,10 @@ def build_with_cursor(
     comment = (
         "### builder_result\n"
         "- kind: `cursor`\n"
+        "- runtime: `cloud`\n"
         f"- model: `{model}`\n"
-        f"- agent_id: `{getattr(result, 'agent_id', agent_id or '')}`\n"
-        f"- run_id: `{getattr(result, 'id', run_id or '')}`\n"
+        f"- agent_id: `{getattr(result, 'agent_id', agent_id)}`\n"
+        f"- run_id: `{getattr(result, 'id', run_id)}`\n"
         f"- branch: `{branch or 'unknown'}`\n"
         f"- pr: #{pr_number}\n"
         f"- pr_url: {pr_url or '(none)'}\n"
@@ -235,11 +468,42 @@ def build_with_cursor(
     return {
         "provider": "cursor",
         "model": model,
+        "runtime": "cloud",
         "ui_design": False,
         "branch": branch,
         "pr": pr_number,
         "files": [],
         "created_pr": created,
-        "agent_id": getattr(result, "agent_id", ""),
-        "run_id": getattr(result, "id", ""),
+        "agent_id": getattr(result, "agent_id", agent_id),
+        "run_id": getattr(result, "id", run_id),
     }
+
+
+def build_with_cursor(
+    repo: str,
+    issue: int,
+    *,
+    title: str,
+    body: str,
+    brief: Path,
+) -> dict[str, Any]:
+    key = cursor_api_key()
+    if not key:
+        raise GitHubError("missing CURSOR_API_KEY for Cursor SDK codegen")
+
+    try:
+        import cursor_sdk  # noqa: F401
+    except ImportError as exc:
+        raise GitHubError(
+            "cursor-sdk is not installed; pip install -r requirements-agents.txt"
+        ) from exc
+
+    model = cursor_model()
+    runtime = cursor_runtime()
+    if runtime == "cloud":
+        return _build_cloud(
+            repo, issue, title=title, body=body, brief=brief, model=model, key=key
+        )
+    return _build_local(
+        repo, issue, title=title, body=body, brief=brief, model=model, key=key
+    )
