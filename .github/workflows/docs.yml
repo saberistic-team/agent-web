@@ -70,3 +70,24 @@ jobs:
             --body "### docs_handoff
 - status: \`status:done\`
 "
+
+      - name: Write trace
+        if: always()
+        run: |
+          set -euo pipefail
+          OUTCOME="ok"
+          if [[ "${{ job.status }}" != "success" ]]; then OUTCOME="fail"; fi
+          python scripts/write_trace.py \
+            --role docs \
+            --issue "${{ github.event.issue.number }}" \
+            --action docs \
+            --outcome "${OUTCOME}" \
+            --cost-usd 0
+
+      - name: Upload agent trace
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-trace-docs-${{ github.event.issue.number }}-${{ github.run_id }}
+          path: trace/agent-trace.jsonl
+          if-no-files-found: ignore

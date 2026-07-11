@@ -93,3 +93,27 @@ jobs:
               exit 1
               ;;
           esac
+
+      - name: Write trace
+        if: always()
+        run: |
+          set -euo pipefail
+          OUTCOME="ok"
+          if [[ "${{ job.status }}" != "success" ]]; then OUTCOME="fail"; fi
+          DECISION="${{ steps.decision.outputs.value }}"
+          ACTION="review"
+          if [[ -n "${DECISION}" ]]; then ACTION="review:${DECISION}"; fi
+          python scripts/write_trace.py \
+            --role reviewer \
+            --issue "${{ github.event.issue.number }}" \
+            --action "${ACTION}" \
+            --outcome "${OUTCOME}" \
+            --cost-usd 0
+
+      - name: Upload agent trace
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-trace-reviewer-${{ github.event.issue.number }}-${{ github.run_id }}
+          path: trace/agent-trace.jsonl
+          if-no-files-found: ignore

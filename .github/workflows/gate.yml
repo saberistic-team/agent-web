@@ -141,3 +141,25 @@ jobs:
             --add-label "status:done" \
             --remove-label "review:needs-review" \
             --add-label "review:approved"
+
+      - name: Write trace
+        if: always()
+        run: |
+          set -euo pipefail
+          OUTCOME="ok"
+          if [[ "${{ job.status }}" != "success" ]]; then OUTCOME="fail"; fi
+          ACTION="gate:${{ steps.meta.outputs.intent }}"
+          python scripts/write_trace.py \
+            --role gate \
+            --issue "${{ steps.meta.outputs.issue }}" \
+            --action "${ACTION}" \
+            --outcome "${OUTCOME}" \
+            --cost-usd 0
+
+      - name: Upload agent trace
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-trace-gate-${{ steps.meta.outputs.issue }}-${{ github.run_id }}
+          path: trace/agent-trace.jsonl
+          if-no-files-found: ignore

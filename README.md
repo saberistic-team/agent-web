@@ -6,3 +6,4 @@ Label-driven multi-agent orchestration for this repository.
 
 - [Labels](docs/LABELS.md) — label taxonomy and routing rules
 - [Identities](docs/IDENTITIES.md) — agent identity definitions
+- [Trace](docs/TRACE.md) — `agent-trace.jsonl` schema and jq queries
