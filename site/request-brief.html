@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Request project brief — saberistic</title>
+    <meta
+      name="description"
+      content="Submit a project brief for saberistic review."
+    />
+    <link rel="icon" href="/assets/logo.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/assets/site.css" />
+  </head>
+  <body>
+    <header class="top">
+      <a class="brand" href="/" aria-label="saberistic home">
+        <img
+          class="brand-word"
+          src="/assets/logo-text.png"
+          width="160"
+          height="41"
+          alt="saberistic"
+        />
+      </a>
+    </header>
+
+    <main>
+      <section class="block form-block" aria-labelledby="brief-title">
+        <h1 class="page-title" id="brief-title">Request project brief</h1>
+        <p class="form-lede">
+          Share your project details. A one-time <strong>$200</strong> fee is
+          collected at checkout after you submit.
+        </p>
+
+        <p class="form-note" id="cancelled-note" hidden>
+          Checkout was cancelled. Your brief is saved — you can submit again to
+          continue to payment.
+        </p>
+
+        <form class="brief-form" id="brief-form" novalidate>
+          <div class="field">
+            <label for="website">Website URL</label>
+            <input
+              id="website"
+              name="website"
+              type="url"
+              required
+              placeholder="https://example.com"
+              autocomplete="url"
+            />
+          </div>
+
+          <div class="field">
+            <label for="brief">Project brief</label>
+            <textarea
+              id="brief"
+              name="brief"
+              rows="8"
+              required
+              placeholder="Goals, timeline, constraints, and what you need help with."
+            ></textarea>
+          </div>
+
+          <fieldset class="contact-fieldset">
+            <legend>Best contact</legend>
+            <div class="contact-toggle" role="radiogroup" aria-label="Contact method">
+              <label class="toggle-option">
+                <input
+                  type="radio"
+                  name="contact_method"
+                  value="email"
+                  checked
+                />
+                Email
+              </label>
+              <label class="toggle-option">
+                <input type="radio" name="contact_method" value="phone" />
+                Phone
+              </label>
+            </div>
+            <div class="field">
+              <label for="contact_value" id="contact-label">Email address</label>
+              <input
+                id="contact_value"
+                name="contact_value"
+                type="email"
+                required
+                placeholder="you@company.com"
+                autocomplete="email"
+              />
+            </div>
+          </fieldset>
+
+          <p class="form-error" id="form-error" hidden></p>
+
+          <button class="cta form-submit" type="submit">
+            Continue to payment — $200
+          </button>
+        </form>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <p>saberistic · software development</p>
+    </footer>
+
+    <script>
+      (function () {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("cancelled") === "1") {
+          document.getElementById("cancelled-note").hidden = false;
+        }
+
+        const form = document.getElementById("brief-form");
+        const errorEl = document.getElementById("form-error");
+        const contactLabel = document.getElementById("contact-label");
+        const contactInput = document.getElementById("contact_value");
+        const methodInputs = form.querySelectorAll('input[name="contact_method"]');
+
+        function syncContactField() {
+          const method = form.contact_method.value;
+          if (method === "phone") {
+            contactLabel.textContent = "Phone number";
+            contactInput.type = "tel";
+            contactInput.placeholder = "+1 555 000 0000";
+            contactInput.autocomplete = "tel";
+          } else {
+            contactLabel.textContent = "Email address";
+            contactInput.type = "email";
+            contactInput.placeholder = "you@company.com";
+            contactInput.autocomplete = "email";
+          }
+        }
+
+        methodInputs.forEach(function (input) {
+          input.addEventListener("change", syncContactField);
+        });
+
+        form.addEventListener("submit", async function (event) {
+          event.preventDefault();
+          errorEl.hidden = true;
+          errorEl.textContent = "";
+
+          const submitBtn = form.querySelector(".form-submit");
+          submitBtn.disabled = true;
+
+          const payload = {
+            website: form.website.value.trim(),
+            brief: form.brief.value.trim(),
+            contact_method: form.contact_method.value,
+            contact_value: form.contact_value.value.trim(),
+          };
+
+          try {
+            const response = await fetch("/api/project-briefs", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+            const data = await response.json().catch(function () {
+              return {};
+            });
+            if (!response.ok) {
+              const detail = data.detail;
+              const message = Array.isArray(detail)
+                ? detail.map(function (item) {
+                    return item.msg || String(item);
+                  }).join(" ")
+                : detail || "Unable to start checkout. Please try again.";
+              throw new Error(message);
+            }
+            window.location.href = data.checkout_url;
+          } catch (err) {
+            errorEl.textContent = err.message || "Something went wrong.";
+            errorEl.hidden = false;
+            submitBtn.disabled = false;
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>
