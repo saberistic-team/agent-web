@@ -74,4 +74,5 @@ jobs:
           sleep 20
           python scripts/post_deploy_visual.py \
             --repo "${{ github.repository }}" \
+            --sha "${{ github.sha }}" \
             --commit-message "${{ github.event.head_commit.message }}"

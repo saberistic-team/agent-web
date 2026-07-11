@@ -21,14 +21,19 @@ CI `post-deploy-visual` job (after Render deploy hook):
 
 1. Waits for `/health`
 2. Captures `post-*.png` of `/` and `/about`
-3. Comments `### deploy_visual_check` on the related issue (issue `#N` from commit message)
-4. Includes pre shots when available and asks **Gemini** (multimodal) whether the
+3. Resolves the related issue from `Closes #N` / `(#N)` in the commit message, or
+   from PRs linked to the commit SHA
+4. Comments `### deploy_visual_check` on that issue (uploads under
+   `.agent/screenshots/issue-<n>/post/`)
+5. Includes pre shots when available and asks **Gemini** (multimodal) whether the
    issue change is visually visible vs pre-merge
-5. Labels `@human-review` / escalates if visual check fails or Gemini is unavailable
-   when required
+6. Labels `@human-review` / escalates if visual check fails
 
-This gives the Reviewer (and humans) a before/after pair on the **issue** once
-production has updated.
+If no issue can be resolved, screenshots still upload under
+`.agent/screenshots/deploy-<sha>/post/` so evidence is not lost.
+
+Builder/agent commits should include `(#N)` or `Closes #N` so the issue thread
+gets the before/after pair.
 
 ## Config
 

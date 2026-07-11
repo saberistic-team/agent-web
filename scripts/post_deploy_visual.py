@@ -42,6 +42,25 @@ def find_issue_number(message: str) -> int | None:
     return None
 
 
+def find_issue_from_commit(repo: str, sha: str) -> int | None:
+    """Resolve issue via PRs associated with the commit (merge or squash)."""
+    if not sha:
+        return None
+    owner, name = split_repo(repo)
+    try:
+        prs = api("GET", f"/repos/{owner}/{name}/commits/{sha}/pulls") or []
+    except GitHubError:
+        return None
+    if not isinstance(prs, list):
+        return None
+    for pr in prs:
+        blob = f"{pr.get('title') or ''}\n{pr.get('body') or ''}"
+        found = find_issue_number(blob)
+        if found:
+            return found
+    return None
+
+
 def list_pre_urls(repo: str, ref: str, pr: int | None) -> list[str]:
     owner, name = split_repo(repo)
     if not pr:
@@ -145,6 +164,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", required=True)
     parser.add_argument("--commit-message", default="")
+    parser.add_argument("--sha", default=os.environ.get("GITHUB_SHA", ""))
     parser.add_argument("--issue", type=int, default=0)
     parser.add_argument("--pr", type=int, default=0)
     parser.add_argument(
@@ -154,19 +174,36 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         owner, name = split_repo(args.repo)
-        issue_num = args.issue or find_issue_number(args.commit_message)
-        if not issue_num:
-            print("No issue number in commit message; skipping visual verify")
-            return 0
-
-        issue = api("GET", f"/repos/{owner}/{name}/issues/{issue_num}")
+        issue_num = (
+            args.issue
+            or find_issue_number(args.commit_message)
+            or find_issue_from_commit(args.repo, args.sha)
+        )
         default = api("GET", f"/repos/{owner}/{name}").get("default_branch") or "main"
         wait_healthy(args.base_url)
 
         out = Path("trace/screenshots-post")
         post_files = capture(args.base_url, out, phase="post")
-        prefix = f".agent/screenshots/issue-{issue_num}/post"
+        short = (args.sha or "local")[:12]
+        prefix = (
+            f".agent/screenshots/issue-{issue_num}/post"
+            if issue_num
+            else f".agent/screenshots/deploy-{short}/post"
+        )
         post_urls = upload_to_branch(args.repo, default, post_files, prefix)
+
+        if not issue_num:
+            print(
+                "No issue number in commit message / linked PR; "
+                f"uploaded post screenshots only: {post_urls}"
+            )
+            print(
+                "Tip: include `Closes #N` or `(#N)` in the commit/PR body "
+                "so Reviewer gets deploy_visual_check on the issue."
+            )
+            return 0
+
+        issue = api("GET", f"/repos/{owner}/{name}/issues/{issue_num}")
 
         # Local pre shots if present from reviewer artifact checkout; else remote URLs only
         pre_files = sorted(Path("trace/screenshots").glob("pre-*.png"))
