@@ -47,8 +47,10 @@ Unrelated org install (not part of the agent loop): `digitalocean` (installation
 | Reviewer | `REVIEWER_APP_ID` | `REVIEWER_PRIVATE_KEY` |
 | Docs | `DOCS_APP_ID` | `DOCS_PRIVATE_KEY` |
 
-Builder also uses the job’s Actions `github.token` as `MODELS_TOKEN` for
-GitHub Models inference (not an extra secret).
+Builder also uses:
+
+- Actions `github.token` as `MODELS_TOKEN` for GitHub Models
+- Optional secret `GEMINI_API_KEY` for UI/landing design ([DESIGN.md](DESIGN.md))
 
 ## Actions job `permissions:` (must not exceed App)
 

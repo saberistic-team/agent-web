@@ -283,93 +283,20 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
             write_builder_handoff("blocked")
         return
 
-    # Landing / about page: commit the in-repo site scaffold (real product files).
+    # Landing create-only: if site is missing, block. Landing *changes* use codegen.
     if is_landing_issue(title, body):
         site_index = Path("site/index.html")
         if not site_index.is_file():
             escalate(
                 repo,
                 issue,
-                "Landing scaffold missing (`site/index.html`). Add the brutal-minimalist site before Builder can open a PR.",
+                "Landing scaffold missing (`site/index.html`). Add the base site before Builder can iterate.",
             )
             write_builder_handoff("blocked")
             return
-        branch = f"builder/{issue}-{slugify(title)}"
-        owner, name = split_repo(repo)
-        default = api("GET", f"/repos/{owner}/{name}").get("default_branch") or "main"
-        ref = api("GET", f"/repos/{owner}/{name}/git/ref/heads/{default}")
-        base_sha = ref["object"]["sha"]
-        try:
-            api(
-                "POST",
-                f"/repos/{owner}/{name}/git/refs",
-                body={"ref": f"refs/heads/{branch}", "sha": base_sha},
-            )
-        except GitHubError as exc:
-            if "Reference already exists" not in str(exc):
-                raise
+        # Existing site → fall through to Gemini/Models codegen below.
 
-        # Ensure branch carries current landing files from this checkout.
-        for rel in (
-            "site/index.html",
-            "site/assets/site.css",
-            "site/assets/logo.png",
-            "site/assets/logo-text.png",
-            "docs/LANDING.md",
-            "app/main.py",
-            "tests/test_api.py",
-        ):
-            path = Path(rel)
-            if not path.is_file():
-                continue
-            content_b64 = __import__("base64").b64encode(path.read_bytes()).decode()
-            put_body: dict = {
-                "message": f"builder(#{issue}): sync {rel}",
-                "content": content_b64,
-                "branch": branch,
-            }
-            try:
-                existing = api(
-                    "GET", f"/repos/{owner}/{name}/contents/{rel}?ref={branch}"
-                )
-                put_body["sha"] = existing["sha"]
-            except GitHubError:
-                pass
-            api("PUT", f"/repos/{owner}/{name}/contents/{rel}", body=put_body)
-
-        prs = linked_open_prs(repo, issue)
-        if not prs:
-            pr = api(
-                "POST",
-                f"/repos/{owner}/{name}/pulls",
-                body={
-                    "title": f"builder: {title} (#{issue})",
-                    "head": branch,
-                    "base": default,
-                    "body": (
-                        f"Closes #{issue}\n\n"
-                        "Brutal-minimalist landing for AmirSaber Sharifi.\n"
-                        "Logos from saberistic brand assets only; no team roster.\n"
-                    ),
-                },
-            )
-            post_issue_comment(
-                repo,
-                issue,
-                f"### builder_result\n- branch: `{branch}`\n- pr: #{pr['number']}\n- kind: `landing`\n",
-            )
-        else:
-            post_issue_comment(
-                repo,
-                issue,
-                f"### builder_result\n- branch: `{branch}`\n- existing_pr: #{prs[0]['number']}\n- kind: `landing`\n",
-            )
-        write_builder_handoff("reviewer")
-        return
-
-    # Default product work: GitHub Models codegen → branch + PR → Reviewer.
-    # Inference uses MODELS_TOKEN (Actions GITHUB_TOKEN + models:read).
-    # Git mutations use Builder App GITHUB_TOKEN.
+    # Product work: UI/landing → Gemini when GEMINI_API_KEY set; else GitHub Models.
     try:
         from codegen_models import build_with_models
 
@@ -382,7 +309,8 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
         )
         HANDOFF_DIR.mkdir(parents=True, exist_ok=True)
         (HANDOFF_DIR / "builder-model.txt").write_text(
-            str(result.get("model") or "") + "\n", encoding="utf-8"
+            f"{result.get('provider')}:{result.get('model')}\n",
+            encoding="utf-8",
         )
         write_builder_handoff("reviewer")
     except Exception as exc:
@@ -390,12 +318,11 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
             repo,
             issue,
             (
-                "GitHub Models codegen failed.\n\n"
+                "Codegen failed (Gemini and/or GitHub Models).\n\n"
                 f"`{exc}`\n\n"
-                "Ensure the Builder workflow has `permissions: models: read` and "
-                "passes `MODELS_TOKEN` from `github.token`. Optional var: "
-                "`GITHUB_MODELS_MODEL` (default `openai/gpt-4o-mini`). "
-                "See docs/MODELS.md."
+                "UI issues prefer `GEMINI_API_KEY` (see docs/DESIGN.md). "
+                "All issues can use GitHub Models via `MODELS_TOKEN` + "
+                "`permissions: models: read` (docs/MODELS.md)."
             ),
         )
         write_builder_handoff("blocked")

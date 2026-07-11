@@ -47,15 +47,15 @@ Escalate when:
 - GitHub Models codegen failed (rate limit, bad JSON, empty plan) — escalate
   with notes from docs/MODELS.md; do not open worklog-only PRs
 
-## Special case: landing / about page
+## Special case: landing / UI design
 
-If the issue asks for a **saberistic.com** / AmirSaber landing or about page:
+If the issue is landing/UI/CSS/CTA/design:
 
-- Implement (or sync) the brutal-minimalist site under `site/`
-- Use brand logos from `site/assets/` only (from saberistic.com mark/wordmark)
-- Do **not** revive the old team roster / `who-we-are` members
-- Open a real PR with HTML/CSS/tests — not a worklog stub
-- Source facts from the issue / LinkedIn only
+- Prefer **Gemini** when `GEMINI_API_KEY` is set ([docs/DESIGN.md](../docs/DESIGN.md))
+- Fall back to GitHub Models
+- Edit `site/` (and tests); do not only sync a scaffold
+- Use brand logos from `site/assets/` — single wordmark in header
+- Do **not** revive the old team roster
 
 ## Special case: verify / smoke deploy
 

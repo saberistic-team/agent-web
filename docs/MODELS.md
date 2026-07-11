@@ -1,8 +1,7 @@
 # GitHub Models codegen (Builder)
 
-Builder uses **GitHub Models** (free inference in Actions) to generate a
-small set of files, commits them on a branch, opens a PR, then hands off to
-Reviewer. No Copilot seat required.
+Default codegen provider for non-UI issues. UI/landing issues prefer Gemini
+when configured — see [DESIGN.md](DESIGN.md).
 
 ## Flow
 

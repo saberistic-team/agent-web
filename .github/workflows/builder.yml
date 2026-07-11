@@ -53,6 +53,10 @@ jobs:
           # Actions token: GitHub Models inference (needs models: read)
           MODELS_TOKEN: ${{ github.token }}
           GITHUB_MODELS_MODEL: ${{ vars.GITHUB_MODELS_MODEL }}
+          # Free Gemini for UI/landing design (optional; falls back to Models)
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          CODEGEN_PROVIDER: ${{ vars.CODEGEN_PROVIDER }}
         run: |
           python scripts/run_agent.py \
             --role builder \

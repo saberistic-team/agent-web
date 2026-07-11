@@ -9,6 +9,7 @@ import os
 import re
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -16,7 +17,11 @@ from typing import Any
 from github_api import GitHubError, api, post_issue_comment, split_repo, token
 
 DEFAULT_MODEL = "openai/gpt-4o-mini"
+DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
 MODELS_URL = "https://models.github.ai/inference/chat/completions"
+GEMINI_URL_TMPL = (
+    "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+)
 MAX_FILES = 12
 MAX_FILE_CHARS = 80_000
 CONTEXT_FILES = (
@@ -25,6 +30,14 @@ CONTEXT_FILES = (
     "app/main.py",
     "tests/test_api.py",
     "docs/LABELS.md",
+    "AGENTS/builder.md",
+)
+UI_CONTEXT_FILES = (
+    "site/index.html",
+    "site/assets/site.css",
+    "docs/LANDING.md",
+    "docs/DESIGN.md",
+    "tests/test_api.py",
     "AGENTS/builder.md",
 )
 
@@ -36,14 +49,29 @@ def models_token() -> str:
     return value
 
 
+def gemini_api_key() -> str | None:
+    value = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    return value.strip() if value and value.strip() else None
+
+
+def is_ui_design_issue(title: str, body: str) -> bool:
+    text = f"{title}\n{body}".lower()
+    return bool(
+        re.search(
+            r"\bui\b|\bux\b|\blanding\b|\bdesign\b|\bcss\b|\bhero\b|\bcta\b|"
+            r"\bvisual\b|\blayout\b|\babout page\b|saberistic\.com",
+            text,
+        )
+    )
+
+
 def slugify(text: str, limit: int = 40) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
     return (slug or "work")[:limit]
 
 
-def repo_context(cwd: Path) -> str:
+def repo_context(cwd: Path, *, ui: bool = False) -> str:
     lines: list[str] = ["## Repository snapshot"]
-    # Shallow file list
     entries: list[str] = []
     for path in sorted(cwd.rglob("*")):
         if not path.is_file():
@@ -51,9 +79,6 @@ def repo_context(cwd: Path) -> str:
         rel = path.relative_to(cwd).as_posix()
         if rel.startswith((".git/", ".venv/", "trace/", ".agent/")):
             continue
-        if any(part.startswith(".") and part not in {".github"} for part in path.parts):
-            if ".github" not in path.parts:
-                continue
         if path.suffix in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".pyc"}:
             continue
         entries.append(rel)
@@ -62,18 +87,19 @@ def repo_context(cwd: Path) -> str:
     lines.append("### Paths\n" + "\n".join(f"- {e}" for e in entries))
 
     lines.append("\n### Key file contents")
-    for rel in CONTEXT_FILES:
+    for rel in UI_CONTEXT_FILES if ui else CONTEXT_FILES:
         path = cwd / rel
         if not path.is_file():
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
-        if len(text) > 6000:
-            text = text[:6000] + "\n…[truncated]…"
+        limit = 12000 if ui else 6000
+        if len(text) > limit:
+            text = text[:limit] + "\n…[truncated]…"
         lines.append(f"\n#### `{rel}`\n```\n{text}\n```")
     return "\n".join(lines)
 
 
-def chat_completion(*, model: str, system: str, user: str) -> str:
+def chat_completion_github(*, model: str, system: str, user: str) -> str:
     payload = {
         "model": model,
         "temperature": 0.2,
@@ -109,6 +135,53 @@ def chat_completion(*, model: str, system: str, user: str) -> str:
     if not content:
         raise GitHubError(f"Models API empty content: {body!r}")
     return str(content)
+
+
+def chat_completion_gemini(*, model: str, system: str, user: str) -> str:
+    key = gemini_api_key()
+    if not key:
+        raise GitHubError("missing GEMINI_API_KEY")
+    url = GEMINI_URL_TMPL.format(model=urllib.parse.quote(model, safe=""))
+    payload = {
+        "systemInstruction": {"parts": [{"text": system}]},
+        "contents": [{"role": "user", "parts": [{"text": user}]}],
+        "generationConfig": {
+            "temperature": 0.35,
+            "responseMimeType": "application/json",
+        },
+    }
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        f"{url}?key={urllib.parse.quote(key)}",
+        data=data,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "agent-web-builder",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=180) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise GitHubError(f"Gemini API -> {exc.code}: {detail}") from exc
+
+    candidates = body.get("candidates") or []
+    if not candidates:
+        raise GitHubError(f"Gemini returned no candidates: {body!r}")
+    parts = ((candidates[0].get("content") or {}).get("parts")) or []
+    texts = [str(p.get("text") or "") for p in parts if isinstance(p, dict)]
+    content = "\n".join(t for t in texts if t).strip()
+    if not content:
+        raise GitHubError(f"Gemini empty content: {body!r}")
+    return content
+
+
+def chat_completion(*, provider: str, model: str, system: str, user: str) -> str:
+    if provider == "gemini":
+        return chat_completion_gemini(model=model, system=system, user=user)
+    return chat_completion_github(model=model, system=system, user=user)
 
 
 def extract_json(text: str) -> dict[str, Any]:
@@ -196,26 +269,8 @@ def linked_open_prs(repo: str, issue: int) -> list[dict]:
     ]
 
 
-def build_with_models(
-    repo: str,
-    issue: int,
-    *,
-    title: str,
-    body: str,
-    brief: Path,
-    cwd: Path | None = None,
-) -> dict[str, Any]:
-    root = cwd or Path.cwd()
-    model = os.environ.get("GITHUB_MODELS_MODEL") or DEFAULT_MODEL
-    brief_text = brief.read_text(encoding="utf-8") if brief.is_file() else ""
-    owner, name = split_repo(repo)
-    default = api("GET", f"/repos/{owner}/{name}").get("default_branch") or "main"
-    ref = api("GET", f"/repos/{owner}/{name}/git/ref/heads/{default}")
-    base_sha = ref["object"]["sha"]
-    branch = f"builder/{issue}-{slugify(title)}"
-
-    system = (
-        "You are a careful software engineer implementing ONE GitHub issue.\n"
+def json_system_prompt(*, ui: bool) -> str:
+    base = (
         "Return ONLY valid JSON (no markdown outside JSON) with this schema:\n"
         "{\n"
         '  "commit_message": "string",\n'
@@ -230,20 +285,91 @@ def build_with_models(
         "- Do not modify .github/workflows agent orchestration unless required.\n"
         "- Stay within the issue scope.\n"
     )
+    if not ui:
+        return (
+            "You are a careful software engineer implementing ONE GitHub issue.\n"
+            + base
+        )
+    return (
+        "You are a senior product designer + front-end engineer.\n"
+        "Optimize for a brutal-minimalist, brand-first landing page.\n"
+        "Brand colors lean deep navy (#0c0f18 / #171d34) with orange accent (#d88730).\n"
+        "Typography: Archivo Black + IBM Plex Mono already in use — keep them unless "
+        "the issue asks otherwise.\n"
+        "Avoid: purple gradients, cream+serif terracotta, newspaper layouts, "
+        "card grids in the hero, pill clusters, glow spam.\n"
+        "Prefer one clear composition, one primary CTA, generous type hierarchy, "
+        "subtle intentional motion only.\n"
+        "Use existing saberistic logos in site/assets/ (do not duplicate mark+wordmark).\n"
+        "Do not revive any team roster.\n"
+        + base
+    )
+
+
+def select_provider(title: str, body: str) -> tuple[str, str]:
+    """Return (provider, model). Prefer Gemini for UI when API key is present."""
+    ui = is_ui_design_issue(title, body)
+    force = (os.environ.get("CODEGEN_PROVIDER") or "").strip().lower()
+    if force in {"gemini", "github-models", "models"}:
+        if force == "gemini":
+            return "gemini", os.environ.get("GEMINI_MODEL") or DEFAULT_GEMINI_MODEL
+        return "github-models", os.environ.get("GITHUB_MODELS_MODEL") or DEFAULT_MODEL
+    if ui and gemini_api_key():
+        return "gemini", os.environ.get("GEMINI_MODEL") or DEFAULT_GEMINI_MODEL
+    return "github-models", os.environ.get("GITHUB_MODELS_MODEL") or DEFAULT_MODEL
+
+
+def build_with_models(
+    repo: str,
+    issue: int,
+    *,
+    title: str,
+    body: str,
+    brief: Path,
+    cwd: Path | None = None,
+) -> dict[str, Any]:
+    root = cwd or Path.cwd()
+    ui = is_ui_design_issue(title, body)
+    provider, model = select_provider(title, body)
+    brief_text = brief.read_text(encoding="utf-8") if brief.is_file() else ""
+    owner, name = split_repo(repo)
+    default = api("GET", f"/repos/{owner}/{name}").get("default_branch") or "main"
+    ref = api("GET", f"/repos/{owner}/{name}/git/ref/heads/{default}")
+    base_sha = ref["object"]["sha"]
+    branch = f"builder/{issue}-{slugify(title)}"
+
+    system = json_system_prompt(ui=ui)
     user = (
         f"Repository: {repo}\n"
         f"Issue: #{issue}\n"
-        f"Title: {title}\n\n"
+        f"Title: {title}\n"
+        f"UI/design focus: {ui}\n"
+        f"Live reference (if relevant): https://agent-web-hello.onrender.com/\n\n"
         f"## Issue body\n{body.strip() or '(empty)'}\n\n"
         f"## Builder brief\n{brief_text[:5000]}\n\n"
-        f"{repo_context(root)}\n"
+        f"{repo_context(root, ui=ui)}\n"
     )
 
-    raw = chat_completion(model=model, system=system, user=user)
+    try:
+        raw = chat_completion(provider=provider, model=model, system=system, user=user)
+    except Exception as primary_exc:
+        # UI path: fall back to GitHub Models if Gemini fails.
+        if provider == "gemini":
+            provider = "github-models"
+            model = os.environ.get("GITHUB_MODELS_MODEL") or DEFAULT_MODEL
+            raw = chat_completion(
+                provider=provider, model=model, system=system, user=user
+            )
+            fallback_note = f"gemini_failed: {primary_exc}"
+        else:
+            raise
+    else:
+        fallback_note = None
+
     plan = extract_json(raw)
     files = validate_plan(plan)
     commit_message = str(plan.get("commit_message") or f"builder(#{issue}): implement change")
-    pr_summary = str(plan.get("pr_summary") or "Automated Builder change via GitHub Models.")
+    pr_summary = str(plan.get("pr_summary") or "Automated Builder change.")
 
     ensure_branch(repo, branch, base_sha)
     for item in files:
@@ -270,9 +396,10 @@ def build_with_models(
                 "body": (
                     f"Closes #{issue}\n\n"
                     f"{pr_summary}\n\n"
-                    f"### Models\n"
-                    f"- provider: `github-models`\n"
+                    f"### Codegen\n"
+                    f"- provider: `{provider}`\n"
                     f"- model: `{model}`\n"
+                    f"- ui_design: `{str(ui).lower()}`\n"
                     f"- files: {', '.join(f'`{f['path']}`' for f in files)}\n"
                 ),
             },
@@ -280,21 +407,23 @@ def build_with_models(
         pr_number = int(pr["number"])
         created = True
 
-    post_issue_comment(
-        repo,
-        issue,
-        (
-            "### builder_result\n"
-            "- kind: `github-models`\n"
-            f"- model: `{model}`\n"
-            f"- branch: `{branch}`\n"
-            f"- pr: #{pr_number}\n"
-            f"- files: {', '.join(f'`{f['path']}`' for f in files)}\n"
-            f"- created_pr: `{str(created).lower()}`\n"
-        ),
+    comment = (
+        "### builder_result\n"
+        f"- kind: `{provider}`\n"
+        f"- model: `{model}`\n"
+        f"- ui_design: `{str(ui).lower()}`\n"
+        f"- branch: `{branch}`\n"
+        f"- pr: #{pr_number}\n"
+        f"- files: {', '.join(f'`{f['path']}`' for f in files)}\n"
+        f"- created_pr: `{str(created).lower()}`\n"
     )
+    if fallback_note:
+        comment += f"- note: `{fallback_note}`\n"
+    post_issue_comment(repo, issue, comment)
     return {
+        "provider": provider,
         "model": model,
+        "ui_design": ui,
         "branch": branch,
         "pr": pr_number,
         "files": [f["path"] for f in files],
