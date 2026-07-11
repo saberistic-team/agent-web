@@ -242,6 +242,28 @@ def main(argv: list[str] | None = None) -> int:
             ) + "\n"
         post_issue_comment(args.repo, issue_num, body)
 
+        # Refresh acceptance checklist with live deploy evidence when possible.
+        try:
+            from acceptance import (
+                post_checklist,
+                update_issue_checkboxes,
+                verify_acceptance,
+            )
+
+            acceptance = verify_acceptance(
+                args.repo, issue_num, args.pr or None, use_ai=True
+            )
+            post_checklist(args.repo, issue_num, acceptance, role="post-deploy")
+            if acceptance.get("all_done"):
+                update_issue_checkboxes(args.repo, issue_num, acceptance)
+        except Exception as acc_exc:
+            post_issue_comment(
+                args.repo,
+                issue_num,
+                f"### acceptance_checklist\n- role: `post-deploy`\n"
+                f"- all_done: `false`\n- note: refresh failed (`{acc_exc}`)\n",
+            )
+
         if visual.get("decision") == "fail":
             post_issue_comment(
                 args.repo,

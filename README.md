@@ -13,6 +13,7 @@ hello-world HTTP API used to exercise the loop.
 - [GitHub Models codegen](docs/MODELS.md) — default Builder codegen
 - [Design AI (Gemini)](docs/DESIGN.md) — preferred codegen when key is set
 - [Screenshots](docs/SCREENSHOTS.md) — pre-merge + post-deploy visual evidence
+- [Acceptance](docs/ACCEPTANCE.md) — checklist + evidence before close
 
 ## Hello API
 

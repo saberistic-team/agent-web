@@ -42,7 +42,7 @@ while the issue is in the orchestration pipeline.
 | `status:in-progress` | An agent is actively working the issue. |
 | `status:blocked` | Work cannot proceed until an external dependency or decision is resolved. |
 | `status:needs-review` | Implementation is ready for review (pairs with the `review` axis). |
-| `status:done` | Work is complete and accepted; no further agent action required. |
+| `status:done` | Work is complete and accepted; Gate sets this only after a complete `### acceptance_checklist` and close. |
 | `status:failed` | The run failed or was aborted; needs human or Planner intervention. |
 
 ### Entry-point rule

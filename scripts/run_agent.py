@@ -600,6 +600,33 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
         hard_fail_reasons.append(f"AI reviewer unavailable: {exc}")
         ai_block = f"- ai_review: failed (`{exc}`)\n"
 
+    # Acceptance criteria checklist with evidence (required before approve)
+    acceptance_note = ""
+    try:
+        from acceptance import post_checklist, update_issue_checkboxes, verify_acceptance
+
+        acceptance = verify_acceptance(repo, issue, pr_number, use_ai=True)
+        checklist_comment = post_checklist(
+            repo, issue, acceptance, role="reviewer"
+        )
+        acceptance_note = (
+            f"- acceptance_all_done: `{str(bool(acceptance.get('all_done'))).lower()}`\n"
+            f"- acceptance_checklist: {checklist_comment.get('html_url')}\n"
+        )
+        if acceptance.get("all_done"):
+            try:
+                update_issue_checkboxes(repo, issue, acceptance)
+            except Exception as body_exc:
+                acceptance_note += f"- acceptance_body_update: failed (`{body_exc}`)\n"
+        else:
+            hard_fail_reasons.append(
+                "acceptance criteria incomplete — see acceptance_checklist comment "
+                + (checklist_comment.get("html_url") or "")
+            )
+    except Exception as exc:
+        acceptance_note = f"- acceptance_checklist: failed (`{exc}`)\n"
+        hard_fail_reasons.append(f"acceptance checklist failed: {exc}")
+
     if hard_fail_reasons:
         event = "REQUEST_CHANGES"
         body = (
@@ -608,6 +635,7 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
             f"- brief: `{brief}`\n"
             f"{screenshot_note}"
             f"{ai_block}"
+            f"{acceptance_note}"
             "- hard_fails:\n"
             + "\n".join(f"  - {r}" for r in hard_fail_reasons)
             + "\n"
@@ -620,7 +648,8 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
             f"- brief: `{brief}`\n"
             f"{screenshot_note}"
             f"{ai_block}"
-            "- judgment: AI + checks agree; nits non-blocking\n"
+            f"{acceptance_note}"
+            "- judgment: AI + checks + acceptance checklist agree; nits non-blocking\n"
         )
 
     api(

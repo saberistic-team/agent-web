@@ -120,9 +120,18 @@ jobs:
         if: success() && steps.meta.outputs.intent == 'review-approved'
         env:
           GH_TOKEN: ${{ steps.reviewer.outputs.token }}
+          GITHUB_TOKEN: ${{ steps.reviewer.outputs.token }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
           ISSUE: ${{ steps.meta.outputs.issue }}
         run: |
           set -euo pipefail
+          # Fail closed unless Reviewer posted a complete acceptance checklist.
+          python scripts/acceptance.py \
+            --repo "${{ github.repository }}" \
+            --issue "${ISSUE}" \
+            --mode require
+
           PRS="$(gh pr list --repo "${{ github.repository }}" \
             --search "${ISSUE} in:title,body" --state open --json number,body,title \
             --jq "[.[] | select((.title | contains(\"#${ISSUE}\")) or (.body != null and (.body | contains(\"#${ISSUE}\")))) | .number] | .[]")"
@@ -138,14 +147,22 @@ jobs:
           while read -r pr; do
             [[ -z "${pr}" ]] && continue
             gh pr merge "${pr}" --repo "${{ github.repository }}" --squash
+            MERGE_SHA="$(gh pr view "${pr}" --repo "${{ github.repository }}" --json mergeCommit --jq '.mergeCommit.oid // empty')"
             gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
           ### gate_merge
           - result: \`merged\`
           - pr: #${pr}
           - strategy: squash
+          - commit: \`${MERGE_SHA}\`
           - actor_checked: \`${{ github.actor }}\`
           EOF
           )"
+            python scripts/acceptance.py \
+              --repo "${{ github.repository }}" \
+              --issue "${ISSUE}" \
+              --pr "${pr}" \
+              --merge-sha "${MERGE_SHA}" \
+              --mode close
           done <<< "${PRS}"
           for label in status:new status:queued status:in-progress status:blocked status:needs-review status:failed; do
             gh issue edit "${ISSUE}" --repo "${{ github.repository }}" --remove-label "${label}" 2>/dev/null || true
