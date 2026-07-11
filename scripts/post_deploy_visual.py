@@ -19,6 +19,7 @@ from screenshot_deploy import (
     DEFAULT_BASE,
     capture,
     comment_markdown,
+    resolve_base_url,
     upload_to_branch,
     wait_healthy,
 )
@@ -167,9 +168,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sha", default=os.environ.get("GITHUB_SHA", ""))
     parser.add_argument("--issue", type=int, default=0)
     parser.add_argument("--pr", type=int, default=0)
-    parser.add_argument(
-        "--base-url", default=os.environ.get("DEPLOY_BASE_URL", DEFAULT_BASE)
-    )
+    parser.add_argument("--base-url", default="")
     args = parser.parse_args(argv)
 
     try:
@@ -180,10 +179,12 @@ def main(argv: list[str] | None = None) -> int:
             or find_issue_from_commit(args.repo, args.sha)
         )
         default = api("GET", f"/repos/{owner}/{name}").get("default_branch") or "main"
-        wait_healthy(args.base_url)
+        base_url = resolve_base_url(args.base_url)
+        health = wait_healthy(base_url)
+        health_slim = {k: v for k, v in health.items() if not str(k).startswith("_")}
 
         out = Path("trace/screenshots-post")
-        post_files = capture(args.base_url, out, phase="post")
+        post_files = capture(base_url, out, phase="post")
         short = (args.sha or "local")[:12]
         prefix = (
             f".agent/screenshots/issue-{issue_num}/post"
@@ -195,7 +196,8 @@ def main(argv: list[str] | None = None) -> int:
         if not issue_num:
             print(
                 "No issue number in commit message / linked PR; "
-                f"uploaded post screenshots only: {post_urls}"
+                f"uploaded post screenshots only: {post_urls}; "
+                f"health={json.dumps(health_slim)}"
             )
             print(
                 "Tip: include `Closes #N` or `(#N)` in the commit/PR body "
@@ -225,11 +227,12 @@ def main(argv: list[str] | None = None) -> int:
 
         body = comment_markdown(
             "### deploy_visual_check",
-            args.base_url,
+            base_url,
             post_urls,
             extra=[
                 "- phase: `post-deploy`",
                 f"- issue: #{issue_num}",
+                f"- health: `{json.dumps(health_slim, separators=(',', ':'))}`",
                 f"- visual_decision: `{visual.get('decision')}`",
                 f"- visual_visible: `{visual.get('visible')}`",
                 f"- visual_model: `{visual.get('model')}`",

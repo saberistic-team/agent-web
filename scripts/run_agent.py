@@ -557,10 +557,11 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
             capture,
             comment_markdown,
             comment_on_issue_or_pr,
+            resolve_base_url,
             upload_to_branch,
         )
 
-        base_url = os.environ.get("DEPLOY_BASE_URL") or "https://agent-web-hello.onrender.com"
+        base_url = resolve_base_url(os.environ.get("DEPLOY_BASE_URL"))
         out_dir = Path("trace/screenshots")
         shots = capture(base_url, out_dir, phase="pre")
         branch = pr["head"]["ref"]
