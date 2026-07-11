@@ -48,6 +48,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.builder.outputs.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          # User PAT required to assign Copilot (App install tokens are rejected).
+          COPILOT_ASSIGN_TOKEN: ${{ secrets.COPILOT_ASSIGN_TOKEN }}
+          COPILOT_MODEL: ${{ vars.COPILOT_MODEL }}
         run: |
           python scripts/run_agent.py \
             --role builder \
@@ -92,6 +95,17 @@ jobs:
           ### builder_handoff
           - status: \`status:blocked\`
           - next: \`@human-review\`
+          EOF
+          )"
+              ;;
+            waiting)
+              gh issue edit "${ISSUE}" \
+                --repo "${{ github.repository }}" \
+                --add-label "status:in-progress"
+              gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
+          ### builder_handoff
+          - status: \`status:in-progress\`
+          - next: wait for Copilot PR (\`copilot-handoff\` workflow)
           EOF
           )"
               ;;

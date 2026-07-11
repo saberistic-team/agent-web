@@ -2,11 +2,15 @@
 
 **Last audited:** 2026-07-11 (live org installations via GitHub API)
 
-Each orchestration role is a distinct **GitHub App** (no PATs) installed on
+Each orchestration role is a distinct **GitHub App** installed on
 org `saberistic-team` with **selected repositories** (not all repos). Workflows
 mint an installation token (`actions/create-github-app-token`) and perform
 GitHub mutations **only** with that token so events attribute to the role bot —
 not `github-actions[bot]`.
+
+**Exception:** assigning **GitHub Copilot cloud agent** requires a
+**user-to-server** token (`COPILOT_ASSIGN_TOKEN` PAT). App installation tokens
+cannot start Copilot tasks — see [COPILOT.md](COPILOT.md).
 
 ## Confirmed role → identity → scope
 
@@ -42,6 +46,10 @@ Unrelated org install (not part of the agent loop): `digitalocean` (installation
 | Builder | `BUILDER_APP_ID` | `BUILDER_PRIVATE_KEY` |
 | Reviewer | `REVIEWER_APP_ID` | `REVIEWER_PRIVATE_KEY` |
 | Docs | `DOCS_APP_ID` | `DOCS_PRIVATE_KEY` |
+
+| Extra secret | Purpose |
+|--------------|---------|
+| `COPILOT_ASSIGN_TOKEN` | User PAT to assign Copilot from Builder ([COPILOT.md](COPILOT.md)) |
 
 ## Actions job `permissions:` (must not exceed App)
 

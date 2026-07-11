@@ -89,8 +89,8 @@ def escalate(repo: str, issue: int, reason: str, assignee_hint: str | None = Non
 
 
 def write_builder_handoff(mode: str) -> None:
-    """Tell builder.yml how to advance labels: reviewer | done | blocked."""
-    if mode not in {"reviewer", "done", "blocked"}:
+    """Tell builder.yml how to advance labels: reviewer | done | blocked | waiting."""
+    if mode not in {"reviewer", "done", "blocked", "waiting"}:
         raise GitHubError(f"invalid builder handoff mode: {mode!r}")
     HANDOFF_DIR.mkdir(parents=True, exist_ok=True)
     BUILDER_HANDOFF.write_text(mode + "\n", encoding="utf-8")
@@ -367,75 +367,44 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
         write_builder_handoff("reviewer")
         return
 
-    branch = f"builder/{issue}-{slugify(title)}"
-    owner, name = split_repo(repo)
-    default = api("GET", f"/repos/{owner}/{name}").get("default_branch") or "main"
-    ref = api("GET", f"/repos/{owner}/{name}/git/ref/heads/{default}")
-    base_sha = ref["object"]["sha"]
-
-    # Create branch via API (visible ref)
+    # Default product work: assign GitHub Copilot cloud agent (real codegen).
+    # Requires COPILOT_ASSIGN_TOKEN (user PAT) — App install tokens cannot assign.
     try:
-        api(
-            "POST",
-            f"/repos/{owner}/{name}/git/refs",
-            body={"ref": f"refs/heads/{branch}", "sha": base_sha},
+        from assign_copilot import assign_copilot, build_instructions
+
+        model = os.environ.get("COPILOT_MODEL", "")
+        instructions = build_instructions(brief, title, body)
+        assign_copilot(
+            repo,
+            issue,
+            instructions=instructions,
+            model=model or None,
         )
-    except GitHubError as exc:
-        if "Reference already exists" not in str(exc):
-            raise
-
-    worklog = textwrap.dedent(
-        f"""\
-        # Builder worklog for #{issue}
-
-        Title: {title}
-
-        ## Acceptance
-
-        {body.strip() or '_No issue body provided._'}
-
-        ## Notes
-
-        Autonomous code generation is not wired in this runner yet.
-        This commit/PR is the visible handoff artifact for review.
-        """
-    )
-    path = f".agent/worklogs/{issue}.md"
-    content_b64 = __import__("base64").b64encode(worklog.encode()).decode()
-    # create or update file on branch
-    put_body = {
-        "message": f"builder(#{issue}): add worklog",
-        "content": content_b64,
-        "branch": branch,
-    }
-    try:
-        existing = api("GET", f"/repos/{owner}/{name}/contents/{path}?ref={branch}")
-        put_body["sha"] = existing["sha"]
-    except GitHubError:
-        pass
-    api("PUT", f"/repos/{owner}/{name}/contents/{path}", body=put_body)
-
-    # Stub worklogs cannot pass review — escalate instead of opening a PR loop.
-    escalate(
-        repo,
-        issue,
-        (
-            "Builder cannot implement product code autonomously yet. "
-            "Refusing to open/update a worklog-only PR (would loop with Reviewer). "
-            "A human or codegen-enabled builder must land the change."
-        ),
-    )
-    write_builder_handoff("blocked")
-    post_issue_comment(
-        repo,
-        issue,
-        (
-            f"### builder_result\n"
-            f"- branch: `{branch}`\n"
-            f"- worklog: `{path}` (branch only; no PR)\n"
-            f"- handoff: `blocked`\n"
-        ),
-    )
+        post_issue_comment(
+            repo,
+            issue,
+            (
+                "### builder_result\n"
+                "- kind: `copilot`\n"
+                "- assignee: `copilot-swe-agent[bot]`\n"
+                f"- model: `{model or 'auto'}`\n"
+                "- handoff: `waiting` (for Copilot PR)\n"
+            ),
+        )
+        write_builder_handoff("waiting")
+    except Exception as exc:
+        escalate(
+            repo,
+            issue,
+            (
+                "Failed to assign GitHub Copilot cloud agent for codegen.\n\n"
+                f"`{exc}`\n\n"
+                "Add repo secret `COPILOT_ASSIGN_TOKEN` (user/fine-grained PAT with "
+                "issues + contents + pull requests write; Copilot coding agent enabled). "
+                "App installation tokens cannot start Copilot tasks."
+            ),
+        )
+        write_builder_handoff("blocked")
 
 
 def role_docs(repo: str, issue: int, brief: Path) -> None:

@@ -1,0 +1,56 @@
+name: Copilot → Reviewer handoff
+
+# When Copilot opens a PR for an issue that Builder assigned, route to Reviewer.
+on:
+  pull_request:
+    types: [opened, ready_for_review, reopened]
+
+jobs:
+  handoff:
+    if: >-
+      contains(fromJSON('["Copilot","copilot-swe-agent[bot]"]'), github.event.pull_request.user.login)
+      || startsWith(github.event.pull_request.user.login, 'copilot')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: read
+      contents: read
+    steps:
+      - name: Mint Builder App token
+        id: builder
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.BUILDER_APP_ID }}
+          private-key: ${{ secrets.BUILDER_PRIVATE_KEY }}
+
+      - name: Link issue and request review
+        env:
+          GH_TOKEN: ${{ steps.builder.outputs.token }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          TEXT="${PR_TITLE}"$'\n'"${PR_BODY}"
+          ISSUE="$(printf '%s\n' "${TEXT}" | grep -oE '#[0-9]+' | head -n1 | tr -d '#' || true)"
+          if [[ -z "${ISSUE}" ]]; then
+            echo "No linked issue number in PR title/body; skipping"
+            exit 0
+          fi
+
+          for label in agent:builder agent:docs agent:planner status:queued status:blocked status:done status:failed status:new; do
+            gh issue edit "${ISSUE}" --repo "${{ github.repository }}" --remove-label "${label}" 2>/dev/null || true
+          done
+          gh issue edit "${ISSUE}" \
+            --repo "${{ github.repository }}" \
+            --add-label "status:needs-review" \
+            --add-label "review:needs-review" \
+            --add-label "agent:reviewer"
+
+          gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
+          ### builder_copilot_pr
+          - pr: #${PR_NUMBER}
+          - author: \`${{ github.event.pull_request.user.login }}\`
+          - next: \`agent:reviewer\`
+          EOF
+          )"
