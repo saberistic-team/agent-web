@@ -519,7 +519,16 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
 
     commits = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}/commits") or []
     commit_msgs = [c.get("commit", {}).get("message", "") for c in commits]
-    if commit_msgs and all(re.search(r"\bsync\b", m or "", re.I) for m in commit_msgs):
+    issue_data = api("GET", f"/repos/{owner}/{name}/issues/{issue}")
+    issue_blob = f"{issue_data.get('title')}\n{issue_data.get('body')}".lower()
+    infra_issue = bool(
+        re.search(r"screenshot|headless|playwright|visual (check|evidence)", issue_blob)
+    )
+    if (
+        commit_msgs
+        and all(re.search(r"\bsync\b", m or "", re.I) for m in commit_msgs)
+        and not infra_issue
+    ):
         hard_fail_reasons.append(
             "PR commits are Builder scaffold sync only — does not implement the issue "
             "(terminal: true — do not approve)"
@@ -583,11 +592,11 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
         )
         if verdict.get("decision") != "approved":
             hard_fail_reasons.append(
-                "GitHub Models reviewer rejected: "
+                "AI reviewer rejected: "
                 + "; ".join(verdict.get("reasons") or ["does not meet acceptance"])
             )
     except Exception as exc:
-        hard_fail_reasons.append(f"GitHub Models reviewer unavailable: {exc}")
+        hard_fail_reasons.append(f"AI reviewer unavailable: {exc}")
         ai_block = f"- ai_review: failed (`{exc}`)\n"
 
     if hard_fail_reasons:

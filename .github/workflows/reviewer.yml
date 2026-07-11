@@ -41,6 +41,8 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           MODELS_TOKEN: ${{ github.token }}
           GITHUB_MODELS_MODEL: ${{ vars.GITHUB_MODELS_MODEL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
           DEPLOY_BASE_URL: ${{ vars.DEPLOY_BASE_URL }}
           SCREENSHOTS_REQUIRED: ${{ vars.SCREENSHOTS_REQUIRED }}
         run: |
