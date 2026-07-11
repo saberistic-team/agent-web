@@ -552,6 +552,50 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
     ):
         hard_fail_reasons.append("behavior/code change without test file updates")
 
+    # Service coverage gates: unit ≥90% / integration ≥70% of app/
+    coverage_note = ""
+    app_touched = any(
+        f["filename"].startswith("app/") and f["filename"].endswith(".py")
+        for f in files
+    )
+    for run in checks.get("check_runs") or []:
+        name_l = (run.get("name") or "").lower()
+        conclusion = (run.get("conclusion") or "").lower()
+        if "coverage" in name_l and conclusion in {
+            "failure",
+            "timed_out",
+            "cancelled",
+        }:
+            hard_fail_reasons.append(
+                "service coverage check failed "
+                "(unit ≥90% / integration ≥70% of app/ required)"
+            )
+    if app_touched or Path("app").is_dir():
+        try:
+            cov = subprocess.run(
+                [sys.executable, "scripts/check_coverage.py"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            cov_out = ((cov.stdout or "") + (cov.stderr or "")).strip()
+            if cov.returncode != 0:
+                hard_fail_reasons.append(
+                    "service coverage below required thresholds "
+                    "(unit ≥90% / integration ≥70% of app/): "
+                    + (cov_out[-1200:] if cov_out else f"exit {cov.returncode}")
+                )
+                coverage_note = "- coverage: `failed` (see hard_fails)\n"
+            else:
+                coverage_note = (
+                    "- coverage: `ok` (unit≥90% / integration≥70% of `app/`)\n"
+                )
+        except Exception as exc:
+            hard_fail_reasons.append(f"service coverage check failed to run: {exc}")
+            coverage_note = f"- coverage: failed (`{exc}`)\n"
+    else:
+        coverage_note = "- coverage: skipped (no app/ service changes)\n"
+
     # Pre-merge deploy screenshots (baseline before approve/merge)
     screenshot_note = ""
     try:
@@ -639,6 +683,7 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
             f"- decision: `changes-requested`\n"
             f"- brief: `{brief}`\n"
             f"{screenshot_note}"
+            f"{coverage_note}"
             f"{ai_block}"
             f"{acceptance_note}"
             "- hard_fails:\n"
@@ -652,9 +697,11 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
             f"- decision: `approved`\n"
             f"- brief: `{brief}`\n"
             f"{screenshot_note}"
+            f"{coverage_note}"
             f"{ai_block}"
             f"{acceptance_note}"
-            "- judgment: AI + checks + acceptance checklist agree; nits non-blocking\n"
+            "- judgment: AI + checks + acceptance checklist + coverage agree; "
+            "nits non-blocking\n"
         )
 
     api(
