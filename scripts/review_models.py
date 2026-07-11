@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""GitHub Models–backed PR review against issue acceptance criteria."""
+"""AI-backed PR review against issue acceptance criteria.
+
+Prefers OpenAI (ChatGPT) when OPENAI_API_KEY is set, then Gemini, then
+GitHub Models.
+"""
 
 from __future__ import annotations
 
@@ -14,7 +18,9 @@ from typing import Any
 from github_api import GitHubError, api, split_repo
 
 DEFAULT_MODEL = "openai/gpt-4o-mini"
+DEFAULT_OPENAI_MODEL = "gpt-4.1-mini"
 MODELS_URL = "https://models.github.ai/inference/chat/completions"
+OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 
 
 def models_token() -> str:
@@ -24,7 +30,52 @@ def models_token() -> str:
     return value
 
 
-def chat_github(system: str, user: str, model: str | None = None) -> str:
+def openai_api_key() -> str | None:
+    value = os.environ.get("OPENAI_API_KEY")
+    return value.strip() if value and value.strip() else None
+
+
+def chat_openai(system: str, user: str, model: str | None = None) -> tuple[str, str]:
+    key = openai_api_key()
+    if not key:
+        raise GitHubError("missing OPENAI_API_KEY")
+    model = model or os.environ.get("OPENAI_MODEL") or DEFAULT_OPENAI_MODEL
+    payload = {
+        "model": model,
+        "temperature": 0.1,
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+    }
+    req = urllib.request.Request(
+        OPENAI_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        method="POST",
+        headers={
+            "Accept": "application/json",
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+            "User-Agent": "agent-web-reviewer",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=180) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise GitHubError(f"OpenAI API -> {exc.code}: {detail}") from exc
+    choices = body.get("choices") or []
+    if not choices:
+        raise GitHubError(f"OpenAI no choices: {body!r}")
+    content = (choices[0].get("message") or {}).get("content")
+    if not content:
+        raise GitHubError("OpenAI empty content")
+    return str(content), model
+
+
+def chat_github(system: str, user: str, model: str | None = None) -> tuple[str, str]:
     model = model or os.environ.get("GITHUB_MODELS_MODEL") or DEFAULT_MODEL
     payload = {
         "model": model,
@@ -103,18 +154,61 @@ def chat_gemini(system: str, user: str, model: str | None = None) -> tuple[str, 
 
 
 def chat(system: str, user: str, model: str | None = None) -> tuple[str, str]:
-    """Prefer Gemini when key exists (org Models token often 403)."""
+    """Prefer OpenAI, then Gemini, then GitHub Models."""
+    errors: list[str] = []
+    if openai_api_key():
+        try:
+            return chat_openai(
+                system, user, model=os.environ.get("OPENAI_MODEL") or model
+            )
+        except Exception as exc:
+            errors.append(f"openai: {exc}")
     if os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"):
         try:
             return chat_gemini(system, user, model=os.environ.get("GEMINI_MODEL"))
-        except Exception as gemini_exc:
-            try:
-                text, used = chat_github(system, user, model=model)
-                return text, used
-            except Exception:
-                raise gemini_exc from None
-    text, used = chat_github(system, user, model=model)
-    return text, used
+        except Exception as exc:
+            errors.append(f"gemini: {exc}")
+    try:
+        return chat_github(system, user, model=model)
+    except Exception as exc:
+        errors.append(f"github-models: {exc}")
+        raise GitHubError("review chat failed: " + " | ".join(errors)) from exc
+
+
+def _recover_truncated_review_json(text: str) -> dict[str, Any] | None:
+    """If the model cut off mid-JSON but decision is clear, recover a verdict."""
+    decision_m = re.search(
+        r'"decision"\s*:\s*"(approved|changes-requested)"', text, re.I
+    )
+    if not decision_m:
+        return None
+    decision = decision_m.group(1).lower()
+    meets_m = re.search(r'"meets_acceptance"\s*:\s*(true|false)', text, re.I)
+    meets = (
+        meets_m.group(1).lower() == "true"
+        if meets_m
+        else decision == "approved"
+    )
+    reasons = re.findall(r'"\s*([^"]{12,240})\s*"\s*(?:,|\n)', text)
+    # Drop schema-ish strings; keep longer prose-looking reason lines.
+    reasons = [
+        r
+        for r in reasons
+        if r.lower() not in {"approved", "changes-requested", "string"}
+        and "decision" not in r.lower()
+    ][:8]
+    summary_m = re.search(r'"summary"\s*:\s*"([^"]*)', text)
+    return {
+        "decision": decision,
+        "meets_acceptance": meets,
+        "reasons": reasons
+        or [
+            "Recovered from truncated review JSON; decision field was present "
+            f"({decision})"
+        ],
+        "summary": (summary_m.group(1) if summary_m else "")
+        or "Recovered from truncated model JSON",
+    }
 
 
 def extract_json(text: str) -> dict[str, Any]:
@@ -126,9 +220,21 @@ def extract_json(text: str) -> dict[str, Any]:
         data = json.loads(text)
     except json.JSONDecodeError:
         start, end = text.find("{"), text.rfind("}")
-        if start < 0 or end <= start:
+        if start >= 0 and end > start:
+            try:
+                data = json.loads(text[start : end + 1])
+            except json.JSONDecodeError:
+                recovered = _recover_truncated_review_json(text)
+                if recovered:
+                    return recovered
+                raise GitHubError(
+                    f"review model did not return JSON: {text[:400]!r}"
+                )
+        else:
+            recovered = _recover_truncated_review_json(text)
+            if recovered:
+                return recovered
             raise GitHubError(f"review model did not return JSON: {text[:400]!r}")
-        data = json.loads(text[start : end + 1])
     if not isinstance(data, dict):
         raise GitHubError("review JSON root must be object")
     return data
@@ -182,7 +288,7 @@ def ai_review(repo: str, issue: int, pr_number: int) -> dict[str, Any]:
     model = os.environ.get("GITHUB_MODELS_MODEL") or DEFAULT_MODEL
     system = (
         "You are a strict PR reviewer for an agent orchestration repo.\n"
-        "Return ONLY JSON:\n"
+        "Return ONLY compact JSON (keep reasons short; max 4 reasons, each ≤120 chars):\n"
         "{\n"
         '  "decision": "approved" | "changes-requested",\n'
         '  "meets_acceptance": boolean,\n'
@@ -204,8 +310,6 @@ def ai_review(repo: str, issue: int, pr_number: int) -> dict[str, Any]:
     reasons = data.get("reasons") or []
     if not isinstance(reasons, list):
         reasons = [str(reasons)]
-    # Infra docs-only PRs that document already-shipped screenshot flow are OK
-    # if the issue itself is screenshot/infra (not a product landing change).
     issue_blob = f"{ctx.get('issue_title')}\n{ctx.get('issue_body')}".lower()
     infra_issue = bool(
         re.search(r"screenshot|headless|playwright|visual (check|evidence)", issue_blob)
