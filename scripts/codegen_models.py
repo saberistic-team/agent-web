@@ -367,6 +367,7 @@ def json_system_prompt(*, ui: bool) -> str:
         "- Prefer content_b64 (standard base64 of the full UTF-8 file) so HTML/CSS "
         "never breaks JSON escaping. Plain \"content\" string is allowed only for "
         "tiny non-HTML files.\n"
+        "- commit_message MUST include the issue id like builder(#123): …\n"
         "- Include full file contents for each touched file.\n"
         "- Add/update tests when behavior changes.\n"
         "- Do not invent secrets, credentials, or unrelated refactors.\n"
@@ -484,6 +485,8 @@ def build_with_models(
         fallback_note = f"{fallback_note}; {note}" if fallback_note else note
 
     commit_message = str(plan.get("commit_message") or f"builder(#{issue}): implement change")
+    if f"#{issue}" not in commit_message:
+        commit_message = f"builder(#{issue}): {commit_message}"
     pr_summary = str(plan.get("pr_summary") or "Automated Builder change.")
 
     ensure_branch(repo, branch, base_sha)
