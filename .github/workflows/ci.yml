@@ -76,3 +76,10 @@ jobs:
             --repo "${{ github.repository }}" \
             --sha "${{ github.sha }}" \
             --commit-message "${{ github.event.head_commit.message }}"
+      - name: Upload deploy health JSON
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-health-${{ github.sha }}
+          path: trace/deploy-health.json
+          if-no-files-found: ignore

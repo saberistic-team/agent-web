@@ -128,7 +128,7 @@ def capture(base_url: str | None, out_dir: Path, *, phase: str = "pre") -> list[
 
 
 def upload_to_branch(
-    repo: str, branch: str, files: list[Path], prefix: str
+    repo: str, branch: str, files: list[Path], prefix: str, *, message: str | None = None
 ) -> list[str]:
     owner, name = split_repo(repo)
     token()
@@ -137,7 +137,7 @@ def upload_to_branch(
         rel = f"{prefix}/{path.name}"
         content_b64 = base64.b64encode(path.read_bytes()).decode("ascii")
         put_body = {
-            "message": f"review: screenshot {path.name}",
+            "message": message or f"review: record {path.name}",
             "content": content_b64,
             "branch": branch,
         }

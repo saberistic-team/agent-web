@@ -16,13 +16,56 @@ from pathlib import Path
 
 from github_api import GitHubError, api, post_issue_comment, split_repo
 from screenshot_deploy import (
-    DEFAULT_BASE,
     capture,
     comment_markdown,
     resolve_base_url,
     upload_to_branch,
     wait_healthy,
 )
+
+
+def record_health(
+    repo: str,
+    branch: str,
+    *,
+    sha: str,
+    base_url: str,
+    health: dict,
+) -> dict[str, str]:
+    """Persist /health JSON after every deploy (file on branch + optional summary)."""
+    short = (sha or "local")[:12] or "local"
+    slim = {k: v for k, v in health.items() if not str(k).startswith("_")}
+    payload = {
+        "sha": sha or short,
+        "base_url": base_url,
+        "health_url": health.get("_health_url") or f"{base_url.rstrip('/')}/health",
+        "health": slim,
+    }
+    out = Path("trace/deploy-health.json")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(payload, indent=2) + "\n"
+    out.write_text(text, encoding="utf-8")
+
+    prefix = f".agent/deploy/{short}"
+    urls = upload_to_branch(
+        repo, branch, [out], prefix, message=f"deploy: record health ({short})"
+    )
+    raw_url = urls[0] if urls else ""
+
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        with open(summary, "a", encoding="utf-8") as fh:
+            fh.write("### Deploy health\n\n")
+            fh.write(f"- base: `{base_url}`\n")
+            fh.write(f"- sha: `{sha or short}`\n")
+            fh.write(f"- value: `{json.dumps(slim, separators=(',', ':'))}`\n")
+            if raw_url:
+                fh.write(f"- recorded: {raw_url}\n")
+
+    print(f"deploy_health={json.dumps(slim, separators=(',', ':'))}")
+    if raw_url:
+        print(f"deploy_health_url={raw_url}")
+    return {"path": f"{prefix}/deploy-health.json", "url": raw_url, "json": json.dumps(slim)}
 
 
 def gemini_key() -> str | None:
@@ -182,6 +225,13 @@ def main(argv: list[str] | None = None) -> int:
         base_url = resolve_base_url(args.base_url)
         health = wait_healthy(base_url)
         health_slim = {k: v for k, v in health.items() if not str(k).startswith("_")}
+        health_rec = record_health(
+            args.repo,
+            default,
+            sha=args.sha,
+            base_url=base_url,
+            health=health,
+        )
 
         out = Path("trace/screenshots-post")
         post_files = capture(base_url, out, phase="post")
@@ -193,11 +243,17 @@ def main(argv: list[str] | None = None) -> int:
         )
         post_urls = upload_to_branch(args.repo, default, post_files, prefix)
 
+        health_line = (
+            f"- health: `{json.dumps(health_slim, separators=(',', ':'))}`"
+            + (f" ([recorded]({health_rec['url']}))" if health_rec.get("url") else "")
+        )
+
         if not issue_num:
+            # Still leave a durable comment trail on the commit via Actions summary;
+            # file is already on the default branch under .agent/deploy/<sha>/.
             print(
                 "No issue number in commit message / linked PR; "
-                f"uploaded post screenshots only: {post_urls}; "
-                f"health={json.dumps(health_slim)}"
+                f"uploaded post screenshots: {post_urls}; {health_line}"
             )
             print(
                 "Tip: include `Closes #N` or `(#N)` in the commit/PR body "
@@ -232,7 +288,7 @@ def main(argv: list[str] | None = None) -> int:
             extra=[
                 "- phase: `post-deploy`",
                 f"- issue: #{issue_num}",
-                f"- health: `{json.dumps(health_slim, separators=(',', ':'))}`",
+                health_line,
                 f"- visual_decision: `{visual.get('decision')}`",
                 f"- visual_visible: `{visual.get('visible')}`",
                 f"- visual_model: `{visual.get('model')}`",

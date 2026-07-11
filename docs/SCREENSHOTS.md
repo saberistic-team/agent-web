@@ -19,7 +19,9 @@ Fail closed if the deploy URL is unreachable after retries.
 
 CI `post-deploy-visual` job (after Render deploy hook):
 
-1. Polls `/health` as **JSON only** (records the value; never screenshots it)
+1. Polls `/health` as **JSON only**, records the value on every deploy under
+   `.agent/deploy/<sha>/deploy-health.json`, prints it to the job summary, and
+   includes it on the issue comment when an issue is linked
 2. Captures `post-*.png` of **HTML pages only** (`/` and `/about`) — skips
    JSON APIs like `/hello`
 3. Resolves the related issue from `Closes #N` / `(#N)` in the commit message, or
