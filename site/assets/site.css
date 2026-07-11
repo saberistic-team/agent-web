@@ -49,21 +49,14 @@ a {
 .brand {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
   text-decoration: none;
-}
-
-.brand-mark {
-  display: block;
-  width: 40px;
-  height: auto;
 }
 
 .brand-word {
   display: block;
-  height: 28px;
+  height: 32px;
   width: auto;
-  max-width: min(42vw, 160px);
+  max-width: min(55vw, 180px);
 }
 
 .top-link {
@@ -250,10 +243,6 @@ main {
   .org {
     text-align: left;
     white-space: normal;
-  }
-
-  .brand-word {
-    display: none;
   }
 }
 
