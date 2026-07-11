@@ -185,13 +185,14 @@ def _collect_changed_files(root: Path) -> list[tuple[str, str]]:
             seen.add(p)
             unique.append(p)
 
-    from codegen_models import MAX_FILES, MAX_FILE_CHARS
+    from codegen_models import MAX_FILE_CHARS
 
+    max_files = int(os.environ.get("CURSOR_MAX_FILES") or "30")
     if not unique:
         raise GitHubError("Cursor local agent finished but changed no files")
-    if len(unique) > MAX_FILES:
+    if len(unique) > max_files:
         raise GitHubError(
-            f"Cursor changed too many files ({len(unique)} > {MAX_FILES}): "
+            f"Cursor changed too many files ({len(unique)} > {max_files}): "
             + ", ".join(unique[:20])
         )
 
