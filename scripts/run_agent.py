@@ -370,17 +370,49 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
         write_builder_handoff("reviewer")
         return
 
-    # Product work: GitHub Models default; Gemini primary for UI/design (mutual backup).
+    # Product work: Copilot coding agent first (when COPILOT_TOKEN set), else
+    # Models (default) / Gemini (UI) with mutual backup.
     try:
-        from codegen_models import build_with_models
+        result: dict = {}
+        used_copilot = False
+        try:
+            from codegen_models import is_ui_design_issue
+            from copilot_agent import build_with_copilot, copilot_enabled
 
-        result = build_with_models(
-            repo,
-            issue,
-            title=title,
-            body=body,
-            brief=brief,
-        )
+            ui = is_ui_design_issue(title, body)
+            if copilot_enabled():
+                result = build_with_copilot(
+                    repo,
+                    issue,
+                    title=title,
+                    body=body,
+                    brief=brief,
+                    ui=ui,
+                )
+                used_copilot = True
+        except Exception as copilot_exc:
+            post_issue_comment(
+                repo,
+                issue,
+                (
+                    "### builder_copilot\n"
+                    f"- action: `fallback`\n"
+                    f"- error: `{copilot_exc}`\n"
+                    "- next: GitHub Models / Gemini codegen\n"
+                ),
+            )
+
+        if not used_copilot:
+            from codegen_models import build_with_models
+
+            result = build_with_models(
+                repo,
+                issue,
+                title=title,
+                body=body,
+                brief=brief,
+            )
+
         HANDOFF_DIR.mkdir(parents=True, exist_ok=True)
         (HANDOFF_DIR / "builder-model.txt").write_text(
             f"{result.get('provider')}:{result.get('model')}\n",
@@ -392,12 +424,11 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
             repo,
             issue,
             (
-                "Codegen failed (GitHub Models and/or Gemini).\n\n"
+                "Codegen failed (Copilot and/or GitHub Models and/or Gemini).\n\n"
                 f"`{exc}`\n\n"
-                "Non-UI work prefers free GitHub Models; UI/design prefers Gemini "
-                "(see docs/MODELS.md + docs/DESIGN.md). Each backs up the other. "
-                "If Models returns 403, set `MODELS_TOKEN` (PAT with models scope) "
-                "and/or ensure `GEMINI_API_KEY` for UI + backup."
+                "Preferred: Copilot coding agent via `COPILOT_TOKEN` (user PAT). "
+                "Backup: free GitHub Models (non-UI) / Gemini (UI). "
+                "See docs/COPILOT.md, docs/MODELS.md, docs/DESIGN.md."
             ),
         )
         write_builder_handoff("blocked")
@@ -579,13 +610,35 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
         if os.environ.get("SCREENSHOTS_REQUIRED", "true").lower() in {"1", "true", "yes"}:
             hard_fail_reasons.append(f"required deploy screenshots failed: {exc}")
 
-    # GitHub Models AI review (required for approval)
+    # Copilot code review (preferred) then Models/Gemini AI review as backup.
     ai_block = ""
     try:
-        from review_models import ai_review
+        verdict: dict = {}
+        used_copilot_review = False
+        try:
+            from copilot_agent import copilot_enabled, copilot_review_verdict
 
-        verdict = ai_review(repo, issue, pr_number)
-        ai_block = (
+            # Prefer Copilot review whenever token exists (same secret as assign).
+            if copilot_enabled() or os.environ.get("COPILOT_TOKEN") or os.environ.get(
+                "COPILOT_ASSIGN_TOKEN"
+            ):
+                verdict = copilot_review_verdict(repo, issue, pr_number)
+                used_copilot_review = True
+        except Exception as copilot_rev_exc:
+            ai_block += f"- copilot_review_fallback: `{copilot_rev_exc}`\n"
+
+        if not used_copilot_review or (
+            used_copilot_review
+            and verdict.get("decision") == "changes-requested"
+            and "did not arrive" in " ".join(verdict.get("reasons") or [])
+        ):
+            from review_models import ai_review
+
+            verdict = ai_review(repo, issue, pr_number)
+            used_copilot_review = False
+
+        ai_block += (
+            f"- ai_provider: `{'copilot' if used_copilot_review else 'models-or-gemini'}`\n"
             f"- ai_model: `{verdict.get('model')}`\n"
             f"- ai_decision: `{verdict.get('decision')}`\n"
             f"- ai_summary: {verdict.get('summary')}\n"
@@ -600,7 +653,7 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
             )
     except Exception as exc:
         hard_fail_reasons.append(f"AI reviewer unavailable: {exc}")
-        ai_block = f"- ai_review: failed (`{exc}`)\n"
+        ai_block += f"- ai_review: failed (`{exc}`)\n"
 
     # Acceptance criteria checklist with evidence (required before approve)
     acceptance_note = ""

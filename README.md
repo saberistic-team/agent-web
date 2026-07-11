@@ -5,13 +5,14 @@ hello-world HTTP API used to exercise the loop.
 
 ## Docs
 
+- [Copilot agents](docs/COPILOT.md) — coding agent + code review (preferred when configured)
 - [Labels](docs/LABELS.md) — label taxonomy and routing rules
 - [Identities](docs/IDENTITIES.md) — agent identity definitions
 - [Trace](docs/TRACE.md) — `agent-trace.jsonl` schema and jq queries
 - [Hello API](docs/HELLO_API.md) — local run and Render deploy
 - [Landing](docs/LANDING.md) — saberistic.com about page + DNS notes
-- [GitHub Models codegen](docs/MODELS.md) — default Builder codegen
-- [Design AI (Gemini)](docs/DESIGN.md) — preferred codegen when key is set
+- [GitHub Models codegen](docs/MODELS.md) — Builder backup codegen
+- [Design AI (Gemini)](docs/DESIGN.md) — UI backup when Copilot unavailable
 - [Screenshots](docs/SCREENSHOTS.md) — pre-merge + post-deploy visual evidence
 - [Acceptance](docs/ACCEPTANCE.md) — checklist + evidence before close
 

@@ -190,23 +190,31 @@ def heuristic_check(criterion: str, evidence: dict[str, Any]) -> dict[str, Any] 
     index_html = _file_content_from_pr(evidence, "site/index.html")
     index_count = _html_linkedin_count(index_html) if index_html is not None else None
 
-    if ("kind: gemini" in text or "kind:gemini" in text) or (
-        "gemini" in text and "codegen" in text
+    if (
+        "kind: gemini" in text
+        or "kind:gemini" in text
+        or "kind: copilot" in text
+        or "kind:copilot" in text
+        or ("gemini" in text and "codegen" in text)
+        or ("copilot" in text and "codegen" in text)
     ):
-        urls = _comment_urls(evidence, "kind: `gemini`") or _comment_urls(
-            evidence, "kind: gemini"
+        urls = (
+            _comment_urls(evidence, "kind: `copilot`")
+            or _comment_urls(evidence, "kind: copilot")
+            or _comment_urls(evidence, "kind: `gemini`")
+            or _comment_urls(evidence, "kind: gemini")
         )
         if urls:
-            status, note, ev = "done", "Builder reported kind: gemini", urls
+            status, note, ev = "done", "Builder reported Copilot/Gemini codegen", urls
         elif _comment_urls(evidence, "kind: `github-models`") or _comment_urls(
             evidence, "kind: github-models"
         ):
             status = "done"
-            note = "Builder used github-models fallback (allowed when Gemini unavailable)"
+            note = "Builder used github-models fallback"
             ev = _comment_urls(evidence, "kind:")
         else:
             status = "not_done"
-            note = "No Builder kind: gemini/github-models comment"
+            note = "No Builder kind: copilot/gemini/github-models comment"
 
     elif "screenshot" in text and ("reviewer" in text or "pr" in text):
         urls = _comment_urls(evidence, "reviewer_screenshots_pre")

@@ -8,9 +8,10 @@ mint an installation token (`actions/create-github-app-token`) and perform
 GitHub mutations **only** with that token so events attribute to the role bot —
 not `github-actions[bot]`.
 
-**Codegen:** Builder uses **GitHub Models** via the workflow `github.token`
-(`permissions: models: read`). See [MODELS.md](MODELS.md). No Copilot seat
-required.
+**Codegen:** Builder prefers **GitHub Copilot coding agent** when `COPILOT_TOKEN`
+(user PAT) is set — see [COPILOT.md](COPILOT.md). Fallback: GitHub Models
+(`permissions: models: read`) and Gemini for UI ([MODELS.md](MODELS.md),
+[DESIGN.md](DESIGN.md)).
 
 ## Confirmed role → identity → scope
 
@@ -49,8 +50,10 @@ Unrelated org install (not part of the agent loop): `digitalocean` (installation
 
 Builder also uses:
 
-- Actions `github.token` as `MODELS_TOKEN` for GitHub Models
-- Optional secret `GEMINI_API_KEY` for UI/landing design ([DESIGN.md](DESIGN.md))
+- Secret `COPILOT_TOKEN` — user PAT to assign Copilot coding agent / request
+  Copilot code review ([COPILOT.md](COPILOT.md))
+- Actions `github.token` as `MODELS_TOKEN` for GitHub Models (backup)
+- Optional secret `GEMINI_API_KEY` for UI when Copilot unavailable ([DESIGN.md](DESIGN.md))
 
 ## Actions job `permissions:` (must not exceed App)
 

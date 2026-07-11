@@ -1,9 +1,9 @@
 # GitHub Models codegen (Builder)
 
-**Default** codegen provider for non-UI issues (free GitHub Models via Actions
-`models: read`). Visual/UI issues prefer Gemini — see [DESIGN.md](DESIGN.md).
+**Backup** codegen provider when Copilot is unavailable. Prefer
+[Copilot coding agent](COPILOT.md) when `COPILOT_TOKEN` is set.
 
-Either provider backs up the other on failure (403 / missing key / model down).
+Visual/UI issues without Copilot prefer Gemini — see [DESIGN.md](DESIGN.md).
 
 ## Flow
 

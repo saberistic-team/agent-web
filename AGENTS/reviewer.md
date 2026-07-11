@@ -11,7 +11,8 @@ Before approving you must:
 
 1. Capture **headless screenshots** of the deployed app and post them on the PR
    and issue
-2. Run an **AI review** of the issue vs the PR diff (Gemini preferred)
+2. Request **GitHub Copilot code review** when `COPILOT_TOKEN` is set
+   ([docs/COPILOT.md](../docs/COPILOT.md)); fall back to Models/Gemini AI review
 3. Post an **`### acceptance_checklist`** that marks each acceptance criterion
    done/not_done with links to evidence (PR, commits, files, screenshots)
 

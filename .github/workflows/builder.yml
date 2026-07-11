@@ -8,6 +8,7 @@ jobs:
   build:
     if: github.event.label.name == 'agent:builder'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: write
       issues: write
@@ -50,10 +51,14 @@ jobs:
           # App token: labels, comments, commits, PRs
           GITHUB_TOKEN: ${{ steps.builder.outputs.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          # Actions token: GitHub Models inference (needs models: read)
+          # User PAT required to assign Copilot coding agent / request Copilot review
+          COPILOT_TOKEN: ${{ secrets.COPILOT_TOKEN }}
+          COPILOT_MODEL: ${{ vars.COPILOT_MODEL }}
+          COPILOT_WAIT_SECONDS: ${{ vars.COPILOT_WAIT_SECONDS }}
+          # Actions token: GitHub Models inference (needs models: read) — backup codegen
           MODELS_TOKEN: ${{ github.token }}
           GITHUB_MODELS_MODEL: ${{ vars.GITHUB_MODELS_MODEL }}
-          # Free Gemini for UI/landing design (optional; falls back to Models)
+          # Gemini for UI when Copilot unavailable
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
           CODEGEN_PROVIDER: ${{ vars.CODEGEN_PROVIDER }}
