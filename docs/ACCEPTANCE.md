@@ -7,7 +7,7 @@ and posted evidence.
 
 1. **Reviewer** (`agent:reviewer`) before approve:
    - Parses `## Acceptance criteria` from the issue body
-   - Verifies each item (heuristics + Gemini/Models)
+   - Verifies each item (heuristics + OpenAI/Models)
    - Posts `### acceptance_checklist` with status + evidence links
      (PR, commits, files, screenshot comments, deploy URL)
    - Checks off matching `- [ ]` boxes in the issue body when done

@@ -194,19 +194,24 @@ def heuristic_check(criterion: str, evidence: dict[str, Any]) -> dict[str, Any] 
     if (
         "kind: gemini" in text
         or "kind:gemini" in text
+        or "kind: openai" in text
+        or "kind:openai" in text
         or "kind: copilot" in text
         or "kind:copilot" in text
         or ("gemini" in text and "codegen" in text)
+        or ("openai" in text and "codegen" in text)
         or ("copilot" in text and "codegen" in text)
     ):
         urls = (
-            _comment_urls(evidence, "kind: `copilot`")
+            _comment_urls(evidence, "kind: `openai`")
+            or _comment_urls(evidence, "kind: openai")
+            or _comment_urls(evidence, "kind: `copilot`")
             or _comment_urls(evidence, "kind: copilot")
             or _comment_urls(evidence, "kind: `gemini`")
             or _comment_urls(evidence, "kind: gemini")
         )
         if urls:
-            status, note, ev = "done", "Builder reported Copilot/Gemini codegen", urls
+            status, note, ev = "done", "Builder reported Copilot/OpenAI/Models codegen", urls
         elif _comment_urls(evidence, "kind: `github-models`") or _comment_urls(
             evidence, "kind: github-models"
         ):
@@ -215,7 +220,7 @@ def heuristic_check(criterion: str, evidence: dict[str, Any]) -> dict[str, Any] 
             ev = _comment_urls(evidence, "kind:")
         else:
             status = "not_done"
-            note = "No Builder kind: copilot/gemini/github-models comment"
+            note = "No Builder kind: openai/copilot/github-models comment"
 
     elif "screenshot" in text and ("reviewer" in text or "pr" in text):
         urls = _comment_urls(evidence, "reviewer_screenshots_pre")
@@ -320,27 +325,25 @@ def _extract_json(text: str) -> dict[str, Any]:
 
 
 def _chat(system: str, user: str) -> str:
-    key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-    if key:
-        model = os.environ.get("GEMINI_MODEL") or "gemini-3.5-flash"
-        url = (
-            "https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{urllib.parse.quote(model, safe='')}:generateContent"
-            f"?key={urllib.parse.quote(key.strip())}"
-        )
+    openai_key = os.environ.get("OPENAI_API_KEY")
+    if openai_key and openai_key.strip():
+        model = os.environ.get("OPENAI_MODEL") or "gpt-4.1-mini"
         payload = {
-            "systemInstruction": {"parts": [{"text": system}]},
-            "contents": [{"role": "user", "parts": [{"text": user}]}],
-            "generationConfig": {
-                "temperature": 0.1,
-                "responseMimeType": "application/json",
-            },
+            "model": model,
+            "temperature": 0.1,
+            "response_format": {"type": "json_object"},
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
         }
         req = urllib.request.Request(
-            url,
+            "https://api.openai.com/v1/chat/completions",
             data=json.dumps(payload).encode("utf-8"),
             method="POST",
             headers={
+                "Accept": "application/json",
+                "Authorization": f"Bearer {openai_key.strip()}",
                 "Content-Type": "application/json",
                 "User-Agent": "agent-web-acceptance",
             },
@@ -348,20 +351,17 @@ def _chat(system: str, user: str) -> str:
         try:
             with urllib.request.urlopen(req, timeout=180) as resp:
                 body = json.loads(resp.read().decode("utf-8"))
-            texts = []
-            for cand in body.get("candidates") or []:
-                for part in (cand.get("content") or {}).get("parts") or []:
-                    if part.get("text"):
-                        texts.append(str(part["text"]))
-            content = "\n".join(texts).strip()
-            if content:
-                return content
+            choices = body.get("choices") or []
+            if choices:
+                content = (choices[0].get("message") or {}).get("content")
+                if content:
+                    return str(content)
         except Exception:
             pass
 
     token = os.environ.get("MODELS_TOKEN") or os.environ.get("GITHUB_TOKEN")
     if not token:
-        raise GitHubError("no GEMINI_API_KEY or MODELS_TOKEN for acceptance AI")
+        raise GitHubError("no OPENAI_API_KEY or MODELS_TOKEN for acceptance AI")
     model = os.environ.get("GITHUB_MODELS_MODEL") or "openai/gpt-4o-mini"
     payload = {
         "model": model,

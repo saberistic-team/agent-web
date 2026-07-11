@@ -45,7 +45,7 @@ def copilot_token() -> str:
 def copilot_enabled() -> bool:
     """True when we should attempt Copilot coding agent first."""
     force = (os.environ.get("CODEGEN_PROVIDER") or "").strip().lower()
-    if force in {"models", "github-models", "gemini"}:
+    if force in {"models", "github-models", "openai", "chatgpt"}:
         return False
     if force == "copilot":
         return True
@@ -359,7 +359,7 @@ def copilot_review_verdict(repo: str, issue: int, pr_number: int) -> dict[str, A
         meets = False
         reasons = [
             "Copilot code review did not arrive in time; "
-            "fail closed (set COPILOT_TOKEN / enable code review, or rely on Models/Gemini AI)"
+            "fail closed (set COPILOT_TOKEN / enable code review, or rely on OpenAI/Models AI)"
         ]
 
     return {

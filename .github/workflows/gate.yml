@@ -121,8 +121,8 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.reviewer.outputs.token }}
           GITHUB_TOKEN: ${{ steps.reviewer.outputs.token }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
           ISSUE: ${{ steps.meta.outputs.issue }}
         run: |
           set -euo pipefail

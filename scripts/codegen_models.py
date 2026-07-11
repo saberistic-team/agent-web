@@ -17,13 +17,9 @@ from typing import Any
 from github_api import GitHubError, api, post_issue_comment, split_repo, token
 
 DEFAULT_MODEL = "openai/gpt-4o-mini"
-DEFAULT_GEMINI_MODEL = "gemini-3.5-flash"
 DEFAULT_OPENAI_MODEL = "gpt-4.1-mini"
 MODELS_URL = "https://models.github.ai/inference/chat/completions"
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"
-GEMINI_URL_TMPL = (
-    "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-)
 MAX_FILES = 12
 MAX_FILE_CHARS = 80_000
 CONTEXT_FILES = (
@@ -51,11 +47,6 @@ def models_token() -> str:
     return value
 
 
-def gemini_api_key() -> str | None:
-    value = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-    return value.strip() if value and value.strip() else None
-
-
 def openai_api_key() -> str | None:
     value = os.environ.get("OPENAI_API_KEY")
     return value.strip() if value and value.strip() else None
@@ -65,7 +56,7 @@ def is_agent_infra_issue(title: str, body: str) -> bool:
     """True only for Reviewer/screenshot *infra* work, not product UI issues.
 
     Product issues often mention screenshots in acceptance criteria; those must
-    still go through Gemini/codegen, not the docs-sync shortcut.
+    still go through OpenAI/codegen, not the docs-sync shortcut.
     """
     title_l = title.lower()
     text = f"{title}\n{body}".lower()
@@ -230,69 +221,13 @@ def chat_completion_openai(*, model: str, system: str, user: str) -> str:
     return str(content)
 
 
-def chat_completion_gemini(*, model: str, system: str, user: str) -> str:
-    key = gemini_api_key()
-    if not key:
-        raise GitHubError("missing GEMINI_API_KEY")
-    url = GEMINI_URL_TMPL.format(model=urllib.parse.quote(model, safe=""))
-    payload = {
-        "systemInstruction": {"parts": [{"text": system}]},
-        "contents": [{"role": "user", "parts": [{"text": user}]}],
-        "generationConfig": {
-            "temperature": 0.2,
-            "responseMimeType": "application/json",
-        },
-    }
-    data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        f"{url}?key={urllib.parse.quote(key)}",
-        data=data,
-        method="POST",
-        headers={
-            "Content-Type": "application/json",
-            "User-Agent": "agent-web-builder",
-        },
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=180) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise GitHubError(f"Gemini API ({model}) -> {exc.code}: {detail}") from exc
-
-    candidates = body.get("candidates") or []
-    if not candidates:
-        raise GitHubError(f"Gemini ({model}) returned no candidates: {body!r}")
-    finish = candidates[0].get("finishReason")
-    parts = ((candidates[0].get("content") or {}).get("parts")) or []
-    texts = [str(p.get("text") or "") for p in parts if isinstance(p, dict)]
-    content = "\n".join(t for t in texts if t).strip()
-    if not content:
-        raise GitHubError(
-            f"Gemini ({model}) empty content (finishReason={finish}): {body!r}"
-        )
-    return content
-
-
 def chat_completion(*, provider: str, model: str, system: str, user: str) -> str:
     if provider == "openai":
         return chat_completion_openai(model=model, system=system, user=user)
     if provider == "gemini":
-        # Try configured model, then known-good aliases if the id is retired.
-        models = [model]
-        for alt in ("gemini-3.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"):
-            if alt not in models:
-                models.append(alt)
-        errors: list[str] = []
-        for mid in models:
-            try:
-                return chat_completion_gemini(model=mid, system=system, user=user)
-            except Exception as exc:
-                errors.append(str(exc))
-                # Only rotate on missing-model / not-found style failures.
-                if not re.search(r"\b404\b|NOT_FOUND|no longer available|not found", str(exc), re.I):
-                    raise
-        raise GitHubError("Gemini failed for all models: " + " | ".join(errors))
+        raise GitHubError(
+            "Gemini is retired for this repo; set OPENAI_API_KEY / CODEGEN_PROVIDER=openai"
+        )
     return chat_completion_github(model=model, system=system, user=user)
 
 
@@ -455,53 +390,34 @@ def json_system_prompt(*, ui: bool) -> str:
 def select_provider(title: str, body: str) -> tuple[str, str]:
     """Return (provider, model).
 
-    Policy:
-    - CODEGEN_PROVIDER force: openai|chatgpt|gemini|github-models|models
-    - Else if OPENAI_API_KEY set → OpenAI (ChatGPT) primary for all product work
-    - Else UI → Gemini (when key set), else GitHub Models
-    - Else non-UI → GitHub Models, else Gemini
+    Policy (Gemini retired):
+    - CODEGEN_PROVIDER force: openai|chatgpt|github-models|models
+    - Else OpenAI when OPENAI_API_KEY is set (required for product work)
+    - Else GitHub Models only as last-resort backup
     """
+    del title, body  # selection no longer depends on UI vs non-UI for Gemini
     force = (os.environ.get("CODEGEN_PROVIDER") or "").strip().lower()
     if force in {"openai", "chatgpt"}:
         return "openai", os.environ.get("OPENAI_MODEL") or DEFAULT_OPENAI_MODEL
-    if force in {"gemini", "github-models", "models"}:
-        if force == "gemini":
-            return "gemini", os.environ.get("GEMINI_MODEL") or DEFAULT_GEMINI_MODEL
+    if force in {"github-models", "models"}:
         return "github-models", os.environ.get("GITHUB_MODELS_MODEL") or DEFAULT_MODEL
+    if force == "gemini":
+        raise GitHubError(
+            "CODEGEN_PROVIDER=gemini is retired; use openai (OPENAI_API_KEY)"
+        )
 
     if openai_api_key():
         return "openai", os.environ.get("OPENAI_MODEL") or DEFAULT_OPENAI_MODEL
-
-    ui = is_ui_design_issue(title, body)
-    has_gemini = bool(gemini_api_key())
-    models_model = os.environ.get("GITHUB_MODELS_MODEL") or DEFAULT_MODEL
-    gemini_model = os.environ.get("GEMINI_MODEL") or DEFAULT_GEMINI_MODEL
-
-    if ui and has_gemini:
-        return "gemini", gemini_model
-    if not ui:
-        return "github-models", models_model
-    return "github-models", models_model
+    return "github-models", os.environ.get("GITHUB_MODELS_MODEL") or DEFAULT_MODEL
 
 
 def _other_provider(provider: str) -> tuple[str, str]:
-    """Pick a backup provider different from the primary."""
+    """Backup: OpenAI ↔ GitHub Models only (no Gemini)."""
     openai_model = os.environ.get("OPENAI_MODEL") or DEFAULT_OPENAI_MODEL
     models_model = os.environ.get("GITHUB_MODELS_MODEL") or DEFAULT_MODEL
-    gemini_model = os.environ.get("GEMINI_MODEL") or DEFAULT_GEMINI_MODEL
-
     if provider == "openai":
-        if gemini_api_key():
-            return "gemini", gemini_model
         return "github-models", models_model
-    if provider == "gemini":
-        if openai_api_key():
-            return "openai", openai_model
-        return "github-models", models_model
-    # github-models
-    if openai_api_key():
-        return "openai", openai_model
-    return "gemini", gemini_model
+    return "openai", openai_model
 
 
 def build_with_models(
@@ -515,6 +431,14 @@ def build_with_models(
 ) -> dict[str, Any]:
     root = cwd or Path.cwd()
     ui = is_ui_design_issue(title, body)
+    if not openai_api_key() and (os.environ.get("CODEGEN_PROVIDER") or "").strip().lower() not in {
+        "github-models",
+        "models",
+    }:
+        raise GitHubError(
+            "OPENAI_API_KEY is required for Builder codegen (Gemini retired). "
+            "Set the secret or force CODEGEN_PROVIDER=github-models."
+        )
     provider, model = select_provider(title, body)
     brief_text = brief.read_text(encoding="utf-8") if brief.is_file() else ""
     owner, name = split_repo(repo)
@@ -524,13 +448,26 @@ def build_with_models(
     branch = f"builder/{issue}-{slugify(title)}"
 
     system = json_system_prompt(ui=ui)
+    # Thin planner child issues often only say "User flow" — pull parent context.
+    parent = ""
+    m = re.search(r"(?:Parent|Child of)\s*:?\s*#(\d+)", body, re.I)
+    if m:
+        try:
+            pdata = api("GET", f"/repos/{owner}/{name}/issues/{m.group(1)}")
+            parent = (
+                f"\n## Parent issue #{m.group(1)}: {pdata.get('title')}\n"
+                f"{(pdata.get('body') or '')[:12000]}\n"
+            )
+        except Exception:
+            parent = ""
     user = (
         f"Repository: {repo}\n"
         f"Issue: #{issue}\n"
         f"Title: {title}\n"
         f"UI/design focus: {ui}\n"
         f"Live reference (if relevant): https://saberistic.com/\n\n"
-        f"## Issue body\n{body.strip() or '(empty)'}\n\n"
+        f"## Issue body\n{body.strip() or '(empty)'}\n"
+        f"{parent}\n"
         f"## Builder brief\n{brief_text[:5000]}\n\n"
         f"{repo_context(root, ui=ui)}\n"
     )
@@ -538,17 +475,11 @@ def build_with_models(
     try:
         raw = chat_completion(provider=provider, model=model, system=system, user=user)
     except Exception as primary_exc:
-        # Mutual backup across OpenAI ↔ Gemini ↔ GitHub Models.
         alt_provider, alt_model = _other_provider(provider)
         if alt_provider == "openai" and not openai_api_key():
             raise GitHubError(
                 f"{provider} failed: {primary_exc}\n"
                 "OpenAI backup unavailable (missing OPENAI_API_KEY)."
-            ) from primary_exc
-        if alt_provider == "gemini" and not gemini_api_key():
-            raise GitHubError(
-                f"{provider} failed: {primary_exc}\n"
-                "Gemini backup unavailable (missing GEMINI_API_KEY)."
             ) from primary_exc
         try:
             raw = chat_completion(
@@ -569,7 +500,6 @@ def build_with_models(
         plan = extract_json(raw)
         files = validate_plan(plan)
     except Exception as parse_exc:
-        # One repair pass: prefer plain content strings (not brittle base64).
         repair_user = (
             f"{user}\n\n"
             "## Previous invalid model output (fix and return valid JSON only)\n"

@@ -296,7 +296,7 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
             return
 
     # Screenshot / reviewer infra: already implemented in-repo — document + done PR path
-    # without calling Models (often 403) or Gemini UI prompts.
+    # without calling Models (often 403) or OpenAI UI prompts.
     # Landing/product issues must never take this shortcut (AC may mention screenshots).
     try:
         from codegen_models import is_agent_infra_issue
@@ -370,7 +370,7 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
         write_builder_handoff("reviewer")
         return
 
-    # Product work: GitHub Models default; Gemini primary for UI/design (mutual backup).
+    # Product work: OpenAI primary; GitHub Models optional backup.
     try:
         from codegen_models import build_with_models
 
@@ -392,11 +392,11 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
             repo,
             issue,
             (
-                "Codegen failed (OpenAI / GitHub Models / Gemini).\n\n"
+                "Codegen failed (OpenAI / GitHub Models).\n\n"
                 f"`{exc}`\n\n"
-                "Preferred: ChatGPT via `OPENAI_API_KEY` (set `CODEGEN_PROVIDER=openai`). "
-                "Backup: free GitHub Models / Gemini. "
-                "See docs/MODELS.md + docs/DESIGN.md. "
+                "Required: ChatGPT via `OPENAI_API_KEY` (`CODEGEN_PROVIDER=openai`). "
+                "Optional backup: GitHub Models (`MODELS_TOKEN`). Gemini is retired. "
+                "See docs/MODELS.md. "
                 "If `git/refs` returns 403 for the Builder App, grant the App "
                 "`contents: write` on this repository."
             ),
@@ -580,14 +580,14 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
         if os.environ.get("SCREENSHOTS_REQUIRED", "true").lower() in {"1", "true", "yes"}:
             hard_fail_reasons.append(f"required deploy screenshots failed: {exc}")
 
-    # Models/Gemini AI review (required for approve path).
+    # OpenAI / Models AI review (required for approve path).
     ai_block = ""
     try:
         from review_models import ai_review
 
         verdict = ai_review(repo, issue, pr_number)
         ai_block += (
-            f"- ai_provider: `models-or-gemini`\n"
+            f"- ai_provider: `openai-or-models`\n"
             f"- ai_model: `{verdict.get('model')}`\n"
             f"- ai_decision: `{verdict.get('decision')}`\n"
             f"- ai_summary: {verdict.get('summary')}\n"
