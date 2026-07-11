@@ -1,7 +1,8 @@
 # Design AI (Gemini) for UI changes
 
-For landing/UI/design issues, Builder prefers **Google Gemini** (free API
-tier) over GitHub Models because it tends to produce stronger visual HTML/CSS.
+For landing/UI/design **and** general codegen when configured, Builder prefers
+**Google Gemini** (free API tier). Org Actions tokens often get **403** from
+GitHub Models, so Gemini is the reliable default whenever `GEMINI_API_KEY` is set.
 
 ## When Gemini is used
 

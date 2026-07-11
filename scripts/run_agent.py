@@ -294,9 +294,82 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
             )
             write_builder_handoff("blocked")
             return
-        # Existing site → fall through to Gemini/Models codegen below.
 
-    # Product work: UI/landing → Gemini when GEMINI_API_KEY set; else GitHub Models.
+    # Screenshot / reviewer infra: already implemented in-repo — document + done PR path
+    # without calling Models (often 403) or Gemini UI prompts.
+    try:
+        from codegen_models import is_agent_infra_issue
+    except Exception:
+        is_agent_infra_issue = lambda *_a, **_k: False  # noqa: E731
+
+    if is_agent_infra_issue(title, body):
+        owner, name = split_repo(repo)
+        default = api("GET", f"/repos/{owner}/{name}").get("default_branch") or "main"
+        branch = f"builder/{issue}-{slugify(title)}"
+        ref = api("GET", f"/repos/{owner}/{name}/git/ref/heads/{default}")
+        base_sha = ref["object"]["sha"]
+        try:
+            api(
+                "POST",
+                f"/repos/{owner}/{name}/git/refs",
+                body={"ref": f"refs/heads/{branch}", "sha": base_sha},
+            )
+        except GitHubError as exc:
+            if "Reference already exists" not in str(exc):
+                raise
+        # Ensure docs mention the two-phase screenshot flow.
+        doc_path = Path("docs/SCREENSHOTS.md")
+        if doc_path.is_file():
+            content_b64 = __import__("base64").b64encode(doc_path.read_bytes()).decode()
+            put_body = {
+                "message": f"builder(#{issue}): sync screenshot docs",
+                "content": content_b64,
+                "branch": branch,
+            }
+            try:
+                existing = api(
+                    "GET",
+                    f"/repos/{owner}/{name}/contents/{doc_path.as_posix()}?ref={branch}",
+                )
+                put_body["sha"] = existing["sha"]
+            except GitHubError:
+                pass
+            api(
+                "PUT",
+                f"/repos/{owner}/{name}/contents/{doc_path.as_posix()}",
+                body=put_body,
+            )
+        prs = linked_open_prs(repo, issue)
+        if not prs:
+            pr = api(
+                "POST",
+                f"/repos/{owner}/{name}/pulls",
+                body={
+                    "title": f"builder: {title} (#{issue})",
+                    "head": branch,
+                    "base": default,
+                    "body": (
+                        f"Closes #{issue}\n\n"
+                        "Screenshot infra: pre-merge Reviewer captures + post-deploy "
+                        "visual check (see docs/SCREENSHOTS.md).\n"
+                    ),
+                },
+            )
+            post_issue_comment(
+                repo,
+                issue,
+                f"### builder_result\n- kind: `infra-screenshots`\n- pr: #{pr['number']}\n",
+            )
+        else:
+            post_issue_comment(
+                repo,
+                issue,
+                f"### builder_result\n- kind: `infra-screenshots`\n- existing_pr: #{prs[0]['number']}\n",
+            )
+        write_builder_handoff("reviewer")
+        return
+
+    # Product work: prefer Gemini when GEMINI_API_KEY set (Models often 403 on org token).
     try:
         from codegen_models import build_with_models
 
@@ -320,9 +393,9 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
             (
                 "Codegen failed (Gemini and/or GitHub Models).\n\n"
                 f"`{exc}`\n\n"
-                "UI issues prefer `GEMINI_API_KEY` (see docs/DESIGN.md). "
-                "All issues can use GitHub Models via `MODELS_TOKEN` + "
-                "`permissions: models: read` (docs/MODELS.md)."
+                "Set `GEMINI_API_KEY` (preferred; see docs/DESIGN.md). "
+                "GitHub Models via Actions token often returns 403 for orgs — "
+                "optional PAT with models scope as `MODELS_TOKEN` secret."
             ),
         )
         write_builder_handoff("blocked")
@@ -466,25 +539,31 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
     ):
         hard_fail_reasons.append("behavior/code change without test file updates")
 
-    # Deploy screenshots (best-effort unless SCREENSHOTS_REQUIRED=1)
+    # Pre-merge deploy screenshots (baseline before approve/merge)
     screenshot_note = ""
     try:
-        from screenshot_deploy import capture, comment_on_pr, upload_to_branch
+        from screenshot_deploy import (
+            capture,
+            comment_markdown,
+            comment_on_issue_or_pr,
+            upload_to_branch,
+        )
 
-        base_url = os.environ.get("DEPLOY_BASE_URL", "https://agent-web-hello.onrender.com")
+        base_url = os.environ.get("DEPLOY_BASE_URL") or "https://agent-web-hello.onrender.com"
         out_dir = Path("trace/screenshots")
-        shots = capture(base_url, out_dir)
+        shots = capture(base_url, out_dir, phase="pre")
         branch = pr["head"]["ref"]
         urls = upload_to_branch(
             repo, branch, shots, f".agent/screenshots/pr-{pr_number}"
         )
-        comment_on_pr(repo, pr_number, urls, base_url)
-        screenshot_note = f"- screenshots: {len(urls)} posted on PR\n"
-        # refresh sha after screenshot commits
+        body_shots = comment_markdown("### reviewer_screenshots_pre", base_url, urls)
+        comment_on_issue_or_pr(repo, pr_number, body_shots)
+        comment_on_issue_or_pr(repo, issue, body_shots)
+        screenshot_note = f"- screenshots_pre: {len(urls)} posted on PR + issue\n"
         pr = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}")
         sha = pr["head"]["sha"]
     except Exception as exc:
-        screenshot_note = f"- screenshots: failed (`{exc}`)\n"
+        screenshot_note = f"- screenshots_pre: failed (`{exc}`)\n"
         if os.environ.get("SCREENSHOTS_REQUIRED", "true").lower() in {"1", "true", "yes"}:
             hard_fail_reasons.append(f"required deploy screenshots failed: {exc}")
 

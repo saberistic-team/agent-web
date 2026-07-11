@@ -56,10 +56,28 @@ def gemini_api_key() -> str | None:
 
 def is_ui_design_issue(title: str, body: str) -> bool:
     text = f"{title}\n{body}".lower()
+    # Infra / agent-loop tooling is not a product UI redesign.
+    if re.search(
+        r"\bscreenshot|\bheadless\b|\bplaywright\b|\breviewer\b.*\b(workflow|approve)\b|"
+        r"\bgithub models\b|\bcopilot\b|\bgemini_api\b|\bagent.?loop\b|\bgate\b",
+        text,
+    ):
+        return False
     return bool(
         re.search(
             r"\bui\b|\bux\b|\blanding\b|\bdesign\b|\bcss\b|\bhero\b|\bcta\b|"
-            r"\bvisual\b|\blayout\b|\babout page\b|saberistic\.com",
+            r"\blayout\b|\babout page\b|saberistic\.com",
+            text,
+        )
+    )
+
+
+def is_agent_infra_issue(title: str, body: str) -> bool:
+    text = f"{title}\n{body}".lower()
+    return bool(
+        re.search(
+            r"\bscreenshot|\bheadless\b|\bplaywright\b|"
+            r"visual (check|evidence|proof)|before approve|after deploy",
             text,
         )
     )
@@ -307,14 +325,17 @@ def json_system_prompt(*, ui: bool) -> str:
 
 
 def select_provider(title: str, body: str) -> tuple[str, str]:
-    """Return (provider, model). Prefer Gemini for UI when API key is present."""
-    ui = is_ui_design_issue(title, body)
+    """Return (provider, model). Prefer Gemini whenever the API key exists.
+
+    Org Actions GITHUB_TOKEN often gets Models API 403; Gemini is the reliable
+    free path when GEMINI_API_KEY is configured.
+    """
     force = (os.environ.get("CODEGEN_PROVIDER") or "").strip().lower()
     if force in {"gemini", "github-models", "models"}:
         if force == "gemini":
             return "gemini", os.environ.get("GEMINI_MODEL") or DEFAULT_GEMINI_MODEL
         return "github-models", os.environ.get("GITHUB_MODELS_MODEL") or DEFAULT_MODEL
-    if ui and gemini_api_key():
+    if gemini_api_key():
         return "gemini", os.environ.get("GEMINI_MODEL") or DEFAULT_GEMINI_MODEL
     return "github-models", os.environ.get("GITHUB_MODELS_MODEL") or DEFAULT_MODEL
 

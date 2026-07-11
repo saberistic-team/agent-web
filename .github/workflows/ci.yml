@@ -31,9 +31,47 @@ jobs:
           set -euo pipefail
           if [[ -z "${RENDER_DEPLOY_HOOK_URL:-}" ]]; then
             echo "::error::Missing repo secret RENDER_DEPLOY_HOOK_URL"
-            echo "Add it from Render → agent-web-hello → Settings → Deploy Hook"
             exit 1
           fi
           curl --fail --silent --show-error -X POST "$RENDER_DEPLOY_HOOK_URL"
           echo
           echo "Triggered Render deploy for https://agent-web-hello.onrender.com"
+
+  post-deploy-visual:
+    name: Post-deploy screenshots
+    needs: deploy
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Playwright
+        run: |
+          pip install playwright==1.49.1
+          python -m playwright install --with-deps chromium
+      - name: Mint Builder token for uploads/comments
+        id: builder
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.BUILDER_APP_ID }}
+          private-key: ${{ secrets.BUILDER_PRIVATE_KEY }}
+      - name: Capture post screenshots + visual check
+        env:
+          GITHUB_TOKEN: ${{ steps.builder.outputs.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          DEPLOY_BASE_URL: ${{ vars.DEPLOY_BASE_URL }}
+        run: |
+          set -euo pipefail
+          # Allow Render a moment after hook before health polling starts.
+          sleep 20
+          python scripts/post_deploy_visual.py \
+            --repo "${{ github.repository }}" \
+            --commit-message "${{ github.event.head_commit.message }}"

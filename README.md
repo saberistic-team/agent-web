@@ -11,7 +11,8 @@ hello-world HTTP API used to exercise the loop.
 - [Hello API](docs/HELLO_API.md) — local run and Render deploy
 - [Landing](docs/LANDING.md) — saberistic.com about page + DNS notes
 - [GitHub Models codegen](docs/MODELS.md) — default Builder codegen
-- [Design AI (Gemini)](docs/DESIGN.md) — UI/landing prefers Gemini
+- [Design AI (Gemini)](docs/DESIGN.md) — preferred codegen when key is set
+- [Screenshots](docs/SCREENSHOTS.md) — pre-merge + post-deploy visual evidence
 
 ## Hello API
 
