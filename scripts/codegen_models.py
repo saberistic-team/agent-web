@@ -301,7 +301,9 @@ def validate_plan(plan: dict[str, Any]) -> list[dict[str, str]]:
             raise GitHubError(f"refusing protected path: {path}")
         if content_b64:
             try:
-                text = base64.b64decode(str(content_b64), validate=False).decode("utf-8")
+                cleaned = re.sub(r"\s+", "", str(content_b64))
+                raw = base64.b64decode(cleaned, validate=False)
+                text = raw.decode("utf-8", errors="replace")
             except Exception as exc:
                 raise GitHubError(f"invalid content_b64 for {path}: {exc}") from exc
         else:
