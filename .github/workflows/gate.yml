@@ -16,8 +16,11 @@ on:
 
 jobs:
   check:
+    # Reusable calls keep the *caller's* event_name (often `issues`), so detect
+    # workflow_call via inputs.intent instead of github.event_name.
     if: >-
-      github.event_name == 'workflow_call' ||
+      inputs.intent == 'release-plan' ||
+      inputs.intent == 'review-approved' ||
       github.event.label.name == 'review:approved'
     runs-on: ubuntu-latest
     permissions:
