@@ -1,0 +1,8 @@
+{
+  "sha": "fe60323716693288acc6e661442c133757dc8148",
+  "base_url": "https://agent-web-hello.onrender.com",
+  "health_url": "https://agent-web-hello.onrender.com/health",
+  "health": {
+    "status": "ok"
+  }
+}
