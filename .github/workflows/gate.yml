@@ -24,6 +24,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       issues: write
+      contents: write
+      pull-requests: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -51,8 +53,9 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/check_permission.py \
-            --issue "${{ steps.meta.outputs.issue }}" \
-            --intent "${{ steps.meta.outputs.intent }}"
+            --actor "${{ github.actor }}" \
+            --repo "${{ github.repository }}" \
+            --min-level write
 
       - name: Proceed
         if: success()
@@ -67,6 +70,18 @@ jobs:
               echo "Permission check passed for release-plan on #${ISSUE}; caller may queue."
               ;;
             review-approved)
+              # Merge linked PR(s) only after a live permission pass.
+              PRS="$(gh pr list --repo "${{ github.repository }}" \
+                --search "${ISSUE} in:title,body" --state open --json number,body,title \
+                --jq "[.[] | select((.title | contains(\"#${ISSUE}\")) or (.body != null and (.body | contains(\"#${ISSUE}\")))) | .number] | .[]")"
+              if [[ -z "${PRS}" ]]; then
+                echo "No open PR linked to #${ISSUE}; fail closed"
+                exit 1
+              fi
+              while read -r pr; do
+                [[ -z "${pr}" ]] && continue
+                gh pr merge "${pr}" --repo "${{ github.repository }}" --squash
+              done <<< "${PRS}"
               for label in status:new status:queued status:in-progress status:blocked status:needs-review status:failed; do
                 gh issue edit "${ISSUE}" --repo "${{ github.repository }}" --remove-label "${label}" 2>/dev/null || true
               done

@@ -54,12 +54,30 @@ jobs:
     permissions:
       issues: write
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Download planner artifacts
         uses: actions/download-artifact@v4
         with:
           name: planner-${{ needs.plan.outputs.issue }}
           path: trace
         continue-on-error: true
+
+      - name: Check permission before queue
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python scripts/check_permission.py \
+            --actor "${{ github.actor }}" \
+            --repo "${{ github.repository }}" \
+            --min-level write
 
       - name: Relabel or spawn queued children
         env:
