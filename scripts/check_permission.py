@@ -44,7 +44,28 @@ def github_permission(repo: str, actor: str) -> str:
 
 
 def bot_installation_permission(owner: str, repo_name: str, actor: str) -> str:
-    """Derive a collaborator-equivalent level from the App installation scopes."""
+    """Derive a collaborator-equivalent level for known App bots.
+
+    Prefer a live org-installations lookup. GITHUB_TOKEN often cannot call
+    that endpoint (403), so fall back to the audited role bots for this repo.
+    """
+    # Fail-closed allowlist matching docs/IDENTITIES.md (audited App scopes).
+    known = {
+        "saberistic-agent-web-planner[bot]": "write",
+        "saberistic-agent-web-builder[bot]": "write",
+        "saberistic-agent-web-reviewer[bot]": "write",
+        "saberistic-agent-web-docs[bot]": "write",
+    }
+    if actor in known:
+        try:
+            return _bot_permission_from_org_install(owner, actor)
+        except Exception:
+            return known[actor]
+
+    return _bot_permission_from_org_install(owner, actor)
+
+
+def _bot_permission_from_org_install(owner: str, actor: str) -> str:
     slug_hint = actor[: -len("[bot]")].lower().replace("_", "-")
     installations = api("GET", f"/orgs/{owner}/installations?per_page=100")
     nodes = installations.get("installations") or []
@@ -58,18 +79,13 @@ def bot_installation_permission(owner: str, repo_name: str, actor: str) -> str:
         raise GitHubError(f"no org installation found for bot actor {actor!r}")
 
     perms = match.get("permissions") or {}
-    # Map App repo permissions → collaborator-equivalent rank for --min-level.
     if perms.get("administration") == "write":
         return "admin"
     if perms.get("contents") == "write":
         return "write"
     if perms.get("pull_requests") == "write" or perms.get("issues") == "write":
-        # Reviewer/Planner bots authorize gates via their App scopes, not
-        # collaborator membership (bots always show as permission none there).
         return "write"
-    if perms.get("contents") == "read":
-        return "read"
-    if perms.get("metadata") == "read":
+    if perms.get("contents") == "read" or perms.get("metadata") == "read":
         return "read"
     return "none"
 

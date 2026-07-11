@@ -100,14 +100,42 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
             type_label = "type:feature"
         ensure_label(repo, issue, type_label)
 
-    # Independent change areas: markdown sections or task list items
+    # Independent change areas: prefer explicit work-package headings.
+    # Ignore acceptance checklists and meta sections so Planner does not
+    # explode one feature into one child per checkbox.
+    skip_sections = {
+        "summary",
+        "goal",
+        "acceptance",
+        "acceptance criteria",
+        "out of scope",
+        "notes",
+        "recommended deploy",
+        "recommended deploy (easiest)",
+        "alternatives",
+        "context",
+        "background",
+    }
+    sections = [
+        s.strip()
+        for s in re.findall(r"(?m)^##\s+(.+)$", body)
+        if s.strip().lower() not in skip_sections
+    ]
+    # Only treat checklist items as areas when there are no usable sections
+    # and the list is small (real work breakdown, not acceptance criteria).
     tasks = re.findall(r"(?m)^\s*[-*] \[.\] (.+)$", body)
-    sections = re.findall(r"(?m)^##\s+(.+)$", body)
-    areas = tasks or sections
+    if sections:
+        areas = sections
+    elif 1 < len(tasks) <= 4:
+        areas = tasks
+    else:
+        areas = []
 
+    max_children = 4
     agent_label = "agent:docs" if type_label == "type:docs" else "agent:builder"
 
     if len(areas) > 1:
+        areas = areas[:max_children]
         children: list[int] = []
         owner, name = split_repo(repo)
         for area in areas:
@@ -347,8 +375,18 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
         if "security" in name_l and conclusion == "failure":
             hard_fail_reasons.append(f"security check failed: {run.get('name')}")
 
-    # Missing tests heuristic: PR touches code but no test path in files
+    # Missing tests / stub-only handoff heuristics
     files = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}/files") or []
+    filenames = [f["filename"] for f in files]
+    only_worklog = filenames and all(
+        name.startswith(".agent/worklogs/") or name.endswith(".md")
+        for name in filenames
+    ) and any(name.startswith(".agent/worklogs/") for name in filenames)
+    if only_worklog:
+        hard_fail_reasons.append(
+            "PR is builder worklog-only; no product code/tests to merge"
+        )
+
     code_touched = any(
         not f["filename"].startswith(("docs/", "AGENTS/", ".agent/", "README"))
         and not f["filename"].endswith((".md", ".jsonl"))
