@@ -25,7 +25,13 @@ LEVEL_RANK = {
 
 
 def github_permission(repo: str, actor: str) -> str:
+    """Return effective permission for a human collaborator or known App bot."""
     owner, name = repo.split("/", 1)
+
+    # GitHub App bots are not repo collaborators — map installation scopes.
+    if actor.endswith("[bot]"):
+        return bot_installation_permission(owner, name, actor)
+
     path = (
         f"/repos/{owner}/{name}/collaborators/"
         f"{urllib.parse.quote(actor)}/permission"
@@ -35,6 +41,37 @@ def github_permission(repo: str, actor: str) -> str:
     if level not in LEVEL_RANK:
         raise GitHubError(f"unknown permission value from API: {level!r}")
     return level
+
+
+def bot_installation_permission(owner: str, repo_name: str, actor: str) -> str:
+    """Derive a collaborator-equivalent level from the App installation scopes."""
+    slug_hint = actor[: -len("[bot]")].lower().replace("_", "-")
+    installations = api("GET", f"/orgs/{owner}/installations?per_page=100")
+    nodes = installations.get("installations") or []
+    match = None
+    for inst in nodes:
+        slug = (inst.get("app_slug") or "").lower()
+        if slug == slug_hint or slug_hint.endswith(slug) or slug in slug_hint:
+            match = inst
+            break
+    if match is None:
+        raise GitHubError(f"no org installation found for bot actor {actor!r}")
+
+    perms = match.get("permissions") or {}
+    # Map App repo permissions → collaborator-equivalent rank for --min-level.
+    if perms.get("administration") == "write":
+        return "admin"
+    if perms.get("contents") == "write":
+        return "write"
+    if perms.get("pull_requests") == "write" or perms.get("issues") == "write":
+        # Reviewer/Planner bots authorize gates via their App scopes, not
+        # collaborator membership (bots always show as permission none there).
+        return "write"
+    if perms.get("contents") == "read":
+        return "read"
+    if perms.get("metadata") == "read":
+        return "read"
+    return "none"
 
 
 def meets_minimum(actual: str, required: str) -> bool:
