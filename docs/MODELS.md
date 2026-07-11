@@ -1,7 +1,8 @@
 # GitHub Models codegen (Builder)
 
-**Backup** codegen provider when Copilot is unavailable. Prefer
-[Copilot coding agent](COPILOT.md) when `COPILOT_TOKEN` is set.
+**Optional backup** when Copilot is unavailable. Prefer
+[Copilot coding agent](COPILOT.md) when `COPILOT_TOKEN` or
+`COPILOT_ASSIGN_TOKEN` is set. Set `CODEGEN_FALLBACK=0` to skip this path.
 
 Visual/UI issues without Copilot prefer Gemini — see [DESIGN.md](DESIGN.md).
 
@@ -18,11 +19,10 @@ Visual/UI issues without Copilot prefer Gemini — see [DESIGN.md](DESIGN.md).
 | Token | Purpose |
 |-------|---------|
 | Builder App token (`GITHUB_TOKEN` in job) | Comments, labels, commits, PRs |
-| Actions `github.token` as `MODELS_TOKEN` | Models inference (`permissions: models: read`) |
-| `GEMINI_API_KEY` | Gemini primary for UI + backup for Models |
+| `MODELS_TOKEN` secret, else Actions `github.token` | Models inference |
+| `GEMINI_API_KEY` | Optional Gemini backup / UI without Copilot |
 
-Optional: set `MODELS_TOKEN` to a PAT with Models access if the org Actions
-token returns 403.
+Prefer a PAT secret named `MODELS_TOKEN` (models scope) if Actions returns 403.
 
 ## Model selection
 

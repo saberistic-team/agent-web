@@ -23,6 +23,21 @@ GitHub Apps (Planner / Builder / Reviewer / Docs).
 - Reuse `site/assets/site.css` tokens; keep `/` and `/about` as HTML pages.
 - JSON routes (`/health`, `/hello`) are APIs — do not treat them as pages to redesign.
 
+## Render (MCP)
+
+When the Render MCP server is configured for this repo:
+
+- Prefer Render MCP for **logs, metrics, deploy history, and service status**
+  of the live app (`agent-web-hello` / `https://agent-web-hello.onrender.com`).
+- Set the Render workspace before calling tools (prompt: set workspace to the
+  saberistic / agent-web workspace).
+- Do **not** use MCP to invent or rotate secrets; do not dump env values into
+  PR comments. Env-var updates via MCP only when the issue explicitly requires it.
+- Do **not** expect MCP to trigger deploys — deploys stay on Actions
+  (`RENDER_DEPLOY_HOOK_URL`). MCP cannot trigger deploys or change scaling.
+- Playwright MCP screenshots are for local/session self-check; structured
+  pre/post evidence still comes from Reviewer/CI (`docs/SCREENSHOTS.md`).
+
 ## Review focus
 
 - Check acceptance criteria on the linked issue.

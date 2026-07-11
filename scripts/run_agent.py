@@ -370,11 +370,17 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
         write_builder_handoff("reviewer")
         return
 
-    # Product work: Copilot coding agent first (when COPILOT_TOKEN set), else
-    # Models (default) / Gemini (UI) with mutual backup.
+    # Product work: Copilot coding agent first (when COPILOT_* token set).
+    # Models/Gemini are optional backups unless CODEGEN_FALLBACK=0.
     try:
         result: dict = {}
         used_copilot = False
+        fallback_ok = (os.environ.get("CODEGEN_FALLBACK") or "1").strip().lower() not in {
+            "0",
+            "false",
+            "no",
+            "off",
+        }
         try:
             from codegen_models import is_ui_design_issue
             from copilot_agent import build_with_copilot, copilot_enabled
@@ -390,19 +396,35 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
                     ui=ui,
                 )
                 used_copilot = True
+            else:
+                post_issue_comment(
+                    repo,
+                    issue,
+                    (
+                        "### builder_copilot\n"
+                        "- action: `skipped`\n"
+                        "- reason: `missing COPILOT_TOKEN / COPILOT_ASSIGN_TOKEN`\n"
+                        f"- next: `{'Models/Gemini backup' if fallback_ok else 'blocked'}`\n"
+                    ),
+                )
         except Exception as copilot_exc:
             post_issue_comment(
                 repo,
                 issue,
                 (
                     "### builder_copilot\n"
-                    f"- action: `fallback`\n"
+                    f"- action: `{'fallback' if fallback_ok else 'failed'}`\n"
                     f"- error: `{copilot_exc}`\n"
-                    "- next: GitHub Models / Gemini codegen\n"
+                    f"- next: `{'GitHub Models / Gemini codegen' if fallback_ok else 'blocked'}`\n"
                 ),
             )
 
         if not used_copilot:
+            if not fallback_ok:
+                raise GitHubError(
+                    "Copilot unavailable and CODEGEN_FALLBACK is disabled. "
+                    "Set secret COPILOT_TOKEN or COPILOT_ASSIGN_TOKEN (user PAT)."
+                )
             from codegen_models import build_with_models
 
             result = build_with_models(
@@ -424,11 +446,13 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
             repo,
             issue,
             (
-                "Codegen failed (Copilot and/or GitHub Models and/or Gemini).\n\n"
+                "Codegen failed (Copilot and/or optional Models/Gemini backup).\n\n"
                 f"`{exc}`\n\n"
-                "Preferred: Copilot coding agent via `COPILOT_TOKEN` (user PAT). "
-                "Backup: free GitHub Models (non-UI) / Gemini (UI). "
-                "See docs/COPILOT.md, docs/MODELS.md, docs/DESIGN.md."
+                "Preferred: Copilot via secret `COPILOT_TOKEN` or `COPILOT_ASSIGN_TOKEN` "
+                "(user PAT — App tokens cannot assign Copilot). "
+                "Optional backup: Models (`MODELS_TOKEN`) / Gemini (`GEMINI_API_KEY`). "
+                "To use Copilot only, set repo var `CODEGEN_FALLBACK=0`. "
+                "See docs/COPILOT.md."
             ),
         )
         write_builder_handoff("blocked")

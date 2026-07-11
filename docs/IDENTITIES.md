@@ -8,10 +8,10 @@ mint an installation token (`actions/create-github-app-token`) and perform
 GitHub mutations **only** with that token so events attribute to the role bot —
 not `github-actions[bot]`.
 
-**Codegen:** Builder prefers **GitHub Copilot coding agent** when `COPILOT_TOKEN`
-(user PAT) is set — see [COPILOT.md](COPILOT.md). Fallback: GitHub Models
-(`permissions: models: read`) and Gemini for UI ([MODELS.md](MODELS.md),
-[DESIGN.md](DESIGN.md)).
+**Codegen:** Builder prefers **GitHub Copilot coding agent** when
+`COPILOT_TOKEN` or `COPILOT_ASSIGN_TOKEN` (user PAT) is set — see
+[COPILOT.md](COPILOT.md). Optional fallback: GitHub Models / Gemini
+([MODELS.md](MODELS.md)); disable with `CODEGEN_FALLBACK=0`.
 
 ## Confirmed role → identity → scope
 
@@ -50,10 +50,10 @@ Unrelated org install (not part of the agent loop): `digitalocean` (installation
 
 Builder also uses:
 
-- Secret `COPILOT_TOKEN` — user PAT to assign Copilot coding agent / request
-  Copilot code review ([COPILOT.md](COPILOT.md))
-- Actions `github.token` as `MODELS_TOKEN` for GitHub Models (backup)
-- Optional secret `GEMINI_API_KEY` for UI when Copilot unavailable ([DESIGN.md](DESIGN.md))
+- Secret `COPILOT_TOKEN` or `COPILOT_ASSIGN_TOKEN` — user PAT to assign Copilot /
+  request Copilot review ([COPILOT.md](COPILOT.md))
+- Optional `MODELS_TOKEN` secret (else Actions token) for Models backup
+- Optional `GEMINI_API_KEY` for backup / post-deploy visual AI ([DESIGN.md](DESIGN.md))
 
 ## Actions job `permissions:` (must not exceed App)
 
