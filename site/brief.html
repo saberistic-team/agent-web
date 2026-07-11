@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Submit $200 Project Brief — AmirSaber</title>
+    <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <a href="/" class="logo">AmirSaber</a>
+            <nav>
+                <a href="/about">About</a>
+                <a href="/brief" class="active">Submit Brief</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="brief-page">
+        <div class="container form-container">
+            <h1>Submit a $200 Project Brief</h1>
+            <p class="form-intro">Have a project or technical challenge you want me to review? Submit your brief below. After submission, you will be redirected to Stripe to complete the $200 payment. I will review your brief and get back to you within 3 business days.</p>
+            
+            <form action="/brief" method="POST" class="brutalist-form">
+                <div class="form-group">
+                    <label for="name">Your Name</label>
+                    <input type="text" id="name" name="name" required placeholder="e.g. Jane Doe">
+                </div>
+                
+                <div class="form-group">
+                    <label for="email">Your Email</label>
+                    <input type="email" id="email" name="email" required placeholder="e.g. jane@example.com">
+                </div>
+                
+                <div class="form-group">
+                    <label for="title">Project Title</label>
+                    <input type="text" id="title" name="title" required placeholder="e.g. High-Throughput Data Pipeline">
+                </div>
+                
+                <div class="form-group">
+                    <label for="description">Project Description / Brief</label>
+                    <textarea id="description" name="description" required rows="8" placeholder="Describe your project, goals, technical stack, and the specific challenges you want me to address..."></textarea>
+                </div>
+                
+                <button type="submit" class="cta cta-submit">Submit & Pay $200</button>
+            </form>
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2025 AmirSaber. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>
