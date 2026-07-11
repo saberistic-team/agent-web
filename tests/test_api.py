@@ -43,15 +43,21 @@ def test_about_page() -> None:
     assert "leave things better than I found them" in body
 
 
-def test_landing_project_brief_cta() -> None:
-    """Hero includes request-brief CTA plus LinkedIn and About."""
+def test_landing_single_linkedin_cta() -> None:
+    """Exactly one LinkedIn profile link — the hero CTA (not header/footer)."""
     body = client.get("/").text
-    assert 'href="/request-brief"' in body
-    assert "Request project brief" in body
     assert body.count("linkedin.com/in/saberistic") == 1
     assert 'class="cta"' in body
+    assert 'href="https://www.linkedin.com/in/saberistic"' in body
     assert 'class="cta cta-secondary"' in body
+    assert 'href="/brief"' in body
     assert 'href="/about"' in body
+
+
+def test_home_has_brief_cta() -> None:
+    body = client.get("/").text
+    assert "Request project brief" in body
+    assert 'href="/brief"' in body
 
 
 def test_logo_asset() -> None:
