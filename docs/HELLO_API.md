@@ -11,9 +11,10 @@ Minimal FastAPI service in `app/main.py`.
 
 ## Production
 
-- **URL:** https://agent-web-hello.onrender.com
-- **Health:** https://agent-web-hello.onrender.com/health
-- **Hello:** https://agent-web-hello.onrender.com/hello
+- **Canonical:** https://saberistic.com
+- **Health:** https://saberistic.com/health
+- **Hello:** https://saberistic.com/hello
+- Render hostname (fallback): https://agent-web-hello.onrender.com
 
 ## Local
 
@@ -27,12 +28,15 @@ pytest -q
 
 ### One-time setup
 
-1. Service already exists as Blueprint from [`render.yaml`](../render.yaml) → https://agent-web-hello.onrender.com
+1. Service exists as Blueprint from [`render.yaml`](../render.yaml); custom domain
+   **saberistic.com** points at service **agent-web-hello**.
 2. In Render → **agent-web-hello** → **Settings** → **Deploy Hook**, copy the URL.
 3. In GitHub → repo **Settings** → **Secrets and variables** → **Actions**, add secret:
    - Name: `RENDER_DEPLOY_HOOK_URL`
    - Value: the deploy hook URL
-4. In Render → **Settings** → **Auto-Deploy**, prefer **Off** or **After CI Checks Pass** so deploys are gated by GitHub Actions tests (avoids double-deploy with the hook).
+4. Set Actions variable `DEPLOY_BASE_URL` = `https://saberistic.com` (optional if
+   code default matches).
+5. In Render → **Settings** → **Auto-Deploy**, prefer **Off** or **After CI Checks Pass** so deploys are gated by GitHub Actions tests (avoids double-deploy with the hook).
 
 ### Automatic deploys
 

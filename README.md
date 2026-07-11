@@ -18,7 +18,7 @@ hello-world HTTP API used to exercise the loop.
 
 ## Hello API
 
-- Production: https://agent-web-hello.onrender.com
+- Production: https://saberistic.com
 - Local run + Render auto-deploy: [docs/HELLO_API.md](docs/HELLO_API.md)
 
 ```bash

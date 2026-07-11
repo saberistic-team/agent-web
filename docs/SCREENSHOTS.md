@@ -42,7 +42,7 @@ gets the before/after pair.
 
 | Name | Type | Purpose |
 |------|------|---------|
-| `DEPLOY_BASE_URL` | variable | default `https://agent-web-hello.onrender.com` (empty var ignored) |
+| `DEPLOY_BASE_URL` | variable | default `https://saberistic.com` (empty var ignored) |
 | `SCREENSHOTS_REQUIRED` | variable | default true for Reviewer |
 | `GEMINI_API_KEY` | secret | post-deploy visual AI + Builder/Reviewer codegen |
 | `GEMINI_MODEL` | variable | default `gemini-3.5-flash` |

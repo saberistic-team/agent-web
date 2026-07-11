@@ -17,7 +17,7 @@ from urllib.parse import urljoin
 
 from github_api import GitHubError, api, post_issue_comment, split_repo, token
 
-DEFAULT_BASE = "https://agent-web-hello.onrender.com"
+DEFAULT_BASE = "https://saberistic.com"
 # Only HTML pages — never screenshot JSON APIs like /health or /hello.
 HTML_PATHS = ("/", "/about")
 PATHS = HTML_PATHS  # alias for callers

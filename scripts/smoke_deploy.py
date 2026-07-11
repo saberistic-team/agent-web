@@ -19,7 +19,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--base-url",
-        default="https://agent-web-hello.onrender.com",
+        default="https://saberistic.com",
         help="Deployed service origin (no trailing slash)",
     )
     args = parser.parse_args(argv)

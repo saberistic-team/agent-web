@@ -249,7 +249,7 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
     # Ops / verify issues: run smoke against production; no stub PR (avoids
     # reviewer↔builder loops on worklog-only PRs).
     if is_verify_deploy_issue(title, body):
-        base_url = "https://agent-web-hello.onrender.com"
+        base_url = "https://saberistic.com"
         match = re.search(r"https://[a-z0-9.-]+\.onrender\.com", body, re.I)
         if match:
             base_url = match.group(0).rstrip("/")

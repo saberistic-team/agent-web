@@ -5,8 +5,8 @@ from screenshot_deploy import resolve_base_url, wait_healthy
 
 def test_resolve_base_url_ignores_empty(monkeypatch) -> None:
     monkeypatch.setenv("DEPLOY_BASE_URL", "")
-    assert resolve_base_url("") == "https://agent-web-hello.onrender.com"
-    assert resolve_base_url(None) == "https://agent-web-hello.onrender.com"
+    assert resolve_base_url("") == "https://saberistic.com"
+    assert resolve_base_url(None) == "https://saberistic.com"
 
 
 def test_resolve_base_url_explicit() -> None:
@@ -40,5 +40,5 @@ def test_wait_healthy_builds_absolute_url(monkeypatch) -> None:
     monkeypatch.setattr("screenshot_deploy.urllib.request.urlopen", fake_urlopen)
     monkeypatch.setenv("DEPLOY_BASE_URL", "")
     data = wait_healthy("", attempts=1)
-    assert calls == ["https://agent-web-hello.onrender.com/health"]
+    assert calls == ["https://saberistic.com/health"]
     assert data.get("status") == "ok"

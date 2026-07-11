@@ -10,18 +10,20 @@ uvicorn app.main:app --reload --port 8000
 # open http://127.0.0.1:8000/
 ```
 
-## Production (current)
+## Production
 
-Served from the same Render service as the hello API once deployed:
+- https://saberistic.com/
+- https://saberistic.com/about
 
-- https://agent-web-hello.onrender.com/
-- https://agent-web-hello.onrender.com/about
+Render service: **agent-web-hello** (custom domain `saberistic.com`). Legacy
+hostname `https://agent-web-hello.onrender.com` may still resolve.
 
-## Pointing saberistic.com (later)
+## DNS / custom domain
 
-1. Keep the Render service (or move `site/` to a static host).
-2. In the domain registrar for `saberistic.com`, add a CNAME (or Render custom domain) to the Render hostname.
-3. In Render → service → **Custom Domains** → add `saberistic.com` / `www.saberistic.com` and complete DNS verification.
-4. Prefer HTTPS only; let Render manage the certificate.
+1. Render → service → **Custom Domains** → `saberistic.com` (HTTPS via Render).
+2. Registrar: CNAME / ALIAS as Render instructs.
+3. Prefer apex `saberistic.com` as the canonical URL in docs and
+   `DEPLOY_BASE_URL` (www is optional and not required).
 
-Do **not** revive the old `who-we-are` team roster — that section is retired. Logos only from the existing saberistic brand mark/wordmark.
+Do **not** revive the old `who-we-are` team roster — that section is retired.
+Logos only from the existing saberistic brand mark/wordmark.

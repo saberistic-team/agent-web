@@ -134,7 +134,7 @@ def gather_evidence(repo: str, issue: int, pr_number: int | None) -> dict[str, A
             for f in files
         ]
 
-    base = os.environ.get("DEPLOY_BASE_URL") or "https://agent-web-hello.onrender.com"
+    base = os.environ.get("DEPLOY_BASE_URL") or "https://saberistic.com"
     try:
         home = _fetch_url(base.rstrip("/") + "/")
         evidence["deploy"] = {

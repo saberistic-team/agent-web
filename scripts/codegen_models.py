@@ -455,7 +455,7 @@ def build_with_models(
         f"Issue: #{issue}\n"
         f"Title: {title}\n"
         f"UI/design focus: {ui}\n"
-        f"Live reference (if relevant): https://agent-web-hello.onrender.com/\n\n"
+        f"Live reference (if relevant): https://saberistic.com/\n\n"
         f"## Issue body\n{body.strip() or '(empty)'}\n\n"
         f"## Builder brief\n{brief_text[:5000]}\n\n"
         f"{repo_context(root, ui=ui)}\n"

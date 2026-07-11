@@ -35,7 +35,7 @@ jobs:
           fi
           curl --fail --silent --show-error -X POST "$RENDER_DEPLOY_HOOK_URL"
           echo
-          echo "Triggered Render deploy for https://agent-web-hello.onrender.com"
+          echo "Triggered Render deploy for https://saberistic.com"
 
   post-deploy-visual:
     name: Post-deploy screenshots

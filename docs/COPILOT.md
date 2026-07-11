@@ -51,7 +51,14 @@ Optional variables:
 ## Repo instructions for Copilot
 
 `.github/copilot-instructions.md` steers both coding agent and code review
-(including when to use Render MCP vs deploy hooks vs screenshot CI).
+(including Playwright MCP self-check on https://saberistic.com, Render MCP vs
+deploy hooks, and screenshot CI).
+
+## Playwright MCP (built-in)
+
+No repo MCP config needed. The coding agent should use Playwright MCP to open
+**https://saberistic.com** (or localhost) and screenshot changed UI before the
+PR. Reviewer/CI screenshots remain the gate — see [SCREENSHOTS.md](SCREENSHOTS.md).
 
 ## Render MCP (optional)
 
