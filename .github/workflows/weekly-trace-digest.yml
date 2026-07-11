@@ -1,0 +1,120 @@
+name: Weekly trace digest
+
+# Posts a plain-language summary of the last 7 days of agent-trace lines
+# onto a tracking issue for non-technical stakeholders.
+on:
+  schedule:
+    # Mondays 15:00 UTC
+    - cron: "0 15 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Collect traces (repo file + recent artifacts)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/agent-traces
+          if [[ -s trace/agent-trace.jsonl ]]; then
+            cp trace/agent-trace.jsonl /tmp/agent-traces/repo-agent-trace.jsonl
+          fi
+
+          CUTOFF="$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)"
+          echo "Collecting agent-trace artifacts newer than ${CUTOFF}"
+
+          gh api --paginate "repos/${{ github.repository }}/actions/artifacts" \
+            --jq '.artifacts[] | select(.name | startswith("agent-trace-")) | select(.expired == false) | [.id, .created_at, .name] | @tsv' \
+            | while IFS=$'\t' read -r id created name; do
+                [[ -z "${id}" ]] && continue
+                if [[ "${created}" < "${CUTOFF}" ]]; then
+                  continue
+                fi
+                echo "Fetching artifact ${name} (${id}) @ ${created}"
+                dest="/tmp/agent-traces/artifact-${id}"
+                mkdir -p "${dest}"
+                if gh api "repos/${{ github.repository }}/actions/artifacts/${id}/zip" > "/tmp/artifact-${id}.zip"; then
+                  unzip -qo "/tmp/artifact-${id}.zip" -d "${dest}" || true
+                fi
+              done
+
+          echo "Collected files:"
+          find /tmp/agent-traces -type f -print || true
+
+      - name: Build digest markdown
+        run: |
+          set -euo pipefail
+          python scripts/digest_trace.py \
+            --input /tmp/agent-traces \
+            --days 7 \
+            --output /tmp/digest.md
+          cat /tmp/digest.md
+
+      - name: Ensure tracking issue exists
+        id: tracking
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TITLE="Agent trace — weekly digest"
+          if [[ -n "${{ vars.TRACE_DIGEST_ISSUE }}" ]]; then
+            echo "number=${{ vars.TRACE_DIGEST_ISSUE }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          EXISTING="$(gh issue list --repo "${{ github.repository }}" --state open \
+            --search "in:title \"${TITLE}\"" --json number,title \
+            --jq ".[] | select(.title == \"${TITLE}\") | .number" | head -n1)"
+          if [[ -n "${EXISTING}" ]]; then
+            echo "number=${EXISTING}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          URL="$(gh issue create --repo "${{ github.repository }}" \
+            --title "${TITLE}" \
+            --body "Tracking issue for the weekly agent-trace digest. Stakeholders can follow this issue for a plain-language summary of agent activity (actions, cost, failures)." \
+            --label "type:docs")"
+          NUMBER="$(basename "${URL}")"
+          echo "Created ${URL}"
+          echo "number=${NUMBER}" >> "$GITHUB_OUTPUT"
+
+      - name: Post digest comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh issue comment "${{ steps.tracking.outputs.number }}" \
+            --repo "${{ github.repository }}" \
+            --body-file /tmp/digest.md
+
+      - name: Write trace
+        if: always()
+        run: |
+          set -euo pipefail
+          OUTCOME="ok"
+          if [[ "${{ job.status }}" != "success" ]]; then OUTCOME="fail"; fi
+          ISSUE="${{ steps.tracking.outputs.number }}"
+          if [[ -z "${ISSUE}" ]]; then ISSUE=0; fi
+          if [[ "${ISSUE}" == "0" ]]; then
+            echo "Skipping write_trace (no tracking issue number)"
+            exit 0
+          fi
+          python scripts/write_trace.py \
+            --role gate \
+            --issue "${ISSUE}" \
+            --action weekly_digest \
+            --outcome "${OUTCOME}" \
+            --cost-usd 0
