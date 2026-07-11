@@ -1,13 +1,15 @@
 # Deploy screenshots (pre-merge + post-deploy)
 
-Visual evidence for the agent loop. Reviewer must see the change **before merge**
-and again **after deploy** on the related issue.
+Visual evidence for the agent loop. **Only** GitHub Actions + headless
+Chromium via Playwright (`scripts/screenshot_deploy.py`). Do **not** use
+Copilot, Playwright MCP, or any IDE browser agent for gate evidence.
 
 ## Pre-merge (Reviewer)
 
-When `agent:reviewer` runs on an open PR:
+When `agent:reviewer` runs on an open PR (workflow installs Playwright):
 
-1. Playwright captures `/` and `/about` on the live deploy URL (cold-start retries)
+1. Headless Chromium captures `/` and `/about` on the live deploy URL
+   (cold-start retries)
 2. Files land under `.agent/screenshots/pr-<n>/pre-*.png` on the PR branch
 3. Comments `### reviewer_screenshots_pre` on the **PR and linked issue**
 4. AI review (Gemini when `GEMINI_API_KEY` is set) runs
@@ -48,7 +50,9 @@ gets the before/after pair.
 | `GEMINI_MODEL` | variable | default `gemini-3.5-flash` |
 | `RENDER_DEPLOY_HOOK_URL` | secret | deploy trigger |
 
-## Scripts
+## Scripts / workflows
 
-- `scripts/screenshot_deploy.py` — capture + upload + comment
+- `scripts/screenshot_deploy.py` — headless capture + upload + comment
 - `scripts/post_deploy_visual.py` — post-deploy capture + Gemini visibility check
+- `.github/workflows/reviewer.yml` — pre-merge Playwright install + capture
+- `.github/workflows/ci.yml` — `post-deploy-visual` job

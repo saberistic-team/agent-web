@@ -21,8 +21,8 @@ agents. Live site: **https://saberistic.com** (`/`, `/about`, `/health`, `/hello
   hero card grids, and the old team roster.
 - Reuse `site/assets/site.css` tokens; keep `/` and `/about` as HTML pages.
 - JSON routes (`/health`, `/hello`) are APIs — do not treat them as pages to redesign.
-- Visual evidence for the gate is Actions Playwright (`docs/SCREENSHOTS.md`), not
-  ad-hoc agent browser tools.
+- Screenshots for the gate are **only** Actions headless Playwright
+  (`docs/SCREENSHOTS.md`). Never rely on Copilot or Playwright MCP.
 
 ## Review focus
 
