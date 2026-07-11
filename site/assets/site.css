@@ -295,3 +295,123 @@ main {
   letter-spacing: -0.02em;
   text-transform: uppercase;
 }
+
+.form-block {
+  padding-top: 3rem;
+}
+
+.form-lede {
+  margin: 0 0 2rem;
+  max-width: 52ch;
+  color: var(--muted);
+  font-size: 1.05rem;
+}
+
+.form-lede strong {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.form-note {
+  margin: 0 0 1.5rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  max-width: 52ch;
+}
+
+.brief-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  max-width: 40rem;
+}
+
+.field label,
+.contact-fieldset legend {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.field input,
+.field textarea {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  transition: border-color 0.2s ease;
+}
+
+.field input:focus-visible,
+.field textarea:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 10rem;
+}
+
+.contact-fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.contact-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.toggle-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.toggle-option:has(input:checked) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.toggle-option input {
+  accent-color: var(--accent);
+}
+
+.form-error {
+  margin: 0;
+  color: #f0a07a;
+  font-size: 0.9rem;
+}
+
+.form-submit {
+  align-self: flex-start;
+  border: none;
+  cursor: pointer;
+  font-family: var(--mono);
+}
+
+.form-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
