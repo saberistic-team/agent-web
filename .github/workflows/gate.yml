@@ -135,6 +135,12 @@ jobs:
           PRS="$(gh pr list --repo "${{ github.repository }}" \
             --search "${ISSUE} in:title,body" --state open --json number,body,title \
             --jq "[.[] | select((.title | contains(\"#${ISSUE}\")) or (.body != null and (.body | contains(\"#${ISSUE}\")))) | .number] | .[]")"
+          # Search index can lag; fall back to listing open PRs and filtering locally.
+          if [[ -z "${PRS}" ]]; then
+            PRS="$(gh pr list --repo "${{ github.repository }}" --state open \
+              --json number,body,title \
+              --jq "[.[] | select((.title | contains(\"#${ISSUE}\")) or (.body != null and (.body | contains(\"#${ISSUE}\")))) | .number] | .[]")"
+          fi
           if [[ -z "${PRS}" ]]; then
             gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
           ### gate_merge
@@ -146,7 +152,26 @@ jobs:
           fi
           while read -r pr; do
             [[ -z "${pr}" ]] && continue
-            gh pr merge "${pr}" --repo "${{ github.repository }}" --squash
+            # Main may move while post-deploy commits land; retry merge a few times.
+            merged=0
+            for attempt in 1 2 3 4 5; do
+              if gh pr merge "${pr}" --repo "${{ github.repository }}" --squash; then
+                merged=1
+                break
+              fi
+              echo "merge attempt ${attempt} failed; waiting for base to settle…"
+              sleep 15
+            done
+            if [[ "${merged}" -ne 1 ]]; then
+              gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
+          ### gate_merge
+          - result: \`fail\`
+          - pr: #${pr}
+          - detail: squash merge failed after retries (base branch likely still moving)
+          EOF
+          )"
+              exit 1
+            fi
             MERGE_SHA="$(gh pr view "${pr}" --repo "${{ github.repository }}" --json mergeCommit --jq '.mergeCommit.oid // empty')"
             gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
           ### gate_merge

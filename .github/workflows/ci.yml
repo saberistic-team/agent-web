@@ -7,6 +7,13 @@ on:
 
 jobs:
   test:
+    # Meta commits from screenshot/health recorders must not re-enter CI.
+    if: >-
+      github.event_name != 'push' ||
+      (
+        !startsWith(github.event.head_commit.message, 'review: record') &&
+        !startsWith(github.event.head_commit.message, 'deploy: record')
+      )
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,7 +28,11 @@ jobs:
   deploy:
     name: Deploy to Render
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      !startsWith(github.event.head_commit.message, 'review: record') &&
+      !startsWith(github.event.head_commit.message, 'deploy: record')
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Render deploy hook
@@ -40,7 +51,11 @@ jobs:
   post-deploy-visual:
     name: Post-deploy screenshots
     needs: deploy
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      !startsWith(github.event.head_commit.message, 'review: record') &&
+      !startsWith(github.event.head_commit.message, 'deploy: record')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -67,6 +82,8 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
           DEPLOY_BASE_URL: ${{ vars.DEPLOY_BASE_URL }}
         run: |
           set -euo pipefail
