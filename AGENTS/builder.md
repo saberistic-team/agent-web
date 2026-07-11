@@ -48,6 +48,16 @@ Escalate when:
 - autonomous codegen is unavailable — **do not** open worklog-only PRs
   (Reviewer will reject them and requeue forever)
 
+## Special case: landing / about page
+
+If the issue asks for a **saberistic.com** / AmirSaber landing or about page:
+
+- Implement (or sync) the brutal-minimalist site under `site/`
+- Use brand logos from `site/assets/` only (from saberistic.com mark/wordmark)
+- Do **not** revive the old team roster / `who-we-are` members
+- Open a real PR with HTML/CSS/tests — not a worklog stub
+- Source facts from the issue / LinkedIn only
+
 ## Special case: verify / smoke deploy
 
 If the issue asks to **verify** a live Render/deploy URL (`/health`,

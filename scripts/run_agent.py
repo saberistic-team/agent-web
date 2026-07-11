@@ -150,6 +150,13 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
         "alternatives",
         "context",
         "background",
+        "source",
+        "about",
+        "about (public linkedin facts)",
+        "selected experience",
+        "selected experience (brief)",
+        "design",
+        "constraints",
     }
     sections = [
         s.strip()
@@ -226,6 +233,14 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
         post_issue_comment(repo, issue, plan)
 
 
+def is_landing_issue(title: str, body: str) -> bool:
+    text = f"{title}\n{body}".lower()
+    return bool(
+        re.search(r"\blanding\b|\babout page\b|saberistic\.com", text)
+        and re.search(r"\bamirs?aber\b|\bsharifi\b|\blinkedin\b|\bwebsite\b|\bsite\b", text)
+    )
+
+
 def role_builder(repo: str, issue: int, brief: Path) -> None:
     data = get_issue(repo, issue)
     title = data.get("title") or f"issue-{issue}"
@@ -266,6 +281,90 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
                 f"Production smoke failed for `{base_url}` (exit {proc.returncode}).",
             )
             write_builder_handoff("blocked")
+        return
+
+    # Landing / about page: commit the in-repo site scaffold (real product files).
+    if is_landing_issue(title, body):
+        site_index = Path("site/index.html")
+        if not site_index.is_file():
+            escalate(
+                repo,
+                issue,
+                "Landing scaffold missing (`site/index.html`). Add the brutal-minimalist site before Builder can open a PR.",
+            )
+            write_builder_handoff("blocked")
+            return
+        branch = f"builder/{issue}-{slugify(title)}"
+        owner, name = split_repo(repo)
+        default = api("GET", f"/repos/{owner}/{name}").get("default_branch") or "main"
+        ref = api("GET", f"/repos/{owner}/{name}/git/ref/heads/{default}")
+        base_sha = ref["object"]["sha"]
+        try:
+            api(
+                "POST",
+                f"/repos/{owner}/{name}/git/refs",
+                body={"ref": f"refs/heads/{branch}", "sha": base_sha},
+            )
+        except GitHubError as exc:
+            if "Reference already exists" not in str(exc):
+                raise
+
+        # Ensure branch carries current landing files from this checkout.
+        for rel in (
+            "site/index.html",
+            "site/assets/site.css",
+            "site/assets/logo.png",
+            "site/assets/logo-text.png",
+            "docs/LANDING.md",
+            "app/main.py",
+            "tests/test_api.py",
+        ):
+            path = Path(rel)
+            if not path.is_file():
+                continue
+            content_b64 = __import__("base64").b64encode(path.read_bytes()).decode()
+            put_body: dict = {
+                "message": f"builder(#{issue}): sync {rel}",
+                "content": content_b64,
+                "branch": branch,
+            }
+            try:
+                existing = api(
+                    "GET", f"/repos/{owner}/{name}/contents/{rel}?ref={branch}"
+                )
+                put_body["sha"] = existing["sha"]
+            except GitHubError:
+                pass
+            api("PUT", f"/repos/{owner}/{name}/contents/{rel}", body=put_body)
+
+        prs = linked_open_prs(repo, issue)
+        if not prs:
+            pr = api(
+                "POST",
+                f"/repos/{owner}/{name}/pulls",
+                body={
+                    "title": f"builder: {title} (#{issue})",
+                    "head": branch,
+                    "base": default,
+                    "body": (
+                        f"Closes #{issue}\n\n"
+                        "Brutal-minimalist landing for AmirSaber Sharifi.\n"
+                        "Logos from saberistic brand assets only; no team roster.\n"
+                    ),
+                },
+            )
+            post_issue_comment(
+                repo,
+                issue,
+                f"### builder_result\n- branch: `{branch}`\n- pr: #{pr['number']}\n- kind: `landing`\n",
+            )
+        else:
+            post_issue_comment(
+                repo,
+                issue,
+                f"### builder_result\n- branch: `{branch}`\n- existing_pr: #{prs[0]['number']}\n- kind: `landing`\n",
+            )
+        write_builder_handoff("reviewer")
         return
 
     branch = f"builder/{issue}-{slugify(title)}"

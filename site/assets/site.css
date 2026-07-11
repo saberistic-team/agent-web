@@ -1,0 +1,267 @@
+:root {
+  --bg: #0c0f18;
+  --surface: #171d34;
+  --ink: #e7eaf4;
+  --muted: #afb6d2;
+  --line: #2a3150;
+  --accent: #d88730;
+  --accent-ink: #0c0f18;
+  --display: "Archivo Black", Impact, Haettenschweiler, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--ink);
+  background:
+    radial-gradient(1200px 600px at 10% -10%, #1c223a 0%, transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, #242b44 0%, transparent 50%),
+    var(--bg);
+  font-family: var(--mono);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+a {
+  color: inherit;
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem clamp(1.25rem, 4vw, 3rem);
+  border-bottom: 1px solid var(--line);
+  animation: rise 0.7s ease-out both;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-decoration: none;
+}
+
+.brand-mark {
+  display: block;
+  width: 40px;
+  height: auto;
+}
+
+.brand-word {
+  display: block;
+  height: 28px;
+  width: auto;
+  max-width: min(42vw, 160px);
+}
+
+.top-link {
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--muted);
+  border-bottom: 1px solid transparent;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.top-link:hover,
+.top-link:focus-visible {
+  color: var(--ink);
+  border-color: var(--accent);
+  outline: none;
+}
+
+main {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 0 clamp(1.25rem, 4vw, 3rem) 4rem;
+}
+
+.hero {
+  min-height: calc(100vh - 5.5rem);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 3rem 0 4rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.eyebrow {
+  margin: 0 0 1rem;
+  color: var(--muted);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  animation: rise 0.8s ease-out 0.08s both;
+}
+
+.hero h1 {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: clamp(3.2rem, 12vw, 7.5rem);
+  line-height: 0.92;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+  animation: rise 0.9s ease-out 0.14s both;
+}
+
+.lede {
+  margin: 1.75rem 0 0;
+  max-width: 28ch;
+  font-size: clamp(1.05rem, 2.4vw, 1.35rem);
+  color: var(--muted);
+  animation: rise 0.9s ease-out 0.22s both;
+}
+
+.cta-row {
+  margin: 2.5rem 0 0;
+  animation: rise 0.9s ease-out 0.3s both;
+}
+
+.cta {
+  display: inline-block;
+  padding: 0.9rem 1.4rem;
+  background: var(--accent);
+  color: var(--accent-ink);
+  text-decoration: none;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.8rem;
+  font-weight: 500;
+  border: 1px solid var(--accent);
+  transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.cta:hover,
+.cta:focus-visible {
+  background: transparent;
+  color: var(--accent);
+  transform: translateY(-2px);
+  outline: none;
+}
+
+.block {
+  padding: 4rem 0;
+  border-bottom: 1px solid var(--line);
+  animation: rise 0.8s ease-out both;
+}
+
+.block h2 {
+  margin: 0 0 1.5rem;
+  font-family: var(--display);
+  font-size: clamp(1.4rem, 3vw, 2rem);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-weight: 400;
+}
+
+.block p {
+  margin: 0;
+  max-width: 52ch;
+  color: var(--muted);
+}
+
+.block strong {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.work {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+
+.work li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 1rem;
+  align-items: baseline;
+  padding: 1.1rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.role {
+  color: var(--ink);
+}
+
+.org {
+  color: var(--muted);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem 2rem;
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 2rem clamp(1.25rem, 4vw, 3rem) 3rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.foot a {
+  color: var(--muted);
+  text-decoration: none;
+  border-bottom: 1px solid var(--line);
+}
+
+.foot a:hover,
+.foot a:focus-visible {
+  color: var(--ink);
+  border-color: var(--accent);
+  outline: none;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 640px) {
+  .work li {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+
+  .org {
+    text-align: left;
+    white-space: normal;
+  }
+
+  .brand-word {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

@@ -1,10 +1,18 @@
-"""Minimal hello-world HTTP API."""
+"""Minimal hello-world HTTP API + saberistic landing site."""
 
 from __future__ import annotations
 
-from fastapi import FastAPI
+from pathlib import Path
 
-app = FastAPI(title="agent-web hello", version="0.1.0")
+from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
+SITE_DIR = Path(__file__).resolve().parent.parent / "site"
+ASSETS_DIR = SITE_DIR / "assets"
+
+app = FastAPI(title="agent-web", version="0.2.0")
+app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
 
 
 @app.get("/health")
@@ -15,3 +23,8 @@ def health() -> dict[str, str]:
 @app.get("/hello")
 def hello() -> dict[str, str]:
     return {"message": "hello world"}
+
+
+@app.get("/")
+def landing() -> FileResponse:
+    return FileResponse(SITE_DIR / "index.html")
