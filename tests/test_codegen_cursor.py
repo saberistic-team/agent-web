@@ -22,8 +22,19 @@ def test_build_prompt_includes_issue(tmp_path) -> None:
         title="User flow",
         body="Parent: #41\nDo the flow.",
         brief=brief,
+        runtime="local",
     )
     assert "#42" in text
-    assert "Closes #42" in text
+    assert "do NOT git commit" in text
     assert "User flow" in text
     assert "Be minimal." in text
+
+
+def test_cursor_runtime_defaults_local(monkeypatch) -> None:
+    from codegen_cursor import cursor_runtime
+
+    monkeypatch.delenv("CURSOR_RUNTIME", raising=False)
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    assert cursor_runtime() == "local"
+    monkeypatch.setenv("CURSOR_RUNTIME", "cloud")
+    assert cursor_runtime() == "cloud"

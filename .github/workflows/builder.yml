@@ -64,6 +64,7 @@ jobs:
           # Cursor SDK cloud agent (preferred coding path)
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
           CURSOR_MODEL: ${{ vars.CURSOR_MODEL }}
+          CURSOR_RUNTIME: ${{ vars.CURSOR_RUNTIME }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
           # Models inference (PAT preferred when Actions token returns 403)
