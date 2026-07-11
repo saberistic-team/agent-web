@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stripe Checkout (Mock) — AmirSaber</title>
+    <link rel="stylesheet" href="/assets/site.css">
+    <style>
+        .stripe-mock-container {
+            max-width: 500px;
+            margin: 80px auto;
+            padding: 40px;
+            border: 4px solid #000;
+            background: #fff;
+            box-shadow: 8px 8px 0px #000;
+        }
+        .stripe-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 2px solid #000;
+            padding-bottom: 20px;
+            margin-bottom: 20px;
+        }
+        .stripe-logo {
+            font-weight: 900;
+            font-size: 1.5rem;
+            color: #635bff;
+        }
+        .stripe-badge {
+            background: #e3e8ee;
+            color: #4f5b66;
+            padding: 4px 8px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            border-radius: 4px;
+        }
+        .price-display {
+            font-size: 2.5rem;
+            font-weight: 900;
+            margin: 20px 0;
+        }
+        .payment-details {
+            margin-bottom: 30px;
+        }
+        .payment-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 1rem;
+        }
+        .payment-row.total {
+            border-top: 2px solid #000;
+            padding-top: 10px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body style="background: #f7f9fc;">
+    <div class="stripe-mock-container">
+        <div class="stripe-header">
+            <span class="stripe-logo">stripe</span>
+            <span class="stripe-badge">TEST MODE</span>
+        </div>
+        
+        <h2>AmirSaber</h2>
+        <p style="color: #6a737d;">Project Brief Review Service</p>
+        
+        <div class="price-display">$200.00</div>
+        
+        <div class="payment-details">
+            <div class="payment-row">
+                <span>Project Brief Review</span>
+                <span>$200.00</span>
+            </div>
+            <div class="payment-row total">
+                <span>Total Due</span>
+                <span>$200.00</span>
+            </div>
+        </div>
+        
+        <form id="payment-form" action="/brief/success" method="GET">
+            <input type="hidden" id="brief_id_input" name="brief_id" value="">
+            <button type="submit" class="cta" style="width: 100%; background: #635bff; color: #fff; border-color: #635bff; text-align: center; display: block; box-sizing: border-box;">Pay $200.00</button>
+        </form>
+    </div>
+
+    <script>
+        // Extract brief_id from URL query parameters and set it in the form
+        const urlParams = new URLSearchParams(window.location.search);
+        const briefId = urlParams.get('brief_id');
+        if (briefId) {
+            document.getElementById('brief_id_input').value = briefId;
+        }
+    </script>
+</body>
+</html>
