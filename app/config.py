@@ -1,40 +1,44 @@
-"""Environment-backed settings for project brief flow."""
+"""Application settings from environment variables."""
 
 from __future__ import annotations
 
 import os
-
-BRIEF_PRICE_CENTS = 20_000
-
-
-def stripe_secret_key() -> str:
-    return os.environ.get("STRIPE_SECRET_KEY", "")
+from dataclasses import dataclass
 
 
-def stripe_webhook_secret() -> str:
-    return os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+@dataclass(frozen=True)
+class Settings:
+    database_url: str
+    stripe_secret_key: str
+    stripe_webhook_secret: str
+    stripe_publishable_key: str
+    resend_api_key: str
+    from_email: str
+    notify_email: str
+    base_url: str
+    brief_price_cents: int = 20_000
+
+    @property
+    def database_configured(self) -> bool:
+        return bool(self.database_url)
+
+    @property
+    def stripe_configured(self) -> bool:
+        return bool(self.stripe_secret_key)
+
+    @property
+    def email_configured(self) -> bool:
+        return bool(self.resend_api_key)
 
 
-def app_base_url() -> str:
-    return os.environ.get("APP_BASE_URL", "https://saberistic.com").rstrip("/")
-
-
-def resend_api_key() -> str:
-    return os.environ.get("RESEND_API_KEY", "")
-
-
-def notify_email() -> str:
-    return os.environ.get("NOTIFY_EMAIL", "inbox@saberistic.com")
-
-
-def from_email() -> str:
-    return os.environ.get("FROM_EMAIL", "noreply@saberistic.com")
-
-
-def database_url() -> str:
-    raw = os.environ.get("DATABASE_URL", "").strip()
-    if raw:
-        if raw.startswith("postgres://"):
-            return raw.replace("postgres://", "postgresql://", 1)
-        return raw
-    return "sqlite:///./project_briefs.db"
+def get_settings() -> Settings:
+    return Settings(
+        database_url=os.environ.get("DATABASE_URL", ""),
+        stripe_secret_key=os.environ.get("STRIPE_SECRET_KEY", ""),
+        stripe_webhook_secret=os.environ.get("STRIPE_WEBHOOK_SECRET", ""),
+        stripe_publishable_key=os.environ.get("STRIPE_PUBLISHABLE_KEY", ""),
+        resend_api_key=os.environ.get("RESEND_API_KEY", ""),
+        from_email=os.environ.get("FROM_EMAIL", "noreply@saberistic.com"),
+        notify_email=os.environ.get("NOTIFY_EMAIL", "inbox@saberistic.com"),
+        base_url=os.environ.get("BASE_URL", "http://localhost:8000").rstrip("/"),
+    )
