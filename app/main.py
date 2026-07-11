@@ -26,5 +26,6 @@ def hello() -> dict[str, str]:
 
 
 @app.get("/")
+@app.get("/about")
 def landing() -> FileResponse:
     return FileResponse(SITE_DIR / "index.html")

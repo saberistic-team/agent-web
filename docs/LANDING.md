@@ -13,7 +13,9 @@ uvicorn app.main:app --reload --port 8000
 ## Production (current)
 
 Served from the same Render service as the hello API once deployed:
-https://agent-web-hello.onrender.com/
+
+- https://agent-web-hello.onrender.com/
+- https://agent-web-hello.onrender.com/about
 
 ## Pointing saberistic.com (later)
 

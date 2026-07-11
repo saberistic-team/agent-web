@@ -20,14 +20,15 @@ def test_hello() -> None:
 
 
 def test_landing_page() -> None:
-    response = client.get("/")
-    assert response.status_code == 200
-    body = response.text
-    assert "AmirSaber" in body
-    assert "Filling gaps between markets and tech" in body
-    assert "linkedin.com/in/saberistic" in body
-    assert "our-teams-section" not in body
-    assert "Queen" not in body
+    for path in ("/", "/about"):
+        response = client.get(path)
+        assert response.status_code == 200
+        body = response.text
+        assert "AmirSaber" in body
+        assert "Filling gaps between markets and tech" in body
+        assert "linkedin.com/in/saberistic" in body
+        assert "our-teams-section" not in body
+        assert "Queen" not in body
 
 
 def test_logo_asset() -> None:
