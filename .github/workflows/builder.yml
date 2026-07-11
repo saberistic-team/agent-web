@@ -12,6 +12,7 @@ jobs:
       contents: write
       issues: write
       pull-requests: write
+      models: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,11 +47,12 @@ jobs:
 
       - name: Run builder agent
         env:
+          # App token: labels, comments, commits, PRs
           GITHUB_TOKEN: ${{ steps.builder.outputs.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          # User PAT required to assign Copilot (App install tokens are rejected).
-          COPILOT_ASSIGN_TOKEN: ${{ secrets.COPILOT_ASSIGN_TOKEN }}
-          COPILOT_MODEL: ${{ vars.COPILOT_MODEL }}
+          # Actions token: GitHub Models inference (needs models: read)
+          MODELS_TOKEN: ${{ github.token }}
+          GITHUB_MODELS_MODEL: ${{ vars.GITHUB_MODELS_MODEL }}
         run: |
           python scripts/run_agent.py \
             --role builder \
@@ -98,17 +100,6 @@ jobs:
           EOF
           )"
               ;;
-            waiting)
-              gh issue edit "${ISSUE}" \
-                --repo "${{ github.repository }}" \
-                --add-label "status:in-progress"
-              gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
-          ### builder_handoff
-          - status: \`status:in-progress\`
-          - next: wait for Copilot PR (\`copilot-handoff\` workflow)
-          EOF
-          )"
-              ;;
             reviewer|*)
               gh issue edit "${ISSUE}" \
                 --repo "${{ github.repository }}" \
@@ -130,12 +121,20 @@ jobs:
           set -euo pipefail
           OUTCOME="ok"
           if [[ "${{ job.status }}" != "success" ]]; then OUTCOME="fail"; fi
+          MODEL_ARGS=()
+          if [[ -f trace/builder-model.txt ]]; then
+            MODEL="$(tr -d '[:space:]' < trace/builder-model.txt)"
+            if [[ -n "${MODEL}" ]]; then
+              MODEL_ARGS=(--model "${MODEL}")
+            fi
+          fi
           python scripts/write_trace.py \
             --role builder \
             --issue "${{ github.event.issue.number }}" \
             --action build \
             --outcome "${OUTCOME}" \
-            --cost-usd 0
+            --cost-usd 0 \
+            "${MODEL_ARGS[@]}"
 
       - name: Upload agent trace
         if: always()

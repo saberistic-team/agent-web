@@ -8,9 +8,9 @@ mint an installation token (`actions/create-github-app-token`) and perform
 GitHub mutations **only** with that token so events attribute to the role bot —
 not `github-actions[bot]`.
 
-**Exception:** assigning **GitHub Copilot cloud agent** requires a
-**user-to-server** token (`COPILOT_ASSIGN_TOKEN` PAT). App installation tokens
-cannot start Copilot tasks — see [COPILOT.md](COPILOT.md).
+**Codegen:** Builder uses **GitHub Models** via the workflow `github.token`
+(`permissions: models: read`). See [MODELS.md](MODELS.md). No Copilot seat
+required.
 
 ## Confirmed role → identity → scope
 
@@ -47,9 +47,8 @@ Unrelated org install (not part of the agent loop): `digitalocean` (installation
 | Reviewer | `REVIEWER_APP_ID` | `REVIEWER_PRIVATE_KEY` |
 | Docs | `DOCS_APP_ID` | `DOCS_PRIVATE_KEY` |
 
-| Extra secret | Purpose |
-|--------------|---------|
-| `COPILOT_ASSIGN_TOKEN` | User PAT to assign Copilot from Builder ([COPILOT.md](COPILOT.md)) |
+Builder also uses the job’s Actions `github.token` as `MODELS_TOKEN` for
+GitHub Models inference (not an extra secret).
 
 ## Actions job `permissions:` (must not exceed App)
 

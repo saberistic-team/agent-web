@@ -12,15 +12,13 @@ Workflow will move you through `status:in-progress`, then hand off with
 ## Definition of done
 
 - Implementation matches the issue scope (bug fix or feature as labeled).
-- For product code, Builder **assigns GitHub Copilot cloud agent** (see
-  [docs/COPILOT.md](../docs/COPILOT.md)); Copilot opens the PR.
-- Verify/smoke and landing scaffolds may complete without Copilot.
-- Branch name when Copilot/Builder creates one: prefer
-  `builder/<issue-number>-<short-slug>` when under our control.
+- For product code, Builder uses **GitHub Models** to generate files and open
+  a PR (see [docs/MODELS.md](../docs/MODELS.md)).
+- Verify/smoke and landing scaffolds may complete without a model call.
+- Branch: `builder/<issue-number>-<short-slug>`
 - Tests relevant to the change are added or updated when behavior changes.
 - PR description states what changed, how to verify, and the issue number.
-- You are ready for Reviewer after a real PR exists (labels advanced by
-  workflow / `copilot-handoff`).
+- Ready for Reviewer after a real PR exists.
 
 ## Constraints
 
@@ -46,8 +44,8 @@ Escalate when:
   dependency CVE with no safe upgrade path)
 - the work is outside Builder scope (pure policy, credentials, org admin)
 - you need a clarification that would change architecture or public API
-- autonomous codegen unavailable **and** Copilot assignment failed — escalate
-  with `COPILOT_ASSIGN_TOKEN` setup notes (see docs/COPILOT.md)
+- GitHub Models codegen failed (rate limit, bad JSON, empty plan) — escalate
+  with notes from docs/MODELS.md; do not open worklog-only PRs
 
 ## Special case: landing / about page
 

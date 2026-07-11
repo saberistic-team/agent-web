@@ -367,41 +367,35 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
         write_builder_handoff("reviewer")
         return
 
-    # Default product work: assign GitHub Copilot cloud agent (real codegen).
-    # Requires COPILOT_ASSIGN_TOKEN (user PAT) — App install tokens cannot assign.
+    # Default product work: GitHub Models codegen → branch + PR → Reviewer.
+    # Inference uses MODELS_TOKEN (Actions GITHUB_TOKEN + models:read).
+    # Git mutations use Builder App GITHUB_TOKEN.
     try:
-        from assign_copilot import assign_copilot, build_instructions
+        from codegen_models import build_with_models
 
-        model = os.environ.get("COPILOT_MODEL", "")
-        instructions = build_instructions(brief, title, body)
-        assign_copilot(
+        result = build_with_models(
             repo,
             issue,
-            instructions=instructions,
-            model=model or None,
+            title=title,
+            body=body,
+            brief=brief,
         )
-        post_issue_comment(
-            repo,
-            issue,
-            (
-                "### builder_result\n"
-                "- kind: `copilot`\n"
-                "- assignee: `copilot-swe-agent[bot]`\n"
-                f"- model: `{model or 'auto'}`\n"
-                "- handoff: `waiting` (for Copilot PR)\n"
-            ),
+        HANDOFF_DIR.mkdir(parents=True, exist_ok=True)
+        (HANDOFF_DIR / "builder-model.txt").write_text(
+            str(result.get("model") or "") + "\n", encoding="utf-8"
         )
-        write_builder_handoff("waiting")
+        write_builder_handoff("reviewer")
     except Exception as exc:
         escalate(
             repo,
             issue,
             (
-                "Failed to assign GitHub Copilot cloud agent for codegen.\n\n"
+                "GitHub Models codegen failed.\n\n"
                 f"`{exc}`\n\n"
-                "Add repo secret `COPILOT_ASSIGN_TOKEN` (user/fine-grained PAT with "
-                "issues + contents + pull requests write; Copilot coding agent enabled). "
-                "App installation tokens cannot start Copilot tasks."
+                "Ensure the Builder workflow has `permissions: models: read` and "
+                "passes `MODELS_TOKEN` from `github.token`. Optional var: "
+                "`GITHUB_MODELS_MODEL` (default `openai/gpt-4o-mini`). "
+                "See docs/MODELS.md."
             ),
         )
         write_builder_handoff("blocked")
