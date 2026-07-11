@@ -1,6 +1,6 @@
 # Agent instructions (agent-web)
 
-Shared brief for Builder/Reviewer AI (Gemini / Models) and any future coding
+Shared brief for Builder/Reviewer AI (OpenAI / Models) and any future coding
 agents. Live site: **https://saberistic.com** (`/`, `/about`, `/health`, `/hello`).
 
 ## Product rules

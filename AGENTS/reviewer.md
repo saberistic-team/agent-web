@@ -12,7 +12,7 @@ Before approving you must:
 1. Capture **headless Chromium screenshots** via Actions Playwright
    (`scripts/screenshot_deploy.py` on the live deploy URL) and post them on the
    PR and issue — not Copilot / MCP browsers
-2. Run **Models/Gemini AI review** ([docs/MODELS.md](../docs/MODELS.md),
+2. Run **OpenAI / Models AI review** ([docs/MODELS.md](../docs/MODELS.md),
    [docs/DESIGN.md](../docs/DESIGN.md))
 3. Post an **`### acceptance_checklist`** that marks each acceptance criterion
    done/not_done with links to evidence (PR, commits, files, screenshots)

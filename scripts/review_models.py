@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """AI-backed PR review against issue acceptance criteria.
 
-Prefers OpenAI (ChatGPT) when OPENAI_API_KEY is set, then Gemini, then
-GitHub Models.
+Prefers OpenAI (ChatGPT) when OPENAI_API_KEY is set, then GitHub Models.
+Gemini is retired.
 """
 
 from __future__ import annotations
@@ -11,7 +11,6 @@ import json
 import os
 import re
 import urllib.error
-import urllib.parse
 import urllib.request
 from typing import Any
 
@@ -112,49 +111,8 @@ def chat_github(system: str, user: str, model: str | None = None) -> tuple[str, 
     return str(content), model
 
 
-def chat_gemini(system: str, user: str, model: str | None = None) -> tuple[str, str]:
-    key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-    if not key:
-        raise GitHubError("missing GEMINI_API_KEY")
-    model = model or os.environ.get("GEMINI_MODEL") or "gemini-3.5-flash"
-    url = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{urllib.parse.quote(model, safe='')}:generateContent"
-        f"?key={urllib.parse.quote(key.strip())}"
-    )
-    payload = {
-        "systemInstruction": {"parts": [{"text": system}]},
-        "contents": [{"role": "user", "parts": [{"text": user}]}],
-        "generationConfig": {
-            "temperature": 0.1,
-            "responseMimeType": "application/json",
-        },
-    }
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(payload).encode("utf-8"),
-        method="POST",
-        headers={"Content-Type": "application/json", "User-Agent": "agent-web-reviewer"},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=180) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise GitHubError(f"Gemini API -> {exc.code}: {detail}") from exc
-    texts = []
-    for cand in body.get("candidates") or []:
-        for part in (cand.get("content") or {}).get("parts") or []:
-            if part.get("text"):
-                texts.append(str(part["text"]))
-    content = "\n".join(texts).strip()
-    if not content:
-        raise GitHubError(f"Gemini empty content: {body!r}")
-    return content, model
-
-
 def chat(system: str, user: str, model: str | None = None) -> tuple[str, str]:
-    """Prefer OpenAI, then Gemini, then GitHub Models."""
+    """OpenAI first, then GitHub Models. Gemini is retired."""
     errors: list[str] = []
     if openai_api_key():
         try:
@@ -163,11 +121,6 @@ def chat(system: str, user: str, model: str | None = None) -> tuple[str, str]:
             )
         except Exception as exc:
             errors.append(f"openai: {exc}")
-    if os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"):
-        try:
-            return chat_gemini(system, user, model=os.environ.get("GEMINI_MODEL"))
-        except Exception as exc:
-            errors.append(f"gemini: {exc}")
     try:
         return chat_github(system, user, model=model)
     except Exception as exc:

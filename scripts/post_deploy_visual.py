@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""After deploy: capture post screenshots and ask Gemini if the issue change is visible."""
+"""After deploy: capture post screenshots and ask OpenAI if the issue change is visible."""
 
 from __future__ import annotations
 
@@ -68,8 +68,8 @@ def record_health(
     return {"path": f"{prefix}/deploy-health.json", "url": raw_url, "json": json.dumps(slim)}
 
 
-def gemini_key() -> str | None:
-    value = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+def openai_key() -> str | None:
+    value = os.environ.get("OPENAI_API_KEY")
     return value.strip() if value and value.strip() else None
 
 
@@ -126,23 +126,25 @@ def list_pre_urls(repo: str, ref: str, pr: int | None) -> list[str]:
     return urls
 
 
-def gemini_visual_check(
+def visual_ai_check(
     *,
     issue_title: str,
     issue_body: str,
     pre_paths: list[Path],
     post_paths: list[Path],
 ) -> dict:
-    key = gemini_key()
+    """Compare before/after screenshots via OpenAI vision (Gemini retired)."""
+    key = openai_key()
     if not key:
         return {
             "visible": None,
-            "summary": "GEMINI_API_KEY missing; skipped visual AI check",
+            "summary": "OPENAI_API_KEY missing; skipped visual AI check",
             "decision": "skip",
         }
-    model = os.environ.get("GEMINI_MODEL") or "gemini-3.5-flash"
-    parts: list[dict] = [
+    model = os.environ.get("OPENAI_MODEL") or "gpt-4.1-mini"
+    content: list[dict] = [
         {
+            "type": "text",
             "text": (
                 "You compare before/after screenshots of a deployed website.\n"
                 "Return ONLY JSON: "
@@ -151,57 +153,57 @@ def gemini_visual_check(
                 "fail if unchanged or unrelated.\n\n"
                 f"Issue title: {issue_title}\n"
                 f"Issue body:\n{(issue_body or '')[:4000]}\n"
-            )
+            ),
         }
     ]
     for label, paths in (("BEFORE", pre_paths), ("AFTER", post_paths)):
-        parts.append({"text": f"\n{label} screenshots follow."})
-        for path in paths:
-            parts.append(
+        content.append({"type": "text", "text": f"\n{label} screenshots follow."})
+        for p in paths:
+            b64 = base64.b64encode(p.read_bytes()).decode("ascii")
+            content.append(
                 {
-                    "inline_data": {
-                        "mime_type": "image/png",
-                        "data": base64.b64encode(path.read_bytes()).decode("ascii"),
-                    }
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{b64}"},
                 }
             )
-    url = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{urllib.parse.quote(model, safe='')}:generateContent"
-        f"?key={urllib.parse.quote(key)}"
-    )
     payload = {
-        "contents": [{"role": "user", "parts": parts}],
-        "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"},
+        "model": model,
+        "temperature": 0.1,
+        "response_format": {"type": "json_object"},
+        "messages": [{"role": "user", "content": content}],
     }
     req = urllib.request.Request(
-        url,
+        "https://api.openai.com/v1/chat/completions",
         data=json.dumps(payload).encode("utf-8"),
         method="POST",
-        headers={"Content-Type": "application/json", "User-Agent": "agent-web-visual"},
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+            "User-Agent": "agent-web-visual",
+        },
     )
     try:
         with urllib.request.urlopen(req, timeout=180) as resp:
             body = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
-        raise GitHubError(f"Gemini visual -> {exc.code}: {detail}") from exc
-    text = ""
-    for cand in body.get("candidates") or []:
-        for part in (cand.get("content") or {}).get("parts") or []:
-            text += str(part.get("text") or "")
-    text = text.strip()
+        raise GitHubError(f"OpenAI visual -> {exc.code}: {detail}") from exc
+    choices = body.get("choices") or []
+    out_text = ""
+    if choices:
+        out_text = str((choices[0].get("message") or {}).get("content") or "").strip()
     try:
-        data = json.loads(text)
+        data = json.loads(out_text)
     except json.JSONDecodeError:
-        start, end = text.find("{"), text.rfind("}")
-        data = json.loads(text[start : end + 1]) if start >= 0 and end > start else {}
+        s, e = out_text.find("{"), out_text.rfind("}")
+        data = json.loads(out_text[s : e + 1]) if s >= 0 and e > s else {}
     return {
         "visible": data.get("visible"),
-        "summary": str(data.get("summary") or text[:500]),
+        "summary": str(data.get("summary") or out_text[:500]),
         "decision": str(data.get("decision") or "fail").lower(),
         "model": model,
     }
+
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -274,7 +276,7 @@ def main(argv: list[str] | None = None) -> int:
                 f".agent/screenshots/issue-{issue_num}/pre",
             )
 
-        visual = gemini_visual_check(
+        visual = visual_ai_check(
             issue_title=issue.get("title") or "",
             issue_body=issue.get("body") or "",
             pre_paths=pre_files,
