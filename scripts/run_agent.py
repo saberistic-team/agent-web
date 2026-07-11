@@ -392,12 +392,11 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
             repo,
             issue,
             (
-                "Codegen failed (GitHub Models and/or Gemini).\n\n"
+                "Codegen failed (OpenAI / GitHub Models / Gemini).\n\n"
                 f"`{exc}`\n\n"
-                "Non-UI work prefers free GitHub Models; UI/design prefers Gemini "
-                "(see docs/MODELS.md + docs/DESIGN.md). Each backs up the other. "
-                "If Models returns 403, set `MODELS_TOKEN` (PAT with models scope) "
-                "and/or ensure `GEMINI_API_KEY` for UI + backup. "
+                "Preferred: ChatGPT via `OPENAI_API_KEY` (set `CODEGEN_PROVIDER=openai`). "
+                "Backup: free GitHub Models / Gemini. "
+                "See docs/MODELS.md + docs/DESIGN.md. "
                 "If `git/refs` returns 403 for the Builder App, grant the App "
                 "`contents: write` on this repository."
             ),

@@ -56,10 +56,13 @@ jobs:
           # App token: labels, comments, commits, PRs
           GITHUB_TOKEN: ${{ steps.builder.outputs.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          # ChatGPT (OpenAI) preferred when OPENAI_API_KEY is set
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
           # Models inference (PAT preferred when Actions token returns 403)
           MODELS_TOKEN: ${{ secrets.MODELS_TOKEN || github.token }}
           GITHUB_MODELS_MODEL: ${{ vars.GITHUB_MODELS_MODEL }}
-          # Gemini primary for UI; mutual backup with Models
+          # Gemini optional backup / post-deploy visual
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
           CODEGEN_PROVIDER: ${{ vars.CODEGEN_PROVIDER }}

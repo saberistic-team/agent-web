@@ -18,7 +18,9 @@ from github_api import GitHubError, api, post_issue_comment, split_repo, token
 
 DEFAULT_MODEL = "openai/gpt-4o-mini"
 DEFAULT_GEMINI_MODEL = "gemini-3.5-flash"
+DEFAULT_OPENAI_MODEL = "gpt-4.1-mini"
 MODELS_URL = "https://models.github.ai/inference/chat/completions"
+OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 GEMINI_URL_TMPL = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 )
@@ -51,6 +53,11 @@ def models_token() -> str:
 
 def gemini_api_key() -> str | None:
     value = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    return value.strip() if value and value.strip() else None
+
+
+def openai_api_key() -> str | None:
+    value = os.environ.get("OPENAI_API_KEY")
     return value.strip() if value and value.strip() else None
 
 
@@ -182,6 +189,47 @@ def chat_completion_github(*, model: str, system: str, user: str) -> str:
     return str(content)
 
 
+def chat_completion_openai(*, model: str, system: str, user: str) -> str:
+    key = openai_api_key()
+    if not key:
+        raise GitHubError("missing OPENAI_API_KEY")
+    payload = {
+        "model": model,
+        "temperature": 0.2,
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+    }
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        OPENAI_URL,
+        data=data,
+        method="POST",
+        headers={
+            "Accept": "application/json",
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+            "User-Agent": "agent-web-builder",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=180) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise GitHubError(f"OpenAI API -> {exc.code}: {detail}") from exc
+
+    choices = body.get("choices") or []
+    if not choices:
+        raise GitHubError(f"OpenAI API returned no choices: {body!r}")
+    content = (choices[0].get("message") or {}).get("content")
+    if not content:
+        raise GitHubError(f"OpenAI API empty content: {body!r}")
+    return str(content)
+
+
 def chat_completion_gemini(*, model: str, system: str, user: str) -> str:
     key = gemini_api_key()
     if not key:
@@ -227,6 +275,8 @@ def chat_completion_gemini(*, model: str, system: str, user: str) -> str:
 
 
 def chat_completion(*, provider: str, model: str, system: str, user: str) -> str:
+    if provider == "openai":
+        return chat_completion_openai(model=model, system=system, user=user)
     if provider == "gemini":
         # Try configured model, then known-good aliases if the id is retired.
         models = [model]
@@ -366,13 +416,14 @@ def json_system_prompt(*, ui: bool) -> str:
         "{\n"
         '  "commit_message": "string",\n'
         '  "pr_summary": "string",\n'
-        '  "files": [{"path": "relative/path", "content_b64": "base64 utf-8 file"}]\n'
+        '  "files": [{"path": "relative/path", "content": "full file text"}]\n'
         "}\n"
         "Rules:\n"
         f"- At most {MAX_FILES} files; prefer minimal diffs.\n"
-        "- Prefer content_b64 (standard base64 of the full UTF-8 file) so HTML/CSS "
-        "never breaks JSON escaping. Plain \"content\" string is allowed only for "
-        "tiny non-HTML files.\n"
+        "- Prefer plain UTF-8 \"content\" strings (correctly JSON-escaped). "
+        "Use content_b64 only if you cannot escape HTML safely.\n"
+        "- Never invent typos in imports (FastAPI not FastAPH), HTML tags "
+        "(</head> not </`ead>), or CSS selectors (.hero not .herm).\n"
         "- commit_message MUST include the issue id like builder(#123): …\n"
         "- Include full file contents for each touched file.\n"
         "- Add/update tests when behavior changes.\n"
@@ -405,15 +456,21 @@ def select_provider(title: str, body: str) -> tuple[str, str]:
     """Return (provider, model).
 
     Policy:
-    - Visual/UI/design issues → Gemini primary (when key set), else GitHub Models
-    - Everything else → GitHub Models primary (free Actions Models), else Gemini
-    - Either side falls back to the other in build_with_models on failure
+    - CODEGEN_PROVIDER force: openai|chatgpt|gemini|github-models|models
+    - Else if OPENAI_API_KEY set → OpenAI (ChatGPT) primary for all product work
+    - Else UI → Gemini (when key set), else GitHub Models
+    - Else non-UI → GitHub Models, else Gemini
     """
     force = (os.environ.get("CODEGEN_PROVIDER") or "").strip().lower()
+    if force in {"openai", "chatgpt"}:
+        return "openai", os.environ.get("OPENAI_MODEL") or DEFAULT_OPENAI_MODEL
     if force in {"gemini", "github-models", "models"}:
         if force == "gemini":
             return "gemini", os.environ.get("GEMINI_MODEL") or DEFAULT_GEMINI_MODEL
         return "github-models", os.environ.get("GITHUB_MODELS_MODEL") or DEFAULT_MODEL
+
+    if openai_api_key():
+        return "openai", os.environ.get("OPENAI_MODEL") or DEFAULT_OPENAI_MODEL
 
     ui = is_ui_design_issue(title, body)
     has_gemini = bool(gemini_api_key())
@@ -424,14 +481,27 @@ def select_provider(title: str, body: str) -> tuple[str, str]:
         return "gemini", gemini_model
     if not ui:
         return "github-models", models_model
-    # UI but no Gemini key → Models
     return "github-models", models_model
 
 
 def _other_provider(provider: str) -> tuple[str, str]:
+    """Pick a backup provider different from the primary."""
+    openai_model = os.environ.get("OPENAI_MODEL") or DEFAULT_OPENAI_MODEL
+    models_model = os.environ.get("GITHUB_MODELS_MODEL") or DEFAULT_MODEL
+    gemini_model = os.environ.get("GEMINI_MODEL") or DEFAULT_GEMINI_MODEL
+
+    if provider == "openai":
+        if gemini_api_key():
+            return "gemini", gemini_model
+        return "github-models", models_model
     if provider == "gemini":
-        return "github-models", os.environ.get("GITHUB_MODELS_MODEL") or DEFAULT_MODEL
-    return "gemini", os.environ.get("GEMINI_MODEL") or DEFAULT_GEMINI_MODEL
+        if openai_api_key():
+            return "openai", openai_model
+        return "github-models", models_model
+    # github-models
+    if openai_api_key():
+        return "openai", openai_model
+    return "gemini", gemini_model
 
 
 def build_with_models(
@@ -468,8 +538,13 @@ def build_with_models(
     try:
         raw = chat_completion(provider=provider, model=model, system=system, user=user)
     except Exception as primary_exc:
-        # Mutual backup: Models ↔ Gemini when primary is unavailable / not permissioned.
+        # Mutual backup across OpenAI ↔ Gemini ↔ GitHub Models.
         alt_provider, alt_model = _other_provider(provider)
+        if alt_provider == "openai" and not openai_api_key():
+            raise GitHubError(
+                f"{provider} failed: {primary_exc}\n"
+                "OpenAI backup unavailable (missing OPENAI_API_KEY)."
+            ) from primary_exc
         if alt_provider == "gemini" and not gemini_api_key():
             raise GitHubError(
                 f"{provider} failed: {primary_exc}\n"
@@ -494,13 +569,13 @@ def build_with_models(
         plan = extract_json(raw)
         files = validate_plan(plan)
     except Exception as parse_exc:
-        # One repair pass: force content_b64 so HTML cannot break JSON.
+        # One repair pass: prefer plain content strings (not brittle base64).
         repair_user = (
             f"{user}\n\n"
             "## Previous invalid model output (fix and return valid JSON only)\n"
             f"Error: {parse_exc}\n"
-            "Return the same change using content_b64 for EVERY file "
-            "(standard base64 of full UTF-8 contents). No markdown fences.\n"
+            "Return the same change using plain UTF-8 \"content\" for EVERY file "
+            "(correct JSON string escaping). Avoid content_b64. No markdown fences.\n"
         )
         raw = chat_completion(
             provider=provider, model=model, system=system, user=repair_user

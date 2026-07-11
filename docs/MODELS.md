@@ -1,37 +1,39 @@
-# GitHub Models codegen (Builder)
+# Builder codegen providers
 
-Non-UI issues prefer free **GitHub Models**; UI/design prefers **Gemini** —
-see [DESIGN.md](DESIGN.md). Each backs up the other.
+Order when no `CODEGEN_PROVIDER` force is set:
+
+1. **OpenAI / ChatGPT** if `OPENAI_API_KEY` is set
+2. Else **Gemini** for UI issues (if `GEMINI_API_KEY`)
+3. Else **GitHub Models** (free Actions Models; use `MODELS_TOKEN` PAT on 403)
+
+Force with variable `CODEGEN_PROVIDER` = `openai` | `chatgpt` | `gemini` | `github-models`.
 
 ## Flow
 
 1. Issue gets `agent:builder`
 2. Special cases: verify/smoke (no model); missing landing scaffold → block
-3. UI/landing/design issues → **Gemini** primary (if `GEMINI_API_KEY`), else Models
-4. Other issues → **GitHub Models** primary; Gemini backup if Models fails
-5. Opens PR → Reviewer (acceptance checklist + screenshots)
+3. Model returns JSON file plan → Builder App commits + opens PR
+4. Reviewer (acceptance checklist + screenshots)
 
 ## Auth
 
 | Token | Purpose |
 |-------|---------|
-| Builder App token (`GITHUB_TOKEN` in job) | Comments, labels, commits, PRs (`contents: write` required) |
-| `MODELS_TOKEN` secret, else Actions `github.token` | Models inference |
-| `GEMINI_API_KEY` | Gemini primary for UI + backup for Models |
+| Builder App token (`GITHUB_TOKEN` in job) | Comments, labels, commits, PRs |
+| `OPENAI_API_KEY` | ChatGPT codegen (preferred) |
+| `MODELS_TOKEN` secret, else Actions `github.token` | GitHub Models inference |
+| `GEMINI_API_KEY` | Optional backup + post-deploy visual AI |
 
-Prefer a PAT secret named `MODELS_TOKEN` (models scope) if Actions returns 403.
+## Models
 
-## Model selection
-
-Optional repo **variable** `GITHUB_MODELS_MODEL` (Actions → Variables).
-
-Default: `openai/gpt-4o-mini`
-
-Browse models: https://github.com/marketplace/models
-
-Force provider: variable `CODEGEN_PROVIDER` = `gemini` | `github-models`
+| Variable | Default |
+|----------|---------|
+| `OPENAI_MODEL` | `gpt-4.1-mini` |
+| `GITHUB_MODELS_MODEL` | `openai/gpt-4o-mini` |
+| `GEMINI_MODEL` | `gemini-3.5-flash` |
 
 ## Limits
 
 - Max 12 files per issue
 - Minimal scoped changes; include tests when behavior changes
+- Prefer plain JSON `content` strings (not brittle `content_b64`)

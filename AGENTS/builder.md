@@ -12,9 +12,9 @@ Workflow will move you through `status:in-progress`, then hand off with
 ## Definition of done
 
 - Implementation matches the issue scope (bug fix or feature as labeled).
-- For product code, Builder uses **GitHub Models** (non-UI) / **Gemini** (UI)
-  with mutual backup — [docs/MODELS.md](../docs/MODELS.md),
-  [docs/DESIGN.md](../docs/DESIGN.md).
+- For product code, Builder uses **OpenAI/ChatGPT** when `OPENAI_API_KEY` is set;
+  else **Gemini** (UI) / **GitHub Models** (non-UI) with mutual backup —
+  [docs/MODELS.md](../docs/MODELS.md), [docs/DESIGN.md](../docs/DESIGN.md).
 - Verify/smoke and landing scaffolds may complete without a model call.
 - Branch / PR must reference `#issue` (`Closes #N`).
 - Tests relevant to the change are added or updated when behavior changes.
@@ -37,6 +37,6 @@ be met from the issue text.
 
 ## Special case: landing / UI design
 
-- Primary: Gemini when `GEMINI_API_KEY` set; else Models
+- Primary: OpenAI when `OPENAI_API_KEY` set; else Gemini; else Models
 - Edit `site/`; keep brutal-minimalist brand rules in `.github/copilot-instructions.md`
   (shared agent brief) and [docs/DESIGN.md](../docs/DESIGN.md)

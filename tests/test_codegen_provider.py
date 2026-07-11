@@ -23,7 +23,27 @@ def test_validate_plan_accepts_unpadded_content_b64() -> None:
     assert files == [{"path": "site/about.html", "content": text}]
 
 
-def test_select_provider_ui_prefers_gemini(monkeypatch) -> None:
+def test_select_provider_prefers_openai_when_key_set(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.delenv("CODEGEN_PROVIDER", raising=False)
+    provider, model = select_provider(
+        "About page: dedicated route",
+        "brutal minimal landing CTA hero",
+    )
+    assert provider == "openai"
+    assert "gpt" in model
+
+
+def test_select_provider_force_openai(monkeypatch) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("CODEGEN_PROVIDER", "chatgpt")
+    provider, _model = select_provider("any", "any")
+    assert provider == "openai"
+
+
+def test_select_provider_ui_prefers_gemini_without_openai(monkeypatch) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
     monkeypatch.delenv("CODEGEN_PROVIDER", raising=False)
     provider, model = select_provider(
@@ -35,6 +55,7 @@ def test_select_provider_ui_prefers_gemini(monkeypatch) -> None:
 
 
 def test_select_provider_non_ui_prefers_models(monkeypatch) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
     monkeypatch.delenv("CODEGEN_PROVIDER", raising=False)
     provider, _model = select_provider(
@@ -45,6 +66,7 @@ def test_select_provider_non_ui_prefers_models(monkeypatch) -> None:
 
 
 def test_select_provider_ui_without_gemini_uses_models(monkeypatch) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     monkeypatch.delenv("CODEGEN_PROVIDER", raising=False)

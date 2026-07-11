@@ -1,39 +1,25 @@
-# Design AI (Gemini) for visual / UI changes
+# Design AI for visual / UI changes
 
-Builder uses **Gemini** as the **primary** codegen provider for visual design
-work (landing, about, CTA, CSS, hero, layout). For all other issues it prefers
-free **GitHub Models** — see [MODELS.md](MODELS.md).
+Builder prefers **ChatGPT (OpenAI)** when `OPENAI_API_KEY` is set. Without it,
+UI issues use **Gemini**, then **GitHub Models** — see [MODELS.md](MODELS.md).
 
-Each provider is a **backup** for the other when unavailable or not permissioned
-(e.g. Models `403`, Gemini `404` / missing key).
+## Setup (ChatGPT)
 
-## When Gemini is primary
+1. Create an API key at [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+2. Repo secret: `OPENAI_API_KEY`
+3. Optional variable: `OPENAI_MODEL` (default `gpt-4.1-mini`)
+4. Optional force: `CODEGEN_PROVIDER=openai` (or `chatgpt`)
 
-`scripts/codegen_models.py` → `select_provider`:
+## Gemini (optional backup / post-deploy visual)
 
-1. Issue looks like UI/design (landing, about page, CTA, CSS, hero, layout, …), and
-2. Secret `GEMINI_API_KEY` is set  
+1. [Google AI Studio](https://aistudio.google.com/apikey) → `GEMINI_API_KEY`
+2. Optional: `GEMINI_MODEL` (default `gemini-3.5-flash`)
 
-→ primary: Gemini; backup: GitHub Models
-
-## Setup (free)
-
-1. Open [Google AI Studio](https://aistudio.google.com/apikey) → create an API key  
-2. Repo → **Settings** → **Secrets** → **Actions** → `GEMINI_API_KEY`  
-   or: `gh secret set GEMINI_API_KEY`
-
-Optional Actions **variables**:
-
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `GEMINI_MODEL` | `gemini-3.5-flash` | Gemini model id |
-| `CODEGEN_PROVIDER` | (auto) | Force `gemini` or `github-models` |
+Gemini has been unreliable for HTML/CSS JSON codegen (typos like `FastAPH`,
+broken tags, bad `content_b64`). Prefer OpenAI for product PRs.
 
 ## Design brief baked into prompts
 
 Brutal-minimalist, brand-first, navy + orange accent, Archivo Black / IBM Plex
 Mono, no purple/cream/newspaper tropes, single wordmark (no duplicate logos),
 no team roster.
-
-Human exploration (optional): [Google Stitch](https://stitch.withgoogle.com) for
-mockups you paste into an issue — Builder still implements from the issue text.
