@@ -17,3 +17,23 @@ jobs:
         run: pip install -r requirements.txt
       - name: Run tests
         run: pytest -q
+
+  deploy:
+    name: Deploy to Render
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy hook
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${RENDER_DEPLOY_HOOK_URL:-}" ]]; then
+            echo "::error::Missing repo secret RENDER_DEPLOY_HOOK_URL"
+            echo "Add it from Render → agent-web-hello → Settings → Deploy Hook"
+            exit 1
+          fi
+          curl --fail --silent --show-error -X POST "$RENDER_DEPLOY_HOOK_URL"
+          echo
+          echo "Triggered Render deploy for https://agent-web-hello.onrender.com"

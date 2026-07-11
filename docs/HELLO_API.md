@@ -9,6 +9,12 @@ Minimal FastAPI service in `app/main.py`.
 | `GET` | `/hello` | `{"message":"hello world"}` |
 | `GET` | `/health` | `{"status":"ok"}` |
 
+## Production
+
+- **URL:** https://agent-web-hello.onrender.com
+- **Health:** https://agent-web-hello.onrender.com/health
+- **Hello:** https://agent-web-hello.onrender.com/hello
+
 ## Local
 
 ```bash
@@ -17,14 +23,22 @@ uvicorn app.main:app --reload --port 8000
 pytest -q
 ```
 
-## Deploy (Render — easiest)
+## Deploy (Render)
 
-1. Create a [Render](https://render.com) account and connect `saberistic-team/agent-web`.
-2. **New → Blueprint** and select this repo (uses [`render.yaml`](../render.yaml)), **or** create a **Web Service** with:
-   - Build: `pip install -r requirements.txt`
-   - Start: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-   - Health check: `/health`
-3. Deploy. Render assigns an `https://…onrender.com` URL.
-4. Keep deploy credentials in Render / Actions secrets — never commit them.
+### One-time setup
 
-No Render API token is stored in this repo; the first production URL is created in the Render dashboard.
+1. Service already exists as Blueprint from [`render.yaml`](../render.yaml) → https://agent-web-hello.onrender.com
+2. In Render → **agent-web-hello** → **Settings** → **Deploy Hook**, copy the URL.
+3. In GitHub → repo **Settings** → **Secrets and variables** → **Actions**, add secret:
+   - Name: `RENDER_DEPLOY_HOOK_URL`
+   - Value: the deploy hook URL
+4. In Render → **Settings** → **Auto-Deploy**, prefer **Off** or **After CI Checks Pass** so deploys are gated by GitHub Actions tests (avoids double-deploy with the hook).
+
+### Automatic deploys
+
+On every push/merge to `main`, [`.github/workflows/ci.yml`](../.github/workflows/ci.yml):
+
+1. Runs pytest
+2. If tests pass, `POST`s the Render deploy hook
+
+Never commit the deploy hook URL; keep it in GitHub Actions secrets only.
