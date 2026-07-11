@@ -121,6 +121,10 @@ main {
 
 .cta-row {
   margin: 2.5rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
   animation: rise 0.9s ease-out 0.3s both;
 }
 
@@ -253,4 +257,41 @@ main {
     animation: none !important;
     transition: none !important;
   }
+}
+
+.cta-secondary {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+.cta-secondary:hover,
+.cta-secondary:focus-visible {
+  background: transparent;
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.about-prose {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  max-width: 65ch;
+}
+
+.about-prose p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1.65;
+}
+
+.page-title {
+  margin: 0 0 2.5rem;
+  font-family: var(--display);
+  font-size: clamp(2.5rem, 8vw, 5rem);
+  font-weight: 400;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
 }
