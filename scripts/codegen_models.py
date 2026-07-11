@@ -224,9 +224,11 @@ def chat_completion_openai(*, model: str, system: str, user: str) -> str:
 def chat_completion(*, provider: str, model: str, system: str, user: str) -> str:
     if provider == "openai":
         return chat_completion_openai(model=model, system=system, user=user)
+    if provider == "cursor":
+        raise GitHubError("cursor provider uses build_with_cursor, not chat_completion")
     if provider == "gemini":
         raise GitHubError(
-            "Gemini is retired for this repo; set OPENAI_API_KEY / CODEGEN_PROVIDER=openai"
+            "Gemini is retired for this repo; set CURSOR_API_KEY / CODEGEN_PROVIDER=cursor"
         )
     return chat_completion_github(model=model, system=system, user=user)
 
@@ -387,36 +389,55 @@ def json_system_prompt(*, ui: bool) -> str:
     )
 
 
+def cursor_api_key() -> str | None:
+    value = os.environ.get("CURSOR_API_KEY")
+    return value.strip() if value and value.strip() else None
+
+
 def select_provider(title: str, body: str) -> tuple[str, str]:
     """Return (provider, model).
 
-    Policy (Gemini retired):
-    - CODEGEN_PROVIDER force: openai|chatgpt|github-models|models
-    - Else OpenAI when OPENAI_API_KEY is set (required for product work)
-    - Else GitHub Models only as last-resort backup
+    Policy:
+    - CODEGEN_PROVIDER force: cursor|openai|chatgpt|github-models|models
+    - Else Cursor when CURSOR_API_KEY is set (preferred for coding)
+    - Else OpenAI when OPENAI_API_KEY is set
+    - Else GitHub Models last-resort backup
     """
-    del title, body  # selection no longer depends on UI vs non-UI for Gemini
+    del title, body
     force = (os.environ.get("CODEGEN_PROVIDER") or "").strip().lower()
+    if force in {"cursor", "cursor-sdk", "composer"}:
+        return "cursor", os.environ.get("CURSOR_MODEL") or "composer-2.5"
     if force in {"openai", "chatgpt"}:
         return "openai", os.environ.get("OPENAI_MODEL") or DEFAULT_OPENAI_MODEL
     if force in {"github-models", "models"}:
         return "github-models", os.environ.get("GITHUB_MODELS_MODEL") or DEFAULT_MODEL
     if force == "gemini":
         raise GitHubError(
-            "CODEGEN_PROVIDER=gemini is retired; use openai (OPENAI_API_KEY)"
+            "CODEGEN_PROVIDER=gemini is retired; use cursor or openai"
         )
 
+    if cursor_api_key():
+        return "cursor", os.environ.get("CURSOR_MODEL") or "composer-2.5"
     if openai_api_key():
         return "openai", os.environ.get("OPENAI_MODEL") or DEFAULT_OPENAI_MODEL
     return "github-models", os.environ.get("GITHUB_MODELS_MODEL") or DEFAULT_MODEL
 
 
 def _other_provider(provider: str) -> tuple[str, str]:
-    """Backup: OpenAI ↔ GitHub Models only (no Gemini)."""
+    """Backup chain: cursor → openai → github-models (and reverse)."""
     openai_model = os.environ.get("OPENAI_MODEL") or DEFAULT_OPENAI_MODEL
     models_model = os.environ.get("GITHUB_MODELS_MODEL") or DEFAULT_MODEL
-    if provider == "openai":
+    cursor_model = os.environ.get("CURSOR_MODEL") or "composer-2.5"
+    if provider == "cursor":
+        if openai_api_key():
+            return "openai", openai_model
         return "github-models", models_model
+    if provider == "openai":
+        if cursor_api_key():
+            return "cursor", cursor_model
+        return "github-models", models_model
+    if cursor_api_key():
+        return "cursor", cursor_model
     return "openai", openai_model
 
 
@@ -431,15 +452,23 @@ def build_with_models(
 ) -> dict[str, Any]:
     root = cwd or Path.cwd()
     ui = is_ui_design_issue(title, body)
-    if not openai_api_key() and (os.environ.get("CODEGEN_PROVIDER") or "").strip().lower() not in {
-        "github-models",
-        "models",
-    }:
-        raise GitHubError(
-            "OPENAI_API_KEY is required for Builder codegen (Gemini retired). "
-            "Set the secret or force CODEGEN_PROVIDER=github-models."
-        )
     provider, model = select_provider(title, body)
+    if provider == "cursor":
+        from codegen_cursor import build_with_cursor
+
+        return build_with_cursor(
+            repo, issue, title=title, body=body, brief=brief
+        )
+    force = (os.environ.get("CODEGEN_PROVIDER") or "").strip().lower()
+    if (
+        provider == "openai"
+        and not openai_api_key()
+        and force not in {"github-models", "models"}
+    ):
+        raise GitHubError(
+            "OPENAI_API_KEY missing. Prefer CURSOR_API_KEY / CODEGEN_PROVIDER=cursor, "
+            "or set OPENAI_API_KEY, or force CODEGEN_PROVIDER=github-models."
+        )
     brief_text = brief.read_text(encoding="utf-8") if brief.is_file() else ""
     owner, name = split_repo(repo)
     default = api("GET", f"/repos/{owner}/{name}").get("default_branch") or "main"
@@ -476,10 +505,19 @@ def build_with_models(
         raw = chat_completion(provider=provider, model=model, system=system, user=user)
     except Exception as primary_exc:
         alt_provider, alt_model = _other_provider(provider)
+        if alt_provider == "cursor" and cursor_api_key():
+            from codegen_cursor import build_with_cursor
+
+            result = build_with_cursor(
+                repo, issue, title=title, body=body, brief=brief
+            )
+            result["note"] = f"{provider}_failed: {primary_exc}; used_cursor"
+            return result
         if alt_provider == "openai" and not openai_api_key():
             raise GitHubError(
                 f"{provider} failed: {primary_exc}\n"
-                "OpenAI backup unavailable (missing OPENAI_API_KEY)."
+                "OpenAI backup unavailable (missing OPENAI_API_KEY). "
+                "Set CURSOR_API_KEY for Cursor SDK codegen."
             ) from primary_exc
         try:
             raw = chat_completion(

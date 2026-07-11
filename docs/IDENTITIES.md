@@ -8,9 +8,10 @@ mint an installation token (`actions/create-github-app-token`) and perform
 GitHub mutations **only** with that token so events attribute to the role bot —
 not `github-actions[bot]`.
 
-**Codegen:** Builder uses **OpenAI** (required) with optional **GitHub Models**
-backup — [DESIGN.md](DESIGN.md), [MODELS.md](MODELS.md). Gemini is retired.
-Copilot coding agent is deferred ([COPILOT.md](COPILOT.md)).
+**Codegen:** Builder uses the **Cursor Agent SDK** (cloud) when
+`CURSOR_API_KEY` is set; OpenAI / GitHub Models are optional backups —
+[DESIGN.md](DESIGN.md), [MODELS.md](MODELS.md). Copilot coding agent is deferred
+([COPILOT.md](COPILOT.md)).
 
 ## Confirmed role → identity → scope
 
@@ -49,8 +50,8 @@ Unrelated org install (not part of the agent loop): `digitalocean` (installation
 
 Builder also uses:
 
-- Secret `OPENAI_API_KEY` for Builder/Reviewer/acceptance/post-deploy AI
-  ([MODELS.md](MODELS.md)); Gemini is retired
+- Secret `CURSOR_API_KEY` for Builder cloud coding ([MODELS.md](MODELS.md))
+- Optional `OPENAI_API_KEY` for Reviewer/acceptance/post-deploy AI + codegen backup
 - Optional `MODELS_TOKEN` for GitHub Models backup
 - Builder App must keep `contents: write` so `git/refs` branch creation works
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import os
 
 import pytest
 
@@ -25,7 +24,17 @@ def test_validate_plan_accepts_unpadded_content_b64() -> None:
     assert files == [{"path": "site/about.html", "content": text}]
 
 
-def test_select_provider_prefers_openai_when_key_set(monkeypatch) -> None:
+def test_select_provider_prefers_cursor_when_key_set(monkeypatch) -> None:
+    monkeypatch.setenv("CURSOR_API_KEY", "cursor_test")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.delenv("CODEGEN_PROVIDER", raising=False)
+    provider, model = select_provider("About page", "landing CTA")
+    assert provider == "cursor"
+    assert "composer" in model
+
+
+def test_select_provider_prefers_openai_without_cursor(monkeypatch) -> None:
+    monkeypatch.delenv("CURSOR_API_KEY", raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     monkeypatch.delenv("CODEGEN_PROVIDER", raising=False)
     provider, model = select_provider("About page", "landing CTA")
@@ -35,9 +44,18 @@ def test_select_provider_prefers_openai_when_key_set(monkeypatch) -> None:
 
 def test_select_provider_force_openai(monkeypatch) -> None:
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("CURSOR_API_KEY", raising=False)
     monkeypatch.setenv("CODEGEN_PROVIDER", "chatgpt")
     provider, _model = select_provider("any", "any")
     assert provider == "openai"
+
+
+def test_select_provider_force_cursor(monkeypatch) -> None:
+    monkeypatch.delenv("CURSOR_API_KEY", raising=False)
+    monkeypatch.setenv("CODEGEN_PROVIDER", "cursor")
+    provider, model = select_provider("any", "any")
+    assert provider == "cursor"
+    assert "composer" in model
 
 
 def test_select_provider_gemini_force_raises(monkeypatch) -> None:
@@ -46,8 +64,9 @@ def test_select_provider_gemini_force_raises(monkeypatch) -> None:
         select_provider("any", "any")
 
 
-def test_select_provider_without_openai_uses_models(monkeypatch) -> None:
+def test_select_provider_without_keys_uses_models(monkeypatch) -> None:
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("CURSOR_API_KEY", raising=False)
     monkeypatch.delenv("CODEGEN_PROVIDER", raising=False)
     provider, _model = select_provider("Landing hero CTA", "update landing")
     assert provider == "github-models"

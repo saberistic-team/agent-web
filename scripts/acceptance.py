@@ -196,14 +196,19 @@ def heuristic_check(criterion: str, evidence: dict[str, Any]) -> dict[str, Any] 
         or "kind:gemini" in text
         or "kind: openai" in text
         or "kind:openai" in text
+        or "kind: cursor" in text
+        or "kind:cursor" in text
         or "kind: copilot" in text
         or "kind:copilot" in text
         or ("gemini" in text and "codegen" in text)
         or ("openai" in text and "codegen" in text)
+        or ("cursor" in text and "codegen" in text)
         or ("copilot" in text and "codegen" in text)
     ):
         urls = (
-            _comment_urls(evidence, "kind: `openai`")
+            _comment_urls(evidence, "kind: `cursor`")
+            or _comment_urls(evidence, "kind: cursor")
+            or _comment_urls(evidence, "kind: `openai`")
             or _comment_urls(evidence, "kind: openai")
             or _comment_urls(evidence, "kind: `copilot`")
             or _comment_urls(evidence, "kind: copilot")
@@ -211,7 +216,7 @@ def heuristic_check(criterion: str, evidence: dict[str, Any]) -> dict[str, Any] 
             or _comment_urls(evidence, "kind: gemini")
         )
         if urls:
-            status, note, ev = "done", "Builder reported Copilot/OpenAI/Models codegen", urls
+            status, note, ev = "done", "Builder reported Cursor/OpenAI/Models codegen", urls
         elif _comment_urls(evidence, "kind: `github-models`") or _comment_urls(
             evidence, "kind: github-models"
         ):
@@ -220,7 +225,7 @@ def heuristic_check(criterion: str, evidence: dict[str, Any]) -> dict[str, Any] 
             ev = _comment_urls(evidence, "kind:")
         else:
             status = "not_done"
-            note = "No Builder kind: openai/copilot/github-models comment"
+            note = "No Builder kind: cursor/openai/copilot/github-models comment"
 
     elif "screenshot" in text and ("reviewer" in text or "pr" in text):
         urls = _comment_urls(evidence, "reviewer_screenshots_pre")

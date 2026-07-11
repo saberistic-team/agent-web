@@ -1,8 +1,8 @@
 # GitHub Copilot (deferred)
 
 Copilot coding agent / code review was tried in this repo and **rolled back**.
-Builder and Reviewer again use **OpenAI** with optional **GitHub Models**
-backup ([DESIGN.md](DESIGN.md), [MODELS.md](MODELS.md)). Gemini is retired.
+Builder and Reviewer again use the **Cursor Agent SDK** (preferred) with
+optional OpenAI / GitHub Models backup ([DESIGN.md](DESIGN.md), [MODELS.md](MODELS.md)).
 
 `scripts/copilot_agent.py` remains in-tree unused. Re-enable only after
 `suggestedActors(CAN_BE_ASSIGNED)` includes `copilot-swe-agent` for a user PAT
