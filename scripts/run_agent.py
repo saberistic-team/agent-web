@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import subprocess
 import sys
 import textwrap
 from pathlib import Path
@@ -22,6 +23,9 @@ from github_api import (
     post_issue_comment,
     split_repo,
 )
+
+HANDOFF_DIR = Path("trace")
+BUILDER_HANDOFF = HANDOFF_DIR / "builder-handoff.txt"
 
 
 def repo_from_env() -> str:
@@ -82,6 +86,37 @@ def escalate(repo: str, issue: int, reason: str, assignee_hint: str | None = Non
         f"@human-review\n\n{reason}{hint}\n\nAdding `status:blocked` and stopping.",
     )
     replace_status(repo, issue, "status:blocked")
+
+
+def write_builder_handoff(mode: str) -> None:
+    """Tell builder.yml how to advance labels: reviewer | done | blocked."""
+    if mode not in {"reviewer", "done", "blocked"}:
+        raise GitHubError(f"invalid builder handoff mode: {mode!r}")
+    HANDOFF_DIR.mkdir(parents=True, exist_ok=True)
+    BUILDER_HANDOFF.write_text(mode + "\n", encoding="utf-8")
+
+
+def is_verify_deploy_issue(title: str, body: str) -> bool:
+    text = f"{title}\n{body}".lower()
+    if not re.search(r"\bverify\b|\bsmoke\b", text):
+        return False
+    return bool(re.search(r"\brender\b|\bdeploy\b|onrender\.com|/health|/hello", text))
+
+
+def close_linked_open_prs(repo: str, issue: int, reason: str) -> None:
+    owner, name = split_repo(repo)
+    for pr in linked_open_prs(repo, issue):
+        number = int(pr["number"])
+        api(
+            "PATCH",
+            f"/repos/{owner}/{name}/pulls/{number}",
+            body={"state": "closed"},
+        )
+        post_issue_comment(
+            repo,
+            issue,
+            f"### builder_cleanup\n- closed stub PR #{number}\n- reason: {reason}\n",
+        )
 
 
 def role_planner(repo: str, issue: int, brief: Path) -> None:
@@ -195,6 +230,44 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
     data = get_issue(repo, issue)
     title = data.get("title") or f"issue-{issue}"
     body = data.get("body") or ""
+
+    # Ops / verify issues: run smoke against production; no stub PR (avoids
+    # reviewer↔builder loops on worklog-only PRs).
+    if is_verify_deploy_issue(title, body):
+        base_url = "https://agent-web-hello.onrender.com"
+        match = re.search(r"https://[a-z0-9.-]+\.onrender\.com", body, re.I)
+        if match:
+            base_url = match.group(0).rstrip("/")
+        proc = subprocess.run(
+            [sys.executable, "scripts/smoke_deploy.py", "--base-url", base_url],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        out = (proc.stdout or "") + (proc.stderr or "")
+        post_issue_comment(
+            repo,
+            issue,
+            (
+                f"### builder_verify\n"
+                f"- base_url: `{base_url}`\n"
+                f"- exit: `{proc.returncode}`\n"
+                f"- brief: `{brief}`\n\n"
+                f"```\n{out.strip() or '(no output)'}\n```\n"
+            ),
+        )
+        close_linked_open_prs(repo, issue, "verify-deploy does not need a code PR")
+        if proc.returncode == 0:
+            write_builder_handoff("done")
+        else:
+            escalate(
+                repo,
+                issue,
+                f"Production smoke failed for `{base_url}` (exit {proc.returncode}).",
+            )
+            write_builder_handoff("blocked")
+        return
+
     branch = f"builder/{issue}-{slugify(title)}"
     owner, name = split_repo(repo)
     default = api("GET", f"/repos/{owner}/{name}").get("default_branch") or "main"
@@ -243,33 +316,27 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
         pass
     api("PUT", f"/repos/{owner}/{name}/contents/{path}", body=put_body)
 
-    prs = linked_open_prs(repo, issue)
-    if not prs:
-        pr = api(
-            "POST",
-            f"/repos/{owner}/{name}/pulls",
-            body={
-                "title": f"builder: {title} (#{issue})",
-                "head": branch,
-                "base": default,
-                "body": (
-                    f"Closes #{issue}\n\n"
-                    f"Built by `agent:builder` using brief `{brief}`.\n\n"
-                    f"### Worklog\nSee `{path}` on this branch.\n"
-                ),
-            },
-        )
-        post_issue_comment(
-            repo,
-            issue,
-            f"### builder_result\n- branch: `{branch}`\n- pr: #{pr['number']}\n",
-        )
-    else:
-        post_issue_comment(
-            repo,
-            issue,
-            f"### builder_result\n- branch: `{branch}`\n- existing_pr: #{prs[0]['number']}\n",
-        )
+    # Stub worklogs cannot pass review — escalate instead of opening a PR loop.
+    escalate(
+        repo,
+        issue,
+        (
+            "Builder cannot implement product code autonomously yet. "
+            "Refusing to open/update a worklog-only PR (would loop with Reviewer). "
+            "A human or codegen-enabled builder must land the change."
+        ),
+    )
+    write_builder_handoff("blocked")
+    post_issue_comment(
+        repo,
+        issue,
+        (
+            f"### builder_result\n"
+            f"- branch: `{branch}`\n"
+            f"- worklog: `{path}` (branch only; no PR)\n"
+            f"- handoff: `blocked`\n"
+        ),
+    )
 
 
 def role_docs(repo: str, issue: int, brief: Path) -> None:
@@ -384,7 +451,8 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
     ) and any(name.startswith(".agent/worklogs/") for name in filenames)
     if only_worklog:
         hard_fail_reasons.append(
-            "PR is builder worklog-only; no product code/tests to merge"
+            "PR is builder worklog-only; no product code/tests to merge "
+            "(terminal: true — do not requeue builder)"
         )
 
     code_touched = any(

@@ -45,3 +45,11 @@ Escalate when:
   dependency CVE with no safe upgrade path)
 - the work is outside Builder scope (pure policy, credentials, org admin)
 - you need a clarification that would change architecture or public API
+- autonomous codegen is unavailable — **do not** open worklog-only PRs
+  (Reviewer will reject them and requeue forever)
+
+## Special case: verify / smoke deploy
+
+If the issue asks to **verify** a live Render/deploy URL (`/health`,
+`/hello`, `smoke_deploy.py`), run the smoke check, comment results, and
+finish with `status:done` (no PR). Do not hand off to Reviewer.

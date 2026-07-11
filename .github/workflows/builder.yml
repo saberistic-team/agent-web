@@ -60,21 +60,55 @@ jobs:
         run: |
           set -euo pipefail
           ISSUE="${{ github.event.issue.number }}"
-          for label in status:new status:queued status:in-progress status:blocked status:done status:failed; do
+          HANDOFF="reviewer"
+          if [[ -f trace/builder-handoff.txt ]]; then
+            HANDOFF="$(tr -d '[:space:]' < trace/builder-handoff.txt)"
+          fi
+          for label in status:new status:queued status:in-progress status:blocked status:done status:failed status:needs-review; do
             gh issue edit "${ISSUE}" --repo "${{ github.repository }}" --remove-label "${label}" 2>/dev/null || true
           done
-          gh issue edit "${ISSUE}" \
-            --repo "${{ github.repository }}" \
-            --add-label "status:needs-review" \
-            --add-label "review:needs-review" \
-            --add-label "agent:reviewer" \
-            --remove-label "agent:builder"
-          gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
+          for label in review:needs-review review:approved review:changes-requested agent:reviewer agent:builder agent:docs agent:planner; do
+            gh issue edit "${ISSUE}" --repo "${{ github.repository }}" --remove-label "${label}" 2>/dev/null || true
+          done
+
+          case "${HANDOFF}" in
+            done)
+              gh issue edit "${ISSUE}" \
+                --repo "${{ github.repository }}" \
+                --add-label "status:done"
+              gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
+          ### builder_handoff
+          - status: \`status:done\`
+          - next: none (verify/complete without PR)
+          EOF
+          )"
+              gh issue close "${ISSUE}" --repo "${{ github.repository }}" --reason completed || true
+              ;;
+            blocked)
+              gh issue edit "${ISSUE}" \
+                --repo "${{ github.repository }}" \
+                --add-label "status:blocked"
+              gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
+          ### builder_handoff
+          - status: \`status:blocked\`
+          - next: \`@human-review\`
+          EOF
+          )"
+              ;;
+            reviewer|*)
+              gh issue edit "${ISSUE}" \
+                --repo "${{ github.repository }}" \
+                --add-label "status:needs-review" \
+                --add-label "review:needs-review" \
+                --add-label "agent:reviewer"
+              gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
           ### builder_handoff
           - status: \`status:needs-review\`
           - next: \`agent:reviewer\`
           EOF
           )"
+              ;;
+          esac
 
       - name: Write trace
         if: always()

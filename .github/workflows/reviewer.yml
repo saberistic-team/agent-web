@@ -73,6 +73,22 @@ jobs:
           EOF
           )"
               ;;
+            blocked)
+              for label in status:new status:queued status:in-progress status:needs-review status:done status:failed agent:builder agent:reviewer; do
+                gh issue edit "${ISSUE}" --repo "${{ github.repository }}" --remove-label "${label}" 2>/dev/null || true
+              done
+              gh issue edit "${ISSUE}" \
+                --repo "${{ github.repository }}" \
+                --add-label "review:changes-requested" \
+                --add-label "status:blocked" \
+                --remove-label "agent:reviewer"
+              gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
+          ### reviewer_labels
+          - decision: \`blocked\` (terminal review hard-fail)
+          - next: \`@human-review\` (not requeuing builder)
+          EOF
+          )"
+              ;;
             changes-requested)
               for label in status:new status:in-progress status:blocked status:needs-review status:done status:failed; do
                 gh issue edit "${ISSUE}" --repo "${{ github.repository }}" --remove-label "${label}" 2>/dev/null || true

@@ -2,7 +2,8 @@
 """Resolve reviewer decision from GitHub PR review events (fail closed).
 
 Does not read local decision files. Requires at least one submitted PR review
-on an open PR linked to the issue. Prints `approved` or `changes-requested`.
+on an open PR linked to the issue. Prints `approved`, `changes-requested`,
+or `blocked` (terminal hard-fail — do not requeue Builder).
 """
 
 from __future__ import annotations
@@ -69,6 +70,33 @@ def main(argv: list[str] | None = None) -> int:
             print(f"reviewer={user} pr={prs[0]['number']}", file=sys.stderr)
             return 0
         if state == "CHANGES_REQUESTED":
+            body = (review.get("body") or "").lower()
+            # Terminal hard-fails must not requeue Builder (infinite loop).
+            if "terminal: true" in body or "worklog-only" in body:
+                print("blocked")
+                print(
+                    f"reviewer={user} pr={prs[0]['number']} terminal=true",
+                    file=sys.stderr,
+                )
+                return 0
+            # Second+ changes-requested also blocks to stop ping-pong.
+            owner, name = split_repo(args.repo)
+            reviews = (
+                api("GET", f"/repos/{owner}/{name}/pulls/{int(prs[0]['number'])}/reviews")
+                or []
+            )
+            prior = sum(
+                1
+                for r in reviews
+                if (r.get("state") or "").upper() == "CHANGES_REQUESTED"
+            )
+            if prior >= 2:
+                print("blocked")
+                print(
+                    f"reviewer={user} pr={prs[0]['number']} prior_changes={prior}",
+                    file=sys.stderr,
+                )
+                return 0
             print("changes-requested")
             print(f"reviewer={user} pr={prs[0]['number']}", file=sys.stderr)
             return 0
