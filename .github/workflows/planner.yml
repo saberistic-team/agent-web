@@ -147,11 +147,12 @@ jobs:
               --remove-label "status:new" \
               --add-label "status:queued"
           fi
-          gh issue comment "${ISSUE}" --repo "${{ github.repository }}" \
-            --body "### planner_release
-- actor_checked: \`${{ github.actor }}\`
-- result: queued_or_parent_done
-"
+          gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
+          ### planner_release
+          - actor_checked: \`${{ github.actor }}\`
+          - result: queued_or_parent_done
+          EOF
+          )"
 
       - name: Write trace
         if: always()

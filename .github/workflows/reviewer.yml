@@ -67,10 +67,11 @@ jobs:
                 --repo "${{ github.repository }}" \
                 --add-label "review:approved" \
                 --remove-label "agent:reviewer"
-              gh issue comment "${ISSUE}" --repo "${{ github.repository }}" \
-                --body "### reviewer_labels
-- decision: \`approved\` (from GitHub PR review API)
-"
+              gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
+          ### reviewer_labels
+          - decision: \`approved\` (from GitHub PR review API)
+          EOF
+          )"
               ;;
             changes-requested)
               for label in status:new status:in-progress status:blocked status:needs-review status:done status:failed; do
@@ -82,11 +83,12 @@ jobs:
                 --add-label "status:queued" \
                 --add-label "agent:builder" \
                 --remove-label "agent:reviewer"
-              gh issue comment "${ISSUE}" --repo "${{ github.repository }}" \
-                --body "### reviewer_labels
-- decision: \`changes-requested\` (from GitHub PR review API)
-- next: \`agent:builder\`
-"
+              gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
+          ### reviewer_labels
+          - decision: \`changes-requested\` (from GitHub PR review API)
+          - next: \`agent:builder\`
+          EOF
+          )"
               ;;
             *)
               echo "Unknown reviewer decision: ${DECISION}"

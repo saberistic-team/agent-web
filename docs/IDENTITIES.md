@@ -1,11 +1,40 @@
 # Agent identities
 
-Each orchestration role is a distinct GitHub App installed on
-`saberistic-team/agent-web`. Workflows mint an installation token for that
-App (`actions/create-github-app-token`) and perform GitHub mutations **only**
-with that token so events attribute to the role bot — not `github-actions[bot]`.
+**Last audited:** 2026-07-11 (live org installations via GitHub API)
 
-## Secrets
+Each orchestration role is a distinct **GitHub App** (no PATs) installed on
+org `saberistic-team` with **selected repositories** (not all repos). Workflows
+mint an installation token (`actions/create-github-app-token`) and perform
+GitHub mutations **only** with that token so events attribute to the role bot —
+not `github-actions[bot]`.
+
+## Confirmed role → identity → scope
+
+| Role | GitHub App (`app_slug`) | App ID | Installation ID | Repository access | Scopes (installation) |
+|------|-------------------------|--------|-----------------|-------------------|------------------------|
+| Planner | `saberistic-agent-web-planner` | `4273886` | `145920138` | selected | `issues: write`, `metadata: read` |
+| Builder | `saberistic-agent-web-builder` | `4273896` | `145920035` | selected | `contents: write`, `issues: write`, `pull_requests: write`, `metadata: read` |
+| Reviewer | `saberistic-agent-web-reviewer` | `4273897` | `145919927` | selected | `contents: write`, `issues: write`, `pull_requests: write`, `metadata: read` |
+| Docs | `saberistic-agent-web-docs` | `4273913` | `145920081` | selected | `contents: write`, `issues: write`, `metadata: read` |
+
+`metadata: read` is granted automatically on every GitHub App installation; it
+cannot be removed and is not an escalation.
+
+### Audit verdict (vs intended matrix)
+
+| Role | Matches intended least privilege? | Notes |
+|------|-----------------------------------|--------|
+| Planner | **Yes** | No `contents`, no `pull_requests`. |
+| Builder | **Yes** | Exactly issues + contents + pull_requests (write). |
+| Reviewer | **Yes** | Includes `contents: write` for squash-merge (confirmed 2026-07-11). |
+| Docs | **Yes vs this doc’s matrix** | No `pull_requests`. **Operational gap:** `scripts/run_agent.py` opens Docs PRs via the Pulls API, which needs `pull_requests: write`. Expect 403 on `POST /pulls` until either the App gains that scope or Docs stops opening PRs in code. Commits to a branch via Contents can still succeed. |
+
+No role App holds org administration, members, workflows, or secrets scopes.
+
+Unrelated org install (not part of the agent loop): `digitalocean` (installation
+`42489863`) — ignore for isolation testing.
+
+## Secrets (workflow → App)
 
 | Role | App ID secret | Private key secret |
 |------|---------------|--------------------|
@@ -14,10 +43,7 @@ with that token so events attribute to the role bot — not `github-actions[bot]
 | Reviewer | `REVIEWER_APP_ID` | `REVIEWER_PRIVATE_KEY` |
 | Docs | `DOCS_APP_ID` | `DOCS_PRIVATE_KEY` |
 
-## Registered permissions
-
-Actions job `permissions:` stay within this matrix. Anything not listed is
-**No access** on the App.
+## Actions job `permissions:` (must not exceed App)
 
 | Role | `issues` | `contents` | `pull-requests` |
 |------|----------|------------|-----------------|
@@ -47,14 +73,56 @@ Fail closed:
 - Permission lookup uses `GITHUB_TOKEN` (needs collaborator-permission read);
   the **comment** uses `COMMENT_TOKEN` (role App) so the audit line is bot-attributed.
 
-Notes:
+## Isolation test (non-production)
+
+Use a **fork or throwaway repo**, not production traffic. Goal: revoke one role
+and show only that role’s workflow fails while others still mint tokens and act.
+
+### Setup
+
+1. Create or clone a sandbox repo under an org you control.
+2. Install the **same four Apps** on that sandbox only (`selected` repos).
+3. Copy the eight App secrets into the sandbox repo.
+4. Push this repo’s workflows (or a minimal subset) to the sandbox.
+
+### Revoke one role (example: Builder)
+
+1. Open  
+   `https://github.com/organizations/<org>/settings/installations/<builder-installation-id>`
+2. Under **Repository access**, remove the sandbox repo (or **Suspend** the
+   Builder installation).
+3. Do **not** change Planner / Reviewer / Docs installs.
+
+### Confirm blast radius
+
+| Check | Expectation after Builder revoke |
+|-------|----------------------------------|
+| Label an issue `status:new` | Planner workflow still runs; plan comments appear as Planner bot |
+| Label `agent:docs` | Docs workflow still runs (commits/comments as Docs bot) |
+| Label `agent:builder` | Builder job fails at **Mint Builder App token** or first Builder API call |
+| Label `agent:reviewer` (with a PR) | Reviewer still runs if its install is intact |
+
+Optional API confirm (org admin):
+
+```bash
+gh api orgs/<org>/installations \
+  --jq '.installations[] | select(.app_slug|test("agent-web")) | {app_slug,permissions,repository_selection}'
+```
+
+### Restore
+
+Re-add the sandbox repo on the Builder installation (or unsuspend), then
+re-run a Builder-labeled issue to confirm recovery.
+
+## Notes
 
 - **Planner** never pushes code (no Contents on the App).
 - **Gate** is not its own App: `release-plan` acts as Planner; `review-approved`
   merge/labels act as Reviewer.
-- **Reviewer** needs Contents write so squash-merge attributes to the Reviewer
-  App (PR merge is a Contents operation for GitHub Apps).
-- **Docs** Contents is repo-wide at the App layer; path policy is in `AGENTS/docs.md`.
+- **Reviewer** Contents write is required so squash-merge attributes to the
+  Reviewer App.
+- **Docs** Contents is repo-wide at the App layer; path policy is in
+  `AGENTS/docs.md`.
 
 ## Briefs
 

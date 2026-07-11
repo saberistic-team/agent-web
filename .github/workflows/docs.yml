@@ -38,10 +38,11 @@ jobs:
             gh issue edit "${ISSUE}" --repo "${{ github.repository }}" --remove-label "${label}" 2>/dev/null || true
           done
           gh issue edit "${ISSUE}" --repo "${{ github.repository }}" --add-label "status:in-progress"
-          gh issue comment "${ISSUE}" --repo "${{ github.repository }}" \
-            --body "### docs_status
-- status: \`status:in-progress\`
-"
+          gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
+          ### docs_status
+          - status: \`status:in-progress\`
+          EOF
+          )"
 
       - name: Run docs agent
         env:
@@ -66,10 +67,11 @@ jobs:
             --repo "${{ github.repository }}" \
             --add-label "status:done" \
             --remove-label "agent:docs"
-          gh issue comment "${ISSUE}" --repo "${{ github.repository }}" \
-            --body "### docs_handoff
-- status: \`status:done\`
-"
+          gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
+          ### docs_handoff
+          - status: \`status:done\`
+          EOF
+          )"
 
       - name: Write trace
         if: always()

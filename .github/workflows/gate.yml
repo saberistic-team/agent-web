@@ -97,12 +97,13 @@ jobs:
           ISSUE: ${{ steps.meta.outputs.issue }}
         run: |
           set -euo pipefail
-          gh issue comment "${ISSUE}" --repo "${{ github.repository }}" \
-            --body "### gate_release_plan
-- result: \`pass\`
-- actor: \`${{ github.actor }}\`
-- next: caller may queue
-"
+          gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
+          ### gate_release_plan
+          - result: \`pass\`
+          - actor: \`${{ github.actor }}\`
+          - next: caller may queue
+          EOF
+          )"
 
       - name: Proceed review-approved (squash merge)
         if: success() && steps.meta.outputs.intent == 'review-approved'
@@ -115,23 +116,25 @@ jobs:
             --search "${ISSUE} in:title,body" --state open --json number,body,title \
             --jq "[.[] | select((.title | contains(\"#${ISSUE}\")) or (.body != null and (.body | contains(\"#${ISSUE}\")))) | .number] | .[]")"
           if [[ -z "${PRS}" ]]; then
-            gh issue comment "${ISSUE}" --repo "${{ github.repository }}" \
-              --body "### gate_merge
-- result: \`fail\`
-- detail: no open PR linked to #${ISSUE}
-"
+            gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
+          ### gate_merge
+          - result: \`fail\`
+          - detail: no open PR linked to #${ISSUE}
+          EOF
+          )"
             exit 1
           fi
           while read -r pr; do
             [[ -z "${pr}" ]] && continue
             gh pr merge "${pr}" --repo "${{ github.repository }}" --squash
-            gh issue comment "${ISSUE}" --repo "${{ github.repository }}" \
-              --body "### gate_merge
-- result: \`merged\`
-- pr: #${pr}
-- strategy: squash
-- actor_checked: \`${{ github.actor }}\`
-"
+            gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
+          ### gate_merge
+          - result: \`merged\`
+          - pr: #${pr}
+          - strategy: squash
+          - actor_checked: \`${{ github.actor }}\`
+          EOF
+          )"
           done <<< "${PRS}"
           for label in status:new status:queued status:in-progress status:blocked status:needs-review status:failed; do
             gh issue edit "${ISSUE}" --repo "${{ github.repository }}" --remove-label "${label}" 2>/dev/null || true
