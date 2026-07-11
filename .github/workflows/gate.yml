@@ -36,10 +36,18 @@ jobs:
         id: meta
         run: |
           set -euo pipefail
-          if [[ "${{ github.event_name }}" == "workflow_call" ]]; then
-            echo "issue=${{ inputs.issue_number }}" >> "$GITHUB_OUTPUT"
-            echo "intent=${{ inputs.intent }}" >> "$GITHUB_OUTPUT"
-            echo "app=planner" >> "$GITHUB_OUTPUT"
+          # inputs.* are set for reusable workflow_call even when the caller's
+          # event_name is still `issues`.
+          INTENT_INPUT="${{ inputs.intent }}"
+          ISSUE_INPUT="${{ inputs.issue_number }}"
+          if [[ -n "${INTENT_INPUT}" ]]; then
+            echo "issue=${ISSUE_INPUT}" >> "$GITHUB_OUTPUT"
+            echo "intent=${INTENT_INPUT}" >> "$GITHUB_OUTPUT"
+            if [[ "${INTENT_INPUT}" == "release-plan" ]]; then
+              echo "app=planner" >> "$GITHUB_OUTPUT"
+            else
+              echo "app=reviewer" >> "$GITHUB_OUTPUT"
+            fi
           else
             echo "issue=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
             echo "intent=review-approved" >> "$GITHUB_OUTPUT"
