@@ -1,7 +1,5 @@
 name: Gate
 
-# Runs before a plan is released into status:queued (workflow_call from Planner)
-# and when review:approved is applied on an issue.
 on:
   issues:
     types: [labeled]
@@ -26,14 +24,10 @@ jobs:
       issues: write
       contents: write
       pull-requests: write
+      checks: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
 
       - name: Resolve issue and intent
         id: meta
@@ -42,57 +36,108 @@ jobs:
           if [[ "${{ github.event_name }}" == "workflow_call" ]]; then
             echo "issue=${{ inputs.issue_number }}" >> "$GITHUB_OUTPUT"
             echo "intent=${{ inputs.intent }}" >> "$GITHUB_OUTPUT"
+            echo "app=planner" >> "$GITHUB_OUTPUT"
           else
             echo "issue=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
             echo "intent=review-approved" >> "$GITHUB_OUTPUT"
+            echo "app=reviewer" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Check permission
+      - name: Mint Planner App token
+        if: steps.meta.outputs.app == 'planner'
+        id: planner
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.PLANNER_APP_ID }}
+          private-key: ${{ secrets.PLANNER_PRIVATE_KEY }}
+
+      - name: Mint Reviewer App token
+        if: steps.meta.outputs.app == 'reviewer'
+        id: reviewer
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.REVIEWER_APP_ID }}
+          private-key: ${{ secrets.REVIEWER_PRIVATE_KEY }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check permission (planner identity for comment)
+        if: steps.meta.outputs.app == 'planner'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMENT_TOKEN: ${{ steps.planner.outputs.token }}
         run: |
           set -euo pipefail
           python scripts/check_permission.py \
             --actor "${{ github.actor }}" \
             --repo "${{ github.repository }}" \
+            --issue "${{ steps.meta.outputs.issue }}" \
             --min-level write
 
-      - name: Proceed
-        if: success()
+      - name: Check permission (reviewer identity for comment)
+        if: steps.meta.outputs.app == 'reviewer'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ISSUE: ${{ steps.meta.outputs.issue }}
-          INTENT: ${{ steps.meta.outputs.intent }}
+          COMMENT_TOKEN: ${{ steps.reviewer.outputs.token }}
         run: |
           set -euo pipefail
-          case "${INTENT}" in
-            release-plan)
-              echo "Permission check passed for release-plan on #${ISSUE}; caller may queue."
-              ;;
-            review-approved)
-              # Merge linked PR(s) only after a live permission pass.
-              PRS="$(gh pr list --repo "${{ github.repository }}" \
-                --search "${ISSUE} in:title,body" --state open --json number,body,title \
-                --jq "[.[] | select((.title | contains(\"#${ISSUE}\")) or (.body != null and (.body | contains(\"#${ISSUE}\")))) | .number] | .[]")"
-              if [[ -z "${PRS}" ]]; then
-                echo "No open PR linked to #${ISSUE}; fail closed"
-                exit 1
-              fi
-              while read -r pr; do
-                [[ -z "${pr}" ]] && continue
-                gh pr merge "${pr}" --repo "${{ github.repository }}" --squash
-              done <<< "${PRS}"
-              for label in status:new status:queued status:in-progress status:blocked status:needs-review status:failed; do
-                gh issue edit "${ISSUE}" --repo "${{ github.repository }}" --remove-label "${label}" 2>/dev/null || true
-              done
-              gh issue edit "${ISSUE}" \
-                --repo "${{ github.repository }}" \
-                --add-label "status:done" \
-                --remove-label "review:needs-review" \
-                --add-label "review:approved"
-              ;;
-            *)
-              echo "Unknown intent: ${INTENT}"
-              exit 1
-              ;;
-          esac
+          python scripts/check_permission.py \
+            --actor "${{ github.actor }}" \
+            --repo "${{ github.repository }}" \
+            --issue "${{ steps.meta.outputs.issue }}" \
+            --min-level write
+
+      - name: Proceed release-plan
+        if: success() && steps.meta.outputs.intent == 'release-plan'
+        env:
+          GH_TOKEN: ${{ steps.planner.outputs.token }}
+          ISSUE: ${{ steps.meta.outputs.issue }}
+        run: |
+          set -euo pipefail
+          gh issue comment "${ISSUE}" --repo "${{ github.repository }}" \
+            --body "### gate_release_plan
+- result: \`pass\`
+- actor: \`${{ github.actor }}\`
+- next: caller may queue
+"
+
+      - name: Proceed review-approved (squash merge)
+        if: success() && steps.meta.outputs.intent == 'review-approved'
+        env:
+          GH_TOKEN: ${{ steps.reviewer.outputs.token }}
+          ISSUE: ${{ steps.meta.outputs.issue }}
+        run: |
+          set -euo pipefail
+          PRS="$(gh pr list --repo "${{ github.repository }}" \
+            --search "${ISSUE} in:title,body" --state open --json number,body,title \
+            --jq "[.[] | select((.title | contains(\"#${ISSUE}\")) or (.body != null and (.body | contains(\"#${ISSUE}\")))) | .number] | .[]")"
+          if [[ -z "${PRS}" ]]; then
+            gh issue comment "${ISSUE}" --repo "${{ github.repository }}" \
+              --body "### gate_merge
+- result: \`fail\`
+- detail: no open PR linked to #${ISSUE}
+"
+            exit 1
+          fi
+          while read -r pr; do
+            [[ -z "${pr}" ]] && continue
+            gh pr merge "${pr}" --repo "${{ github.repository }}" --squash
+            gh issue comment "${ISSUE}" --repo "${{ github.repository }}" \
+              --body "### gate_merge
+- result: \`merged\`
+- pr: #${pr}
+- strategy: squash
+- actor_checked: \`${{ github.actor }}\`
+"
+          done <<< "${PRS}"
+          for label in status:new status:queued status:in-progress status:blocked status:needs-review status:failed; do
+            gh issue edit "${ISSUE}" --repo "${{ github.repository }}" --remove-label "${label}" 2>/dev/null || true
+          done
+          gh issue edit "${ISSUE}" \
+            --repo "${{ github.repository }}" \
+            --add-label "status:done" \
+            --remove-label "review:needs-review" \
+            --add-label "review:approved"

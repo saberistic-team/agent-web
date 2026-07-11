@@ -1,6 +1,5 @@
 name: Agent — Planner
 
-# Triggers on status:new (entry point). Only the Planner may move work out of it.
 on:
   issues:
     types: [labeled]
@@ -11,11 +10,19 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       issues: write
+      contents: read
     outputs:
       issue: ${{ github.event.issue.number }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Mint Planner App token
+        id: planner
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.PLANNER_APP_ID }}
+          private-key: ${{ secrets.PLANNER_PRIVATE_KEY }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -24,9 +31,8 @@ jobs:
 
       - name: Run planner agent
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PLANNER_APP_ID: ${{ secrets.PLANNER_APP_ID }}
-          PLANNER_PRIVATE_KEY: ${{ secrets.PLANNER_PRIVATE_KEY }}
+          GITHUB_TOKEN: ${{ steps.planner.outputs.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           python scripts/run_agent.py \
             --role planner \
@@ -53,9 +59,17 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       issues: write
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Mint Planner App token
+        id: planner
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.PLANNER_APP_ID }}
+          private-key: ${{ secrets.PLANNER_PRIVATE_KEY }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -72,35 +86,48 @@ jobs:
       - name: Check permission before queue
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMENT_TOKEN: ${{ steps.planner.outputs.token }}
         run: |
           set -euo pipefail
           python scripts/check_permission.py \
             --actor "${{ github.actor }}" \
             --repo "${{ github.repository }}" \
+            --issue "${{ needs.plan.outputs.issue }}" \
             --min-level write
+
+      - name: Require visible planner_plan comment
+        env:
+          GITHUB_TOKEN: ${{ steps.planner.outputs.token }}
+        run: |
+          set -euo pipefail
+          python scripts/require_planner_plan.py \
+            --repo "${{ github.repository }}" \
+            --issue "${{ needs.plan.outputs.issue }}"
 
       - name: Relabel or spawn queued children
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.planner.outputs.token }}
           ISSUE: ${{ needs.plan.outputs.issue }}
         run: |
           set -euo pipefail
-          # Prefer children emitted by the planner (one number per line).
-          # Each child must carry agent:*/type:*/status:queued.
           CHILDREN_FILE="trace/planner-${ISSUE}-children.txt"
           if [[ -f "${CHILDREN_FILE}" ]] && [[ -s "${CHILDREN_FILE}" ]]; then
             while read -r child; do
               [[ -z "${child}" ]] && continue
-              echo "Child issue #${child} expected to already carry agent:*/type:*/status:queued"
+              echo "Child issue #${child} already queued by Planner App"
             done < "${CHILDREN_FILE}"
             gh issue edit "${ISSUE}" \
               --repo "${{ github.repository }}" \
               --remove-label "status:new" \
               --add-label "status:done"
           else
-            # Single-issue path: leave agent:*/type:* as planned; queue this issue.
             gh issue edit "${ISSUE}" \
               --repo "${{ github.repository }}" \
               --remove-label "status:new" \
               --add-label "status:queued"
           fi
+          gh issue comment "${ISSUE}" --repo "${{ github.repository }}" \
+            --body "### planner_release
+- actor_checked: \`${{ github.actor }}\`
+- result: queued_or_parent_done
+"

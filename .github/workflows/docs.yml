@@ -11,9 +11,17 @@ jobs:
     permissions:
       contents: write
       issues: write
+      pull-requests: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Mint Docs App token
+        id: docs
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.DOCS_APP_ID }}
+          private-key: ${{ secrets.DOCS_PRIVATE_KEY }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -22,7 +30,7 @@ jobs:
 
       - name: Mark in progress
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.docs.outputs.token }}
         run: |
           set -euo pipefail
           ISSUE="${{ github.event.issue.number }}"
@@ -30,12 +38,15 @@ jobs:
             gh issue edit "${ISSUE}" --repo "${{ github.repository }}" --remove-label "${label}" 2>/dev/null || true
           done
           gh issue edit "${ISSUE}" --repo "${{ github.repository }}" --add-label "status:in-progress"
+          gh issue comment "${ISSUE}" --repo "${{ github.repository }}" \
+            --body "### docs_status
+- status: \`status:in-progress\`
+"
 
       - name: Run docs agent
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DOCS_APP_ID: ${{ secrets.DOCS_APP_ID }}
-          DOCS_PRIVATE_KEY: ${{ secrets.DOCS_PRIVATE_KEY }}
+          GITHUB_TOKEN: ${{ steps.docs.outputs.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           python scripts/run_agent.py \
             --role docs \
@@ -44,7 +55,7 @@ jobs:
 
       - name: Advance status
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.docs.outputs.token }}
         run: |
           set -euo pipefail
           ISSUE="${{ github.event.issue.number }}"
@@ -55,3 +66,7 @@ jobs:
             --repo "${{ github.repository }}" \
             --add-label "status:done" \
             --remove-label "agent:docs"
+          gh issue comment "${ISSUE}" --repo "${{ github.repository }}" \
+            --body "### docs_handoff
+- status: \`status:done\`
+"
