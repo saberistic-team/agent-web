@@ -1,8 +1,15 @@
 services:
   - type: web
-    name: agent-web-hello
-    runtime: python
-    plan: free
+    name: agent-web
+    env: python
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
-    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: agent-web-db
+          property: connectionString
+
+databases:
+  - name: agent-web-db
+    plan: free
