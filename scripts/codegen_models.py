@@ -191,7 +191,7 @@ def chat_completion_gemini(*, model: str, system: str, user: str) -> str:
         "systemInstruction": {"parts": [{"text": system}]},
         "contents": [{"role": "user", "parts": [{"text": user}]}],
         "generationConfig": {
-            "temperature": 0.35,
+            "temperature": 0.2,
             "responseMimeType": "application/json",
         },
     }
@@ -210,22 +210,39 @@ def chat_completion_gemini(*, model: str, system: str, user: str) -> str:
             body = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
-        raise GitHubError(f"Gemini API -> {exc.code}: {detail}") from exc
+        raise GitHubError(f"Gemini API ({model}) -> {exc.code}: {detail}") from exc
 
     candidates = body.get("candidates") or []
     if not candidates:
-        raise GitHubError(f"Gemini returned no candidates: {body!r}")
+        raise GitHubError(f"Gemini ({model}) returned no candidates: {body!r}")
+    finish = candidates[0].get("finishReason")
     parts = ((candidates[0].get("content") or {}).get("parts")) or []
     texts = [str(p.get("text") or "") for p in parts if isinstance(p, dict)]
     content = "\n".join(t for t in texts if t).strip()
     if not content:
-        raise GitHubError(f"Gemini empty content: {body!r}")
+        raise GitHubError(
+            f"Gemini ({model}) empty content (finishReason={finish}): {body!r}"
+        )
     return content
 
 
 def chat_completion(*, provider: str, model: str, system: str, user: str) -> str:
     if provider == "gemini":
-        return chat_completion_gemini(model=model, system=system, user=user)
+        # Try configured model, then known-good aliases if the id is retired.
+        models = [model]
+        for alt in ("gemini-3.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"):
+            if alt not in models:
+                models.append(alt)
+        errors: list[str] = []
+        for mid in models:
+            try:
+                return chat_completion_gemini(model=mid, system=system, user=user)
+            except Exception as exc:
+                errors.append(str(exc))
+                # Only rotate on missing-model / not-found style failures.
+                if not re.search(r"\b404\b|NOT_FOUND|no longer available|not found", str(exc), re.I):
+                    raise
+        raise GitHubError("Gemini failed for all models: " + " | ".join(errors))
     return chat_completion_github(model=model, system=system, user=user)
 
 
@@ -427,14 +444,20 @@ def build_with_models(
     try:
         raw = chat_completion(provider=provider, model=model, system=system, user=user)
     except Exception as primary_exc:
-        # UI path: fall back to GitHub Models if Gemini fails.
+        # Fall back to GitHub Models if Gemini fails — keep both errors if Models also fails.
         if provider == "gemini":
-            provider = "github-models"
-            model = os.environ.get("GITHUB_MODELS_MODEL") or DEFAULT_MODEL
-            raw = chat_completion(
-                provider=provider, model=model, system=system, user=user
-            )
-            fallback_note = f"gemini_failed: {primary_exc}"
+            try:
+                provider = "github-models"
+                model = os.environ.get("GITHUB_MODELS_MODEL") or DEFAULT_MODEL
+                raw = chat_completion(
+                    provider=provider, model=model, system=system, user=user
+                )
+                fallback_note = f"gemini_failed: {primary_exc}"
+            except Exception as models_exc:
+                raise GitHubError(
+                    f"Gemini failed: {primary_exc}\n"
+                    f"GitHub Models fallback failed: {models_exc}"
+                ) from models_exc
         else:
             raise
     else:

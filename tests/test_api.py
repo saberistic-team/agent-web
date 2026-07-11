@@ -26,9 +26,16 @@ def test_landing_page() -> None:
         body = response.text
         assert "AmirSaber" in body
         assert "Filling gaps between markets and tech" in body
-        assert "linkedin.com/in/saberistic" in body
         assert "our-teams-section" not in body
         assert "Queen" not in body
+
+
+def test_landing_single_linkedin_cta() -> None:
+    """Exactly one LinkedIn profile link — the hero CTA (not header/footer)."""
+    body = client.get("/").text
+    assert body.count("linkedin.com/in/saberistic") == 1
+    assert 'class="cta"' in body
+    assert 'href="https://www.linkedin.com/in/saberistic"' in body
 
 
 def test_logo_asset() -> None:
