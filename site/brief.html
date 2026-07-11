@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Request project brief — saberistic</title>
+    <meta
+      name="description"
+      content="Submit a project brief for saberistic review. $200 one-time fee."
+    />
+    <link rel="icon" href="/assets/logo.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/assets/site.css" />
+  </head>
+  <body>
+    <header class="top">
+      <a class="brand" href="/" aria-label="saberistic home">
+        <img
+          class="brand-word"
+          src="/assets/logo-text.png"
+          width="160"
+          height="41"
+          alt="saberistic"
+        />
+      </a>
+    </header>
+
+    <main>
+      <section class="block brief-page" aria-labelledby="brief-title">
+        <h1 class="page-title" id="brief-title">Request project brief</h1>
+        <p class="brief-lede">
+          Share your project details. A one-time <strong>$200</strong> fee applies
+          at checkout.
+        </p>
+
+        <p class="form-note" id="cancelled-note" hidden>
+          Checkout was cancelled. Your brief is saved — you can submit again to
+          continue to payment.
+        </p>
+
+        <form class="brief-form" id="brief-form" novalidate>
+          <div class="field">
+            <label for="website">Website URL</label>
+            <input
+              type="url"
+              id="website"
+              name="website"
+              required
+              placeholder="https://example.com"
+              autocomplete="url"
+            />
+          </div>
+
+          <div class="field">
+            <label for="brief">Project brief</label>
+            <textarea
+              id="brief"
+              name="brief"
+              required
+              rows="8"
+              placeholder="Describe your project, goals, timeline, and what you need."
+            ></textarea>
+          </div>
+
+          <fieldset class="field contact-fieldset">
+            <legend>Best contact</legend>
+            <div class="contact-method">
+              <label class="radio-label">
+                <input type="radio" name="contact_method" value="email" checked />
+                Email
+              </label>
+              <label class="radio-label">
+                <input type="radio" name="contact_method" value="phone" />
+                Phone
+              </label>
+            </div>
+            <input
+              type="text"
+              id="contact_value"
+              name="contact_value"
+              required
+              placeholder="you@example.com"
+              autocomplete="email"
+            />
+          </fieldset>
+
+          <p class="form-error" id="form-error" hidden></p>
+
+          <button class="cta brief-submit" type="submit">
+            Continue to payment — $200
+          </button>
+        </form>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <p>saberistic · software development</p>
+    </footer>
+
+    <script>
+      (function () {
+        const form = document.getElementById("brief-form");
+        const errorEl = document.getElementById("form-error");
+        const cancelledNote = document.getElementById("cancelled-note");
+        const contactValue = document.getElementById("contact_value");
+        const methodInputs = form.querySelectorAll('input[name="contact_method"]');
+
+        if (new URLSearchParams(window.location.search).get("cancelled") === "1") {
+          cancelledNote.hidden = false;
+        }
+
+        function updateContactPlaceholder() {
+          const method = form.contact_method.value;
+          contactValue.type = method === "email" ? "email" : "tel";
+          contactValue.placeholder =
+            method === "email" ? "you@example.com" : "+1 555 000 0000";
+          contactValue.autocomplete = method === "email" ? "email" : "tel";
+        }
+
+        methodInputs.forEach((input) => {
+          input.addEventListener("change", updateContactPlaceholder);
+        });
+
+        form.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          errorEl.hidden = true;
+          errorEl.textContent = "";
+
+          const payload = {
+            website: form.website.value.trim(),
+            brief: form.brief.value.trim(),
+            contact_method: form.contact_method.value,
+            contact_value: form.contact_value.value.trim(),
+          };
+
+          const submitBtn = form.querySelector(".brief-submit");
+          submitBtn.disabled = true;
+          submitBtn.textContent = "Redirecting to checkout…";
+
+          try {
+            const response = await fetch("/api/briefs", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+
+            if (!response.ok) {
+              const data = await response.json().catch(() => ({}));
+              const detail = data.detail;
+              const message = Array.isArray(detail)
+                ? detail.map((item) => item.msg || String(item)).join(" ")
+                : detail || "Unable to start checkout. Please try again.";
+              throw new Error(message);
+            }
+
+            const data = await response.json();
+            window.location.href = data.checkout_url;
+          } catch (err) {
+            errorEl.textContent = err.message || "Something went wrong.";
+            errorEl.hidden = false;
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Continue to payment — $200";
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>
