@@ -12,19 +12,17 @@ Workflow will move you through `status:in-progress`, then hand off with
 ## Definition of done
 
 - Implementation matches the issue scope (bug fix or feature as labeled).
-- For product code, Builder prefers **GitHub Copilot coding agent** when
-  `COPILOT_TOKEN` is set ([docs/COPILOT.md](../docs/COPILOT.md)).
-  Fallback: **GitHub Models** (non-UI) / **Gemini** (UI) —
-  [docs/MODELS.md](../docs/MODELS.md), [docs/DESIGN.md](../docs/DESIGN.md).
+- For product code, Builder uses **GitHub Models** (non-UI) / **Gemini** (UI)
+  with mutual backup — [docs/MODELS.md](../docs/MODELS.md),
+  [docs/DESIGN.md](../docs/DESIGN.md).
 - Verify/smoke and landing scaffolds may complete without a model call.
-- Branch / PR must reference `#issue` (`Closes #N`); Copilot or Builder opens it.
+- Branch / PR must reference `#issue` (`Closes #N`).
 - Tests relevant to the change are added or updated when behavior changes.
 - Ready for Reviewer after a real PR exists.
 
 ## Constraints
 
-- **Never push to the default branch** (`main` / `master`) yourself when using
-  Copilot — Copilot opens the PR.
+- **Never push to the default branch** (`main` / `master`).
 - Do not merge the PR; Reviewer + gate own approval completion.
 - Do not re-label out of `status:new` (Planner-only) or impersonate other
   roles’ Apps.
@@ -34,11 +32,11 @@ Workflow will move you through `status:in-progress`, then hand off with
 
 Stop, comment `@human-review` with the blocker, add `status:blocked`.
 
-Escalate when Copilot assign fails **and** Models/Gemini backup fails, or when
-acceptance criteria cannot be met from the issue text.
+Escalate when Models/Gemini codegen fails, or when acceptance criteria cannot
+be met from the issue text.
 
 ## Special case: landing / UI design
 
-- Primary: Copilot (with UI instructions) when `COPILOT_TOKEN` set
-- Else Gemini when `GEMINI_API_KEY` set; else Models
+- Primary: Gemini when `GEMINI_API_KEY` set; else Models
 - Edit `site/`; keep brutal-minimalist brand rules in `.github/copilot-instructions.md`
+  (shared agent brief) and [docs/DESIGN.md](../docs/DESIGN.md)
