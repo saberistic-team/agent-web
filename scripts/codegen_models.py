@@ -241,7 +241,23 @@ def extract_json(text: str) -> dict[str, Any]:
         end = text.rfind("}")
         if start < 0 or end <= start:
             raise GitHubError(f"model did not return JSON: {text[:500]!r}")
-        data = json.loads(text[start : end + 1])
+        snippet = text[start : end + 1]
+        try:
+            data = json.loads(snippet)
+        except json.JSONDecodeError as exc:
+            # Common model failure: raw newlines/tabs inside HTML string values.
+            repaired = snippet.replace("\r\n", "\n")
+            repaired = re.sub(
+                r'(?<!\\)\n',
+                r"\\n",
+                repaired,
+            )
+            try:
+                data = json.loads(repaired)
+            except json.JSONDecodeError:
+                raise GitHubError(
+                    f"model JSON parse failed ({exc}); first 800 chars: {snippet[:800]!r}"
+                ) from exc
     if not isinstance(data, dict):
         raise GitHubError("model JSON root must be an object")
     return data
@@ -259,13 +275,20 @@ def validate_plan(plan: dict[str, Any]) -> list[dict[str, str]]:
             raise GitHubError("each files[] entry must be an object")
         path = str(item.get("path") or "").strip().lstrip("/")
         content = item.get("content")
-        if not path or content is None:
-            raise GitHubError("files[] entries need path and content")
+        content_b64 = item.get("content_b64")
+        if not path or (content is None and not content_b64):
+            raise GitHubError("files[] entries need path and content or content_b64")
         if ".." in path.split("/"):
             raise GitHubError(f"refusing path traversal: {path}")
         if path.startswith((".git/", ".venv/")):
             raise GitHubError(f"refusing protected path: {path}")
-        text = content if isinstance(content, str) else json.dumps(content, indent=2)
+        if content_b64:
+            try:
+                text = base64.b64decode(str(content_b64), validate=False).decode("utf-8")
+            except Exception as exc:
+                raise GitHubError(f"invalid content_b64 for {path}: {exc}") from exc
+        else:
+            text = content if isinstance(content, str) else json.dumps(content, indent=2)
         if len(text) > MAX_FILE_CHARS:
             raise GitHubError(f"file too large: {path}")
         out.append({"path": path, "content": text})
@@ -320,10 +343,13 @@ def json_system_prompt(*, ui: bool) -> str:
         "{\n"
         '  "commit_message": "string",\n'
         '  "pr_summary": "string",\n'
-        '  "files": [{"path": "relative/path", "content": "full file contents"}]\n'
+        '  "files": [{"path": "relative/path", "content_b64": "base64 utf-8 file"}]\n'
         "}\n"
         "Rules:\n"
         f"- At most {MAX_FILES} files; prefer minimal diffs.\n"
+        "- Prefer content_b64 (standard base64 of the full UTF-8 file) so HTML/CSS "
+        "never breaks JSON escaping. Plain \"content\" string is allowed only for "
+        "tiny non-HTML files.\n"
         "- Include full file contents for each touched file.\n"
         "- Add/update tests when behavior changes.\n"
         "- Do not invent secrets, credentials, or unrelated refactors.\n"
@@ -414,8 +440,26 @@ def build_with_models(
     else:
         fallback_note = None
 
-    plan = extract_json(raw)
-    files = validate_plan(plan)
+    try:
+        plan = extract_json(raw)
+        files = validate_plan(plan)
+    except Exception as parse_exc:
+        # One repair pass: force content_b64 so HTML cannot break JSON.
+        repair_user = (
+            f"{user}\n\n"
+            "## Previous invalid model output (fix and return valid JSON only)\n"
+            f"Error: {parse_exc}\n"
+            "Return the same change using content_b64 for EVERY file "
+            "(standard base64 of full UTF-8 contents). No markdown fences.\n"
+        )
+        raw = chat_completion(
+            provider=provider, model=model, system=system, user=repair_user
+        )
+        plan = extract_json(raw)
+        files = validate_plan(plan)
+        note = f"json_repaired_after: {parse_exc}"
+        fallback_note = f"{fallback_note}; {note}" if fallback_note else note
+
     commit_message = str(plan.get("commit_message") or f"builder(#{issue}): implement change")
     pr_summary = str(plan.get("pr_summary") or "Automated Builder change.")
 
