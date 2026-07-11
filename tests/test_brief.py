@@ -1,0 +1,171 @@
+"""Tests for project brief create + Stripe webhook paid path."""
+
+from __future__ import annotations
+
+from contextlib import contextmanager
+from typing import Any, Generator
+from unittest.mock import MagicMock, patch
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.main import app
+
+client = TestClient(app)
+
+SAMPLE_BRIEF = {
+    "website": "https://example.com",
+    "contact_method": "email",
+    "contact_value": "client@example.com",
+    "brief": "We need a security review of our API.",
+}
+
+FAKE_PAID_BRIEF: dict[str, Any] = {
+    "id": 1,
+    "website": SAMPLE_BRIEF["website"],
+    "contact_method": "email",
+    "contact_value": SAMPLE_BRIEF["contact_value"],
+    "brief": SAMPLE_BRIEF["brief"],
+    "status": "paid",
+    "stripe_session_id": "cs_test_123",
+    "stripe_payment_intent_id": "pi_test_123",
+    "paid_at": "2026-07-11T00:00:00+00:00",
+}
+
+
+@pytest.fixture(autouse=True)
+def brief_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_fake")
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_test_fake")
+    monkeypatch.setenv("RESEND_API_KEY", "re_test_fake")
+    monkeypatch.setenv("BASE_URL", "http://testserver")
+
+
+@contextmanager
+def mock_db_connection() -> Generator[MagicMock, None, None]:
+    conn = MagicMock()
+    with patch("app.main.db.db_connection") as db_conn:
+        db_conn.return_value.__enter__.return_value = conn
+        db_conn.return_value.__exit__.return_value = None
+        yield conn
+
+
+def test_create_brief_returns_checkout_url() -> None:
+    fake_session = MagicMock()
+    fake_session.id = "cs_test_abc"
+    fake_session.url = "https://checkout.stripe.com/c/pay/cs_test_abc"
+
+    with mock_db_connection() as conn:
+        with patch("app.main.db.create_brief", return_value=1) as create_brief:
+            with patch("app.main.db.update_brief_stripe_session") as update_session:
+                with patch(
+                    "app.main.stripe_service.create_checkout_session",
+                    return_value=fake_session,
+                ) as create_session:
+                    response = client.post("/api/briefs", json=SAMPLE_BRIEF)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["checkout_url"] == fake_session.url
+    assert data["brief_id"] == 1
+
+    create_brief.assert_called_once()
+    create_session.assert_called_once()
+    update_session.assert_called_once_with(
+        conn,
+        brief_id=1,
+        stripe_session_id="cs_test_abc",
+    )
+
+
+def test_create_brief_validates_payload() -> None:
+    response = client.post(
+        "/api/briefs",
+        json={
+            "website": "",
+            "contact_method": "email",
+            "contact_value": "bad",
+            "brief": "",
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_stripe_webhook_marks_paid_and_sends_email() -> None:
+    fake_event = {
+        "type": "checkout.session.completed",
+        "data": {
+            "object": {
+                "id": "cs_test_123",
+                "payment_intent": "pi_test_123",
+                "metadata": {"brief_id": "1"},
+            }
+        },
+    }
+
+    with mock_db_connection() as conn:
+        with patch(
+            "app.main.stripe_service.construct_webhook_event",
+            return_value=fake_event,
+        ):
+            with patch(
+                "app.main.db.mark_brief_paid",
+                return_value=FAKE_PAID_BRIEF,
+            ) as mark_paid:
+                with patch(
+                    "app.main.email_service.notify_team_of_paid_brief"
+                ) as notify_team:
+                    with patch(
+                        "app.main.email_service.notify_customer_of_paid_brief"
+                    ) as notify_customer:
+                        response = client.post(
+                            "/webhooks/stripe",
+                            content=b"{}",
+                            headers={"stripe-signature": "sig_test"},
+                        )
+
+    assert response.status_code == 200
+    assert response.json() == {"received": True}
+
+    mark_paid.assert_called_once_with(
+        conn,
+        brief_id=1,
+        stripe_session_id="cs_test_123",
+        stripe_payment_intent_id="pi_test_123",
+    )
+    notify_team.assert_called_once()
+    notify_customer.assert_called_once()
+
+
+def test_stripe_webhook_ignores_other_events() -> None:
+    fake_event = {"type": "payment_intent.succeeded", "data": {"object": {}}}
+
+    with patch(
+        "app.main.stripe_service.construct_webhook_event",
+        return_value=fake_event,
+    ):
+        with patch("app.main.db.mark_brief_paid") as mark_paid:
+            response = client.post(
+                "/webhooks/stripe",
+                content=b"{}",
+                headers={"stripe-signature": "sig_test"},
+            )
+
+    assert response.status_code == 200
+    mark_paid.assert_not_called()
+
+
+def test_brief_form_page() -> None:
+    response = client.get("/brief")
+    assert response.status_code == 200
+    body = response.text
+    assert "Request project brief" in body
+    assert 'id="brief-form"' in body
+    assert "Continue to payment" in body
+
+
+def test_brief_success_page() -> None:
+    response = client.get("/brief/success")
+    assert response.status_code == 200
+    assert "We received your request." in response.text
