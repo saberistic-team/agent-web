@@ -69,6 +69,11 @@ jobs:
 
   gate:
     needs: plan
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      checks: read
     uses: ./.github/workflows/gate.yml
     with:
       issue_number: ${{ fromJSON(needs.plan.outputs.issue) }}
