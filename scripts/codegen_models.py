@@ -301,7 +301,11 @@ def validate_plan(plan: dict[str, Any]) -> list[dict[str, str]]:
             raise GitHubError(f"refusing protected path: {path}")
         if content_b64:
             try:
-                cleaned = re.sub(r"\s+", "", str(content_b64))
+                # Models often omit trailing '=' padding; normalize before decode.
+                cleaned = re.sub(r"[^A-Za-z0-9+/=]", "", str(content_b64))
+                pad = (-len(cleaned)) % 4
+                if pad:
+                    cleaned = cleaned + ("=" * pad)
                 raw = base64.b64decode(cleaned, validate=False)
                 text = raw.decode("utf-8", errors="replace")
             except Exception as exc:

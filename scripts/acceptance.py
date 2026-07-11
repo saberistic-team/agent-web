@@ -12,6 +12,7 @@ import json
 import os
 import re
 import sys
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -324,8 +325,8 @@ def _chat(system: str, user: str) -> str:
         model = os.environ.get("GEMINI_MODEL") or "gemini-3.5-flash"
         url = (
             "https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{__import__('urllib.parse').quote(model, safe='')}:generateContent"
-            f"?key={__import__('urllib.parse').quote(key.strip())}"
+            f"{urllib.parse.quote(model, safe='')}:generateContent"
+            f"?key={urllib.parse.quote(key.strip())}"
         )
         payload = {
             "systemInstruction": {"parts": [{"text": system}]},
