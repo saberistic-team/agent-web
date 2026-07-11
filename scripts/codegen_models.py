@@ -396,19 +396,36 @@ def json_system_prompt(*, ui: bool) -> str:
 
 
 def select_provider(title: str, body: str) -> tuple[str, str]:
-    """Return (provider, model). Prefer Gemini whenever the API key exists.
+    """Return (provider, model).
 
-    Org Actions GITHUB_TOKEN often gets Models API 403; Gemini is the reliable
-    free path when GEMINI_API_KEY is configured.
+    Policy:
+    - Visual/UI/design issues → Gemini primary (when key set), else GitHub Models
+    - Everything else → GitHub Models primary (free Actions Models), else Gemini
+    - Either side falls back to the other in build_with_models on failure
     """
     force = (os.environ.get("CODEGEN_PROVIDER") or "").strip().lower()
     if force in {"gemini", "github-models", "models"}:
         if force == "gemini":
             return "gemini", os.environ.get("GEMINI_MODEL") or DEFAULT_GEMINI_MODEL
         return "github-models", os.environ.get("GITHUB_MODELS_MODEL") or DEFAULT_MODEL
-    if gemini_api_key():
-        return "gemini", os.environ.get("GEMINI_MODEL") or DEFAULT_GEMINI_MODEL
-    return "github-models", os.environ.get("GITHUB_MODELS_MODEL") or DEFAULT_MODEL
+
+    ui = is_ui_design_issue(title, body)
+    has_gemini = bool(gemini_api_key())
+    models_model = os.environ.get("GITHUB_MODELS_MODEL") or DEFAULT_MODEL
+    gemini_model = os.environ.get("GEMINI_MODEL") or DEFAULT_GEMINI_MODEL
+
+    if ui and has_gemini:
+        return "gemini", gemini_model
+    if not ui:
+        return "github-models", models_model
+    # UI but no Gemini key → Models
+    return "github-models", models_model
+
+
+def _other_provider(provider: str) -> tuple[str, str]:
+    if provider == "gemini":
+        return "github-models", os.environ.get("GITHUB_MODELS_MODEL") or DEFAULT_MODEL
+    return "gemini", os.environ.get("GEMINI_MODEL") or DEFAULT_GEMINI_MODEL
 
 
 def build_with_models(
@@ -445,22 +462,25 @@ def build_with_models(
     try:
         raw = chat_completion(provider=provider, model=model, system=system, user=user)
     except Exception as primary_exc:
-        # Fall back to GitHub Models if Gemini fails — keep both errors if Models also fails.
-        if provider == "gemini":
-            try:
-                provider = "github-models"
-                model = os.environ.get("GITHUB_MODELS_MODEL") or DEFAULT_MODEL
-                raw = chat_completion(
-                    provider=provider, model=model, system=system, user=user
-                )
-                fallback_note = f"gemini_failed: {primary_exc}"
-            except Exception as models_exc:
-                raise GitHubError(
-                    f"Gemini failed: {primary_exc}\n"
-                    f"GitHub Models fallback failed: {models_exc}"
-                ) from models_exc
-        else:
-            raise
+        # Mutual backup: Models ↔ Gemini when primary is unavailable / not permissioned.
+        alt_provider, alt_model = _other_provider(provider)
+        if alt_provider == "gemini" and not gemini_api_key():
+            raise GitHubError(
+                f"{provider} failed: {primary_exc}\n"
+                "Gemini backup unavailable (missing GEMINI_API_KEY)."
+            ) from primary_exc
+        try:
+            raw = chat_completion(
+                provider=alt_provider, model=alt_model, system=system, user=user
+            )
+            primary_name = provider
+            provider, model = alt_provider, alt_model
+            fallback_note = f"{primary_name}_failed: {primary_exc}; used_{alt_provider}"
+        except Exception as backup_exc:
+            raise GitHubError(
+                f"Primary ({provider}) failed: {primary_exc}\n"
+                f"Backup ({alt_provider}) failed: {backup_exc}"
+            ) from backup_exc
     else:
         fallback_note = None
 

@@ -12,8 +12,9 @@ Workflow will move you through `status:in-progress`, then hand off with
 ## Definition of done
 
 - Implementation matches the issue scope (bug fix or feature as labeled).
-- For product code, Builder uses **GitHub Models** to generate files and open
-  a PR (see [docs/MODELS.md](../docs/MODELS.md)).
+- For product code, Builder uses **GitHub Models** by default (free), and
+  **Gemini** as primary for visual/UI design — each backs up the other
+  ([docs/MODELS.md](../docs/MODELS.md), [docs/DESIGN.md](../docs/DESIGN.md)).
 - Verify/smoke and landing scaffolds may complete without a model call.
 - Branch: `builder/<issue-number>-<short-slug>`
 - Tests relevant to the change are added or updated when behavior changes.
@@ -44,15 +45,16 @@ Escalate when:
   dependency CVE with no safe upgrade path)
 - the work is outside Builder scope (pure policy, credentials, org admin)
 - you need a clarification that would change architecture or public API
-- GitHub Models codegen failed (rate limit, bad JSON, empty plan) — escalate
-  with notes from docs/MODELS.md; do not open worklog-only PRs
+- GitHub Models / Gemini codegen failed (rate limit, 403, bad JSON, empty
+  plan) — escalate with notes from docs/MODELS.md + docs/DESIGN.md; do not
+  open worklog-only PRs
 
 ## Special case: landing / UI design
 
 If the issue is landing/UI/CSS/CTA/design:
 
-- Prefer **Gemini** when `GEMINI_API_KEY` is set ([docs/DESIGN.md](../docs/DESIGN.md))
-- Fall back to GitHub Models
+- **Primary: Gemini** when `GEMINI_API_KEY` is set ([docs/DESIGN.md](../docs/DESIGN.md))
+- **Backup: GitHub Models** if Gemini is unavailable
 - Edit `site/` (and tests); do not only sync a scaffold
 - Use brand logos from `site/assets/` — single wordmark in header
 - Do **not** revive the old team roster

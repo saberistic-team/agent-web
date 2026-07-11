@@ -370,7 +370,7 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
         write_builder_handoff("reviewer")
         return
 
-    # Product work: prefer Gemini when GEMINI_API_KEY set (Models often 403 on org token).
+    # Product work: GitHub Models default; Gemini primary for UI/design (mutual backup).
     try:
         from codegen_models import build_with_models
 
@@ -392,11 +392,12 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
             repo,
             issue,
             (
-                "Codegen failed (Gemini and/or GitHub Models).\n\n"
+                "Codegen failed (GitHub Models and/or Gemini).\n\n"
                 f"`{exc}`\n\n"
-                "Set `GEMINI_API_KEY` (preferred; see docs/DESIGN.md). "
-                "GitHub Models via Actions token often returns 403 for orgs — "
-                "optional PAT with models scope as `MODELS_TOKEN` secret."
+                "Non-UI work prefers free GitHub Models; UI/design prefers Gemini "
+                "(see docs/MODELS.md + docs/DESIGN.md). Each backs up the other. "
+                "If Models returns 403, set `MODELS_TOKEN` (PAT with models scope) "
+                "and/or ensure `GEMINI_API_KEY` for UI + backup."
             ),
         )
         write_builder_handoff("blocked")

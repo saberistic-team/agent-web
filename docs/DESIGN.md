@@ -1,18 +1,20 @@
-# Design AI (Gemini) for UI changes
+# Design AI (Gemini) for visual / UI changes
 
-For landing/UI/design **and** general codegen when configured, Builder prefers
-**Google Gemini** (free API tier). Org Actions tokens often get **403** from
-GitHub Models, so Gemini is the reliable default whenever `GEMINI_API_KEY` is set.
+Builder uses **Gemini** as the **primary** codegen provider for visual design
+work (landing, about, CTA, CSS, hero, layout). For all other issues it prefers
+free **GitHub Models** — see [MODELS.md](MODELS.md).
 
-## When Gemini is used
+Each provider is a **backup** for the other when unavailable or not permissioned
+(e.g. Models `403`, Gemini `404` / missing key).
 
-`scripts/codegen_models.py` selects Gemini when:
+## When Gemini is primary
 
-1. The issue looks like UI/design (landing, CTA, CSS, hero, layout, …), and
-2. Secret `GEMINI_API_KEY` is set
+`scripts/codegen_models.py` → `select_provider`:
 
-Otherwise it uses GitHub Models (`docs/MODELS.md`). If Gemini fails, it
-automatically falls back to Models.
+1. Issue looks like UI/design (landing, about page, CTA, CSS, hero, layout, …), and
+2. Secret `GEMINI_API_KEY` is set  
+
+→ primary: Gemini; backup: GitHub Models
 
 ## Setup (free)
 
