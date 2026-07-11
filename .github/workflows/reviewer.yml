@@ -1,0 +1,73 @@
+name: Agent — Reviewer
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  review:
+    if: github.event.label.name == 'agent:reviewer'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run reviewer agent
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REVIEWER_APP_ID: ${{ secrets.REVIEWER_APP_ID }}
+          REVIEWER_PRIVATE_KEY: ${{ secrets.REVIEWER_PRIVATE_KEY }}
+        run: |
+          python scripts/run_agent.py \
+            --role reviewer \
+            --issue "${{ github.event.issue.number }}" \
+            --brief AGENTS/reviewer.md
+
+      - name: Advance status
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ISSUE="${{ github.event.issue.number }}"
+          DECISION_FILE="trace/reviewer-${ISSUE}-decision.txt"
+          DECISION="approved"
+          if [[ -f "${DECISION_FILE}" ]]; then
+            DECISION="$(tr -d '[:space:]' < "${DECISION_FILE}")"
+          fi
+
+          for label in review:needs-review review:approved review:changes-requested; do
+            gh issue edit "${ISSUE}" --repo "${{ github.repository }}" --remove-label "${label}" 2>/dev/null || true
+          done
+
+          case "${DECISION}" in
+            approved)
+              # Gate workflow reacts to review:approved and sets status:done.
+              gh issue edit "${ISSUE}" \
+                --repo "${{ github.repository }}" \
+                --add-label "review:approved" \
+                --remove-label "agent:reviewer"
+              ;;
+            changes-requested)
+              for label in status:new status:in-progress status:blocked status:needs-review status:done status:failed; do
+                gh issue edit "${ISSUE}" --repo "${{ github.repository }}" --remove-label "${label}" 2>/dev/null || true
+              done
+              gh issue edit "${ISSUE}" \
+                --repo "${{ github.repository }}" \
+                --add-label "review:changes-requested" \
+                --add-label "status:queued" \
+                --add-label "agent:builder" \
+                --remove-label "agent:reviewer"
+              ;;
+            *)
+              echo "Unknown reviewer decision: ${DECISION}"
+              exit 1
+              ;;
+          esac

@@ -1,0 +1,83 @@
+name: Gate
+
+# Runs before a plan is released into status:queued (workflow_call from Planner)
+# and when review:approved is applied on an issue.
+on:
+  issues:
+    types: [labeled]
+  workflow_call:
+    inputs:
+      issue_number:
+        description: Issue to authorize
+        required: true
+        type: number
+      intent:
+        description: Gate intent (release-plan | review-approved)
+        required: true
+        type: string
+
+jobs:
+  check:
+    if: >-
+      github.event_name == 'workflow_call' ||
+      github.event.label.name == 'review:approved'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Resolve issue and intent
+        id: meta
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_call" ]]; then
+            echo "issue=${{ inputs.issue_number }}" >> "$GITHUB_OUTPUT"
+            echo "intent=${{ inputs.intent }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "issue=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
+            echo "intent=review-approved" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check permission
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python scripts/check_permission.py \
+            --issue "${{ steps.meta.outputs.issue }}" \
+            --intent "${{ steps.meta.outputs.intent }}"
+
+      - name: Proceed
+        if: success()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE: ${{ steps.meta.outputs.issue }}
+          INTENT: ${{ steps.meta.outputs.intent }}
+        run: |
+          set -euo pipefail
+          case "${INTENT}" in
+            release-plan)
+              echo "Permission check passed for release-plan on #${ISSUE}; caller may queue."
+              ;;
+            review-approved)
+              for label in status:new status:queued status:in-progress status:blocked status:needs-review status:failed; do
+                gh issue edit "${ISSUE}" --repo "${{ github.repository }}" --remove-label "${label}" 2>/dev/null || true
+              done
+              gh issue edit "${ISSUE}" \
+                --repo "${{ github.repository }}" \
+                --add-label "status:done" \
+                --remove-label "review:needs-review" \
+                --add-label "review:approved"
+              ;;
+            *)
+              echo "Unknown intent: ${INTENT}"
+              exit 1
+              ;;
+          esac

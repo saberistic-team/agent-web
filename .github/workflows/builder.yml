@@ -1,0 +1,60 @@
+name: Agent — Builder
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  build:
+    if: github.event.label.name == 'agent:builder'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Mark in progress
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ISSUE="${{ github.event.issue.number }}"
+          for label in status:new status:queued status:blocked status:needs-review status:done status:failed; do
+            gh issue edit "${ISSUE}" --repo "${{ github.repository }}" --remove-label "${label}" 2>/dev/null || true
+          done
+          gh issue edit "${ISSUE}" --repo "${{ github.repository }}" --add-label "status:in-progress"
+
+      - name: Run builder agent
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUILDER_APP_ID: ${{ secrets.BUILDER_APP_ID }}
+          BUILDER_PRIVATE_KEY: ${{ secrets.BUILDER_PRIVATE_KEY }}
+        run: |
+          python scripts/run_agent.py \
+            --role builder \
+            --issue "${{ github.event.issue.number }}" \
+            --brief AGENTS/builder.md
+
+      - name: Advance status
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ISSUE="${{ github.event.issue.number }}"
+          for label in status:new status:queued status:in-progress status:blocked status:done status:failed; do
+            gh issue edit "${ISSUE}" --repo "${{ github.repository }}" --remove-label "${label}" 2>/dev/null || true
+          done
+          gh issue edit "${ISSUE}" \
+            --repo "${{ github.repository }}" \
+            --add-label "status:needs-review" \
+            --add-label "review:needs-review" \
+            --add-label "agent:reviewer" \
+            --remove-label "agent:builder"
