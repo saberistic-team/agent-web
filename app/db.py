@@ -1,147 +1,113 @@
-"""Postgres/SQLite persistence for project brief leads."""
+"""Render Postgres persistence for project briefs."""
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import datetime, timezone
+from typing import Any, Generator, Literal
 
-from sqlalchemy import DateTime, Integer, String, Text, create_engine, select
-from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
-from sqlalchemy.pool import StaticPool
+import psycopg
+from psycopg.rows import dict_row
 
-from app.config import database_url
+BriefStatus = Literal["pending_payment", "paid", "abandoned"]
 
-STATUS_PENDING = "pending_payment"
-STATUS_PAID = "paid"
-STATUS_ABANDONED = "abandoned"
-
-CONTACT_EMAIL = "email"
-CONTACT_PHONE = "phone"
-
-_engine = None
-_SessionLocal: sessionmaker[Session] | None = None
-
-
-class Base(DeclarativeBase):
-    pass
-
-
-class ProjectBrief(Base):
-    __tablename__ = "project_briefs"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        nullable=False,
-    )
-    website: Mapped[str] = mapped_column(String(2048), nullable=False)
-    contact_method: Mapped[str] = mapped_column(String(16), nullable=False)
-    contact_value: Mapped[str] = mapped_column(String(512), nullable=False)
-    brief: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[str] = mapped_column(String(32), nullable=False, default=STATUS_PENDING)
-    stripe_session_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    stripe_payment_intent_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS project_briefs (
+    id SERIAL PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    website TEXT NOT NULL,
+    contact_method TEXT NOT NULL CHECK (contact_method IN ('email', 'phone')),
+    contact_value TEXT NOT NULL,
+    brief TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending_payment'
+        CHECK (status IN ('pending_payment', 'paid', 'abandoned')),
+    stripe_session_id TEXT,
+    stripe_payment_intent_id TEXT,
+    paid_at TIMESTAMPTZ
+);
+"""
 
 
-def _session_factory() -> sessionmaker[Session]:
-    global _engine, _SessionLocal
-    if _SessionLocal is None:
-        url = database_url()
-        if url.startswith("sqlite"):
-            connect_args = {"check_same_thread": False}
-            pool_kwargs: dict = {}
-            if url.endswith(":memory:") or url.rstrip("/").endswith(":memory:"):
-                pool_kwargs["poolclass"] = StaticPool
-            _engine = create_engine(url, connect_args=connect_args, **pool_kwargs)
-        else:
-            _engine = create_engine(url)
-        _SessionLocal = sessionmaker(bind=_engine, autoflush=False, autocommit=False)
-    return _SessionLocal
+def init_db(database_url: str) -> None:
+    with psycopg.connect(database_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute(SCHEMA_SQL)
+        conn.commit()
 
 
-def init_db() -> None:
-    _session_factory()
-    Base.metadata.create_all(_engine)
-
-
-def reset_db_for_tests(url: str) -> None:
-    """Point the module at a fresh in-memory database (tests only)."""
-    global _engine, _SessionLocal
-    if _engine is not None:
-        _engine.dispose()
-    _engine = None
-    _SessionLocal = None
-    import os
-
-    os.environ["DATABASE_URL"] = url
-    init_db()
+@contextmanager
+def db_connection(database_url: str) -> Generator[psycopg.Connection, None, None]:
+    with psycopg.connect(database_url, row_factory=dict_row) as conn:
+        yield conn
 
 
 def create_brief(
+    conn: psycopg.Connection,
     *,
     website: str,
     contact_method: str,
     contact_value: str,
     brief: str,
-) -> ProjectBrief:
-    factory = _session_factory()
-    with factory() as session:
-        row = ProjectBrief(
-            website=website,
-            contact_method=contact_method,
-            contact_value=contact_value,
-            brief=brief,
-            status=STATUS_PENDING,
+) -> int:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO project_briefs (website, contact_method, contact_value, brief, status)
+            VALUES (%s, %s, %s, %s, 'pending_payment')
+            RETURNING id
+            """,
+            (website, contact_method, contact_value, brief),
         )
-        session.add(row)
-        session.commit()
-        session.refresh(row)
-        return row
+        row = cur.fetchone()
+        conn.commit()
+    return int(row["id"])
 
 
-def get_brief(brief_id: int) -> ProjectBrief | None:
-    factory = _session_factory()
-    with factory() as session:
-        return session.get(ProjectBrief, brief_id)
-
-
-def set_stripe_session(brief_id: int, session_id: str) -> ProjectBrief | None:
-    factory = _session_factory()
-    with factory() as session:
-        row = session.get(ProjectBrief, brief_id)
-        if row is None:
-            return None
-        row.stripe_session_id = session_id
-        session.commit()
-        session.refresh(row)
-        return row
-
-
-def mark_paid(
-    brief_id: int,
+def update_brief_stripe_session(
+    conn: psycopg.Connection,
     *,
+    brief_id: int,
     stripe_session_id: str,
+) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE project_briefs
+            SET stripe_session_id = %s
+            WHERE id = %s
+            """,
+            (stripe_session_id, brief_id),
+        )
+        conn.commit()
+
+
+def get_brief_by_id(conn: psycopg.Connection, brief_id: int) -> dict[str, Any] | None:
+    with conn.cursor() as cur:
+        cur.execute("SELECT * FROM project_briefs WHERE id = %s", (brief_id,))
+        return cur.fetchone()
+
+
+def mark_brief_paid(
+    conn: psycopg.Connection,
+    *,
+    brief_id: int,
+    stripe_session_id: str | None,
     stripe_payment_intent_id: str | None,
-) -> ProjectBrief | None:
-    factory = _session_factory()
-    with factory() as session:
-        row = session.get(ProjectBrief, brief_id)
-        if row is None:
-            return None
-        if row.status == STATUS_PAID:
-            return row
-        row.status = STATUS_PAID
-        row.stripe_session_id = stripe_session_id
-        row.stripe_payment_intent_id = stripe_payment_intent_id
-        row.paid_at = datetime.now(timezone.utc)
-        session.commit()
-        session.refresh(row)
-        return row
-
-
-def get_brief_by_session_id(session_id: str) -> ProjectBrief | None:
-    factory = _session_factory()
-    with factory() as session:
-        stmt = select(ProjectBrief).where(ProjectBrief.stripe_session_id == session_id)
-        return session.scalars(stmt).first()
+) -> dict[str, Any] | None:
+    paid_at = datetime.now(timezone.utc)
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE project_briefs
+            SET status = 'paid',
+                stripe_session_id = COALESCE(%s, stripe_session_id),
+                stripe_payment_intent_id = %s,
+                paid_at = %s
+            WHERE id = %s AND status != 'paid'
+            RETURNING *
+            """,
+            (stripe_session_id, stripe_payment_intent_id, paid_at, brief_id),
+        )
+        row = cur.fetchone()
+        conn.commit()
+    return row
