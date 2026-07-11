@@ -19,15 +19,28 @@ def test_hello() -> None:
     assert response.json() == {"message": "hello world"}
 
 
-def test_landing_page() -> None:
-    for path in ("/", "/about"):
-        response = client.get(path)
-        assert response.status_code == 200
-        body = response.text
-        assert "AmirSaber" in body
-        assert "Filling gaps between markets and tech" in body
-        assert "our-teams-section" not in body
-        assert "Queen" not in body
+def test_home_page() -> None:
+    response = client.get("/")
+    assert response.status_code == 200
+    body = response.text
+    assert "AmirSaber" in body
+    assert "Filling gaps between markets and tech" in body
+    assert 'href="/about"' in body
+    assert "our-teams-section" not in body
+    assert "Queen" not in body
+    # Full bio lives on /about, not duplicated on home
+    assert "lifelong builder" not in body
+
+
+def test_about_page() -> None:
+    response = client.get("/about")
+    assert response.status_code == 200
+    body = response.text
+    assert "About" in body
+    assert "lifelong builder" in body
+    assert "distributed systems" in body
+    assert "Minecraft" in body
+    assert "leave things better than I found them" in body
 
 
 def test_landing_single_linkedin_cta() -> None:
@@ -36,6 +49,8 @@ def test_landing_single_linkedin_cta() -> None:
     assert body.count("linkedin.com/in/saberistic") == 1
     assert 'class="cta"' in body
     assert 'href="https://www.linkedin.com/in/saberistic"' in body
+    assert 'class="cta cta-secondary"' in body
+    assert 'href="/about"' in body
 
 
 def test_logo_asset() -> None:
