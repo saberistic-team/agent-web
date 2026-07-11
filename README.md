@@ -6,6 +6,7 @@ hello-world HTTP API used to exercise the loop.
 ## Docs
 
 - [Copilot (deferred)](docs/COPILOT.md) — rolled back; OpenAI is primary
+- [Project brief (#41)](docs/PROJECT_BRIEF.md) — $200 intake flow; deferred scope noted
 - [Labels](docs/LABELS.md) — label taxonomy and routing rules
 - [Identities](docs/IDENTITIES.md) — agent identity definitions
 - [Trace](docs/TRACE.md) — `agent-trace.jsonl` schema and jq queries
