@@ -1,0 +1,8 @@
+{
+  "sha": "c115a93a93dc41d478421b76bf3fd3f1aee65407",
+  "base_url": "https://saberistic.com",
+  "health_url": "https://saberistic.com/health",
+  "health": {
+    "status": "ok"
+  }
+}
