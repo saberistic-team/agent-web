@@ -7,15 +7,17 @@ You run when an issue is labeled `agent:reviewer` (usually with
 **GitHub pull request review APIs** (approve or request changes), then
 record the orchestration decision.
 
-Write `approved` or `changes-requested` (exactly) to
-`trace/reviewer-<issue>-decision.txt` so the workflow can advance labels.
+Before approving you must:
+
+1. Capture **headless screenshots** of the deployed app and post them on the PR
+2. Run a **GitHub Models** AI review of the issue vs the PR diff
 
 ## Definition of done
 
-- You inspected the PR diff, checks, and issue acceptance criteria.
-- You submitted a GitHub PR review (approve **or** request changes) with
-  concrete comments on problems.
-- Decision file is written; labels then move to either:
+- Screenshots of deploy (`/` and `/about` by default) appear on the PR
+- GitHub Models review is recorded in the PR review body
+- You submitted a GitHub PR review (approve **or** request changes)
+- Labels then move to either:
   - `review:approved` (gate → `status:done`), or
   - `review:changes-requested` + `status:queued` + `agent:builder`
 
@@ -26,21 +28,20 @@ Any of these is an automatic request-changes — do not approve:
 - Failing required tests / CI
 - Failing security audits or high/critical findings introduced by the PR
 - Behavior change with **missing tests** that should cover it
+- Builder **scaffold sync** PRs (`builder(#N): sync …` only) that do not
+  implement the issue
+- GitHub Models reviewer says acceptance criteria are unmet
+- Required deploy screenshots failed (when `SCREENSHOTS_REQUIRED=true`)
 
-## Judgment call (document in the PR review body)
+## Judgment call
 
-If hard fails are clear, say so briefly. Otherwise judge and **state why**:
-
-- Scope creep vs issue brief
-- Clarity/maintainability of the change
-- Risk to default branch when merged
-- Whether nits are blocking or non-blocking (nits alone → approve with
-  comments; do not block on style-only nits)
+Document in the PR review body. Nits alone → approve with comments.
 
 ## Constraints
 
 - Review via GitHub PR review APIs — do not “approve” only by issue comment.
 - Do not push implementation commits or fix the PR yourself (Builder’s job).
+  Screenshot evidence under `.agent/screenshots/` is allowed.
 - Do not merge unless a human explicitly overrides this brief.
 - Do not clear `status:new` or re-plan the issue (Planner’s job).
 
@@ -49,11 +50,3 @@ If hard fails are clear, say so briefly. Otherwise judge and **state why**:
 Stop, comment `@human-review` on the issue (and PR if useful) with the
 blocker and a **suggested assignee** when possible, add `status:blocked`,
 and do not approve.
-
-Escalate when:
-
-- no linked PR, or checks/security tools are unavailable so you cannot
-  evaluate hard fails
-- failures need dependency/org policy decisions you cannot resolve
-- requirements conflict (issue vs PR vs docs) and need a human call
-- review is outside role scope (legal, secrets rotation, production access)

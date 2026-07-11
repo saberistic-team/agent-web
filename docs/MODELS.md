@@ -5,13 +5,11 @@ when configured — see [DESIGN.md](DESIGN.md).
 
 ## Flow
 
-1. Issue labeled `agent:builder`
-2. Special cases: verify/smoke, landing scaffold (no model)
-3. Otherwise `scripts/codegen_models.py`:
-   - Calls `https://models.github.ai/inference/chat/completions`
-   - Expects JSON `{ commit_message, pr_summary, files: [{path, content}] }`
-   - Writes files via Contents API, opens PR
-4. Labels `agent:reviewer`
+1. Issue gets `agent:builder`
+2. Special cases: verify/smoke (no model); missing landing scaffold → block
+3. UI/landing/design issues → **Gemini** if `GEMINI_API_KEY` set, else Models
+4. Other issues → GitHub Models
+5. Opens PR → Reviewer (Models AI + screenshots)
 
 ## Auth
 

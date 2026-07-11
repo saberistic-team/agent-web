@@ -431,7 +431,7 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
         if "security" in name_l and conclusion == "failure":
             hard_fail_reasons.append(f"security check failed: {run.get('name')}")
 
-    # Missing tests / stub-only handoff heuristics
+    # Missing tests / stub-only / scaffold-sync heuristics
     files = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}/files") or []
     filenames = [f["filename"] for f in files]
     only_worklog = filenames and all(
@@ -442,6 +442,14 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
         hard_fail_reasons.append(
             "PR is builder worklog-only; no product code/tests to merge "
             "(terminal: true — do not requeue builder)"
+        )
+
+    commits = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}/commits") or []
+    commit_msgs = [c.get("commit", {}).get("message", "") for c in commits]
+    if commit_msgs and all(re.search(r"\bsync\b", m or "", re.I) for m in commit_msgs):
+        hard_fail_reasons.append(
+            "PR commits are Builder scaffold sync only — does not implement the issue "
+            "(terminal: true — do not approve)"
         )
 
     code_touched = any(
@@ -458,12 +466,59 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
     ):
         hard_fail_reasons.append("behavior/code change without test file updates")
 
+    # Deploy screenshots (best-effort unless SCREENSHOTS_REQUIRED=1)
+    screenshot_note = ""
+    try:
+        from screenshot_deploy import capture, comment_on_pr, upload_to_branch
+
+        base_url = os.environ.get("DEPLOY_BASE_URL", "https://agent-web-hello.onrender.com")
+        out_dir = Path("trace/screenshots")
+        shots = capture(base_url, out_dir)
+        branch = pr["head"]["ref"]
+        urls = upload_to_branch(
+            repo, branch, shots, f".agent/screenshots/pr-{pr_number}"
+        )
+        comment_on_pr(repo, pr_number, urls, base_url)
+        screenshot_note = f"- screenshots: {len(urls)} posted on PR\n"
+        # refresh sha after screenshot commits
+        pr = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}")
+        sha = pr["head"]["sha"]
+    except Exception as exc:
+        screenshot_note = f"- screenshots: failed (`{exc}`)\n"
+        if os.environ.get("SCREENSHOTS_REQUIRED", "true").lower() in {"1", "true", "yes"}:
+            hard_fail_reasons.append(f"required deploy screenshots failed: {exc}")
+
+    # GitHub Models AI review (required for approval)
+    ai_block = ""
+    try:
+        from review_models import ai_review
+
+        verdict = ai_review(repo, issue, pr_number)
+        ai_block = (
+            f"- ai_model: `{verdict.get('model')}`\n"
+            f"- ai_decision: `{verdict.get('decision')}`\n"
+            f"- ai_summary: {verdict.get('summary')}\n"
+            "- ai_reasons:\n"
+            + "\n".join(f"  - {r}" for r in (verdict.get("reasons") or []))
+            + "\n"
+        )
+        if verdict.get("decision") != "approved":
+            hard_fail_reasons.append(
+                "GitHub Models reviewer rejected: "
+                + "; ".join(verdict.get("reasons") or ["does not meet acceptance"])
+            )
+    except Exception as exc:
+        hard_fail_reasons.append(f"GitHub Models reviewer unavailable: {exc}")
+        ai_block = f"- ai_review: failed (`{exc}`)\n"
+
     if hard_fail_reasons:
         event = "REQUEST_CHANGES"
         body = (
             "### reviewer_decision\n"
             f"- decision: `changes-requested`\n"
             f"- brief: `{brief}`\n"
+            f"{screenshot_note}"
+            f"{ai_block}"
             "- hard_fails:\n"
             + "\n".join(f"  - {r}" for r in hard_fail_reasons)
             + "\n"
@@ -474,7 +529,9 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
             "### reviewer_decision\n"
             f"- decision: `approved`\n"
             f"- brief: `{brief}`\n"
-            "- judgment: no hard fails; nits non-blocking\n"
+            f"{screenshot_note}"
+            f"{ai_block}"
+            "- judgment: AI + checks agree; nits non-blocking\n"
         )
 
     api(

@@ -13,6 +13,7 @@ jobs:
       pull-requests: write
       contents: write
       checks: read
+      models: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,10 +30,19 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install Playwright
+        run: |
+          pip install playwright==1.49.1
+          python -m playwright install --with-deps chromium
+
       - name: Run reviewer agent
         env:
           GITHUB_TOKEN: ${{ steps.reviewer.outputs.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          MODELS_TOKEN: ${{ github.token }}
+          GITHUB_MODELS_MODEL: ${{ vars.GITHUB_MODELS_MODEL }}
+          DEPLOY_BASE_URL: ${{ vars.DEPLOY_BASE_URL }}
+          SCREENSHOTS_REQUIRED: ${{ vars.SCREENSHOTS_REQUIRED }}
         run: |
           python scripts/run_agent.py \
             --role reviewer \
@@ -69,7 +79,7 @@ jobs:
                 --remove-label "agent:reviewer"
               gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
           ### reviewer_labels
-          - decision: \`approved\` (from GitHub PR review API)
+          - decision: \`approved\` (from GitHub PR review API + Models AI)
           EOF
           )"
               ;;
@@ -101,7 +111,7 @@ jobs:
                 --remove-label "agent:reviewer"
               gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
           ### reviewer_labels
-          - decision: \`changes-requested\` (from GitHub PR review API)
+          - decision: \`changes-requested\` (from GitHub PR review API + Models AI)
           - next: \`agent:builder\`
           EOF
           )"
@@ -128,10 +138,12 @@ jobs:
             --outcome "${OUTCOME}" \
             --cost-usd 0
 
-      - name: Upload agent trace
+      - name: Upload screenshots + trace
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: agent-trace-reviewer-${{ github.event.issue.number }}-${{ github.run_id }}
-          path: trace/agent-trace.jsonl
+          name: agent-reviewer-${{ github.event.issue.number }}-${{ github.run_id }}
+          path: |
+            trace/agent-trace.jsonl
+            trace/screenshots/
           if-no-files-found: ignore
