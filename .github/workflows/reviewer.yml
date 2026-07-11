@@ -40,6 +40,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
+          pip install -r requirements-agents.txt
           pip install playwright==1.49.1
           python -m playwright install --with-deps chromium
 
@@ -69,6 +70,9 @@ jobs:
           GITHUB_MODELS_MODEL: ${{ vars.GITHUB_MODELS_MODEL }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          CURSOR_MODEL: ${{ vars.CURSOR_MODEL }}
+          REVIEW_PROVIDER: ${{ vars.REVIEW_PROVIDER }}
           DEPLOY_BASE_URL: ${{ vars.DEPLOY_BASE_URL }}
           SCREENSHOTS_REQUIRED: ${{ vars.SCREENSHOTS_REQUIRED }}
           COVERAGE_UNIT_MIN: ${{ vars.COVERAGE_UNIT_MIN }}

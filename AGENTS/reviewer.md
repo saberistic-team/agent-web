@@ -12,10 +12,10 @@ Before approving you must:
 1. Capture **headless Chromium screenshots** via Actions Playwright
    (`scripts/screenshot_deploy.py` on the live deploy URL) and post them on the
    PR and issue — not Copilot / MCP browsers
-2. Enforce **service coverage** on `app/`: unit ≥90%, integration ≥70%
-   ([docs/TESTING.md](../docs/TESTING.md))
-3. Run **OpenAI / Models AI review** ([docs/MODELS.md](../docs/MODELS.md),
-   [docs/DESIGN.md](../docs/DESIGN.md))
+2. Run **Cursor / OpenAI / Models AI review** ([docs/MODELS.md](../docs/MODELS.md),
+   [docs/DESIGN.md](../docs/DESIGN.md), [docs/TESTING.md](../docs/TESTING.md))
+   — prefers Cursor when `CURSOR_API_KEY` is set
+3. Enforce **service coverage** on `app/`: unit ≥90%, integration ≥70%
 4. Post an **`### acceptance_checklist`** that marks each acceptance criterion
    done/not_done with links to evidence (PR, commits, files, screenshots)
 

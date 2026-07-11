@@ -632,7 +632,7 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
 
         verdict = ai_review(repo, issue, pr_number)
         ai_block += (
-            f"- ai_provider: `openai-or-models`\n"
+                    f"- ai_provider: `cursor-or-openai-or-models`\n"
             f"- ai_model: `{verdict.get('model')}`\n"
             f"- ai_decision: `{verdict.get('decision')}`\n"
             f"- ai_summary: {verdict.get('summary')}\n"
