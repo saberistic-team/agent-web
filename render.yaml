@@ -17,5 +17,17 @@ services:
         fromDatabase:
           name: agent-web-db
           property: connectionString
-      - key: APP_BASE_URL
+      - key: BASE_URL
         value: https://saberistic.com
+      - key: FROM_EMAIL
+        value: noreply@saberistic.com
+      - key: NOTIFY_EMAIL
+        value: inbox@saberistic.com
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
