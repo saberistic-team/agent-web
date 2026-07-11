@@ -77,7 +77,7 @@ def gemini_visual_check(
             "summary": "GEMINI_API_KEY missing; skipped visual AI check",
             "decision": "skip",
         }
-    model = os.environ.get("GEMINI_MODEL") or "gemini-2.5-flash"
+    model = os.environ.get("GEMINI_MODEL") or "gemini-3.5-flash"
     parts: list[dict] = [
         {
             "text": (

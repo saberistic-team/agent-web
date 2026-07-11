@@ -297,12 +297,13 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
 
     # Screenshot / reviewer infra: already implemented in-repo — document + done PR path
     # without calling Models (often 403) or Gemini UI prompts.
+    # Landing/product issues must never take this shortcut (AC may mention screenshots).
     try:
         from codegen_models import is_agent_infra_issue
     except Exception:
         is_agent_infra_issue = lambda *_a, **_k: False  # noqa: E731
 
-    if is_agent_infra_issue(title, body):
+    if is_agent_infra_issue(title, body) and not is_landing_issue(title, body):
         owner, name = split_repo(repo)
         default = api("GET", f"/repos/{owner}/{name}").get("default_branch") or "main"
         branch = f"builder/{issue}-{slugify(title)}"

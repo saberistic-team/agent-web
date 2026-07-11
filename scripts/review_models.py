@@ -65,7 +65,7 @@ def chat_gemini(system: str, user: str, model: str | None = None) -> tuple[str, 
     key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not key:
         raise GitHubError("missing GEMINI_API_KEY")
-    model = model or os.environ.get("GEMINI_MODEL") or "gemini-2.5-flash"
+    model = model or os.environ.get("GEMINI_MODEL") or "gemini-3.5-flash"
     url = (
         "https://generativelanguage.googleapis.com/v1beta/models/"
         f"{urllib.parse.quote(model, safe='')}:generateContent"

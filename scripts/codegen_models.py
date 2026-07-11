@@ -17,7 +17,7 @@ from typing import Any
 from github_api import GitHubError, api, post_issue_comment, split_repo, token
 
 DEFAULT_MODEL = "openai/gpt-4o-mini"
-DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
+DEFAULT_GEMINI_MODEL = "gemini-3.5-flash"
 MODELS_URL = "https://models.github.ai/inference/chat/completions"
 GEMINI_URL_TMPL = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -54,30 +54,57 @@ def gemini_api_key() -> str | None:
     return value.strip() if value and value.strip() else None
 
 
-def is_ui_design_issue(title: str, body: str) -> bool:
+def is_agent_infra_issue(title: str, body: str) -> bool:
+    """True only for Reviewer/screenshot *infra* work, not product UI issues.
+
+    Product issues often mention screenshots in acceptance criteria; those must
+    still go through Gemini/codegen, not the docs-sync shortcut.
+    """
+    title_l = title.lower()
     text = f"{title}\n{body}".lower()
-    # Infra / agent-loop tooling is not a product UI redesign.
+    # Landing / LinkedIn / hero CTA product work is never infra.
     if re.search(
-        r"\bscreenshot|\bheadless\b|\bplaywright\b|\breviewer\b.*\b(workflow|approve)\b|"
-        r"\bgithub models\b|\bcopilot\b|\bgemini_api\b|\bagent.?loop\b|\bgate\b",
+        r"\blanding\b|\blinkedin\b|\bhero\b|\bcta\b|\babout page\b",
         text,
+    ) and not re.search(
+        r"\breviewer:\s*(headless|screenshot)|\bscreenshot.*(workflow|infra|pipeline)\b",
+        title_l,
     ):
         return False
     return bool(
         re.search(
-            r"\bui\b|\bux\b|\blanding\b|\bdesign\b|\bcss\b|\bhero\b|\bcta\b|"
-            r"\blayout\b|\babout page\b|saberistic\.com",
+            r"\breviewer:\s*(headless|screenshot)|\bheadless\b.*\bscreenshot\b|"
+            r"\bplaywright\b|\bscreenshot.*(workflow|infra|pipeline|before approve)\b|"
+            r"visual (check|evidence|proof).*before approve|after deploy.*screenshot",
             text,
         )
     )
 
 
-def is_agent_infra_issue(title: str, body: str) -> bool:
+def is_ui_design_issue(title: str, body: str) -> bool:
     text = f"{title}\n{body}".lower()
+    # Product landing/CTA work wins even if AC mentions Reviewer screenshots.
+    if re.search(
+        r"\blanding\b|\bhero\b|\bcta\b|\blinkedin\b|\babout page\b",
+        text,
+    ) and not re.search(
+        r"\breviewer:\s*headless|\bscreenshot.*workflow\b|\bplaywright\b.*\b(reviewer|approve)\b",
+        text,
+    ):
+        return bool(
+            re.search(
+                r"\bui\b|\bux\b|\blanding\b|\bdesign\b|\bcss\b|\bhero\b|\bcta\b|"
+                r"\blayout\b|\babout page\b|saberistic\.com|\blinkedin\b",
+                text,
+            )
+        )
+    # Pure infra / agent-loop tooling is not a product UI redesign.
+    if is_agent_infra_issue(title, body):
+        return False
     return bool(
         re.search(
-            r"\bscreenshot|\bheadless\b|\bplaywright\b|"
-            r"visual (check|evidence|proof)|before approve|after deploy",
+            r"\bui\b|\bux\b|\blanding\b|\bdesign\b|\bcss\b|\bhero\b|\bcta\b|"
+            r"\blayout\b|\babout page\b|saberistic\.com",
             text,
         )
     )

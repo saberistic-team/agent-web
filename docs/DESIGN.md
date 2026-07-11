@@ -24,7 +24,7 @@ Optional Actions **variables**:
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `GEMINI_MODEL` | `gemini-2.5-flash` | Gemini model id (`gemini-3.5-flash` also fine) |
+| `GEMINI_MODEL` | `gemini-3.5-flash` | Gemini model id |
 | `CODEGEN_PROVIDER` | (auto) | Force `gemini` or `github-models` |
 
 ## Design brief baked into prompts
