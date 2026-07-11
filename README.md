@@ -11,8 +11,8 @@ hello-world HTTP API used to exercise the loop.
 - [Trace](docs/TRACE.md) — `agent-trace.jsonl` schema and jq queries
 - [Hello API](docs/HELLO_API.md) — local run and Render deploy
 - [Landing](docs/LANDING.md) — saberistic.com about page + DNS notes
-- [Models / codegen](docs/MODELS.md) — OpenAI primary + Models backup
-- [Design AI](docs/DESIGN.md) — UI codegen via OpenAI
+- [Models / codegen](docs/MODELS.md) — Cursor SDK primary + OpenAI/Models backup
+- [Design AI](docs/DESIGN.md) — UI coding via Cursor / OpenAI
 - [Screenshots](docs/SCREENSHOTS.md) — pre-merge + post-deploy visual evidence
 - [Acceptance](docs/ACCEPTANCE.md) — checklist + evidence before close
 

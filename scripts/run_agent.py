@@ -392,10 +392,11 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
             repo,
             issue,
             (
-                "Codegen failed (OpenAI / GitHub Models).\n\n"
+                "Codegen failed (Cursor SDK / OpenAI / GitHub Models).\n\n"
                 f"`{exc}`\n\n"
-                "Required: ChatGPT via `OPENAI_API_KEY` (`CODEGEN_PROVIDER=openai`). "
-                "Optional backup: GitHub Models (`MODELS_TOKEN`). Gemini is retired. "
+                "Preferred: Cursor cloud agent via `CURSOR_API_KEY` "
+                "(`CODEGEN_PROVIDER=cursor`). "
+                "Optional: OpenAI (`OPENAI_API_KEY`) or GitHub Models (`MODELS_TOKEN`). "
                 "See docs/MODELS.md. "
                 "If `git/refs` returns 403 for the Builder App, grant the App "
                 "`contents: write` on this repository."

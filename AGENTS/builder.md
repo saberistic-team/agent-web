@@ -12,9 +12,9 @@ Workflow will move you through `status:in-progress`, then hand off with
 ## Definition of done
 
 - Implementation matches the issue scope (bug fix or feature as labeled).
-- For product code, Builder uses **OpenAI/ChatGPT** (`OPENAI_API_KEY` required;
-  Gemini retired). Optional GitHub Models backup —
-  [docs/MODELS.md](../docs/MODELS.md), [docs/DESIGN.md](../docs/DESIGN.md).
+- For product code, Builder uses the **Cursor Agent SDK** cloud agent
+  (`CURSOR_API_KEY`; `CODEGEN_PROVIDER=cursor`). Optional OpenAI / GitHub Models
+  backup — [docs/MODELS.md](../docs/MODELS.md), [docs/DESIGN.md](../docs/DESIGN.md).
 - Verify/smoke and landing scaffolds may complete without a model call.
 - Branch / PR must reference `#issue` (`Closes #N`).
 - Tests relevant to the change are added or updated when behavior changes.
@@ -32,11 +32,11 @@ Workflow will move you through `status:in-progress`, then hand off with
 
 Stop, comment `@human-review` with the blocker, add `status:blocked`.
 
-Escalate when OpenAI/Models codegen fails, or when acceptance criteria cannot
-be met from the issue text.
+Escalate when Cursor/OpenAI/Models codegen fails, or when acceptance criteria
+cannot be met from the issue text.
 
 ## Special case: landing / UI design
 
-- Primary: OpenAI (`OPENAI_API_KEY`)
+- Primary: Cursor cloud agent (`CURSOR_API_KEY`)
 - Edit `site/`; keep brutal-minimalist brand rules in `.github/copilot-instructions.md`
   (shared agent brief) and [docs/DESIGN.md](../docs/DESIGN.md)

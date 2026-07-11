@@ -1,6 +1,7 @@
 # Design AI (OpenAI)
 
-Builder uses **ChatGPT (OpenAI)** for UI and product codegen. Gemini is retired.
+Builder uses the **Cursor Agent SDK** (cloud) for UI and product coding when
+`CURSOR_API_KEY` is set. OpenAI remains an optional JSON-codegen backup.
 
 ## Setup
 
