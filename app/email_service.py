@@ -38,6 +38,53 @@ def send_email(
     return response.json()
 
 
+def notify_team_of_brief_lead(
+    *,
+    api_key: str,
+    from_email: str,
+    notify_email: str,
+    brief: dict[str, Any],
+) -> dict[str, Any] | None:
+    body = (
+        "New project brief lead (payment not yet completed)\n\n"
+        f"Website: {brief['website']}\n"
+        f"Email: {brief['contact_value']}\n\n"
+        f"Brief:\n{brief['brief']}\n\n"
+        f"Brief ID: {brief['id']}\n"
+        f"Status: {brief.get('status', 'pending_payment')}\n"
+    )
+    return send_email(
+        api_key=api_key,
+        from_email=from_email,
+        to=notify_email,
+        subject=f"New project brief lead — {brief['website']}",
+        text=body,
+    )
+
+
+def notify_customer_of_brief_receipt(
+    *,
+    api_key: str,
+    from_email: str,
+    brief: dict[str, Any],
+) -> dict[str, Any] | None:
+    body = (
+        "We received your project brief request.\n\n"
+        "Thank you for submitting your project details. Complete the "
+        "$200 payment at checkout to finalize your request. Our team will "
+        "review your brief and follow up at this email address.\n\n"
+        f"Website: {brief['website']}\n\n"
+        "— saberistic"
+    )
+    return send_email(
+        api_key=api_key,
+        from_email=from_email,
+        to=brief["contact_value"],
+        subject="We received your project brief request",
+        text=body,
+    )
+
+
 def notify_team_of_paid_brief(
     *,
     api_key: str,
@@ -45,11 +92,10 @@ def notify_team_of_paid_brief(
     notify_email: str,
     brief: dict[str, Any],
 ) -> dict[str, Any] | None:
-    contact_label = brief["contact_method"]
     body = (
-        "New paid project brief request\n\n"
+        "Payment received for project brief\n\n"
         f"Website: {brief['website']}\n"
-        f"Contact ({contact_label}): {brief['contact_value']}\n\n"
+        f"Email: {brief['contact_value']}\n\n"
         f"Brief:\n{brief['brief']}\n\n"
         f"Brief ID: {brief['id']}\n"
         f"Stripe session: {brief.get('stripe_session_id') or 'n/a'}\n"
@@ -59,7 +105,7 @@ def notify_team_of_paid_brief(
         api_key=api_key,
         from_email=from_email,
         to=notify_email,
-        subject=f"Paid project brief — {brief['website']}",
+        subject=f"Payment received for project brief — {brief['website']}",
         text=body,
     )
 
@@ -70,13 +116,10 @@ def notify_customer_of_paid_brief(
     from_email: str,
     brief: dict[str, Any],
 ) -> dict[str, Any] | None:
-    if brief["contact_method"] != "email":
-        return None
-
     body = (
-        "We received your project brief request.\n\n"
-        "Thank you for your payment. Our team will review your brief and "
-        "follow up using the contact details you provided.\n\n"
+        "Your payment was received.\n\n"
+        "Thank you for your $200 payment. Our team will review your "
+        "project brief and follow up at this email address.\n\n"
         f"Website: {brief['website']}\n\n"
         "— saberistic"
     )
@@ -84,6 +127,6 @@ def notify_customer_of_paid_brief(
         api_key=api_key,
         from_email=from_email,
         to=brief["contact_value"],
-        subject="We received your project brief request",
+        subject="Payment confirmed — project brief request",
         text=body,
     )
