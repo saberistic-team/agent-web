@@ -1,8 +1,31 @@
 # Project brief request flow
 
-Collect a project brief, website, and contact (email or phone), persist the lead
-before payment, charge **$200 USD** via Stripe Checkout, and notify
-`inbox@saberistic.com` plus the customer after a successful webhook.
+Paid intake on [saberistic.com](https://saberistic.com): collect a project brief,
+website URL, and email-or-phone contact; persist the lead before payment; charge
+**$200 USD** via Stripe Checkout; store rows in Render Postgres; email
+`inbox@saberistic.com` and the customer on successful payment.
+
+Parent issue: [#41](https://github.com/saberistic-team/agent-web/issues/41).
+
+## In scope (initial)
+
+- Public form (`site/` + FastAPI) with landing CTA
+- `project_briefs` table; row created on submit (`pending_payment`)
+- Fixed **$200** one-time Stripe Checkout; webhook marks row `paid`
+- Email to inbox + customer confirmation after payment
+- Success page; env vars and local run documented; tests with mocked Stripe
+
+## Intentionally deferred
+
+The following are **out of scope** for the initial #41 flow unless trivial to
+include alongside the main implementation ([#44](https://github.com/saberistic-team/agent-web/issues/44)):
+
+- **Admin UI** — no dashboard or browse/search UI for submitted briefs
+- **Variable pricing / coupons** — single fixed price only; no discount codes
+- **Full CRM integration** — no HubSpot, Salesforce, or pipeline sync
+
+Leads live in Postgres and are delivered via email only. Revisit deferred items
+as separate issues when needed.
 
 ## Routes
 
@@ -137,7 +160,7 @@ Events: `checkout.session.completed`.
 ## Tests
 
 ```bash
-pytest tests/test_brief.py -q
+pytest tests/test_brief.py tests/test_brief_unit.py -q
 ```
 
 Mocks Stripe and email; no live Postgres or Stripe required in CI.

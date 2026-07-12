@@ -3,6 +3,10 @@
 Brutal-minimalist about/landing page for **AmirSaber Sharifi**, served at `/`
 from this repo (`site/`).
 
+The planned **Request project brief** flow ([#41](PROJECT_BRIEF.md)) adds a form
+CTA here. Admin UI, variable pricing/coupons, and CRM sync stay out of scope
+([deferred items](PROJECT_BRIEF.md#intentionally-deferred)).
+
 ## Local
 
 ```bash

@@ -199,6 +199,8 @@ def test_db_helpers_use_connection() -> None:
         brief="hello world brief",
     ) == 5
     conn2.commit.assert_called()
+    insert_sql = " ".join(str(cur2.execute.call_args_list[0][0][0]).split())
+    assert "pending_payment" in insert_sql
 
     db.update_brief_stripe_session(conn2, brief_id=5, stripe_session_id="cs_1")
     cur2.fetchone.return_value = {"id": 5, "status": "pending_payment"}

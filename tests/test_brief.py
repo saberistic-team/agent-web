@@ -83,6 +83,50 @@ def test_create_brief_returns_checkout_url() -> None:
 
 @pytest.mark.unit
 @pytest.mark.integration
+def test_abandoned_checkout_keeps_pending_payment_row() -> None:
+    """Lead is saved before Stripe; skipping payment never marks the row paid."""
+    from app import db as brief_db
+
+    fake_session = MagicMock()
+    fake_session.id = "cs_test_abandoned"
+    fake_session.url = "https://checkout.stripe.com/c/pay/cs_test_abandoned"
+    pending_row: dict[str, Any] = {
+        "id": 7,
+        "website": SAMPLE_BRIEF["website"],
+        "contact_method": SAMPLE_BRIEF["contact_method"],
+        "contact_value": SAMPLE_BRIEF["contact_value"],
+        "brief": SAMPLE_BRIEF["brief"],
+        "status": "pending_payment",
+        "stripe_session_id": "cs_test_abandoned",
+        "stripe_payment_intent_id": None,
+        "paid_at": None,
+    }
+
+    with mock_db_connection() as conn:
+        with patch("app.main.db.create_brief", return_value=7) as create_brief:
+            with patch("app.main.db.update_brief_stripe_session"):
+                with patch(
+                    "app.main.stripe_service.create_checkout_session",
+                    return_value=fake_session,
+                ):
+                    with patch("app.main.db.mark_brief_paid") as mark_paid:
+                        response = client.post("/api/briefs", json=SAMPLE_BRIEF)
+                        # User abandons Stripe Checkout — no webhook fires.
+                        mark_paid.assert_not_called()
+
+        with patch("app.db.get_brief_by_id", return_value=pending_row):
+            stored = brief_db.get_brief_by_id(conn, 7)
+
+    assert response.status_code == 200
+    assert response.json()["brief_id"] == 7
+    create_brief.assert_called_once()
+    assert stored is not None
+    assert stored["status"] == "pending_payment"
+    assert stored["paid_at"] is None
+
+
+@pytest.mark.unit
+@pytest.mark.integration
 def test_create_brief_validates_payload() -> None:
     response = client.post(
         "/api/briefs",
