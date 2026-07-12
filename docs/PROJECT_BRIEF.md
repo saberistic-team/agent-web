@@ -1,9 +1,10 @@
 # Project brief request flow
 
 Paid intake on [saberistic.com](https://saberistic.com): collect a project brief,
-website URL, and email-or-phone contact; persist the lead before payment; charge
+website URL, and email contact; persist the lead before payment; charge
 **$200 USD** via Stripe Checkout; store rows in Render Postgres; email
-`inbox@saberistic.com` and the customer on successful payment.
+`inbox@saberistic.com` and the customer on form submit and again on successful
+payment.
 
 Parent issue: [#41](https://github.com/saberistic-team/agent-web/issues/41).
 
@@ -12,7 +13,8 @@ Parent issue: [#41](https://github.com/saberistic-team/agent-web/issues/41).
 - Public form (`site/` + FastAPI) with landing CTA
 - `project_briefs` table; row created on submit (`pending_payment`)
 - Fixed **$200** one-time Stripe Checkout; webhook marks row `paid`
-- Email to inbox + customer confirmation after payment
+- Email to inbox + customer receipt on submit (payment-independent)
+- Payment-confirmed email to inbox + customer after webhook
 - Success page; env vars and local run documented; tests with mocked Stripe
 
 ## Intentionally deferred
@@ -33,8 +35,8 @@ as separate issues when needed.
 |-------|---------|
 | `/brief` | Project brief form |
 | `/brief/success` | Post-checkout confirmation page |
-| `POST /api/briefs` | Create DB row + Stripe Checkout Session |
-| `POST /webhooks/stripe` | Stripe webhook (marks brief paid, sends email) |
+| `POST /api/briefs` | Create DB row, send lead emails, Stripe Checkout Session |
+| `POST /webhooks/stripe` | Stripe webhook (marks brief paid, sends payment emails) |
 
 ## Environment variables
 
@@ -93,7 +95,8 @@ export FROM_EMAIL="onboarding@resend.dev"   # Resend sandbox sender
 export NOTIFY_EMAIL="delivered@resend.dev"
 ```
 
-Without `RESEND_API_KEY`, paid webhooks still mark rows `paid` but skip email.
+Without `RESEND_API_KEY`, submit and paid webhooks still persist rows but skip
+email.
 
 ### 5. Run
 
@@ -113,8 +116,8 @@ Table `project_briefs`:
 | `id` | serial | Primary key |
 | `created_at` | timestamptz | Auto-set |
 | `website` | text | Required |
-| `contact_method` | text | `email` or `phone` |
-| `contact_value` | text | Email address or phone number |
+| `contact_method` | text | Always `email` for new rows |
+| `contact_value` | text | Customer email address |
 | `brief` | text | Project description |
 | `status` | text | `pending_payment`, `paid`, or `abandoned` |
 | `stripe_session_id` | text | Nullable |
@@ -122,22 +125,22 @@ Table `project_briefs`:
 | `paid_at` | timestamptz | Nullable |
 
 Rows are inserted with `pending_payment` **before** redirecting to Stripe, so
-abandoned checkouts still retain the lead.
+abandoned checkouts still retain the lead and trigger submit-time inbox email.
+
+Existing production rows with `contact_method = 'phone'` (if any) are left
+unchanged; no migration is required.
 
 ## User flow
 
 1. User opens `/brief` from the landing CTA.
-2. User submits website, brief, and email-or-phone contact.
-3. `POST /api/briefs` inserts a `pending_payment` row and returns a Stripe
-   Checkout URL.
-4. User pays $200 on Stripe.
+2. User submits website, brief, and email.
+3. `POST /api/briefs` inserts a `pending_payment` row, emails the team inbox
+   (new lead) and the customer (brief received — does not claim payment
+   completed), and returns a Stripe Checkout URL.
+4. User pays $200 on Stripe (optional — lead email already sent).
 5. Stripe webhook `checkout.session.completed` marks the row `paid`, stores
-   Stripe IDs, emails `inbox@saberistic.com`, and emails the customer when
-   contact method is email.
+   Stripe IDs, and sends payment-confirmed emails to the inbox and customer.
 6. Stripe redirects to `/brief/success` (“We received your request.”).
-
-Phone-only contacts: customer email confirmation is skipped (no SMS provider);
-the success page serves as confirmation.
 
 ## Production (Render)
 
