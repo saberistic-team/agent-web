@@ -45,18 +45,17 @@ def create_brief(
     conn: psycopg.Connection,
     *,
     website: str,
-    contact_method: str,
-    contact_value: str,
+    email: str,
     brief: str,
 ) -> int:
     with conn.cursor() as cur:
         cur.execute(
             """
             INSERT INTO project_briefs (website, contact_method, contact_value, brief, status)
-            VALUES (%s, %s, %s, %s, 'pending_payment')
+            VALUES (%s, 'email', %s, %s, 'pending_payment')
             RETURNING id
             """,
-            (website, contact_method, contact_value, brief),
+            (website, email, brief),
         )
         row = cur.fetchone()
         conn.commit()
