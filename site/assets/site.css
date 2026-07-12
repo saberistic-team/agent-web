@@ -324,8 +324,7 @@ main {
   gap: 0.5rem;
 }
 
-.field label,
-.field legend {
+.field label {
   font-size: 0.75rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
