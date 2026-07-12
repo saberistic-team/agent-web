@@ -47,7 +47,7 @@ def chat_cursor(system: str, user: str, model: str | None = None) -> tuple[str, 
         raise GitHubError("missing CURSOR_API_KEY")
     model = model or os.environ.get("CURSOR_MODEL") or DEFAULT_CURSOR_MODEL
     try:
-        from cursor_sdk import Agent, LocalAgentOptions
+        from cursor_sdk import Agent, AgentOptions, LocalAgentOptions
     except ImportError as exc:
         raise GitHubError(
             "cursor-sdk is not installed; pip install -r requirements-agents.txt"
@@ -63,12 +63,29 @@ def chat_cursor(system: str, user: str, model: str | None = None) -> tuple[str, 
     try:
         result = Agent.prompt(
             prompt,
-            model=model,
-            api_key=key,
-            name="reviewer-ai",
-            mode="plan",
-            local=LocalAgentOptions(cwd=os.getcwd()),
+            AgentOptions(
+                model=model,
+                api_key=key,
+                name="reviewer-ai",
+                mode="plan",
+                local=LocalAgentOptions(cwd=os.getcwd()),
+            ),
         )
+    except TypeError:
+        # Older SDK builds may reject mode= / AgentOptions kwargs shape.
+        try:
+            result = Agent.prompt(
+                prompt,
+                {
+                    "model": model,
+                    "apiKey": key,
+                    "name": "reviewer-ai",
+                    "mode": "plan",
+                    "local": {"cwd": os.getcwd()},
+                },
+            )
+        except Exception as exc:
+            raise GitHubError(f"Cursor SDK review failed: {exc}") from exc
     except Exception as exc:
         raise GitHubError(f"Cursor SDK review failed: {exc}") from exc
 
