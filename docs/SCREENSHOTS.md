@@ -12,7 +12,7 @@ When `agent:reviewer` runs on an open PR (workflow installs Playwright):
    (cold-start retries)
 2. Files land under `.agent/screenshots/pr-<n>/pre-*.png` on the PR branch
 3. Comments `### reviewer_screenshots_pre` on the **PR and linked issue**
-4. AI review (OpenAI when `OPENAI_API_KEY` is set) runs
+4. AI review (Cursor preferred when `CURSOR_API_KEY` is set) runs
 5. Approve only if acceptance is met **and** screenshots posted
 
 Fail closed if the deploy URL is unreachable after retries.
@@ -30,8 +30,9 @@ CI `post-deploy-visual` job (after Render deploy hook):
    from PRs linked to the commit SHA
 4. Comments `### deploy_visual_check` on that issue (uploads under
    `.agent/screenshots/issue-<n>/post/`) including the `/health` JSON
-5. Includes pre shots when available and asks **OpenAI** (vision) whether the
-   issue change is visually visible vs pre-merge
+5. Includes pre shots when available and asks **Cursor** (preferred) or
+   **OpenAI** vision backup whether the issue change is visually visible vs
+   pre-merge
 6. Labels `@human-review` / escalates if visual check fails
 
 If no issue can be resolved, screenshots still upload under
@@ -46,13 +47,16 @@ gets the before/after pair.
 |------|------|---------|
 | `DEPLOY_BASE_URL` | variable | default `https://saberistic.com` (empty var ignored) |
 | `SCREENSHOTS_REQUIRED` | variable | default true for Reviewer |
-| `OPENAI_API_KEY` | secret | AI review + post-deploy visual + Builder codegen |
+| `CURSOR_API_KEY` | secret | **Preferred** post-deploy visual + Reviewer/Builder |
+| `CURSOR_MODEL` | variable | default `composer-2.5` |
+| `VISUAL_PROVIDER` | variable | unset → Cursor then OpenAI; force `cursor` / `openai` |
+| `OPENAI_API_KEY` | secret | Optional backup for visual / review / codegen |
 | `OPENAI_MODEL` | variable | default `gpt-4.1-mini` |
 | `RENDER_DEPLOY_HOOK_URL` | secret | deploy trigger |
 
 ## Scripts / workflows
 
 - `scripts/screenshot_deploy.py` — headless capture + upload + comment
-- `scripts/post_deploy_visual.py` — post-deploy capture + OpenAI vision check
+- `scripts/post_deploy_visual.py` — post-deploy capture + Cursor/OpenAI visual check
 - `.github/workflows/reviewer.yml` — pre-merge Playwright install + capture
 - `.github/workflows/ci.yml` — `post-deploy-visual` job
