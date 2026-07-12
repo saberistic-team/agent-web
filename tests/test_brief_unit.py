@@ -48,34 +48,23 @@ def test_settings_flags_when_empty(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_brief_create_request_strips_and_validates() -> None:
     req = BriefCreateRequest(
         website="  https://example.com  ",
-        contact_method="email",
-        contact_value="  lead@example.com ",
+        email="  lead@example.com ",
         brief="  Need help with architecture review please. ",
     )
     assert req.website == "https://example.com"
-    assert req.contact_value == "lead@example.com"
+    assert req.email == "lead@example.com"
 
     with pytest.raises(ValidationError):
         BriefCreateRequest(
             website=" ",
-            contact_method="email",
-            contact_value="x@y.com",
+            email="x@y.com",
             brief="enough text",
         )
 
     with pytest.raises(ValidationError):
         BriefCreateRequest(
             website="https://example.com",
-            contact_method="email",
-            contact_value="not-an-email",
-            brief="enough text here",
-        )
-
-    with pytest.raises(ValidationError):
-        BriefCreateRequest(
-            website="https://example.com",
-            contact_method="phone",
-            contact_value="123",
+            email="not-an-email",
             brief="enough text here",
         )
 
@@ -148,6 +137,17 @@ def test_email_send_and_notifications() -> None:
             text="body",
         ) is None
 
+        email_service.notify_team_of_new_brief(
+            api_key="re_test",
+            from_email="from@example.com",
+            notify_email="inbox@example.com",
+            brief=brief,
+        )
+        email_service.notify_customer_of_brief_received(
+            api_key="re_test",
+            from_email="from@example.com",
+            brief=brief,
+        )
         email_service.notify_team_of_paid_brief(
             api_key="re_test",
             from_email="from@example.com",
@@ -159,17 +159,8 @@ def test_email_send_and_notifications() -> None:
             from_email="from@example.com",
             brief=brief,
         )
-        phone_brief = {**brief, "contact_method": "phone", "contact_value": "+15551212"}
-        assert (
-            email_service.notify_customer_of_paid_brief(
-                api_key="re_test",
-                from_email="from@example.com",
-                brief=phone_brief,
-            )
-            is None
-        )
 
-    assert post.call_count >= 3
+    assert post.call_count >= 5
 
 
 @pytest.mark.unit
