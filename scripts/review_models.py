@@ -355,41 +355,61 @@ def ai_review(repo: str, issue: int, pr_number: int) -> dict[str, Any]:
         '  "summary": "string"\n'
         "}\n"
         "Approve ONLY if the PR clearly implements the issue acceptance criteria.\n"
-        "Request changes if the PR is a no-op, scaffold sync, unrelated files, "
+        "Request changes if the PR is a no-op, scaffold sync, product-unrelated files, "
         "or leaves acceptance criteria unmet.\n"
+        "Do NOT request changes solely for:\n"
+        "- files under `.agent/screenshots/` (allowed Reviewer evidence)\n"
+        "- noisy/file-by-file commit history (gate squash-merges to main)\n"
+        "- wording/style nits when acceptance criteria are met\n"
+        "If acceptance criteria are met, set decision=approved and meets_acceptance=true.\n"
         "Be concrete in reasons.\n"
     )
     user = json.dumps(ctx, indent=2)
     raw, model = chat(system, user, model=model)
     data = extract_json(raw)
     decision = str(data.get("decision") or "").lower().replace("_", "-")
+    meets = bool(data.get("meets_acceptance"))
     if decision not in {"approved", "changes-requested"}:
-        meets = bool(data.get("meets_acceptance"))
         decision = "approved" if meets else "changes-requested"
     reasons = data.get("reasons") or []
     if not isinstance(reasons, list):
         reasons = [str(reasons)]
+    # Drop nit reasons that must not block when acceptance is met (#58).
+    nit_re = re.compile(
+        r"screenshot|\.agent/screenshots|commit history|squash|nit\b|wording|style",
+        re.I,
+    )
     issue_blob = f"{ctx.get('issue_title')}\n{ctx.get('issue_body')}".lower()
     infra_issue = bool(
         re.search(r"screenshot|headless|playwright|visual (check|evidence)", issue_blob)
     )
     if looks_like_scaffold_sync(ctx) and not infra_issue:
         decision = "changes-requested"
+        meets = False
         reasons = [
             "PR looks like Builder scaffold sync (sync commits / boilerplate body), "
             "not an implementation of the issue"
         ] + [str(r) for r in reasons]
     elif looks_like_scaffold_sync(ctx) and infra_issue:
         decision = "approved"
+        meets = True
         reasons = [
             "Infra/screenshot issue: docs sync acceptable when screenshot scripts "
             "already live on main"
         ] + [str(r) for r in reasons]
+    elif meets and decision == "changes-requested":
+        # Acceptance met + only nits → approve (learned from #58 review loop).
+        non_nits = [str(r) for r in reasons if not nit_re.search(str(r))]
+        if not non_nits:
+            decision = "approved"
+            reasons = ["Acceptance criteria met; remaining notes are nits only"] + [
+                str(r) for r in reasons
+            ]
+        else:
+            reasons = non_nits
     return {
         "decision": decision,
-        "meets_acceptance": bool(data.get("meets_acceptance"))
-        if decision == "approved"
-        else False,
+        "meets_acceptance": True if decision == "approved" else False,
         "reasons": [str(r) for r in reasons][:12],
         "summary": str(data.get("summary") or ""),
         "model": model,
