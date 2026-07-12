@@ -78,13 +78,12 @@ def create_brief(payload: BriefCreateRequest) -> BriefCreateResponse:
         brief_id = db.create_brief(
             conn,
             website=payload.website,
-            contact_method="email",
-            contact_value=payload.email,
+            email=payload.email,
             brief=payload.brief,
         )
 
         if settings.email_configured:
-            submit_brief = {
+            new_brief = {
                 "id": brief_id,
                 "website": payload.website,
                 "contact_method": "email",
@@ -97,15 +96,15 @@ def create_brief(payload: BriefCreateRequest) -> BriefCreateResponse:
                     api_key=settings.resend_api_key,
                     from_email=settings.from_email,
                     notify_email=settings.notify_email,
-                    brief=submit_brief,
+                    brief=new_brief,
                 )
-                email_service.notify_customer_of_brief_received(
+                email_service.notify_customer_of_new_brief(
                     api_key=settings.resend_api_key,
                     from_email=settings.from_email,
-                    brief=submit_brief,
+                    brief=new_brief,
                 )
             except Exception:
-                logger.exception("Failed to send brief submit emails for %s", brief_id)
+                logger.exception("Failed to send submit-time brief emails for %s", brief_id)
 
         try:
             session = stripe_service.create_checkout_session(
