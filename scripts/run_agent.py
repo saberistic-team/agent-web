@@ -570,10 +570,14 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
                 "service coverage check failed "
                 "(unit ≥90% / integration ≥70% of app/ required)"
             )
-    if app_touched or Path("app").is_dir():
+    if app_touched:
+        cov_root = (os.environ.get("COVERAGE_ROOT") or "").strip()
+        cov_cmd = [sys.executable, "scripts/check_coverage.py"]
+        if cov_root:
+            cov_cmd.extend(["--root", cov_root])
         try:
             cov = subprocess.run(
-                [sys.executable, "scripts/check_coverage.py"],
+                cov_cmd,
                 capture_output=True,
                 text=True,
                 check=False,
@@ -594,7 +598,7 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
             hard_fail_reasons.append(f"service coverage check failed to run: {exc}")
             coverage_note = f"- coverage: failed (`{exc}`)\n"
     else:
-        coverage_note = "- coverage: skipped (no app/ service changes)\n"
+        coverage_note = "- coverage: skipped (PR does not touch app/*.py)\n"
 
     # Pre-merge deploy screenshots (baseline before approve/merge)
     screenshot_note = ""
