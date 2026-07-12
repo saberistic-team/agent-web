@@ -51,6 +51,8 @@ def mock_db_connection() -> Generator[MagicMock, None, None]:
         yield conn
 
 
+@pytest.mark.unit
+@pytest.mark.integration
 def test_create_brief_returns_checkout_url() -> None:
     fake_session = MagicMock()
     fake_session.id = "cs_test_abc"
@@ -79,6 +81,8 @@ def test_create_brief_returns_checkout_url() -> None:
     )
 
 
+@pytest.mark.unit
+@pytest.mark.integration
 def test_create_brief_validates_payload() -> None:
     response = client.post(
         "/api/briefs",
@@ -92,6 +96,55 @@ def test_create_brief_validates_payload() -> None:
     assert response.status_code == 422
 
 
+@pytest.mark.unit
+@pytest.mark.integration
+def test_create_brief_requires_database(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    response = client.post("/api/briefs", json=SAMPLE_BRIEF)
+    assert response.status_code == 503
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_create_brief_requires_stripe(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("STRIPE_SECRET_KEY", raising=False)
+    response = client.post("/api/briefs", json=SAMPLE_BRIEF)
+    assert response.status_code == 503
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_create_brief_stripe_failure() -> None:
+    with mock_db_connection():
+        with patch("app.main.db.create_brief", return_value=1):
+            with patch(
+                "app.main.stripe_service.create_checkout_session",
+                side_effect=RuntimeError("stripe down"),
+            ):
+                response = client.post("/api/briefs", json=SAMPLE_BRIEF)
+    assert response.status_code == 502
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_create_brief_missing_checkout_url() -> None:
+    fake_session = MagicMock()
+    fake_session.id = "cs_test_abc"
+    fake_session.url = None
+
+    with mock_db_connection():
+        with patch("app.main.db.create_brief", return_value=1):
+            with patch("app.main.db.update_brief_stripe_session"):
+                with patch(
+                    "app.main.stripe_service.create_checkout_session",
+                    return_value=fake_session,
+                ):
+                    response = client.post("/api/briefs", json=SAMPLE_BRIEF)
+    assert response.status_code == 502
+
+
+@pytest.mark.unit
+@pytest.mark.integration
 def test_stripe_webhook_marks_paid_and_sends_email() -> None:
     fake_event = {
         "type": "checkout.session.completed",
@@ -138,6 +191,8 @@ def test_stripe_webhook_marks_paid_and_sends_email() -> None:
     notify_customer.assert_called_once()
 
 
+@pytest.mark.unit
+@pytest.mark.integration
 def test_stripe_webhook_ignores_other_events() -> None:
     fake_event = {"type": "payment_intent.succeeded", "data": {"object": {}}}
 
@@ -156,6 +211,115 @@ def test_stripe_webhook_ignores_other_events() -> None:
     mark_paid.assert_not_called()
 
 
+@pytest.mark.unit
+@pytest.mark.integration
+def test_stripe_webhook_missing_brief_id() -> None:
+    fake_event = {
+        "type": "checkout.session.completed",
+        "data": {"object": {"id": "cs_x", "metadata": {}}},
+    }
+    with patch(
+        "app.main.stripe_service.construct_webhook_event",
+        return_value=fake_event,
+    ):
+        with patch("app.main.db.mark_brief_paid") as mark_paid:
+            response = client.post(
+                "/webhooks/stripe",
+                content=b"{}",
+                headers={"stripe-signature": "sig_test"},
+            )
+    assert response.status_code == 200
+    mark_paid.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_stripe_webhook_already_paid() -> None:
+    fake_event = {
+        "type": "checkout.session.completed",
+        "data": {
+            "object": {
+                "id": "cs_test_123",
+                "payment_intent": "pi_test_123",
+                "metadata": {"brief_id": "1"},
+            }
+        },
+    }
+    with mock_db_connection():
+        with patch(
+            "app.main.stripe_service.construct_webhook_event",
+            return_value=fake_event,
+        ):
+            with patch("app.main.db.mark_brief_paid", return_value=None):
+                with patch("app.main.email_service.notify_team_of_paid_brief") as notify:
+                    response = client.post(
+                        "/webhooks/stripe",
+                        content=b"{}",
+                        headers={"stripe-signature": "sig_test"},
+                    )
+    assert response.status_code == 200
+    notify.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_stripe_webhook_invalid_signature() -> None:
+    with patch(
+        "app.main.stripe_service.construct_webhook_event",
+        side_effect=ValueError("bad sig"),
+    ):
+        response = client.post(
+            "/webhooks/stripe",
+            content=b"{}",
+            headers={"stripe-signature": "sig_test"},
+        )
+    assert response.status_code == 400
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_stripe_webhook_requires_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("STRIPE_WEBHOOK_SECRET", raising=False)
+    response = client.post(
+        "/webhooks/stripe",
+        content=b"{}",
+        headers={"stripe-signature": "sig_test"},
+    )
+    assert response.status_code == 503
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_stripe_webhook_email_failure_still_ok() -> None:
+    fake_event = {
+        "type": "checkout.session.completed",
+        "data": {
+            "object": {
+                "id": "cs_test_123",
+                "payment_intent": "pi_test_123",
+                "metadata": {"brief_id": "1"},
+            }
+        },
+    }
+    with mock_db_connection():
+        with patch(
+            "app.main.stripe_service.construct_webhook_event",
+            return_value=fake_event,
+        ):
+            with patch("app.main.db.mark_brief_paid", return_value=FAKE_PAID_BRIEF):
+                with patch(
+                    "app.main.email_service.notify_team_of_paid_brief",
+                    side_effect=RuntimeError("email down"),
+                ):
+                    response = client.post(
+                        "/webhooks/stripe",
+                        content=b"{}",
+                        headers={"stripe-signature": "sig_test"},
+                    )
+    assert response.status_code == 200
+
+
+@pytest.mark.unit
 def test_brief_form_page() -> None:
     response = client.get("/brief")
     assert response.status_code == 200
@@ -165,6 +329,7 @@ def test_brief_form_page() -> None:
     assert "Continue to payment" in body
 
 
+@pytest.mark.unit
 def test_brief_success_page() -> None:
     response = client.get("/brief/success")
     assert response.status_code == 200

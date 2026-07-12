@@ -18,6 +18,8 @@ Workflow will move you through `status:in-progress`, then hand off with
 - Verify/smoke and landing scaffolds may complete without a model call.
 - Branch / PR must reference `#issue` (`Closes #N`).
 - Tests relevant to the change are added or updated when behavior changes.
+- Service PRs touching `app/` must keep **unit ≥90%** and **integration ≥70%**
+  coverage of `app/` ([docs/TESTING.md](../docs/TESTING.md)).
 - Ready for Reviewer after a real PR exists.
 
 ## Constraints

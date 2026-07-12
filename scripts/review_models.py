@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """AI-backed PR review against issue acceptance criteria.
 
-Prefers OpenAI (ChatGPT) when OPENAI_API_KEY is set, then GitHub Models.
-Gemini is retired.
+Prefers Cursor Agent SDK when CURSOR_API_KEY is set, then OpenAI, then
+GitHub Models. Gemini is retired.
 """
 
 from __future__ import annotations
@@ -17,7 +17,8 @@ from typing import Any
 from github_api import GitHubError, api, split_repo
 
 DEFAULT_MODEL = "openai/gpt-4o-mini"
-DEFAULT_OPENAI_MODEL = "gpt-4.1-mini"
+DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+DEFAULT_CURSOR_MODEL = "composer-2.5"
 MODELS_URL = "https://models.github.ai/inference/chat/completions"
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 
@@ -32,6 +33,56 @@ def models_token() -> str:
 def openai_api_key() -> str | None:
     value = os.environ.get("OPENAI_API_KEY")
     return value.strip() if value and value.strip() else None
+
+
+def cursor_api_key() -> str | None:
+    value = os.environ.get("CURSOR_API_KEY")
+    return value.strip() if value and value.strip() else None
+
+
+def chat_cursor(system: str, user: str, model: str | None = None) -> tuple[str, str]:
+    """Ask-only Cursor agent turn; must not modify the workspace."""
+    key = cursor_api_key()
+    if not key:
+        raise GitHubError("missing CURSOR_API_KEY")
+    model = model or os.environ.get("CURSOR_MODEL") or DEFAULT_CURSOR_MODEL
+    try:
+        from cursor_sdk import Agent, LocalAgentOptions
+    except ImportError as exc:
+        raise GitHubError(
+            "cursor-sdk is not installed; pip install -r requirements-agents.txt"
+        ) from exc
+
+    prompt = (
+        "READ-ONLY REVIEW TASK. Do not create, edit, delete, or move any files. "
+        "Do not run mutating shell/git commands. Do not open PRs.\n"
+        "Respond with JSON only (no prose outside JSON).\n\n"
+        f"## Instructions\n{system}\n\n"
+        f"## Context\n{user}\n"
+    )
+    try:
+        result = Agent.prompt(
+            prompt,
+            model=model,
+            api_key=key,
+            name="reviewer-ai",
+            mode="plan",
+            local=LocalAgentOptions(cwd=os.getcwd()),
+        )
+    except Exception as exc:
+        raise GitHubError(f"Cursor SDK review failed: {exc}") from exc
+
+    status = getattr(result, "status", None)
+    text = (getattr(result, "result", None) or "").strip()
+    if status != "finished":
+        raise GitHubError(
+            f"Cursor review run status={status!r} "
+            f"agent_id={getattr(result, 'agent_id', '')} "
+            f"result={text[:400]!r}"
+        )
+    if not text:
+        raise GitHubError("Cursor review returned empty content")
+    return text, model
 
 
 def chat_openai(system: str, user: str, model: str | None = None) -> tuple[str, str]:
@@ -112,20 +163,58 @@ def chat_github(system: str, user: str, model: str | None = None) -> tuple[str, 
 
 
 def chat(system: str, user: str, model: str | None = None) -> tuple[str, str]:
-    """OpenAI first, then GitHub Models. Gemini is retired."""
+    """Cursor first (when keyed), then OpenAI, then GitHub Models."""
     errors: list[str] = []
-    if openai_api_key():
+    force = (os.environ.get("REVIEW_PROVIDER") or "").strip().lower()
+
+    def _try_cursor() -> tuple[str, str] | None:
+        if not cursor_api_key():
+            return None
+        try:
+            return chat_cursor(
+                system, user, model=os.environ.get("CURSOR_MODEL") or model
+            )
+        except Exception as exc:
+            errors.append(f"cursor: {exc}")
+            return None
+
+    def _try_openai() -> tuple[str, str] | None:
+        if not openai_api_key():
+            return None
         try:
             return chat_openai(
                 system, user, model=os.environ.get("OPENAI_MODEL") or model
             )
         except Exception as exc:
             errors.append(f"openai: {exc}")
-    try:
-        return chat_github(system, user, model=model)
-    except Exception as exc:
-        errors.append(f"github-models: {exc}")
-        raise GitHubError("review chat failed: " + " | ".join(errors)) from exc
+            return None
+
+    if force in {"cursor", "cursor-sdk", "composer"}:
+        order = ["cursor", "openai", "github-models"]
+    elif force in {"openai", "chatgpt"}:
+        order = ["openai", "cursor", "github-models"]
+    elif force in {"github-models", "models"}:
+        order = ["github-models"]
+    else:
+        # Prefer Cursor whenever the key exists (OpenAI quota is often exhausted).
+        order = ["cursor", "openai", "github-models"]
+
+    for name in order:
+        if name == "cursor":
+            got = _try_cursor()
+            if got:
+                return got
+        elif name == "openai":
+            got = _try_openai()
+            if got:
+                return got
+        elif name == "github-models":
+            try:
+                return chat_github(system, user, model=model)
+            except Exception as exc:
+                errors.append(f"github-models: {exc}")
+
+    raise GitHubError("review chat failed: " + " | ".join(errors or ["no providers"]))
 
 
 def _recover_truncated_review_json(text: str) -> dict[str, Any] | None:

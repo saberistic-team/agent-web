@@ -1,24 +1,56 @@
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.main import about, app, brief_form, brief_success, health, hello, home
 
 client = TestClient(app)
 
 
+@pytest.mark.unit
+def test_health_handler_unit() -> None:
+    assert health() == {"status": "ok"}
+
+
+@pytest.mark.unit
+def test_hello_handler_unit() -> None:
+    assert hello() == {"message": "hello world"}
+
+
+@pytest.mark.unit
+def test_home_handler_returns_index() -> None:
+    response = home()
+    assert response.path.name == "index.html"
+
+
+@pytest.mark.unit
+def test_about_handler_returns_about() -> None:
+    response = about()
+    assert response.path.name == "about.html"
+
+
+@pytest.mark.unit
+def test_brief_handlers_return_pages() -> None:
+    assert brief_form().path.name == "brief.html"
+    assert brief_success().path.name == "brief-success.html"
+
+
+@pytest.mark.unit
 def test_health() -> None:
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
 
+@pytest.mark.unit
 def test_hello() -> None:
     response = client.get("/hello")
     assert response.status_code == 200
     assert response.json() == {"message": "hello world"}
 
 
+@pytest.mark.unit
 def test_home_page() -> None:
     response = client.get("/")
     assert response.status_code == 200
@@ -32,6 +64,7 @@ def test_home_page() -> None:
     assert "lifelong builder" not in body
 
 
+@pytest.mark.unit
 def test_about_page() -> None:
     response = client.get("/about")
     assert response.status_code == 200
@@ -43,6 +76,7 @@ def test_about_page() -> None:
     assert "leave things better than I found them" in body
 
 
+@pytest.mark.unit
 def test_landing_single_linkedin_cta() -> None:
     """Exactly one LinkedIn profile link — the hero CTA (not header/footer)."""
     body = client.get("/").text
@@ -54,12 +88,14 @@ def test_landing_single_linkedin_cta() -> None:
     assert 'href="/about"' in body
 
 
+@pytest.mark.unit
 def test_home_has_brief_cta() -> None:
     body = client.get("/").text
     assert "Request project brief" in body
     assert 'href="/brief"' in body
 
 
+@pytest.mark.unit
 def test_logo_asset() -> None:
     response = client.get("/assets/logo.png")
     assert response.status_code == 200

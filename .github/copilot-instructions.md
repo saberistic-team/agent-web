@@ -8,6 +8,8 @@ agents. Live site: **https://saberistic.com** (`/`, `/about`, `/health`, `/hello
 - Prefer minimal, scoped diffs that match the linked issue acceptance criteria.
 - Include `Closes #N` (or `#N`) in PR bodies and `builder(#N):` in commits.
 - Add or update tests under `tests/` when behavior changes.
+- For `app/` service changes: mark tests `@pytest.mark.unit` / `integration` and
+  keep coverage ≥90% unit / ≥70% integration (`scripts/check_coverage.py`).
 - Do not invent secrets or change agent App credentials.
 - Avoid drive-by refactors of `.github/workflows` agent orchestration unless
   the issue explicitly requires it.
