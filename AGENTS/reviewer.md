@@ -49,6 +49,14 @@ Any of these is an automatic request-changes — do not approve:
 
 Document in the PR review body. Nits alone → approve with comments.
 
+Do **not** request changes solely for:
+
+- files under `.agent/screenshots/` (Reviewer evidence; allowed)
+- noisy or file-by-file commit history (Gate squash-merges to `main`)
+- wording/style nits when acceptance criteria are met
+
+(`scripts/review_models.py` enforces this; learned from [#58](https://github.com/saberistic-team/agent-web/issues/58).)
+
 ## Constraints
 
 - Review via GitHub PR review APIs — do not “approve” only by issue comment.

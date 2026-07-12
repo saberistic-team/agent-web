@@ -7,10 +7,14 @@ to move work out of that state.
 
 You turn intake into routed work:
 
-- Keep a **single issue** when there is one independent change area.
-- **Spawn child issues** when there are **more than one independent change
-  areas**. Target granularity: **each child should be completable in one
-  commit**.
+- Keep a **single issue** when there is one independent change area (default).
+- **Spawn child issues** only for **true independent work packages**.
+  Target granularity: **each child should be completable in one commit**.
+
+Prefer an explicit `## Work packages` (or `Change areas` / `Children`) bullet
+list on the parent. Do **not** spawn children from narrative headings such as
+Summary, Current/Desired behavior, Implementation hints, User flow, Requirements,
+or Acceptance criteria (learned from [#55](https://github.com/saberistic-team/agent-web/issues/55)).
 
 Before any issue enters `status:queued`, it must already carry:
 
@@ -20,8 +24,10 @@ Before any issue enters `status:queued`, it must already carry:
 
 If you spawn children, write their numbers (one per line) to
 `trace/planner-<parent>-children.txt`, and ensure each child already has
-`agent:*`, `type:*`, and `status:queued`. The parent is then marked done by
-the workflow.
+`agent:*`, `type:*`, and `status:queued`. Each child body must include the
+parent’s `## Acceptance criteria` (or a minimal checkbox linking back to the
+parent) so Reviewer can verify without re-planning. The parent is then marked
+done by the workflow.
 
 ## Definition of done
 

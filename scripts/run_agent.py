@@ -119,6 +119,117 @@ def close_linked_open_prs(repo: str, issue: int, reason: str) -> None:
         )
 
 
+# Narrative / meta H2s must never become Planner children (learned from #55).
+PLANNER_SKIP_SECTIONS = {
+    "summary",
+    "goal",
+    "acceptance",
+    "acceptance criteria",
+    "out of scope",
+    "notes",
+    "recommended deploy",
+    "recommended deploy (easiest)",
+    "alternatives",
+    "context",
+    "background",
+    "source",
+    "about",
+    "about (public linkedin facts)",
+    "selected experience",
+    "selected experience (brief)",
+    "design",
+    "constraints",
+    "current behavior",
+    "current behavior (study notes)",
+    "desired behavior",
+    "implementation hints",
+    "implementation notes",
+    "user flow",
+    "requirements",
+    "routes",
+    "environment variables",
+    "local development",
+    "database schema",
+    "tests",
+    "production",
+    "production (render)",
+    "parent context",
+    "study notes",
+    "what was wrong",
+    "follow-up",
+}
+
+
+def extract_acceptance_section(body: str) -> str:
+    """Return the ## Acceptance criteria section (heading + bullets), if any."""
+    match = re.search(
+        r"(?ims)^##\s+Acceptance criteria\s*\n(.*?)(?=^##\s+|\Z)",
+        body or "",
+    )
+    if not match:
+        return ""
+    return f"## Acceptance criteria\n\n{match.group(1).strip()}\n"
+
+
+def child_issue_body(parent_issue: int, area: str, parent_body: str) -> str:
+    """Build a child issue body with scope + parent acceptance criteria."""
+    acceptance = extract_acceptance_section(parent_body)
+    if not acceptance:
+        acceptance = (
+            "## Acceptance criteria\n\n"
+            f"- [ ] Implements scoped change from parent #{parent_issue}\n"
+        )
+    return (
+        f"Child of #{parent_issue} (one-commit unit).\n\n"
+        f"## Scope\n\n{area.strip()}\n\n"
+        f"Parent: #{parent_issue}\n\n"
+        f"{acceptance}"
+    )
+
+
+def plan_change_areas(body: str) -> list[str]:
+    """Choose independent one-commit work areas from an issue body.
+
+    Prefer an explicit ``## Work packages`` (or Change areas / Children) bullet
+    list. Otherwise only treat remaining H2s as areas after skipping narrative
+    sections — never invent children from study notes / desired-behavior prose.
+    """
+    text = body or ""
+    work_pkg = re.search(
+        r"(?ims)^##\s+(Work packages|Change areas|Children|Implementation units)\s*\n"
+        r"(.*?)(?=^##\s+|\Z)",
+        text,
+    )
+    if work_pkg:
+        items = re.findall(
+            r"(?m)^\s*[-*]\s+(?:\[[ xX]\]\s+)?(.+)$",
+            work_pkg.group(2),
+        )
+        areas = [item.strip() for item in items if item.strip()]
+        return areas[:4]
+
+    sections = [
+        s.strip()
+        for s in re.findall(r"(?m)^##\s+(.+)$", text)
+        if s.strip().lower() not in PLANNER_SKIP_SECTIONS
+    ]
+    # Ignore leftover prose headings that are not actionable work packages.
+    actionable = [
+        s
+        for s in sections
+        if re.match(
+            r"(?i)^(add|implement|update|fix|remove|refactor|migrate|wire|docs?)\b",
+            s,
+        )
+        or re.search(r"(?i)\b(api|ui|form|webhook|email|db|schema|test)\b", s)
+    ]
+    if len(actionable) > 1:
+        return actionable[:4]
+
+    # Never treat Acceptance criteria checkboxes as work packages (#55).
+    return []
+
+
 def role_planner(repo: str, issue: int, brief: Path) -> None:
     data = get_issue(repo, issue)
     title = data.get("title") or f"issue-{issue}"
@@ -135,44 +246,7 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
             type_label = "type:feature"
         ensure_label(repo, issue, type_label)
 
-    # Independent change areas: prefer explicit work-package headings.
-    # Ignore acceptance checklists and meta sections so Planner does not
-    # explode one feature into one child per checkbox.
-    skip_sections = {
-        "summary",
-        "goal",
-        "acceptance",
-        "acceptance criteria",
-        "out of scope",
-        "notes",
-        "recommended deploy",
-        "recommended deploy (easiest)",
-        "alternatives",
-        "context",
-        "background",
-        "source",
-        "about",
-        "about (public linkedin facts)",
-        "selected experience",
-        "selected experience (brief)",
-        "design",
-        "constraints",
-    }
-    sections = [
-        s.strip()
-        for s in re.findall(r"(?m)^##\s+(.+)$", body)
-        if s.strip().lower() not in skip_sections
-    ]
-    # Only treat checklist items as areas when there are no usable sections
-    # and the list is small (real work breakdown, not acceptance criteria).
-    tasks = re.findall(r"(?m)^\s*[-*] \[.\] (.+)$", body)
-    if sections:
-        areas = sections
-    elif 1 < len(tasks) <= 4:
-        areas = tasks
-    else:
-        areas = []
-
+    areas = plan_change_areas(body)
     max_children = 4
     agent_label = "agent:docs" if type_label == "type:docs" else "agent:builder"
 
@@ -186,11 +260,7 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
                 f"/repos/{owner}/{name}/issues",
                 body={
                     "title": f"{title}: {area.strip()[:80]}",
-                    "body": (
-                        f"Child of #{issue} (one-commit unit).\n\n"
-                        f"## Scope\n\n{area.strip()}\n\n"
-                        f"Parent: #{issue}"
-                    ),
+                    "body": child_issue_body(issue, area, body),
                     "labels": [agent_label, type_label, "status:queued"],
                 },
             )
