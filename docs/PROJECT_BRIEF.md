@@ -13,8 +13,8 @@ Parent issue: [#41](https://github.com/saberistic-team/agent-web/issues/41).
 - Public form (`site/` + FastAPI) with landing CTA
 - `project_briefs` table; row created on submit (`pending_payment`)
 - Fixed **$200** one-time Stripe Checkout; webhook marks row `paid`
-- Email to inbox + customer receipt on submit (payment-independent)
-- Payment-confirmed email to inbox + customer after webhook
+- Email to inbox + customer receipt on submit; payment-confirmed emails after
+  successful payment
 - Success page; env vars and local run documented; tests with mocked Stripe
 
 ## Intentionally deferred
@@ -116,7 +116,7 @@ Table `project_briefs`:
 | `id` | serial | Primary key |
 | `created_at` | timestamptz | Auto-set |
 | `website` | text | Required |
-| `contact_method` | text | Always `email` for new rows |
+| `contact_method` | text | Always `email` (legacy `phone` rows may exist in prod) |
 | `contact_value` | text | Customer email address |
 | `brief` | text | Project description |
 | `status` | text | `pending_payment`, `paid`, or `abandoned` |
@@ -125,21 +125,20 @@ Table `project_briefs`:
 | `paid_at` | timestamptz | Nullable |
 
 Rows are inserted with `pending_payment` **before** redirecting to Stripe, so
-abandoned checkouts still retain the lead and trigger submit-time inbox email.
-
-Existing production rows with `contact_method = 'phone'` (if any) are left
-unchanged; no migration is required.
+abandoned checkouts still retain the lead. Lead and customer receipt emails are
+sent on submit even if the user never pays.
 
 ## User flow
 
 1. User opens `/brief` from the landing CTA.
-2. User submits website, brief, and email.
-3. `POST /api/briefs` inserts a `pending_payment` row, emails the team inbox
-   (new lead) and the customer (brief received — does not claim payment
-   completed), and returns a Stripe Checkout URL.
-4. User pays $200 on Stripe (optional — lead email already sent).
+2. User submits website, brief, and email contact.
+3. `POST /api/briefs` inserts a `pending_payment` row, emails
+   `inbox@saberistic.com` (new lead) and the customer (receipt — does not claim
+   payment completed), and returns a Stripe Checkout URL.
+4. User pays $200 on Stripe.
 5. Stripe webhook `checkout.session.completed` marks the row `paid`, stores
-   Stripe IDs, and sends payment-confirmed emails to the inbox and customer.
+   Stripe IDs, and sends payment-confirmed emails to the team inbox and
+   customer.
 6. Stripe redirects to `/brief/success` (“We received your request.”).
 
 ## Production (Render)
