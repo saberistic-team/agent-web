@@ -1,8 +1,8 @@
 # Project brief request flow
 
 Paid intake on [saberistic.com](https://saberistic.com): collect a project brief,
-website URL, and email contact; persist the lead before payment; charge
-**$200 USD** via Stripe Checkout; store rows in Render Postgres; email
+website URL, and email contact; persist the lead before payment; charge **$200
+USD** via Stripe Checkout; store rows in Render Postgres; email
 `inbox@saberistic.com` and the customer on form submit and again on successful
 payment.
 
@@ -13,8 +13,8 @@ Parent issue: [#41](https://github.com/saberistic-team/agent-web/issues/41).
 - Public form (`site/` + FastAPI) with landing CTA
 - `project_briefs` table; row created on submit (`pending_payment`)
 - Fixed **$200** one-time Stripe Checkout; webhook marks row `paid`
-- Email to inbox + customer receipt on submit; payment-confirmed emails after
-  webhook
+- Lead + customer receipt emails on submit (payment-independent)
+- Payment-confirmed emails to inbox + customer after webhook
 - Success page; env vars and local run documented; tests with mocked Stripe
 
 ## Intentionally deferred
@@ -35,7 +35,7 @@ as separate issues when needed.
 |-------|---------|
 | `/brief` | Project brief form |
 | `/brief/success` | Post-checkout confirmation page |
-| `POST /api/briefs` | Create DB row + Stripe Checkout Session + lead emails |
+| `POST /api/briefs` | Create DB row, send lead emails, Stripe Checkout Session |
 | `POST /webhooks/stripe` | Stripe webhook (marks brief paid, sends payment emails) |
 
 ## Environment variables
@@ -96,7 +96,7 @@ export NOTIFY_EMAIL="delivered@resend.dev"
 ```
 
 Without `RESEND_API_KEY`, submit and paid webhooks still persist rows but skip
-email. Submit email failures are logged and do not block checkout redirect.
+email.
 
 ### 5. Run
 
@@ -125,21 +125,21 @@ Table `project_briefs`:
 | `paid_at` | timestamptz | Nullable |
 
 Rows are inserted with `pending_payment` **before** redirecting to Stripe, so
-abandoned checkouts still retain the lead. The `CREATE TABLE IF NOT EXISTS`
-schema only applies on first deploy; existing databases are not migrated
-automatically.
+abandoned checkouts still retain the lead and trigger inbox notification.
+
+Existing databases created before email-only contact may have `phone` values in
+`contact_method`; no migration is required — new rows always store `email`.
 
 ## User flow
 
 1. User opens `/brief` from the landing CTA.
-2. User submits website, brief, and email address.
+2. User submits website, brief, and email.
 3. `POST /api/briefs` inserts a `pending_payment` row, emails
    `inbox@saberistic.com` (new lead) and the customer (receipt — does not
-   claim payment completed), then returns a Stripe Checkout URL.
-4. User pays $200 on Stripe (or abandons checkout; lead emails were already
-   sent).
+   claim payment completed), and returns a Stripe Checkout URL.
+4. User pays $200 on Stripe (or abandons checkout — lead emails already sent).
 5. Stripe webhook `checkout.session.completed` marks the row `paid`, stores
-   Stripe IDs, and sends payment-confirmed emails to the inbox and customer.
+   Stripe IDs, and sends payment-confirmed emails to inbox and customer.
 6. Stripe redirects to `/brief/success` (“We received your request.”).
 
 ## Production (Render)
