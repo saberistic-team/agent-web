@@ -46,12 +46,12 @@ def notify_team_of_new_brief(
     brief: dict[str, Any],
 ) -> dict[str, Any] | None:
     body = (
-        "New project brief lead (payment not yet completed)\n\n"
+        "New project brief lead\n\n"
         f"Website: {brief['website']}\n"
         f"Email: {brief['contact_value']}\n\n"
         f"Brief:\n{brief['brief']}\n\n"
         f"Brief ID: {brief['id']}\n"
-        f"Status: {brief.get('status', 'pending_payment')}\n"
+        f"Status: pending_payment\n"
     )
     return send_email(
         api_key=api_key,
@@ -62,7 +62,7 @@ def notify_team_of_new_brief(
     )
 
 
-def notify_customer_of_brief_received(
+def notify_customer_of_new_brief(
     *,
     api_key: str,
     from_email: str,
@@ -70,8 +70,9 @@ def notify_customer_of_brief_received(
 ) -> dict[str, Any] | None:
     body = (
         "We received your project brief request.\n\n"
-        "Thank you for submitting your brief. Complete payment at checkout to "
-        "confirm your request, or our team may follow up by email.\n\n"
+        "Thank you. Our team has your details and will follow up after "
+        "you complete payment or as soon as we review your brief.\n\n"
+        "Next step: complete the $200 checkout to proceed.\n\n"
         f"Website: {brief['website']}\n\n"
         "— saberistic"
     )
@@ -116,9 +117,9 @@ def notify_customer_of_paid_brief(
     brief: dict[str, Any],
 ) -> dict[str, Any] | None:
     body = (
-        "Payment received — project brief confirmed.\n\n"
+        "Payment received for your project brief request.\n\n"
         "Thank you for your payment. Our team will review your brief and "
-        "follow up using the email address you provided.\n\n"
+        "follow up at the email address you provided.\n\n"
         f"Website: {brief['website']}\n\n"
         "— saberistic"
     )
