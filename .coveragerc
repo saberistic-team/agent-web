@@ -1,0 +1,16 @@
+[run]
+source = app
+branch = True
+omit =
+    app/__init__.py
+    */tests/*
+    */.venv/*
+
+[report]
+show_missing = True
+skip_covered = False
+precision = 1
+exclude_lines =
+    pragma: no cover
+    if TYPE_CHECKING:
+    raise NotImplementedError

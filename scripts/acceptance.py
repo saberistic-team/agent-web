@@ -330,70 +330,80 @@ def _extract_json(text: str) -> dict[str, Any]:
 
 
 def _chat(system: str, user: str) -> str:
-    openai_key = os.environ.get("OPENAI_API_KEY")
-    if openai_key and openai_key.strip():
-        model = os.environ.get("OPENAI_MODEL") or "gpt-4.1-mini"
+    """Prefer Cursor (same stack as Reviewer), then OpenAI, then Models."""
+    try:
+        from review_models import chat as review_chat
+
+        content, _model = review_chat(system, user)
+        return content
+    except Exception as primary:
+        # Keep a thin OpenAI/Models fallback if review_models import/chat fails hard.
+        openai_key = os.environ.get("OPENAI_API_KEY")
+        if openai_key and openai_key.strip():
+            model = os.environ.get("OPENAI_MODEL") or "gpt-4o-mini"
+            payload = {
+                "model": model,
+                "temperature": 0.1,
+                "response_format": {"type": "json_object"},
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+            }
+            req = urllib.request.Request(
+                "https://api.openai.com/v1/chat/completions",
+                data=json.dumps(payload).encode("utf-8"),
+                method="POST",
+                headers={
+                    "Accept": "application/json",
+                    "Authorization": f"Bearer {openai_key.strip()}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "agent-web-acceptance",
+                },
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=180) as resp:
+                    body = json.loads(resp.read().decode("utf-8"))
+                choices = body.get("choices") or []
+                if choices:
+                    content = (choices[0].get("message") or {}).get("content")
+                    if content:
+                        return str(content)
+            except Exception:
+                pass
+
+        token = os.environ.get("MODELS_TOKEN") or os.environ.get("GITHUB_TOKEN")
+        if not token:
+            raise GitHubError(
+                f"acceptance AI failed ({primary}); no OPENAI_API_KEY/MODELS_TOKEN fallback"
+            ) from primary
+        model = os.environ.get("GITHUB_MODELS_MODEL") or "openai/gpt-4o-mini"
         payload = {
             "model": model,
             "temperature": 0.1,
-            "response_format": {"type": "json_object"},
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
         }
         req = urllib.request.Request(
-            "https://api.openai.com/v1/chat/completions",
+            "https://models.github.ai/inference/chat/completions",
             data=json.dumps(payload).encode("utf-8"),
             method="POST",
             headers={
-                "Accept": "application/json",
-                "Authorization": f"Bearer {openai_key.strip()}",
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {token}",
+                "X-GitHub-Api-Version": "2022-11-28",
                 "Content-Type": "application/json",
                 "User-Agent": "agent-web-acceptance",
             },
         )
-        try:
-            with urllib.request.urlopen(req, timeout=180) as resp:
-                body = json.loads(resp.read().decode("utf-8"))
-            choices = body.get("choices") or []
-            if choices:
-                content = (choices[0].get("message") or {}).get("content")
-                if content:
-                    return str(content)
-        except Exception:
-            pass
-
-    token = os.environ.get("MODELS_TOKEN") or os.environ.get("GITHUB_TOKEN")
-    if not token:
-        raise GitHubError("no OPENAI_API_KEY or MODELS_TOKEN for acceptance AI")
-    model = os.environ.get("GITHUB_MODELS_MODEL") or "openai/gpt-4o-mini"
-    payload = {
-        "model": model,
-        "temperature": 0.1,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-    }
-    req = urllib.request.Request(
-        "https://models.github.ai/inference/chat/completions",
-        data=json.dumps(payload).encode("utf-8"),
-        method="POST",
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {token}",
-            "X-GitHub-Api-Version": "2022-11-28",
-            "Content-Type": "application/json",
-            "User-Agent": "agent-web-acceptance",
-        },
-    )
-    with urllib.request.urlopen(req, timeout=120) as resp:
-        body = json.loads(resp.read().decode("utf-8"))
-    content = ((body.get("choices") or [{}])[0].get("message") or {}).get("content")
-    if not content:
-        raise GitHubError("acceptance AI empty content")
-    return str(content)
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+        content = ((body.get("choices") or [{}])[0].get("message") or {}).get("content")
+        if not content:
+            raise GitHubError("acceptance AI empty content") from primary
+        return str(content)
 
 
 def ai_check_remaining(

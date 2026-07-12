@@ -15,6 +15,7 @@ hello-world HTTP API used to exercise the loop.
 - [Design AI](docs/DESIGN.md) — UI coding via Cursor / OpenAI
 - [Screenshots](docs/SCREENSHOTS.md) — pre-merge + post-deploy visual evidence
 - [Acceptance](docs/ACCEPTANCE.md) — checklist + evidence before close
+- [Testing / coverage](docs/TESTING.md) — unit ≥90% / integration ≥70% on `app/`
 
 ## Hello API
 
@@ -28,4 +29,5 @@ uvicorn app.main:app --reload --port 8000
 # GET http://127.0.0.1:8000/hello  → {"message":"hello world"}
 # GET http://127.0.0.1:8000/health → {"status":"ok"}
 pytest -q
+python scripts/check_coverage.py
 ```

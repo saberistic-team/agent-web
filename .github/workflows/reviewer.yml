@@ -17,6 +17,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Mint Reviewer App token
         id: reviewer
@@ -35,10 +37,30 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install Playwright
+      - name: Install dependencies
         run: |
+          pip install -r requirements.txt
+          pip install -r requirements-agents.txt
           pip install playwright==1.49.1
           python -m playwright install --with-deps chromium
+
+      - name: Checkout linked PR head
+        env:
+          GH_TOKEN: ${{ steps.reviewer.outputs.token }}
+        run: |
+          set -euo pipefail
+          ISSUE="${{ github.event.issue.number }}"
+          PR="$(gh pr list --repo "${{ github.repository }}" --state open --json number,title,body,headRefName,headRefOid \
+            --jq "[.[] | select((.title|contains(\"#${ISSUE}\")) or (.body|contains(\"#${ISSUE}\")) or (.body|test(\"Closes #${ISSUE}\";\"i\")))] | .[0]")"
+          if [[ -z "${PR}" || "${PR}" == "null" ]]; then
+            echo "No open PR linked to #${ISSUE}; reviewing against default checkout."
+            exit 0
+          fi
+          REF="$(echo "${PR}" | jq -r .headRefName)"
+          SHA="$(echo "${PR}" | jq -r .headRefOid)"
+          echo "Checking out PR head ${REF} @ ${SHA}"
+          git fetch origin "${REF}"
+          git checkout --force "${SHA}"
 
       - name: Run reviewer agent
         env:
@@ -48,8 +70,13 @@ jobs:
           GITHUB_MODELS_MODEL: ${{ vars.GITHUB_MODELS_MODEL }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          CURSOR_MODEL: ${{ vars.CURSOR_MODEL }}
+          REVIEW_PROVIDER: ${{ vars.REVIEW_PROVIDER }}
           DEPLOY_BASE_URL: ${{ vars.DEPLOY_BASE_URL }}
           SCREENSHOTS_REQUIRED: ${{ vars.SCREENSHOTS_REQUIRED }}
+          COVERAGE_UNIT_MIN: ${{ vars.COVERAGE_UNIT_MIN }}
+          COVERAGE_INTEGRATION_MIN: ${{ vars.COVERAGE_INTEGRATION_MIN }}
         run: |
           python scripts/run_agent.py \
             --role reviewer \
