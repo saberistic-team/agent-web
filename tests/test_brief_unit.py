@@ -143,7 +143,7 @@ def test_email_send_and_notifications() -> None:
             notify_email="inbox@example.com",
             brief=brief,
         )
-        email_service.notify_customer_of_brief_received(
+        email_service.notify_customer_of_new_brief(
             api_key="re_test",
             from_email="from@example.com",
             brief=brief,
@@ -185,13 +185,13 @@ def test_db_helpers_use_connection() -> None:
     assert db.create_brief(
         conn2,
         website="https://a.com",
-        contact_method="email",
-        contact_value="a@b.com",
+        email="a@b.com",
         brief="hello world brief",
     ) == 5
     conn2.commit.assert_called()
     insert_sql = " ".join(str(cur2.execute.call_args_list[0][0][0]).split())
     assert "pending_payment" in insert_sql
+    assert "'email'" in insert_sql
 
     db.update_brief_stripe_session(conn2, brief_id=5, stripe_session_id="cs_1")
     cur2.fetchone.return_value = {"id": 5, "status": "pending_payment"}
@@ -275,6 +275,53 @@ def test_webhook_skips_email_when_not_configured(monkeypatch: pytest.MonkeyPatch
                     )
     assert response.status_code == 200
     notify.assert_not_called()
+
+
+@pytest.mark.unit
+def test_create_brief_skips_submit_email_when_not_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_fake")
+    monkeypatch.setenv("BASE_URL", "http://testserver")
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+
+    client = TestClient(app)
+    fake_session = MagicMock()
+    fake_session.id = "cs_test_abc"
+    fake_session.url = "https://checkout.stripe.com/c/pay/cs_test_abc"
+
+    with patch("app.main.db.db_connection") as db_conn:
+        db_conn.return_value.__enter__.return_value = MagicMock()
+        db_conn.return_value.__exit__.return_value = None
+        with patch("app.main.db.create_brief", return_value=1):
+            with patch("app.main.db.update_brief_stripe_session"):
+                with patch(
+                    "app.main.stripe_service.create_checkout_session",
+                    return_value=fake_session,
+                ):
+                    with patch(
+                        "app.main.email_service.notify_team_of_new_brief"
+                    ) as notify_team:
+                        with patch(
+                            "app.main.email_service.notify_customer_of_new_brief"
+                        ) as notify_customer:
+                            response = client.post(
+                                "/api/briefs",
+                                json={
+                                    "website": "https://example.com",
+                                    "email": "a@b.com",
+                                    "brief": "Need help.",
+                                },
+                            )
+
+    assert response.status_code == 200
+    notify_team.assert_not_called()
+    notify_customer.assert_not_called()
 
 
 @pytest.mark.unit
