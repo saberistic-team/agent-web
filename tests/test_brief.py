@@ -15,8 +15,7 @@ client = TestClient(app)
 
 SAMPLE_BRIEF = {
     "website": "https://example.com",
-    "contact_method": "email",
-    "contact_value": "client@example.com",
+    "email": "client@example.com",
     "brief": "We need a security review of our API.",
 }
 
@@ -24,7 +23,7 @@ FAKE_PAID_BRIEF: dict[str, Any] = {
     "id": 1,
     "website": SAMPLE_BRIEF["website"],
     "contact_method": "email",
-    "contact_value": SAMPLE_BRIEF["contact_value"],
+    "contact_value": SAMPLE_BRIEF["email"],
     "brief": SAMPLE_BRIEF["brief"],
     "status": "paid",
     "stripe_session_id": "cs_test_123",
@@ -65,7 +64,13 @@ def test_create_brief_returns_checkout_url() -> None:
                     "app.main.stripe_service.create_checkout_session",
                     return_value=fake_session,
                 ) as create_session:
-                    response = client.post("/api/briefs", json=SAMPLE_BRIEF)
+                    with patch(
+                        "app.main.email_service.notify_team_of_brief_lead"
+                    ) as notify_team:
+                        with patch(
+                            "app.main.email_service.notify_customer_of_brief_receipt"
+                        ) as notify_customer:
+                            response = client.post("/api/briefs", json=SAMPLE_BRIEF)
 
     assert response.status_code == 200
     data = response.json()
@@ -79,6 +84,8 @@ def test_create_brief_returns_checkout_url() -> None:
         brief_id=1,
         stripe_session_id="cs_test_abc",
     )
+    notify_team.assert_called_once()
+    notify_customer.assert_called_once()
 
 
 @pytest.mark.unit
@@ -93,8 +100,7 @@ def test_abandoned_checkout_keeps_pending_payment_row() -> None:
     pending_row: dict[str, Any] = {
         "id": 7,
         "website": SAMPLE_BRIEF["website"],
-        "contact_method": SAMPLE_BRIEF["contact_method"],
-        "contact_value": SAMPLE_BRIEF["contact_value"],
+        "contact_value": SAMPLE_BRIEF["email"],
         "brief": SAMPLE_BRIEF["brief"],
         "status": "pending_payment",
         "stripe_session_id": "cs_test_abandoned",
@@ -109,10 +115,13 @@ def test_abandoned_checkout_keeps_pending_payment_row() -> None:
                     "app.main.stripe_service.create_checkout_session",
                     return_value=fake_session,
                 ):
-                    with patch("app.main.db.mark_brief_paid") as mark_paid:
-                        response = client.post("/api/briefs", json=SAMPLE_BRIEF)
-                        # User abandons Stripe Checkout — no webhook fires.
-                        mark_paid.assert_not_called()
+                    with patch(
+                        "app.main.email_service.notify_team_of_brief_lead"
+                    ) as notify_team:
+                        with patch("app.main.db.mark_brief_paid") as mark_paid:
+                            response = client.post("/api/briefs", json=SAMPLE_BRIEF)
+                            # User abandons Stripe Checkout — no webhook fires.
+                            mark_paid.assert_not_called()
 
         with patch("app.db.get_brief_by_id", return_value=pending_row):
             stored = brief_db.get_brief_by_id(conn, 7)
@@ -120,6 +129,7 @@ def test_abandoned_checkout_keeps_pending_payment_row() -> None:
     assert response.status_code == 200
     assert response.json()["brief_id"] == 7
     create_brief.assert_called_once()
+    notify_team.assert_called_once()
     assert stored is not None
     assert stored["status"] == "pending_payment"
     assert stored["paid_at"] is None
@@ -132,12 +142,76 @@ def test_create_brief_validates_payload() -> None:
         "/api/briefs",
         json={
             "website": "",
-            "contact_method": "email",
-            "contact_value": "bad",
+            "email": "bad",
             "brief": "",
         },
     )
     assert response.status_code == 422
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_create_brief_rejects_phone_contact() -> None:
+    response = client.post(
+        "/api/briefs",
+        json={
+            "website": "https://example.com",
+            "contact_method": "phone",
+            "contact_value": "+15551234567",
+            "brief": "Need help with our API.",
+        },
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_create_brief_email_failure_still_returns_checkout() -> None:
+    fake_session = MagicMock()
+    fake_session.id = "cs_test_abc"
+    fake_session.url = "https://checkout.stripe.com/c/pay/cs_test_abc"
+
+    with mock_db_connection():
+        with patch("app.main.db.create_brief", return_value=1):
+            with patch("app.main.db.update_brief_stripe_session"):
+                with patch(
+                    "app.main.stripe_service.create_checkout_session",
+                    return_value=fake_session,
+                ):
+                    with patch(
+                        "app.main.email_service.notify_team_of_brief_lead",
+                        side_effect=RuntimeError("email down"),
+                    ):
+                        response = client.post("/api/briefs", json=SAMPLE_BRIEF)
+
+    assert response.status_code == 200
+    assert response.json()["checkout_url"] == fake_session.url
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_create_brief_skips_email_when_not_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    fake_session = MagicMock()
+    fake_session.id = "cs_test_abc"
+    fake_session.url = "https://checkout.stripe.com/c/pay/cs_test_abc"
+
+    with mock_db_connection():
+        with patch("app.main.db.create_brief", return_value=1):
+            with patch("app.main.db.update_brief_stripe_session"):
+                with patch(
+                    "app.main.stripe_service.create_checkout_session",
+                    return_value=fake_session,
+                ):
+                    with patch(
+                        "app.main.email_service.notify_team_of_brief_lead"
+                    ) as notify_team:
+                        response = client.post("/api/briefs", json=SAMPLE_BRIEF)
+
+    assert response.status_code == 200
+    notify_team.assert_not_called()
 
 
 @pytest.mark.unit
@@ -370,6 +444,8 @@ def test_brief_form_page() -> None:
     body = response.text
     assert "Request project brief" in body
     assert 'id="brief-form"' in body
+    assert 'id="email"' in body
+    assert "contact_method" not in body
     assert "Continue to payment" in body
 
 
