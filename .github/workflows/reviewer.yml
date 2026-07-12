@@ -65,6 +65,10 @@ jobs:
           rm -rf pr-head
           git fetch origin "${REF}"
           git worktree add --detach pr-head "${SHA}"
+          if [[ -f pr-head/requirements.txt ]]; then
+            echo "Installing PR requirements for coverage"
+            pip install -r pr-head/requirements.txt
+          fi
           echo "has_pr=true" >> "$GITHUB_OUTPUT"
           echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
           echo "ref=${REF}" >> "$GITHUB_OUTPUT"
