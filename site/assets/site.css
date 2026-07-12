@@ -332,32 +332,8 @@ main {
   color: var(--muted);
 }
 
-.contact-fieldset {
-  margin: 0;
-  padding: 0;
-  border: none;
-}
-
-.contact-method {
-  display: flex;
-  gap: 1.25rem;
-  margin-bottom: 0.75rem;
-}
-
-.radio-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.85rem;
-  color: var(--ink);
-  text-transform: none;
-  letter-spacing: normal;
-  cursor: pointer;
-}
-
 .brief-form input[type="url"],
 .brief-form input[type="email"],
-.brief-form input[type="tel"],
 .brief-form input[type="text"],
 .brief-form textarea {
   width: 100%;
