@@ -68,10 +68,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install Playwright
+      - name: Install Playwright + agent deps
         run: |
           pip install playwright==1.49.1
           python -m playwright install --with-deps chromium
+          pip install -r requirements-agents.txt
       - name: Mint Builder token for uploads/comments
         id: builder
         uses: actions/create-github-app-token@v2
@@ -82,8 +83,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.builder.outputs.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          CURSOR_MODEL: ${{ vars.CURSOR_MODEL }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          VISUAL_PROVIDER: ${{ vars.VISUAL_PROVIDER }}
           DEPLOY_BASE_URL: ${{ vars.DEPLOY_BASE_URL }}
         run: |
           set -euo pipefail

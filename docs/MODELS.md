@@ -1,8 +1,8 @@
-# Builder / Reviewer model providers
+# Builder / Reviewer / visual model providers
 
-**Builder codegen** and **Reviewer AI** (PR review + acceptance) prefer the
-**Cursor Agent SDK** when `CURSOR_API_KEY` is set. OpenAI and GitHub Models are
-backups (OpenAI quota is often exhausted).
+**Builder codegen**, **Reviewer AI** (PR review + acceptance), and
+**post-deploy visual** prefer the **Cursor Agent SDK** when `CURSOR_API_KEY`
+is set. OpenAI and GitHub Models are backups (OpenAI quota is often exhausted).
 
 ## Builder flow
 
@@ -20,12 +20,19 @@ backups (OpenAI quota is often exhausted).
 3. Acceptance AI uses the same `chat()` stack
 4. Force with `REVIEW_PROVIDER=cursor|openai|github-models`
 
+## Post-deploy visual flow
+
+1. CI `post-deploy-visual` after Render deploy
+2. `scripts/post_deploy_visual.py` → Cursor (`mode=plan`, read local PNGs) →
+   OpenAI vision backup
+3. Force with `VISUAL_PROVIDER=cursor|openai`
+
 ## Auth
 
 | Token | Purpose |
 |-------|---------|
 | Builder / Reviewer App tokens | Comments, labels, commits, PRs, reviews |
-| `CURSOR_API_KEY` | **Preferred** Cursor SDK for Builder + Reviewer |
+| `CURSOR_API_KEY` | **Preferred** Cursor SDK for Builder + Reviewer + visual |
 | `OPENAI_API_KEY` | Optional backup for review / acceptance / visual |
 | `MODELS_TOKEN` (optional) | GitHub Models last-resort backup |
 
@@ -35,6 +42,7 @@ backups (OpenAI quota is often exhausted).
 |----------|---------|
 | `CODEGEN_PROVIDER` | unset → Cursor if key present, else OpenAI, else Models |
 | `REVIEW_PROVIDER` | unset → Cursor if key present, else OpenAI, else Models |
+| `VISUAL_PROVIDER` | unset → Cursor if key present, else OpenAI |
 | `CURSOR_MODEL` | `composer-2.5` |
 | `CURSOR_RUNTIME` | `local` in Actions (Builder) |
 | `OPENAI_MODEL` | `gpt-4o-mini` |
@@ -44,7 +52,8 @@ backups (OpenAI quota is often exhausted).
 
 1. Create a Cursor API key (user or team service account)
 2. Repo secret: `CURSOR_API_KEY`
-3. Repo variables: `CODEGEN_PROVIDER=cursor`, optionally `REVIEW_PROVIDER=cursor`
+3. Repo variables: `CODEGEN_PROVIDER=cursor`, optionally `REVIEW_PROVIDER=cursor`,
+   `VISUAL_PROVIDER=cursor`
 4. Optional: `CURSOR_MODEL=composer-2.5`, `CURSOR_RUNTIME=local`
 5. For Builder **cloud** only: connect GitHub so Cursor can clone/open PRs
 

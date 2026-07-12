@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""After deploy: capture post screenshots and ask OpenAI if the issue change is visible."""
+"""After deploy: capture post screenshots and ask Cursor (preferred) / OpenAI
+whether the issue change is visible.
+"""
 
 from __future__ import annotations
 
@@ -22,6 +24,9 @@ from screenshot_deploy import (
     upload_to_branch,
     wait_healthy,
 )
+
+DEFAULT_CURSOR_MODEL = "composer-2.5"
+DEFAULT_OPENAI_MODEL = "gpt-4.1-mini"
 
 
 def record_health(
@@ -66,6 +71,11 @@ def record_health(
     if raw_url:
         print(f"deploy_health_url={raw_url}")
     return {"path": f"{prefix}/deploy-health.json", "url": raw_url, "json": json.dumps(slim)}
+
+
+def cursor_api_key() -> str | None:
+    value = os.environ.get("CURSOR_API_KEY")
+    return value.strip() if value and value.strip() else None
 
 
 def openai_key() -> str | None:
@@ -126,22 +136,127 @@ def list_pre_urls(repo: str, ref: str, pr: int | None) -> list[str]:
     return urls
 
 
-def visual_ai_check(
+def _parse_visual_json(text: str, *, model: str, provider: str) -> dict:
+    text = (text or "").strip()
+    fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
+    if fence:
+        text = fence.group(1).strip()
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        start, end = text.find("{"), text.rfind("}")
+        if start < 0 or end <= start:
+            raise GitHubError(f"{provider} visual did not return JSON: {text[:400]!r}")
+        data = json.loads(text[start : end + 1])
+    if not isinstance(data, dict):
+        raise GitHubError(f"{provider} visual JSON root must be object")
+    decision = str(data.get("decision") or "fail").lower()
+    if decision not in {"pass", "fail", "skip"}:
+        decision = "fail"
+    return {
+        "visible": data.get("visible"),
+        "summary": str(data.get("summary") or text[:500]),
+        "decision": decision,
+        "model": model,
+        "provider": provider,
+    }
+
+
+def _visual_prompt(
+    issue_title: str,
+    issue_body: str,
+    pre_paths: list[Path],
+    post_paths: list[Path],
+) -> str:
+    pre_list = "\n".join(f"- {p.resolve()}" for p in pre_paths) or "- (none)"
+    post_list = "\n".join(f"- {p.resolve()}" for p in post_paths) or "- (none)"
+    return (
+        "READ-ONLY VISUAL CHECK. Do not create, edit, delete, or move any files. "
+        "Do not run mutating shell/git commands. Do not open PRs.\n"
+        "Open the screenshot PNG paths below (Read tool) and compare before vs after.\n"
+        "Respond with JSON only (no prose outside JSON):\n"
+        '{"visible": boolean, "summary": "string", "decision": "pass"|"fail"}\n'
+        "pass if the post screenshots clearly show the issue change; "
+        "fail if unchanged or unrelated.\n\n"
+        f"Issue title: {issue_title}\n"
+        f"Issue body:\n{(issue_body or '')[:4000]}\n\n"
+        f"BEFORE screenshot paths:\n{pre_list}\n\n"
+        f"AFTER screenshot paths:\n{post_list}\n"
+    )
+
+
+def visual_ai_check_cursor(
     *,
     issue_title: str,
     issue_body: str,
     pre_paths: list[Path],
     post_paths: list[Path],
 ) -> dict:
-    """Compare before/after screenshots via OpenAI vision (Gemini retired)."""
+    key = cursor_api_key()
+    if not key:
+        raise GitHubError("missing CURSOR_API_KEY")
+    model = os.environ.get("CURSOR_MODEL") or DEFAULT_CURSOR_MODEL
+    try:
+        from cursor_sdk import Agent, AgentOptions, LocalAgentOptions
+    except ImportError as exc:
+        raise GitHubError(
+            "cursor-sdk is not installed; pip install -r requirements-agents.txt"
+        ) from exc
+
+    prompt = _visual_prompt(issue_title, issue_body, pre_paths, post_paths)
+    try:
+        result = Agent.prompt(
+            prompt,
+            AgentOptions(
+                model=model,
+                api_key=key,
+                name="post-deploy-visual",
+                mode="plan",
+                local=LocalAgentOptions(cwd=os.getcwd()),
+            ),
+        )
+    except TypeError:
+        try:
+            result = Agent.prompt(
+                prompt,
+                {
+                    "model": model,
+                    "apiKey": key,
+                    "name": "post-deploy-visual",
+                    "mode": "plan",
+                    "local": {"cwd": os.getcwd()},
+                },
+            )
+        except Exception as exc:
+            raise GitHubError(f"Cursor visual failed: {exc}") from exc
+    except Exception as exc:
+        raise GitHubError(f"Cursor visual failed: {exc}") from exc
+
+    status = getattr(result, "status", None)
+    text = (getattr(result, "result", None) or "").strip()
+    if status != "finished":
+        raise GitHubError(
+            f"Cursor visual run status={status!r} "
+            f"agent_id={getattr(result, 'agent_id', '')} "
+            f"result={text[:400]!r}"
+        )
+    if not text:
+        raise GitHubError("Cursor visual returned empty content")
+    return _parse_visual_json(text, model=model, provider="cursor")
+
+
+def visual_ai_check_openai(
+    *,
+    issue_title: str,
+    issue_body: str,
+    pre_paths: list[Path],
+    post_paths: list[Path],
+) -> dict:
+    """OpenAI vision backup when Cursor is unavailable."""
     key = openai_key()
     if not key:
-        return {
-            "visible": None,
-            "summary": "OPENAI_API_KEY missing; skipped visual AI check",
-            "decision": "skip",
-        }
-    model = os.environ.get("OPENAI_MODEL") or "gpt-4.1-mini"
+        raise GitHubError("missing OPENAI_API_KEY")
+    model = os.environ.get("OPENAI_MODEL") or DEFAULT_OPENAI_MODEL
     content: list[dict] = [
         {
             "type": "text",
@@ -192,18 +307,71 @@ def visual_ai_check(
     out_text = ""
     if choices:
         out_text = str((choices[0].get("message") or {}).get("content") or "").strip()
-    try:
-        data = json.loads(out_text)
-    except json.JSONDecodeError:
-        s, e = out_text.find("{"), out_text.rfind("}")
-        data = json.loads(out_text[s : e + 1]) if s >= 0 and e > s else {}
-    return {
-        "visible": data.get("visible"),
-        "summary": str(data.get("summary") or out_text[:500]),
-        "decision": str(data.get("decision") or "fail").lower(),
-        "model": model,
-    }
+    return _parse_visual_json(out_text, model=model, provider="openai")
 
+
+def visual_ai_check(
+    *,
+    issue_title: str,
+    issue_body: str,
+    pre_paths: list[Path],
+    post_paths: list[Path],
+) -> dict:
+    """Compare before/after screenshots: Cursor preferred, OpenAI backup."""
+    force = (os.environ.get("VISUAL_PROVIDER") or "").strip().lower()
+    errors: list[str] = []
+
+    def _try_cursor() -> dict | None:
+        if not cursor_api_key():
+            return None
+        try:
+            return visual_ai_check_cursor(
+                issue_title=issue_title,
+                issue_body=issue_body,
+                pre_paths=pre_paths,
+                post_paths=post_paths,
+            )
+        except Exception as exc:
+            errors.append(f"cursor: {exc}")
+            return None
+
+    def _try_openai() -> dict | None:
+        if not openai_key():
+            return None
+        try:
+            return visual_ai_check_openai(
+                issue_title=issue_title,
+                issue_body=issue_body,
+                pre_paths=pre_paths,
+                post_paths=post_paths,
+            )
+        except Exception as exc:
+            errors.append(f"openai: {exc}")
+            return None
+
+    if force in {"cursor", "cursor-sdk", "composer"}:
+        order = ["cursor", "openai"]
+    elif force in {"openai", "chatgpt"}:
+        order = ["openai", "cursor"]
+    else:
+        order = ["cursor", "openai"]
+
+    for name in order:
+        got = _try_cursor() if name == "cursor" else _try_openai()
+        if got is not None:
+            return got
+
+    if not cursor_api_key() and not openai_key():
+        return {
+            "visible": None,
+            "summary": "CURSOR_API_KEY and OPENAI_API_KEY missing; skipped visual AI check",
+            "decision": "skip",
+            "model": "",
+            "provider": "none",
+        }
+    raise GitHubError(
+        "visual AI check failed: " + " | ".join(errors or ["no providers"])
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -251,8 +419,6 @@ def main(argv: list[str] | None = None) -> int:
         )
 
         if not issue_num:
-            # Still leave a durable comment trail on the commit via Actions summary;
-            # file is already on the default branch under .agent/deploy/<sha>/.
             print(
                 "No issue number in commit message / linked PR; "
                 f"uploaded post screenshots: {post_urls}; {health_line}"
@@ -265,7 +431,6 @@ def main(argv: list[str] | None = None) -> int:
 
         issue = api("GET", f"/repos/{owner}/{name}/issues/{issue_num}")
 
-        # Local pre shots if present from reviewer artifact checkout; else remote URLs only
         pre_files = sorted(Path("trace/screenshots").glob("pre-*.png"))
         pre_urls = list_pre_urls(args.repo, default, args.pr) if not pre_files else []
         if pre_files:
@@ -291,6 +456,7 @@ def main(argv: list[str] | None = None) -> int:
                 "- phase: `post-deploy`",
                 f"- issue: #{issue_num}",
                 health_line,
+                f"- visual_provider: `{visual.get('provider')}`",
                 f"- visual_decision: `{visual.get('decision')}`",
                 f"- visual_visible: `{visual.get('visible')}`",
                 f"- visual_model: `{visual.get('model')}`",
@@ -303,7 +469,6 @@ def main(argv: list[str] | None = None) -> int:
             ) + "\n"
         post_issue_comment(args.repo, issue_num, body)
 
-        # Refresh acceptance checklist with live deploy evidence when possible.
         try:
             from acceptance import (
                 post_checklist,

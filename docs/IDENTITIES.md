@@ -50,8 +50,9 @@ Unrelated org install (not part of the agent loop): `digitalocean` (installation
 
 Builder also uses:
 
-- Secret `CURSOR_API_KEY` for Builder cloud coding ([MODELS.md](MODELS.md))
-- Optional `OPENAI_API_KEY` for Reviewer/acceptance/post-deploy AI + codegen backup
+- Secret `CURSOR_API_KEY` for Builder coding + Reviewer + post-deploy visual
+  ([MODELS.md](MODELS.md))
+- Optional `OPENAI_API_KEY` backup for review / acceptance / visual / codegen
 - Optional `MODELS_TOKEN` for GitHub Models backup
 - Builder App must keep `contents: write` so `git/refs` branch creation works
 
