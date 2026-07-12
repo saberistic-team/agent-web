@@ -255,8 +255,17 @@ def test_create_brief_stripe_failure() -> None:
                 "app.main.stripe_service.create_checkout_session",
                 side_effect=RuntimeError("stripe down"),
             ):
-                response = client.post("/api/briefs", json=SAMPLE_BRIEF)
+                with patch(
+                    "app.main.email_service.notify_team_of_new_brief"
+                ) as notify_team:
+                    with patch(
+                        "app.main.email_service.notify_customer_of_brief_received"
+                    ) as notify_customer:
+                        response = client.post("/api/briefs", json=SAMPLE_BRIEF)
     assert response.status_code == 502
+    # Lead emails still fire after DB insert even when Stripe fails.
+    notify_team.assert_called_once()
+    notify_customer.assert_called_once()
 
 
 @pytest.mark.unit
