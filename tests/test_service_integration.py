@@ -72,8 +72,7 @@ def test_create_brief_flow_mocked(monkeypatch: pytest.MonkeyPatch) -> None:
                         "/api/briefs",
                         json={
                             "website": "https://example.com",
-                            "contact_method": "email",
-                            "contact_value": "a@b.com",
+                            "email": "a@b.com",
                             "brief": "Integration coverage for checkout creation.",
                         },
                     )
