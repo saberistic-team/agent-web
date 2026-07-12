@@ -67,27 +67,17 @@
             ></textarea>
           </div>
 
-          <fieldset class="field contact-fieldset">
-            <legend>Best contact</legend>
-            <div class="contact-method">
-              <label class="radio-label">
-                <input type="radio" name="contact_method" value="email" checked />
-                Email
-              </label>
-              <label class="radio-label">
-                <input type="radio" name="contact_method" value="phone" />
-                Phone
-              </label>
-            </div>
+          <div class="field">
+            <label for="email">Email address</label>
             <input
-              type="text"
-              id="contact_value"
-              name="contact_value"
+              type="email"
+              id="email"
+              name="email"
               required
               placeholder="you@example.com"
               autocomplete="email"
             />
-          </fieldset>
+          </div>
 
           <p class="form-error" id="form-error" hidden></p>
 
@@ -107,24 +97,10 @@
         const form = document.getElementById("brief-form");
         const errorEl = document.getElementById("form-error");
         const cancelledNote = document.getElementById("cancelled-note");
-        const contactValue = document.getElementById("contact_value");
-        const methodInputs = form.querySelectorAll('input[name="contact_method"]');
 
         if (new URLSearchParams(window.location.search).get("cancelled") === "1") {
           cancelledNote.hidden = false;
         }
-
-        function updateContactPlaceholder() {
-          const method = form.contact_method.value;
-          contactValue.type = method === "email" ? "email" : "tel";
-          contactValue.placeholder =
-            method === "email" ? "you@example.com" : "+1 555 000 0000";
-          contactValue.autocomplete = method === "email" ? "email" : "tel";
-        }
-
-        methodInputs.forEach((input) => {
-          input.addEventListener("change", updateContactPlaceholder);
-        });
 
         form.addEventListener("submit", async (event) => {
           event.preventDefault();
@@ -134,8 +110,7 @@
           const payload = {
             website: form.website.value.trim(),
             brief: form.brief.value.trim(),
-            contact_method: form.contact_method.value,
-            contact_value: form.contact_value.value.trim(),
+            email: form.email.value.trim(),
           };
 
           const submitBtn = form.querySelector(".brief-submit");
