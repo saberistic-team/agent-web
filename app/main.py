@@ -78,10 +78,31 @@ def create_brief(payload: BriefCreateRequest) -> BriefCreateResponse:
         brief_id = db.create_brief(
             conn,
             website=payload.website,
-            contact_method=payload.contact_method,
-            contact_value=payload.contact_value,
+            contact_method="email",
+            contact_value=payload.email,
             brief=payload.brief,
         )
+
+        # Lead emails before Stripe so a checkout failure still notifies inbox.
+        if settings.email_configured:
+            try:
+                email_service.notify_team_of_new_brief(
+                    api_key=settings.resend_api_key,
+                    from_email=settings.from_email,
+                    notify_email=settings.notify_email,
+                    brief_id=brief_id,
+                    website=payload.website,
+                    email=payload.email,
+                    brief=payload.brief,
+                )
+                email_service.notify_customer_of_brief_received(
+                    api_key=settings.resend_api_key,
+                    from_email=settings.from_email,
+                    to_email=payload.email,
+                    website=payload.website,
+                )
+            except Exception:
+                logger.exception("Failed to send brief lead emails for %s", brief_id)
 
         try:
             session = stripe_service.create_checkout_session(

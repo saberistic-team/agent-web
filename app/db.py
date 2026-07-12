@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS project_briefs (
     id SERIAL PRIMARY KEY,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     website TEXT NOT NULL,
-    contact_method TEXT NOT NULL CHECK (contact_method IN ('email', 'phone')),
+    contact_method TEXT NOT NULL DEFAULT 'email'
+        CHECK (contact_method IN ('email')),
     contact_value TEXT NOT NULL,
     brief TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending_payment'
