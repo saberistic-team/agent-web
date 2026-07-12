@@ -68,7 +68,7 @@ def test_create_brief_returns_checkout_url() -> None:
                         "app.main.email_service.notify_team_of_new_brief"
                     ) as notify_team:
                         with patch(
-                            "app.main.email_service.notify_customer_of_brief_received"
+                            "app.main.email_service.notify_customer_of_new_brief"
                         ) as notify_customer:
                             response = client.post("/api/briefs", json=SAMPLE_BRIEF)
 
@@ -90,8 +90,8 @@ def test_create_brief_returns_checkout_url() -> None:
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_abandoned_checkout_keeps_pending_payment_row() -> None:
-    """Lead is saved before Stripe; skipping payment never marks the row paid."""
+def test_create_brief_sends_submit_emails_even_if_abandoned() -> None:
+    """Lead emails fire on submit; abandoned checkout never marks the row paid."""
     from app import db as brief_db
 
     fake_session = MagicMock()
@@ -117,9 +117,16 @@ def test_abandoned_checkout_keeps_pending_payment_row() -> None:
                     return_value=fake_session,
                 ):
                     with patch("app.main.db.mark_brief_paid") as mark_paid:
-                        response = client.post("/api/briefs", json=SAMPLE_BRIEF)
-                        # User abandons Stripe Checkout — no webhook fires.
-                        mark_paid.assert_not_called()
+                        with patch(
+                            "app.main.email_service.notify_team_of_new_brief"
+                        ) as notify_team:
+                            with patch(
+                                "app.main.email_service.notify_customer_of_new_brief"
+                            ) as notify_customer:
+                                response = client.post("/api/briefs", json=SAMPLE_BRIEF)
+                                mark_paid.assert_not_called()
+                                notify_team.assert_called_once()
+                                notify_customer.assert_called_once()
 
         with patch("app.db.get_brief_by_id", return_value=pending_row):
             stored = brief_db.get_brief_by_id(conn, 7)
@@ -155,91 +162,10 @@ def test_create_brief_rejects_phone_contact() -> None:
             "website": "https://example.com",
             "contact_method": "phone",
             "contact_value": "+15551234567",
-            "brief": "Need help with our API.",
+            "brief": "Need help.",
         },
     )
     assert response.status_code == 422
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_create_brief_sends_submit_emails() -> None:
-    fake_session = MagicMock()
-    fake_session.id = "cs_test_email"
-    fake_session.url = "https://checkout.stripe.com/c/pay/cs_test_email"
-
-    with mock_db_connection():
-        with patch("app.main.db.create_brief", return_value=3):
-            with patch("app.main.db.update_brief_stripe_session"):
-                with patch(
-                    "app.main.stripe_service.create_checkout_session",
-                    return_value=fake_session,
-                ):
-                    with patch(
-                        "app.main.email_service.notify_team_of_new_brief"
-                    ) as notify_team:
-                        with patch(
-                            "app.main.email_service.notify_customer_of_brief_received"
-                        ) as notify_customer:
-                            response = client.post("/api/briefs", json=SAMPLE_BRIEF)
-
-    assert response.status_code == 200
-    notify_team.assert_called_once()
-    notify_customer.assert_called_once()
-    submit_brief = notify_team.call_args.kwargs["brief"]
-    assert submit_brief["id"] == 3
-    assert submit_brief["status"] == "pending_payment"
-    assert submit_brief["contact_value"] == SAMPLE_BRIEF["email"]
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_create_brief_submit_email_failure_still_returns_checkout() -> None:
-    fake_session = MagicMock()
-    fake_session.id = "cs_test_fail"
-    fake_session.url = "https://checkout.stripe.com/c/pay/cs_test_fail"
-
-    with mock_db_connection():
-        with patch("app.main.db.create_brief", return_value=4):
-            with patch("app.main.db.update_brief_stripe_session"):
-                with patch(
-                    "app.main.stripe_service.create_checkout_session",
-                    return_value=fake_session,
-                ):
-                    with patch(
-                        "app.main.email_service.notify_team_of_new_brief",
-                        side_effect=RuntimeError("email down"),
-                    ):
-                        response = client.post("/api/briefs", json=SAMPLE_BRIEF)
-
-    assert response.status_code == 200
-    assert response.json()["checkout_url"] == fake_session.url
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_create_brief_skips_submit_email_when_not_configured(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv("RESEND_API_KEY", raising=False)
-    fake_session = MagicMock()
-    fake_session.id = "cs_test_no_email"
-    fake_session.url = "https://checkout.stripe.com/c/pay/cs_test_no_email"
-
-    with mock_db_connection():
-        with patch("app.main.db.create_brief", return_value=5):
-            with patch("app.main.db.update_brief_stripe_session"):
-                with patch(
-                    "app.main.stripe_service.create_checkout_session",
-                    return_value=fake_session,
-                ):
-                    with patch(
-                        "app.main.email_service.notify_team_of_new_brief"
-                    ) as notify_team:
-                        response = client.post("/api/briefs", json=SAMPLE_BRIEF)
-
-    assert response.status_code == 200
-    notify_team.assert_not_called()
 
 
 @pytest.mark.unit
@@ -263,11 +189,13 @@ def test_create_brief_requires_stripe(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_create_brief_stripe_failure() -> None:
     with mock_db_connection():
         with patch("app.main.db.create_brief", return_value=1):
-            with patch(
-                "app.main.stripe_service.create_checkout_session",
-                side_effect=RuntimeError("stripe down"),
-            ):
-                response = client.post("/api/briefs", json=SAMPLE_BRIEF)
+            with patch("app.main.email_service.notify_team_of_new_brief"):
+                with patch("app.main.email_service.notify_customer_of_new_brief"):
+                    with patch(
+                        "app.main.stripe_service.create_checkout_session",
+                        side_effect=RuntimeError("stripe down"),
+                    ):
+                        response = client.post("/api/briefs", json=SAMPLE_BRIEF)
     assert response.status_code == 502
 
 
@@ -285,8 +213,64 @@ def test_create_brief_missing_checkout_url() -> None:
                     "app.main.stripe_service.create_checkout_session",
                     return_value=fake_session,
                 ):
-                    response = client.post("/api/briefs", json=SAMPLE_BRIEF)
+                    with patch("app.main.email_service.notify_team_of_new_brief"):
+                        with patch("app.main.email_service.notify_customer_of_new_brief"):
+                            response = client.post("/api/briefs", json=SAMPLE_BRIEF)
     assert response.status_code == 502
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_create_brief_email_failure_still_returns_checkout() -> None:
+    fake_session = MagicMock()
+    fake_session.id = "cs_test_abc"
+    fake_session.url = "https://checkout.stripe.com/c/pay/cs_test_abc"
+
+    with mock_db_connection():
+        with patch("app.main.db.create_brief", return_value=1):
+            with patch("app.main.db.update_brief_stripe_session"):
+                with patch(
+                    "app.main.stripe_service.create_checkout_session",
+                    return_value=fake_session,
+                ):
+                    with patch(
+                        "app.main.email_service.notify_team_of_new_brief",
+                        side_effect=RuntimeError("email down"),
+                    ):
+                        response = client.post("/api/briefs", json=SAMPLE_BRIEF)
+
+    assert response.status_code == 200
+    assert response.json()["checkout_url"] == fake_session.url
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_create_brief_skips_email_when_not_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    fake_session = MagicMock()
+    fake_session.id = "cs_test_abc"
+    fake_session.url = "https://checkout.stripe.com/c/pay/cs_test_abc"
+
+    with mock_db_connection():
+        with patch("app.main.db.create_brief", return_value=1):
+            with patch("app.main.db.update_brief_stripe_session"):
+                with patch(
+                    "app.main.stripe_service.create_checkout_session",
+                    return_value=fake_session,
+                ):
+                    with patch(
+                        "app.main.email_service.notify_team_of_new_brief"
+                    ) as notify_team:
+                        with patch(
+                            "app.main.email_service.notify_customer_of_new_brief"
+                        ) as notify_customer:
+                            response = client.post("/api/briefs", json=SAMPLE_BRIEF)
+
+    assert response.status_code == 200
+    notify_team.assert_not_called()
+    notify_customer.assert_not_called()
 
 
 @pytest.mark.unit
@@ -474,7 +458,8 @@ def test_brief_form_page() -> None:
     assert 'id="brief-form"' in body
     assert 'id="email"' in body
     assert "Continue to payment" in body
-    assert 'value="phone"' not in body
+    assert 'name="contact_method"' not in body
+    assert "Phone" not in body
 
 
 @pytest.mark.unit
