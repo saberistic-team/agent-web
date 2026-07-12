@@ -19,7 +19,8 @@ ADMIN_PATTERNS = (
     re.compile(r"/admin\b", re.I),
     re.compile(r"\badmin.*brief", re.I),
     re.compile(r"\bbrief.*admin", re.I),
-    re.compile(r"/briefs\b", re.I),
+    # Block admin list UIs at /briefs; allow the public create API at /api/briefs.
+    re.compile(r"(?<!/api)/briefs\b", re.I),
 )
 
 COUPON_PATTERNS = (

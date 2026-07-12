@@ -1,3 +1,9 @@
+databases:
+  - name: agent-web-db
+    plan: free
+    databaseName: agent_web
+    user: agent_web
+
 services:
   - type: web
     name: agent-web-hello
@@ -6,3 +12,22 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: agent-web-db
+          property: connectionString
+      - key: BASE_URL
+        value: https://saberistic.com
+      - key: FROM_EMAIL
+        value: noreply@saberistic.com
+      - key: NOTIFY_EMAIL
+        value: inbox@saberistic.com
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false

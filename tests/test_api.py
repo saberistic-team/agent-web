@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import about, app, health, hello, home
+from app.main import about, app, brief_form, brief_success, health, hello, home
 
 client = TestClient(app)
 
@@ -28,6 +28,12 @@ def test_home_handler_returns_index() -> None:
 def test_about_handler_returns_about() -> None:
     response = about()
     assert response.path.name == "about.html"
+
+
+@pytest.mark.unit
+def test_brief_handlers_return_pages() -> None:
+    assert brief_form().path.name == "brief.html"
+    assert brief_success().path.name == "brief-success.html"
 
 
 @pytest.mark.unit
@@ -78,7 +84,15 @@ def test_landing_single_linkedin_cta() -> None:
     assert 'class="cta"' in body
     assert 'href="https://www.linkedin.com/in/saberistic"' in body
     assert 'class="cta cta-secondary"' in body
+    assert 'href="/brief"' in body
     assert 'href="/about"' in body
+
+
+@pytest.mark.unit
+def test_home_has_brief_cta() -> None:
+    body = client.get("/").text
+    assert "Request project brief" in body
+    assert 'href="/brief"' in body
 
 
 @pytest.mark.unit
