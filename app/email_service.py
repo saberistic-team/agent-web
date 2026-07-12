@@ -38,48 +38,52 @@ def send_email(
     return response.json()
 
 
-def notify_team_of_brief_lead(
+def notify_team_of_new_brief(
     *,
     api_key: str,
     from_email: str,
     notify_email: str,
-    brief: dict[str, Any],
+    brief_id: int,
+    website: str,
+    email: str,
+    brief: str,
 ) -> dict[str, Any] | None:
     body = (
-        "New project brief lead (payment not yet completed)\n\n"
-        f"Website: {brief['website']}\n"
-        f"Email: {brief['contact_value']}\n\n"
-        f"Brief:\n{brief['brief']}\n\n"
-        f"Brief ID: {brief['id']}\n"
-        f"Status: {brief.get('status', 'pending_payment')}\n"
+        "New project brief lead\n\n"
+        f"Website: {website}\n"
+        f"Email: {email}\n\n"
+        f"Brief:\n{brief}\n\n"
+        f"Brief ID: {brief_id}\n"
+        f"Status: pending_payment\n"
     )
     return send_email(
         api_key=api_key,
         from_email=from_email,
         to=notify_email,
-        subject=f"New project brief lead — {brief['website']}",
+        subject=f"New project brief lead — {website}",
         text=body,
     )
 
 
-def notify_customer_of_brief_receipt(
+def notify_customer_of_brief_received(
     *,
     api_key: str,
     from_email: str,
-    brief: dict[str, Any],
+    to_email: str,
+    website: str,
 ) -> dict[str, Any] | None:
     body = (
         "We received your project brief request.\n\n"
-        "Thank you for submitting your project details. Complete the "
-        "$200 payment at checkout to finalize your request. Our team will "
-        "review your brief and follow up at this email address.\n\n"
-        f"Website: {brief['website']}\n\n"
+        "Thank you for reaching out. Complete payment at Stripe checkout to "
+        "submit your brief for review. Our team will follow up at this email "
+        "address.\n\n"
+        f"Website: {website}\n\n"
         "— saberistic"
     )
     return send_email(
         api_key=api_key,
         from_email=from_email,
-        to=brief["contact_value"],
+        to=to_email,
         subject="We received your project brief request",
         text=body,
     )
@@ -117,9 +121,9 @@ def notify_customer_of_paid_brief(
     brief: dict[str, Any],
 ) -> dict[str, Any] | None:
     body = (
-        "Your payment was received.\n\n"
-        "Thank you for your $200 payment. Our team will review your "
-        "project brief and follow up at this email address.\n\n"
+        "Payment received — thank you.\n\n"
+        "Your $200 project brief payment was successful. Our team will review "
+        "your brief and follow up at this email address.\n\n"
         f"Website: {brief['website']}\n\n"
         "— saberistic"
     )
@@ -127,6 +131,6 @@ def notify_customer_of_paid_brief(
         api_key=api_key,
         from_email=from_email,
         to=brief["contact_value"],
-        subject="Payment confirmed — project brief request",
+        subject="Payment received for your project brief",
         text=body,
     )
