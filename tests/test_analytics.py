@@ -350,7 +350,7 @@ def test_insight_article_injects_server_page_event(
 
 
 @pytest.mark.unit
-def test_diagnostic_redirects_to_brief(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_diagnostic_redirect_omits_page_event_meta(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ANALYTICS_ENABLED", "true")
     monkeypatch.setenv("PLAUSIBLE_DOMAIN", "saberistic.com")
 
