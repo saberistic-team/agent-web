@@ -13,7 +13,8 @@ Before approving you must:
    `mergeable_state` not dirty). If GitHub reports conflicts (e.g. another
    branch merged after Builder handed off), **request changes immediately** and
    return the issue to Builder — do not approve or spend the rest of the review
-   budget on a conflicted PR
+   budget on a conflicted PR. Merge conflicts are always Builder work on the
+   same PR head.
 2. Capture **headless Chromium screenshots** via Actions Playwright
    (`scripts/screenshot_deploy.py`) at **desktop and mobile** viewports:
    - **PR branch** — local uvicorn on the PR head checkout (`branch-*.png`)
@@ -28,7 +29,12 @@ Before approving you must:
    — prefers Cursor when `CURSOR_API_KEY` is set
 5. Enforce **service coverage** on `app/`: unit ≥90%, integration ≥70%
 6. Post an **`### acceptance_checklist`** that marks each acceptance criterion
-   done/not_done with links to evidence (PR, commits, files, screenshots)
+   done/not_done with links to evidence (PR, commits, files, screenshots).
+   **Pre-merge “published” criteria** (e.g. launch articles live on `/insights`)
+   are satisfied by **PR-head evidence** — code routes, `LAUNCH_REVIEW.md` /
+   editorial sign-off, branch screenshots, and tests — **not** by production
+   URLs that only exist after Gate merges and deploys. Do **not** fail approval
+   because production still 404s a route the PR adds.
 
 Review **only the linked PR’s head SHA**. Ignore any other `builder/{issue}-…`
 refs for the same issue number (ghost branches are not in scope). If Builder

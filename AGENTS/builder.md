@@ -65,12 +65,19 @@ a dirty PR as unfinished Builder work.
 3. Merge the PR base into the PR head; resolve text conflicts preferring both
    intents (this feature + recently landed work). Prefer base (`theirs` during
    that merge) for conflicted binaries.
+   **Single-branch clone pitfall:** conflict merges clone the PR head with
+   `--single-branch`. A plain `git fetch origin main` updates `FETCH_HEAD` only
+   — it does **not** create `refs/remotes/origin/main`, so
+   `git merge origin/main` fails with “not something we can merge” and loops
+   Builder↔Reviewer. `builder_conflicts.py` must fetch with an explicit refspec:
+   `+refs/heads/{base}:refs/remotes/origin/{base}`.
 4. Comment `### builder_conflict_context` and `### builder_conflict_result` on
    the issue.
 5. **Re-check** `mergeable` / `mergeable_state`. Only when clean → hand off
    (`status:needs-review` / `agent:reviewer`). If still dirty or resolution
-   failed → re-enter `status:queued` (`waiting` handoff) so you run again;
-   never send a conflicted PR to Reviewer.
+   failed → re-enter `status:queued` (`waiting` handoff in
+   `trace/builder-handoff.txt`) so you run again; **never** send a conflicted or
+   unresolved PR to Reviewer.
 
 If Reviewer returns the issue with merge-conflict hard fails (e.g. another
 branch merged after your handoff), resolve on the **same** PR head and
