@@ -1,0 +1,72 @@
+{
+  "articles": [
+    {
+      "slug": "mvp-competing-sources-of-truth",
+      "title": "Five signs an MVP has competing sources of truth",
+      "meta_description": "How seed-stage MVPs accumulate silent data conflicts — five signals that competing sources of truth will block safe scaling.",
+      "audience": "Founders and engineering leads at seed–Series B startups",
+      "problem": "The product ships features, but teams disagree on what a user, balance, or order actually is — and fixes get slower as you grow.",
+      "published_at": "2026-07-10",
+      "author": "AmirSaber Sharifi",
+      "eyebrow": "Architecture",
+      "sections": [
+        {
+          "heading": "1. The same noun maps to different schemas",
+          "content": "If “user,” “wallet,” or “position” has different field sets across services, you already have multiple truths. The UI may look coherent while APIs answer incompatible questions."
+        },
+        {
+          "heading": "2. Read paths disagree after common flows",
+          "content": "A deposit, trade, or onboarding step completes successfully, but dashboards, emails, and support tools show different states. That is not a caching bug — it is unowned entity lifecycle."
+        },
+        {
+          "heading": "3. Migrations are avoided because no one owns the model",
+          "content": "Teams add nullable columns and shadow tables instead of consolidating. Each shortcut preserves a local source of truth and pushes reconciliation to the next team."
+        },
+        {
+          "heading": "4. Event logs and primary tables tell different stories",
+          "content": "When the event stream says one thing and the row users see says another, you lack a defined write model. Replays and audits become arguments, not procedures."
+        },
+        {
+          "heading": "5. New features require “which system is right?” meetings",
+          "content": "If every cross-cutting feature starts with a meeting to pick the authoritative store, delivery cost is already compounding. The MVP is working around its own data model."
+        }
+      ],
+      "cta_label": "Request architecture diagnostic",
+      "cta_href": "/brief"
+    },
+    {
+      "slug": "fintech-architecture-investor-diligence",
+      "title": "What investors should examine before funding fintech architecture",
+      "meta_description": "Technical due diligence questions for fintech investments — ledger boundaries, reconciliation, and security posture beyond the pitch deck.",
+      "audience": "Investors and operating partners evaluating fintech and digital-asset companies",
+      "problem": "Architecture risk rarely appears in pitch decks, but it determines whether a funded company can scale compliance, custody, and settlement without a rewrite.",
+      "published_at": "2026-07-13",
+      "author": "AmirSaber Sharifi",
+      "eyebrow": "Due diligence",
+      "sections": [
+        {
+          "heading": "Ledger and balance boundaries",
+          "content": "Ask where balances are authoritative, how pending vs. settled funds are represented, and what happens when a provider webhook arrives twice. Double-entry without clear ownership is still a single point of failure."
+        },
+        {
+          "heading": "Reconciliation and exception handling",
+          "content": "Production fintech breaks at the edges: partial settlements, chargebacks, chain reorganizations, stale quotes. Look for automated reconciliation, idempotent ingestion, and operator runbooks — not manual spreadsheets."
+        },
+        {
+          "heading": "Identity, authorization, and audit trails",
+          "content": "Map how customer identity ties to account actions, who can move money, and whether every material action is attributable. Gaps here become regulatory and fraud incidents after growth."
+        },
+        {
+          "heading": "Third-party and chain dependency posture",
+          "content": "Understand failover when a banking partner, indexer, or RPC endpoint degrades. Healthy architectures degrade gracefully; fragile ones hide provider outages behind incorrect user state."
+        },
+        {
+          "heading": "Security debt that compounds after PMF",
+          "content": "MVP shortcuts — shared secrets, broad service accounts, missing encryption context — are cheap early and expensive once traffic and compliance scope grow. Ask what was deferred and what blocks enterprise or licensing paths."
+        }
+      ],
+      "cta_label": "Discuss technical due diligence",
+      "cta_href": "/brief"
+    }
+  ]
+}
