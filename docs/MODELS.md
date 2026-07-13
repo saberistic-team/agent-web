@@ -14,6 +14,23 @@ is set. OpenAI and GitHub Models are backups (OpenAI quota is often exhausted).
    the prompt
 6. Reviewer (acceptance checklist + screenshots)
 
+### Branch / PR binding (no stray branches)
+
+Builder must keep **one open PR and one head branch per issue**.
+
+| Step | Behavior |
+|------|----------|
+| Open linked PR exists | `resolve_builder_branch()` uses that PR’s `head.ref` for all commits |
+| No open linked PR | Create `builder/{issue}-{slugify(title)}` and open the PR |
+| Re-queue after changes-requested | Same PR head — never a second `builder/{issue}-…` from a retitled slug |
+
+Title-only slugs drift (e.g. `P1 — …` vs bare title) and previously forked
+Reviewer onto a ghost branch while the real PR stayed stale. See
+[AGENTS/builder.md](../AGENTS/builder.md) — **Branch and PR reuse**.
+
+Binary paths (`.png`, `.jpg`, …) go through Contents API as raw bytes so share
+images are not UTF-8-corrupted.
+
 ## Reviewer AI flow
 
 1. Issue gets `agent:reviewer`
