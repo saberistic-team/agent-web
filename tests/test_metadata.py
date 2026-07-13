@@ -66,7 +66,7 @@ INDEXABLE_PAGES: dict[str, dict[str, str]] = {
         "title": "Insights — saberistic",
         "description": (
             "Architecture judgment for founders, investors, and technical leaders — "
-            "patterns, risks, and decisions from fintech, AI, and digital-asset systems."
+            "patterns, risks, and decisions from seed–Series B fintech and digital-asset systems."
         ),
         "canonical": f"{SITE_BASE}/insights",
     },
