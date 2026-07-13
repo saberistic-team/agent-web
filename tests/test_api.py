@@ -38,13 +38,48 @@ def test_site_page_handlers_return_pages(monkeypatch: pytest.MonkeyPatch) -> Non
 
     monkeypatch.delenv("ANALYTICS_ENABLED", raising=False)
     services_body = services().body.decode()
+    assert "Technical Architecture Diagnostic" in services_body
+    assert "being finalized" not in services_body
     case_studies_body = case_studies_index().body.decode()
-    assert "Services" in services_body
-    assert "Architecture Diagnostic — $200" in services_body
-    assert "being finalized" not in services_body.lower()
     assert "Case studies" in case_studies_body
-    assert "/work/brave" in case_studies_body
-    assert "in progress" not in case_studies_body.lower()
+    assert "in progress" not in case_studies_body
+
+
+@pytest.mark.unit
+def test_services_page_lists_finalized_offers() -> None:
+    response = client.get("/services")
+    assert response.status_code == 200
+    body = response.text
+    assert "Technical Architecture Diagnostic" in body
+    assert "Fractional Principal Architect" in body
+    assert "Technical Due Diligence" in body
+    assert "Fixed-scope paid intake — $200" in body
+    assert "Seed–Series B fintech" in body
+    assert 'class="cta" href="/brief"' in body
+    assert "being finalized" not in body
+    assert "software development" not in body.lower()
+
+
+@pytest.mark.unit
+def test_case_studies_index_links_all_proof_pages() -> None:
+    response = client.get("/case-studies")
+    assert response.status_code == 200
+    body = response.text
+    assert "/work/brave" in body
+    assert "/work/baxus" in body
+    assert "/work/eternis" in body
+    assert "/work/spiral-safe" in body
+    assert "/work/architecture-diagnostic" in body
+    assert "in progress" not in body
+    assert "Request an Architecture Diagnostic" in body
+    assert 'class="cta" href="/brief"' in body
+
+
+@pytest.mark.unit
+def test_diagnostic_redirects_to_brief() -> None:
+    response = client.get("/diagnostic", follow_redirects=False)
+    assert response.status_code == 301
+    assert response.headers["location"] == "/brief"
 
 
 @pytest.mark.unit
@@ -215,38 +250,3 @@ def test_case_study_unique_metadata() -> None:
 def test_case_study_handler_unit() -> None:
     response = case_study("brave")
     assert "Infrastructure for privacy-aligned payments" in response.body.decode()
-
-
-@pytest.mark.unit
-def test_services_page_lists_finalized_offers() -> None:
-    response = client.get("/services")
-    assert response.status_code == 200
-    body = response.text
-    assert "Architecture Diagnostic — $200" in body
-    assert "Fractional Principal Architect" in body
-    assert "Technical Due Diligence" in body
-    assert "being finalized" not in body.lower()
-    assert "software development" not in body.lower()
-    assert "Seed–Series B fintech" in body
-    assert 'class="cta" href="/brief"' in body
-    assert "Start Architecture Diagnostic" in body
-    assert "Submit a brief" in body
-
-
-@pytest.mark.unit
-def test_case_studies_index_links_all_proof_pages() -> None:
-    response = client.get("/case-studies")
-    assert response.status_code == 200
-    body = response.text
-    assert "in progress" not in body.lower()
-    for slug in (
-        "brave",
-        "baxus",
-        "eternis",
-        "spiral-safe",
-        "architecture-diagnostic",
-    ):
-        assert f'/work/{slug}"' in body
-    assert "Request an Architecture Diagnostic" in body
-    assert 'class="cta" href="/brief"' in body
-    assert "Employer roles are distinguished" in body
