@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Any, Literal
 
-Engagement = Literal["employer", "founder", "saberistic"]
+from app.site_layout import render_site_header
 
 DATA_PATH = Path(__file__).resolve().parent.parent / "site" / "data" / "case-studies.json"
 
@@ -101,6 +101,8 @@ def render_case_study_page(study: dict[str, Any]) -> str:
         for key, title in SECTIONS
     )
 
+    header = render_site_header("/case-studies")
+
     return f"""<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -119,18 +121,7 @@ def render_case_study_page(study: dict[str, Any]) -> str:
     <link rel="stylesheet" href="/assets/site.css" />
   </head>
   <body>
-    <header class="top">
-      <a class="brand" href="/" aria-label="saberistic home">
-        <img
-          class="brand-word"
-          src="/assets/logo-text.png"
-          width="160"
-          height="41"
-          alt="saberistic"
-        />
-      </a>
-      <a class="top-link" href="/insights">Insights</a>
-    </header>
+{header}
 
     <main>
       <article class="block case-study" data-slug="{slug}" data-engagement="{html.escape(engagement)}">
