@@ -8,15 +8,30 @@ CANONICAL_SCHEME = "https"
 CANONICAL_HOST = "saberistic.com"
 CANONICAL_BASE = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}"
 
-# HTML pages that return 200 and should be indexed.
-INDEXABLE_PATHS: tuple[str, ...] = ("/", "/about", "/brief")
+# Static HTML pages that return 200 and should be indexed.
+# Case-study paths under /work/{slug} are appended from case study data (#65).
+STATIC_INDEXABLE_PATHS: tuple[str, ...] = ("/", "/about", "/brief")
+
+# Back-compat alias used by tests and docs examples.
+INDEXABLE_PATHS = STATIC_INDEXABLE_PATHS
 
 # Permanent redirects for retired marketing URLs.
+# Targets match anchors shipped on main by #63/#64 (#services, #work).
 LEGACY_REDIRECTS: dict[str, str] = {
     "/what-we-do.html": "/#services",
     "/what-we-did.html": "/#work",
     "/who-we-are.html": "/about",
 }
+
+
+def indexable_paths() -> tuple[str, ...]:
+    """Return all indexable paths including case studies from #65."""
+    from app.case_studies import load_case_studies
+
+    paths = list(STATIC_INDEXABLE_PATHS)
+    for study in load_case_studies():
+        paths.append(f"/work/{study['slug']}")
+    return tuple(paths)
 
 
 def canonical_url(path: str) -> str:
@@ -42,7 +57,7 @@ def sitemap_xml(*, lastmod: date | None = None) -> str:
         f"    <loc>{canonical_url(path)}</loc>\n"
         f"    <lastmod>{mod}</lastmod>\n"
         "  </url>"
-        for path in INDEXABLE_PATHS
+        for path in indexable_paths()
     )
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
