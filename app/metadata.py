@@ -12,7 +12,7 @@ OG_IMAGE = f"{CANONICAL_BASE}/assets/og-share.png"
 OG_IMAGE_ALT = "saberistic — high-stakes architecture and engineering leadership"
 
 
-def json_ld_safe(value: str) -> str:
+def _json_ld_safe(value: str) -> str:
     """Escape characters that could break out of a script block in JSON-LD."""
     return value.replace("<", "\\u003c").replace(">", "\\u003e")
 
@@ -51,39 +51,30 @@ def json_ld_script(data: dict[str, Any]) -> str:
     return f'    <script type="application/ld+json">\n      {payload}\n    </script>'
 
 
-def web_page_json_ld(
-    *,
-    title: str,
-    description: str,
-    url: str,
-    image: str | None = None,
-) -> str:
-    data: dict[str, Any] = {
-        "@context": "https://schema.org",
-        "@type": "WebPage",
-        "name": json_ld_safe(title),
-        "description": json_ld_safe(description),
-        "url": url,
-    }
-    if image:
-        data["image"] = image
-    return json_ld_script(data)
+def web_page_json_ld(*, title: str, description: str, url: str) -> str:
+    return json_ld_script(
+        {
+            "@context": "https://schema.org",
+            "@type": "WebPage",
+            "name": title,
+            "description": description,
+            "url": url,
+        }
+    )
 
 
-def case_study_head_metadata(
-    *,
-    title: str,
-    description: str,
-    canonical_url: str,
-) -> str:
-    """Open Graph, Twitter card, and JSON-LD for a /work/{slug} case study."""
-    return f"""{social_meta_tags(
-        title=title,
-        description=description,
-        url=canonical_url,
-        og_type="article",
-    )}
-{web_page_json_ld(title=title, description=description, url=canonical_url, image=OG_IMAGE)}"""
+def case_study_json_ld(*, title: str, description: str, url: str) -> str:
+    """JSON-LD for /work/{slug} proof pages (WebPage — no invented dates)."""
+    return json_ld_script(
+        {
+            "@context": "https://schema.org",
+            "@type": "WebPage",
+            "name": _json_ld_safe(title),
+            "description": _json_ld_safe(description),
+            "url": url,
+            "image": OG_IMAGE,
+        }
+    )
 
 
 def article_json_ld(
