@@ -467,16 +467,29 @@ def test_brief_form_page() -> None:
     response = client.get("/brief")
     assert response.status_code == 200
     body = response.text
-    assert "Request project brief" in body
+    assert "Architecture Diagnostic" in body
+    assert "What's included" in body
+    assert "How payment works" in body
+    assert "Submit" in body
+    assert "Checkout" in body
+    assert "Payment completed" in body
     assert 'id="brief-form"' in body
     assert 'name="email"' in body
-    assert "Continue to payment" in body
+    assert "Submit and continue to checkout" in body
+    assert "Email an introduction" in body
     assert "contact_method" not in body
     assert "Phone" not in body
+    # Offer appears before the form
+    assert body.index("What's included") < body.index('id="brief-form"')
+    # No unsupported promises
+    assert "refund" not in body.lower()
+    assert "credit" not in body.lower()
 
 
 @pytest.mark.unit
 def test_brief_success_page() -> None:
     response = client.get("/brief/success")
     assert response.status_code == 200
-    assert "We received your request." in response.text
+    body = response.text
+    assert "Payment completed" in body
+    assert "follow up by email" in body
