@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.metadata import article_json_ld, json_ld_script, social_meta_tags
+from app.metadata import article_json_ld, case_study_json_ld, json_ld_script, social_meta_tags
 
 
 @pytest.mark.unit
@@ -38,3 +38,14 @@ def test_article_json_ld_includes_modified_date() -> None:
         date_modified="2026-07-13",
     )
     assert '"dateModified":"2026-07-13"' in script
+
+
+@pytest.mark.unit
+def test_case_study_json_ld_web_page_with_image() -> None:
+    script = case_study_json_ld(
+        title="Brave — Infrastructure · saberistic",
+        description="Case study description",
+        url="https://saberistic.com/work/brave",
+    )
+    assert '"@type":"WebPage"' in script
+    assert "https://saberistic.com/assets/og-share.png" in script
