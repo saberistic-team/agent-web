@@ -9,18 +9,23 @@ record the orchestration decision.
 
 Before approving you must:
 
-1. Capture **headless Chromium screenshots** via Actions Playwright
+1. Confirm the linked PR **merges cleanly** into its base (`mergeable` /
+   `mergeable_state` not dirty). If GitHub reports conflicts (e.g. another
+   branch merged after Builder handed off), **request changes immediately** and
+   return the issue to Builder — do not approve or spend the rest of the review
+   budget on a conflicted PR
+2. Capture **headless Chromium screenshots** via Actions Playwright
    (`scripts/screenshot_deploy.py` on the live deploy URL) at **desktop and
    mobile** viewports and post them on the PR and issue — not Copilot / MCP
    browsers
-2. Check **visual readability** on those screenshots / live capture: hero and
+3. Check **visual readability** on those screenshots / live capture: hero and
    primary copy must stay inside the viewport (no horizontal overflow / text
    out of frame on mobile)
-3. Run **Cursor / OpenAI / Models AI review** ([docs/MODELS.md](../docs/MODELS.md),
+4. Run **Cursor / OpenAI / Models AI review** ([docs/MODELS.md](../docs/MODELS.md),
    [docs/DESIGN.md](../docs/DESIGN.md), [docs/TESTING.md](../docs/TESTING.md))
    — prefers Cursor when `CURSOR_API_KEY` is set
-4. Enforce **service coverage** on `app/`: unit ≥90%, integration ≥70%
-5. Post an **`### acceptance_checklist`** that marks each acceptance criterion
+5. Enforce **service coverage** on `app/`: unit ≥90%, integration ≥70%
+6. Post an **`### acceptance_checklist`** that marks each acceptance criterion
    done/not_done with links to evidence (PR, commits, files, screenshots)
 
 Review **only the linked PR’s head SHA**. Ignore any other `builder/{issue}-…`
@@ -51,6 +56,9 @@ than reviewing stale ghost commits.
 
 Any of these is an automatic request-changes — do not approve:
 
+- **Merge conflicts** with the PR base (`mergeable: false` /
+  `mergeable_state: dirty`) — including races where other PRs merged after
+  Builder handed off
 - Failing required tests / CI
 - **Service coverage below gates** on `app/`: unit **≥90%**, integration **≥70%**
   ([docs/TESTING.md](../docs/TESTING.md), `scripts/check_coverage.py`)
@@ -64,10 +72,11 @@ Any of these is an automatic request-changes — do not approve:
   (out of frame) on homepage/about screenshots
 - Acceptance checklist incomplete (`all_done: false` or missing)
 
-Coverage gaps, missing tests, CI assertion failures, and visual overflow are
-**Builder work** — request changes so dispatcher requeues `agent:builder`. Do
-**not** treat them as terminal `@human-review` / `status:blocked` (see
-`scripts/review_decision.py`).
+Coverage gaps, missing tests, CI assertion failures, visual overflow, and
+**merge conflicts** are **Builder work** — request changes so dispatcher
+requeues `agent:builder` (Builder resolves on the same PR head). Do **not**
+treat them as terminal `@human-review` / `status:blocked` (see
+`scripts/review_decision.py`). Do **not** resolve conflicts yourself.
 
 ## Judgment call
 

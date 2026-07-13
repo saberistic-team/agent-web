@@ -98,6 +98,64 @@ def write_builder_handoff(mode: str) -> None:
     BUILDER_HANDOFF.write_text(mode + "\n", encoding="utf-8")
 
 
+def handoff_builder_when_mergeable(repo: str, issue: int) -> None:
+    """Resolve conflicts if needed; hand off to Reviewer only when the PR is clean.
+
+    Unresolved conflicts re-enter the priority queue (``waiting``) so Builder
+    runs again — never send a dirty PR to Reviewer.
+    """
+    from builder_conflicts import (
+        linked_pr_conflict_status,
+        maybe_resolve_pr_conflicts,
+    )
+
+    HANDOFF_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        conflict = maybe_resolve_pr_conflicts(repo, issue)
+        (HANDOFF_DIR / "builder-conflict.txt").write_text(
+            f"{conflict.get('status')}\n",
+            encoding="utf-8",
+        )
+    except Exception as conflict_exc:
+        post_issue_comment(
+            repo,
+            issue,
+            (
+                "### builder_conflict_result\n"
+                f"- status: `failed`\n"
+                f"- error: `{conflict_exc}`\n"
+                "- note: codegen succeeded; unresolved merge conflicts — "
+                "re-entering `status:queued` (do not open a second branch).\n"
+            ),
+        )
+        (HANDOFF_DIR / "builder-conflict.txt").write_text("failed\n", encoding="utf-8")
+        write_builder_handoff("waiting")
+        return
+
+    status = linked_pr_conflict_status(repo, issue)
+    if status.get("status") == "dirty":
+        post_issue_comment(
+            repo,
+            issue,
+            (
+                "### builder_conflict_result\n"
+                f"- status: `still_dirty`\n"
+                f"- pr: #{status.get('pr')}\n"
+                f"- mergeable: `{status.get('mergeable')}`\n"
+                f"- mergeable_state: `{status.get('mergeable_state')}`\n"
+                "- note: not handing off to Reviewer; re-entering `status:queued` "
+                "to keep resolving on the same PR head.\n"
+            ),
+        )
+        (HANDOFF_DIR / "builder-conflict.txt").write_text(
+            "still_dirty\n", encoding="utf-8"
+        )
+        write_builder_handoff("waiting")
+        return
+
+    write_builder_handoff("reviewer")
+
+
 def is_verify_deploy_issue(title: str, body: str) -> bool:
     text = f"{title}\n{body}".lower()
     if not re.search(r"\bverify\b|\bsmoke\b", text):
@@ -475,7 +533,7 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
                 issue,
                 f"### builder_result\n- kind: `infra-screenshots`\n- existing_pr: #{pr_number}\n",
             )
-        write_builder_handoff("reviewer")
+        handoff_builder_when_mergeable(repo, issue)
         return
 
     # Product work: OpenAI primary; GitHub Models optional backup.
@@ -494,29 +552,8 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
             f"{result.get('provider')}:{result.get('model')}\n",
             encoding="utf-8",
         )
-        # After codegen, rebase/merge the PR onto latest base if GitHub reports
-        # conflicts — using recently closed issues/PRs as resolution context.
-        try:
-            from builder_conflicts import maybe_resolve_pr_conflicts
-
-            conflict = maybe_resolve_pr_conflicts(repo, issue)
-            (HANDOFF_DIR / "builder-conflict.txt").write_text(
-                f"{conflict.get('status')}\n",
-                encoding="utf-8",
-            )
-        except Exception as conflict_exc:
-            post_issue_comment(
-                repo,
-                issue,
-                (
-                    "### builder_conflict_result\n"
-                    f"- status: `failed`\n"
-                    f"- error: `{conflict_exc}`\n"
-                    "- note: codegen succeeded; resolve merge conflicts on the "
-                    "existing PR head before Reviewer (do not open a second branch).\n"
-                ),
-            )
-        write_builder_handoff("reviewer")
+        # After codegen, merge base if dirty; hand off only when mergeable.
+        handoff_builder_when_mergeable(repo, issue)
     except Exception as exc:
         escalate(
             repo,
@@ -623,11 +660,49 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
     owner, name = split_repo(repo)
     pr_number = pr["number"]
 
+    hard_fail_reasons: list[str] = []
+
+    # Merge conflicts first — return to Builder; skip the rest of the budget.
+    try:
+        from builder_conflicts import (
+            format_merge_conflict_hard_fail,
+            linked_pr_conflict_status,
+        )
+
+        conflict_status = linked_pr_conflict_status(repo, issue)
+        if conflict_status.get("status") == "dirty":
+            hard_fail_reasons.append(format_merge_conflict_hard_fail(conflict_status))
+        elif conflict_status.get("pr_payload"):
+            pr = conflict_status["pr_payload"]
+            pr_number = int(pr["number"])
+    except Exception as conflict_exc:
+        hard_fail_reasons.append(
+            f"mergeability check failed: {conflict_exc} — "
+            "treat as conflict and return to Builder"
+        )
+
+    if hard_fail_reasons:
+        event = "REQUEST_CHANGES"
+        body = (
+            "### reviewer_decision\n"
+            f"- decision: `changes-requested`\n"
+            f"- brief: `{brief}`\n"
+            "- hard_fails:\n"
+            + "\n".join(f"  - {r}" for r in hard_fail_reasons)
+            + "\n"
+        )
+        api(
+            "POST",
+            f"/repos/{owner}/{name}/pulls/{pr_number}/reviews",
+            body={"commit_id": pr["head"]["sha"], "event": event, "body": body},
+        )
+        post_issue_comment(repo, issue, body)
+        return
+
     # Hard fails from commit status / check runs when available
     sha = pr["head"]["sha"]
     status = api("GET", f"/repos/{owner}/{name}/commits/{sha}/status")
     combined = (status.get("state") or "pending").lower()
-    hard_fail_reasons: list[str] = []
     if combined == "failure":
         hard_fail_reasons.append("combined commit status is failure")
 

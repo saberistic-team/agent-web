@@ -53,9 +53,11 @@ binary paths.
 
 ## Merge conflicts (mandatory)
 
-If the linked PR is behind `main` or GitHub reports `mergeable: false` /
+**Do not hand off to Reviewer while the linked PR conflicts with its base.**
+If the PR is behind `main` or GitHub reports `mergeable: false` /
 `mergeable_state: dirty`, **resolve on that same PR head** — never open a
-replacement branch.
+replacement branch. Other merges landing while you work are expected; treat
+a dirty PR as unfinished Builder work.
 
 1. Call `scripts/builder_conflicts.py` (wired after codegen in `role_builder`).
 2. Review **recently merged PRs** and **recently closed issues** for intent and
@@ -64,7 +66,15 @@ replacement branch.
    intents (this feature + recently landed work). Prefer base (`theirs` during
    that merge) for conflicted binaries.
 4. Comment `### builder_conflict_context` and `### builder_conflict_result` on
-   the issue, then hand off to Reviewer.
+   the issue.
+5. **Re-check** `mergeable` / `mergeable_state`. Only when clean → hand off
+   (`status:needs-review` / `agent:reviewer`). If still dirty or resolution
+   failed → re-enter `status:queued` (`waiting` handoff) so you run again;
+   never send a conflicted PR to Reviewer.
+
+If Reviewer returns the issue with merge-conflict hard fails (e.g. another
+branch merged after your handoff), resolve on the **same** PR head and
+re-request review — same rules as above.
 
 CLI: `python scripts/builder_conflicts.py --repo owner/name --issue N`
 (`--context-only` prints the recent-work brief; `--force` merges even when
@@ -82,7 +92,8 @@ GitHub still says clean).
 - Tests relevant to the change are added or updated when behavior changes.
 - Service PRs touching `app/` must keep **unit ≥90%** and **integration ≥70%**
   coverage of `app/` ([docs/TESTING.md](../docs/TESTING.md)).
-- Ready for Reviewer after a real PR exists.
+- Ready for Reviewer after a real PR exists **and** merges cleanly into its
+  base (no unresolved conflicts).
 
 ## Coverage and tests (mandatory)
 
@@ -122,7 +133,8 @@ Escalate when Cursor/OpenAI/Models codegen fails, or when acceptance criteria
 cannot be met from the issue text.
 
 Do **not** escalate for service coverage below threshold, missing tests, failing
-CI assertions, or visual readability / mobile overflow — fix those and re-run.
+CI assertions, visual readability / mobile overflow, or merge conflicts with
+`main` — fix those (same PR head) and re-run.
 
 ## Special case: landing / UI design
 

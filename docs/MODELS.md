@@ -14,8 +14,10 @@ is set. OpenAI and GitHub Models are backups (OpenAI quota is often exhausted).
    the prompt
 6. If the linked PR conflicts with its base, **`builder_conflicts`** merges base
    into the PR head using recently closed issues/PRs as resolution context
-   ([AGENTS/builder.md](../AGENTS/builder.md) — Merge conflicts)
-7. Reviewer (acceptance checklist + screenshots)
+   ([AGENTS/builder.md](../AGENTS/builder.md) — Merge conflicts). Builder only
+   hands off when the PR is clean; otherwise it re-enters `status:queued`.
+7. Reviewer (acceptance checklist + screenshots). If the PR is dirty again
+   (e.g. another merge landed), Reviewer requests changes and requeues Builder.
 
 ### Branch / PR binding (no stray branches)
 

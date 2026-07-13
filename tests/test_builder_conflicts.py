@@ -6,6 +6,7 @@ from __future__ import annotations
 from builder_conflicts import (
     default_resolve_file,
     format_conflict_resolution_brief,
+    format_merge_conflict_hard_fail,
     pr_needs_conflict_resolution,
     strip_conflict_markers_prefer_head,
     summarize_recent_closed_work,
@@ -137,3 +138,47 @@ def test_maybe_resolve_pr_conflicts_skips_clean(monkeypatch) -> None:
     result = maybe_resolve_pr_conflicts("saberistic-team/agent-web", 67)
     assert result["status"] == "clean"
     assert result["pr"] == 76
+
+
+def test_linked_pr_conflict_status_dirty(monkeypatch) -> None:
+    from builder_conflicts import linked_pr_conflict_status
+
+    monkeypatch.setattr(
+        "builder_conflicts.linked_open_prs",
+        lambda repo, issue: [{"number": 80, "title": "x (#70)", "body": "Closes #70"}],
+    )
+    monkeypatch.setattr(
+        "builder_conflicts.refresh_pr",
+        lambda repo, n: {
+            "number": 80,
+            "mergeable": False,
+            "mergeable_state": "dirty",
+            "state": "open",
+            "head": {"ref": "builder/70-x"},
+        },
+    )
+    status = linked_pr_conflict_status("saberistic-team/agent-web", 70)
+    assert status["status"] == "dirty"
+    assert status["pr"] == 80
+    assert "return to Builder" in format_merge_conflict_hard_fail(status)
+
+
+def test_linked_pr_conflict_status_clean(monkeypatch) -> None:
+    from builder_conflicts import linked_pr_conflict_status
+
+    monkeypatch.setattr(
+        "builder_conflicts.linked_open_prs",
+        lambda repo, issue: [{"number": 81, "title": "x (#71)", "body": "Closes #71"}],
+    )
+    monkeypatch.setattr(
+        "builder_conflicts.refresh_pr",
+        lambda repo, n: {
+            "number": 81,
+            "mergeable": True,
+            "mergeable_state": "clean",
+            "state": "open",
+            "head": {"ref": "builder/71-x"},
+        },
+    )
+    status = linked_pr_conflict_status("saberistic-team/agent-web", 71)
+    assert status["status"] == "clean"

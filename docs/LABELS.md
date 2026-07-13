@@ -133,7 +133,11 @@ at intake; otherwise the Planner infers or defaults to `priority:normal`.
 - Within the same priority, older issue numbers run first (FIFO).
 - Reviewer `changes-requested` re-enters `status:queued` (same priority) and
   waits for the dispatcher — it does not skip the queue by re-applying
-  `agent:builder` immediately.
+  `agent:builder` immediately. Merge conflicts are always Builder-fixable
+  (including when another PR merges after handoff).
+- Builder that cannot leave a clean PR (still `mergeable_state: dirty` after
+  conflict resolution) uses the `waiting` handoff → `status:queued` and does
+  **not** apply `agent:reviewer` until the PR merges cleanly.
 - Manual `agent:builder` / `agent:docs` still starts a run immediately
   (emergency override); prefer the queue for normal work.
 
