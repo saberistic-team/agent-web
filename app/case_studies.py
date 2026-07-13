@@ -7,6 +7,9 @@ import json
 from pathlib import Path
 from typing import Any, Literal
 
+from app.metadata import case_study_json_ld, social_meta_tags
+from app.seo import CANONICAL_BASE
+
 Engagement = Literal["employer", "founder", "saberistic"]
 
 DATA_PATH = Path(__file__).resolve().parent.parent / "site" / "data" / "case-studies.json"
@@ -82,13 +85,63 @@ def list_featured_slugs(path: Path | None = None) -> list[str]:
     return [study["slug"] for study in load_case_studies(path)[:3]]
 
 
+def case_study_page_title(study: dict[str, Any]) -> str:
+    """Browser and social title for a case study page."""
+    return f"{study['org']} — {study['headline']} · saberistic"
+
+
+def case_study_canonical_url(slug: str) -> str:
+    """Absolute canonical URL for a case study slug."""
+    return f"{CANONICAL_BASE}/work/{slug}"
+
+
+def render_case_study_head(study: dict[str, Any]) -> str:
+    """Return <head> inner HTML with social and structured metadata."""
+    slug = study["slug"]
+    page_title = case_study_page_title(study)
+    meta = study["meta_description"]
+    canonical_url = case_study_canonical_url(slug)
+
+    title_esc = html.escape(page_title)
+    meta_esc = html.escape(meta)
+    canonical_esc = html.escape(canonical_url, quote=True)
+
+    social = social_meta_tags(
+        title=page_title,
+        description=meta,
+        url=canonical_url,
+        og_type="article",
+    )
+    json_ld = case_study_json_ld(
+        title=page_title,
+        description=meta,
+        url=canonical_url,
+    )
+
+    return f"""    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title_esc}</title>
+    <meta name="description" content="{meta_esc}" />
+    <link rel="canonical" href="{canonical_esc}" />
+{social}
+{json_ld}
+    <link rel="icon" href="/assets/logo.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/assets/site.css" />"""
+
+
 def render_case_study_page(study: dict[str, Any]) -> str:
     """Render a full HTML page for one case study."""
     slug = html.escape(study["slug"])
     org = html.escape(study["org"])
     headline = html.escape(study["headline"])
-    meta = html.escape(study["meta_description"])
     engagement = study["engagement"]
+    head = render_case_study_head(study)
     disclaimer = html.escape(DISCLAIMERS[engagement])  # type: ignore[index]
     cta_label = html.escape(study["cta_label"])
     cta_href = html.escape(study["cta_href"], quote=True)
@@ -104,19 +157,7 @@ def render_case_study_page(study: dict[str, Any]) -> str:
     return f"""<!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{org} — {headline} · saberistic</title>
-    <meta name="description" content="{meta}" />
-    <link rel="canonical" href="https://saberistic.com/work/{slug}" />
-    <link rel="icon" href="/assets/logo.png" type="image/png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Mono:wght@400;500&display=swap"
-      rel="stylesheet"
-    />
-    <link rel="stylesheet" href="/assets/site.css" />
+{head}
   </head>
   <body>
     <header class="top">
