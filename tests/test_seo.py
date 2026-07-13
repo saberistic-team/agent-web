@@ -15,6 +15,7 @@ from app.seo import (
     INDEXABLE_PATHS,
     LEGACY_REDIRECTS,
     canonical_url,
+    indexable_paths,
     robots_txt,
     sitemap_xml,
 )
@@ -36,9 +37,13 @@ def test_sitemap_contains_only_indexable_paths() -> None:
     root = ET.fromstring(xml)
     ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
     locs = [node.text for node in root.findall("sm:url/sm:loc", ns)]
-    expected = [canonical_url(path) for path in INDEXABLE_PATHS]
+    expected = [canonical_url(path) for path in indexable_paths()]
     assert locs == expected
+    assert locs[: len(INDEXABLE_PATHS)] == [
+        canonical_url(path) for path in INDEXABLE_PATHS
+    ]
     assert "https://saberistic.com/brief/success" not in locs
+    assert any(loc.startswith("https://saberistic.com/work/") for loc in locs)
 
 
 @pytest.mark.unit
@@ -57,7 +62,7 @@ def test_sitemap_xml_route() -> None:
     root = ET.fromstring(response.text)
     ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
     locs = [node.text for node in root.findall("sm:url/sm:loc", ns)]
-    assert locs == [canonical_url(path) for path in INDEXABLE_PATHS]
+    assert locs == [canonical_url(path) for path in indexable_paths()]
 
 
 @pytest.mark.unit
@@ -75,6 +80,14 @@ def test_indexable_pages_have_single_canonical(path: str, expected_href: str) ->
     body = response.text
     matches = re.findall(r'<link rel="canonical" href="([^"]+)"', body)
     assert matches == [expected_href]
+
+
+@pytest.mark.unit
+def test_case_study_page_has_canonical() -> None:
+    response = client.get("/work/brave")
+    assert response.status_code == 200
+    matches = re.findall(r'<link rel="canonical" href="([^"]+)"', response.text)
+    assert matches == ["https://saberistic.com/work/brave"]
 
 
 @pytest.mark.unit
