@@ -62,9 +62,9 @@ INDEXABLE_PAGES: dict[str, dict[str, str]] = {
     "/case-studies": {
         "title": "Case studies — saberistic",
         "description": (
-            "Outcome-oriented case studies — problems addressed, interventions "
-            "applied, and results delivered across fintech, digital assets, and "
-            "security-sensitive products."
+            "Outcome-oriented case studies — architecture, reliability, security, "
+            "and engineering leadership across fintech, digital assets, and "
+            "high-stakes products."
         ),
         "canonical": f"{SITE_BASE}/case-studies",
     },
