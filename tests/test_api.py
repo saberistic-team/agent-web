@@ -58,6 +58,7 @@ def test_home_page() -> None:
     assert "AmirSaber" in body
     assert "Filling gaps between markets and tech" in body
     assert 'href="/about"' in body
+    assert 'href="/insights"' in body
     assert "our-teams-section" not in body
     assert "Queen" not in body
     # Full bio lives on /about, not duplicated on home
@@ -86,6 +87,7 @@ def test_landing_single_linkedin_cta() -> None:
     assert 'class="cta cta-secondary"' in body
     assert 'href="/brief"' in body
     assert 'href="/about"' in body
+    assert 'href="/insights"' in body
 
 
 @pytest.mark.unit
