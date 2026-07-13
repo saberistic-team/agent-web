@@ -12,7 +12,10 @@ is set. OpenAI and GitHub Models are backups (OpenAI quota is often exhausted).
 4. **Cursor agent** implements the change (`CURSOR_RUNTIME=local` by default)
 5. Thin child issues that say `Parent: #N` also pull the parent issue body into
    the prompt
-6. Reviewer (acceptance checklist + screenshots)
+6. If the linked PR conflicts with its base, **`builder_conflicts`** merges base
+   into the PR head using recently closed issues/PRs as resolution context
+   ([AGENTS/builder.md](../AGENTS/builder.md) — Merge conflicts)
+7. Reviewer (acceptance checklist + screenshots)
 
 ### Branch / PR binding (no stray branches)
 

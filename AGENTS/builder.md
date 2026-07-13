@@ -51,6 +51,25 @@ rewrite them through UTF-8 text (`errors=replace` turns `0x89` into `U+FFFD`
 and corrupts Open Graph / share images). Codegen `put_file` accepts `bytes` for
 binary paths.
 
+## Merge conflicts (mandatory)
+
+If the linked PR is behind `main` or GitHub reports `mergeable: false` /
+`mergeable_state: dirty`, **resolve on that same PR head** — never open a
+replacement branch.
+
+1. Call `scripts/builder_conflicts.py` (wired after codegen in `role_builder`).
+2. Review **recently merged PRs** and **recently closed issues** for intent and
+   overlapping files (`summarize_recent_closed_work`).
+3. Merge the PR base into the PR head; resolve text conflicts preferring both
+   intents (this feature + recently landed work). Prefer base (`theirs` during
+   that merge) for conflicted binaries.
+4. Comment `### builder_conflict_context` and `### builder_conflict_result` on
+   the issue, then hand off to Reviewer.
+
+CLI: `python scripts/builder_conflicts.py --repo owner/name --issue N`
+(`--context-only` prints the recent-work brief; `--force` merges even when
+GitHub still says clean).
+
 ## Definition of done
 
 - Implementation matches the issue scope (bug fix or feature as labeled).
