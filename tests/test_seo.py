@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import xml.etree.ElementTree as ET
+from datetime import date
 
 import pytest
 from fastapi.testclient import TestClient
@@ -31,7 +32,7 @@ def test_canonical_url_helpers() -> None:
 
 @pytest.mark.unit
 def test_sitemap_contains_only_indexable_paths() -> None:
-    xml = sitemap_xml(lastmod=__import__("datetime").date(2026, 7, 13))
+    xml = sitemap_xml(lastmod=date(2026, 7, 13))
     root = ET.fromstring(xml)
     ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
     locs = [node.text for node in root.findall("sm:url/sm:loc", ns)]
@@ -144,10 +145,11 @@ def test_health_and_hello_remain_json() -> None:
 
 
 @pytest.mark.unit
-def test_home_has_services_anchor_for_legacy_redirect() -> None:
+def test_home_has_services_and_work_anchors_for_legacy_redirects() -> None:
     body = client.get("/").text
     assert 'id="services"' in body
     assert 'id="work"' in body
+    assert 'id="about"' in body
 
 
 @pytest.mark.integration
