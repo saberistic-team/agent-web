@@ -54,7 +54,7 @@ def test_brief_pages_flow() -> None:
     assert "brief-form" in form.text
     success = client.get("/brief/success")
     assert success.status_code == 200
-    assert "We received your request." in success.text
+    assert "Payment completed" in success.text
 
 
 @pytest.mark.integration
