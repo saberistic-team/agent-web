@@ -6,7 +6,7 @@ import html
 import json
 from typing import Any
 
-from app.seo import CANONICAL_BASE
+from app.seo import CANONICAL_BASE, canonical_url
 
 OG_IMAGE = f"{CANONICAL_BASE}/assets/og-share.png"
 OG_IMAGE_ALT = "saberistic — high-stakes architecture and engineering leadership"
@@ -56,15 +56,15 @@ def web_page_json_ld(*, title: str, description: str, url: str) -> str:
         {
             "@context": "https://schema.org",
             "@type": "WebPage",
-            "name": title,
-            "description": description,
+            "name": _json_ld_safe(title),
+            "description": _json_ld_safe(description),
             "url": url,
         }
     )
 
 
-def case_study_json_ld(*, title: str, description: str, url: str) -> str:
-    """JSON-LD for /work/{slug} proof pages (WebPage — no invented dates)."""
+def case_study_web_page_json_ld(*, title: str, description: str, url: str) -> str:
+    """WebPage JSON-LD for /work/{slug} proof pages (matches static site pages)."""
     return json_ld_script(
         {
             "@context": "https://schema.org",
@@ -72,9 +72,34 @@ def case_study_json_ld(*, title: str, description: str, url: str) -> str:
             "name": _json_ld_safe(title),
             "description": _json_ld_safe(description),
             "url": url,
-            "image": OG_IMAGE,
+            "isPartOf": {
+                "@type": "ProfessionalService",
+                "name": "saberistic",
+                "url": f"{CANONICAL_BASE}/",
+            },
         }
     )
+
+
+def case_study_page_head_tags(
+    *,
+    title: str,
+    description: str,
+    canonical_path: str,
+) -> str:
+    """Canonical, Open Graph, Twitter, and JSON-LD for a case-study page."""
+    url = canonical_url(canonical_path)
+    canonical_esc = html.escape(url, quote=True)
+    social = social_meta_tags(
+        title=title,
+        description=description,
+        url=url,
+        og_type="website",
+    )
+    ld = case_study_web_page_json_ld(title=title, description=description, url=url)
+    return f"""    <link rel="canonical" href="{canonical_esc}" />
+{social}
+{ld}"""
 
 
 def article_json_ld(
@@ -89,10 +114,10 @@ def article_json_ld(
     data: dict[str, Any] = {
         "@context": "https://schema.org",
         "@type": "Article",
-        "headline": title,
-        "description": description,
+        "headline": _json_ld_safe(title),
+        "description": _json_ld_safe(description),
         "url": url,
-        "author": {"@type": "Person", "name": author},
+        "author": {"@type": "Person", "name": _json_ld_safe(author)},
         "publisher": {
             "@type": "Organization",
             "name": "saberistic",
