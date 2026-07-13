@@ -129,7 +129,12 @@ def case_study(slug: str) -> HTMLResponse:
     study = case_studies.get_case_study(slug)
     if study is None:
         raise HTTPException(status_code=404, detail="Case study not found")
-    return HTMLResponse(case_studies.render_case_study_page(study))
+    return page_service.serve_html(
+        case_studies.render_case_study_page(study),
+        get_settings(),
+        page_event="Case Study Viewed",
+        case_study_slug=study["slug"],
+    )
 
 
 @app.get("/insights")
@@ -147,7 +152,12 @@ def insight_article(slug: str) -> HTMLResponse:
     article = insights.get_insight(slug)
     if article is None:
         raise HTTPException(status_code=404, detail="Insight not found")
-    return page_service.serve_html(insights.render_insight_page(article), get_settings())
+    return page_service.serve_html(
+        insights.render_insight_page(article),
+        get_settings(),
+        page_event="Insight Viewed",
+        article_slug=article["slug"],
+    )
 
 
 for legacy_path, target in LEGACY_REDIRECTS.items():
