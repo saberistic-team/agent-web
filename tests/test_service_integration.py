@@ -77,6 +77,40 @@ def test_about_page_cta_flow() -> None:
 
 
 @pytest.mark.integration
+def test_stripe_service_integration() -> None:
+    """Exercise stripe_service module paths for integration coverage."""
+    from unittest.mock import MagicMock, patch
+
+    from app import stripe_service
+
+    fake_session = MagicMock()
+    with patch("app.stripe_service.stripe.checkout.Session.create", return_value=fake_session) as create:
+        result = stripe_service.create_checkout_session(
+            secret_key="sk_test_integration",
+            brief_id=12,
+            website="https://example.com",
+            base_url="http://testserver",
+            price_cents=20_000,
+        )
+    assert result is fake_session
+    create.assert_called_once()
+    assert create.call_args.kwargs["metadata"]["brief_id"] == "12"
+
+    fake_event = {"type": "checkout.session.completed"}
+    with patch(
+        "app.stripe_service.stripe.Webhook.construct_event",
+        return_value=fake_event,
+    ) as construct:
+        event = stripe_service.construct_webhook_event(
+            payload=b"{}",
+            signature="sig_integration",
+            webhook_secret="whsec_integration",
+        )
+    assert event == fake_event
+    construct.assert_called_once_with(b"{}", "sig_integration", "whsec_integration")
+
+
+@pytest.mark.integration
 def test_create_brief_flow_mocked(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
     monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_fake")
