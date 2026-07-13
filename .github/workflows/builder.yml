@@ -133,6 +133,16 @@ jobs:
               ;;
           esac
 
+      - name: Dispatch next queued work
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ steps.builder.outputs.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p trace
+          python scripts/dispatch_queue.py | tee trace/dispatch-after-builder.json
+
       - name: Write trace
         if: always()
         run: |

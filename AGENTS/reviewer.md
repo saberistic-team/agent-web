@@ -28,7 +28,8 @@ Before approving you must:
 - You submitted a GitHub PR review (approve **or** request changes)
 - Labels then move to either:
   - `review:approved` (gate merges + closes only if checklist complete), or
-  - `review:changes-requested` + `status:queued` + `agent:builder`
+  - `review:changes-requested` + `status:queued` (dispatcher re-applies
+    `agent:builder` by `priority:*`; preserve existing priority)
 
 ## Hard fails (must `changes-requested`)
 

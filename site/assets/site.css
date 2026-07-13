@@ -402,3 +402,117 @@ main {
   color: #e88a6a;
   font-size: 0.85rem;
 }
+
+.offer-block {
+  margin: 0 0 2rem;
+  max-width: 52ch;
+}
+
+.offer-heading {
+  margin: 0 0 0.75rem;
+  font-family: var(--display);
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 400;
+  color: var(--ink);
+}
+
+.offer-list,
+.offer-steps {
+  margin: 0;
+  padding: 0 0 0 1.25rem;
+  color: var(--muted);
+}
+
+.offer-list li,
+.offer-steps li {
+  margin: 0.35rem 0;
+}
+
+.offer-steps li strong {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.offer-alt,
+.services-alt {
+  margin: 0 0 2rem;
+  max-width: 52ch;
+  color: var(--muted);
+}
+
+.offer-alt a,
+.services-alt a,
+.service-detail a {
+  color: var(--ink);
+  text-decoration: none;
+  border-bottom: 1px solid var(--line);
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.offer-alt a:hover,
+.offer-alt a:focus-visible,
+.services-alt a:hover,
+.services-alt a:focus-visible,
+.service-detail a:hover,
+.service-detail a:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+  outline: none;
+}
+
+.services {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-top: 1px solid var(--line);
+}
+
+.service {
+  padding: 1.75rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.service-name {
+  margin: 0 0 1rem;
+  font-family: var(--display);
+  font-size: clamp(1rem, 2.5vw, 1.25rem);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-weight: 400;
+  color: var(--ink);
+}
+
+.service-detail {
+  margin: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.service-detail div {
+  display: grid;
+  grid-template-columns: 7rem 1fr;
+  gap: 0.75rem 1rem;
+  align-items: baseline;
+}
+
+.service-detail dt {
+  margin: 0;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.service-detail dd {
+  margin: 0;
+  color: var(--muted);
+}
+
+@media (max-width: 640px) {
+  .service-detail div {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+}

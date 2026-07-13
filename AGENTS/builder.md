@@ -2,9 +2,11 @@
 
 ## What you own
 
-You run when an issue is labeled `agent:builder` (typically after
-`status:queued`). You implement the change for that issue’s acceptance
-criteria.
+You run when an issue is labeled `agent:builder` (after the **dispatcher**
+dequeues `status:queued` work by `priority:*`). You implement the change for
+that issue’s acceptance criteria.
+
+Preserve any `priority:*` label on the issue; do not strip or change it.
 
 Workflow will move you through `status:in-progress`, then hand off with
 `status:needs-review`, `review:needs-review`, and `agent:reviewer`.

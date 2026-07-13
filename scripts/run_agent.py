@@ -23,6 +23,7 @@ from github_api import (
     post_issue_comment,
     split_repo,
 )
+from priority import infer_priority_label
 
 HANDOFF_DIR = Path("trace")
 BUILDER_HANDOFF = HANDOFF_DIR / "builder-handoff.txt"
@@ -246,6 +247,12 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
             type_label = "type:feature"
         ensure_label(repo, issue, type_label)
 
+    priority_label = infer_priority_label(title, body, labels)
+    if not any(l.startswith("priority:") for l in labels):
+        ensure_label(repo, issue, priority_label)
+    else:
+        priority_label = next(l for l in labels if l.startswith("priority:"))
+
     areas = plan_change_areas(body)
     max_children = 4
     agent_label = "agent:docs" if type_label == "type:docs" else "agent:builder"
@@ -255,20 +262,32 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
         children: list[int] = []
         owner, name = split_repo(repo)
         for area in areas:
+            # Queue only: dispatcher applies agent:* by priority order.
             child = api(
                 "POST",
                 f"/repos/{owner}/{name}/issues",
                 body={
                     "title": f"{title}: {area.strip()[:80]}",
                     "body": child_issue_body(issue, area, body),
-                    "labels": [agent_label, type_label, "status:queued"],
+                    "labels": [
+                        type_label,
+                        priority_label,
+                        "status:queued",
+                    ],
                 },
             )
             children.append(int(child["number"]))
             post_issue_comment(
                 repo,
                 child["number"],
-                f"### planner_plan\nQueued as one-commit child of #{issue}.\n",
+                (
+                    f"### planner_plan\n"
+                    f"Queued as one-commit child of #{issue}.\n"
+                    f"- type: `{type_label}`\n"
+                    f"- priority: `{priority_label}`\n"
+                    f"- intended_agent: `{agent_label}`\n"
+                    "- awaiting: dispatcher (priority queue)\n"
+                ),
             )
         trace = Path(f"trace/planner-{issue}-children.txt")
         trace.parent.mkdir(parents=True, exist_ok=True)
@@ -277,7 +296,8 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
             f"### planner_plan\n"
             f"- mode: children\n"
             f"- type: `{type_label}`\n"
-            f"- agent: `{agent_label}`\n"
+            f"- priority: `{priority_label}`\n"
+            f"- intended_agent: `{agent_label}`\n"
             f"- children: {', '.join(f'#{n}' for n in children)}\n"
             f"- granularity: one commit per child\n"
             f"- brief: `{brief}`\n"
@@ -288,16 +308,19 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
                 remove_label(repo, issue, label)
         ensure_label(repo, issue, "agent:planner")
     else:
+        # Do not apply agent:builder/docs yet — dispatcher starts runs by priority.
         for label in list(labels):
             if label.startswith("agent:"):
                 remove_label(repo, issue, label)
-        ensure_label(repo, issue, agent_label)
+        ensure_label(repo, issue, "agent:planner")
         plan = (
             f"### planner_plan\n"
             f"- mode: single\n"
             f"- type: `{type_label}`\n"
-            f"- agent: `{agent_label}`\n"
+            f"- priority: `{priority_label}`\n"
+            f"- intended_agent: `{agent_label}`\n"
             f"- granularity: one commit on this issue\n"
+            f"- awaiting: dispatcher after `status:queued`\n"
             f"- brief: `{brief}`\n"
         )
         post_issue_comment(repo, issue, plan)

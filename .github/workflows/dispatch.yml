@@ -1,0 +1,75 @@
+name: Agent — Dispatcher
+
+# Priority queue: pick status:queued work (no agent:builder/docs yet) and
+# apply the intended agent label highest-priority first.
+
+on:
+  issues:
+    types: [labeled]
+  schedule:
+    # Catch anything left queued after a busy agent finishes.
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: agent-dispatcher-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    if: >
+      github.event_name != 'issues' ||
+      github.event.label.name == 'status:queued'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Mint Planner App token
+        id: planner
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.PLANNER_APP_ID }}
+          private-key: ${{ secrets.PLANNER_PRIVATE_KEY }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Dispatch highest-priority queued work
+        id: dispatch
+        env:
+          GITHUB_TOKEN: ${{ steps.planner.outputs.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p trace
+          python scripts/dispatch_queue.py | tee trace/dispatch-result.json
+
+      - name: Write trace
+        if: always()
+        run: |
+          set -euo pipefail
+          OUTCOME="ok"
+          if [[ "${{ job.status }}" != "success" ]]; then OUTCOME="fail"; fi
+          ISSUE="${{ github.event.issue.number || 0 }}"
+          python scripts/write_trace.py \
+            --role dispatcher \
+            --issue "${ISSUE}" \
+            --action dispatch \
+            --outcome "${OUTCOME}" \
+            --cost-usd 0
+
+      - name: Upload agent trace
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-trace-dispatcher-${{ github.run_id }}
+          path: |
+            trace/agent-trace.jsonl
+            trace/dispatch-result.json
+          if-no-files-found: ignore
