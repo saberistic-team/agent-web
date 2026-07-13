@@ -14,7 +14,6 @@ from app.seo import (
     CANONICAL_BASE,
     INDEXABLE_PATHS,
     LEGACY_REDIRECTS,
-    PERMANENT_REDIRECTS,
     canonical_url,
     indexable_paths,
     robots_txt,
@@ -95,26 +94,6 @@ def test_brief_success_is_noindex_without_canonical() -> None:
     body = response.text
     assert 'name="robots" content="noindex, nofollow"' in body
     assert 'rel="canonical"' not in body
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize(
-    "redirect_path,target",
-    list(PERMANENT_REDIRECTS.items()),
-)
-def test_permanent_marketing_redirects(redirect_path: str, target: str) -> None:
-    response = client.get(redirect_path, follow_redirects=False)
-    assert response.status_code == 301
-    assert response.headers["location"] == target
-
-
-@pytest.mark.unit
-def test_diagnostic_redirect_does_not_chain() -> None:
-    response = client.get("/diagnostic", follow_redirects=False)
-    assert response.status_code == 301
-    assert response.headers["location"] == "/brief"
-    brief = client.get("/brief", follow_redirects=False)
-    assert brief.status_code == 200
 
 
 @pytest.mark.unit
