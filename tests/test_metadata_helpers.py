@@ -18,6 +18,7 @@ def test_social_meta_tags_include_og_and_twitter() -> None:
     assert 'property="og:type" content="article"' in tags
     assert 'name="twitter:card" content="summary_large_image"' in tags
     assert "Test title" in tags
+    assert "saberistic — high-stakes architecture and engineering leadership" in tags
 
 
 @pytest.mark.unit
