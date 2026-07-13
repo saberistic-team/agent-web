@@ -369,7 +369,18 @@ def merge_default_into_pr_branch(
             ["config", "user.email", "builder@users.noreply.github.com"],
             cwd=root,
         )
-        _run_git(["fetch", "origin", base_ref], cwd=root)
+        # --single-branch clones only track the PR head refspec. A plain
+        # `git fetch origin main` updates FETCH_HEAD but does NOT create
+        # refs/remotes/origin/main, so `merge origin/main` fails with
+        # "not something we can merge" and loops Builder↔Reviewer forever.
+        _run_git(
+            [
+                "fetch",
+                "origin",
+                f"+refs/heads/{base_ref}:refs/remotes/origin/{base_ref}",
+            ],
+            cwd=root,
+        )
         merge = _run_git(
             ["merge", f"origin/{base_ref}", "--no-edit"],
             cwd=root,

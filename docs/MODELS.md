@@ -16,6 +16,9 @@ is set. OpenAI and GitHub Models are backups (OpenAI quota is often exhausted).
    into the PR head using recently closed issues/PRs as resolution context
    ([AGENTS/builder.md](../AGENTS/builder.md) — Merge conflicts). Builder only
    hands off when the PR is clean; otherwise it re-enters `status:queued`.
+   **Pitfall:** the conflict clone uses `--single-branch`; fetching the base
+   must use an explicit refspec (`+refs/heads/main:refs/remotes/origin/main`)
+   or `git merge origin/main` fails and loops Builder↔Reviewer.
 7. Reviewer (acceptance checklist + screenshots). If the PR is dirty again
    (e.g. another merge landed), Reviewer requests changes and requeues Builder.
 

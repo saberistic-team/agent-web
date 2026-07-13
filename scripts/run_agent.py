@@ -110,12 +110,29 @@ def handoff_builder_when_mergeable(repo: str, issue: int) -> None:
     )
 
     HANDOFF_DIR.mkdir(parents=True, exist_ok=True)
+    _CONFLICT_OK = frozenset({"clean", "merged_clean", "resolved", "no_pr"})
+
     try:
         conflict = maybe_resolve_pr_conflicts(repo, issue)
+        conflict_status = (conflict.get("status") or "").strip()
         (HANDOFF_DIR / "builder-conflict.txt").write_text(
-            f"{conflict.get('status')}\n",
+            f"{conflict_status}\n",
             encoding="utf-8",
         )
+        if conflict_status and conflict_status not in _CONFLICT_OK:
+            post_issue_comment(
+                repo,
+                issue,
+                (
+                    "### builder_conflict_result\n"
+                    f"- status: `{conflict_status}`\n"
+                    f"- pr: #{conflict.get('pr')}\n"
+                    "- note: conflict resolution did not finish cleanly; "
+                    "re-entering `status:queued` (not handing off to Reviewer).\n"
+                ),
+            )
+            write_builder_handoff("waiting")
+            return
     except Exception as conflict_exc:
         post_issue_comment(
             repo,

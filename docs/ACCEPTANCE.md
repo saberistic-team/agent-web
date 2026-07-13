@@ -53,3 +53,8 @@ and posted evidence.
 - Put criteria under `## Acceptance criteria`
 - Prefer checkbox bullets: `- [ ] …`
 - Builder commits should include `(#N)` so post-deploy and close can link evidence
+- Do **not** require production deploy evidence for pre-merge Reviewer approval.
+  New routes/features are verified on the **PR branch** (code, tests, branch
+  screenshots, editorial review docs such as `LAUNCH_REVIEW.md`). Production
+  live URLs are post-deploy evidence (Gate merge + Render), not a Reviewer
+  blocker while the PR is still open.

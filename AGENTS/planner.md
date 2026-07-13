@@ -43,6 +43,10 @@ The parent is then marked done by the workflow.
 - Decomposition matches the one-commit-per-child rule when children exist.
 - Acceptance criteria / scope notes are on the issue (or each child) so the
   owning agent can execute without re-planning.
+- Acceptance criteria avoid requiring **live production URLs** for features not
+  yet merged. Phrase deploy-dependent outcomes as “published in the PR / ready
+  to deploy” (e.g. routes + editorial review doc on the PR head) so Reviewer
+  can approve pre-merge without waiting for Gate + Render.
 - You did not push commits, open implementation PRs, or edit product code.
 
 ## Constraints
