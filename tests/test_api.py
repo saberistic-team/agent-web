@@ -91,8 +91,31 @@ def test_landing_single_linkedin_cta() -> None:
 @pytest.mark.unit
 def test_home_has_brief_cta() -> None:
     body = client.get("/").text
-    assert "Request project brief" in body
+    assert "Architecture Diagnostic" in body
     assert 'href="/brief"' in body
+
+
+@pytest.mark.unit
+def test_home_lists_core_services() -> None:
+    body = client.get("/").text
+    assert 'id="services"' in body
+    assert "Technical Architecture Diagnostic" in body
+    assert "Fractional Principal Architect" in body
+    assert "Technical Due Diligence" in body
+    assert "Start Architecture Diagnostic" in body
+    assert "Email an introduction" in body
+    assert "mailto:inbox@saberistic.com" in body
+
+
+@pytest.mark.unit
+def test_home_services_no_unapproved_prices() -> None:
+    import re
+
+    body = client.get("/").text
+    prices = re.findall(r"\$\d[\d,]*", body)
+    assert prices == ["$200", "$200"]
+    assert "scope on inquiry" in body
+    assert "terms on inquiry" in body
 
 
 @pytest.mark.unit
