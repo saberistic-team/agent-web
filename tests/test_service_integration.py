@@ -50,6 +50,21 @@ def test_brief_pages_flow() -> None:
 
 
 @pytest.mark.integration
+def test_case_studies_flow() -> None:
+    home = client.get("/")
+    assert home.status_code == 200
+    assert "/work/brave" in home.text
+
+    page = client.get("/work/brave")
+    assert page.status_code == 200
+    assert "Intervention" in page.text
+    assert 'href="/brief"' in page.text
+
+    missing = client.get("/work/unknown-slug")
+    assert missing.status_code == 404
+
+
+@pytest.mark.integration
 def test_create_brief_flow_mocked(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
     monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_fake")
