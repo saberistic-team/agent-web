@@ -700,13 +700,15 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
             capture,
             comment_markdown,
             comment_on_issue_or_pr,
+            format_overflow_hard_fail,
             resolve_base_url,
             upload_to_branch,
         )
 
         base_url = resolve_base_url(os.environ.get("DEPLOY_BASE_URL"))
         out_dir = Path("trace/screenshots")
-        shots = capture(base_url, out_dir, phase="pre")
+        captured = capture(base_url, out_dir, phase="pre")
+        shots = captured.paths
         branch = pr["head"]["ref"]
         urls = upload_to_branch(
             repo, branch, shots, f".agent/screenshots/pr-{pr_number}"
@@ -715,6 +717,14 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
         comment_on_issue_or_pr(repo, pr_number, body_shots)
         comment_on_issue_or_pr(repo, issue, body_shots)
         screenshot_note = f"- screenshots_pre: {len(urls)} posted on PR + issue\n"
+        overflow_fail = format_overflow_hard_fail(captured.overflows)
+        if overflow_fail:
+            hard_fail_reasons.append(overflow_fail)
+            screenshot_note += (
+                f"- visual_readability: `fail` ({len(captured.overflows)} overflow(s))\n"
+            )
+        else:
+            screenshot_note += "- visual_readability: `ok`\n"
         pr = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}")
         sha = pr["head"]["sha"]
     except Exception as exc:

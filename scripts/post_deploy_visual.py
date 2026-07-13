@@ -404,7 +404,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
         out = Path("trace/screenshots-post")
-        post_files = capture(base_url, out, phase="post")
+        post_files = capture(base_url, out, phase="post").paths
         short = (args.sha or "local")[:12]
         prefix = (
             f".agent/screenshots/issue-{issue_num}/post"

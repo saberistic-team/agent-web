@@ -357,6 +357,8 @@ def ai_review(repo: str, issue: int, pr_number: int) -> dict[str, Any]:
         "Approve ONLY if the PR clearly implements the issue acceptance criteria.\n"
         "Request changes if the PR is a no-op, scaffold sync, product-unrelated files, "
         "or leaves acceptance criteria unmet.\n"
+        "Also request changes when mobile screenshots show hero/primary text clipped "
+        "or overflowing the viewport (out of frame) — that is a Builder CSS fix.\n"
         "Do NOT request changes solely for:\n"
         "- files under `.agent/screenshots/` (allowed Reviewer evidence)\n"
         "- noisy/file-by-file commit history (gate squash-merges to main)\n"

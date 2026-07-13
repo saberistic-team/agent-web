@@ -15,7 +15,8 @@ When `agent:reviewer` runs on an open PR (workflow installs Playwright):
    `pre-about-mobile.png` on the PR branch
 3. Comments `### reviewer_screenshots_pre` on the **PR and linked issue**
 4. AI review (Cursor preferred when `CURSOR_API_KEY` is set) runs
-5. Approve only if acceptance is met **and** desktop + mobile screenshots posted
+5. Approve only if acceptance is met **and** desktop + mobile screenshots
+   posted **and** mobile visual readability passes (no out-of-frame overflow)
 
 Fail closed if the deploy URL is unreachable after retries.
 

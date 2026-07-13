@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from screenshot_deploy import (
     VIEWPORTS,
+    format_overflow_hard_fail,
     resolve_base_url,
     screenshot_basename,
     wait_healthy,
@@ -26,6 +27,41 @@ def test_screenshot_basename_mobile_suffix() -> None:
     assert screenshot_basename("pre", "/", "mobile") == "pre-home-mobile.png"
     assert screenshot_basename("pre", "/about", "mobile") == "pre-about-mobile.png"
     assert screenshot_basename("post", "/about", "mobile") == "post-about-mobile.png"
+
+
+def test_format_overflow_hard_fail_mobile_only() -> None:
+    assert format_overflow_hard_fail([]) is None
+    assert (
+        format_overflow_hard_fail(
+            [
+                {
+                    "viewport": "desktop",
+                    "route": "/",
+                    "selector": "h1",
+                    "text": "wide",
+                    "right": 1400,
+                    "viewport_width": 1280,
+                }
+            ]
+        )
+        is None
+    )
+    msg = format_overflow_hard_fail(
+        [
+            {
+                "viewport": "mobile",
+                "route": "/",
+                "selector": "h1",
+                "text": "High-stakes architecture",
+                "right": 520,
+                "viewport_width": 390,
+            }
+        ]
+    )
+    assert msg is not None
+    assert "visual readability" in msg
+    assert "out of frame" in msg
+    assert "mobile" in msg or "390" in msg
 
 
 def test_resolve_base_url_ignores_empty(monkeypatch) -> None:
