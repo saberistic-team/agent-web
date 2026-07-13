@@ -39,8 +39,10 @@ a {
 
 .top {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
+  gap: 1rem 1.5rem;
   padding: 1.25rem clamp(1.25rem, 4vw, 3rem);
   border-bottom: 1px solid var(--line);
   animation: rise 0.7s ease-out both;
@@ -76,6 +78,34 @@ a {
   outline: none;
 }
 
+.top-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem 1.25rem;
+}
+
+.top-link[aria-current="page"] {
+  color: var(--ink);
+  border-color: var(--accent);
+}
+
+.top-link-primary {
+  padding: 0.55rem 0.9rem;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: 1px solid var(--accent);
+  border-bottom: 1px solid var(--accent);
+}
+
+.top-link-primary:hover,
+.top-link-primary:focus-visible {
+  background: transparent;
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 main {
   max-width: 920px;
   margin: 0 auto;
@@ -83,11 +113,11 @@ main {
 }
 
 .hero {
-  min-height: calc(100vh - 5.5rem);
+  min-height: min(calc(78vh - 5.5rem), 680px);
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: 3rem 0 4rem;
+  padding: 2.5rem 0 3rem;
   border-bottom: 1px solid var(--line);
 }
 
@@ -104,7 +134,7 @@ main {
   margin: 0;
   font-family: var(--display);
   font-weight: 400;
-  font-size: clamp(3.2rem, 12vw, 7.5rem);
+  font-size: clamp(2.8rem, 10vw, 6.5rem);
   line-height: 0.92;
   letter-spacing: -0.02em;
   text-transform: uppercase;
@@ -303,6 +333,21 @@ main {
   color: var(--muted);
   font-size: 1.05rem;
   line-height: 1.65;
+}
+
+.about-cta h2 {
+  margin: 0 0 1.25rem;
+  font-family: var(--display);
+  font-size: clamp(1.4rem, 3vw, 2rem);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-weight: 400;
+}
+
+.about-cta p {
+  margin: 0;
+  max-width: 52ch;
+  color: var(--muted);
 }
 
 .page-title {
