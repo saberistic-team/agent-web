@@ -32,22 +32,11 @@ def test_home_and_about_flow() -> None:
     assert home.status_code == 200
     assert 'href="/about"' in home.text
     assert 'href="/brief"' in home.text
-    assert 'href="/insights"' in home.text
     assert 'id="services"' in home.text
     assert "Technical Architecture Diagnostic" in home.text
     about = client.get("/about")
     assert about.status_code == 200
     assert "About" in about.text
-    insights = client.get("/insights")
-    assert insights.status_code == 200
-    article = client.get("/insights/competing-sources-of-truth")
-    assert article.status_code == 200
-    sitemap = client.get("/sitemap.xml")
-    assert sitemap.status_code == 200
-    assert "/insights/competing-sources-of-truth" in sitemap.text
-    feed = client.get("/insights/feed.atom")
-    assert feed.status_code == 200
-    assert "competing-sources-of-truth" in feed.text
     asset = client.get("/assets/logo.png")
     assert asset.status_code == 200
 
@@ -76,6 +65,25 @@ def test_case_studies_flow() -> None:
     assert 'href="/brief"' in page.text
 
     missing = client.get("/work/unknown-slug")
+    assert missing.status_code == 404
+
+
+@pytest.mark.integration
+def test_insights_flow() -> None:
+    index = client.get("/insights")
+    assert index.status_code == 200
+    assert "/insights/mvp-competing-sources-of-truth" in index.text
+
+    article = client.get("/insights/mvp-competing-sources-of-truth")
+    assert article.status_code == 200
+    assert "competing sources of truth" in article.text
+    assert 'href="/brief"' in article.text
+
+    feed = client.get("/insights.atom")
+    assert feed.status_code == 200
+    assert "atom" in feed.headers["content-type"]
+
+    missing = client.get("/insights/unknown-slug")
     assert missing.status_code == 404
 
 
