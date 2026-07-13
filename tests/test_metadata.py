@@ -10,15 +10,27 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from app.case_studies import load_case_studies
+from app.case_studies import DISCLAIMERS, case_study_page_title, load_case_studies
 from app.main import app
 
 client = TestClient(app)
 
 SITE_BASE = "https://saberistic.com"
 OG_IMAGE = f"{SITE_BASE}/assets/og-share.png"
-OG_IMAGE_ALT = (
-    "saberistic — AmirSaber Sharifi — filling gaps between markets and tech"
+OG_IMAGE_ALT = "saberistic — high-stakes architecture and engineering leadership"
+
+PROFESSIONAL_SERVICE_DESCRIPTION = (
+    "Architecture and engineering leadership for Seed–Series B fintech, AI, "
+    "digital-asset, and technically complex products."
+)
+PERSON_DESCRIPTION = (
+    "Software architect and engineering leader helping startups resolve "
+    "high-stakes architecture, reliability, security, and scaling problems."
+)
+
+FORBIDDEN_LEGACY_STRINGS = (
+    "Software development — filling gaps between markets and tech",
+    "filling gaps between markets and tech",
 )
 
 # Titles/descriptions match post-#68 SEO copy; OG/Twitter must stay aligned.
@@ -87,14 +99,29 @@ NOINDEX_PAGES: dict[str, dict[str, str]] = {
 
 PUBLIC_PAGES = {**INDEXABLE_PAGES, **NOINDEX_PAGES}
 
-CASE_STUDY_PAGES: dict[str, dict[str, str]] = {
-    f"/work/{study['slug']}": {
-        "title": f"{study['org']} — {study['headline']} · saberistic",
-        "description": study["meta_description"],
-        "canonical": f"{SITE_BASE}/work/{study['slug']}",
-    }
-    for study in load_case_studies()
-}
+EXPECTED_CASE_STUDY_SLUGS = (
+    "brave",
+    "baxus",
+    "eternis",
+    "spiral-safe",
+    "architecture-diagnostic",
+)
+
+
+def _case_study_pages() -> dict[str, dict[str, str]]:
+    pages: dict[str, dict[str, str]] = {}
+    for study in load_case_studies():
+        path = f"/work/{study['slug']}"
+        pages[path] = {
+            "title": case_study_page_title(study),
+            "description": study["meta_description"],
+            "canonical": f"{SITE_BASE}{path}",
+            "engagement": study["engagement"],
+        }
+    return pages
+
+
+CASE_STUDY_PAGES = _case_study_pages()
 
 
 class _HeadParser(HTMLParser):
@@ -258,6 +285,37 @@ def test_home_json_ld_person_and_professional_service() -> None:
     assert "Person" in types
     assert "ProfessionalService" in types
 
+    graph = data.get("@graph", [])
+    person = next(item for item in graph if item.get("@type") == "Person")
+    org = next(item for item in graph if item.get("@type") == "ProfessionalService")
+    assert person["description"] == PERSON_DESCRIPTION
+    assert org["description"] == PROFESSIONAL_SERVICE_DESCRIPTION
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("path", PUBLIC_PAGES.keys())
+def test_public_pages_have_no_legacy_positioning(path: str) -> None:
+    response = client.get(path)
+    assert response.status_code == 200
+    for forbidden in FORBIDDEN_LEGACY_STRINGS:
+        assert forbidden not in response.text, (
+            f"Legacy positioning found on {path}: {forbidden!r}"
+        )
+
+
+@pytest.mark.unit
+def test_insight_pages_have_no_legacy_positioning() -> None:
+    for slug in ("empty-wallets-active-positions", "mvp-competing-sources-of-truth"):
+        response = client.get(f"/insights/{slug}")
+        assert response.status_code == 200
+        for forbidden in FORBIDDEN_LEGACY_STRINGS:
+            assert forbidden not in response.text, (
+                f"Legacy positioning found on /insights/{slug}: {forbidden!r}"
+            )
+        head = _parse_head(response.text)
+        assert head.meta["og:image:alt"] == OG_IMAGE_ALT
+        assert head.meta["twitter:image:alt"] == OG_IMAGE_ALT
+
 
 @pytest.mark.unit
 def test_about_json_ld_person() -> None:
@@ -294,22 +352,15 @@ def test_og_share_image_asset() -> None:
 
 
 @pytest.mark.unit
-def test_public_page_titles_are_unique() -> None:
-    titles = [PUBLIC_PAGES[path]["title"] for path in PUBLIC_PAGES]
-    assert len(titles) == len(set(titles))
-
-
-@pytest.mark.unit
-def test_case_study_pages_enumerate_all_routes() -> None:
-    """Every case study slug must have a metadata test entry."""
+def test_case_study_routes_enumerated() -> None:
     slugs = {study["slug"] for study in load_case_studies()}
-    paths = {path.removeprefix("/work/") for path in CASE_STUDY_PAGES}
-    assert paths == slugs
+    assert slugs == set(EXPECTED_CASE_STUDY_SLUGS)
+    assert set(CASE_STUDY_PAGES) == {f"/work/{slug}" for slug in EXPECTED_CASE_STUDY_SLUGS}
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize("path,expected", CASE_STUDY_PAGES.items())
-def test_case_study_page_unique_title_and_description(
+def test_case_study_unique_title_and_description(
     path: str, expected: dict[str, str]
 ) -> None:
     response = client.get(path)
@@ -321,9 +372,7 @@ def test_case_study_page_unique_title_and_description(
 
 @pytest.mark.unit
 @pytest.mark.parametrize("path,expected", CASE_STUDY_PAGES.items())
-def test_case_study_page_open_graph_metadata(
-    path: str, expected: dict[str, str]
-) -> None:
+def test_case_study_open_graph_metadata(path: str, expected: dict[str, str]) -> None:
     response = client.get(path)
     head = _parse_head(response.text)
     assert head.meta["og:title"] == expected["title"]
@@ -339,9 +388,7 @@ def test_case_study_page_open_graph_metadata(
 
 @pytest.mark.unit
 @pytest.mark.parametrize("path,expected", CASE_STUDY_PAGES.items())
-def test_case_study_page_canonical_matches_og_url(
-    path: str, expected: dict[str, str]
-) -> None:
+def test_case_study_canonical_matches_og_url(path: str, expected: dict[str, str]) -> None:
     response = client.get(path)
     head = _parse_head(response.text)
     assert head.links["canonical"] == expected["canonical"]
@@ -350,9 +397,7 @@ def test_case_study_page_canonical_matches_og_url(
 
 @pytest.mark.unit
 @pytest.mark.parametrize("path,expected", CASE_STUDY_PAGES.items())
-def test_case_study_page_twitter_card_metadata(
-    path: str, expected: dict[str, str]
-) -> None:
+def test_case_study_twitter_card_metadata(path: str, expected: dict[str, str]) -> None:
     response = client.get(path)
     head = _parse_head(response.text)
     assert head.meta["twitter:card"] == "summary_large_image"
@@ -363,21 +408,40 @@ def test_case_study_page_twitter_card_metadata(
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("path,expected", CASE_STUDY_PAGES.items())
-def test_case_study_page_json_ld_valid(path: str, expected: dict[str, str]) -> None:
+@pytest.mark.parametrize("path", CASE_STUDY_PAGES.keys())
+def test_case_study_json_ld_valid(path: str) -> None:
     response = client.get(path)
     head = _parse_head(response.text)
     assert head.ld_json_raw, f"Missing JSON-LD on {path}"
     data = json.loads(head.ld_json_raw)
-    assert isinstance(data, dict)
-    assert data.get("@context") == "https://schema.org"
-    assert data.get("@type") == "WebPage"
-    assert data.get("name") == expected["title"]
-    assert data.get("description") == expected["description"]
-    assert data.get("url") == expected["canonical"]
+    assert data["@context"] == "https://schema.org"
+    assert data["@type"] == "WebPage"
+    assert data["url"] == CASE_STUDY_PAGES[path]["canonical"]
+    assert data["image"] == OG_IMAGE
 
 
 @pytest.mark.unit
-def test_case_study_page_titles_are_unique() -> None:
-    titles = [CASE_STUDY_PAGES[path]["title"] for path in CASE_STUDY_PAGES]
+@pytest.mark.parametrize("path,expected", CASE_STUDY_PAGES.items())
+def test_case_study_disclaimer_visible(path: str, expected: dict[str, str]) -> None:
+    response = client.get(path)
+    assert response.status_code == 200
+    disclaimer = DISCLAIMERS[expected["engagement"]]  # type: ignore[index]
+    assert disclaimer in response.text
+
+
+@pytest.mark.unit
+def test_case_study_titles_are_unique() -> None:
+    titles = [expected["title"] for expected in CASE_STUDY_PAGES.values()]
+    assert len(titles) == len(set(titles))
+
+
+@pytest.mark.unit
+def test_case_study_descriptions_are_unique() -> None:
+    descriptions = [expected["description"] for expected in CASE_STUDY_PAGES.values()]
+    assert len(descriptions) == len(set(descriptions))
+
+
+@pytest.mark.unit
+def test_public_page_titles_are_unique() -> None:
+    titles = [PUBLIC_PAGES[path]["title"] for path in PUBLIC_PAGES]
     assert len(titles) == len(set(titles))
