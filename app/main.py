@@ -71,7 +71,9 @@ def case_study(slug: str) -> HTMLResponse:
     study = case_studies.get_case_study(slug)
     if study is None:
         raise HTTPException(status_code=404, detail="Case study not found")
-    return HTMLResponse(case_studies.render_case_study_page(study))
+    content = case_studies.render_case_study_page(study)
+    content = page_service.inject_analytics(content, get_settings())
+    return HTMLResponse(content=content)
 
 
 @app.post("/api/briefs", response_model=BriefCreateResponse)
