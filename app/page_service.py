@@ -13,7 +13,7 @@ SITE_DIR = Path(__file__).resolve().parent.parent / "site"
 
 
 def inject_analytics(page_html: str, settings: Settings) -> str:
-    """Inject Plausible analytics tags when analytics is enabled."""
+    """Inject Plausible analytics tags when enabled."""
     if settings.analytics_enabled and settings.plausible_domain:
         domain = html.escape(settings.plausible_domain, quote=True)
         injection = (
@@ -28,9 +28,4 @@ def inject_analytics(page_html: str, settings: Settings) -> str:
 def serve_page(filename: str, settings: Settings) -> HTMLResponse:
     """Return a site HTML page, injecting analytics tags when enabled."""
     page_html = (SITE_DIR / filename).read_text(encoding="utf-8")
-    return HTMLResponse(content=inject_analytics(page_html, settings))
-
-
-def serve_html(page_html: str, settings: Settings) -> HTMLResponse:
-    """Return rendered HTML with optional analytics injection."""
     return HTMLResponse(content=inject_analytics(page_html, settings))
