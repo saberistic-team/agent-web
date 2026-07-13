@@ -24,7 +24,6 @@ from app.config import get_settings
 from app.models import BriefCreateRequest, BriefCreateResponse
 from app.seo import (
     LEGACY_REDIRECTS,
-    PERMANENT_REDIRECTS,
     apex_redirect_url,
     is_www_host,
     robots_txt,
@@ -164,15 +163,6 @@ for legacy_path, target in LEGACY_REDIRECTS.items():
         return RedirectResponse(url=_target, status_code=301)
 
     app.add_api_route(legacy_path, _legacy_redirect, methods=["GET"], include_in_schema=False)
-
-for redirect_path, target in PERMANENT_REDIRECTS.items():
-
-    def _permanent_redirect(
-        _target: str = target,
-    ) -> RedirectResponse:
-        return RedirectResponse(url=_target, status_code=301)
-
-    app.add_api_route(redirect_path, _permanent_redirect, methods=["GET"], include_in_schema=False)
 
 
 @app.post("/api/briefs", response_model=BriefCreateResponse)
