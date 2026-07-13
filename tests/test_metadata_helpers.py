@@ -5,11 +5,9 @@ from __future__ import annotations
 import pytest
 
 from app.metadata import (
-    OG_IMAGE,
     OG_IMAGE_ALT,
     article_json_ld,
-    case_study_head_metadata,
-    case_study_json_ld,
+    case_study_head_extras,
     json_ld_script,
     social_meta_tags,
 )
@@ -37,37 +35,6 @@ def test_json_ld_script_escapes_closing_script_sequence() -> None:
 
 
 @pytest.mark.unit
-def test_case_study_json_ld_escapes_angle_brackets() -> None:
-    script = case_study_json_ld(
-        title="Org<script>",
-        description="Meta<script>",
-        url="https://saberistic.com/work/xss",
-    )
-    assert "<script>" not in script
-    assert "\\u003c" in script
-    script = case_study_json_ld(
-        title="Brave — Infrastructure · saberistic",
-        description="Case study description",
-        url="https://saberistic.com/work/brave",
-    )
-    assert '"@type":"WebPage"' in script
-    assert OG_IMAGE in script
-
-
-@pytest.mark.unit
-def test_case_study_head_metadata_includes_social_and_json_ld() -> None:
-    block = case_study_head_metadata(
-        title="Brave — Infrastructure · saberistic",
-        description="Case study description",
-        url="https://saberistic.com/work/brave",
-    )
-    assert 'property="og:type" content="website"' in block
-    assert 'name="twitter:card" content="summary_large_image"' in block
-    assert '"@type":"WebPage"' in block
-    assert OG_IMAGE_ALT in block
-
-
-@pytest.mark.unit
 def test_article_json_ld_includes_modified_date() -> None:
     script = article_json_ld(
         title="Title",
@@ -78,3 +45,16 @@ def test_article_json_ld_includes_modified_date() -> None:
         date_modified="2026-07-13",
     )
     assert '"dateModified":"2026-07-13"' in script
+
+
+@pytest.mark.unit
+def test_case_study_head_extras_include_og_twitter_and_webpage_json_ld() -> None:
+    extras = case_study_head_extras(
+        title="Brave — Infrastructure for privacy-aligned payments · saberistic",
+        description="How infrastructure architecture supported privacy-sensitive payment systems at Brave.",
+        url="https://saberistic.com/work/brave",
+    )
+    assert 'property="og:type" content="website"' in extras
+    assert 'name="twitter:card" content="summary_large_image"' in extras
+    assert '"@type":"WebPage"' in extras
+    assert OG_IMAGE_ALT in extras
