@@ -1,0 +1,164 @@
+{
+  "articles": [
+    {
+      "slug": "competing-sources-of-truth",
+      "status": "published",
+      "title": "Five signs an MVP has competing sources of truth",
+      "eyebrow": "Architecture",
+      "published": "2026-07-10",
+      "author": "AmirSaber Sharifi",
+      "audience": "Founders and engineering leaders shipping an MVP that must scale",
+      "problem": "The product works in demos but user-visible state diverges across frontend, backend, and data stores — and no one can name the authoritative source.",
+      "meta_description": "Five observable signs that an MVP has competing sources of truth — and why fixing ownership early is cheaper than shipping around inconsistent state.",
+      "summary": "Five signs your MVP has competing sources of truth, and what to fix before scale makes divergence expensive.",
+      "sections": [
+        {
+          "heading": "1. The same entity has different IDs in different services",
+          "body": "User, account, wallet, or order identifiers differ between the client, API layer, and analytics warehouse. Teams paper over mismatches with mapping tables added after the fact. That is a sign no service owns the entity lifecycle end to end."
+        },
+        {
+          "heading": "2. Reads and writes do not share a consistency model",
+          "body": "The UI optimistically shows state that the API cannot guarantee on the next fetch. Background jobs update balances or statuses that the primary read path never sees. When engineers cannot state whether a read is strongly consistent, eventually consistent, or best-effort, you have competing truths by design."
+        },
+        {
+          "heading": "3. Feature flags and config override product state",
+          "body": "Behavior changes based on per-tenant flags, remote config, or cached defaults — not on durable records customers can reason about. If two users with identical account records see different outcomes because config drifted, the product truth is not in your data model."
+        },
+        {
+          "heading": "4. On-chain, cache, and database disagree under load",
+          "body": "Digital-asset and fintech MVPs often blend chain reads, indexer caches, and operational databases. Under normal traffic they align; under retries, partial failures, or stale indexers they diverge. If incident response starts with \"which source do we trust for this screen?\" you have multiple authorities."
+        },
+        {
+          "heading": "5. Reporting and product metrics use different definitions",
+          "body": "Finance, growth, and engineering each export numbers that should reconcile but do not. Active users, settled volume, and open positions are defined differently in the app, the warehouse, and the board deck. That gap will widen with every new integration."
+        },
+        {
+          "heading": "What to do before scale amplifies the damage",
+          "body": "Name one authoritative write path per core entity, document read paths and their consistency guarantees, and delete or quarantine shadow copies that cannot be derived from that authority. A fractional architecture review in the first 30 days is far cheaper than re-platforming after product-market fit."
+        }
+      ],
+      "cta_label": "Start Architecture Diagnostic",
+      "cta_href": "/brief"
+    },
+    {
+      "slug": "fintech-architecture-diligence",
+      "status": "published",
+      "title": "What investors should examine before funding fintech architecture",
+      "eyebrow": "Due diligence",
+      "published": "2026-07-08",
+      "author": "AmirSaber Sharifi",
+      "audience": "Investors and acquirers evaluating fintech, payments, or digital-asset startups",
+      "problem": "Pitch decks show traction and roadmap, but architectural risk — custody, settlement, compliance boundaries — stays invisible until a diligence call surfaces a blocker.",
+      "meta_description": "A practical investor checklist for fintech architecture diligence — custody boundaries, settlement paths, compliance isolation, and signs of hidden re-platform cost.",
+      "summary": "What to examine in fintech architecture before funding: custody, settlement, compliance boundaries, and re-platform risk.",
+      "sections": [
+        {
+          "heading": "Custody and key-management boundaries",
+          "body": "Ask who can move funds or sign transactions, where keys live, and what breaks if a single service is compromised. Production systems should separate hot-path signing from administrative access, with explicit recovery and rotation stories — not ad hoc scripts run by whoever is on call."
+        },
+        {
+          "heading": "Settlement and ledger authority",
+          "body": "Trace a dollar or asset unit from user intent to settled state. Identify the system of record at each hop: processor, internal ledger, nostro account, or on-chain confirmation. If no owner can draw that path on a whiteboard in ten minutes, settlement risk is underpriced."
+        },
+        {
+          "heading": "Compliance and PII isolation",
+          "body": "Regulated data should have clear retention, access, and deletion boundaries — not copies scattered across analytics pipelines and support tools. Verify that KYC, sanctions screening, and audit logs are tamper-evident and scoped to roles that need them."
+        },
+        {
+          "heading": "Integration surface and vendor lock-in",
+          "body": "Count hard dependencies on a single bank sponsor, chain RPC provider, or KYC vendor. Swap tests — what happens if that vendor doubles price or deprecates an API — reveal whether architecture is a moat or a single point of failure."
+        },
+        {
+          "heading": "Signs of deferred re-platform cost",
+          "body": "Rising incident frequency, hero engineers who alone understand money movement, and roadmap items blocked by \"we need to rewrite the ledger first\" are leading indicators. Model that cost explicitly; it often exceeds the next funding round's engineering budget."
+        },
+        {
+          "heading": "How to use this in a process",
+          "body": "A scoped technical diligence — architecture review, code-path sampling, and threat-model spot checks — should complete in days, not months. Findings should separate fixable gaps from structural bets the company must make before scale."
+        }
+      ],
+      "cta_label": "Email for technical diligence",
+      "cta_href": "mailto:inbox@saberistic.com?subject=Technical%20Due%20Diligence"
+    },
+    {
+      "slug": "empty-wallet-active-positions",
+      "status": "draft",
+      "title": "Why empty wallets sometimes show active positions",
+      "eyebrow": "Digital assets",
+      "published": "2026-07-01",
+      "author": "AmirSaber Sharifi",
+      "audience": "Product and engineering teams building wallet or portfolio experiences",
+      "problem": "Users report positions or balances that do not match on-chain reality — eroding trust in the product.",
+      "meta_description": "Why wallet UIs show active positions when balances read zero — indexer lag, cached portfolio state, and reconciliation gaps.",
+      "summary": "Why empty wallets can still show active positions: indexer lag, cached state, and reconciliation gaps.",
+      "sections": [
+        {
+          "heading": "Draft",
+          "body": "Editorial review pending."
+        }
+      ],
+      "cta_label": "Start Architecture Diagnostic",
+      "cta_href": "/brief"
+    },
+    {
+      "slug": "blockchain-reads-api-disagree",
+      "status": "draft",
+      "title": "When direct blockchain reads and backend APIs disagree",
+      "eyebrow": "Digital assets",
+      "published": "2026-07-01",
+      "author": "AmirSaber Sharifi",
+      "audience": "Engineering leaders integrating on-chain and off-chain state",
+      "problem": "The app shows different balances or statuses depending on whether the client reads chain data or calls the backend.",
+      "meta_description": "Why blockchain reads and backend APIs disagree — finality, indexer lag, and missing reconciliation between chain truth and operational databases.",
+      "summary": "When direct chain reads and backend APIs disagree: finality, indexer lag, and reconciliation.",
+      "sections": [
+        {
+          "heading": "Draft",
+          "body": "Editorial review pending."
+        }
+      ],
+      "cta_label": "Start Architecture Diagnostic",
+      "cta_href": "/brief"
+    },
+    {
+      "slug": "fractional-architect-first-30-days",
+      "status": "draft",
+      "title": "What a fractional principal architect fixes in the first 30 days",
+      "eyebrow": "Engagement",
+      "published": "2026-07-01",
+      "author": "AmirSaber Sharifi",
+      "audience": "Founders considering fractional principal architecture",
+      "problem": "Teams need senior architecture leadership but cannot justify a full-time principal hire yet.",
+      "meta_description": "What a fractional principal architect typically fixes in the first 30 days — ownership maps, consistency models, and sequenced remediation.",
+      "summary": "What a fractional principal architect fixes in the first 30 days.",
+      "sections": [
+        {
+          "heading": "Draft",
+          "body": "Editorial review pending."
+        }
+      ],
+      "cta_label": "Email an introduction",
+      "cta_href": "mailto:inbox@saberistic.com?subject=Fractional%20Principal%20Architect"
+    },
+    {
+      "slug": "security-mistakes-after-pmf",
+      "status": "draft",
+      "title": "Security mistakes that become expensive after product-market fit",
+      "eyebrow": "Security",
+      "published": "2026-07-01",
+      "author": "AmirSaber Sharifi",
+      "audience": "Founders and engineering leaders post-PMF",
+      "problem": "Security shortcuts that were acceptable at MVP scale become liabilities under real revenue and regulatory scrutiny.",
+      "meta_description": "Security mistakes that get expensive after product-market fit — shared secrets, missing audit trails, and identity boundaries deferred too long.",
+      "summary": "Security mistakes that become expensive after product-market fit.",
+      "sections": [
+        {
+          "heading": "Draft",
+          "body": "Editorial review pending."
+        }
+      ],
+      "cta_label": "Request security architecture review",
+      "cta_href": "/brief"
+    }
+  ]
+}
