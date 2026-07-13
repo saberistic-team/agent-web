@@ -27,24 +27,23 @@ date, and checklist confirmation.
 
 ## CTA
 
-- [ ] Exactly one contextual CTA per article (`cta_text`, `cta_href` in `app/articles.py`).
+- [ ] Exactly one contextual CTA per article (`cta_label`, `cta_href` in JSON).
 - [ ] CTA matches the article topic (architecture review, diligence, etc.).
 - [ ] CTA destination is a live site route or approved external profile.
 
 ## Metadata and distribution
 
-- [ ] Entry added to `ARTICLES` in `app/articles.py` with slug, title, description, dates.
-- [ ] Body saved under `articles/<slug-related-file>.html` (prose only, no page shell).
+- [ ] Entry added to `site/data/articles.json` with slug, title, description, dates.
 - [ ] Canonical URL, Open Graph, Twitter, and JSON-LD render on the article page.
-- [ ] Article appears on `/insights`, `/sitemap.xml`, and `/insights/feed.atom`.
-- [ ] Site navigation links to `/insights` from home and shared templates.
+- [ ] Article appears on `/insights`, `/sitemap.xml`, and `/insights/feed.xml`.
+- [ ] Site navigation links to `/insights` from home and shared page headers.
 
 ## Adding a new article (no boilerplate duplication)
 
-1. Copy an existing entry in `app/articles.py` and update metadata.
-2. Add prose to a new file in `articles/`.
-3. Run through this checklist.
+1. Add a new object to the `articles` array in `site/data/articles.json`.
+2. Include `sections` with `heading` and `body` fields for each block.
+3. Run through this checklist and record in `LAUNCH_REVIEW.md` when publishing.
 4. Add or extend tests in `tests/test_articles.py` when behavior changes.
 
-RSS/Atom is implemented at `/insights/feed.atom` (Atom 1.0). No separate RSS
-feed is required unless a consumer explicitly needs RSS 2.0.
+Atom 1.0 is implemented at `/insights/feed.xml`. No separate RSS 2.0 feed is
+required unless a consumer explicitly needs it.
