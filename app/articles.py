@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
+from app.seo import CANONICAL_BASE
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ARTICLES_DIR = REPO_ROOT / "articles"
 TEMPLATES_DIR = REPO_ROOT / "site" / "templates"
@@ -33,8 +35,8 @@ class Article:
     def path(self) -> str:
         return f"/insights/{self.slug}"
 
-    def canonical_url(self, base_url: str) -> str:
-        return f"{base_url.rstrip('/')}{self.path}"
+    def canonical_url(self) -> str:
+        return f"{CANONICAL_BASE}{self.path}"
 
     def body_html(self) -> str:
         path = ARTICLES_DIR / self.body_file
@@ -104,14 +106,13 @@ def _render_template(name: str, **context: str) -> str:
 
 def _layout(
     *,
-    base_url: str,
     title: str,
     description: str,
     canonical_path: str,
     head_extra: str,
     main: str,
 ) -> str:
-    canonical_url = f"{base_url.rstrip('/')}{canonical_path}"
+    canonical_url = f"{CANONICAL_BASE}{canonical_path}" if canonical_path != "/" else f"{CANONICAL_BASE}/"
     return _render_template(
         "layout.html",
         title=html.escape(title),
@@ -127,7 +128,7 @@ def _format_article_date(value: date) -> str:
     return value.strftime("%B %d, %Y")
 
 
-def _article_json_ld(article: Article, base_url: str) -> str:
+def _article_json_ld(article: Article) -> str:
     payload = {
         "@context": "https://schema.org",
         "@type": "Article",
@@ -137,17 +138,17 @@ def _article_json_ld(article: Article, base_url: str) -> str:
         "publisher": {"@type": "Organization", "name": SITE_NAME},
         "datePublished": article.published.isoformat(),
         "dateModified": article.updated.isoformat(),
-        "mainEntityOfPage": article.canonical_url(base_url),
+        "mainEntityOfPage": article.canonical_url(),
     }
     serialized = json.dumps(payload, ensure_ascii=True)
     return f'<script type="application/ld+json">{serialized}</script>'
 
 
-def _article_head_extra(article: Article, base_url: str) -> str:
-    canonical = article.canonical_url(base_url)
+def _article_head_extra(article: Article) -> str:
+    canonical = article.canonical_url()
     title = html.escape(article.title)
     description = html.escape(article.description)
-    json_ld = _article_json_ld(article, base_url)
+    json_ld = _article_json_ld(article)
     return (
         f'<meta property="og:type" content="article" />\n'
         f'    <meta property="og:title" content="{title}" />\n'
@@ -160,7 +161,7 @@ def _article_head_extra(article: Article, base_url: str) -> str:
     )
 
 
-def render_insights_index(base_url: str) -> str:
+def render_insights_index() -> str:
     rows = []
     for article in list_articles():
         rows.append(
@@ -178,7 +179,6 @@ def render_insights_index(base_url: str) -> str:
         article_rows="\n".join(rows),
     )
     return _layout(
-        base_url=base_url,
         title=f"{AUTHOR_NAME} — Insights",
         description=(
             "Architecture judgment for founders, investors, and technical "
@@ -193,7 +193,7 @@ def render_insights_index(base_url: str) -> str:
     )
 
 
-def render_article_page(article: Article, base_url: str) -> str:
+def render_article_page(article: Article) -> str:
     main = _render_template(
         "article.html",
         title=html.escape(article.title),
@@ -210,48 +210,31 @@ def render_article_page(article: Article, base_url: str) -> str:
     )
     page_title = f"{article.title} — {AUTHOR_NAME}"
     return _layout(
-        base_url=base_url,
         title=page_title,
         description=article.description,
         canonical_path=article.path,
-        head_extra=_article_head_extra(article, base_url),
+        head_extra=_article_head_extra(article),
         main=main,
     )
 
 
-def render_sitemap(base_url: str) -> str:
-    base = base_url.rstrip("/")
-    static_paths = ("/", "/about", "/brief", "/insights")
-    urls = [f"  <url><loc>{html.escape(base + path)}</loc></url>" for path in static_paths]
-    for article in list_articles():
-        loc = html.escape(article.canonical_url(base_url))
-        urls.append(f"  <url><loc>{loc}</loc></url>")
-    body = "\n".join(urls)
-    return (
-        '<?xml version="1.0" encoding="UTF-8"?>\n'
-        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-        f"{body}\n"
-        "</urlset>\n"
-    )
-
-
-def render_atom_feed(base_url: str) -> str:
-    base = base_url.rstrip("/")
+def render_atom_feed() -> str:
+    feed_id = f"{CANONICAL_BASE}/insights"
     entries = []
     for article in list_articles():
         entries.append(
             _render_template(
                 "atom_entry.xml",
                 title=html.escape(article.title),
-                id=html.escape(article.canonical_url(base_url)),
+                id=html.escape(article.canonical_url()),
                 updated=article.updated.isoformat(),
-                link=html.escape(article.canonical_url(base_url)),
+                link=html.escape(article.canonical_url()),
                 summary=html.escape(article.description),
             )
         )
     return _render_template(
         "atom_feed.xml",
-        feed_id=html.escape(f"{base}/insights"),
+        feed_id=html.escape(feed_id),
         updated=max(article.updated for article in ARTICLES).isoformat(),
         title=html.escape(f"{SITE_NAME} insights"),
         entries="\n".join(entries),
