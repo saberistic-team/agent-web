@@ -48,14 +48,6 @@ def test_sitemap_contains_only_indexable_paths() -> None:
 
 
 @pytest.mark.unit
-def test_sitemap_excludes_redirected_diagnostic() -> None:
-    xml = sitemap_xml(lastmod=date(2026, 7, 13))
-    assert "https://saberistic.com/diagnostic" not in xml
-    assert "https://saberistic.com/services" in xml
-    assert "https://saberistic.com/case-studies" in xml
-
-
-@pytest.mark.unit
 def test_robots_txt_route() -> None:
     response = client.get("/robots.txt")
     assert response.status_code == 200
@@ -101,6 +93,23 @@ def test_brief_success_is_noindex_without_canonical() -> None:
     body = response.text
     assert 'name="robots" content="noindex, nofollow"' in body
     assert 'rel="canonical"' not in body
+
+
+@pytest.mark.unit
+def test_sitemap_excludes_diagnostic_redirect() -> None:
+    xml = sitemap_xml(lastmod=date(2026, 7, 13))
+    assert "https://saberistic.com/diagnostic" not in xml
+    assert "https://saberistic.com/services" in xml
+    assert "https://saberistic.com/case-studies" in xml
+
+
+@pytest.mark.unit
+def test_diagnostic_redirects_to_brief_without_chain() -> None:
+    response = client.get("/diagnostic", follow_redirects=False)
+    assert response.status_code == 301
+    assert response.headers["location"] == "/brief"
+    brief = client.get("/brief", follow_redirects=False)
+    assert brief.status_code == 200
 
 
 @pytest.mark.unit
