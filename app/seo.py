@@ -33,14 +33,14 @@ LEGACY_REDIRECTS: dict[str, str] = {
 
 
 def indexable_paths() -> tuple[str, ...]:
-    """Return all indexable paths including case studies (#65) and articles (#69)."""
-    from app.articles import load_articles
+    """Return all indexable paths including case studies (#65) and insights (#69)."""
     from app.case_studies import load_case_studies
+    from app.insights import load_published_articles
 
     paths = list(STATIC_INDEXABLE_PATHS)
     for study in load_case_studies():
         paths.append(f"/work/{study['slug']}")
-    for article in load_articles():
+    for article in load_published_articles():
         paths.append(f"/insights/{article['slug']}")
     return tuple(paths)
 
@@ -62,11 +62,19 @@ def robots_txt() -> str:
 
 
 def sitemap_xml(*, lastmod: date | None = None) -> str:
-    mod = (lastmod or date.today()).isoformat()
+    default_mod = (lastmod or date.today()).isoformat()
+
+    def _lastmod_for(path: str) -> str:
+        from app.insights import lastmod_for_path
+
+        if lastmod is not None:
+            return default_mod
+        return lastmod_for_path(path).isoformat()
+
     urls = "\n".join(
         "  <url>\n"
         f"    <loc>{canonical_url(path)}</loc>\n"
-        f"    <lastmod>{mod}</lastmod>\n"
+        f"    <lastmod>{_lastmod_for(path)}</lastmod>\n"
         "  </url>"
         for path in indexable_paths()
     )
