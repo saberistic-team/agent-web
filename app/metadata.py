@@ -56,22 +56,36 @@ def web_page_json_ld(*, title: str, description: str, url: str) -> str:
         {
             "@context": "https://schema.org",
             "@type": "WebPage",
-            "name": _json_ld_safe(title),
-            "description": _json_ld_safe(description),
+            "name": title,
+            "description": description,
             "url": url,
         }
     )
 
 
-def case_study_head_extras(
-    *,
-    title: str,
-    description: str,
-    url: str,
-) -> str:
-    """Open Graph, Twitter, and WebPage JSON-LD for /work/{slug} case studies."""
+def case_study_json_ld(*, title: str, description: str, url: str) -> str:
+    """Conservative WebPage JSON-LD for /work/{slug} proof pages."""
+    return json_ld_script(
+        {
+            "@context": "https://schema.org",
+            "@type": "WebPage",
+            "name": _json_ld_safe(title),
+            "description": _json_ld_safe(description),
+            "url": url,
+            "image": OG_IMAGE,
+            "isPartOf": {
+                "@type": "ProfessionalService",
+                "name": "saberistic",
+                "url": f"{CANONICAL_BASE}/",
+            },
+        }
+    )
+
+
+def case_study_head_extras(*, title: str, description: str, url: str) -> str:
+    """Open Graph, Twitter card, and JSON-LD for a case-study page."""
     return f"""{social_meta_tags(title=title, description=description, url=url, og_type="website")}
-{web_page_json_ld(title=title, description=description, url=url)}"""
+{case_study_json_ld(title=title, description=description, url=url)}"""
 
 
 def article_json_ld(
