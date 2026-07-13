@@ -1,0 +1,25 @@
+      <article class="block article-page" itemscope itemtype="https://schema.org/Article">
+        <p class="eyebrow">Insights</p>
+        <h1 class="page-title" id="article-title" itemprop="headline">{{title}}</h1>
+        <div class="article-meta">
+          <p><span class="article-meta-label">Audience</span> {{audience}}</p>
+          <p><span class="article-meta-label">Problem</span> {{problem}}</p>
+          <p>
+            <span class="article-meta-label">Published</span>
+            <time datetime="{{published_iso}}" itemprop="datePublished">{{published}}</time>
+            ·
+            <span class="article-meta-label">Updated</span>
+            <time datetime="{{updated_iso}}" itemprop="dateModified">{{updated}}</time>
+            ·
+            <span itemprop="author">{{author}}</span>
+          </p>
+        </div>
+        <div class="article-prose" itemprop="articleBody">
+{{body}}
+        </div>
+        <aside class="article-cta" aria-label="Next step">
+          <p class="article-cta-label">Next step</p>
+          <p class="article-cta-copy">If this matches what you are seeing, start with a focused review.</p>
+          <a class="cta" href="{{cta_href}}">{{cta_text}}</a>
+        </aside>
+      </article>
