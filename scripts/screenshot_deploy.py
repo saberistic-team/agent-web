@@ -33,6 +33,7 @@ SKIP_SCREENSHOT_EXACT = frozenset(
         "/hello",
         "/robots.txt",
         "/sitemap.xml",
+        "/diagnostic",
         "/docs",
         "/docs/oauth2-redirect",
         "/openapi.json",
@@ -169,9 +170,9 @@ def discover_screenshot_routes(app_root: Path | None = None) -> list[str]:
         if str(root) not in sys.path:
             sys.path.insert(0, str(root))
         from app.main import app as fastapi_app  # type: ignore
-        from app.seo import LEGACY_REDIRECTS, PERMANENT_REDIRECTS  # type: ignore
+        from app.seo import LEGACY_REDIRECTS  # type: ignore
 
-        redirects = set(LEGACY_REDIRECTS.keys()) | set(PERMANENT_REDIRECTS.keys())
+        legacy = set(LEGACY_REDIRECTS.keys())
         for route in fastapi_app.routes:
             methods = getattr(route, "methods", None) or set()
             path = getattr(route, "path", None)
@@ -184,7 +185,7 @@ def discover_screenshot_routes(app_root: Path | None = None) -> list[str]:
             if method_set and "GET" not in method_set and "HEAD" not in method_set:
                 continue
             route_path = _normalize_route_path(path)
-            if route_path in redirects or is_skipped_api_or_meta_route(route_path):
+            if route_path in legacy or is_skipped_api_or_meta_route(route_path):
                 continue
             if "{" in route_path:
                 found.update(_expand_param_route(route_path, root))
