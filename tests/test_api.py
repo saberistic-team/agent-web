@@ -79,7 +79,6 @@ def test_home_page() -> None:
     assert "technical architecture" in body.lower()
     assert "software development" not in body
     assert 'href="/about"' in body
-    assert 'href="/insights"' in body
     assert "our-teams-section" not in body
     assert "Queen" not in body
     # Full bio lives on /about, not duplicated on home
@@ -98,7 +97,6 @@ def test_about_page() -> None:
     assert "leave things better than I found them" in body
     assert 'href="/brief"' in body
     assert 'href="/#proof"' in body
-    assert 'href="/insights"' in body
     assert "Request architecture review" in body
 
 
@@ -197,6 +195,13 @@ def test_case_study_unique_metadata() -> None:
     assert "<title>Brave —" in brave
     assert "<title>BAXUS —" in baxus
     assert brave != baxus
+
+
+@pytest.mark.unit
+def test_home_has_insights_navigation() -> None:
+    body = client.get("/").text
+    assert 'href="/insights"' in body
+    assert "Insights" in body
 
 
 @pytest.mark.unit
