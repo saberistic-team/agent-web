@@ -104,12 +104,18 @@ def test_sitemap_excludes_diagnostic_redirect() -> None:
 
 
 @pytest.mark.unit
-def test_diagnostic_redirects_to_brief_without_chain() -> None:
+def test_diagnostic_redirects_to_brief() -> None:
     response = client.get("/diagnostic", follow_redirects=False)
     assert response.status_code == 301
     assert response.headers["location"] == "/brief"
-    brief = client.get("/brief", follow_redirects=False)
-    assert brief.status_code == 200
+
+
+@pytest.mark.unit
+def test_diagnostic_redirect_is_direct_not_chained() -> None:
+    response = client.get("/diagnostic", follow_redirects=True)
+    assert response.status_code == 200
+    assert response.url.path == "/brief"
+    assert 'id="brief-form"' in response.text
 
 
 @pytest.mark.unit
