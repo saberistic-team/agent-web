@@ -1,0 +1,74 @@
+{
+  "studies": [
+    {
+      "slug": "brave",
+      "org": "Brave",
+      "headline": "Infrastructure for privacy-aligned payments",
+      "engagement": "employer",
+      "meta_description": "How infrastructure architecture supported privacy-sensitive payment systems at Brave — prior employer role, not a Saberistic client.",
+      "context": "Brave ships a privacy-first browser and related products. Payment and account infrastructure must honor strict privacy constraints while remaining reliable at scale.",
+      "problem": "Payment flows, account services, and underlying infrastructure needed architectural clarity so teams could ship without compromising privacy commitments or operational reliability.",
+      "role": "Principal Infrastructure Architect, Privacy & Payments",
+      "intervention": "Defined infrastructure boundaries for payment-adjacent services, documented privacy-aligned integration patterns, and guided cross-team decisions on data handling, service isolation, and rollout sequencing.",
+      "result": "Teams gained a shared reference architecture for privacy-sensitive payment infrastructure — reducing ambiguous ownership and enabling safer iteration on payment-related features.",
+      "cta_label": "Request architecture review",
+      "cta_href": "/brief"
+    },
+    {
+      "slug": "baxus",
+      "org": "BAXUS",
+      "headline": "Engineering leadership for a digital-asset marketplace",
+      "engagement": "employer",
+      "meta_description": "Engineering leadership and marketplace systems judgment at BAXUS — prior employer role, not a Saberistic client.",
+      "context": "BAXUS operates a digital-asset marketplace where listing, custody, and transaction workflows must stay coherent as the product and team grow.",
+      "problem": "The organization needed engineering leadership to align marketplace systems, clarify ownership across asset lifecycle workflows, and raise the bar on delivery practices.",
+      "role": "VP of Engineering",
+      "intervention": "Structured the engineering organization around marketplace domains, established review and release practices, and prioritized architectural decisions for listing, custody, and settlement paths.",
+      "result": "Engineering operated with clearer domain ownership and decision paths — supporting marketplace reliability and faster resolution of cross-team dependencies.",
+      "cta_label": "Discuss engineering leadership",
+      "cta_href": "/brief"
+    },
+    {
+      "slug": "eternis",
+      "org": "Eternis",
+      "headline": "Security attribution in trusted execution environments",
+      "engagement": "employer",
+      "meta_description": "Infrastructure architecture for security attribution and TEE workloads at Eternis — prior employer role, not a Saberistic client.",
+      "context": "Eternis works on security attribution problems where workloads may run inside trusted execution environments (TEEs) with strict isolation requirements.",
+      "problem": "Attribution infrastructure had to reconcile security guarantees, attestation boundaries, and operational observability without weakening the TEE trust model.",
+      "role": "Principal Infrastructure Architect, Security Attribution & TEE",
+      "intervention": "Mapped trust boundaries between TEE workloads and surrounding services, defined attestation-aware deployment patterns, and scoped infrastructure changes that preserved attribution integrity.",
+      "result": "Delivered an infrastructure approach aligned to TEE constraints — giving teams explicit patterns for secure attribution rather than ad hoc integration.",
+      "cta_label": "Request security architecture review",
+      "cta_href": "/brief"
+    },
+    {
+      "slug": "spiral-safe",
+      "org": "Spiral Safe",
+      "headline": "Wallet and key-management security",
+      "engagement": "founder",
+      "meta_description": "Founder-led work on wallet and key-management security at Spiral Safe — independent venture, not a Saberistic client engagement.",
+      "context": "Spiral Safe focused on helping users protect cryptographic keys and wallet access without forcing unacceptable tradeoffs between security and everyday usability.",
+      "problem": "Key-management products often fail in practice — users lose access, or security controls are bypassed because the experience is too fragile or opaque.",
+      "role": "Founder",
+      "intervention": "Designed product and security boundaries around key generation, storage, recovery, and user-facing flows; prioritized threat modeling and clear failure modes over feature breadth.",
+      "result": "Shipped a security-first approach to wallet and key management with explicit recovery and threat assumptions — scoped for real user behavior rather than idealized security theater.",
+      "cta_label": "Discuss key-management architecture",
+      "cta_href": "/brief"
+    },
+    {
+      "slug": "architecture-diagnostic",
+      "org": "Sanitized diagnostic",
+      "headline": "Detecting model drift, performance risk, and state bugs",
+      "engagement": "saberistic",
+      "meta_description": "A sanitized Saberistic architecture diagnostic — inconsistent data models, performance risks, and incorrect user state identified without revealing client details.",
+      "context": "A growth-stage product team suspected architectural debt was causing user-visible bugs and slowing delivery. Details below are sanitized; no client is identified.",
+      "problem": "Users reported incorrect account state after common flows. Engineering suspected scattered data models and unbounded queries, but lacked a prioritized, evidence-backed remediation plan.",
+      "role": "Independent architecture diagnostic (Saberistic engagement)",
+      "intervention": "Reviewed service boundaries and schema usage, traced user-state transitions across APIs, profiled hot paths, and documented inconsistent entity models that produced divergent read/write behavior.",
+      "result": "Delivered a prioritized findings report: three inconsistent data models to consolidate, two query patterns posing latency risk under load, and four user-state transitions with missing idempotency — enabling sequenced fixes without a full rewrite.",
+      "cta_label": "Request project brief",
+      "cta_href": "/brief"
+    }
+  ]
+}
