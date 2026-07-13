@@ -18,13 +18,38 @@ triggers): copy `type:*` and `priority:*` from the issue, and set
 `review:needs-review`. Never put `agent:*` or `status:*` on the PR — see
 [docs/LABELS.md](../docs/LABELS.md).
 
-When an open PR already links the issue (`Closes #N` / title `#N`), **reuse that
-PR’s head branch** for every follow-up commit. Do not invent a second
-`builder/{issue}-…` branch from a retitled slug — that forks Reviewer off the
-real PR and causes change-request loops.
+## Branch and PR reuse (mandatory)
 
-Binary assets (PNG/JPEG/WebP/etc.) must be committed as raw bytes, never through
-UTF-8 text rewrite (that corrupts PNG magic and breaks OG share images).
+**One issue → one open PR → one head branch.** Never invent a parallel
+`builder/…` branch for the same issue.
+
+### Rules
+
+1. **Before creating a branch**, look for an open PR that links this issue
+   (`Closes #N`, `Fixes #N`, or `#N` in title/body).
+2. If that PR exists, **every follow-up commit goes on that PR’s current head
+   ref** — even after `review:changes-requested` requeues Builder.
+3. **Do not** derive a new branch name from the issue title slug. Titles change
+   (e.g. Planner adds `P1 — …`); slug drift creates a **ghost branch** that
+   Reviewer never checks while the real PR stays stale.
+4. Only create `builder/{issue}-{slug}` when **no** open linked PR exists.
+5. Do **not** open a second PR for the same issue. Update the existing one.
+6. If you find a leftover ghost branch for this issue that is **not** the open
+   PR head, do not push to it; comment `@human-review` and stay on the PR head.
+
+### Enforcement
+
+Codegen (`scripts/codegen_cursor.py` / `scripts/codegen_models.py`) resolves the
+branch via `resolve_builder_branch()`: open linked PR head first, title slug
+only as fallback. Builder Actions checkout is always `main`, so this must stay
+correct in those scripts — see [docs/MODELS.md](../docs/MODELS.md).
+
+### Binary assets
+
+PNG/JPEG/WebP/GIF/ICO (and similar) must be committed as **raw bytes**. Never
+rewrite them through UTF-8 text (`errors=replace` turns `0x89` into `U+FFFD`
+and corrupts Open Graph / share images). Codegen `put_file` accepts `bytes` for
+binary paths.
 
 ## Definition of done
 
@@ -33,7 +58,8 @@ UTF-8 text rewrite (that corrupts PNG magic and breaks OG share images).
   (`CURSOR_API_KEY`; `CODEGEN_PROVIDER=cursor`). Optional OpenAI / GitHub Models
   backup — [docs/MODELS.md](../docs/MODELS.md), [docs/DESIGN.md](../docs/DESIGN.md).
 - Verify/smoke and landing scaffolds may complete without a model call.
-- Branch / PR must reference `#issue` (`Closes #N`).
+- Branch / PR must reference `#issue` (`Closes #N`); follow-ups stay on that
+  same PR head (see **Branch and PR reuse**).
 - Tests relevant to the change are added or updated when behavior changes.
 - Service PRs touching `app/` must keep **unit ≥90%** and **integration ≥70%**
   coverage of `app/` ([docs/TESTING.md](../docs/TESTING.md)).
@@ -62,6 +88,8 @@ must ship test updates on the same PR before re-requesting review.
 ## Constraints
 
 - **Never push to the default branch** (`main` / `master`).
+- **Never create a second branch/PR** for an issue that already has an open
+  linked PR (see **Branch and PR reuse**).
 - Do not merge the PR; Reviewer + gate own approval completion.
 - Do not re-label out of `status:new` (Planner-only) or impersonate other
   roles’ Apps.

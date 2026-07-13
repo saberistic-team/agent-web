@@ -23,6 +23,11 @@ Before approving you must:
 5. Post an **`### acceptance_checklist`** that marks each acceptance criterion
    done/not_done with links to evidence (PR, commits, files, screenshots)
 
+Review **only the linked PR’s head SHA**. Ignore any other `builder/{issue}-…`
+refs for the same issue number (ghost branches are not in scope). If Builder
+appears to be committing off-PR, request changes citing the wrong branch rather
+than reviewing stale ghost commits.
+
 ## Definition of done
 
 - Desktop + mobile screenshots of deploy (`/` and `/about` by default) appear
