@@ -69,22 +69,11 @@ def test_case_studies_flow() -> None:
 
 
 @pytest.mark.integration
-def test_insights_flow() -> None:
-    index = client.get("/insights")
-    assert index.status_code == 200
-    assert "/insights/mvp-competing-sources-of-truth" in index.text
-
-    article = client.get("/insights/mvp-competing-sources-of-truth")
-    assert article.status_code == 200
-    assert "competing sources of truth" in article.text
-    assert 'href="/brief"' in article.text
-
-    feed = client.get("/insights.atom")
-    assert feed.status_code == 200
-    assert "atom" in feed.headers["content-type"]
-
-    missing = client.get("/insights/unknown-slug")
-    assert missing.status_code == 404
+def test_about_page_cta_flow() -> None:
+    about = client.get("/about")
+    assert about.status_code == 200
+    assert 'href="/brief"' in about.text
+    assert 'href="/#proof"' in about.text
 
 
 @pytest.mark.integration
@@ -93,6 +82,31 @@ def test_about_page_cta_flow() -> None:
     assert about.status_code == 200
     assert 'href="/brief"' in about.text
     assert 'href="/#proof"' in about.text
+    assert 'href="/insights"' in about.text
+
+
+@pytest.mark.integration
+def test_insights_flow() -> None:
+    index = client.get("/insights")
+    assert index.status_code == 200
+    assert "/insights/mvp-competing-sources-of-truth" in index.text
+
+    article = client.get("/insights/mvp-competing-sources-of-truth")
+    assert article.status_code == 200
+    assert "Start Architecture Diagnostic" in article.text
+    assert article.text.count('class="cta"') == 1
+
+    feed = client.get("/insights/feed.xml")
+    assert feed.status_code == 200
+    assert "application/atom+xml" in feed.headers["content-type"]
+
+    sitemap = client.get("/sitemap.xml")
+    assert sitemap.status_code == 200
+    assert "https://saberistic.com/insights" in sitemap.text
+    assert "https://saberistic.com/insights/mvp-competing-sources-of-truth" in sitemap.text
+
+    missing = client.get("/insights/not-a-real-slug")
+    assert missing.status_code == 404
 
 
 @pytest.mark.integration
