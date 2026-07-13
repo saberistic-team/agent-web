@@ -149,3 +149,19 @@ def test_home_links_to_insights() -> None:
     body = client.get("/").text
     assert 'href="/insights"' in body
     assert "Insights" in body
+
+
+@pytest.mark.unit
+def test_launch_articles_published() -> None:
+    """Issue #69 requires at least two reviewed launch articles."""
+    slugs = {article.slug for article in articles.ARTICLES}
+    assert "competing-sources-of-truth" in slugs
+    assert "fintech-architecture-due-diligence" in slugs
+    for slug in ("competing-sources-of-truth", "fintech-architecture-due-diligence"):
+        article = articles.get_article(slug)
+        assert article is not None
+        assert article.audience
+        assert article.problem
+        assert article.cta_text
+        assert article.cta_href
+        assert article.body_html()
