@@ -277,7 +277,7 @@ def test_pages_inject_analytics_when_enabled(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("ANALYTICS_ENABLED", "true")
     monkeypatch.setenv("PLAUSIBLE_DOMAIN", "saberistic.com")
 
-    for path in ("/", "/about", "/brief", "/brief/success"):
+    for path in ("/", "/about", "/brief", "/brief/success", "/insights"):
         response = client.get(path)
         assert response.status_code == 200
         assert 'name="saberistic-analytics-domain"' in response.text

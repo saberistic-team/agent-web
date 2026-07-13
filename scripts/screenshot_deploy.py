@@ -131,20 +131,26 @@ def _normalize_route_path(path: str) -> str:
 
 
 def _expand_param_route(path: str, app_root: Path) -> list[str]:
-    """Expand ``/work/{slug}`` (and similar) from case-study data when possible."""
+    """Expand parameterized routes from JSON data when possible."""
     if "{slug}" not in path:
-        return []
-    if not path.startswith("/work/"):
         return []
     try:
         sys.path.insert(0, str(app_root))
-        from app.case_studies import load_case_studies  # type: ignore
+        if path.startswith("/work/"):
+            from app.case_studies import load_case_studies  # type: ignore
 
-        data = app_root / "site" / "data" / "case-studies.json"
-        studies = load_case_studies(data if data.is_file() else None)
-        return [f"/work/{study['slug']}" for study in studies if study.get("slug")]
+            data = app_root / "site" / "data" / "case-studies.json"
+            studies = load_case_studies(data if data.is_file() else None)
+            return [f"/work/{study['slug']}" for study in studies if study.get("slug")]
+        if path.startswith("/insights/"):
+            from app.insights import list_published_insights  # type: ignore
+
+            data = app_root / "site" / "data" / "insights.json"
+            articles = list_published_insights(data if data.is_file() else None)
+            return [f"/insights/{article['slug']}" for article in articles if article.get("slug")]
     except Exception:  # noqa: BLE001
         return []
+    return []
 
 
 def discover_screenshot_routes(app_root: Path | None = None) -> list[str]:
@@ -196,6 +202,7 @@ def discover_screenshot_routes(app_root: Path | None = None) -> list[str]:
         "/diagnostic",
         "/brief",
         "/brief/success",
+        "/insights",
     ):
         if not is_skipped_api_or_meta_route(fallback):
             found.add(fallback)
@@ -203,6 +210,8 @@ def discover_screenshot_routes(app_root: Path | None = None) -> list[str]:
     # Expand work pages from data even when FastAPI import failed.
     if not any(p.startswith("/work/") for p in found):
         found.update(_expand_param_route("/work/{slug}", root))
+    if not any(p.startswith("/insights/") for p in found):
+        found.update(_expand_param_route("/insights/{slug}", root))
 
     # Stable order: home first, then lexical.
     ordered = sorted(found, key=lambda p: (p != "/", p))

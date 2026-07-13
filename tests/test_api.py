@@ -159,6 +159,15 @@ def test_home_has_proof_section() -> None:
 
 
 @pytest.mark.unit
+def test_home_has_insights_navigation() -> None:
+    body = client.get("/").text
+    assert 'id="insights"' in body
+    assert 'href="/insights"' in body
+    assert "/insights/empty-wallets-active-positions" in body
+    assert "/insights/mvp-competing-sources-of-truth" in body
+
+
+@pytest.mark.unit
 def test_case_study_page() -> None:
     response = client.get("/work/brave")
     assert response.status_code == 200

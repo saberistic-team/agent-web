@@ -44,6 +44,7 @@ def test_sitemap_contains_only_indexable_paths() -> None:
     ]
     assert "https://saberistic.com/brief/success" not in locs
     assert any(loc.startswith("https://saberistic.com/work/") for loc in locs)
+    assert any(loc.startswith("https://saberistic.com/insights/") for loc in locs)
 
 
 @pytest.mark.unit
@@ -75,6 +76,7 @@ def test_sitemap_xml_route() -> None:
         ("/services", "https://saberistic.com/services"),
         ("/case-studies", "https://saberistic.com/case-studies"),
         ("/diagnostic", "https://saberistic.com/diagnostic"),
+        ("/insights", "https://saberistic.com/insights"),
     ],
 )
 def test_indexable_pages_have_single_canonical(path: str, expected_href: str) -> None:

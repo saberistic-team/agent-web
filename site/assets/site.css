@@ -621,6 +621,90 @@ main {
   align-items: center;
 }
 
+.insights-index,
+.insight-article {
+  padding-top: 3rem;
+}
+
+.insight-eyebrow {
+  margin: 0 0 0.75rem;
+  color: var(--muted);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+}
+
+.insight-title {
+  margin-bottom: 1rem;
+}
+
+.insight-meta {
+  margin: 0 0 1.5rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+}
+
+.insight-problem {
+  margin: 0 0 2rem;
+  max-width: 58ch;
+  color: var(--ink);
+  font-size: 1.05rem;
+  line-height: 1.65;
+}
+
+.insight-section {
+  margin: 2.5rem 0 0;
+  max-width: 65ch;
+}
+
+.insight-section-title {
+  margin: 0 0 0.75rem;
+  font-family: var(--display);
+  font-size: 0.95rem;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.insight-section p {
+  margin: 0 0 1rem;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.insight-cta-row {
+  margin: 3rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+}
+
+.insights-feed,
+.insights-more {
+  margin: 2rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.insights-feed a,
+.insights-more a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.2s ease;
+}
+
+.insights-feed a:hover,
+.insights-feed a:focus-visible,
+.insights-more a:hover,
+.insights-more a:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
 @media (max-width: 640px) {
   .proof-link {
     grid-template-columns: 1fr;

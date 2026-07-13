@@ -16,6 +16,7 @@
   const PAGE_EVENTS = {
     "/": { event: "Landing Viewed", step: 1 },
     "/about": { event: "Service Viewed", step: 2 },
+    "/insights": { event: "Insights Viewed", step: 2 },
     "/brief": { event: "Brief Viewed", step: 3 },
     "/brief/success": { event: "Brief Success Viewed", step: 7 },
   };

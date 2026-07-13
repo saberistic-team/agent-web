@@ -1,0 +1,93 @@
+{
+  "articles": [
+    {
+      "slug": "empty-wallets-active-positions",
+      "status": "published",
+      "title": "Why empty wallets sometimes show active positions",
+      "published_at": "2026-07-10",
+      "author": "AmirSaber Sharifi",
+      "audience": "Founders and engineering leaders building digital-asset products",
+      "problem": "Users report a funded position while the wallet UI shows zero balance — a trust-breaking mismatch that is usually an architecture problem, not a single bad RPC call.",
+      "meta_description": "Why wallet UIs show active positions when balances read empty — indexing lag, custody boundaries, and competing sources of truth in digital-asset products.",
+      "excerpt": "Empty-wallet displays with active positions usually trace to competing read paths, stale indexers, or custody boundaries — not a single flaky RPC.",
+      "paragraphs": [
+        "When a user sees an open position but an empty wallet balance, support tickets blame the RPC provider. Engineering often finds three different answers: the indexer, the custody service, and a direct chain read each report a different state. The UI picked one path and rendered it as truth.",
+        "This is not a cosmetic bug. In digital-asset products, balance and position are separate concepts that only align when your read model, write model, and display layer share explicit freshness rules and reconciliation."
+      ],
+      "sections": [
+        {
+          "title": "Competing read paths",
+          "paragraphs": [
+            "A wallet screen may call a backend portfolio API while position detail comes from an indexer or subgraph. If those systems ingest blocks at different cadences, the user sees a position opened two minutes ago against a balance snapshot from ten minutes ago.",
+            "Architecture fix: define one authoritative read surface per user-facing screen, or label derived fields with provenance and as-of timestamps. Never merge responses from unrelated services without a reconciliation step."
+          ]
+        },
+        {
+          "title": "Custody and signing boundaries",
+          "paragraphs": [
+            "Self-custody, MPC, and exchange-custodied assets often live behind different APIs. A position may be recorded on-chain while spendable balance sits in a pending settlement queue the UI does not query.",
+            "Treat custody tier as part of your domain model. The interface should say which layer each number comes from — especially when regulatory or insurance boundaries split assets across systems."
+          ]
+        },
+        {
+          "title": "What to verify first",
+          "paragraphs": [
+            "Compare block height and ingestion lag across every service feeding the wallet screen. Reproduce with a single wallet address across direct RPC, indexer, and backend API in one script.",
+            "If the mismatch disappears when you force a single source, you have a source-of-truth problem — not a networking problem."
+          ]
+        }
+      ],
+      "cta_label": "Request architecture review",
+      "cta_href": "/brief"
+    },
+    {
+      "slug": "mvp-competing-sources-of-truth",
+      "status": "published",
+      "title": "Five signs an MVP has competing sources of truth",
+      "published_at": "2026-07-13",
+      "author": "AmirSaber Sharifi",
+      "audience": "Seed-stage founders and CTOs shipping an MVP under time pressure",
+      "problem": "The demo works, but dashboards, support tools, and the product disagree on the same entities — a pattern that compounds after product-market fit.",
+      "meta_description": "Five architectural signals that your MVP already has competing sources of truth — and why fixing them early is cheaper than rewriting after traction.",
+      "excerpt": "When dashboards, support tools, and the product disagree on the same entities, you already have competing sources of truth — not a scaling problem for later.",
+      "paragraphs": [
+        "MVPs earn forgiveness for rough edges. They should not earn forgiveness for multiple authoritative definitions of the same noun — user, balance, order, entitlement. That debt shows up as intermittent bugs support cannot reproduce and dashboards founders stop trusting.",
+        "The signs below are architectural, not stylistic. Each one predicts expensive rewrites once investors, compliance, or a second product surface enter the picture."
+      ],
+      "sections": [
+        {
+          "title": "1. Different totals in admin and product",
+          "paragraphs": [
+            "If your internal admin counts active users differently than the app, you have at least two event pipelines or query definitions. Pick one canonical entity lifecycle and make every surface derive from it."
+          ]
+        },
+        {
+          "title": "2. \"Refresh fixes it\" reports",
+          "paragraphs": [
+            "When reloading or waiting resolves a user-visible error, you are often masking eventual consistency without telling the user. Document which reads are strongly consistent and which are best-effort — then align UX to that contract."
+          ]
+        },
+        {
+          "title": "3. Feature flags stored in three places",
+          "paragraphs": [
+            "Client defaults, server config, and a marketing tool each toggling behavior guarantees drift. Centralize entitlement and rollout state with an audit trail."
+          ]
+        },
+        {
+          "title": "4. Spreadsheet reconciliation before board meetings",
+          "paragraphs": [
+            "If metrics for investors are manually assembled from exports, your analytical source of truth is a person — not a system. Automate from the same warehouse or event stream engineering uses for incidents."
+          ]
+        },
+        {
+          "title": "5. No owner for cross-cutting corrections",
+          "paragraphs": [
+            "When a bad record appears, teams debate which database to patch. Assign a write owner per entity and a published correction path. Ad-hoc SQL across services is a symptom, not a workflow."
+          ]
+        }
+      ],
+      "cta_label": "Start Architecture Diagnostic",
+      "cta_href": "/brief"
+    }
+  ]
+}

@@ -69,6 +69,24 @@ def test_case_studies_flow() -> None:
 
 
 @pytest.mark.integration
+def test_insights_flow() -> None:
+    index = client.get("/insights")
+    assert index.status_code == 200
+    assert "/insights/mvp-competing-sources-of-truth" in index.text
+    assert "/insights/empty-wallets-active-positions" in index.text
+
+    article = client.get("/insights/mvp-competing-sources-of-truth")
+    assert article.status_code == 200
+    assert 'href="/brief"' in article.text
+
+    feed = client.get("/insights/feed.xml")
+    assert feed.status_code == 200
+
+    missing = client.get("/insights/unknown-slug")
+    assert missing.status_code == 404
+
+
+@pytest.mark.integration
 def test_about_page_cta_flow() -> None:
     about = client.get("/about")
     assert about.status_code == 200

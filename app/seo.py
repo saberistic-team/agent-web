@@ -17,6 +17,7 @@ STATIC_INDEXABLE_PATHS: tuple[str, ...] = (
     "/services",
     "/case-studies",
     "/diagnostic",
+    "/insights",
 )
 
 # Back-compat alias used by tests and docs examples.
@@ -32,12 +33,15 @@ LEGACY_REDIRECTS: dict[str, str] = {
 
 
 def indexable_paths() -> tuple[str, ...]:
-    """Return all indexable paths including case studies from #65."""
+    """Return all indexable paths including case studies (#65) and insights (#69)."""
     from app.case_studies import load_case_studies
+    from app.insights import list_published_insights
 
     paths = list(STATIC_INDEXABLE_PATHS)
     for study in load_case_studies():
         paths.append(f"/work/{study['slug']}")
+    for article in list_published_insights():
+        paths.append(f"/insights/{article['slug']}")
     return tuple(paths)
 
 

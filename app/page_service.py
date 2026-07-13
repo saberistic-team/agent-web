@@ -12,9 +12,8 @@ from app.config import Settings
 SITE_DIR = Path(__file__).resolve().parent.parent / "site"
 
 
-def serve_page(filename: str, settings: Settings) -> HTMLResponse:
-    """Return a site HTML page, injecting analytics tags when enabled."""
-    page_html = (SITE_DIR / filename).read_text(encoding="utf-8")
+def inject_analytics(page_html: str, settings: Settings) -> str:
+    """Inject Plausible analytics tags when analytics is enabled."""
     if settings.analytics_enabled and settings.plausible_domain:
         domain = html.escape(settings.plausible_domain, quote=True)
         injection = (
@@ -23,4 +22,15 @@ def serve_page(filename: str, settings: Settings) -> HTMLResponse:
         )
         if 'src="/assets/analytics.js"' not in page_html:
             page_html = page_html.replace("</head>", f"{injection}  </head>", 1)
-    return HTMLResponse(content=page_html)
+    return page_html
+
+
+def serve_html(page_html: str, settings: Settings) -> HTMLResponse:
+    """Return HTML with optional analytics injection."""
+    return HTMLResponse(content=inject_analytics(page_html, settings))
+
+
+def serve_page(filename: str, settings: Settings) -> HTMLResponse:
+    """Return a site HTML page, injecting analytics tags when enabled."""
+    page_html = (SITE_DIR / filename).read_text(encoding="utf-8")
+    return serve_html(page_html, settings)

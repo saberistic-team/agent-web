@@ -70,6 +70,8 @@ def test_discover_screenshot_routes_includes_pages_excludes_apis() -> None:
     assert not any(r.startswith("/api/") for r in routes)
     assert not any(r.startswith("/webhooks/") for r in routes)
     assert any(r.startswith("/work/") for r in routes)
+    assert "/insights" in routes
+    assert any(r.startswith("/insights/") for r in routes)
     # Home first for stable evidence ordering.
     assert routes[0] == "/"
 
