@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.metadata import article_json_ld, json_ld_script, social_meta_tags
+from app.metadata import OG_IMAGE_ALT, article_json_ld, json_ld_script, social_meta_tags
 
 
 @pytest.mark.unit
@@ -18,6 +18,7 @@ def test_social_meta_tags_include_og_and_twitter() -> None:
     assert 'property="og:type" content="article"' in tags
     assert 'name="twitter:card" content="summary_large_image"' in tags
     assert "Test title" in tags
+    assert OG_IMAGE_ALT in tags
 
 
 @pytest.mark.unit

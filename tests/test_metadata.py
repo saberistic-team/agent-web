@@ -16,8 +16,20 @@ client = TestClient(app)
 
 SITE_BASE = "https://saberistic.com"
 OG_IMAGE = f"{SITE_BASE}/assets/og-share.png"
-OG_IMAGE_ALT = (
-    "saberistic — AmirSaber Sharifi — filling gaps between markets and tech"
+OG_IMAGE_ALT = "saberistic — high-stakes architecture and engineering leadership"
+
+PROFESSIONAL_SERVICE_DESCRIPTION = (
+    "Architecture and engineering leadership for Seed–Series B fintech, AI, "
+    "digital-asset, and technically complex products."
+)
+PERSON_DESCRIPTION = (
+    "Software architect and engineering leader helping startups resolve "
+    "high-stakes architecture, reliability, security, and scaling problems."
+)
+
+FORBIDDEN_LEGACY_STRINGS = (
+    "Software development — filling gaps between markets and tech",
+    "filling gaps between markets and tech",
 )
 
 # Titles/descriptions match post-#68 SEO copy; OG/Twitter must stay aligned.
@@ -247,6 +259,37 @@ def test_home_json_ld_person_and_professional_service() -> None:
     _collect_types(data, types)
     assert "Person" in types
     assert "ProfessionalService" in types
+
+    graph = data.get("@graph", [])
+    person = next(item for item in graph if item.get("@type") == "Person")
+    org = next(item for item in graph if item.get("@type") == "ProfessionalService")
+    assert person["description"] == PERSON_DESCRIPTION
+    assert org["description"] == PROFESSIONAL_SERVICE_DESCRIPTION
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("path", PUBLIC_PAGES.keys())
+def test_public_pages_have_no_legacy_positioning(path: str) -> None:
+    response = client.get(path)
+    assert response.status_code == 200
+    for forbidden in FORBIDDEN_LEGACY_STRINGS:
+        assert forbidden not in response.text, (
+            f"Legacy positioning found on {path}: {forbidden!r}"
+        )
+
+
+@pytest.mark.unit
+def test_insight_pages_have_no_legacy_positioning() -> None:
+    for slug in ("empty-wallets-active-positions", "mvp-competing-sources-of-truth"):
+        response = client.get(f"/insights/{slug}")
+        assert response.status_code == 200
+        for forbidden in FORBIDDEN_LEGACY_STRINGS:
+            assert forbidden not in response.text, (
+                f"Legacy positioning found on /insights/{slug}: {forbidden!r}"
+            )
+        head = _parse_head(response.text)
+        assert head.meta["og:image:alt"] == OG_IMAGE_ALT
+        assert head.meta["twitter:image:alt"] == OG_IMAGE_ALT
 
 
 @pytest.mark.unit
