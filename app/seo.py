@@ -19,6 +19,11 @@ STATIC_INDEXABLE_PATHS: tuple[str, ...] = (
     "/insights",
 )
 
+# Permanent redirects for retired or consolidated marketing URLs (#83).
+PERMANENT_REDIRECTS: dict[str, str] = {
+    "/diagnostic": "/brief",
+}
+
 # Back-compat alias used by tests and docs examples.
 INDEXABLE_PATHS = STATIC_INDEXABLE_PATHS
 
@@ -28,7 +33,6 @@ LEGACY_REDIRECTS: dict[str, str] = {
     "/what-we-do.html": "/#services",
     "/what-we-did.html": "/#work",
     "/who-we-are.html": "/about",
-    "/diagnostic": "/brief",
 }
 
 
