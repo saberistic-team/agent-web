@@ -40,7 +40,7 @@ Served by the FastAPI app:
 | Route | Purpose |
 |-------|---------|
 | `/robots.txt` | Crawl rules + sitemap pointer |
-| `/sitemap.xml` | Canonical indexable pages (`/`, `/about`, `/brief`, plus `/work/{slug}` case studies from #65) |
+| `/sitemap.xml` | Canonical indexable pages (`/`, `/about`, `/brief`, `/services`, `/case-studies`, `/diagnostic`, plus `/work/{slug}` case studies) |
 | `/what-we-do.html` | 301 → `/#services` |
 | `/what-we-did.html` | 301 → `/#work` |
 | `/who-we-are.html` | 301 → `/about` |

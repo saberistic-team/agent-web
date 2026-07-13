@@ -33,6 +33,16 @@ def test_about_handler_returns_about(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.unit
+def test_site_page_handlers_return_pages(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.main import case_studies_index, diagnostic, services
+
+    monkeypatch.delenv("ANALYTICS_ENABLED", raising=False)
+    assert "Services" in services().body.decode()
+    assert "Case studies" in case_studies_index().body.decode()
+    assert "Diagnostic" in diagnostic().body.decode()
+
+
+@pytest.mark.unit
 def test_brief_handlers_return_pages(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ANALYTICS_ENABLED", raising=False)
     assert 'id="brief-form"' in brief_form().body.decode()
@@ -94,7 +104,8 @@ def test_about_page() -> None:
 def test_landing_ctas() -> None:
     """Primary commercial CTA (brief) and lower-friction secondary (about)."""
     body = client.get("/").text
-    assert body.count("linkedin.com/in/saberistic") == 1
+    # One visible LinkedIn CTA; JSON-LD sameAs may also mention the profile.
+    assert body.count('href="https://www.linkedin.com/in/saberistic"') == 1
     assert 'class="cta" href="/brief"' in body
     assert "Architecture Diagnostic" in body
     assert 'class="cta cta-secondary" href="/about"' in body

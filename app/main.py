@@ -100,10 +100,24 @@ def about() -> HTMLResponse:
     return page_service.serve_page("about.html", get_settings())
 
 
+@app.get("/services")
+def services() -> HTMLResponse:
+    return page_service.serve_page("services.html", get_settings())
+
+
+@app.get("/case-studies")
+def case_studies_index() -> HTMLResponse:
+    return page_service.serve_page("case-studies.html", get_settings())
+
+
+@app.get("/diagnostic")
+def diagnostic() -> HTMLResponse:
+    return page_service.serve_page("diagnostic.html", get_settings())
+
+
 @app.get("/brief")
 def brief_form() -> HTMLResponse:
     return page_service.serve_page("brief.html", get_settings())
-
 
 @app.get("/brief/success")
 def brief_success() -> HTMLResponse:
