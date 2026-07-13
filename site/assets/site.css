@@ -383,3 +383,129 @@ main {
   color: #e88a6a;
   font-size: 0.85rem;
 }
+
+.insights-page,
+.article-page {
+  padding-top: 3rem;
+}
+
+.insights-lede {
+  margin: 0 0 2.5rem;
+  max-width: 58ch;
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1.65;
+}
+
+.insights-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+
+.insights-card {
+  display: grid;
+  gap: 0.45rem;
+  padding: 1.35rem 0;
+  border-bottom: 1px solid var(--line);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.insights-card:hover,
+.insights-card:focus-visible {
+  outline: none;
+}
+
+.insights-card:hover .insights-card-title,
+.insights-card:focus-visible .insights-card-title {
+  color: var(--accent);
+}
+
+.insights-card-date {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.insights-card-title {
+  font-family: var(--display);
+  font-size: clamp(1.2rem, 2.5vw, 1.6rem);
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.insights-card-audience {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.insights-card-summary {
+  color: var(--muted);
+  max-width: 58ch;
+}
+
+.article-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0 0 2.5rem;
+  max-width: 65ch;
+  color: var(--muted);
+}
+
+.article-meta-label {
+  color: var(--ink);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.article-prose {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  max-width: 65ch;
+}
+
+.article-prose p,
+.article-prose h2 {
+  margin: 0;
+}
+
+.article-prose p {
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1.65;
+}
+
+.article-prose h2 {
+  margin-top: 0.75rem;
+  font-family: var(--display);
+  font-size: clamp(1.05rem, 2.2vw, 1.35rem);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.article-cta {
+  margin-top: 3rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--line);
+  max-width: 52ch;
+}
+
+.article-cta-label {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.article-cta-copy {
+  margin: 0 0 1.25rem;
+  color: var(--muted);
+}
