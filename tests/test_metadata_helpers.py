@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import pytest
 
-from app.metadata import OG_IMAGE, OG_IMAGE_ALT, article_json_ld, case_study_json_ld, json_ld_script, social_meta_tags
+from app.metadata import (
+    OG_IMAGE_ALT,
+    article_json_ld,
+    case_study_page_head_tags,
+    case_study_web_page_json_ld,
+    json_ld_script,
+    social_meta_tags,
+)
 
 
 @pytest.mark.unit
@@ -42,12 +49,25 @@ def test_article_json_ld_includes_modified_date() -> None:
 
 
 @pytest.mark.unit
-def test_case_study_json_ld_uses_web_page_with_image() -> None:
-    script = case_study_json_ld(
-        title="Brave — Infrastructure for privacy-aligned payments · saberistic",
-        description="How infrastructure architecture supported privacy-sensitive payment systems at Brave.",
+def test_case_study_web_page_json_ld_includes_is_part_of() -> None:
+    script = case_study_web_page_json_ld(
+        title="Brave — Infrastructure · saberistic",
+        description="Prior employer role.",
         url="https://saberistic.com/work/brave",
     )
     assert '"@type":"WebPage"' in script
-    assert f'"image":"{OG_IMAGE}"' in script
-    assert OG_IMAGE_ALT not in script
+    assert '"@type":"ProfessionalService"' in script
+    assert '"isPartOf"' in script
+
+
+@pytest.mark.unit
+def test_case_study_page_head_tags_include_canonical_and_social() -> None:
+    tags = case_study_page_head_tags(
+        title="Brave — Infrastructure · saberistic",
+        description="Prior employer role.",
+        canonical_path="/work/brave",
+    )
+    assert 'rel="canonical" href="https://saberistic.com/work/brave"' in tags
+    assert 'property="og:url" content="https://saberistic.com/work/brave"' in tags
+    assert 'name="twitter:card" content="summary_large_image"' in tags
+    assert '"@type":"WebPage"' in tags
