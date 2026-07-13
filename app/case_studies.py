@@ -129,7 +129,7 @@ def render_case_study_page(study: dict[str, Any]) -> str:
           alt="saberistic"
         />
       </a>
-      <a class="top-link" href="/">Home</a>
+      <a class="top-link" href="/insights">Insights</a>
     </header>
 
     <main>
