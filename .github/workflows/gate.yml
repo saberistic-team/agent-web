@@ -172,6 +172,12 @@ jobs:
           )"
               exit 1
             fi
+            # Keep PR review label in sync after merge (closed PRs still accept labels).
+            GITHUB_TOKEN="${GH_TOKEN}" python scripts/pr_labels.py \
+              --repo "${{ github.repository }}" \
+              --issue "${ISSUE}" \
+              --pr "${pr}" \
+              --review review:approved || true
             MERGE_SHA="$(gh pr view "${pr}" --repo "${{ github.repository }}" --json mergeCommit --jq '.mergeCommit.oid // empty')"
             gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
           ### gate_merge
@@ -180,6 +186,7 @@ jobs:
           - strategy: squash
           - commit: \`${MERGE_SHA}\`
           - actor_checked: \`${{ github.actor }}\`
+          - pr_labels: mirrored \`review:approved\`
           EOF
           )"
             python scripts/acceptance.py \

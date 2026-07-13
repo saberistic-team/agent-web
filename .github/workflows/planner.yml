@@ -151,11 +151,15 @@ jobs:
               --repo "${{ github.repository }}" \
               --remove-label "status:new" \
               --add-label "status:queued"
+            gh issue edit "${ISSUE}" \
+              --repo "${{ github.repository }}" \
+              --remove-label "agent:planner" 2>/dev/null || true
           fi
           gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
           ### planner_release
           - actor_checked: \`${{ github.actor }}\`
           - result: queued_or_parent_done
+          - next: dispatcher (priority queue)
           EOF
           )"
 

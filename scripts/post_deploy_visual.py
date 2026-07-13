@@ -20,6 +20,7 @@ from github_api import GitHubError, api, post_issue_comment, split_repo
 from screenshot_deploy import (
     capture,
     comment_markdown,
+    is_production_pre_shot,
     resolve_base_url,
     upload_to_branch,
     wait_healthy,
@@ -116,6 +117,7 @@ def find_issue_from_commit(repo: str, sha: str) -> int | None:
 
 
 def list_pre_urls(repo: str, ref: str, pr: int | None) -> list[str]:
+    """Return production pre baseline URLs (exclude ``branch-*.png`` PR previews)."""
     owner, name = split_repo(repo)
     if not pr:
         return []
@@ -129,7 +131,8 @@ def list_pre_urls(repo: str, ref: str, pr: int | None) -> list[str]:
     urls = []
     for node in nodes:
         path = node.get("path") or ""
-        if "pre-" in path and path.endswith(".png"):
+        name_part = path.rsplit("/", 1)[-1]
+        if is_production_pre_shot(name_part):
             urls.append(
                 f"https://raw.githubusercontent.com/{owner}/{name}/{ref}/{path}"
             )
@@ -404,7 +407,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
         out = Path("trace/screenshots-post")
-        post_files = capture(base_url, out, phase="post")
+        post_files = capture(base_url, out, phase="post").paths
         short = (args.sha or "local")[:12]
         prefix = (
             f".agent/screenshots/issue-{issue_num}/post"
@@ -431,7 +434,11 @@ def main(argv: list[str] | None = None) -> int:
 
         issue = api("GET", f"/repos/{owner}/{name}/issues/{issue_num}")
 
-        pre_files = sorted(Path("trace/screenshots").glob("pre-*.png"))
+        pre_files = sorted(
+            p
+            for p in Path("trace/screenshots").glob("pre-*.png")
+            if is_production_pre_shot(p.name)
+        )
         pre_urls = list_pre_urls(args.repo, default, args.pr) if not pre_files else []
         if pre_files:
             pre_urls = upload_to_branch(

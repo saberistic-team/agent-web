@@ -24,8 +24,8 @@ def create_checkout_session(
                     "currency": "usd",
                     "unit_amount": price_cents,
                     "product_data": {
-                        "name": "Project Brief Request",
-                        "description": f"Project brief review for {website}",
+                        "name": "Architecture Diagnostic",
+                        "description": f"Architecture Diagnostic for {website}",
                     },
                 },
                 "quantity": 1,

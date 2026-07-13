@@ -4,7 +4,13 @@ import base64
 
 import pytest
 
-from codegen_models import is_ui_design_issue, select_provider, validate_plan
+from codegen_models import (
+    is_binary_path,
+    is_ui_design_issue,
+    resolve_builder_branch,
+    select_provider,
+    validate_plan,
+)
 from github_api import GitHubError
 
 
@@ -22,6 +28,60 @@ def test_validate_plan_accepts_unpadded_content_b64() -> None:
         {"files": [{"path": "site/about.html", "content_b64": unpadded}]}
     )
     assert files == [{"path": "site/about.html", "content": text}]
+
+
+def test_validate_plan_preserves_binary_content_b64() -> None:
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
+    files = validate_plan(
+        {
+            "files": [
+                {
+                    "path": "site/assets/og-share.png",
+                    "content_b64": base64.b64encode(png).decode(),
+                }
+            ]
+        }
+    )
+    assert files == [{"path": "site/assets/og-share.png", "content": png}]
+    assert files[0]["content"][:4] == b"\x89PNG"
+
+
+def test_is_binary_path() -> None:
+    assert is_binary_path("site/assets/og-share.png")
+    assert not is_binary_path("site/index.html")
+
+
+def test_resolve_builder_branch_reuses_open_pr_head(monkeypatch) -> None:
+    pr = {
+        "number": 76,
+        "title": "builder: P1 — Add Open Graph (#67)",
+        "body": "Closes #67",
+        "head": {"ref": "builder/67-p1-add-open-graph-structured-data-and-sh"},
+    }
+
+    monkeypatch.setattr(
+        "codegen_models.linked_open_prs",
+        lambda repo, issue: [pr],
+    )
+    branch, linked = resolve_builder_branch(
+        "saberistic-team/agent-web",
+        67,
+        "Add Open Graph, structured data, and share-ready metadata",
+    )
+    assert branch == "builder/67-p1-add-open-graph-structured-data-and-sh"
+    assert linked is pr
+
+
+def test_resolve_builder_branch_falls_back_to_slug(monkeypatch) -> None:
+    monkeypatch.setattr("codegen_models.linked_open_prs", lambda repo, issue: [])
+    branch, linked = resolve_builder_branch(
+        "saberistic-team/agent-web",
+        67,
+        "Add Open Graph, structured data, and share-ready metadata",
+    )
+    assert branch.startswith("builder/67-")
+    assert "open-graph" in branch
+    assert linked is None
 
 
 def test_select_provider_prefers_cursor_when_key_set(monkeypatch) -> None:

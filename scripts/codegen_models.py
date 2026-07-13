@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from github_api import GitHubError, api, post_issue_comment, split_repo, token
+from pr_labels import apply_pr_mirror
 
 DEFAULT_MODEL = "openai/gpt-4o-mini"
 DEFAULT_OPENAI_MODEL = "gpt-4.1-mini"
@@ -108,9 +109,48 @@ def is_ui_design_issue(title: str, body: str) -> bool:
     )
 
 
+BINARY_PATH_SUFFIXES = (
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+    ".gif",
+    ".ico",
+    ".pdf",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".otf",
+    ".zip",
+)
+
+
 def slugify(text: str, limit: int = 40) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
     return (slug or "work")[:limit]
+
+
+def is_binary_path(path: str) -> bool:
+    """Return True when Contents API must preserve raw bytes (not UTF-8 text)."""
+    lower = path.lower()
+    return any(lower.endswith(suffix) for suffix in BINARY_PATH_SUFFIXES)
+
+
+def resolve_builder_branch(
+    repo: str, issue: int, title: str
+) -> tuple[str, dict[str, Any] | None]:
+    """Prefer an open linked PR head so Builder never forks a parallel branch.
+
+    Title-derived slugs drift (e.g. ``P1 — …`` vs bare title) and previously
+    created ghost branches that Reviewer never sees.
+    """
+    prs = linked_open_prs(repo, issue)
+    if prs:
+        pr = prs[0]
+        head = ((pr.get("head") or {}).get("ref") or "").strip()
+        if head:
+            return head, pr
+    return f"builder/{issue}-{slugify(title)}", None
 
 
 def repo_context(cwd: Path, *, ui: bool = False) -> str:
@@ -267,13 +307,13 @@ def extract_json(text: str) -> dict[str, Any]:
     return data
 
 
-def validate_plan(plan: dict[str, Any]) -> list[dict[str, str]]:
+def validate_plan(plan: dict[str, Any]) -> list[dict[str, Any]]:
     files = plan.get("files")
     if not isinstance(files, list) or not files:
         raise GitHubError("model plan missing non-empty files[]")
     if len(files) > MAX_FILES:
         raise GitHubError(f"model proposed too many files ({len(files)} > {MAX_FILES})")
-    out: list[dict[str, str]] = []
+    out: list[dict[str, Any]] = []
     for item in files:
         if not isinstance(item, dict):
             raise GitHubError("each files[] entry must be an object")
@@ -294,9 +334,19 @@ def validate_plan(plan: dict[str, Any]) -> list[dict[str, str]]:
                 if pad:
                     cleaned = cleaned + ("=" * pad)
                 raw = base64.b64decode(cleaned, validate=False)
-                text = raw.decode("utf-8", errors="replace")
             except Exception as exc:
                 raise GitHubError(f"invalid content_b64 for {path}: {exc}") from exc
+            if is_binary_path(path):
+                if len(raw) > MAX_FILE_CHARS:
+                    raise GitHubError(f"file too large: {path}")
+                out.append({"path": path, "content": raw})
+                continue
+            try:
+                text = raw.decode("utf-8")
+            except UnicodeDecodeError as exc:
+                raise GitHubError(
+                    f"content_b64 for text path {path} is not valid UTF-8: {exc}"
+                ) from exc
         else:
             text = content if isinstance(content, str) else json.dumps(content, indent=2)
         if len(text) > MAX_FILE_CHARS:
@@ -318,11 +368,14 @@ def ensure_branch(repo: str, branch: str, base_sha: str) -> None:
             raise
 
 
-def put_file(repo: str, branch: str, path: str, content: str, message: str) -> None:
+def put_file(
+    repo: str, branch: str, path: str, content: str | bytes, message: str
+) -> None:
     owner, name = split_repo(repo)
     # Ensure Contents API always has a GitHub token for mutations.
     token()
-    content_b64 = base64.b64encode(content.encode("utf-8")).decode("ascii")
+    raw = content.encode("utf-8") if isinstance(content, str) else content
+    content_b64 = base64.b64encode(raw).decode("ascii")
     put_body: dict[str, Any] = {
         "message": message,
         "content": content_b64,
@@ -474,7 +527,7 @@ def build_with_models(
     default = api("GET", f"/repos/{owner}/{name}").get("default_branch") or "main"
     ref = api("GET", f"/repos/{owner}/{name}/git/ref/heads/{default}")
     base_sha = ref["object"]["sha"]
-    branch = f"builder/{issue}-{slugify(title)}"
+    branch, existing_pr = resolve_builder_branch(repo, issue, title)
 
     system = json_system_prompt(ui=ui)
     # Thin planner child issues often only say "User flow" — pull parent context.
@@ -568,9 +621,8 @@ def build_with_models(
             f"{commit_message} ({item['path']})",
         )
 
-    prs = linked_open_prs(repo, issue)
-    if prs:
-        pr_number = int(prs[0]["number"])
+    if existing_pr:
+        pr_number = int(existing_pr["number"])
         created = False
     else:
         pr = api(
@@ -593,6 +645,13 @@ def build_with_models(
         )
         pr_number = int(pr["number"])
         created = True
+
+    apply_pr_mirror(
+        repo,
+        issue,
+        pr_number,
+        default_review="review:needs-review",
+    )
 
     comment = (
         "### builder_result\n"

@@ -146,6 +146,7 @@ def insight_article(slug: str) -> HTMLResponse:
 
 
 @app.get("/insights.atom")
+@app.get("/insights/feed.atom")
 def insights_atom_feed() -> Response:
     return Response(content=articles.atom_feed(), media_type="application/atom+xml")
 

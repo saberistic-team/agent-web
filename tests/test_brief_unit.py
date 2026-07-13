@@ -92,6 +92,7 @@ def test_create_checkout_session_calls_stripe() -> None:
     kwargs = create.call_args.kwargs
     assert kwargs["metadata"]["brief_id"] == "3"
     assert kwargs["line_items"][0]["price_data"]["unit_amount"] == 20_000
+    assert kwargs["line_items"][0]["price_data"]["product_data"]["name"] == "Architecture Diagnostic"
 
 
 @pytest.mark.unit

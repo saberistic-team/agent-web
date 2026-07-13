@@ -1,7 +1,8 @@
 name: Weekly trace digest
 
 # Posts a plain-language summary of the last 7 days of agent-trace lines
-# onto a tracking issue for non-technical stakeholders.
+# onto a tracking issue for non-technical stakeholders (issues, PRs,
+# features completed, screenshot evidence, cost, failures).
 on:
   schedule:
     # Mondays 15:00 UTC
@@ -85,7 +86,7 @@ jobs:
           fi
           URL="$(gh issue create --repo "${{ github.repository }}" \
             --title "${TITLE}" \
-            --body "Tracking issue for the weekly agent-trace digest. Stakeholders can follow this issue for a plain-language summary of agent activity (actions, cost, failures)." \
+            --body "Tracking issue for the weekly agent-trace digest. Stakeholders can follow this issue for a plain-language summary of agent activity (issues, PRs, features completed, screenshots, cost, failures)." \
             --label "type:docs")"
           NUMBER="$(basename "${URL}")"
           echo "Created ${URL}"

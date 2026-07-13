@@ -7,7 +7,7 @@ hello-world HTTP API used to exercise the loop.
 
 - [Copilot (deferred)](docs/COPILOT.md) — rolled back; OpenAI is primary
 - [Project brief (#41)](docs/PROJECT_BRIEF.md) — $200 intake flow; deferred scope noted
-- [Labels](docs/LABELS.md) — label taxonomy and routing rules
+- [Labels](docs/LABELS.md) — label taxonomy, priority queue, routing, and [project board](https://github.com/orgs/saberistic-team/projects/8)
 - [Identities](docs/IDENTITIES.md) — agent identity definitions
 - [Trace](docs/TRACE.md) — `agent-trace.jsonl` schema and jq queries
 - [Hello API](docs/HELLO_API.md) — local run and Render deploy
@@ -17,6 +17,8 @@ hello-world HTTP API used to exercise the loop.
 - [Screenshots](docs/SCREENSHOTS.md) — pre-merge + post-deploy visual evidence
 - [Acceptance](docs/ACCEPTANCE.md) — checklist + evidence before close
 - [Testing / coverage](docs/TESTING.md) — unit ≥90% / integration ≥70% on `app/`
+
+Milestone: [Website marketing ready](https://github.com/saberistic-team/agent-web/milestone/1) · Board: [agent-web Kanban](https://github.com/orgs/saberistic-team/projects/8/views/2)
 
 ## Hello API
 

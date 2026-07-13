@@ -6,12 +6,38 @@ is set. OpenAI and GitHub Models are backups (OpenAI quota is often exhausted).
 
 ## Builder flow
 
-1. Issue gets `agent:builder`
-2. Special cases: verify/smoke (no model); missing landing scaffold → block
-3. **Cursor agent** implements the change (`CURSOR_RUNTIME=local` by default)
-4. Thin child issues that say `Parent: #N` also pull the parent issue body into
+1. Planner queues with `type:*` + `priority:*` + `status:queued`
+2. Dispatcher applies `agent:builder` (highest priority first when free)
+3. Special cases: verify/smoke (no model); missing landing scaffold → block
+4. **Cursor agent** implements the change (`CURSOR_RUNTIME=local` by default)
+5. Thin child issues that say `Parent: #N` also pull the parent issue body into
    the prompt
-5. Reviewer (acceptance checklist + screenshots)
+6. If the linked PR conflicts with its base, **`builder_conflicts`** merges base
+   into the PR head using recently closed issues/PRs as resolution context
+   ([AGENTS/builder.md](../AGENTS/builder.md) — Merge conflicts). Builder only
+   hands off when the PR is clean; otherwise it re-enters `status:queued`.
+   **Pitfall:** the conflict clone uses `--single-branch`; fetching the base
+   must use an explicit refspec (`+refs/heads/main:refs/remotes/origin/main`)
+   or `git merge origin/main` fails and loops Builder↔Reviewer.
+7. Reviewer (acceptance checklist + screenshots). If the PR is dirty again
+   (e.g. another merge landed), Reviewer requests changes and requeues Builder.
+
+### Branch / PR binding (no stray branches)
+
+Builder must keep **one open PR and one head branch per issue**.
+
+| Step | Behavior |
+|------|----------|
+| Open linked PR exists | `resolve_builder_branch()` uses that PR’s `head.ref` for all commits |
+| No open linked PR | Create `builder/{issue}-{slugify(title)}` and open the PR |
+| Re-queue after changes-requested | Same PR head — never a second `builder/{issue}-…` from a retitled slug |
+
+Title-only slugs drift (e.g. `P1 — …` vs bare title) and previously forked
+Reviewer onto a ghost branch while the real PR stayed stale. See
+[AGENTS/builder.md](../AGENTS/builder.md) — **Branch and PR reuse**.
+
+Binary paths (`.png`, `.jpg`, …) go through Contents API as raw bytes so share
+images are not UTF-8-corrupted.
 
 ## Reviewer AI flow
 

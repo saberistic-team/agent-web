@@ -23,6 +23,8 @@ from github_api import (
     post_issue_comment,
     split_repo,
 )
+from pr_labels import apply_pr_mirror
+from priority import infer_priority_label
 
 HANDOFF_DIR = Path("trace")
 BUILDER_HANDOFF = HANDOFF_DIR / "builder-handoff.txt"
@@ -94,6 +96,81 @@ def write_builder_handoff(mode: str) -> None:
         raise GitHubError(f"invalid builder handoff mode: {mode!r}")
     HANDOFF_DIR.mkdir(parents=True, exist_ok=True)
     BUILDER_HANDOFF.write_text(mode + "\n", encoding="utf-8")
+
+
+def handoff_builder_when_mergeable(repo: str, issue: int) -> None:
+    """Resolve conflicts if needed; hand off to Reviewer only when the PR is clean.
+
+    Unresolved conflicts re-enter the priority queue (``waiting``) so Builder
+    runs again — never send a dirty PR to Reviewer.
+    """
+    from builder_conflicts import (
+        linked_pr_conflict_status,
+        maybe_resolve_pr_conflicts,
+    )
+
+    HANDOFF_DIR.mkdir(parents=True, exist_ok=True)
+    _CONFLICT_OK = frozenset({"clean", "merged_clean", "resolved", "no_pr"})
+
+    try:
+        conflict = maybe_resolve_pr_conflicts(repo, issue)
+        conflict_status = (conflict.get("status") or "").strip()
+        (HANDOFF_DIR / "builder-conflict.txt").write_text(
+            f"{conflict_status}\n",
+            encoding="utf-8",
+        )
+        if conflict_status and conflict_status not in _CONFLICT_OK:
+            post_issue_comment(
+                repo,
+                issue,
+                (
+                    "### builder_conflict_result\n"
+                    f"- status: `{conflict_status}`\n"
+                    f"- pr: #{conflict.get('pr')}\n"
+                    "- note: conflict resolution did not finish cleanly; "
+                    "re-entering `status:queued` (not handing off to Reviewer).\n"
+                ),
+            )
+            write_builder_handoff("waiting")
+            return
+    except Exception as conflict_exc:
+        post_issue_comment(
+            repo,
+            issue,
+            (
+                "### builder_conflict_result\n"
+                f"- status: `failed`\n"
+                f"- error: `{conflict_exc}`\n"
+                "- note: codegen succeeded; unresolved merge conflicts — "
+                "re-entering `status:queued` (do not open a second branch).\n"
+            ),
+        )
+        (HANDOFF_DIR / "builder-conflict.txt").write_text("failed\n", encoding="utf-8")
+        write_builder_handoff("waiting")
+        return
+
+    status = linked_pr_conflict_status(repo, issue)
+    if status.get("status") == "dirty":
+        post_issue_comment(
+            repo,
+            issue,
+            (
+                "### builder_conflict_result\n"
+                f"- status: `still_dirty`\n"
+                f"- pr: #{status.get('pr')}\n"
+                f"- mergeable: `{status.get('mergeable')}`\n"
+                f"- mergeable_state: `{status.get('mergeable_state')}`\n"
+                "- note: not handing off to Reviewer; re-entering `status:queued` "
+                "to keep resolving on the same PR head.\n"
+            ),
+        )
+        (HANDOFF_DIR / "builder-conflict.txt").write_text(
+            "still_dirty\n", encoding="utf-8"
+        )
+        write_builder_handoff("waiting")
+        return
+
+    write_builder_handoff("reviewer")
 
 
 def is_verify_deploy_issue(title: str, body: str) -> bool:
@@ -246,6 +323,12 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
             type_label = "type:feature"
         ensure_label(repo, issue, type_label)
 
+    priority_label = infer_priority_label(title, body, labels)
+    if not any(l.startswith("priority:") for l in labels):
+        ensure_label(repo, issue, priority_label)
+    else:
+        priority_label = next(l for l in labels if l.startswith("priority:"))
+
     areas = plan_change_areas(body)
     max_children = 4
     agent_label = "agent:docs" if type_label == "type:docs" else "agent:builder"
@@ -255,20 +338,32 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
         children: list[int] = []
         owner, name = split_repo(repo)
         for area in areas:
+            # Queue only: dispatcher applies agent:* by priority order.
             child = api(
                 "POST",
                 f"/repos/{owner}/{name}/issues",
                 body={
                     "title": f"{title}: {area.strip()[:80]}",
                     "body": child_issue_body(issue, area, body),
-                    "labels": [agent_label, type_label, "status:queued"],
+                    "labels": [
+                        type_label,
+                        priority_label,
+                        "status:queued",
+                    ],
                 },
             )
             children.append(int(child["number"]))
             post_issue_comment(
                 repo,
                 child["number"],
-                f"### planner_plan\nQueued as one-commit child of #{issue}.\n",
+                (
+                    f"### planner_plan\n"
+                    f"Queued as one-commit child of #{issue}.\n"
+                    f"- type: `{type_label}`\n"
+                    f"- priority: `{priority_label}`\n"
+                    f"- intended_agent: `{agent_label}`\n"
+                    "- awaiting: dispatcher (priority queue)\n"
+                ),
             )
         trace = Path(f"trace/planner-{issue}-children.txt")
         trace.parent.mkdir(parents=True, exist_ok=True)
@@ -277,7 +372,8 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
             f"### planner_plan\n"
             f"- mode: children\n"
             f"- type: `{type_label}`\n"
-            f"- agent: `{agent_label}`\n"
+            f"- priority: `{priority_label}`\n"
+            f"- intended_agent: `{agent_label}`\n"
             f"- children: {', '.join(f'#{n}' for n in children)}\n"
             f"- granularity: one commit per child\n"
             f"- brief: `{brief}`\n"
@@ -288,16 +384,19 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
                 remove_label(repo, issue, label)
         ensure_label(repo, issue, "agent:planner")
     else:
+        # Do not apply agent:builder/docs yet — dispatcher starts runs by priority.
         for label in list(labels):
             if label.startswith("agent:"):
                 remove_label(repo, issue, label)
-        ensure_label(repo, issue, agent_label)
+        ensure_label(repo, issue, "agent:planner")
         plan = (
             f"### planner_plan\n"
             f"- mode: single\n"
             f"- type: `{type_label}`\n"
-            f"- agent: `{agent_label}`\n"
+            f"- priority: `{priority_label}`\n"
+            f"- intended_agent: `{agent_label}`\n"
             f"- granularity: one commit on this issue\n"
+            f"- awaiting: dispatcher after `status:queued`\n"
             f"- brief: `{brief}`\n"
         )
         post_issue_comment(repo, issue, plan)
@@ -426,18 +525,32 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
                     ),
                 },
             )
+            pr_number = int(pr["number"])
+            apply_pr_mirror(
+                repo,
+                issue,
+                pr_number,
+                default_review="review:needs-review",
+            )
             post_issue_comment(
                 repo,
                 issue,
-                f"### builder_result\n- kind: `infra-screenshots`\n- pr: #{pr['number']}\n",
+                f"### builder_result\n- kind: `infra-screenshots`\n- pr: #{pr_number}\n",
             )
         else:
+            pr_number = int(prs[0]["number"])
+            apply_pr_mirror(
+                repo,
+                issue,
+                pr_number,
+                default_review="review:needs-review",
+            )
             post_issue_comment(
                 repo,
                 issue,
-                f"### builder_result\n- kind: `infra-screenshots`\n- existing_pr: #{prs[0]['number']}\n",
+                f"### builder_result\n- kind: `infra-screenshots`\n- existing_pr: #{pr_number}\n",
             )
-        write_builder_handoff("reviewer")
+        handoff_builder_when_mergeable(repo, issue)
         return
 
     # Product work: OpenAI primary; GitHub Models optional backup.
@@ -456,7 +569,8 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
             f"{result.get('provider')}:{result.get('model')}\n",
             encoding="utf-8",
         )
-        write_builder_handoff("reviewer")
+        # After codegen, merge base if dirty; hand off only when mergeable.
+        handoff_builder_when_mergeable(repo, issue)
     except Exception as exc:
         escalate(
             repo,
@@ -536,16 +650,21 @@ def role_docs(repo: str, issue: int, brief: Path) -> None:
                 "body": f"Closes #{issue}\n\nDocs agent brief: `{brief}`.\n",
             },
         )
+        pr_number = int(pr["number"])
+        # Docs skips Reviewer; mirror type/priority only (no review:*).
+        apply_pr_mirror(repo, issue, pr_number, default_review=None)
         post_issue_comment(
             repo,
             issue,
-            f"### docs_result\n- branch: `{branch}`\n- pr: #{pr['number']}\n",
+            f"### docs_result\n- branch: `{branch}`\n- pr: #{pr_number}\n",
         )
     else:
+        pr_number = int(prs[0]["number"])
+        apply_pr_mirror(repo, issue, pr_number, default_review=None)
         post_issue_comment(
             repo,
             issue,
-            f"### docs_result\n- branch: `{branch}`\n- existing_pr: #{prs[0]['number']}\n",
+            f"### docs_result\n- branch: `{branch}`\n- existing_pr: #{pr_number}\n",
         )
 
 
@@ -558,11 +677,49 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
     owner, name = split_repo(repo)
     pr_number = pr["number"]
 
+    hard_fail_reasons: list[str] = []
+
+    # Merge conflicts first — return to Builder; skip the rest of the budget.
+    try:
+        from builder_conflicts import (
+            format_merge_conflict_hard_fail,
+            linked_pr_conflict_status,
+        )
+
+        conflict_status = linked_pr_conflict_status(repo, issue)
+        if conflict_status.get("status") == "dirty":
+            hard_fail_reasons.append(format_merge_conflict_hard_fail(conflict_status))
+        elif conflict_status.get("pr_payload"):
+            pr = conflict_status["pr_payload"]
+            pr_number = int(pr["number"])
+    except Exception as conflict_exc:
+        hard_fail_reasons.append(
+            f"mergeability check failed: {conflict_exc} — "
+            "treat as conflict and return to Builder"
+        )
+
+    if hard_fail_reasons:
+        event = "REQUEST_CHANGES"
+        body = (
+            "### reviewer_decision\n"
+            f"- decision: `changes-requested`\n"
+            f"- brief: `{brief}`\n"
+            "- hard_fails:\n"
+            + "\n".join(f"  - {r}" for r in hard_fail_reasons)
+            + "\n"
+        )
+        api(
+            "POST",
+            f"/repos/{owner}/{name}/pulls/{pr_number}/reviews",
+            body={"commit_id": pr["head"]["sha"], "event": event, "body": body},
+        )
+        post_issue_comment(repo, issue, body)
+        return
+
     # Hard fails from commit status / check runs when available
     sha = pr["head"]["sha"]
     status = api("GET", f"/repos/{owner}/{name}/commits/{sha}/status")
     combined = (status.get("state") or "pending").lower()
-    hard_fail_reasons: list[str] = []
     if combined == "failure":
         hard_fail_reasons.append("combined commit status is failure")
 
@@ -670,28 +827,48 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
     else:
         coverage_note = "- coverage: skipped (PR does not touch app/*.py)\n"
 
-    # Pre-merge deploy screenshots (baseline before approve/merge)
+    # Pre-merge screenshots: PR branch (local server) + production baseline
     screenshot_note = ""
     try:
         from screenshot_deploy import (
-            capture,
-            comment_markdown,
+            comment_markdown_pre_dual,
             comment_on_issue_or_pr,
+            capture_pre_dual,
+            format_overflow_hard_fail,
             resolve_base_url,
             upload_to_branch,
         )
 
-        base_url = resolve_base_url(os.environ.get("DEPLOY_BASE_URL"))
+        prod_url = resolve_base_url(os.environ.get("DEPLOY_BASE_URL"))
         out_dir = Path("trace/screenshots")
-        shots = capture(base_url, out_dir, phase="pre")
+        dual = capture_pre_dual(out_dir, prod_base_url=prod_url)
         branch = pr["head"]["ref"]
-        urls = upload_to_branch(
-            repo, branch, shots, f".agent/screenshots/pr-{pr_number}"
+        prefix = f".agent/screenshots/pr-{pr_number}"
+        branch_urls = upload_to_branch(repo, branch, dual.branch_paths, prefix)
+        prod_urls = upload_to_branch(repo, branch, dual.prod_paths, prefix)
+        body_shots = comment_markdown_pre_dual(
+            branch_url=dual.branch_url,
+            prod_url=dual.prod_url,
+            branch_urls=branch_urls,
+            prod_urls=prod_urls,
         )
-        body_shots = comment_markdown("### reviewer_screenshots_pre", base_url, urls)
         comment_on_issue_or_pr(repo, pr_number, body_shots)
         comment_on_issue_or_pr(repo, issue, body_shots)
-        screenshot_note = f"- screenshots_pre: {len(urls)} posted on PR + issue\n"
+        screenshot_note = (
+            f"- screenshots_pre: {len(branch_urls)} branch + {len(prod_urls)} "
+            f"production posted on PR + issue\n"
+            f"- screenshots_branch: `{dual.branch_url}`\n"
+            f"- screenshots_production: `{dual.prod_url}`\n"
+        )
+        overflow_fail = format_overflow_hard_fail(dual.overflows)
+        if overflow_fail:
+            hard_fail_reasons.append(overflow_fail)
+            screenshot_note += (
+                f"- visual_readability: `fail` ({len(dual.overflows)} overflow(s) "
+                "on PR branch)\n"
+            )
+        else:
+            screenshot_note += "- visual_readability: `ok` (PR branch)\n"
         pr = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}")
         sha = pr["head"]["sha"]
     except Exception as exc:

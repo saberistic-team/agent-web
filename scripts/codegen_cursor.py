@@ -17,6 +17,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from github_api import GitHubError, api, post_issue_comment, split_repo
+from pr_labels import apply_pr_mirror
 
 DEFAULT_CURSOR_MODEL = "composer-2.5"
 SKIP_PATH_PREFIXES = (
@@ -93,6 +94,7 @@ def build_prompt(
             "- Follow brutal-minimalist brand rules below for any UI work\n"
             "- Live site reference: https://saberistic.com/\n"
             "- Do not modify .github/workflows agent orchestration unless required\n"
+            "- Binary assets (PNG/JPEG/WebP) must remain valid binary files\n"
         )
     else:
         ship_rules = (
@@ -101,10 +103,12 @@ def build_prompt(
             f"- PR body MUST include `Closes #{issue}`\n"
             f"- Commit messages MUST include `builder(#{issue}): …`\n"
             "- Never push to main/master; only work on a feature branch\n"
+            "- If an open PR already closes this issue, continue on that PR branch\n"
             "- Stay in scope of this issue; no drive-by refactors\n"
             "- Add/update tests under tests/ when behavior changes\n"
             "- Follow brutal-minimalist brand rules below for any UI work\n"
             "- Live site reference: https://saberistic.com/\n"
+            "- Binary assets (PNG/JPEG/WebP) must remain valid binary files\n"
         )
     return (
         f"You are the Builder agent for `{repo}`.\n"
@@ -143,7 +147,7 @@ def _should_skip(rel: str) -> bool:
     return any(rel.startswith(p) or f"/{p}" in f"/{rel}" for p in SKIP_PATH_PREFIXES)
 
 
-def _collect_changed_files(root: Path) -> list[tuple[str, str]]:
+def _collect_changed_files(root: Path) -> list[tuple[str, str | bytes]]:
     """Return (path, content) for tracked+untracked changes vs HEAD."""
     proc = subprocess.run(
         ["git", "status", "--porcelain", "-u"],
@@ -185,7 +189,7 @@ def _collect_changed_files(root: Path) -> list[tuple[str, str]]:
             seen.add(p)
             unique.append(p)
 
-    from codegen_models import MAX_FILE_CHARS
+    from codegen_models import MAX_FILE_CHARS, is_binary_path
 
     max_files = int(os.environ.get("CURSOR_MAX_FILES") or "30")
     if not unique:
@@ -196,13 +200,19 @@ def _collect_changed_files(root: Path) -> list[tuple[str, str]]:
             + ", ".join(unique[:20])
         )
 
-    out: list[tuple[str, str]] = []
+    out: list[tuple[str, str | bytes]] = []
     for rel in unique:
         path = root / rel
         if not path.is_file():
             # deleted file — skip for now (Builder Contents API path is put-only)
             continue
-        text = path.read_text(encoding="utf-8", errors="replace")
+        if is_binary_path(rel):
+            data = path.read_bytes()
+            if len(data) > MAX_FILE_CHARS:
+                raise GitHubError(f"file too large after Cursor edit: {rel}")
+            out.append((rel, data))
+            continue
+        text = path.read_text(encoding="utf-8")
         if len(text) > MAX_FILE_CHARS:
             raise GitHubError(f"file too large after Cursor edit: {rel}")
         out.append((rel, text))
@@ -227,7 +237,6 @@ def _build_local(
     key: str,
 ) -> dict[str, Any]:
     from cursor_sdk import Agent, CursorAgentError, LocalAgentOptions
-    from codegen_models import ensure_branch, linked_open_prs, put_file
 
     root = Path.cwd()
     prompt = build_prompt(
@@ -271,15 +280,16 @@ def _build_local(
     default = api("GET", f"/repos/{owner}/{name}").get("default_branch") or "main"
     ref = api("GET", f"/repos/{owner}/{name}/git/ref/heads/{default}")
     base_sha = ref["object"]["sha"]
-    branch = f"builder/{issue}-{_slugify(title)}"
+    from codegen_models import ensure_branch, put_file, resolve_builder_branch
+
+    branch, existing_pr = resolve_builder_branch(repo, issue, title)
     ensure_branch(repo, branch, base_sha)
     commit_message = f"builder(#{issue}): implement via Cursor SDK"
     for path, content in files:
         put_file(repo, branch, path, content, f"{commit_message} ({path})")
 
-    prs = linked_open_prs(repo, issue)
-    if prs:
-        pr_number = int(prs[0]["number"])
+    if existing_pr:
+        pr_number = int(existing_pr["number"])
         created = False
     else:
         pr = api(
@@ -304,6 +314,13 @@ def _build_local(
         )
         pr_number = int(pr["number"])
         created = True
+
+    apply_pr_mirror(
+        repo,
+        issue,
+        pr_number,
+        default_review="review:needs-review",
+    )
 
     comment = (
         "### builder_result\n"
@@ -451,6 +468,13 @@ def _build_cloud(
             )
     except Exception:
         pass
+
+    apply_pr_mirror(
+        repo,
+        issue,
+        pr_number,
+        default_review="review:needs-review",
+    )
 
     comment = (
         "### builder_result\n"

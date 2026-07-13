@@ -18,34 +18,54 @@ or Acceptance criteria (learned from [#55](https://github.com/saberistic-team/ag
 
 Before any issue enters `status:queued`, it must already carry:
 
-- exactly one `agent:*` (`planner` | `builder` | `reviewer` | `docs`)
 - exactly one `type:*` (`bug` | `feature` | `docs`)
+- exactly one `priority:*` (`critical` | `high` | `normal` | `low`)
 - `status:queued`
+
+Do **not** apply `agent:builder` or `agent:docs` when queuing. The dispatcher
+reads `type:*` + `priority:*`, then applies the agent label when that agent is
+free (highest priority first). Record `intended_agent` in `### planner_plan`.
+
+Board columns follow `status:*` via project sync; you do not edit the project
+UI directly ([docs/LABELS.md](../docs/LABELS.md) — Project board).
 
 If you spawn children, write their numbers (one per line) to
 `trace/planner-<parent>-children.txt`, and ensure each child already has
-`agent:*`, `type:*`, and `status:queued`. Each child body must include the
-parent’s `## Acceptance criteria` (or a minimal checkbox linking back to the
-parent) so Reviewer can verify without re-planning. The parent is then marked
-done by the workflow.
+`type:*`, `priority:*`, and `status:queued` (no run-agent label yet). Each
+child body must include the parent’s `## Acceptance criteria` (or a minimal
+checkbox linking back to the parent) so Reviewer can verify without re-planning.
+The parent is then marked done by the workflow.
 
 ## Definition of done
 
-- Every queued unit of work is labeled (`agent:*` + `type:*` + `status:queued`).
+- Every queued unit of work is labeled (`type:*` + `priority:*` + `status:queued`).
+- `### planner_plan` records `intended_agent` and `priority`.
 - Decomposition matches the one-commit-per-child rule when children exist.
 - Acceptance criteria / scope notes are on the issue (or each child) so the
   owning agent can execute without re-planning.
+- Acceptance criteria avoid requiring **live production URLs** for features not
+  yet merged. Phrase deploy-dependent outcomes as “published in the PR / ready
+  to deploy” (e.g. routes + editorial review doc on the PR head) so Reviewer
+  can approve pre-merge without waiting for Gate + Render.
 - You did not push commits, open implementation PRs, or edit product code.
 
 ## Constraints
 
 - **Never write code** (no commits, branches, or PR bodies that implement).
 - Never grant yourself Contents access or use Builder/Docs credentials.
-- Never leave `status:new` without setting `agent:*` and `type:*` on the
+- Never leave `status:new` without setting `type:*` and `priority:*` on the
   issue you queue (parent single-path or each child).
+- Do **not** label pull requests. PR mirrors (`type:*` / `priority:*` /
+  `review:*`) are applied by Builder, Docs, Reviewer, and Gate after a PR
+  exists. You only label issues.
 - Do not assign `agent:reviewer` as the first owner of new work; route to
-  `builder` or `docs` (or keep `planner` only while still planning).
-- Do not apply `status:queued` until the gate (`release-plan`) has passed.
+  `builder` or `docs` via the dispatcher (keep `agent:planner` only while
+  still planning).
+- Do not apply `status:queued` until the gate (`release-plan`) has passed
+  (single-issue path). Children may be created already queued.
+- Prefer an existing human-set `priority:*`; otherwise infer from issue text
+  (`urgent`/`P0` → critical, `P1`/`important` → high, `nice-to-have` → low,
+  else `priority:normal`).
 
 ## Escalation
 
