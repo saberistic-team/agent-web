@@ -16,8 +16,20 @@ client = TestClient(app)
 
 SITE_BASE = "https://saberistic.com"
 OG_IMAGE = f"{SITE_BASE}/assets/og-share.png"
-OG_IMAGE_ALT = (
-    "saberistic — AmirSaber Sharifi — filling gaps between markets and tech"
+OG_IMAGE_ALT = "saberistic — high-stakes architecture and engineering leadership"
+
+HOME_PERSON_DESCRIPTION = (
+    "Software architect and engineering leader helping startups resolve "
+    "high-stakes architecture, reliability, security, and scaling problems."
+)
+HOME_PROFESSIONAL_SERVICE_DESCRIPTION = (
+    "Architecture and engineering leadership for Seed–Series B fintech, AI, "
+    "digital-asset, and technically complex products."
+)
+
+FORBIDDEN_LEGACY_STRINGS = (
+    "Software development — filling gaps between markets and tech",
+    "filling gaps between markets and tech",
 )
 
 # Titles/descriptions match post-#68 SEO copy; OG/Twitter must stay aligned.
@@ -247,6 +259,32 @@ def test_home_json_ld_person_and_professional_service() -> None:
     _collect_types(data, types)
     assert "Person" in types
     assert "ProfessionalService" in types
+
+    graph = data.get("@graph", [])
+    assert isinstance(graph, list)
+    by_type = {node.get("@type"): node for node in graph if isinstance(node, dict)}
+    assert by_type["Person"]["description"] == HOME_PERSON_DESCRIPTION
+    assert (
+        by_type["ProfessionalService"]["description"]
+        == HOME_PROFESSIONAL_SERVICE_DESCRIPTION
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "path",
+    [
+        *PUBLIC_PAGES.keys(),
+        "/insights/empty-wallets-active-positions",
+        "/insights/mvp-competing-sources-of-truth",
+    ],
+)
+def test_public_pages_exclude_legacy_positioning(path: str) -> None:
+    response = client.get(path)
+    assert response.status_code == 200
+    body = response.text
+    for forbidden in FORBIDDEN_LEGACY_STRINGS:
+        assert forbidden not in body, f"Legacy copy on {path}: {forbidden!r}"
 
 
 @pytest.mark.unit
