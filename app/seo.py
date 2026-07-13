@@ -10,7 +10,14 @@ CANONICAL_BASE = f"{CANONICAL_SCHEME}://{CANONICAL_HOST}"
 
 # Static HTML pages that return 200 and should be indexed.
 # Case-study paths under /work/{slug} are appended from case study data (#65).
-STATIC_INDEXABLE_PATHS: tuple[str, ...] = ("/", "/about", "/brief")
+STATIC_INDEXABLE_PATHS: tuple[str, ...] = (
+    "/",
+    "/about",
+    "/brief",
+    "/services",
+    "/case-studies",
+    "/diagnostic",
+)
 
 # Back-compat alias used by tests and docs examples.
 INDEXABLE_PATHS = STATIC_INDEXABLE_PATHS

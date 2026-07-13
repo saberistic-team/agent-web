@@ -72,6 +72,9 @@ def test_sitemap_xml_route() -> None:
         ("/", "https://saberistic.com/"),
         ("/about", "https://saberistic.com/about"),
         ("/brief", "https://saberistic.com/brief"),
+        ("/services", "https://saberistic.com/services"),
+        ("/case-studies", "https://saberistic.com/case-studies"),
+        ("/diagnostic", "https://saberistic.com/diagnostic"),
     ],
 )
 def test_indexable_pages_have_single_canonical(path: str, expected_href: str) -> None:
