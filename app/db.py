@@ -24,8 +24,21 @@ CREATE TABLE IF NOT EXISTS project_briefs (
         CHECK (status IN ('pending_payment', 'paid', 'abandoned')),
     stripe_session_id TEXT,
     stripe_payment_intent_id TEXT,
-    paid_at TIMESTAMPTZ
+    paid_at TIMESTAMPTZ,
+    utm_source TEXT,
+    utm_medium TEXT,
+    utm_campaign TEXT,
+    utm_content TEXT,
+    utm_term TEXT
 );
+"""
+
+MIGRATION_SQL = """
+ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS utm_source TEXT;
+ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS utm_medium TEXT;
+ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS utm_campaign TEXT;
+ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS utm_content TEXT;
+ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS utm_term TEXT;
 """
 
 
@@ -33,6 +46,7 @@ def init_db(database_url: str) -> None:
     with psycopg.connect(database_url) as conn:
         with conn.cursor() as cur:
             cur.execute(SCHEMA_SQL)
+            cur.execute(MIGRATION_SQL)
         conn.commit()
 
 
@@ -49,15 +63,33 @@ def create_brief(
     contact_method: str,
     contact_value: str,
     brief: str,
+    utm_source: str | None = None,
+    utm_medium: str | None = None,
+    utm_campaign: str | None = None,
+    utm_content: str | None = None,
+    utm_term: str | None = None,
 ) -> int:
     with conn.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO project_briefs (website, contact_method, contact_value, brief, status)
-            VALUES (%s, %s, %s, %s, 'pending_payment')
+            INSERT INTO project_briefs (
+                website, contact_method, contact_value, brief, status,
+                utm_source, utm_medium, utm_campaign, utm_content, utm_term
+            )
+            VALUES (%s, %s, %s, %s, 'pending_payment', %s, %s, %s, %s, %s)
             RETURNING id
             """,
-            (website, contact_method, contact_value, brief),
+            (
+                website,
+                contact_method,
+                contact_value,
+                brief,
+                utm_source,
+                utm_medium,
+                utm_campaign,
+                utm_content,
+                utm_term,
+            ),
         )
         row = cur.fetchone()
         conn.commit()

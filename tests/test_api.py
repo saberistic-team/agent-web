@@ -19,21 +19,24 @@ def test_hello_handler_unit() -> None:
 
 
 @pytest.mark.unit
-def test_home_handler_returns_index() -> None:
+def test_home_handler_returns_index(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ANALYTICS_ENABLED", raising=False)
     response = home()
-    assert response.path.name == "index.html"
+    assert "AmirSaber" in response.body.decode()
 
 
 @pytest.mark.unit
-def test_about_handler_returns_about() -> None:
+def test_about_handler_returns_about(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ANALYTICS_ENABLED", raising=False)
     response = about()
-    assert response.path.name == "about.html"
+    assert "lifelong builder" in response.body.decode()
 
 
 @pytest.mark.unit
-def test_brief_handlers_return_pages() -> None:
-    assert brief_form().path.name == "brief.html"
-    assert brief_success().path.name == "brief-success.html"
+def test_brief_handlers_return_pages(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ANALYTICS_ENABLED", raising=False)
+    assert 'id="brief-form"' in brief_form().body.decode()
+    assert "We received your request." in brief_success().body.decode()
 
 
 @pytest.mark.unit

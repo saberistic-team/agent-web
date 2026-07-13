@@ -141,10 +141,23 @@
           errorEl.hidden = true;
           errorEl.textContent = "";
 
+          const utmRaw = sessionStorage.getItem("saberistic_utm");
+          let utm = {};
+          try {
+            utm = utmRaw ? JSON.parse(utmRaw) : {};
+          } catch (_err) {
+            utm = {};
+          }
+
           const payload = {
             website: form.website.value.trim(),
             brief: form.brief.value.trim(),
             email: form.email.value.trim(),
+            utm_source: utm.utm_source || null,
+            utm_medium: utm.utm_medium || null,
+            utm_campaign: utm.utm_campaign || null,
+            utm_content: utm.utm_content || null,
+            utm_term: utm.utm_term || null,
           };
 
           const submitBtn = form.querySelector(".brief-submit");
