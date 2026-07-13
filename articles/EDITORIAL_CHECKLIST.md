@@ -3,6 +3,9 @@
 Use this checklist before publishing any `/insights` article. It keeps the
 system lightweight while protecting accuracy, confidentiality, and audience fit.
 
+Record launch and major revisions in `articles/LAUNCH_REVIEW.md` with reviewer,
+date, and checklist confirmation.
+
 ## Accuracy
 
 - [ ] Claims are technically correct and reflect generally accepted practice.
