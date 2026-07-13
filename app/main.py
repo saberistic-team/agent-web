@@ -8,12 +8,28 @@ from pathlib import Path
 from typing import AsyncIterator
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+)
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app import articles, db, email_service, stripe_service
-from app.config import Settings, get_settings
+from app import analytics_service, articles, case_studies, db, email_service, page_service, stripe_service
+from app.config import get_settings
 from app.models import BriefCreateRequest, BriefCreateResponse
+from app.seo import (
+    LEGACY_REDIRECTS,
+    apex_redirect_url,
+    is_www_host,
+    robots_txt,
+    sitemap_xml,
+    wants_json_not_found,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +52,34 @@ app = FastAPI(title="agent-web", version="0.3.0", lifespan=lifespan)
 app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
 
 
+@app.middleware("http")
+async def redirect_www_to_apex(request: Request, call_next):
+    host = request.headers.get("host", "")
+    if is_www_host(host):
+        target = apex_redirect_url(request.url.path, request.url.query)
+        return RedirectResponse(url=target, status_code=301)
+    return await call_next(request)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def handle_http_exception(request: Request, exc: StarletteHTTPException) -> Response:
+    if exc.status_code != 404:
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+    if wants_json_not_found(request.url.path, request.headers.get("accept", "")):
+        return JSONResponse({"detail": "Not Found"}, status_code=404)
+    return FileResponse(SITE_DIR / "404.html", status_code=404)
+
+
+@app.get("/robots.txt", response_class=PlainTextResponse)
+def robots() -> str:
+    return robots_txt()
+
+
+@app.get("/sitemap.xml")
+def sitemap() -> Response:
+    return Response(content=sitemap_xml(), media_type="application/xml")
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -47,35 +91,55 @@ def hello() -> dict[str, str]:
 
 
 @app.get("/")
-def home() -> FileResponse:
-    return FileResponse(SITE_DIR / "index.html")
+def home() -> HTMLResponse:
+    return page_service.serve_page("index.html", get_settings())
 
 
 @app.get("/about")
-def about() -> FileResponse:
-    return FileResponse(SITE_DIR / "about.html")
+def about() -> HTMLResponse:
+    return page_service.serve_page("about.html", get_settings())
+
+
+@app.get("/services")
+def services() -> HTMLResponse:
+    return page_service.serve_page("services.html", get_settings())
+
+
+@app.get("/case-studies")
+def case_studies_index() -> HTMLResponse:
+    return page_service.serve_page("case-studies.html", get_settings())
+
+
+@app.get("/diagnostic")
+def diagnostic() -> HTMLResponse:
+    return page_service.serve_page("diagnostic.html", get_settings())
 
 
 @app.get("/brief")
-def brief_form() -> FileResponse:
-    return FileResponse(SITE_DIR / "brief.html")
-
+def brief_form() -> HTMLResponse:
+    return page_service.serve_page("brief.html", get_settings())
 
 @app.get("/brief/success")
-def brief_success() -> FileResponse:
-    return FileResponse(SITE_DIR / "brief-success.html")
+def brief_success() -> HTMLResponse:
+    return page_service.serve_page("brief-success.html", get_settings())
+
+
+@app.get("/work/{slug}")
+def case_study(slug: str) -> HTMLResponse:
+    study = case_studies.get_case_study(slug)
+    if study is None:
+        raise HTTPException(status_code=404, detail="Case study not found")
+    return HTMLResponse(case_studies.render_case_study_page(study))
 
 
 @app.get("/insights", response_class=HTMLResponse)
 def insights_index() -> HTMLResponse:
-    settings = get_settings()
-    return HTMLResponse(articles.render_insights_index(settings.base_url))
+    return HTMLResponse(articles.render_insights_index())
 
 
 @app.get("/insights/feed.atom")
 def insights_feed() -> Response:
-    settings = get_settings()
-    body = articles.render_atom_feed(settings.base_url)
+    body = articles.render_atom_feed()
     return Response(content=body, media_type="application/atom+xml")
 
 
@@ -84,15 +148,17 @@ def insight_article(slug: str) -> HTMLResponse:
     article = articles.get_article(slug)
     if article is None:
         raise HTTPException(status_code=404, detail="Article not found")
-    settings = get_settings()
-    return HTMLResponse(articles.render_article_page(article, settings.base_url))
+    return HTMLResponse(articles.render_article_page(article))
 
 
-@app.get("/sitemap.xml")
-def sitemap() -> Response:
-    settings = get_settings()
-    body = articles.render_sitemap(settings.base_url)
-    return Response(content=body, media_type="application/xml")
+for legacy_path, target in LEGACY_REDIRECTS.items():
+
+    def _legacy_redirect(
+        _target: str = target,
+    ) -> RedirectResponse:
+        return RedirectResponse(url=_target, status_code=301)
+
+    app.add_api_route(legacy_path, _legacy_redirect, methods=["GET"], include_in_schema=False)
 
 
 @app.post("/api/briefs", response_model=BriefCreateResponse)
@@ -104,13 +170,28 @@ def create_brief(payload: BriefCreateRequest) -> BriefCreateResponse:
         raise HTTPException(status_code=503, detail="Stripe not configured")
 
     with db.db_connection(settings.database_url) as conn:
+        utm = payload.utm_attribution()
         brief_id = db.create_brief(
             conn,
             website=payload.website,
             contact_method="email",
             contact_value=payload.email,
             brief=payload.brief,
+            utm_source=utm["utm_source"],
+            utm_medium=utm["utm_medium"],
+            utm_campaign=utm["utm_campaign"],
+            utm_content=utm["utm_content"],
+            utm_term=utm["utm_term"],
         )
+
+        try:
+            analytics_service.track_lead_persisted(
+                settings,
+                brief_id=brief_id,
+                utm=utm,
+            )
+        except Exception:
+            logger.exception("Analytics lead_persisted failed for brief %s", brief_id)
 
         # Lead emails before Stripe so a checkout failure still notifies inbox.
         if settings.email_configured:
@@ -150,6 +231,16 @@ def create_brief(payload: BriefCreateRequest) -> BriefCreateResponse:
             brief_id=brief_id,
             stripe_session_id=session.id,
         )
+
+    try:
+        analytics_service.track_checkout_opened(
+            settings,
+            brief_id=brief_id,
+            price_cents=settings.brief_price_cents,
+            utm=utm,
+        )
+    except Exception:
+        logger.exception("Analytics checkout_opened failed for brief %s", brief_id)
 
     if not session.url:
         raise HTTPException(status_code=502, detail="Payment session missing checkout URL")
@@ -197,6 +288,22 @@ async def stripe_webhook(request: Request) -> JSONResponse:
 
     if paid_brief is None:
         return JSONResponse({"received": True})
+
+    try:
+        analytics_service.track_payment_completed(
+            settings,
+            brief_id=brief_id,
+            price_cents=settings.brief_price_cents,
+            utm={
+                "utm_source": paid_brief.get("utm_source"),
+                "utm_medium": paid_brief.get("utm_medium"),
+                "utm_campaign": paid_brief.get("utm_campaign"),
+                "utm_content": paid_brief.get("utm_content"),
+                "utm_term": paid_brief.get("utm_term"),
+            },
+        )
+    except Exception:
+        logger.exception("Analytics payment_completed failed for brief %s", brief_id)
 
     if settings.email_configured:
         try:
