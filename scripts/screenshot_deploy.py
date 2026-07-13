@@ -20,9 +20,27 @@ from urllib.parse import urljoin
 from github_api import GitHubError, api, post_issue_comment, split_repo, token
 
 DEFAULT_BASE = "https://saberistic.com"
-# Only HTML pages — never screenshot JSON APIs like /health or /hello.
+# Minimum HTML set if app discovery fails (kept for tests / emergency fallback).
 HTML_PATHS = ("/", "/about")
 PATHS = HTML_PATHS  # alias for callers
+
+# `/health` is polled as JSON evidence only — never screenshot it.
+# Other JSON API routes are skipped when Content-Type is not HTML.
+HEALTH_PATH = "/health"
+SKIP_SCREENSHOT_EXACT = frozenset(
+    {
+        HEALTH_PATH,
+        "/hello",
+        "/robots.txt",
+        "/sitemap.xml",
+        "/docs",
+        "/docs/oauth2-redirect",
+        "/openapi.json",
+        "/redoc",
+        "/favicon.ico",
+    }
+)
+SKIP_SCREENSHOT_PREFIXES = ("/api/", "/webhooks/", "/assets")
 
 # Desktop + mobile evidence for landing/product acceptance criteria.
 VIEWPORTS: tuple[tuple[str, int, int], ...] = (
@@ -90,6 +108,114 @@ def resolve_preview_root(explicit: str | Path | None = None) -> Path:
     if (candidate / "app").is_dir():
         return candidate
     return Path.cwd().resolve()
+
+
+def is_skipped_api_or_meta_route(path: str) -> bool:
+    """True for JSON APIs / meta routes that must not be screenshot targets.
+
+    ``/health`` is always skipped here (JSON evidence via ``wait_healthy`` only).
+    """
+    route = path if path.startswith("/") else f"/{path}"
+    if route in SKIP_SCREENSHOT_EXACT:
+        return True
+    return any(route.startswith(prefix) for prefix in SKIP_SCREENSHOT_PREFIXES)
+
+
+def _normalize_route_path(path: str) -> str:
+    if not path or path == "/":
+        return "/"
+    route = "/" + path.lstrip("/")
+    if len(route) > 1 and route.endswith("/"):
+        route = route.rstrip("/")
+    return route
+
+
+def _expand_param_route(path: str, app_root: Path) -> list[str]:
+    """Expand parameterized routes from JSON data when possible."""
+    if "{slug}" not in path:
+        return []
+    try:
+        sys.path.insert(0, str(app_root))
+        if path.startswith("/work/"):
+            from app.case_studies import load_case_studies  # type: ignore
+
+            data = app_root / "site" / "data" / "case-studies.json"
+            studies = load_case_studies(data if data.is_file() else None)
+            return [f"/work/{study['slug']}" for study in studies if study.get("slug")]
+        if path.startswith("/insights/"):
+            from app.insights import list_published_insights  # type: ignore
+
+            data = app_root / "site" / "data" / "insights.json"
+            articles = list_published_insights(data if data.is_file() else None)
+            return [f"/insights/{article['slug']}" for article in articles if article.get("slug")]
+    except Exception:  # noqa: BLE001
+        return []
+    return []
+
+
+def discover_screenshot_routes(app_root: Path | None = None) -> list[str]:
+    """Return GET page routes to screenshot (all HTML pages; skip JSON APIs).
+
+    Discovers FastAPI GET routes under ``app_root`` (PR head / cwd). Skips
+    ``/health`` (JSON evidence only), other JSON APIs (``/hello``, ``/api/*``,
+    webhooks), OpenAPI docs, static mounts, and legacy redirects. Parameterized
+    work pages are expanded from case-study data. Capture still probes each URL
+    and skips non-HTML responses.
+    """
+    root = resolve_preview_root(app_root)
+    found: set[str] = set()
+
+    try:
+        if str(root) not in sys.path:
+            sys.path.insert(0, str(root))
+        from app.main import app as fastapi_app  # type: ignore
+        from app.seo import LEGACY_REDIRECTS  # type: ignore
+
+        legacy = set(LEGACY_REDIRECTS.keys())
+        for route in fastapi_app.routes:
+            methods = getattr(route, "methods", None) or set()
+            path = getattr(route, "path", None)
+            if not path or not isinstance(path, str):
+                continue
+            # Mounts (StaticFiles) have no methods set the same way — skip by prefix.
+            if not methods and path.rstrip("/") in {"/assets"}:
+                continue
+            method_set = {m.upper() for m in methods} if methods else set()
+            if method_set and "GET" not in method_set and "HEAD" not in method_set:
+                continue
+            route_path = _normalize_route_path(path)
+            if route_path in legacy or is_skipped_api_or_meta_route(route_path):
+                continue
+            if "{" in route_path:
+                found.update(_expand_param_route(route_path, root))
+                continue
+            found.add(route_path)
+    except Exception:  # noqa: BLE001
+        found.update(HTML_PATHS)
+
+    # Always include known HTML marketing pages even if import partially failed.
+    for fallback in (
+        "/",
+        "/about",
+        "/services",
+        "/case-studies",
+        "/diagnostic",
+        "/brief",
+        "/brief/success",
+        "/insights",
+    ):
+        if not is_skipped_api_or_meta_route(fallback):
+            found.add(fallback)
+
+    # Expand work pages from data even when FastAPI import failed.
+    if not any(p.startswith("/work/") for p in found):
+        found.update(_expand_param_route("/work/{slug}", root))
+    if not any(p.startswith("/insights/") for p in found):
+        found.update(_expand_param_route("/insights/{slug}", root))
+
+    # Stable order: home first, then lexical.
+    ordered = sorted(found, key=lambda p: (p != "/", p))
+    return ordered or list(HTML_PATHS)
 
 
 def resolve_base_url(value: str | None = None) -> str:
@@ -182,9 +308,22 @@ def capture_pre_dual(
     """Pre-merge: screenshot PR branch (local) + production (saberistic.com)."""
     prod_url = resolve_base_url(prod_base_url)
     out_dir.mkdir(parents=True, exist_ok=True)
+    routes = discover_screenshot_routes(preview_root)
     with local_preview_server(preview_root, port=preview_port) as branch_url:
-        branch = capture(branch_url, out_dir, phase=PRE_BRANCH_PHASE)
-        prod = capture(prod_url, out_dir, phase=PRE_PROD_PHASE)
+        branch = capture(
+            branch_url,
+            out_dir,
+            phase=PRE_BRANCH_PHASE,
+            routes=routes,
+            preview_root=preview_root,
+        )
+        prod = capture(
+            prod_url,
+            out_dir,
+            phase=PRE_PROD_PHASE,
+            routes=routes,
+            preview_root=preview_root,
+        )
     return PreCaptureResult(
         branch_paths=branch.paths,
         prod_paths=prod.paths,
@@ -227,18 +366,35 @@ def wait_healthy(base_url: str | None = None, attempts: int = 12) -> dict[str, A
 
 
 def _is_html_response(url: str) -> bool:
-    """Return True if the URL serves HTML (skip JSON API routes)."""
+    """Return True if the URL serves HTML (skip JSON API routes).
+
+    ``/health`` and other JSON endpoints are never screenshot targets.
+    """
     try:
-        req = urllib.request.Request(url, method="GET", headers={"User-Agent": "agent-web-screenshots"})
+        req = urllib.request.Request(
+            url, method="GET", headers={"User-Agent": "agent-web-screenshots"}
+        )
         with urllib.request.urlopen(req, timeout=30) as resp:
+            if not (200 <= resp.status < 300):
+                return False
             ctype = (resp.headers.get("Content-Type") or "").lower()
+            if "json" in ctype:
+                return False
             if "html" in ctype:
                 return True
             # Peek body for doctype/html if content-type is missing/wrong.
             chunk = resp.read(256).decode("utf-8", errors="replace").lstrip().lower()
+            if chunk.startswith("{") or chunk.startswith("["):
+                return False
             return chunk.startswith("<!doctype html") or chunk.startswith("<html")
     except Exception:
         return False
+
+
+def _route_url(base: str, route: str) -> str:
+    if route == "/":
+        return base + "/"
+    return urljoin(base + "/", route.lstrip("/"))
 
 
 def _page_overflows(page: Any, *, viewport: str, route: str) -> list[dict[str, Any]]:
@@ -302,7 +458,14 @@ def format_overflow_hard_fail(overflows: list[dict[str, Any]]) -> str | None:
     )
 
 
-def capture(base_url: str | None, out_dir: Path, *, phase: str = "pre") -> CaptureResult:
+def capture(
+    base_url: str | None,
+    out_dir: Path,
+    *,
+    phase: str = "pre",
+    routes: list[str] | None = None,
+    preview_root: Path | None = None,
+) -> CaptureResult:
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
@@ -314,18 +477,23 @@ def capture(base_url: str | None, out_dir: Path, *, phase: str = "pre") -> Captu
     paths: list[Path] = []
     overflows: list[dict[str, Any]] = []
     base = resolve_base_url(base_url)
+    html_routes = [
+        r
+        for r in (routes or discover_screenshot_routes(preview_root))
+        if not is_skipped_api_or_meta_route(r)
+    ]
+    if not html_routes:
+        html_routes = list(HTML_PATHS)
+
     with sync_playwright() as p:
         browser = p.chromium.launch()
         for viewport_name, width, height in VIEWPORTS:
             page = browser.new_page(viewport={"width": width, "height": height})
-            for route in HTML_PATHS:
-                url = (
-                    urljoin(base + "/", route.lstrip("/"))
-                    if route != "/"
-                    else base + "/"
-                )
+            for route in html_routes:
+                url = _route_url(base, route)
                 if not _is_html_response(url):
-                    # JSON or non-HTML — skip screenshot (e.g. misconfigured /about).
+                    # JSON API, redirect miss, or non-HTML — skip (e.g. /hello, new
+                    # PR route not yet on production).
                     continue
                 last_err: Exception | None = None
                 for _ in range(6):
@@ -355,7 +523,9 @@ def capture(base_url: str | None, out_dir: Path, *, phase: str = "pre") -> Captu
         browser.close()
     if not paths:
         raise GitHubError(
-            f"no HTML pages to screenshot under {base} (tried {', '.join(HTML_PATHS)})"
+            f"no HTML pages to screenshot under {base} "
+            f"(tried {', '.join(html_routes)}; "
+            f"JSON APIs and {HEALTH_PATH} are never screenshotted)"
         )
     report = out_dir / f"{phase}-overflow.json"
     report.write_text(json.dumps(overflows, indent=2) + "\n", encoding="utf-8")
