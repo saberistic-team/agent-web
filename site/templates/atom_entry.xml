@@ -1,0 +1,7 @@
+  <entry>
+    <title>{{title}}</title>
+    <id>{{id}}</id>
+    <updated>{{updated}}T00:00:00Z</updated>
+    <link href="{{link}}" />
+    <summary>{{summary}}</summary>
+  </entry>
