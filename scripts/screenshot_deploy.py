@@ -33,7 +33,6 @@ SKIP_SCREENSHOT_EXACT = frozenset(
         "/hello",
         "/robots.txt",
         "/sitemap.xml",
-        "/diagnostic",
         "/docs",
         "/docs/oauth2-redirect",
         "/openapi.json",
