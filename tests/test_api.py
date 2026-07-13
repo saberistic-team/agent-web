@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import about, app, brief_form, brief_success, health, hello, home
+from app.main import about, app, brief_form, brief_success, case_study, health, hello, home
 
 client = TestClient(app)
 
@@ -85,6 +85,9 @@ def test_about_page() -> None:
     assert "distributed systems" in body
     assert "Minecraft" in body
     assert "leave things better than I found them" in body
+    assert 'href="/brief"' in body
+    assert 'href="/#proof"' in body
+    assert "Request architecture review" in body
 
 
 @pytest.mark.unit
@@ -132,3 +135,58 @@ def test_logo_asset() -> None:
     response = client.get("/assets/logo.png")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("image/")
+
+
+@pytest.mark.unit
+def test_home_has_proof_section() -> None:
+    body = client.get("/").text
+    assert 'id="proof"' in body
+    assert "/work/brave" in body
+    assert "/work/baxus" in body
+    assert "/work/eternis" in body
+    assert "Employer roles are distinguished" in body
+
+
+@pytest.mark.unit
+def test_case_study_page() -> None:
+    response = client.get("/work/brave")
+    assert response.status_code == 200
+    body = response.text
+    assert "Infrastructure for privacy-aligned payments" in body
+    assert "Problem" in body
+    assert "Intervention" in body
+    assert "Result" in body
+    assert "Prior employer role" in body
+    assert 'href="/brief"' in body
+    assert 'name="description"' in body
+
+
+@pytest.mark.unit
+def test_case_study_saberistic_engagement() -> None:
+    response = client.get("/work/architecture-diagnostic")
+    assert response.status_code == 200
+    body = response.text
+    assert "Saberistic engagement" in body
+    assert "sanitized" in body.lower()
+    assert 'data-engagement="saberistic"' in body
+
+
+@pytest.mark.unit
+def test_case_study_not_found() -> None:
+    response = client.get("/work/does-not-exist")
+    assert response.status_code == 404
+
+
+@pytest.mark.unit
+def test_case_study_unique_metadata() -> None:
+    brave = client.get("/work/brave").text
+    baxus = client.get("/work/baxus").text
+    assert "<title>Brave —" in brave
+    assert "<title>BAXUS —" in baxus
+    assert brave != baxus
+
+
+@pytest.mark.unit
+def test_case_study_handler_unit() -> None:
+    response = case_study("brave")
+    assert "Infrastructure for privacy-aligned payments" in response.body.decode()
