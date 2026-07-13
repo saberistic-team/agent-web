@@ -32,9 +32,17 @@ def test_home_and_about_flow() -> None:
     assert home.status_code == 200
     assert 'href="/about"' in home.text
     assert 'href="/brief"' in home.text
+    assert 'href="/insights"' in home.text
     about = client.get("/about")
     assert about.status_code == 200
     assert "About" in about.text
+    insights = client.get("/insights")
+    assert insights.status_code == 200
+    article = client.get("/insights/competing-sources-of-truth")
+    assert article.status_code == 200
+    sitemap = client.get("/sitemap.xml")
+    assert sitemap.status_code == 200
+    assert "/insights/competing-sources-of-truth" in sitemap.text
     asset = client.get("/assets/logo.png")
     assert asset.status_code == 200
 
