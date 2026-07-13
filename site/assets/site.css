@@ -442,25 +442,6 @@ main {
   color: var(--muted);
 }
 
-.qualification {
-  margin: 2rem 0 0;
-  padding: 1.25rem 0 0;
-  border-top: 1px solid var(--line);
-  max-width: 52ch;
-}
-
-.qualification p {
-  margin: 0;
-  color: var(--muted);
-  font-style: italic;
-}
-
-.case-studies-cta {
-  margin: 2.5rem 0 0;
-  max-width: 52ch;
-  color: var(--muted);
-}
-
 .offer-alt a,
 .services-alt a,
 .service-detail a {
@@ -583,6 +564,33 @@ main {
   font-size: 0.8rem;
   text-align: right;
   white-space: nowrap;
+}
+
+.proof-summary {
+  grid-column: 1 / -1;
+  margin: 0.35rem 0 0;
+  max-width: 52ch;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.55;
+}
+
+.qualification {
+  margin: 2rem 0;
+  padding: 0 0 0 1rem;
+  max-width: 52ch;
+  border-left: 2px solid var(--accent);
+}
+
+.qualification p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.case-studies-cta {
+  margin: 2.5rem 0 1rem;
+  max-width: 52ch;
+  color: var(--ink);
 }
 
 .case-study {
