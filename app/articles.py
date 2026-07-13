@@ -1,38 +1,31 @@
-"""Article data and HTML rendering for /insights/{slug} authority content."""
+"""Article data and HTML rendering for /insights and /insights/{slug} pages."""
 
 from __future__ import annotations
 
 import html
 import json
+from datetime import date
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
+from xml.sax.saxutils import escape as xml_escape
 
-Audience = Literal["founders", "investors", "engineers", "leaders"]
+from app.seo import CANONICAL_BASE, canonical_url
 
 DATA_PATH = Path(__file__).resolve().parent.parent / "site" / "data" / "articles.json"
 
-CANONICAL_BASE = "https://saberistic.com"
 OG_IMAGE = f"{CANONICAL_BASE}/assets/og-share.png"
 OG_IMAGE_ALT = (
     "saberistic — AmirSaber Sharifi — filling gaps between markets and tech"
 )
-ATOM_FEED_PATH = "/insights/feed.xml"
-
-AUDIENCE_LABELS: dict[str, str] = {
-    "founders": "For founders",
-    "investors": "For investors",
-    "engineers": "For engineering leaders",
-    "leaders": "For technical leaders",
-}
 
 REQUIRED_FIELDS = (
     "slug",
     "title",
-    "meta_description",
     "audience",
-    "published_date",
-    "author",
     "problem",
+    "meta_description",
+    "author",
+    "published_date",
     "cta_label",
     "cta_href",
 )
@@ -42,13 +35,13 @@ def load_articles(path: Path | None = None) -> list[dict[str, Any]]:
     """Load and validate articles from JSON."""
     source = path or DATA_PATH
     raw = json.loads(source.read_text(encoding="utf-8"))
-    articles = raw.get("articles")
-    if not isinstance(articles, list) or not articles:
+    items = raw.get("articles")
+    if not isinstance(items, list) or not items:
         raise ValueError("articles.json must contain a non-empty articles array")
 
     seen: set[str] = set()
     validated: list[dict[str, Any]] = []
-    for item in articles:
+    for item in items:
         if not isinstance(item, dict):
             raise ValueError("each article must be an object")
         slug = item.get("slug")
@@ -58,9 +51,9 @@ def load_articles(path: Path | None = None) -> list[dict[str, Any]]:
             raise ValueError(f"duplicate article slug: {slug}")
         seen.add(slug)
 
-        audience = item.get("audience")
-        if audience not in AUDIENCE_LABELS:
-            raise ValueError(f"invalid audience for {slug}: {audience!r}")
+        published = item.get("published")
+        if not isinstance(published, bool):
+            raise ValueError(f"article {slug} requires published: true|false")
 
         for key in REQUIRED_FIELDS:
             if not isinstance(item.get(key), str) or not str(item[key]).strip():
@@ -72,48 +65,48 @@ def load_articles(path: Path | None = None) -> list[dict[str, Any]]:
         for section in sections:
             if not isinstance(section, dict):
                 raise ValueError(f"article {slug} sections must be objects")
-            for sec_key in ("heading", "body"):
-                if not isinstance(section.get(sec_key), str) or not section[sec_key].strip():
-                    raise ValueError(f"article {slug} section missing {sec_key}")
+            heading = section.get("heading")
+            paragraphs = section.get("paragraphs")
+            if not isinstance(heading, str) or not heading.strip():
+                raise ValueError(f"article {slug} section missing heading")
+            if not isinstance(paragraphs, list) or not paragraphs:
+                raise ValueError(f"article {slug} section {heading!r} needs paragraphs")
+            if not all(isinstance(p, str) and p.strip() for p in paragraphs):
+                raise ValueError(f"article {slug} section {heading!r} has invalid paragraphs")
 
         validated.append(item)
     return validated
 
 
+def list_published_articles(path: Path | None = None) -> list[dict[str, Any]]:
+    """Return published articles sorted newest first."""
+    published = [article for article in load_articles(path) if article["published"]]
+    return sorted(published, key=lambda item: item["published_date"], reverse=True)
+
+
 def get_article(slug: str, path: Path | None = None) -> dict[str, Any] | None:
-    """Return a single article by slug, or None if not found."""
+    """Return a published article by slug, or None if missing or draft."""
     for article in load_articles(path):
-        if article["slug"] == slug:
+        if article["slug"] == slug and article["published"]:
             return article
     return None
 
 
-def list_featured_slugs(path: Path | None = None) -> list[str]:
-    """Slugs promoted on the homepage (first two articles)."""
-    return [article["slug"] for article in load_articles(path)[:2]]
+def _format_display_date(iso_date: str) -> str:
+    parsed = date.fromisoformat(iso_date)
+    return parsed.strftime("%d %b %Y")
 
 
-def _fonts_and_css() -> str:
-    return """    <link rel="icon" href="/assets/logo.png" type="image/png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Mono:wght@400;500&display=swap"
-      rel="stylesheet"
-    />
-    <link rel="stylesheet" href="/assets/site.css" />"""
-
-
-def _social_meta(
+def _social_meta_tags(
     *,
     title: str,
     description: str,
-    url: str,
+    page_url: str,
     og_type: str = "website",
 ) -> str:
     title_esc = html.escape(title)
     desc_esc = html.escape(description)
-    url_esc = html.escape(url, quote=True)
+    url_esc = html.escape(page_url)
     return f"""    <meta property="og:type" content="{html.escape(og_type)}" />
     <meta property="og:site_name" content="saberistic" />
     <meta property="og:title" content="{title_esc}" />
@@ -130,8 +123,46 @@ def _social_meta(
     <meta name="twitter:image:alt" content="{html.escape(OG_IMAGE_ALT)}" />"""
 
 
-def _header() -> str:
-    return """    <header class="top">
+def _page_head(
+    *,
+    title: str,
+    description: str,
+    canonical: str,
+    og_type: str = "website",
+    json_ld: str,
+) -> str:
+    title_esc = html.escape(title)
+    desc_esc = html.escape(description)
+    canonical_esc = html.escape(canonical)
+    return f"""  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title_esc}</title>
+    <meta name="description" content="{desc_esc}" />
+    <link rel="canonical" href="{canonical_esc}" />
+    <link
+      rel="alternate"
+      type="application/atom+xml"
+      title="saberistic insights"
+      href="{canonical_url('/insights/feed.xml')}"
+    />
+{_social_meta_tags(title=title, description=description, page_url=canonical, og_type=og_type)}
+    <script type="application/ld+json">
+{json_ld}
+    </script>
+    <link rel="icon" href="/assets/logo.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/assets/site.css" />
+  </head>"""
+
+
+def _site_header(*, back_href: str, back_label: str) -> str:
+    return f"""    <header class="top">
       <a class="brand" href="/" aria-label="saberistic home">
         <img
           class="brand-word"
@@ -141,119 +172,131 @@ def _header() -> str:
           alt="saberistic"
         />
       </a>
-      <a class="top-link" href="/insights">Insights</a>
+      <a class="top-link" href="{html.escape(back_href, quote=True)}">{html.escape(back_label)}</a>
     </header>"""
 
 
-def _footer() -> str:
+def _site_footer() -> str:
     return """    <footer class="foot">
       <p>saberistic · technical architecture &amp; engineering leadership</p>
-      <p><a href="/insights">Insights</a></p>
+      <nav class="foot-nav" aria-label="Site">
+        <a href="/">Home</a>
+        <a href="/insights">Insights</a>
+        <a href="/about">About</a>
+        <a href="/brief">Brief</a>
+      </nav>
     </footer>"""
 
 
+def _render_sections(sections: list[dict[str, Any]]) -> str:
+    blocks: list[str] = []
+    for section in sections:
+        heading = html.escape(section["heading"])
+        slug = heading.lower().replace(" ", "-")
+        paragraphs = "\n".join(
+            f"            <p>{html.escape(paragraph)}</p>"
+            for paragraph in section["paragraphs"]
+        )
+        blocks.append(
+            f"""          <section class="article-section" aria-labelledby="{slug}">
+            <h2 class="article-section-title" id="{slug}">{heading}</h2>
+{paragraphs}
+          </section>"""
+        )
+    return "\n".join(blocks)
+
+
 def render_article_page(article: dict[str, Any]) -> str:
-    """Render a full HTML page for one article."""
-    slug = html.escape(article["slug"])
-    title = html.escape(article["title"])
-    meta = html.escape(article["meta_description"])
-    audience = article["audience"]
-    audience_label = html.escape(AUDIENCE_LABELS[audience])  # type: ignore[index]
-    author = html.escape(article["author"])
-    published = html.escape(article["published_date"])
+    """Render a full HTML page for one published article."""
+    slug = article["slug"]
+    title = article["title"]
+    audience = html.escape(article["audience"])
     problem = html.escape(article["problem"])
+    meta = article["meta_description"]
+    author = html.escape(article["author"])
+    display_date = _format_display_date(article["published_date"])
     cta_label = html.escape(article["cta_label"])
     cta_href = html.escape(article["cta_href"], quote=True)
     page_title = f"{title} · saberistic"
-    canonical = f"{CANONICAL_BASE}/insights/{article['slug']}"
-
-    sections_html = "\n".join(
-        f"""          <section class="article-section" aria-labelledby="section-{i}-title">
-            <h2 class="article-section-title" id="section-{i}-title">{html.escape(section['heading'])}</h2>
-            <p>{html.escape(section['body'])}</p>
-          </section>"""
-        for i, section in enumerate(article["sections"])
-    )
+    page_url = canonical_url(f"/insights/{slug}")
 
     json_ld = json.dumps(
         {
             "@context": "https://schema.org",
             "@type": "Article",
-            "headline": article["title"],
-            "description": article["meta_description"],
-            "url": canonical,
+            "headline": title,
+            "description": meta,
+            "author": {"@type": "Person", "name": article["author"]},
             "datePublished": article["published_date"],
-            "author": {
-                "@type": "Person",
-                "name": article["author"],
-                "url": f"{CANONICAL_BASE}/about",
-            },
             "publisher": {
                 "@type": "Organization",
                 "name": "saberistic",
-                "url": CANONICAL_BASE,
+                "url": f"{CANONICAL_BASE}/",
             },
+            "mainEntityOfPage": page_url,
+            "url": page_url,
         },
         indent=2,
     ).replace("<", "\\u003c")
 
     return f"""<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{page_title}</title>
-    <meta name="description" content="{meta}" />
-    <link rel="canonical" href="{html.escape(canonical, quote=True)}" />
-{_social_meta(title=article["title"], description=article["meta_description"], url=canonical, og_type="article")}
-    <script type="application/ld+json">
-{json_ld}
-    </script>
-{_fonts_and_css()}
-  </head>
+{_page_head(title=page_title, description=meta, canonical=page_url, og_type="article", json_ld=json_ld)}
   <body>
-{_header()}
-
+{_site_header(back_href="/insights", back_label="Insights")}
     <main>
-      <article class="block article" data-slug="{slug}" data-audience="{html.escape(audience)}">
-        <p class="article-eyebrow">{audience_label}</p>
-        <h1 class="page-title article-title">{title}</h1>
+      <article class="block article" itemscope itemtype="https://schema.org/Article">
+        <meta itemprop="datePublished" content="{html.escape(article['published_date'])}" />
+        <p class="article-eyebrow">{audience}</p>
+        <h1 class="page-title article-title" itemprop="headline">{html.escape(title)}</h1>
         <p class="article-meta">
-          <span class="article-author">{author}</span>
-          <span class="article-date" datetime="{published}">{published}</span>
+          <span itemprop="author" itemscope itemtype="https://schema.org/Person">
+            <span itemprop="name">{author}</span>
+          </span>
+          · <time datetime="{html.escape(article['published_date'])}">{display_date}</time>
         </p>
-        <p class="article-problem">{problem}</p>
-{sections_html}
+        <p class="article-lede">{problem}</p>
+{_render_sections(article["sections"])}
         <p class="article-cta-row">
           <a class="cta" href="{cta_href}">{cta_label}</a>
+          <a class="cta cta-secondary" href="/insights">All insights</a>
         </p>
       </article>
     </main>
-
-{_footer()}
+{_site_footer()}
   </body>
 </html>
 """
 
 
-def render_insights_index_page(articles: list[dict[str, Any]] | None = None) -> str:
+def render_insights_index(articles: list[dict[str, Any]] | None = None) -> str:
     """Render the /insights listing page."""
-    items = articles if articles is not None else load_articles()
+    items = articles if articles is not None else list_published_articles()
     title = "Insights — saberistic"
     description = (
         "Architecture judgment for founders, investors, and technical leaders — "
-        "from AmirSaber Sharifi and saberistic."
+        "patterns, risks, and decisions from seed–Series B fintech and digital-asset systems."
     )
-    canonical = f"{CANONICAL_BASE}/insights"
+    page_url = canonical_url("/insights")
 
-    list_html = "\n".join(
-        f"""          <li class="article-item">
-            <a class="article-link" href="/insights/{html.escape(article['slug'])}">
-              <span class="article-link-title">{html.escape(article['title'])}</span>
-              <span class="article-link-meta">{html.escape(AUDIENCE_LABELS[article['audience']])} · {html.escape(article['published_date'])}</span>
+    list_items: list[str] = []
+    for article in items:
+        slug = html.escape(article["slug"])
+        item_title = html.escape(article["title"])
+        audience = html.escape(article["audience"])
+        problem = html.escape(article["problem"])
+        display_date = _format_display_date(article["published_date"])
+        list_items.append(
+            f"""          <li class="insights-item">
+            <a class="insights-link" href="/insights/{slug}">
+              <span class="insights-headline">{item_title}</span>
+              <span class="insights-meta">{audience} · {display_date}</span>
+              <span class="insights-lede">{problem}</span>
             </a>
           </li>"""
-        for article in items
+        )
+    articles_html = "\n".join(list_items) if list_items else (
+        '          <li class="insights-empty">No published articles yet.</li>'
     )
 
     json_ld = json.dumps(
@@ -262,74 +305,69 @@ def render_insights_index_page(articles: list[dict[str, Any]] | None = None) -> 
             "@type": "CollectionPage",
             "name": "Insights",
             "description": description,
-            "url": canonical,
+            "url": page_url,
         },
         indent=2,
-    )
+    ).replace("<", "\\u003c")
 
     return f"""<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{html.escape(title)}</title>
-    <meta name="description" content="{html.escape(description)}" />
-    <link rel="canonical" href="{html.escape(canonical, quote=True)}" />
-    <link rel="alternate" type="application/atom+xml" title="saberistic insights" href="{ATOM_FEED_PATH}" />
-{_social_meta(title=title, description=description, url=canonical)}
-    <script type="application/ld+json">
-{json_ld}
-    </script>
-{_fonts_and_css()}
-  </head>
+{_page_head(title=title, description=description, canonical=page_url, json_ld=json_ld)}
   <body>
-{_header()}
-
+{_site_header(back_href="/", back_label="Home")}
     <main>
-      <section class="block" aria-labelledby="insights-title">
+      <section class="block insights-index" aria-labelledby="insights-title">
         <h1 class="page-title" id="insights-title">Insights</h1>
-        <p class="block-intro">
-          Architecture judgment for qualified inbound leads — accurate, non-confidential
-          perspectives on fintech, digital assets, and scaling systems.
+        <p class="insights-intro">
+          Architecture judgment for qualified inbound leads — clear audience, real
+          problems, and decisions that survive diligence.
         </p>
-        <ul class="article-list">
-{list_html}
+        <ul class="insights-list">
+{articles_html}
         </ul>
+        <p class="article-cta-row">
+          <a class="cta" href="/brief">Request architecture review</a>
+          <a class="cta cta-secondary" href="/about">About saberistic</a>
+        </p>
       </section>
     </main>
-
-{_footer()}
+{_site_footer()}
   </body>
 </html>
 """
 
 
-def render_atom_feed(articles: list[dict[str, Any]] | None = None) -> str:
-    """Render an Atom feed for published articles."""
-    items = articles if articles is not None else load_articles()
-    entries = []
+def atom_feed_xml(articles: list[dict[str, Any]] | None = None) -> str:
+    """Render an Atom feed for published insights."""
+    items = articles if articles is not None else list_published_articles()
+    feed_url = canonical_url("/insights/feed.xml")
+    index_url = canonical_url("/insights")
+    updated = items[0]["published_date"] if items else date.today().isoformat()
+
+    entries: list[str] = []
     for article in items:
         slug = article["slug"]
-        url = f"{CANONICAL_BASE}/insights/{slug}"
+        entry_url = canonical_url(f"/insights/{slug}")
         entries.append(
             "  <entry>\n"
-            f"    <title>{html.escape(article['title'])}</title>\n"
-            f"    <link href=\"{html.escape(url, quote=True)}\" />\n"
-            f"    <id>{html.escape(url, quote=True)}</id>\n"
-            f"    <updated>{html.escape(article['published_date'])}T00:00:00Z</updated>\n"
-            f"    <summary>{html.escape(article['meta_description'])}</summary>\n"
-            f"    <author><name>{html.escape(article['author'])}</name></author>\n"
+            f"    <title>{xml_escape(article['title'])}</title>\n"
+            f"    <link href=\"{xml_escape(entry_url)}\" />\n"
+            f"    <id>{xml_escape(entry_url)}</id>\n"
+            f"    <updated>{xml_escape(article['published_date'])}T00:00:00Z</updated>\n"
+            f"    <summary>{xml_escape(article['problem'])}</summary>\n"
+            f"    <author><name>{xml_escape(article['author'])}</name></author>\n"
             "  </entry>"
         )
-    feed_entries = "\n".join(entries)
+
+    entry_block = "\n".join(entries)
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<feed xmlns="http://www.w3.org/2005/Atom">\n'
         f"  <title>saberistic insights</title>\n"
-        f"  <link href=\"{CANONICAL_BASE}/insights\" />\n"
-        f"  <link rel=\"self\" href=\"{CANONICAL_BASE}{ATOM_FEED_PATH}\" />\n"
-        f"  <id>{CANONICAL_BASE}/insights</id>\n"
-        f"  <updated>{html.escape(items[0]['published_date'])}T00:00:00Z</updated>\n"
-        f"{feed_entries}\n"
+        f"  <link href=\"{xml_escape(index_url)}\" />\n"
+        f"  <link href=\"{xml_escape(feed_url)}\" rel=\"self\" />\n"
+        f"  <id>{xml_escape(index_url)}</id>\n"
+        f"  <updated>{xml_escape(updated)}T00:00:00Z</updated>\n"
+        f"{entry_block}\n"
         "</feed>\n"
     )
