@@ -8,10 +8,10 @@ from pathlib import Path
 from typing import AsyncIterator
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app import db, email_service, stripe_service
+from app import case_studies, db, email_service, stripe_service
 from app.config import Settings, get_settings
 from app.models import BriefCreateRequest, BriefCreateResponse
 
@@ -64,6 +64,14 @@ def brief_form() -> FileResponse:
 @app.get("/brief/success")
 def brief_success() -> FileResponse:
     return FileResponse(SITE_DIR / "brief-success.html")
+
+
+@app.get("/work/{slug}")
+def case_study(slug: str) -> HTMLResponse:
+    study = case_studies.get_case_study(slug)
+    if study is None:
+        raise HTTPException(status_code=404, detail="Case study not found")
+    return HTMLResponse(case_studies.render_case_study_page(study))
 
 
 @app.post("/api/briefs", response_model=BriefCreateResponse)
