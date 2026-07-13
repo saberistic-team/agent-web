@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{title}}</title>
+    <meta name="description" content="{{description}}" />
+    <link rel="canonical" href="{{canonical_url}}" />
+    {{head_extra}}
+    <link rel="icon" href="/assets/logo.png" type="image/png" />
+    <link rel="alternate" type="application/atom+xml" title="saberistic insights" href="/insights/feed.atom" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/assets/site.css" />
+  </head>
+  <body>
+    <header class="top">
+      <a class="brand" href="/" aria-label="saberistic home">
+        <img
+          class="brand-word"
+          src="/assets/logo-text.png"
+          width="160"
+          height="41"
+          alt="saberistic"
+        />
+      </a>
+      <nav aria-label="Primary">
+        <a class="top-link" href="{{insights_href}}">Insights</a>
+      </nav>
+    </header>
+
+    <main>
+      {{main}}
+    </main>
+
+    <footer class="foot">
+      <p>saberistic · software development</p>
+      <p><a href="{{insights_href}}">Insights</a></p>
+    </footer>
+  </body>
+</html>
