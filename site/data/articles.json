@@ -34,37 +34,41 @@
       "cta_href": "/brief"
     },
     {
-      "slug": "fractional-principal-first-30-days",
-      "title": "What a fractional principal architect fixes in the first 30 days",
-      "meta_description": "The first-month priorities when a fractional principal architect joins a seed–Series B company — boundaries, ownership, and decisions that compound.",
-      "audience": "founders",
-      "published_date": "2026-07-12",
+      "slug": "fintech-architecture-due-diligence",
+      "title": "What investors should examine before funding fintech architecture",
+      "meta_description": "Six diligence questions that surface rebuild risk in fintech stacks — ledger design, custody boundaries, authorization depth, and vendor dependencies.",
+      "audience": "investors",
+      "published_date": "2026-07-11",
       "author": "AmirSaber Sharifi",
-      "problem": "Founders hire fractional architecture leadership when delivery is stalling, costs are climbing, or the next funding round will scrutinize technical risk. The first 30 days should produce clarity — not another slide deck.",
+      "problem": "Fintech pitches emphasize growth, margins, and regulatory posture. Investors should still ask whether the architecture can survive scale, audit scrutiny, and a failed vendor.",
       "sections": [
         {
-          "heading": "Map system boundaries and ownership",
-          "body": "The first deliverable is a shared map of services, data stores, and integration points — with named owners for each boundary. Ambiguous ownership is the most common root cause of slow delivery and recurring incidents."
+          "heading": "Ledger design and reconciliation discipline",
+          "body": "Ask how money movement is recorded, not just how it is displayed. A credible stack has an append-only ledger or event log, idempotent posting, and daily reconciliation to bank and partner statements. If balances are mutable rows without an audit trail, diligence should treat that as structural risk."
         },
         {
-          "heading": "Identify the single source of truth for core entities",
-          "body": "For each business-critical entity — user, account, balance, order, asset — the architect documents where the canonical record lives and how other systems derive their view. Competing sources of truth are resolved before new features add weight."
+          "heading": "Custody and funds-flow boundaries",
+          "body": "Understand where customer funds sit, which entity holds licenses, and what happens when a banking or custody partner changes terms. Diagrams that skip settlement timing or commingling rules are a signal that operations may be carrying the real architecture."
         },
         {
-          "heading": "Prioritize the top three architectural risks",
-          "body": "Not every problem needs fixing in month one. A fractional principal ranks risks by business impact: security exposure, scaling ceilings, and dependencies that block the roadmap. The output is a sequenced plan founders can fund."
+          "heading": "Identity, fraud, and authorization depth",
+          "body": "Authentication is table stakes. Investors should examine step-up controls, device binding, admin authorization, and how privileged actions are logged. Fintech incidents often start with weak internal tooling rather than consumer-facing login."
         },
         {
-          "heading": "Establish design review for high-stakes changes",
-          "body": "A lightweight review gate for changes touching payments, custody, identity, or infrastructure cost. The goal is to catch irreversible decisions early — without slowing every pull request."
+          "heading": "Data lineage for regulatory and investor reporting",
+          "body": "Request one example of how a regulatory or board number is produced end to end. If the path crosses ad hoc spreadsheets, unmanaged replicas, or unnamed analytics databases, reporting risk is higher than the deck suggests."
         },
         {
-          "heading": "Align engineering and product on trade-offs",
-          "body": "The architect facilitates explicit trade-off conversations: build vs. buy, consistency vs. speed, build-out vs. hire. Founders get decision records they can share with investors and the board — not tribal knowledge locked in one engineer's head."
+          "heading": "Vendor and blockchain dependency assumptions",
+          "body": "Many products combine custodians, card processors, chain indexers, and internal services. Diligence should identify single points of failure, contract exit cost, and what happens when an external read disagrees with the application database."
+        },
+        {
+          "heading": "Security investments that lag product velocity",
+          "body": "Post-PMF security work is expensive because it interrupts live flows. Ask whether secrets management, environment separation, dependency patching, and incident response are funded in the current plan — not deferred to after the next release."
         }
       ],
-      "cta_label": "Email an introduction",
-      "cta_href": "mailto:inbox@saberistic.com?subject=Fractional%20Principal%20Architect"
+      "cta_label": "Request technical diligence",
+      "cta_href": "/brief"
     }
   ]
 }
