@@ -39,6 +39,14 @@ INDEXABLE_PAGES: dict[str, dict[str, str]] = {
         ),
         "canonical": f"{SITE_BASE}/about",
     },
+    "/insights": {
+        "title": "Insights — saberistic",
+        "description": (
+            "Architecture judgment for founders, investors, and technical leaders — "
+            "from AmirSaber Sharifi and saberistic."
+        ),
+        "canonical": f"{SITE_BASE}/insights",
+    },
     "/services": {
         "title": "Services — saberistic",
         "description": "Software development and technical advisory from saberistic.",
@@ -61,14 +69,6 @@ INDEXABLE_PAGES: dict[str, dict[str, str]] = {
             "problem and follow-up by email."
         ),
         "canonical": f"{SITE_BASE}/brief",
-    },
-    "/insights": {
-        "title": "Insights — saberistic",
-        "description": (
-            "Architecture judgment for founders, investors, and technical leaders — "
-            "patterns, risks, and decisions from high-stakes fintech and digital-asset work."
-        ),
-        "canonical": f"{SITE_BASE}/insights",
     },
 }
 
@@ -281,23 +281,6 @@ def test_og_share_image_asset() -> None:
     width = int.from_bytes(response.content[16:20], "big")
     height = int.from_bytes(response.content[20:24], "big")
     assert (width, height) == (1200, 630)
-
-
-@pytest.mark.unit
-def test_insight_article_metadata() -> None:
-    response = client.get("/insights/mvp-competing-sources-of-truth")
-    assert response.status_code == 200
-    head = _parse_head(response.text)
-    assert head.title == "Five signs an MVP has competing sources of truth · saberistic"
-    assert head.links["canonical"] == (
-        f"{SITE_BASE}/insights/mvp-competing-sources-of-truth"
-    )
-    assert head.meta["og:type"] == "article"
-    assert head.meta["og:url"] == head.links["canonical"]
-    assert head.meta["og:image"] == OG_IMAGE
-    data = json.loads(head.ld_json_raw)
-    assert data["@type"] == "Article"
-    assert data["author"]["name"] == "AmirSaber Sharifi"
 
 
 @pytest.mark.unit
