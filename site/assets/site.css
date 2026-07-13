@@ -566,6 +566,13 @@ main {
   white-space: nowrap;
 }
 
+.proof-summary {
+  margin: -0.5rem 0 1.25rem;
+  max-width: 52ch;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 .case-study {
   padding-top: 3rem;
 }
