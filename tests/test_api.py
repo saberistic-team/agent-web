@@ -159,6 +159,62 @@ def test_home_has_proof_section() -> None:
 
 
 @pytest.mark.unit
+def test_insights_index_page() -> None:
+    response = client.get("/insights")
+    assert response.status_code == 200
+    body = response.text
+    assert "Insights" in body
+    assert "/insights/mvp-competing-sources-of-truth" in body
+    assert "/insights/fractional-principal-first-30-days" in body
+    assert 'rel="canonical" href="https://saberistic.com/insights"' in body
+    assert 'property="og:title"' in body
+
+
+@pytest.mark.unit
+def test_article_page() -> None:
+    response = client.get("/insights/mvp-competing-sources-of-truth")
+    assert response.status_code == 200
+    body = response.text
+    assert "Five signs an MVP has competing sources of truth" in body
+    assert "competing sources of truth" in body
+    assert 'property="og:type" content="article"' in body
+    assert '"@type": "Article"' in body
+    assert 'href="/brief"' in body
+    assert 'name="description"' in body
+
+
+@pytest.mark.unit
+def test_article_not_found() -> None:
+    response = client.get("/insights/does-not-exist")
+    assert response.status_code == 404
+
+
+@pytest.mark.unit
+def test_article_unique_metadata() -> None:
+    mvp = client.get("/insights/mvp-competing-sources-of-truth").text
+    principal = client.get("/insights/fractional-principal-first-30-days").text
+    assert "competing sources of truth" in mvp
+    assert "fractional principal architect" in principal
+    assert mvp != principal
+
+
+@pytest.mark.unit
+def test_insights_atom_feed() -> None:
+    response = client.get("/insights/feed.xml")
+    assert response.status_code == 200
+    assert "application/atom+xml" in response.headers["content-type"]
+    assert "Five signs an MVP has competing sources of truth" in response.text
+
+
+@pytest.mark.unit
+def test_home_has_insights_section() -> None:
+    body = client.get("/").text
+    assert 'id="insights"' in body
+    assert 'href="/insights"' in body
+    assert "/insights/mvp-competing-sources-of-truth" in body
+
+
+@pytest.mark.unit
 def test_case_study_page() -> None:
     response = client.get("/work/brave")
     assert response.status_code == 200
@@ -195,13 +251,6 @@ def test_case_study_unique_metadata() -> None:
     assert "<title>Brave —" in brave
     assert "<title>BAXUS —" in baxus
     assert brave != baxus
-
-
-@pytest.mark.unit
-def test_home_has_insights_navigation() -> None:
-    body = client.get("/").text
-    assert 'href="/insights"' in body
-    assert "Insights" in body
 
 
 @pytest.mark.unit
