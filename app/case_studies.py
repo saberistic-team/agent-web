@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Any, Literal
 
-from app.metadata import case_study_json_ld, social_meta_tags
+from app.metadata import social_meta_tags, web_page_json_ld
 from app.seo import CANONICAL_BASE
 
 Engagement = Literal["employer", "founder", "saberistic"]
@@ -86,53 +86,28 @@ def list_featured_slugs(path: Path | None = None) -> list[str]:
 
 
 def case_study_page_title(study: dict[str, Any]) -> str:
-    """Browser and social title for a case study page."""
+    """Full document title for a case study page."""
     return f"{study['org']} — {study['headline']} · saberistic"
 
 
-def case_study_canonical_url(slug: str) -> str:
-    """Absolute canonical URL for a case study slug."""
-    return f"{CANONICAL_BASE}/work/{slug}"
+def case_study_canonical_url(study: dict[str, Any]) -> str:
+    """Canonical URL for a case study page."""
+    return f"{CANONICAL_BASE}/work/{study['slug']}"
 
 
-def render_case_study_head(study: dict[str, Any]) -> str:
-    """Return <head> inner HTML with social and structured metadata."""
-    slug = study["slug"]
-    page_title = case_study_page_title(study)
-    meta = study["meta_description"]
-    canonical_url = case_study_canonical_url(slug)
-
-    title_esc = html.escape(page_title)
-    meta_esc = html.escape(meta)
-    canonical_esc = html.escape(canonical_url, quote=True)
-
+def case_study_head_metadata(study: dict[str, Any]) -> str:
+    """Open Graph, Twitter, and JSON-LD metadata for a case study page."""
+    title = case_study_page_title(study)
+    description = study["meta_description"]
+    url = case_study_canonical_url(study)
     social = social_meta_tags(
-        title=page_title,
-        description=meta,
-        url=canonical_url,
-        og_type="article",
+        title=title,
+        description=description,
+        url=url,
+        og_type="website",
     )
-    json_ld = case_study_json_ld(
-        title=page_title,
-        description=meta,
-        url=canonical_url,
-    )
-
-    return f"""    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{title_esc}</title>
-    <meta name="description" content="{meta_esc}" />
-    <link rel="canonical" href="{canonical_esc}" />
-{social}
-{json_ld}
-    <link rel="icon" href="/assets/logo.png" type="image/png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Mono:wght@400;500&display=swap"
-      rel="stylesheet"
-    />
-    <link rel="stylesheet" href="/assets/site.css" />"""
+    ld = web_page_json_ld(title=title, description=description, url=url)
+    return f"{social}\n{ld}"
 
 
 def render_case_study_page(study: dict[str, Any]) -> str:
@@ -140,8 +115,11 @@ def render_case_study_page(study: dict[str, Any]) -> str:
     slug = html.escape(study["slug"])
     org = html.escape(study["org"])
     headline = html.escape(study["headline"])
+    page_title = html.escape(case_study_page_title(study))
+    meta = html.escape(study["meta_description"])
+    canonical = html.escape(case_study_canonical_url(study), quote=True)
+    head_metadata = case_study_head_metadata(study)
     engagement = study["engagement"]
-    head = render_case_study_head(study)
     disclaimer = html.escape(DISCLAIMERS[engagement])  # type: ignore[index]
     cta_label = html.escape(study["cta_label"])
     cta_href = html.escape(study["cta_href"], quote=True)
@@ -157,7 +135,20 @@ def render_case_study_page(study: dict[str, Any]) -> str:
     return f"""<!DOCTYPE html>
 <html lang="en">
   <head>
-{head}
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{page_title}</title>
+    <meta name="description" content="{meta}" />
+    <link rel="canonical" href="{canonical}" />
+{head_metadata}
+    <link rel="icon" href="/assets/logo.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/assets/site.css" />
   </head>
   <body>
     <header class="top">
