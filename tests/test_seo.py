@@ -43,6 +43,9 @@ def test_sitemap_contains_only_indexable_paths() -> None:
         canonical_url(path) for path in INDEXABLE_PATHS
     ]
     assert "https://saberistic.com/brief/success" not in locs
+    assert "https://saberistic.com/diagnostic" not in locs
+    assert "https://saberistic.com/services" in locs
+    assert "https://saberistic.com/case-studies" in locs
     assert any(loc.startswith("https://saberistic.com/work/") for loc in locs)
     assert any(loc.startswith("https://saberistic.com/insights/") for loc in locs)
 
@@ -84,24 +87,6 @@ def test_indexable_pages_have_single_canonical(path: str, expected_href: str) ->
     body = response.text
     matches = re.findall(r'<link rel="canonical" href="([^"]+)"', body)
     assert matches == [expected_href]
-
-
-@pytest.mark.unit
-def test_diagnostic_redirects_to_brief_without_chain() -> None:
-    response = client.get("/diagnostic", follow_redirects=False)
-    assert response.status_code == 301
-    assert response.headers["location"] == "/brief"
-
-    brief = client.get("/brief", follow_redirects=False)
-    assert brief.status_code == 200
-
-
-@pytest.mark.unit
-def test_sitemap_excludes_diagnostic() -> None:
-    xml = sitemap_xml(lastmod=date(2026, 7, 13))
-    assert "https://saberistic.com/diagnostic" not in xml
-    assert "https://saberistic.com/services" in xml
-    assert "https://saberistic.com/case-studies" in xml
 
 
 @pytest.mark.unit
@@ -172,7 +157,17 @@ def test_health_and_hello_remain_json() -> None:
 
 
 @pytest.mark.unit
-def test_home_has_services_and_work_anchors_for_legacy_redirects() -> None:
+def test_diagnostic_redirects_to_brief_without_chain() -> None:
+    response = client.get("/diagnostic", follow_redirects=False)
+    assert response.status_code == 301
+    assert response.headers["location"] == "/brief"
+
+    brief = client.get("/brief", follow_redirects=False)
+    assert brief.status_code == 200
+
+
+@pytest.mark.unit
+def test_legacy_marketing_redirects_still_work() -> None:
     body = client.get("/").text
     assert 'id="services"' in body
     assert 'id="work"' in body
