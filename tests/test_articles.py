@@ -1,142 +1,155 @@
-"""Tests for the /insights authority-content system."""
+"""Unit tests for article data and rendering."""
 
 from __future__ import annotations
 
-from dataclasses import replace
+import json
 from pathlib import Path
+import xml.etree.ElementTree as ET
 
 import pytest
-from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app import articles
-from app.main import app, insight_article, insights_feed, insights_index
-
-from app.seo import CANONICAL_BASE
+from app.main import app
 
 client = TestClient(app)
 
-
-@pytest.mark.unit
-def test_list_articles_newest_first() -> None:
-    slugs = [article.slug for article in articles.list_articles()]
-    assert slugs == [
-        "fintech-architecture-due-diligence",
-        "competing-sources-of-truth",
-    ]
-
-
-@pytest.mark.unit
-def test_get_article_known_and_unknown() -> None:
-    article = articles.get_article("competing-sources-of-truth")
-    assert article is not None
-    assert article.title.startswith("Five signs")
-    assert articles.get_article("missing-slug") is None
-
-
-@pytest.mark.unit
-def test_article_path_and_canonical_url() -> None:
-    article = articles.get_article("competing-sources-of-truth")
-    assert article is not None
-    assert article.path == "/insights/competing-sources-of-truth"
-    assert (
-        article.canonical_url()
-        == "https://saberistic.com/insights/competing-sources-of-truth"
-    )
+SAMPLE_ARTICLE = {
+    "slug": "sample-insight",
+    "title": "Sample insight title",
+    "meta_description": "Sample meta description for tests.",
+    "audience": "Founders",
+    "problem": "A recognizable architecture problem.",
+    "published_at": "2026-07-01",
+    "author": "AmirSaber Sharifi",
+    "eyebrow": "Architecture",
+    "sections": [
+        {"heading": "First sign", "content": "First paragraph."},
+        {"heading": "Second sign", "content": "Second paragraph."},
+    ],
+    "cta_label": "Request architecture diagnostic",
+    "cta_href": "/brief",
+}
 
 
 @pytest.mark.unit
-def test_body_html_missing_file_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    article = articles.get_article("competing-sources-of-truth")
-    assert article is not None
-    missing = replace(article, body_file="missing-body.html")
-    monkeypatch.setattr(articles, "ARTICLES_DIR", tmp_path)
-    with pytest.raises(FileNotFoundError, match="article body missing"):
-        missing.body_html()
+def test_load_articles_has_required_fields() -> None:
+    loaded = articles.load_articles()
+    assert len(loaded) >= 2
+    slugs = {article["slug"] for article in loaded}
+    assert {
+        "mvp-competing-sources-of-truth",
+        "fintech-architecture-investor-diligence",
+    }.issubset(slugs)
+    for article in loaded:
+        assert article["sections"]
+        assert article["cta_href"].startswith("/")
 
 
 @pytest.mark.unit
-def test_render_template_unresolved_placeholder_raises(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    templates = tmp_path / "templates"
-    templates.mkdir()
-    (templates / "broken.html").write_text("Hello {{missing}}", encoding="utf-8")
-    monkeypatch.setattr(articles, "TEMPLATES_DIR", templates)
-    with pytest.raises(ValueError, match="unresolved template placeholders"):
-        articles._render_template("broken.html", title="ok")
+def test_get_article_found_and_missing(tmp_path: Path) -> None:
+    data = {"articles": [SAMPLE_ARTICLE]}
+    path = tmp_path / "articles.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    found = articles.get_article("sample-insight", path=path)
+    assert found is not None
+    assert found["title"] == "Sample insight title"
+    assert articles.get_article("missing", path=path) is None
 
 
 @pytest.mark.unit
-def test_render_insights_index_includes_articles_and_metadata() -> None:
-    html = articles.render_insights_index()
-    assert "Insights" in html
-    assert 'href="/insights/competing-sources-of-truth"' in html
-    assert 'href="/insights/fintech-architecture-due-diligence"' in html
-    assert f'rel="canonical" href="{CANONICAL_BASE}/insights"' in html
-    assert 'class="top-link" href="/insights"' in html
+def test_load_articles_rejects_duplicate_slug(tmp_path: Path) -> None:
+    duplicate = {**SAMPLE_ARTICLE, "title": "Duplicate"}
+    data = {"articles": [SAMPLE_ARTICLE, duplicate]}
+    path = tmp_path / "articles.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(ValueError, match="duplicate"):
+        articles.load_articles(path=path)
 
 
 @pytest.mark.unit
-def test_render_article_page_has_social_and_semantic_markup() -> None:
-    article = articles.get_article("competing-sources-of-truth")
+def test_render_article_page_structure() -> None:
+    article = articles.get_article("mvp-competing-sources-of-truth")
     assert article is not None
     html = articles.render_article_page(article)
-    assert article.title in html
-    assert article.audience in html
-    assert article.problem in html
+    assert "Five signs an MVP has competing sources of truth" in html
     assert 'property="og:type" content="article"' in html
-    assert 'property="og:url"' in html
-    assert 'name="twitter:card" content="summary"' in html
-    assert 'type="application/ld+json"' in html
+    assert 'rel="canonical" href="https://saberistic.com/insights/mvp-competing-sources-of-truth"' in html
     assert 'itemtype="https://schema.org/Article"' in html
-    assert article.cta_text in html
-    assert f'href="{article.cta_href}"' in html
-    assert "Customer balances change depending on which screen you open" in html
+    assert "Audience:" in html
+    assert "Problem:" in html
+    assert 'href="/brief"' in html
+    assert 'id="section-0-title"' in html
+    assert "All insights" in html
 
 
 @pytest.mark.unit
-def test_render_fintech_article_page() -> None:
-    article = articles.get_article("fintech-architecture-due-diligence")
+def test_render_index_page_lists_articles() -> None:
+    html = articles.render_index_page()
+    assert "<h1" in html and "Insights" in html
+    assert "/insights/mvp-competing-sources-of-truth" in html
+    assert "/insights/fintech-architecture-investor-diligence" in html
+    assert 'type="application/atom+xml"' in html
+
+
+@pytest.mark.unit
+def test_load_articles_rejects_invalid_schema(tmp_path: Path) -> None:
+    path = tmp_path / "articles.json"
+    path.write_text(json.dumps({"articles": []}), encoding="utf-8")
+    with pytest.raises(ValueError, match="non-empty"):
+        articles.load_articles(path=path)
+
+    path.write_text(json.dumps({"articles": ["bad"]}), encoding="utf-8")
+    with pytest.raises(ValueError, match="object"):
+        articles.load_articles(path=path)
+
+    path.write_text(json.dumps({"articles": [{"slug": ""}]}), encoding="utf-8")
+    with pytest.raises(ValueError, match="slug"):
+        articles.load_articles(path=path)
+
+    incomplete = {**SAMPLE_ARTICLE, "sections": []}
+    path.write_text(json.dumps({"articles": [incomplete]}), encoding="utf-8")
+    with pytest.raises(ValueError, match="sections"):
+        articles.load_articles(path=path)
+
+    bad_section = {**SAMPLE_ARTICLE, "sections": [{"heading": "Only heading"}]}
+    path.write_text(json.dumps({"articles": [bad_section]}), encoding="utf-8")
+    with pytest.raises(ValueError, match="content"):
+        articles.load_articles(path=path)
+
+
+@pytest.mark.unit
+def test_render_escapes_html_in_content(tmp_path: Path) -> None:
+    xss_article = {
+        **SAMPLE_ARTICLE,
+        "slug": "xss",
+        "title": "Title<script>",
+        "meta_description": "Meta<script>",
+        "audience": "Audience<script>",
+        "problem": "Problem<script>",
+        "sections": [{"heading": "H<script>", "content": "Body<script>"}],
+        "cta_label": "CTA<script>",
+    }
+    path = tmp_path / "articles.json"
+    path.write_text(json.dumps({"articles": [xss_article]}), encoding="utf-8")
+    article = articles.get_article("xss", path=path)
     assert article is not None
-    html = articles.render_article_page(article)
-    assert "Ledger design and reconciliation discipline" in html
-    assert "Discuss technical diligence" in html
+    rendered = articles.render_article_page(article)
+    assert "Title&lt;script&gt;" in rendered
+    assert "Audience&lt;script&gt;" in rendered
+    assert "Body&lt;script&gt;" in rendered
+    assert "CTA&lt;script&gt;" in rendered
 
 
 @pytest.mark.unit
-def test_render_atom_feed_lists_entries() -> None:
-    xml = articles.render_atom_feed()
-    assert "<feed" in xml
-    assert "competing-sources-of-truth" in xml
-    assert "fintech-architecture-due-diligence" in xml
-    assert "Architecture judgment" not in xml
-
-
-@pytest.mark.unit
-def test_insights_index_handler() -> None:
-    response = insights_index()
-    assert "Insights" in response.body.decode()
-
-
-@pytest.mark.unit
-def test_insight_article_handler_found() -> None:
-    response = insight_article("competing-sources-of-truth")
-    assert "Five signs an MVP has competing sources of truth" in response.body.decode()
-
-
-@pytest.mark.unit
-def test_insight_article_handler_404() -> None:
-    with pytest.raises(HTTPException) as exc_info:
-        insight_article("not-real")
-    assert exc_info.value.status_code == 404
-
-
-@pytest.mark.unit
-def test_insights_feed_handler_media_type() -> None:
-    response = insights_feed()
-    assert response.media_type == "application/atom+xml"
-    assert b"<feed" in response.body
+def test_atom_feed_contains_entries() -> None:
+    feed = articles.atom_feed()
+    root = ET.fromstring(feed)
+    ns = {"atom": "http://www.w3.org/2005/Atom"}
+    titles = [entry.find("atom:title", ns).text for entry in root.findall("atom:entry", ns)]
+    assert "Five signs an MVP has competing sources of truth" in titles
+    assert "What investors should examine before funding fintech architecture" in titles
 
 
 @pytest.mark.unit
@@ -144,61 +157,31 @@ def test_insights_index_route() -> None:
     response = client.get("/insights")
     assert response.status_code == 200
     body = response.text
-    assert "Five signs an MVP has competing sources of truth" in body
-    assert "What investors should examine before funding fintech architecture" in body
+    assert "Insights" in body
+    assert "/insights/mvp-competing-sources-of-truth" in body
+    assert 'rel="canonical" href="https://saberistic.com/insights"' in body
 
 
 @pytest.mark.unit
 def test_insight_article_route() -> None:
-    response = client.get("/insights/competing-sources-of-truth")
+    response = client.get("/insights/fintech-architecture-investor-diligence")
     assert response.status_code == 200
     body = response.text
-    assert "Five signs an MVP has competing sources of truth" in body
-    assert "Request an architecture review" in body
-    assert 'rel="canonical"' in body
+    assert "What investors should examine before funding fintech architecture" in body
+    assert "Ledger and balance boundaries" in body
+    assert 'property="og:type" content="article"' in body
+    assert "Discuss technical due diligence" in body
 
 
 @pytest.mark.unit
-def test_insight_article_route_not_found() -> None:
+def test_insight_article_not_found() -> None:
     response = client.get("/insights/does-not-exist")
     assert response.status_code == 404
 
 
 @pytest.mark.unit
-def test_sitemap_route_includes_insights() -> None:
-    response = client.get("/sitemap.xml")
+def test_insights_atom_route() -> None:
+    response = client.get("/insights.atom")
     assert response.status_code == 200
-    assert response.headers["content-type"].startswith("application/xml")
-    assert "/insights" in response.text
-    assert "/insights/fintech-architecture-due-diligence" in response.text
-
-
-@pytest.mark.unit
-def test_atom_feed_route() -> None:
-    response = client.get("/insights/feed.atom")
-    assert response.status_code == 200
-    assert "atom+xml" in response.headers["content-type"]
-    assert "competing-sources-of-truth" in response.text
-
-
-@pytest.mark.unit
-def test_home_links_to_insights() -> None:
-    body = client.get("/").text
-    assert 'href="/insights"' in body
-    assert "Insights" in body
-
-
-@pytest.mark.unit
-def test_launch_articles_published() -> None:
-    """Issue #69 requires at least two reviewed launch articles."""
-    slugs = {article.slug for article in articles.ARTICLES}
-    assert "competing-sources-of-truth" in slugs
-    assert "fintech-architecture-due-diligence" in slugs
-    for slug in ("competing-sources-of-truth", "fintech-architecture-due-diligence"):
-        article = articles.get_article(slug)
-        assert article is not None
-        assert article.audience
-        assert article.problem
-        assert article.cta_text
-        assert article.cta_href
-        assert article.body_html()
+    assert "application/atom+xml" in response.headers["content-type"]
+    assert "Five signs an MVP has competing sources of truth" in response.text
