@@ -16,6 +16,7 @@ OG_IMAGE = f"{CANONICAL_BASE}/assets/og-share.png"
 OG_IMAGE_ALT = (
     "saberistic — AmirSaber Sharifi — filling gaps between markets and tech"
 )
+ATOM_FEED_PATH = "/insights/feed.xml"
 
 AUDIENCE_LABELS: dict[str, str] = {
     "founders": "For founders",
@@ -225,7 +226,6 @@ def render_article_page(article: dict[str, Any]) -> str:
 {sections_html}
         <p class="article-cta-row">
           <a class="cta" href="{cta_href}">{cta_label}</a>
-          <a class="cta cta-secondary" href="/insights">All insights</a>
         </p>
       </article>
     </main>
@@ -275,7 +275,7 @@ def render_insights_index_page(articles: list[dict[str, Any]] | None = None) -> 
     <title>{html.escape(title)}</title>
     <meta name="description" content="{html.escape(description)}" />
     <link rel="canonical" href="{html.escape(canonical, quote=True)}" />
-    <link rel="alternate" type="application/atom+xml" title="saberistic insights" href="/insights/feed.xml" />
+    <link rel="alternate" type="application/atom+xml" title="saberistic insights" href="{ATOM_FEED_PATH}" />
 {_social_meta(title=title, description=description, url=canonical)}
     <script type="application/ld+json">
 {json_ld}
@@ -327,7 +327,7 @@ def render_atom_feed(articles: list[dict[str, Any]] | None = None) -> str:
         '<feed xmlns="http://www.w3.org/2005/Atom">\n'
         f"  <title>saberistic insights</title>\n"
         f"  <link href=\"{CANONICAL_BASE}/insights\" />\n"
-        f"  <link rel=\"self\" href=\"{CANONICAL_BASE}/insights/feed.xml\" />\n"
+        f"  <link rel=\"self\" href=\"{CANONICAL_BASE}{ATOM_FEED_PATH}\" />\n"
         f"  <id>{CANONICAL_BASE}/insights</id>\n"
         f"  <updated>{html.escape(items[0]['published_date'])}T00:00:00Z</updated>\n"
         f"{feed_entries}\n"
