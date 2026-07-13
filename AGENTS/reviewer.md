@@ -21,7 +21,8 @@ Before approving you must:
 
 ## Definition of done
 
-- Screenshots of deploy (`/` and `/about` by default) appear on the PR + issue
+- Desktop + mobile screenshots of deploy (`/` and `/about` by default) appear
+  on the PR + issue
 - AI review is recorded in the PR review body
 - `### acceptance_checklist` is posted with `all_done: true` and evidence links
 - Matching issue-body checkboxes are flipped to `[x]` when verified

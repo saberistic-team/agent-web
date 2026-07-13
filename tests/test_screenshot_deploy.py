@@ -1,6 +1,31 @@
 from __future__ import annotations
 
-from screenshot_deploy import resolve_base_url, wait_healthy
+from screenshot_deploy import (
+    VIEWPORTS,
+    resolve_base_url,
+    screenshot_basename,
+    wait_healthy,
+)
+
+
+def test_viewports_include_desktop_and_mobile() -> None:
+    names = {name for name, _, _ in VIEWPORTS}
+    assert names == {"desktop", "mobile"}
+    by_name = {name: (w, h) for name, w, h in VIEWPORTS}
+    assert by_name["desktop"] == (1280, 800)
+    assert by_name["mobile"] == (390, 844)
+
+
+def test_screenshot_basename_desktop_keeps_legacy_names() -> None:
+    assert screenshot_basename("pre", "/", "desktop") == "pre-home.png"
+    assert screenshot_basename("pre", "/about", "desktop") == "pre-about.png"
+    assert screenshot_basename("post", "/", "desktop") == "post-home.png"
+
+
+def test_screenshot_basename_mobile_suffix() -> None:
+    assert screenshot_basename("pre", "/", "mobile") == "pre-home-mobile.png"
+    assert screenshot_basename("pre", "/about", "mobile") == "pre-about-mobile.png"
+    assert screenshot_basename("post", "/about", "mobile") == "post-about-mobile.png"
 
 
 def test_resolve_base_url_ignores_empty(monkeypatch) -> None:

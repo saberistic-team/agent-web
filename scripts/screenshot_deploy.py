@@ -22,6 +22,20 @@ DEFAULT_BASE = "https://saberistic.com"
 HTML_PATHS = ("/", "/about")
 PATHS = HTML_PATHS  # alias for callers
 
+# Desktop + mobile evidence for landing/product acceptance criteria.
+VIEWPORTS: tuple[tuple[str, int, int], ...] = (
+    ("desktop", 1280, 800),
+    ("mobile", 390, 844),
+)
+
+
+def screenshot_basename(phase: str, route: str, viewport: str) -> str:
+    """Build ``pre-home.png`` (desktop) or ``pre-home-mobile.png`` filenames."""
+    safe = "home" if route == "/" else route.strip("/").replace("/", "-")
+    if viewport == "desktop":
+        return f"{phase}-{safe}.png"
+    return f"{phase}-{safe}-{viewport}.png"
+
 
 def resolve_base_url(value: str | None = None) -> str:
     """Prefer explicit value, then DEPLOY_BASE_URL, then default.
@@ -93,32 +107,39 @@ def capture(base_url: str | None, out_dir: Path, *, phase: str = "pre") -> list[
     base = resolve_base_url(base_url)
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        page = browser.new_page(viewport={"width": 1280, "height": 800})
-        for route in HTML_PATHS:
-            url = urljoin(base + "/", route.lstrip("/")) if route != "/" else base + "/"
-            if not _is_html_response(url):
-                # JSON or non-HTML — skip screenshot (e.g. misconfigured /about).
-                continue
-            last_err: Exception | None = None
-            for _ in range(6):
-                try:
-                    page.goto(url, wait_until="networkidle", timeout=60_000)
-                    # Double-check we did not land on JSON.
-                    body_prefix = page.content()[:200].lstrip().lower()
-                    if body_prefix.startswith("{") or body_prefix.startswith("["):
-                        last_err = GitHubError(f"{url} returned JSON, not HTML")
+        for viewport_name, width, height in VIEWPORTS:
+            page = browser.new_page(viewport={"width": width, "height": height})
+            for route in HTML_PATHS:
+                url = (
+                    urljoin(base + "/", route.lstrip("/"))
+                    if route != "/"
+                    else base + "/"
+                )
+                if not _is_html_response(url):
+                    # JSON or non-HTML — skip screenshot (e.g. misconfigured /about).
+                    continue
+                last_err: Exception | None = None
+                for _ in range(6):
+                    try:
+                        page.goto(url, wait_until="networkidle", timeout=60_000)
+                        # Double-check we did not land on JSON.
+                        body_prefix = page.content()[:200].lstrip().lower()
+                        if body_prefix.startswith("{") or body_prefix.startswith("["):
+                            last_err = GitHubError(f"{url} returned JSON, not HTML")
+                            break
+                        last_err = None
                         break
-                    last_err = None
-                    break
-                except Exception as exc:  # noqa: BLE001
-                    last_err = exc
-                    time.sleep(8)
-            if last_err is not None:
-                raise GitHubError(f"failed to load {url}: {last_err}")
-            safe = "home" if route == "/" else route.strip("/").replace("/", "-")
-            dest = out_dir / f"{phase}-{safe}.png"
-            page.screenshot(path=str(dest), full_page=True)
-            paths.append(dest)
+                    except Exception as exc:  # noqa: BLE001
+                        last_err = exc
+                        time.sleep(8)
+                if last_err is not None:
+                    page.close()
+                    browser.close()
+                    raise GitHubError(f"failed to load {url}: {last_err}")
+                dest = out_dir / screenshot_basename(phase, route, viewport_name)
+                page.screenshot(path=str(dest), full_page=True)
+                paths.append(dest)
+            page.close()
         browser.close()
     if not paths:
         raise GitHubError(
