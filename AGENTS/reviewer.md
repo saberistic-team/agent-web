@@ -43,8 +43,9 @@ than reviewing stale ghost commits.
 
 ## Definition of done
 
-- Desktop + mobile screenshots of the **PR branch** and **production**
-  (`/` and `/about` by default) appear on the PR + issue
+- Desktop + mobile screenshots of the **PR branch** and **production** for
+  **all HTML page routes** (not just `/` / `/about`; JSON APIs skipped;
+  `/health` is JSON evidence only) appear on the PR + issue
 - Visual readability check passes on PR-branch shots (no mobile out-of-frame
   overflow)
 - AI review is recorded in the PR review body

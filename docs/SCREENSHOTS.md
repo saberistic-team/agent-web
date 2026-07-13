@@ -4,16 +4,31 @@ Visual evidence for the agent loop. **Only** GitHub Actions + headless
 Chromium via Playwright (`scripts/screenshot_deploy.py`). Do **not** use
 Copilot, Playwright MCP, or any IDE browser agent for gate evidence.
 
+## Which routes are captured
+
+Screenshots cover **all GET page routes** discovered from the app (including
+`/work/{slug}` case studies), at desktop + mobile. Skipped:
+
+| Route kind | Examples | Behavior |
+|------------|----------|----------|
+| **Health** | `/health` | Polled as **JSON evidence only** (never a PNG) |
+| **JSON APIs** | `/hello`, `/api/*`, `/webhooks/*` | Skipped (Content-Type probe also skips JSON) |
+| **Meta / static** | `/robots.txt`, `/sitemap.xml`, `/assets/*`, OpenAPI docs | Skipped |
+| **Legacy redirects** | `/what-we-do.html`, … | Skipped |
+
+Capture also skips any candidate URL that does not return HTML `2xx` (so a
+new PR route missing from production is omitted from prod shots, not failed).
+
 ## Pre-merge (Reviewer)
 
 When `agent:reviewer` runs on an open PR (workflow installs Playwright):
 
 1. Starts a **local uvicorn** on the PR head checkout (`COVERAGE_ROOT` /
-   `pr-head/`) and captures `/` + `/about` at **desktop (1280×800)** and
-   **mobile (390×844)** → `branch-*.png` (code under review)
+   `pr-head/`) and captures **all HTML page routes** at **desktop (1280×800)**
+   and **mobile (390×844)** → `branch-*.png` (code under review)
 2. Captures the same routes on **production**
    ([saberistic.com](https://saberistic.com) / `DEPLOY_BASE_URL`) →
-   `pre-*.png` (baseline before merge)
+   `pre-*.png` (baseline before merge), skipping any that are not HTML yet
 3. Files land under `.agent/screenshots/pr-<n>/` on the PR branch
 4. Comments `### reviewer_screenshots_pre` on the **PR and linked issue**
    (both sources labeled)
@@ -31,9 +46,9 @@ CI `post-deploy-visual` job (after Render deploy hook):
 1. Polls `/health` as **JSON only**, records the value on every deploy under
    `.agent/deploy/<sha>/deploy-health.json`, prints it to the job summary, and
    includes it on the issue comment when an issue is linked
-2. Captures desktop + mobile `post-*.png` of **HTML pages only** (`/` and
-   `/about`) from **production** (`https://saberistic.com`) — skips JSON APIs
-   like `/hello`
+2. Captures desktop + mobile `post-*.png` of **all HTML page routes** from
+   **production** (`https://saberistic.com`) — skips JSON APIs; never
+   screenshots `/health`
 3. Resolves the related issue only from explicit `Closes #N` / `Fixes #N` /
    `Resolves #N` / `(#N)` in the commit message or linked PR (bare `#N`
    mentions like `post-#58` are ignored)
@@ -55,9 +70,9 @@ gets the before/after pair.
 
 | Phase | Source | Filenames |
 |-------|--------|-----------|
-| Pre-merge | PR head (local uvicorn) | `branch-home.png`, `branch-*-mobile.png`, … |
-| Pre-merge | Production (`saberistic.com`) | `pre-home.png`, `pre-*-mobile.png`, … |
-| Post-deploy | Production (`saberistic.com`) | `post-home.png`, `post-*-mobile.png`, … |
+| Pre-merge | PR head (local uvicorn) | `branch-home.png`, `branch-brief.png`, `branch-work-…`, … |
+| Pre-merge | Production (`saberistic.com`) | `pre-*.png` |
+| Post-deploy | Production (`saberistic.com`) | `post-*.png` |
 
 ## Config
 
@@ -75,7 +90,7 @@ gets the before/after pair.
 
 ## Scripts / workflows
 
-- `scripts/screenshot_deploy.py` — headless capture + upload + comment
+- `scripts/screenshot_deploy.py` — route discovery + headless capture + upload + comment
 - `scripts/post_deploy_visual.py` — post-deploy capture + Cursor/OpenAI visual check
 - `.github/workflows/reviewer.yml` — pre-merge Playwright install + capture
 - `.github/workflows/ci.yml` — `post-deploy-visual` job
