@@ -73,6 +73,7 @@ Every agent action must produce a **visible GitHub event** under the role bot:
 |-------|------------------|
 | `### agent_start` / `### agent_finish` / `### agent_failed` | Issue comment |
 | `### planner_plan` / `### planner_release` | Issue comment (required before queue) |
+| `### dispatcher_dispatch` | Issue comment when the priority queue applies `agent:builder` / `agent:docs` |
 | `### permission_check` | Issue comment (pass **and** fail) |
 | `### gate_release_plan` / `### gate_merge` | Issue comment |
 | Builder/Docs commits + PRs | Commits/PRs as Builder/Docs App |
@@ -111,6 +112,7 @@ and show only that role’s workflow fails while others still mint tokens and ac
 | Check | Expectation after Builder revoke |
 |-------|----------------------------------|
 | Label an issue `status:new` | Planner workflow still runs; plan comments appear as Planner bot |
+| Label `status:queued` (with `type:*` + `priority:*`) | Dispatcher (Planner App token) may apply `agent:builder` / `agent:docs` |
 | Label `agent:docs` | Docs workflow still runs (commits/comments as Docs bot) |
 | Label `agent:builder` | Builder job fails at **Mint Builder App token** or first Builder API call |
 | Label `agent:reviewer` (with a PR) | Reviewer still runs if its install is intact |

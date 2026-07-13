@@ -7,7 +7,7 @@ Each line is one JSON object written by `scripts/write_trace.py` (flock-safe):
 | Field | Meaning |
 |-------|---------|
 | `ts` | ISO-8601 UTC timestamp |
-| `role` | `planner` \| `builder` \| `reviewer` \| `docs` \| `gate` |
+| `role` | `planner` \| `builder` \| `reviewer` \| `docs` \| `gate` \| `dispatcher` |
 | `issue` | Issue number, or `null` |
 | `pr` | PR number, or `null` |
 | `action` | What ran (e.g. `plan`, `build`, `review:approved`, `gate:release-plan`) |

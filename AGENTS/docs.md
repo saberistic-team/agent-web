@@ -2,8 +2,11 @@
 
 ## What you own
 
-You run when an issue is labeled `agent:docs`. You update documentation so
+You run when an issue is labeled `agent:docs` (after the **dispatcher**
+dequeues `status:queued` work by `priority:*`). You update documentation so
 it matches the product and any related implementation.
+
+Preserve any `priority:*` label on the issue; do not strip or change it.
 
 In-scope paths:
 
