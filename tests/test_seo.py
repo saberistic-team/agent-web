@@ -44,6 +44,7 @@ def test_sitemap_contains_only_indexable_paths() -> None:
     ]
     assert "https://saberistic.com/brief/success" not in locs
     assert any(loc.startswith("https://saberistic.com/work/") for loc in locs)
+    assert "https://saberistic.com/insights" in locs
     assert any(loc.startswith("https://saberistic.com/insights/") for loc in locs)
 
 
