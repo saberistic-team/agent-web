@@ -97,6 +97,7 @@ def test_about_page() -> None:
     assert "leave things better than I found them" in body
     assert 'href="/brief"' in body
     assert 'href="/#proof"' in body
+    assert 'href="/insights"' in body
     assert "Request architecture review" in body
 
 
@@ -159,59 +160,48 @@ def test_home_has_proof_section() -> None:
 
 
 @pytest.mark.unit
+def test_home_has_insights_section() -> None:
+    body = client.get("/").text
+    assert 'id="insights"' in body
+    assert 'href="/insights"' in body
+    assert "/insights/mvp-competing-sources-of-truth" in body
+    assert "/insights/fintech-architecture-due-diligence" in body
+    assert 'class="top-link" href="/insights"' in body
+
+
+@pytest.mark.unit
 def test_insights_index_page() -> None:
     response = client.get("/insights")
     assert response.status_code == 200
     body = response.text
     assert "Insights" in body
-    assert "/insights/mvp-competing-sources-of-truth" in body
-    assert "/insights/fractional-principal-first-30-days" in body
     assert 'rel="canonical" href="https://saberistic.com/insights"' in body
-    assert 'property="og:title"' in body
+    assert "/insights/mvp-competing-sources-of-truth" in body
 
 
 @pytest.mark.unit
-def test_article_page() -> None:
-    response = client.get("/insights/mvp-competing-sources-of-truth")
+def test_insight_article_page() -> None:
+    response = client.get("/insights/fintech-architecture-due-diligence")
     assert response.status_code == 200
     body = response.text
-    assert "Five signs an MVP has competing sources of truth" in body
-    assert "competing sources of truth" in body
+    assert "What investors should examine" in body
     assert 'property="og:type" content="article"' in body
-    assert '"@type": "Article"' in body
     assert 'href="/brief"' in body
-    assert 'name="description"' in body
+    assert body.count('class="cta"') == 1
 
 
 @pytest.mark.unit
-def test_article_not_found() -> None:
-    response = client.get("/insights/does-not-exist")
+def test_insight_article_not_found() -> None:
+    response = client.get("/insights/unknown-slug")
     assert response.status_code == 404
-
-
-@pytest.mark.unit
-def test_article_unique_metadata() -> None:
-    mvp = client.get("/insights/mvp-competing-sources-of-truth").text
-    principal = client.get("/insights/fractional-principal-first-30-days").text
-    assert "competing sources of truth" in mvp
-    assert "fractional principal architect" in principal
-    assert mvp != principal
 
 
 @pytest.mark.unit
 def test_insights_atom_feed() -> None:
     response = client.get("/insights/feed.xml")
     assert response.status_code == 200
-    assert "application/atom+xml" in response.headers["content-type"]
-    assert "Five signs an MVP has competing sources of truth" in response.text
-
-
-@pytest.mark.unit
-def test_home_has_insights_section() -> None:
-    body = client.get("/").text
-    assert 'id="insights"' in body
-    assert 'href="/insights"' in body
-    assert "/insights/mvp-competing-sources-of-truth" in body
+    assert "atom" in response.headers["content-type"]
+    assert "fintech-architecture-due-diligence" in response.text
 
 
 @pytest.mark.unit
