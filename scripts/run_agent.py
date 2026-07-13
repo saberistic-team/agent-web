@@ -494,6 +494,28 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
             f"{result.get('provider')}:{result.get('model')}\n",
             encoding="utf-8",
         )
+        # After codegen, rebase/merge the PR onto latest base if GitHub reports
+        # conflicts — using recently closed issues/PRs as resolution context.
+        try:
+            from builder_conflicts import maybe_resolve_pr_conflicts
+
+            conflict = maybe_resolve_pr_conflicts(repo, issue)
+            (HANDOFF_DIR / "builder-conflict.txt").write_text(
+                f"{conflict.get('status')}\n",
+                encoding="utf-8",
+            )
+        except Exception as conflict_exc:
+            post_issue_comment(
+                repo,
+                issue,
+                (
+                    "### builder_conflict_result\n"
+                    f"- status: `failed`\n"
+                    f"- error: `{conflict_exc}`\n"
+                    "- note: codegen succeeded; resolve merge conflicts on the "
+                    "existing PR head before Reviewer (do not open a second branch).\n"
+                ),
+            )
         write_builder_handoff("reviewer")
     except Exception as exc:
         escalate(
