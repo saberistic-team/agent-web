@@ -14,6 +14,7 @@ from app.seo import (
     CANONICAL_BASE,
     INDEXABLE_PATHS,
     LEGACY_REDIRECTS,
+    PERMANENT_REDIRECTS,
     canonical_url,
     indexable_paths,
     robots_txt,
@@ -43,6 +44,7 @@ def test_sitemap_contains_only_indexable_paths() -> None:
         canonical_url(path) for path in INDEXABLE_PATHS
     ]
     assert "https://saberistic.com/brief/success" not in locs
+    assert "https://saberistic.com/diagnostic" not in locs
     assert any(loc.startswith("https://saberistic.com/work/") for loc in locs)
     assert any(loc.startswith("https://saberistic.com/insights/") for loc in locs)
 
@@ -87,25 +89,32 @@ def test_indexable_pages_have_single_canonical(path: str, expected_href: str) ->
 
 
 @pytest.mark.unit
-def test_diagnostic_redirects_to_brief() -> None:
-    response = client.get("/diagnostic", follow_redirects=False)
-    assert response.status_code == 301
-    assert response.headers["location"] == "/brief"
-
-
-@pytest.mark.unit
-def test_diagnostic_not_in_sitemap() -> None:
-    xml = sitemap_xml(lastmod=date(2026, 7, 13))
-    assert "https://saberistic.com/diagnostic" not in xml
-
-
-@pytest.mark.unit
 def test_brief_success_is_noindex_without_canonical() -> None:
     response = client.get("/brief/success")
     assert response.status_code == 200
     body = response.text
     assert 'name="robots" content="noindex, nofollow"' in body
     assert 'rel="canonical"' not in body
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "redirect_path,target",
+    list(PERMANENT_REDIRECTS.items()),
+)
+def test_permanent_marketing_redirects(redirect_path: str, target: str) -> None:
+    response = client.get(redirect_path, follow_redirects=False)
+    assert response.status_code == 301
+    assert response.headers["location"] == target
+
+
+@pytest.mark.unit
+def test_diagnostic_redirect_does_not_chain() -> None:
+    response = client.get("/diagnostic", follow_redirects=False)
+    assert response.status_code == 301
+    assert response.headers["location"] == "/brief"
+    brief = client.get("/brief", follow_redirects=False)
+    assert brief.status_code == 200
 
 
 @pytest.mark.unit
