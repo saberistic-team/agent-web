@@ -323,6 +323,10 @@ def test_json_ld_has_no_invented_claims() -> None:
         response = client.get(path)
         head = _parse_head(response.text)
         assert not forbidden.search(head.ld_json_raw), f"Forbidden claim on {path}"
+    for path in CASE_STUDY_PAGES:
+        response = client.get(path)
+        head = _parse_head(response.text)
+        assert not forbidden.search(head.ld_json_raw), f"Forbidden claim on {path}"
 
 
 @pytest.mark.unit
@@ -353,6 +357,18 @@ def test_case_study_routes_enumerated() -> None:
         "architecture-diagnostic",
     }
     assert set(CASE_STUDY_PAGES) == {f"/work/{slug}" for slug in slugs}
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("path,expected", CASE_STUDY_PAGES.items())
+def test_case_study_unique_title_and_description(
+    path: str, expected: dict[str, str]
+) -> None:
+    response = client.get(path)
+    assert response.status_code == 200
+    head = _parse_head(response.text)
+    assert head.title.strip() == expected["title"]
+    assert head.meta["description"] == expected["description"]
 
 
 @pytest.mark.unit
