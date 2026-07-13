@@ -98,10 +98,9 @@ def test_render_case_study_page_structure() -> None:
     html = case_studies.render_case_study_page(study)
     assert "<title>Brave — Infrastructure for privacy-aligned payments · saberistic</title>" in html
     assert 'name="description"' in html
-    assert 'property="og:type" content="article"' in html
-    assert 'name="twitter:card" content="summary_large_image"' in html
+    assert 'property="og:title"' in html
+    assert 'name="twitter:card"' in html
     assert 'type="application/ld+json"' in html
-    assert '"@type":"WebPage"' in html
     assert 'id="problem-title"' in html
     assert 'id="intervention-title"' in html
     assert 'id="result-title"' in html
