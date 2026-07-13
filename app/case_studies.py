@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Any, Literal
 
-from app.metadata import case_study_head_metadata
+from app.metadata import case_study_head_extras
 from app.seo import canonical_url
 
 Engagement = Literal["employer", "founder", "saberistic"]
@@ -86,7 +86,7 @@ def list_featured_slugs(path: Path | None = None) -> list[str]:
 
 
 def case_study_page_title(study: dict[str, Any]) -> str:
-    """Return the document title for a case study (unescaped)."""
+    """Return the document title for a case study page."""
     return f"{study['org']} — {study['headline']} · saberistic"
 
 
@@ -96,11 +96,13 @@ def render_case_study_page(study: dict[str, Any]) -> str:
     slug = html.escape(slug_raw)
     org = html.escape(study["org"])
     headline = html.escape(study["headline"])
+    page_title = case_study_page_title(study)
+    page_title_esc = html.escape(page_title)
     meta = html.escape(study["meta_description"])
-    page_title = html.escape(case_study_page_title(study))
     canonical = canonical_url(f"/work/{slug_raw}")
-    head_metadata = case_study_head_metadata(
-        title=case_study_page_title(study),
+    canonical_esc = html.escape(canonical, quote=True)
+    head_extras = case_study_head_extras(
+        title=page_title,
         description=study["meta_description"],
         url=canonical,
     )
@@ -122,10 +124,10 @@ def render_case_study_page(study: dict[str, Any]) -> str:
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{page_title}</title>
+    <title>{page_title_esc}</title>
     <meta name="description" content="{meta}" />
-    <link rel="canonical" href="{html.escape(canonical, quote=True)}" />
-{head_metadata}
+    <link rel="canonical" href="{canonical_esc}" />
+{head_extras}
     <link rel="icon" href="/assets/logo.png" type="image/png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
