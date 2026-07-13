@@ -19,14 +19,15 @@ from github_api import api, split_repo
 _FIXABLE_RE = re.compile(
     r"coverage|missing tests|without test file|check `|screenshots failed|"
     r"acceptance criteria incomplete|visual readability|out of frame|"
-    r"overflow|clipped|pytest|test_",
+    r"overflow|clipped|pytest|test_|"
+    r"merge conflict|mergeable|mergeability|return to Builder",
     re.I,
 )
 _TERMINAL_RE = re.compile(r"terminal:\s*true|worklog-only", re.I)
 
 
 def is_fixable_changes_requested(body: str) -> bool:
-    """True when hard-fails are Builder work (coverage, tests, visual, CI)."""
+    """True when hard-fails are Builder work (coverage, tests, visual, CI, conflicts)."""
     text = body or ""
     if _TERMINAL_RE.search(text):
         return False
@@ -48,7 +49,7 @@ def resolve_decision(
     body = latest_body or ""
     if _TERMINAL_RE.search(body):
         return "blocked"
-    # Coverage / tests / visual overflow / CI always requeue Builder.
+    # Coverage / tests / visual overflow / CI / merge conflicts always requeue Builder.
     if is_fixable_changes_requested(body):
         return "changes-requested"
     # Non-fixable judgment ping-pong: stop after the second request.

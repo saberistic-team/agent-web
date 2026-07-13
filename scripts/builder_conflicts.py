@@ -55,6 +55,41 @@ def pr_needs_conflict_resolution(pr: dict[str, Any]) -> bool:
     return False
 
 
+def linked_pr_conflict_status(repo: str, issue: int) -> dict[str, Any]:
+    """Fresh mergeability for the open PR linked to ``issue``.
+
+    Returns ``status`` of ``no_pr``, ``clean``, or ``dirty``, plus PR fields
+    when a PR exists. Refreshes once when ``mergeable`` is still null.
+    """
+    prs = linked_open_prs(repo, issue)
+    if not prs:
+        return {"status": "no_pr", "issue": issue}
+    pr_number = int(prs[0]["number"])
+    pr = refresh_pr(repo, pr_number)
+    if pr.get("mergeable") is None:
+        pr = refresh_pr(repo, pr_number)
+    dirty = pr_needs_conflict_resolution(pr)
+    return {
+        "status": "dirty" if dirty else "clean",
+        "issue": issue,
+        "pr": pr_number,
+        "mergeable": pr.get("mergeable"),
+        "mergeable_state": pr.get("mergeable_state"),
+        "head": (pr.get("head") or {}).get("ref"),
+        "pr_payload": pr,
+    }
+
+
+def format_merge_conflict_hard_fail(status: dict[str, Any]) -> str:
+    """Reviewer hard-fail line for a conflicted linked PR."""
+    return (
+        "PR has merge conflicts with base "
+        f"(mergeable=`{status.get('mergeable')}`, "
+        f"mergeable_state=`{status.get('mergeable_state')}`) — "
+        "return to Builder to resolve on the same PR head"
+    )
+
+
 def list_recent_merged_prs(repo: str, *, limit: int = DEFAULT_RECENT_PRS) -> list[dict[str, Any]]:
     owner, name = split_repo(repo)
     prs = (

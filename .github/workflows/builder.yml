@@ -118,6 +118,19 @@ jobs:
           EOF
           )"
               ;;
+            waiting)
+              # Unresolved merge conflicts (or similar): stay in the priority queue
+              # so Builder runs again — do not send a dirty PR to Reviewer.
+              gh issue edit "${ISSUE}" \
+                --repo "${{ github.repository }}" \
+                --add-label "status:queued"
+              gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
+          ### builder_handoff
+          - status: \`status:queued\`
+          - next: dispatcher will re-apply \`agent:builder\` (merge conflicts / unfinished)
+          EOF
+          )"
+              ;;
             reviewer|*)
               gh issue edit "${ISSUE}" \
                 --repo "${{ github.repository }}" \

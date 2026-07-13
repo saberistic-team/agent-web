@@ -14,6 +14,26 @@ def test_fixable_includes_coverage_and_visual() -> None:
     assert is_fixable_changes_requested(body)
 
 
+def test_fixable_includes_merge_conflicts() -> None:
+    body = (
+        "### reviewer_decision\n"
+        "- decision: `changes-requested`\n"
+        "- hard_fails:\n"
+        "  - PR has merge conflicts with base "
+        "(mergeable=`False`, mergeable_state=`dirty`) — "
+        "return to Builder to resolve on the same PR head\n"
+    )
+    assert is_fixable_changes_requested(body)
+    assert (
+        resolve_decision(
+            latest_state="CHANGES_REQUESTED",
+            latest_body=body,
+            prior_changes_requested=5,
+        )
+        == "changes-requested"
+    )
+
+
 def test_terminal_worklog_not_fixable() -> None:
     body = "PR is builder worklog-only (terminal: true — do not requeue builder)"
     assert not is_fixable_changes_requested(body)
