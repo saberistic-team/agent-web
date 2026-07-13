@@ -187,6 +187,7 @@ def test_case_study_unique_metadata() -> None:
 
 
 @pytest.mark.unit
-def test_case_study_handler_unit() -> None:
+def test_case_study_handler_unit(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ANALYTICS_ENABLED", raising=False)
     response = case_study("brave")
     assert "Infrastructure for privacy-aligned payments" in response.body.decode()
