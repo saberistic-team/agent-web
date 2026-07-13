@@ -1,0 +1,50 @@
+          <p>
+            An MVP can ship quickly and still accumulate more than one
+            authoritative record for the same business fact. That is not a
+            tooling problem alone. It is an architecture decision that
+            compounds once customers, finance, and compliance all depend on
+            different answers.
+          </p>
+          <h2>1. Customer balances change depending on which screen you open</h2>
+          <p>
+            The wallet, the admin console, and the monthly statement should
+            describe the same position. When they diverge, teams usually blame
+            caching or a stale UI. More often, two write paths update different
+            stores, or one path reads a projection that lags behind the ledger.
+          </p>
+          <h2>2. Support escalations start with “which number is correct?”</h2>
+          <p>
+            If support has to reconcile spreadsheets before answering a ticket,
+            the product already has competing sources of truth. The cost is not
+            only handle time. Customers lose confidence when the explanation
+            depends on who is looking and when.
+          </p>
+          <h2>3. Reporting is rebuilt for every board deck</h2>
+          <p>
+            Healthy early systems have one event stream or ledger that feeds
+            product, finance, and analytics. If each board cycle starts with
+            manual exports and one-off SQL, leadership is making decisions on
+            reconstructed history instead of governed data.
+          </p>
+          <h2>4. Feature teams invent local schemas for shared concepts</h2>
+          <p>
+            User, account, order, and balance should have one canonical model
+            with explicit ownership. When every squad defines its own version,
+            integrations become translation layers. Those layers look like
+            progress in sprint reviews and become debt in compliance reviews.
+          </p>
+          <h2>5. Incidents are fixed in place instead of at the source</h2>
+          <p>
+            Patching the dashboard after an outage without fixing the write
+            path guarantees recurrence. Mature teams trace every customer-facing
+            field to a single system of record and document which projections
+            are allowed to lag.
+          </p>
+          <h2>What to do before the next funding milestone</h2>
+          <p>
+            Map the ten customer-visible facts that matter most to revenue and
+            trust. For each one, name the system of record, the read models,
+            and the team that owns corrections. If that map takes more than a
+            working session to produce, the MVP is already carrying hidden
+            coordination tax.
+          </p>
