@@ -18,6 +18,14 @@ triggers): copy `type:*` and `priority:*` from the issue, and set
 `review:needs-review`. Never put `agent:*` or `status:*` on the PR — see
 [docs/LABELS.md](../docs/LABELS.md).
 
+When an open PR already links the issue (`Closes #N` / title `#N`), **reuse that
+PR’s head branch** for every follow-up commit. Do not invent a second
+`builder/{issue}-…` branch from a retitled slug — that forks Reviewer off the
+real PR and causes change-request loops.
+
+Binary assets (PNG/JPEG/WebP/etc.) must be committed as raw bytes, never through
+UTF-8 text rewrite (that corrupts PNG magic and breaks OG share images).
+
 ## Definition of done
 
 - Implementation matches the issue scope (bug fix or feature as labeled).
