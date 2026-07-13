@@ -63,8 +63,8 @@ def web_page_json_ld(*, title: str, description: str, url: str) -> str:
     )
 
 
-def case_study_json_ld(*, title: str, description: str, url: str) -> str:
-    """Conservative WebPage JSON-LD for /work/{slug} proof pages."""
+def case_study_page_json_ld(*, title: str, description: str, url: str) -> str:
+    """JSON-LD for /work/{slug} proof pages (conservative WebPage schema)."""
     return json_ld_script(
         {
             "@context": "https://schema.org",
@@ -80,12 +80,6 @@ def case_study_json_ld(*, title: str, description: str, url: str) -> str:
             },
         }
     )
-
-
-def case_study_head_extras(*, title: str, description: str, url: str) -> str:
-    """Open Graph, Twitter card, and JSON-LD for a case-study page."""
-    return f"""{social_meta_tags(title=title, description=description, url=url, og_type="website")}
-{case_study_json_ld(title=title, description=description, url=url)}"""
 
 
 def article_json_ld(
