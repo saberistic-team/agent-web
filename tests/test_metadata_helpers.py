@@ -4,14 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.metadata import (
-    OG_IMAGE_ALT,
-    article_json_ld,
-    case_study_head_metadata,
-    json_ld_script,
-    social_meta_tags,
-    web_page_json_ld,
-)
+from app.metadata import OG_IMAGE, OG_IMAGE_ALT, article_json_ld, case_study_json_ld, json_ld_script, social_meta_tags
 
 
 @pytest.mark.unit
@@ -36,31 +29,6 @@ def test_json_ld_script_escapes_closing_script_sequence() -> None:
 
 
 @pytest.mark.unit
-def test_case_study_head_metadata_includes_og_twitter_and_json_ld() -> None:
-    tags = case_study_head_metadata(
-        title="Brave — Infrastructure for privacy-aligned payments · saberistic",
-        description="How infrastructure architecture supported privacy-sensitive payment systems at Brave.",
-        canonical_url="https://saberistic.com/work/brave",
-    )
-    assert 'property="og:type" content="article"' in tags
-    assert 'name="twitter:card" content="summary_large_image"' in tags
-    assert '"@type":"WebPage"' in tags
-    assert "https://saberistic.com/work/brave" in tags
-    assert OG_IMAGE_ALT in tags
-
-
-@pytest.mark.unit
-def test_web_page_json_ld_includes_optional_image() -> None:
-    script = web_page_json_ld(
-        title="Title",
-        description="Description",
-        url="https://saberistic.com/work/brave",
-        image="https://saberistic.com/assets/og-share.png",
-    )
-    assert '"image":"https://saberistic.com/assets/og-share.png"' in script
-
-
-@pytest.mark.unit
 def test_article_json_ld_includes_modified_date() -> None:
     script = article_json_ld(
         title="Title",
@@ -71,3 +39,15 @@ def test_article_json_ld_includes_modified_date() -> None:
         date_modified="2026-07-13",
     )
     assert '"dateModified":"2026-07-13"' in script
+
+
+@pytest.mark.unit
+def test_case_study_json_ld_uses_web_page_with_image() -> None:
+    script = case_study_json_ld(
+        title="Brave — Infrastructure for privacy-aligned payments · saberistic",
+        description="How infrastructure architecture supported privacy-sensitive payment systems at Brave.",
+        url="https://saberistic.com/work/brave",
+    )
+    assert '"@type":"WebPage"' in script
+    assert f'"image":"{OG_IMAGE}"' in script
+    assert OG_IMAGE_ALT not in script
