@@ -1,42 +1,30 @@
-# Launch review — insights (#69)
+# Insights launch review (#69)
 
-Technical and editorial sign-off for launch articles on `/insights`. Reviewed on the PR head branch before merge.
-
-## System
-
-| Item | Status | Notes |
-|------|--------|-------|
-| `/insights` index route | Pass | Dynamic listing from `site/data/insights.json` |
-| `/insights/{slug}` article routes | Pass | Published articles only; drafts return 404 |
-| `/insights/feed.xml` Atom feed | Pass | Low-complexity syndication |
-| Sitemap + navigation | Pass | `/insights` and article paths in sitemap; home `#insights` section |
-| Editorial checklist | Pass | `docs/INSIGHTS_EDITORIAL.md` |
+Technical and editorial review for the initial authority-content launch on `/insights`.
 
 ## Launch articles
 
-### 1. Five signs an MVP has competing sources of truth
+| Slug | Title | Reviewed |
+|------|-------|----------|
+| `empty-wallets-active-positions` | Why empty wallets sometimes show active positions | 2026-07-13 |
+| `mvp-competing-sources-of-truth` | Five signs an MVP has competing sources of truth | 2026-07-13 |
 
-- **Slug:** `competing-sources-of-truth`
-- **Audience:** Founders and engineering leaders
-- **CTA:** Architecture Diagnostic (`/brief`)
-- **Accuracy:** Composite patterns only; no client or employer identifiers
-- **Confidentiality:** No named engagements or production specifics
-- **Review:** Approved for launch
+## Review sign-off
 
-### 2. What investors should examine before funding fintech architecture
+- **Accuracy:** Content describes common fintech and digital-asset architecture patterns; no fabricated metrics or client-specific claims.
+- **Confidentiality:** No client, employer, or unreleased product identifiers beyond public case-study disclaimers elsewhere on the site.
+- **Audience / problem:** Each article names its audience and opens with a recognizable problem statement.
+- **CTA:** One contextual CTA per article (`/brief` Architecture Diagnostic).
+- **Metadata:** Canonical, Open Graph, Twitter, and `Article` JSON-LD verified in `tests/test_insights.py` and `tests/test_metadata.py`.
+- **Navigation / discovery:** `/insights` linked from homepage; articles in sitemap and Atom feed.
 
-- **Slug:** `fintech-architecture-diligence`
-- **Audience:** Investors and acquirers
-- **CTA:** Technical due diligence email
-- **Accuracy:** Diligence framing aligned with Saberistic service scope
-- **Confidentiality:** No portfolio company or deal references
-- **Review:** Approved for launch
+## Deferred briefs (not in launch)
 
-## Deferred content
+The following issue briefs remain queued for a future editorial pass:
 
-Four additional briefs remain `draft` in `site/data/insights.json` pending editorial review:
-
-- Why empty wallets sometimes show active positions
+- What investors should examine before funding fintech architecture
 - When direct blockchain reads and backend APIs disagree
 - What a fractional principal architect fixes in the first 30 days
 - Security mistakes that become expensive after product-market fit
+
+Add each as a `published` entry in `site/data/insights.json` after completing `docs/INSIGHTS_EDITORIAL_CHECKLIST.md`.
