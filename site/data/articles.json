@@ -1,73 +1,121 @@
 {
   "articles": [
     {
-      "slug": "mvp-competing-sources-of-truth",
+      "slug": "competing-sources-of-truth",
       "title": "Five signs an MVP has competing sources of truth",
-      "meta_description": "How to recognize when your MVP's frontend, backend, and data layers disagree — before scaling turns inconsistency into a business risk.",
-      "audience": "founders",
-      "published_date": "2026-07-10",
+      "audience": "Founders & engineering leads · seed–Series A",
+      "problem": "When dashboards, APIs, and on-chain reads disagree, teams ship features on faith — not evidence. These five signs surface before a production incident forces the issue.",
+      "meta_description": "Five architectural signals that an MVP has competing sources of truth — for founders and engineering leads deciding when to invest in coherence before scale.",
       "author": "AmirSaber Sharifi",
-      "problem": "Early MVPs often ship fast by letting each layer own its own version of state. That works until users, investors, or regulators start asking which number is correct.",
+      "published_date": "2026-07-10",
+      "published": true,
       "sections": [
         {
-          "heading": "Balances differ by surface",
-          "body": "The dashboard shows a balance the wallet API does not recognize, or the admin panel reports holdings the customer app never displays. When two screens answer the same question with different numbers, you have at least two sources of truth — not a display bug."
+          "heading": "1. The same balance appears in three places with three values",
+          "paragraphs": [
+            "Wallet UI, admin console, and reporting pipeline each show a different available balance. Engineering explains it away as caching, rounding, or pending states — but no single service owns the authoritative ledger entry.",
+            "This is not a display bug. It is an ownership gap: multiple writers can mutate balance-related state without a reconciled write path."
+          ]
         },
         {
-          "heading": "Event logs and application state diverge",
-          "body": "Your ledger or event stream says a transfer completed, but the product database still shows pending. Teams patch around this with retries and manual fixes instead of reconciling the model. That is a sign the write path was never unified."
+          "heading": "2. Feature teams add tables instead of extending the domain model",
+          "paragraphs": [
+            "Each new surface — referrals, rewards, limits — gets its own table and nightly job instead of flowing through one transaction model. The schema grows faster than the product vocabulary.",
+            "When schema sprawl outpaces domain language, every cross-feature question becomes a bespoke join. That is a tax on every roadmap item."
+          ]
         },
         {
-          "heading": "On-chain reads disagree with backend APIs",
-          "body": "A wallet shows an active position while your indexer returns empty, or a contract state differs from what your API caches. In fintech and digital-asset products, this gap often means you are serving two authorities without a reconciliation layer."
+          "heading": "3. \"Eventually consistent\" is the default excuse for user-visible drift",
+          "paragraphs": [
+            "Async pipelines are fine. Unbounded drift is not. If support cannot tell a user when balances will match — or which number is correct — the architecture has no defined convergence point.",
+            "Mature systems declare maximum staleness and reconciliation triggers. MVPs that skip this ship ambiguity into the customer experience."
+          ]
         },
         {
-          "heading": "Feature flags hide inconsistent behavior",
-          "body": "Different cohorts see different outcomes for the same action because each feature branch introduced its own persistence rules. Flags are useful for rollout — not for papering over incompatible data models."
+          "heading": "4. Blockchain or external reads are treated as a second product database",
+          "paragraphs": [
+            "On-chain state, custodian APIs, and internal ledgers each become a source engineers query directly. No projection layer translates external truth into your domain events.",
+            "The result: feature code branches on whichever source was easiest that sprint. Disagreement is discovered in production, not in design review."
+          ]
         },
         {
-          "heading": "Nobody can answer \"what is the source of truth?\"",
-          "body": "If engineering, product, and support each point to a different system when asked where the canonical record lives, you have an architecture problem — not a documentation gap. Fixing it gets harder after product-market fit."
+          "heading": "5. No one can draw the write path for a dollar in one diagram",
+          "paragraphs": [
+            "Ask the team to trace a single deposit from ingress to spendable balance. If the whiteboard needs six boxes and two question marks, you have competing sources of truth — whether or not anything has caught fire yet.",
+            "The fix is not a bigger data team. It is choosing one system of record per aggregate, making writes flow through it, and projecting read models from that path."
+          ]
         }
       ],
-      "cta_label": "Start Architecture Diagnostic",
+      "cta_label": "Request architecture review",
       "cta_href": "/brief"
     },
     {
-      "slug": "fintech-architecture-due-diligence",
+      "slug": "fintech-architecture-diligence",
       "title": "What investors should examine before funding fintech architecture",
-      "meta_description": "Six diligence questions that surface rebuild risk in fintech stacks — ledger design, custody boundaries, authorization depth, and vendor dependencies.",
-      "audience": "investors",
-      "published_date": "2026-07-11",
+      "audience": "Investors & technical diligence leads",
+      "problem": "Pitch decks show traction curves. Diligence should show whether the architecture can survive the next order of magnitude — without a rewrite that burns twelve months of runway.",
+      "meta_description": "A technical diligence checklist for investors funding fintech and digital-asset companies — ledger ownership, custody boundaries, and scale failure modes before the term sheet.",
       "author": "AmirSaber Sharifi",
-      "problem": "Fintech pitches emphasize growth, margins, and regulatory posture. Investors should still ask whether the architecture can survive scale, audit scrutiny, and a failed vendor.",
+      "published_date": "2026-07-08",
+      "published": true,
       "sections": [
         {
-          "heading": "Ledger design and reconciliation discipline",
-          "body": "Ask how money movement is recorded, not just how it is displayed. A credible stack has an append-only ledger or event log, idempotent posting, and daily reconciliation to bank and partner statements. If balances are mutable rows without an audit trail, diligence should treat that as structural risk."
+          "heading": "Ledger ownership and write authority",
+          "paragraphs": [
+            "Identify the single service or subsystem that may create monetary movement. If more than one component can post balance changes without a shared invariant, reconciliation debt is already on the balance sheet.",
+            "Ask for a sequence diagram of deposit, hold, capture, and refund — not a component list. Gaps in the write path are where fraud and customer-trust incidents start."
+          ]
         },
         {
-          "heading": "Custody and funds-flow boundaries",
-          "body": "Understand where customer funds sit, which entity holds licenses, and what happens when a banking or custody partner changes terms. Diagrams that skip settlement timing or commingling rules are a signal that operations may be carrying the real architecture."
+          "heading": "Custody and key-management boundaries",
+          "paragraphs": [
+            "For digital-asset or hybrid products, map where keys live, who can sign, and what breaks if a vendor or node provider is unavailable. \"We use a well-known custodian\" is not a boundary diagram.",
+            "Diligence should confirm separation between hot operational flows and cold storage policy — and whether the team can rotate credentials without a customer-visible outage."
+          ]
         },
         {
-          "heading": "Identity, fraud, and authorization depth",
-          "body": "Authentication is table stakes. Investors should examine step-up controls, device binding, admin authorization, and how privileged actions are logged. Fintech incidents often start with weak internal tooling rather than consumer-facing login."
+          "heading": "Regulatory and audit surfaces",
+          "paragraphs": [
+            "Determine whether transaction history is immutable, attributable, and exportable for the jurisdictions the company claims to serve. Retrofitting audit trails after product-market fit is expensive and error-prone.",
+            "Look for explicit data-retention and PII-handling decisions — not aspirational compliance slides."
+          ]
         },
         {
-          "heading": "Data lineage for regulatory and investor reporting",
-          "body": "Request one example of how a regulatory or board number is produced end to end. If the path crosses ad hoc spreadsheets, unmanaged replicas, or unnamed analytics databases, reporting risk is higher than the deck suggests."
+          "heading": "Scale failure modes, not happy-path load tests",
+          "paragraphs": [
+            "Request evidence of backpressure, idempotency keys, and poison-message handling in payment and ledger pipelines. A load test that only covers the read API misses where fintech systems usually fail.",
+            "Ask what happens when a partner webhook duplicates, delays, or arrives out of order. The answer reveals whether the architecture was designed for real money movement."
+          ]
         },
         {
-          "heading": "Vendor and blockchain dependency assumptions",
-          "body": "Many products combine custodians, card processors, chain indexers, and internal services. Diligence should identify single points of failure, contract exit cost, and what happens when an external read disagrees with the application database."
-        },
-        {
-          "heading": "Security investments that lag product velocity",
-          "body": "Post-PMF security work is expensive because it interrupts live flows. Ask whether secrets management, environment separation, dependency patching, and incident response are funded in the current plan — not deferred to after the next release."
+          "heading": "Team topology versus system topology",
+          "paragraphs": [
+            "Conway's law applies. If three squads own overlapping slices of the same ledger without a staffed platform or architecture function, roadmap parallelism will amplify inconsistency.",
+            "A fractional principal architect or strong tech lead can fix coordination — but only if the cap table still has room to act before a rewrite becomes the only option."
+          ]
         }
       ],
-      "cta_label": "Request technical diligence",
+      "cta_label": "Email for diligence scope",
+      "cta_href": "mailto:inbox@saberistic.com?subject=Technical%20Due%20Diligence"
+    },
+    {
+      "slug": "empty-wallet-active-positions",
+      "title": "Why empty wallets sometimes show active positions",
+      "audience": "Founders & wallet engineers",
+      "problem": "Users report positions in a wallet that shows zero balance — a classic symptom of projection lag, indexers, and competing read models.",
+      "meta_description": "Why wallet UIs sometimes show active positions when balances read empty — projection layers, indexer lag, and reconciliation patterns.",
+      "author": "AmirSaber Sharifi",
+      "published_date": "2026-07-01",
+      "published": false,
+      "sections": [
+        {
+          "heading": "Draft",
+          "paragraphs": [
+            "Placeholder for editorial review."
+          ]
+        }
+      ],
+      "cta_label": "Request architecture review",
       "cta_href": "/brief"
     }
   ]
