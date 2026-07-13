@@ -1,17 +1,42 @@
 # Conversion funnel analytics
 
-Parent issue: [#66](https://github.com/saberistic-team/agent-web/issues/66).
+Parent issues: [#66](https://github.com/saberistic-team/agent-web/issues/66),
+[#86](https://github.com/saberistic-team/agent-web/issues/86).
 
 Privacy-conscious funnel instrumentation for [saberistic.com](https://saberistic.com)
 using [Plausible Analytics](https://plausible.io/) — no cookies, no third-party
 tracking pixels, and no consent banner required for the default configuration.
 
-## Funnel steps
+## Page engagement events (non-funnel)
+
+These measure content interest. They do **not** carry `funnel_step`.
+
+| Event name | Route | Properties |
+|------------|-------|--------------|
+| `Landing Viewed` | `/` | `page` |
+| `About Viewed` | `/about` | `page` |
+| `Services Viewed` | `/services` | `page` |
+| `Case Studies Viewed` | `/case-studies` | `page` |
+| `Case Study Viewed` | `/work/{slug}` | `page`, `case_study_slug` |
+| `Insights Viewed` | `/insights` | `page` |
+| `Insight Viewed` | `/insights/{slug}` | `page`, `article_slug` |
+
+`Landing Viewed` also sets `funnel_step: 1` as the top of the diagnostic
+conversion path. Other page events above omit `funnel_step`.
+
+Slugs (`case_study_slug`, `article_slug`) are injected by the server from known
+internal route metadata only — never parsed from arbitrary user-controlled paths
+on the client.
+
+Unknown routes (e.g. `/diagnostic`, `/health`, 404) emit no page event.
+
+## Conversion funnel steps
+
+Sequential `funnel_step` values are reserved for genuine conversion stages.
 
 | Step | Event name | Source | Authoritative |
 |------|------------|--------|---------------|
 | 1 | `Landing Viewed` | Client (page load on `/`) | No |
-| 2 | `Service Viewed` | Client (page load on `/about`) | No |
 | 3 | `Brief Viewed` | Client (page load on `/brief`) | No |
 | 4 | `Brief Form Started` | Client (first focus/input on brief form) | No |
 | 5 | `Lead Persisted` | **Server** (after `db.create_brief`) | **Yes** |
@@ -21,10 +46,10 @@ tracking pixels, and no consent banner required for the default configuration.
 
 Supplementary client events (non-authoritative):
 
-| Event | Trigger |
-|-------|---------|
-| `Checkout Cancelled` | `/brief?cancelled=1` after Stripe cancel redirect |
-| `Brief Success Viewed` | Page load on `/brief/success` (UX only; payment truth is webhook) |
+| Event | Trigger | Properties |
+|-------|---------|------------|
+| `Checkout Cancelled` | `/brief?cancelled=1` after Stripe cancel redirect | `page`, `funnel_step` |
+| `Brief Success Viewed` | Page load on `/brief/success` (UX only; payment truth is webhook) | `page`, `funnel_step` |
 
 ## Event properties (allowlist)
 
@@ -32,7 +57,7 @@ Only these properties may be sent to Plausible:
 
 | Property | Type | Used on |
 |----------|------|---------|
-| `funnel_step` | int (1–8) | All funnel events |
+| `funnel_step` | int (1–8) | Conversion funnel events |
 | `brief_id` | int | Server events (steps 5–7) |
 | `price_cents` | int | `Checkout Opened`, `Payment Completed` |
 | `environment` | string | Server events (`production`, `staging`, `development`) |
@@ -41,8 +66,10 @@ Only these properties may be sent to Plausible:
 | `utm_campaign` | string | All events when present |
 | `utm_content` | string | All events when present |
 | `utm_term` | string | All events when present |
-| `page` | string | Client events (pathname) |
+| `page` | string | Client events (pathname, trailing slash stripped) |
 | `contact_channel` | string | `Contact Initiated` (e.g. `linkedin`) |
+| `case_study_slug` | string | `Case Study Viewed` (server-known slug) |
+| `article_slug` | string | `Insight Viewed` (server-known slug) |
 
 ## Sensitive fields — never collected
 
@@ -51,9 +78,13 @@ never included in client payloads:
 
 - Brief text (`brief`)
 - Email (`email`, `contact_value`)
+- Phone (`phone`)
+- Wallet address (`wallet_address`)
 - Submitted website URL (`website`, `url`, `submitted_url`)
+- Query-string contents (`query_string`)
 - Stripe identifiers (`stripe_session_id`, `stripe_payment_intent_id`,
   `checkout_url`, `session_id`, `payment_intent`)
+- Full external URLs
 
 Lead PII lives in Postgres and email only.
 
@@ -95,11 +126,15 @@ Run every Monday for the prior 7 days.
 2. Set date range to **Last 7 days**.
 3. Record from **Top pages**:
    - `/` views → qualified landing visits
-   - `/about` views → service/case-study interest
+   - `/about` views → credibility / biography interest
+   - `/services` views → commercial service intent
+   - `/case-studies` and `/work/*` → proof engagement
+   - `/insights` and `/insights/*` → authority content engagement
    - `/brief` views → brief page visits
 4. Open **Goal conversions** (custom events) and record counts:
    - `Brief Form Started`
    - `Contact Initiated`
+   - `Services Viewed`, `Case Study Viewed`, `Insight Viewed` (as needed)
 5. Filter by `utm_source` / `utm_medium` props where present.
 
 ### B. Postgres authoritative funnel (leads + payments)
@@ -148,7 +183,10 @@ WHERE status = 'pending_payment'
 | Metric | Source | This week |
 |--------|--------|-----------|
 | Landing visits | Plausible `/` | |
-| Service views | Plausible `/about` | |
+| About views | Plausible `/about` | |
+| Services views | Plausible `/services` | |
+| Case study views | Plausible `Case Study Viewed` | |
+| Insight views | Plausible `Insight Viewed` | |
 | Brief views | Plausible `/brief` | |
 | Form starts | Plausible `Brief Form Started` | |
 | Leads persisted | Postgres `created_at` count | |
@@ -175,4 +213,4 @@ pytest tests/test_analytics.py -q
 ```
 
 Validates property sanitization, server event emission, non-blocking failures,
-and sensitive-field exclusion.
+route-to-event mapping, server-injected slugs, and sensitive-field exclusion.

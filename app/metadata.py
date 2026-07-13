@@ -9,9 +9,7 @@ from typing import Any
 from app.seo import CANONICAL_BASE
 
 OG_IMAGE = f"{CANONICAL_BASE}/assets/og-share.png"
-OG_IMAGE_ALT = (
-    "saberistic — AmirSaber Sharifi — filling gaps between markets and tech"
-)
+OG_IMAGE_ALT = "saberistic — high-stakes architecture and engineering leadership"
 
 
 def social_meta_tags(
