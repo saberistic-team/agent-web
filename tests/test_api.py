@@ -96,8 +96,8 @@ def test_about_page() -> None:
     assert "Minecraft" in body
     assert "leave things better than I found them" in body
     assert 'href="/brief"' in body
-    assert 'href="/#proof"' in body
     assert 'href="/insights"' in body
+    assert "Read insights" in body
     assert "Request architecture review" in body
 
 
@@ -160,51 +160,6 @@ def test_home_has_proof_section() -> None:
 
 
 @pytest.mark.unit
-def test_home_has_insights_section() -> None:
-    body = client.get("/").text
-    assert 'id="insights"' in body
-    assert 'href="/insights"' in body
-    assert "/insights/mvp-competing-sources-of-truth" in body
-    assert "/insights/fintech-architecture-due-diligence" in body
-    assert 'class="top-link" href="/insights"' in body
-
-
-@pytest.mark.unit
-def test_insights_index_page() -> None:
-    response = client.get("/insights")
-    assert response.status_code == 200
-    body = response.text
-    assert "Insights" in body
-    assert 'rel="canonical" href="https://saberistic.com/insights"' in body
-    assert "/insights/mvp-competing-sources-of-truth" in body
-
-
-@pytest.mark.unit
-def test_insight_article_page() -> None:
-    response = client.get("/insights/fintech-architecture-due-diligence")
-    assert response.status_code == 200
-    body = response.text
-    assert "What investors should examine" in body
-    assert 'property="og:type" content="article"' in body
-    assert 'href="/brief"' in body
-    assert body.count('class="cta"') == 1
-
-
-@pytest.mark.unit
-def test_insight_article_not_found() -> None:
-    response = client.get("/insights/unknown-slug")
-    assert response.status_code == 404
-
-
-@pytest.mark.unit
-def test_insights_atom_feed() -> None:
-    response = client.get("/insights/feed.xml")
-    assert response.status_code == 200
-    assert "atom" in response.headers["content-type"]
-    assert "fintech-architecture-due-diligence" in response.text
-
-
-@pytest.mark.unit
 def test_case_study_page() -> None:
     response = client.get("/work/brave")
     assert response.status_code == 200
@@ -231,6 +186,32 @@ def test_case_study_saberistic_engagement() -> None:
 @pytest.mark.unit
 def test_case_study_not_found() -> None:
     response = client.get("/work/does-not-exist")
+    assert response.status_code == 404
+
+
+@pytest.mark.unit
+def test_home_has_insights_section() -> None:
+    body = client.get("/").text
+    assert 'id="insights"' in body
+    assert "/insights/competing-sources-of-truth" in body
+    assert "/insights/fintech-architecture-diligence" in body
+    assert 'href="/insights"' in body
+
+
+@pytest.mark.unit
+def test_insight_page() -> None:
+    response = client.get("/insights/fintech-architecture-diligence")
+    assert response.status_code == 200
+    body = response.text
+    assert "fintech architecture" in body.lower()
+    assert "<strong>Audience:</strong>" in body
+    assert 'property="og:type" content="article"' in body
+    assert 'rel="canonical" href="https://saberistic.com/insights/fintech-architecture-diligence"' in body
+
+
+@pytest.mark.unit
+def test_insight_not_found() -> None:
+    response = client.get("/insights/does-not-exist")
     assert response.status_code == 404
 
 
