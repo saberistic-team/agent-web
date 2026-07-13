@@ -36,7 +36,7 @@ def test_about_handler_returns_about(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_brief_handlers_return_pages(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ANALYTICS_ENABLED", raising=False)
     assert 'id="brief-form"' in brief_form().body.decode()
-    assert "We received your request." in brief_success().body.decode()
+    assert "Payment completed" in brief_success().body.decode()
 
 
 @pytest.mark.unit
