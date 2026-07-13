@@ -113,7 +113,7 @@ main {
 
 .lede {
   margin: 1.75rem 0 0;
-  max-width: 28ch;
+  max-width: 42ch;
   font-size: clamp(1.05rem, 2.4vw, 1.35rem);
   color: var(--muted);
   animation: rise 0.9s ease-out 0.22s both;
@@ -165,10 +165,29 @@ main {
   font-weight: 400;
 }
 
-.block p {
+.block p,
+.block-intro {
   margin: 0;
   max-width: 52ch;
   color: var(--muted);
+}
+
+.block-intro {
+  margin-bottom: 1.5rem;
+}
+
+.problems {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+
+.problems li {
+  padding: 1.1rem 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  max-width: 52ch;
 }
 
 .block strong {
