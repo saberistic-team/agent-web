@@ -6,7 +6,7 @@ import html
 import json
 from typing import Any
 
-from app.seo import CANONICAL_BASE, canonical_url
+from app.seo import CANONICAL_BASE
 
 OG_IMAGE = f"{CANONICAL_BASE}/assets/og-share.png"
 OG_IMAGE_ALT = "saberistic — high-stakes architecture and engineering leadership"
@@ -63,43 +63,18 @@ def web_page_json_ld(*, title: str, description: str, url: str) -> str:
     )
 
 
-def case_study_web_page_json_ld(*, title: str, description: str, url: str) -> str:
-    """WebPage JSON-LD for /work/{slug} proof pages (matches static site pages)."""
-    return json_ld_script(
-        {
-            "@context": "https://schema.org",
-            "@type": "WebPage",
-            "name": _json_ld_safe(title),
-            "description": _json_ld_safe(description),
-            "url": url,
-            "isPartOf": {
-                "@type": "ProfessionalService",
-                "name": "saberistic",
-                "url": f"{CANONICAL_BASE}/",
-            },
-        }
-    )
-
-
-def case_study_page_head_tags(
+def case_study_page_metadata(
     *,
     title: str,
     description: str,
-    canonical_path: str,
+    url: str,
 ) -> str:
-    """Canonical, Open Graph, Twitter, and JSON-LD for a case-study page."""
-    url = canonical_url(canonical_path)
-    canonical_esc = html.escape(url, quote=True)
-    social = social_meta_tags(
-        title=title,
-        description=description,
-        url=url,
-        og_type="website",
+    """Return Open Graph, Twitter, and JSON-LD for a /work/{slug} case study."""
+    return (
+        social_meta_tags(title=title, description=description, url=url, og_type="website")
+        + "\n"
+        + web_page_json_ld(title=title, description=description, url=url)
     )
-    ld = case_study_web_page_json_ld(title=title, description=description, url=url)
-    return f"""    <link rel="canonical" href="{canonical_esc}" />
-{social}
-{ld}"""
 
 
 def article_json_ld(
@@ -114,10 +89,10 @@ def article_json_ld(
     data: dict[str, Any] = {
         "@context": "https://schema.org",
         "@type": "Article",
-        "headline": _json_ld_safe(title),
-        "description": _json_ld_safe(description),
+        "headline": title,
+        "description": description,
         "url": url,
-        "author": {"@type": "Person", "name": _json_ld_safe(author)},
+        "author": {"@type": "Person", "name": author},
         "publisher": {
             "@type": "Organization",
             "name": "saberistic",
