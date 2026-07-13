@@ -8,12 +8,28 @@ from pathlib import Path
 from typing import AsyncIterator
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+)
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import analytics_service, case_studies, db, email_service, page_service, stripe_service
 from app.config import get_settings
 from app.models import BriefCreateRequest, BriefCreateResponse
+from app.seo import (
+    LEGACY_REDIRECTS,
+    apex_redirect_url,
+    is_www_host,
+    robots_txt,
+    sitemap_xml,
+    wants_json_not_found,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +50,34 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="agent-web", version="0.3.0", lifespan=lifespan)
 app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
+
+
+@app.middleware("http")
+async def redirect_www_to_apex(request: Request, call_next):
+    host = request.headers.get("host", "")
+    if is_www_host(host):
+        target = apex_redirect_url(request.url.path, request.url.query)
+        return RedirectResponse(url=target, status_code=301)
+    return await call_next(request)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def handle_http_exception(request: Request, exc: StarletteHTTPException) -> Response:
+    if exc.status_code != 404:
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+    if wants_json_not_found(request.url.path, request.headers.get("accept", "")):
+        return JSONResponse({"detail": "Not Found"}, status_code=404)
+    return FileResponse(SITE_DIR / "404.html", status_code=404)
+
+
+@app.get("/robots.txt", response_class=PlainTextResponse)
+def robots() -> str:
+    return robots_txt()
+
+
+@app.get("/sitemap.xml")
+def sitemap() -> Response:
+    return Response(content=sitemap_xml(), media_type="application/xml")
 
 
 @app.get("/health")
@@ -72,6 +116,16 @@ def case_study(slug: str) -> HTMLResponse:
     if study is None:
         raise HTTPException(status_code=404, detail="Case study not found")
     return HTMLResponse(case_studies.render_case_study_page(study))
+
+
+for legacy_path, target in LEGACY_REDIRECTS.items():
+
+    def _legacy_redirect(
+        _target: str = target,
+    ) -> RedirectResponse:
+        return RedirectResponse(url=_target, status_code=301)
+
+    app.add_api_route(legacy_path, _legacy_redirect, methods=["GET"], include_in_schema=False)
 
 
 @app.post("/api/briefs", response_model=BriefCreateResponse)

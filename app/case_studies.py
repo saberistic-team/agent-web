@@ -108,6 +108,7 @@ def render_case_study_page(study: dict[str, Any]) -> str:
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{org} — {headline} · saberistic</title>
     <meta name="description" content="{meta}" />
+    <link rel="canonical" href="https://saberistic.com/work/{slug}" />
     <link rel="icon" href="/assets/logo.png" type="image/png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
