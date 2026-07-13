@@ -72,9 +72,10 @@ def test_case_studies_flow() -> None:
 def test_insights_flow() -> None:
     index = client.get("/insights")
     assert index.status_code == 200
-    assert "/insights/competing-sources-of-truth" in index.text
+    assert "/insights/mvp-competing-sources-of-truth" in index.text
+    assert "/insights/empty-wallets-active-positions" in index.text
 
-    article = client.get("/insights/competing-sources-of-truth")
+    article = client.get("/insights/mvp-competing-sources-of-truth")
     assert article.status_code == 200
     assert 'href="/brief"' in article.text
 

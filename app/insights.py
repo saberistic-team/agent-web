@@ -332,7 +332,6 @@ def render_insight_page(article: dict[str, Any]) -> str:
         </div>{sections_block}
         <p class="insight-cta-row">
           <a class="cta" href="{cta_href}">{cta_label}</a>
-          <a class="cta cta-secondary" href="/insights">All insights</a>
         </p>
       </article>"""
 

@@ -201,4 +201,6 @@ def test_insights_feed_route() -> None:
 def test_each_article_has_single_primary_cta() -> None:
     for article in insights.list_published_insights():
         html = insights.render_insight_page(article)
-        assert html.count('class="cta" href=') == 1
+        assert html.count('class="cta"') == 1
+        assert "cta-secondary" not in html
+        assert f'href="{article["cta_href"]}"' in html

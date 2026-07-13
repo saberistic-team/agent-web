@@ -134,7 +134,7 @@ def case_study(slug: str) -> HTMLResponse:
 
 @app.get("/insights")
 def insights_index() -> HTMLResponse:
-    return HTMLResponse(insights.render_insights_index())
+    return page_service.serve_html(insights.render_insights_index(), get_settings())
 
 
 @app.get("/insights/feed.xml")
@@ -147,7 +147,7 @@ def insight_article(slug: str) -> HTMLResponse:
     article = insights.get_insight(slug)
     if article is None:
         raise HTTPException(status_code=404, detail="Insight not found")
-    return HTMLResponse(insights.render_insight_page(article))
+    return page_service.serve_html(insights.render_insight_page(article), get_settings())
 
 
 for legacy_path, target in LEGACY_REDIRECTS.items():

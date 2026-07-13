@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom">
-  <title>{{title}}</title>
-  <id>{{feed_id}}</id>
-  <updated>{{updated}}T00:00:00Z</updated>
-  <link href="{{feed_id}}/feed.atom" rel="self" />
-  <link href="{{feed_id}}" />
-{{entries}}
-</feed>
