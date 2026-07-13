@@ -1,8 +1,8 @@
 # Launch review — issue #69 authority content
 
 Technical and editorial sign-off for the two launch articles published with
-the `/insights` system. Each entry below maps to `ARTICLES` in `app/articles.py`
-and was checked against `EDITORIAL_CHECKLIST.md`.
+the `/insights` system. Each entry maps to `site/data/articles.json` and was
+checked against `articles/EDITORIAL_CHECKLIST.md`.
 
 ## Review process
 
@@ -14,7 +14,7 @@ and was checked against `EDITORIAL_CHECKLIST.md`.
 
 | Slug | Title | Status | Notes |
 |------|-------|--------|-------|
-| `competing-sources-of-truth` | Five signs an MVP has competing sources of truth | **Published** | Generic fintech/product patterns only; CTA → `/brief` (architecture review) |
+| `mvp-competing-sources-of-truth` | Five signs an MVP has competing sources of truth | **Published** | Founder-facing; generic fintech/product patterns only; CTA → `/brief` |
 | `fintech-architecture-due-diligence` | What investors should examine before funding fintech architecture | **Published** | Investor-facing diligence checklist; CTA → `/brief` (technical diligence) |
 
 ## Checklist confirmation
@@ -25,7 +25,7 @@ Both articles:
 - Define `audience` and `problem` in metadata and opening prose
 - Include exactly one contextual CTA aligned with the article topic
 - Render canonical URL, Open Graph, Twitter card, and JSON-LD `Article` schema
-- Appear on `/insights`, `/sitemap.xml`, and `/insights/feed.atom`
+- Appear on `/insights`, `/sitemap.xml`, and `/insights/feed.xml`
 
 ## Deferred content briefs
 
