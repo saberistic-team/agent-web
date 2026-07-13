@@ -113,7 +113,7 @@ main {
 
 .lede {
   margin: 1.75rem 0 0;
-  max-width: 28ch;
+  max-width: 42ch;
   font-size: clamp(1.05rem, 2.4vw, 1.35rem);
   color: var(--muted);
   animation: rise 0.9s ease-out 0.22s both;
@@ -165,10 +165,29 @@ main {
   font-weight: 400;
 }
 
-.block p {
+.block p,
+.block-intro {
   margin: 0;
   max-width: 52ch;
   color: var(--muted);
+}
+
+.block-intro {
+  margin-bottom: 1.5rem;
+}
+
+.problems {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+
+.problems li {
+  padding: 1.1rem 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  max-width: 52ch;
 }
 
 .block strong {
@@ -382,6 +401,236 @@ main {
   margin: 0;
   color: #e88a6a;
   font-size: 0.85rem;
+}
+
+.offer-block {
+  margin: 0 0 2rem;
+  max-width: 52ch;
+}
+
+.offer-heading {
+  margin: 0 0 0.75rem;
+  font-family: var(--display);
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 400;
+  color: var(--ink);
+}
+
+.offer-list,
+.offer-steps {
+  margin: 0;
+  padding: 0 0 0 1.25rem;
+  color: var(--muted);
+}
+
+.offer-list li,
+.offer-steps li {
+  margin: 0.35rem 0;
+}
+
+.offer-steps li strong {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.offer-alt,
+.services-alt {
+  margin: 0 0 2rem;
+  max-width: 52ch;
+  color: var(--muted);
+}
+
+.offer-alt a,
+.services-alt a,
+.service-detail a {
+  color: var(--ink);
+  text-decoration: none;
+  border-bottom: 1px solid var(--line);
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.offer-alt a:hover,
+.offer-alt a:focus-visible,
+.services-alt a:hover,
+.services-alt a:focus-visible,
+.service-detail a:hover,
+.service-detail a:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+  outline: none;
+}
+
+.services {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-top: 1px solid var(--line);
+}
+
+.service {
+  padding: 1.75rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.service-name {
+  margin: 0 0 1rem;
+  font-family: var(--display);
+  font-size: clamp(1rem, 2.5vw, 1.25rem);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-weight: 400;
+  color: var(--ink);
+}
+
+.service-detail {
+  margin: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.service-detail div {
+  display: grid;
+  grid-template-columns: 7rem 1fr;
+  gap: 0.75rem 1rem;
+  align-items: baseline;
+}
+
+.service-detail dt {
+  margin: 0;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.service-detail dd {
+  margin: 0;
+  color: var(--muted);
+}
+
+@media (max-width: 640px) {
+  .service-detail div {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+}
+
+.proof-lede {
+  margin: 0 0 2rem;
+  max-width: 52ch;
+  color: var(--muted);
+}
+
+.proof-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+
+.proof-item {
+  border-bottom: 1px solid var(--line);
+}
+
+.proof-link {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 1rem;
+  align-items: baseline;
+  padding: 1.25rem 0;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.proof-link:hover,
+.proof-link:focus-visible {
+  outline: none;
+}
+
+.proof-link:hover .proof-headline,
+.proof-link:focus-visible .proof-headline {
+  color: var(--accent);
+}
+
+.proof-headline {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.proof-meta {
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.case-study {
+  padding-top: 3rem;
+}
+
+.case-eyebrow {
+  margin: 0 0 0.75rem;
+  color: var(--muted);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+}
+
+.case-title {
+  margin-bottom: 1.25rem;
+}
+
+.case-disclaimer {
+  margin: 0 0 2.5rem;
+  max-width: 52ch;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.case-section {
+  margin: 0 0 2rem;
+  max-width: 58ch;
+}
+
+.case-section-title {
+  margin: 0 0 0.75rem;
+  font-family: var(--display);
+  font-size: 0.95rem;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.case-section p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.case-cta-row {
+  margin: 3rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+}
+
+@media (max-width: 640px) {
+  .proof-link {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+  }
+
+  .proof-meta {
+    text-align: left;
+    white-space: normal;
+  }
 }
 
 .insights-page,
