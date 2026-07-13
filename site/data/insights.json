@@ -1,163 +1,92 @@
 {
   "articles": [
     {
-      "slug": "competing-sources-of-truth",
+      "slug": "empty-wallets-active-positions",
+      "status": "published",
+      "title": "Why empty wallets sometimes show active positions",
+      "published_at": "2026-07-10",
+      "author": "AmirSaber Sharifi",
+      "audience": "Founders and engineering leaders building digital-asset products",
+      "problem": "Users report a funded position while the wallet UI shows zero balance — a trust-breaking mismatch that is usually an architecture problem, not a single bad RPC call.",
+      "meta_description": "Why wallet UIs show active positions when balances read empty — indexing lag, custody boundaries, and competing sources of truth in digital-asset products.",
+      "excerpt": "Empty-wallet displays with active positions usually trace to competing read paths, stale indexers, or custody boundaries — not a single flaky RPC.",
+      "paragraphs": [
+        "When a user sees an open position but an empty wallet balance, support tickets blame the RPC provider. Engineering often finds three different answers: the indexer, the custody service, and a direct chain read each report a different state. The UI picked one path and rendered it as truth.",
+        "This is not a cosmetic bug. In digital-asset products, balance and position are separate concepts that only align when your read model, write model, and display layer share explicit freshness rules and reconciliation."
+      ],
+      "sections": [
+        {
+          "title": "Competing read paths",
+          "paragraphs": [
+            "A wallet screen may call a backend portfolio API while position detail comes from an indexer or subgraph. If those systems ingest blocks at different cadences, the user sees a position opened two minutes ago against a balance snapshot from ten minutes ago.",
+            "Architecture fix: define one authoritative read surface per user-facing screen, or label derived fields with provenance and as-of timestamps. Never merge responses from unrelated services without a reconciliation step."
+          ]
+        },
+        {
+          "title": "Custody and signing boundaries",
+          "paragraphs": [
+            "Self-custody, MPC, and exchange-custodied assets often live behind different APIs. A position may be recorded on-chain while spendable balance sits in a pending settlement queue the UI does not query.",
+            "Treat custody tier as part of your domain model. The interface should say which layer each number comes from — especially when regulatory or insurance boundaries split assets across systems."
+          ]
+        },
+        {
+          "title": "What to verify first",
+          "paragraphs": [
+            "Compare block height and ingestion lag across every service feeding the wallet screen. Reproduce with a single wallet address across direct RPC, indexer, and backend API in one script.",
+            "If the mismatch disappears when you force a single source, you have a source-of-truth problem — not a networking problem."
+          ]
+        }
+      ],
+      "cta_label": "Request architecture review",
+      "cta_href": "/brief"
+    },
+    {
+      "slug": "mvp-competing-sources-of-truth",
       "status": "published",
       "title": "Five signs an MVP has competing sources of truth",
-      "eyebrow": "Architecture",
-      "published": "2026-07-10",
+      "published_at": "2026-07-13",
       "author": "AmirSaber Sharifi",
-      "audience": "Founders and engineering leaders shipping an MVP that must scale",
-      "problem": "The product works in demos but user-visible state diverges across frontend, backend, and data stores — and no one can name the authoritative source.",
-      "meta_description": "Five observable signs that an MVP has competing sources of truth — and why fixing ownership early is cheaper than shipping around inconsistent state.",
-      "summary": "Five signs your MVP has competing sources of truth, and what to fix before scale makes divergence expensive.",
+      "audience": "Seed-stage founders and CTOs shipping an MVP under time pressure",
+      "problem": "The demo works, but dashboards, support tools, and the product disagree on the same entities — a pattern that compounds after product-market fit.",
+      "meta_description": "Five architectural signals that your MVP already has competing sources of truth — and why fixing them early is cheaper than rewriting after traction.",
+      "excerpt": "When dashboards, support tools, and the product disagree on the same entities, you already have competing sources of truth — not a scaling problem for later.",
+      "paragraphs": [
+        "MVPs earn forgiveness for rough edges. They should not earn forgiveness for multiple authoritative definitions of the same noun — user, balance, order, entitlement. That debt shows up as intermittent bugs support cannot reproduce and dashboards founders stop trusting.",
+        "The signs below are architectural, not stylistic. Each one predicts expensive rewrites once investors, compliance, or a second product surface enter the picture."
+      ],
       "sections": [
         {
-          "heading": "1. The same entity has different IDs in different services",
-          "body": "User, account, wallet, or order identifiers differ between the client, API layer, and analytics warehouse. Teams paper over mismatches with mapping tables added after the fact. That is a sign no service owns the entity lifecycle end to end."
+          "title": "1. Different totals in admin and product",
+          "paragraphs": [
+            "If your internal admin counts active users differently than the app, you have at least two event pipelines or query definitions. Pick one canonical entity lifecycle and make every surface derive from it."
+          ]
         },
         {
-          "heading": "2. Reads and writes do not share a consistency model",
-          "body": "The UI optimistically shows state that the API cannot guarantee on the next fetch. Background jobs update balances or statuses that the primary read path never sees. When engineers cannot state whether a read is strongly consistent, eventually consistent, or best-effort, you have competing truths by design."
+          "title": "2. \"Refresh fixes it\" reports",
+          "paragraphs": [
+            "When reloading or waiting resolves a user-visible error, you are often masking eventual consistency without telling the user. Document which reads are strongly consistent and which are best-effort — then align UX to that contract."
+          ]
         },
         {
-          "heading": "3. Feature flags and config override product state",
-          "body": "Behavior changes based on per-tenant flags, remote config, or cached defaults — not on durable records customers can reason about. If two users with identical account records see different outcomes because config drifted, the product truth is not in your data model."
+          "title": "3. Feature flags stored in three places",
+          "paragraphs": [
+            "Client defaults, server config, and a marketing tool each toggling behavior guarantees drift. Centralize entitlement and rollout state with an audit trail."
+          ]
         },
         {
-          "heading": "4. On-chain, cache, and database disagree under load",
-          "body": "Digital-asset and fintech MVPs often blend chain reads, indexer caches, and operational databases. Under normal traffic they align; under retries, partial failures, or stale indexers they diverge. If incident response starts with \"which source do we trust for this screen?\" you have multiple authorities."
+          "title": "4. Spreadsheet reconciliation before board meetings",
+          "paragraphs": [
+            "If metrics for investors are manually assembled from exports, your analytical source of truth is a person — not a system. Automate from the same warehouse or event stream engineering uses for incidents."
+          ]
         },
         {
-          "heading": "5. Reporting and product metrics use different definitions",
-          "body": "Finance, growth, and engineering each export numbers that should reconcile but do not. Active users, settled volume, and open positions are defined differently in the app, the warehouse, and the board deck. That gap will widen with every new integration."
-        },
-        {
-          "heading": "What to do before scale amplifies the damage",
-          "body": "Name one authoritative write path per core entity, document read paths and their consistency guarantees, and delete or quarantine shadow copies that cannot be derived from that authority. A fractional architecture review in the first 30 days is far cheaper than re-platforming after product-market fit."
+          "title": "5. No owner for cross-cutting corrections",
+          "paragraphs": [
+            "When a bad record appears, teams debate which database to patch. Assign a write owner per entity and a published correction path. Ad-hoc SQL across services is a symptom, not a workflow."
+          ]
         }
       ],
       "cta_label": "Start Architecture Diagnostic",
-      "cta_href": "/brief"
-    },
-    {
-      "slug": "fintech-architecture-diligence",
-      "status": "published",
-      "title": "What investors should examine before funding fintech architecture",
-      "eyebrow": "Due diligence",
-      "published": "2026-07-08",
-      "author": "AmirSaber Sharifi",
-      "audience": "Investors and acquirers evaluating fintech, payments, or digital-asset startups",
-      "problem": "Pitch decks show traction and roadmap, but architectural risk — custody, settlement, compliance boundaries — stays invisible until a diligence call surfaces a blocker.",
-      "meta_description": "A practical investor checklist for fintech architecture diligence — custody boundaries, settlement paths, compliance isolation, and signs of hidden re-platform cost.",
-      "summary": "What to examine in fintech architecture before funding: custody, settlement, compliance boundaries, and re-platform risk.",
-      "sections": [
-        {
-          "heading": "Custody and key-management boundaries",
-          "body": "Ask who can move funds or sign transactions, where keys live, and what breaks if a single service is compromised. Production systems should separate hot-path signing from administrative access, with explicit recovery and rotation stories — not ad hoc scripts run by whoever is on call."
-        },
-        {
-          "heading": "Settlement and ledger authority",
-          "body": "Trace a dollar or asset unit from user intent to settled state. Identify the system of record at each hop: processor, internal ledger, nostro account, or on-chain confirmation. If no owner can draw that path on a whiteboard in ten minutes, settlement risk is underpriced."
-        },
-        {
-          "heading": "Compliance and PII isolation",
-          "body": "Regulated data should have clear retention, access, and deletion boundaries — not copies scattered across analytics pipelines and support tools. Verify that KYC, sanctions screening, and audit logs are tamper-evident and scoped to roles that need them."
-        },
-        {
-          "heading": "Integration surface and vendor lock-in",
-          "body": "Count hard dependencies on a single bank sponsor, chain RPC provider, or KYC vendor. Swap tests — what happens if that vendor doubles price or deprecates an API — reveal whether architecture is a moat or a single point of failure."
-        },
-        {
-          "heading": "Signs of deferred re-platform cost",
-          "body": "Rising incident frequency, hero engineers who alone understand money movement, and roadmap items blocked by \"we need to rewrite the ledger first\" are leading indicators. Model that cost explicitly; it often exceeds the next funding round's engineering budget."
-        },
-        {
-          "heading": "How to use this in a process",
-          "body": "A scoped technical diligence — architecture review, code-path sampling, and threat-model spot checks — should complete in days, not months. Findings should separate fixable gaps from structural bets the company must make before scale."
-        }
-      ],
-      "cta_label": "Email for technical diligence",
-      "cta_href": "mailto:inbox@saberistic.com?subject=Technical%20Due%20Diligence"
-    },
-    {
-      "slug": "empty-wallet-active-positions",
-      "status": "draft",
-      "title": "Why empty wallets sometimes show active positions",
-      "eyebrow": "Digital assets",
-      "published": "2026-07-01",
-      "author": "AmirSaber Sharifi",
-      "audience": "Product and engineering teams building wallet or portfolio experiences",
-      "problem": "Users report positions or balances that do not match on-chain reality — eroding trust in the product.",
-      "meta_description": "Why wallet UIs show active positions when balances read zero — indexer lag, cached portfolio state, and reconciliation gaps.",
-      "summary": "Why empty wallets can still show active positions: indexer lag, cached state, and reconciliation gaps.",
-      "sections": [
-        {
-          "heading": "Draft",
-          "body": "Editorial review pending."
-        }
-      ],
-      "cta_label": "Start Architecture Diagnostic",
-      "cta_href": "/brief"
-    },
-    {
-      "slug": "blockchain-reads-api-disagree",
-      "status": "draft",
-      "title": "When direct blockchain reads and backend APIs disagree",
-      "eyebrow": "Digital assets",
-      "published": "2026-07-01",
-      "author": "AmirSaber Sharifi",
-      "audience": "Engineering leaders integrating on-chain and off-chain state",
-      "problem": "The app shows different balances or statuses depending on whether the client reads chain data or calls the backend.",
-      "meta_description": "Why blockchain reads and backend APIs disagree — finality, indexer lag, and missing reconciliation between chain truth and operational databases.",
-      "summary": "When direct chain reads and backend APIs disagree: finality, indexer lag, and reconciliation.",
-      "sections": [
-        {
-          "heading": "Draft",
-          "body": "Editorial review pending."
-        }
-      ],
-      "cta_label": "Start Architecture Diagnostic",
-      "cta_href": "/brief"
-    },
-    {
-      "slug": "fractional-architect-first-30-days",
-      "status": "draft",
-      "title": "What a fractional principal architect fixes in the first 30 days",
-      "eyebrow": "Engagement",
-      "published": "2026-07-01",
-      "author": "AmirSaber Sharifi",
-      "audience": "Founders considering fractional principal architecture",
-      "problem": "Teams need senior architecture leadership but cannot justify a full-time principal hire yet.",
-      "meta_description": "What a fractional principal architect typically fixes in the first 30 days — ownership maps, consistency models, and sequenced remediation.",
-      "summary": "What a fractional principal architect fixes in the first 30 days.",
-      "sections": [
-        {
-          "heading": "Draft",
-          "body": "Editorial review pending."
-        }
-      ],
-      "cta_label": "Email an introduction",
-      "cta_href": "mailto:inbox@saberistic.com?subject=Fractional%20Principal%20Architect"
-    },
-    {
-      "slug": "security-mistakes-after-pmf",
-      "status": "draft",
-      "title": "Security mistakes that become expensive after product-market fit",
-      "eyebrow": "Security",
-      "published": "2026-07-01",
-      "author": "AmirSaber Sharifi",
-      "audience": "Founders and engineering leaders post-PMF",
-      "problem": "Security shortcuts that were acceptable at MVP scale become liabilities under real revenue and regulatory scrutiny.",
-      "meta_description": "Security mistakes that get expensive after product-market fit — shared secrets, missing audit trails, and identity boundaries deferred too long.",
-      "summary": "Security mistakes that become expensive after product-market fit.",
-      "sections": [
-        {
-          "heading": "Draft",
-          "body": "Editorial review pending."
-        }
-      ],
-      "cta_label": "Request security architecture review",
       "cta_href": "/brief"
     }
   ]
