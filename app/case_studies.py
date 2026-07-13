@@ -7,8 +7,7 @@ import json
 from pathlib import Path
 from typing import Any, Literal
 
-from app.metadata import case_study_json_ld, social_meta_tags
-from app.seo import CANONICAL_BASE
+from app.metadata import case_study_page_head_tags
 
 Engagement = Literal["employer", "founder", "saberistic"]
 
@@ -85,57 +84,27 @@ def list_featured_slugs(path: Path | None = None) -> list[str]:
     return [study["slug"] for study in load_case_studies(path)[:3]]
 
 
-def case_study_page_title(study: dict[str, Any]) -> str:
-    """Return the document title for a case study page."""
-    return f"{study['org']} — {study['headline']} · saberistic"
-
-
-def case_study_canonical_url(slug: str) -> str:
-    """Return the canonical URL for a case study page."""
-    return f"{CANONICAL_BASE}/work/{slug}"
-
-
-def render_case_study_head(study: dict[str, Any]) -> str:
-    """Return head metadata (title, social tags, JSON-LD) for a case study page."""
-    title = case_study_page_title(study)
-    description = study["meta_description"]
-    url = case_study_canonical_url(study["slug"])
-    title_esc = html.escape(title)
-    meta_esc = html.escape(description)
-    canonical_esc = html.escape(url, quote=True)
-    social = social_meta_tags(
-        title=title,
-        description=description,
-        url=url,
-        og_type="article",
-    )
-    json_ld = case_study_json_ld(title=title, description=description, url=url)
-    return f"""    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{title_esc}</title>
-    <meta name="description" content="{meta_esc}" />
-    <link rel="canonical" href="{canonical_esc}" />
-{social}
-{json_ld}
-    <link rel="icon" href="/assets/logo.png" type="image/png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Mono:wght@400;500&display=swap"
-      rel="stylesheet"
-    />
-    <link rel="stylesheet" href="/assets/site.css" />"""
-
-
 def render_case_study_page(study: dict[str, Any]) -> str:
     """Render a full HTML page for one case study."""
-    slug = html.escape(study["slug"])
-    org = html.escape(study["org"])
-    headline = html.escape(study["headline"])
+    slug_raw = study["slug"]
+    org_raw = study["org"]
+    headline_raw = study["headline"]
+    meta_raw = study["meta_description"]
+    page_title = f"{org_raw} — {headline_raw} · saberistic"
+
+    slug = html.escape(slug_raw)
+    org = html.escape(org_raw)
+    headline = html.escape(headline_raw)
+    meta = html.escape(meta_raw)
     engagement = study["engagement"]
     disclaimer = html.escape(DISCLAIMERS[engagement])  # type: ignore[index]
     cta_label = html.escape(study["cta_label"])
     cta_href = html.escape(study["cta_href"], quote=True)
+    head_metadata = case_study_page_head_tags(
+        title=page_title,
+        description=meta_raw,
+        canonical_path=f"/work/{slug_raw}",
+    )
 
     sections_html = "\n".join(
         f"""          <section class="case-section" aria-labelledby="{key}-title">
@@ -145,12 +114,22 @@ def render_case_study_page(study: dict[str, Any]) -> str:
         for key, title in SECTIONS
     )
 
-    head = render_case_study_head(study)
-
     return f"""<!DOCTYPE html>
 <html lang="en">
   <head>
-{head}
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{html.escape(page_title)}</title>
+    <meta name="description" content="{meta}" />
+{head_metadata}
+    <link rel="icon" href="/assets/logo.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/assets/site.css" />
   </head>
   <body>
     <header class="top">
