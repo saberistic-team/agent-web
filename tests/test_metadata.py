@@ -54,6 +54,14 @@ INDEXABLE_PAGES: dict[str, dict[str, str]] = {
         "description": "Technical assessment and diagnostic services from saberistic.",
         "canonical": f"{SITE_BASE}/diagnostic",
     },
+    "/insights": {
+        "title": "Insights — saberistic",
+        "description": (
+            "Architecture judgment for founders, investors, and technical leaders — "
+            "fintech, digital assets, and high-stakes product delivery."
+        ),
+        "canonical": f"{SITE_BASE}/insights",
+    },
     "/brief": {
         "title": "Architecture Diagnostic — saberistic",
         "description": (
@@ -61,14 +69,6 @@ INDEXABLE_PAGES: dict[str, dict[str, str]] = {
             "problem and follow-up by email."
         ),
         "canonical": f"{SITE_BASE}/brief",
-    },
-    "/insights": {
-        "title": "Insights — saberistic",
-        "description": (
-            "Architecture judgment for founders, investors, and technical leaders — "
-            "patterns, risks, and decisions from seed–Series B fintech and digital-asset systems."
-        ),
-        "canonical": f"{SITE_BASE}/insights",
     },
 }
 
