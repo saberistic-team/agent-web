@@ -810,38 +810,48 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
     else:
         coverage_note = "- coverage: skipped (PR does not touch app/*.py)\n"
 
-    # Pre-merge deploy screenshots (baseline before approve/merge)
+    # Pre-merge screenshots: PR branch (local server) + production baseline
     screenshot_note = ""
     try:
         from screenshot_deploy import (
-            capture,
-            comment_markdown,
+            comment_markdown_pre_dual,
             comment_on_issue_or_pr,
+            capture_pre_dual,
             format_overflow_hard_fail,
             resolve_base_url,
             upload_to_branch,
         )
 
-        base_url = resolve_base_url(os.environ.get("DEPLOY_BASE_URL"))
+        prod_url = resolve_base_url(os.environ.get("DEPLOY_BASE_URL"))
         out_dir = Path("trace/screenshots")
-        captured = capture(base_url, out_dir, phase="pre")
-        shots = captured.paths
+        dual = capture_pre_dual(out_dir, prod_base_url=prod_url)
         branch = pr["head"]["ref"]
-        urls = upload_to_branch(
-            repo, branch, shots, f".agent/screenshots/pr-{pr_number}"
+        prefix = f".agent/screenshots/pr-{pr_number}"
+        branch_urls = upload_to_branch(repo, branch, dual.branch_paths, prefix)
+        prod_urls = upload_to_branch(repo, branch, dual.prod_paths, prefix)
+        body_shots = comment_markdown_pre_dual(
+            branch_url=dual.branch_url,
+            prod_url=dual.prod_url,
+            branch_urls=branch_urls,
+            prod_urls=prod_urls,
         )
-        body_shots = comment_markdown("### reviewer_screenshots_pre", base_url, urls)
         comment_on_issue_or_pr(repo, pr_number, body_shots)
         comment_on_issue_or_pr(repo, issue, body_shots)
-        screenshot_note = f"- screenshots_pre: {len(urls)} posted on PR + issue\n"
-        overflow_fail = format_overflow_hard_fail(captured.overflows)
+        screenshot_note = (
+            f"- screenshots_pre: {len(branch_urls)} branch + {len(prod_urls)} "
+            f"production posted on PR + issue\n"
+            f"- screenshots_branch: `{dual.branch_url}`\n"
+            f"- screenshots_production: `{dual.prod_url}`\n"
+        )
+        overflow_fail = format_overflow_hard_fail(dual.overflows)
         if overflow_fail:
             hard_fail_reasons.append(overflow_fail)
             screenshot_note += (
-                f"- visual_readability: `fail` ({len(captured.overflows)} overflow(s))\n"
+                f"- visual_readability: `fail` ({len(dual.overflows)} overflow(s) "
+                "on PR branch)\n"
             )
         else:
-            screenshot_note += "- visual_readability: `ok`\n"
+            screenshot_note += "- visual_readability: `ok` (PR branch)\n"
         pr = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}")
         sha = pr["head"]["sha"]
     except Exception as exc:

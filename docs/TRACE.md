@@ -55,6 +55,8 @@ A scheduled workflow posts a plain-language summary to a tracking issue:
 Optional: set repository variable `TRACE_DIGEST_ISSUE` to a fixed issue number
 so the digest always lands on that issue.
 
-The digest includes action counts, estimated cost, per-role breakdown, and
-recent failures — collected from `trace/agent-trace.jsonl` plus `agent-trace-*`
+The digest includes action counts, estimated cost, per-role breakdown, recent
+failures, plus a **deliverables** view: issues & PRs touched, features/work
+completed (build / approve / merge), and which issues had screenshot / visual
+evidence — collected from `trace/agent-trace.jsonl` plus `agent-trace-*`
 artifacts from the last 7 days.

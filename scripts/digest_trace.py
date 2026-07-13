@@ -12,6 +12,28 @@ from pathlib import Path
 from typing import Any, Iterable
 
 
+# Successful outcomes that count as “done” work for stakeholders.
+_OK = frozenset({"ok", "pass"})
+
+# Map trace actions → plain-language feature/work labels.
+_ACTION_LABELS: dict[str, str] = {
+    "plan": "Planned work",
+    "release": "Release plan",
+    "build": "Built / implemented",
+    "docs": "Docs update",
+    "dispatch": "Queued for an agent",
+    "review": "Reviewed",
+    "review:approved": "Review approved (screenshots + acceptance)",
+    "review:changes-requested": "Review requested changes",
+    "review:blocked": "Review blocked",
+    "gate:merge": "Merged via gate",
+    "gate:review-approved": "Merged after review approval",
+    "gate:release-plan": "Gate release plan",
+    "weekly_digest": "Weekly digest posted",
+    "permission_check": "Permission check",
+}
+
+
 def parse_ts(value: str | None) -> datetime | None:
     if not value:
         return None
@@ -68,12 +90,82 @@ def money(value: Any) -> float:
         return 0.0
 
 
+def _int_or_none(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _action_label(action: str) -> str:
+    if action in _ACTION_LABELS:
+        return _ACTION_LABELS[action]
+    if action.startswith("gate:"):
+        return f"Gate `{action.split(':', 1)[1]}`"
+    if action.startswith("review:"):
+        return f"Review `{action.split(':', 1)[1]}`"
+    return action.replace("_", " ").capitalize() or "(unknown)"
+
+
+def _issue_work(rows: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
+    """Aggregate per-issue activity for the deliverables section."""
+    by_issue: dict[int, dict[str, Any]] = {}
+    for row in rows:
+        issue = _int_or_none(row.get("issue"))
+        if issue is None:
+            continue
+        bucket = by_issue.setdefault(
+            issue,
+            {
+                "roles": set(),
+                "actions": [],
+                "prs": set(),
+                "ok": False,
+                "built": False,
+                "approved": False,
+                "merged": False,
+                "screenshotish": False,
+            },
+        )
+        role = str(row.get("role") or "")
+        action = str(row.get("action") or "")
+        outcome = str(row.get("outcome") or "")
+        bucket["roles"].add(role)
+        bucket["actions"].append(action)
+        pr = _int_or_none(row.get("pr"))
+        if pr is not None:
+            bucket["prs"].add(pr)
+        if outcome in _OK:
+            bucket["ok"] = True
+        if role == "builder" and action == "build" and outcome in _OK:
+            bucket["built"] = True
+        if action in {"review:approved", "review"} and outcome in _OK:
+            # Approve path always requires pre screenshots (branch + prod).
+            bucket["approved"] = action == "review:approved" or bucket["approved"]
+            if action == "review:approved":
+                bucket["screenshotish"] = True
+        if action.startswith("review:") and outcome in _OK:
+            bucket["screenshotish"] = True
+        if (
+            action.startswith("gate:")
+            and outcome in _OK
+            and action != "gate:release-plan"
+            and ("merge" in action or action == "gate:review-approved")
+        ):
+            bucket["merged"] = True
+            bucket["screenshotish"] = True  # post-deploy visual follows merge
+    return by_issue
+
+
 def render_digest(rows: list[dict[str, Any]], *, since: datetime, until: datetime) -> str:
     by_role: Counter[str] = Counter()
     by_outcome: Counter[str] = Counter()
     cost_by_role: dict[str, float] = defaultdict(float)
     fails: list[dict[str, Any]] = []
     issues: set[int] = set()
+    prs: set[int] = set()
 
     total_cost = 0.0
     for row in rows:
@@ -84,16 +176,24 @@ def render_digest(rows: list[dict[str, Any]], *, since: datetime, until: datetim
         cost = money(row.get("cost_usd"))
         total_cost += cost
         cost_by_role[role] += cost
-        if row.get("issue") is not None:
-            try:
-                issues.add(int(row["issue"]))
-            except (TypeError, ValueError):
-                pass
+        issue = _int_or_none(row.get("issue"))
+        if issue is not None:
+            issues.add(issue)
+        pr = _int_or_none(row.get("pr"))
+        if pr is not None:
+            prs.add(pr)
         if outcome == "fail":
             fails.append(row)
 
     since_s = since.strftime("%Y-%m-%d")
     until_s = until.strftime("%Y-%m-%d")
+    work = _issue_work(rows)
+    features_done = sorted(
+        n
+        for n, meta in work.items()
+        if meta["built"] or meta["approved"] or meta["merged"]
+    )
+    screenshot_issues = sorted(n for n, meta in work.items() if meta["screenshotish"])
 
     lines = [
         "## Agent activity — weekly digest",
@@ -106,6 +206,9 @@ def render_digest(rows: list[dict[str, Any]], *, since: datetime, until: datetim
         f"| --- | --- |",
         f"| Actions recorded | **{len(rows)}** |",
         f"| Issues touched | **{len(issues)}** |",
+        f"| PRs recorded | **{len(prs)}** |",
+        f"| Features / issues advanced | **{len(features_done)}** |",
+        f"| Issues with screenshot evidence | **{len(screenshot_issues)}** |",
         f"| Estimated cost (USD) | **${total_cost:.4f}** |",
         f"| Failures | **{by_outcome.get('fail', 0)}** |",
         "",
@@ -135,6 +238,102 @@ def render_digest(rows: list[dict[str, Any]], *, since: datetime, until: datetim
             lines.append(f"| `{outcome}` | {count} |")
     else:
         lines.append("| _(none)_ | 0 |")
+
+    # --- Deliverables: issues, PRs, features, screenshots ---
+    lines.extend(["", "### Issues & PRs", ""])
+    if not work and not prs:
+        lines.append("_No issues or PRs recorded in this window._")
+    else:
+        lines.append("| Issue | Roles | PR(s) | Status signals |")
+        lines.append("| ---: | --- | --- | --- |")
+        for issue in sorted(work):
+            meta = work[issue]
+            roles = ", ".join(f"`{r}`" for r in sorted(meta["roles"]) if r) or "—"
+            pr_cell = (
+                ", ".join(f"#{p}" for p in sorted(meta["prs"])) if meta["prs"] else "—"
+            )
+            signals = []
+            if meta["built"]:
+                signals.append("built")
+            if meta["approved"]:
+                signals.append("approved")
+            if meta["merged"]:
+                signals.append("merged")
+            if meta["screenshotish"]:
+                signals.append("screenshots")
+            if not signals and meta["ok"]:
+                signals.append("ok")
+            sig = ", ".join(signals) if signals else "—"
+            lines.append(f"| #{issue} | {roles} | {pr_cell} | {sig} |")
+        orphan_prs = sorted(prs - {p for meta in work.values() for p in meta["prs"]})
+        if orphan_prs:
+            lines.append("")
+            lines.append(
+                "PRs without an issue field: "
+                + ", ".join(f"#{p}" for p in orphan_prs)
+            )
+
+    lines.extend(["", "### Features / work completed", ""])
+    if not features_done:
+        lines.append(
+            "_No builder / approve / merge successes in this window "
+            "(agents may still have planned or queued work)._"
+        )
+    else:
+        lines.append(
+            "Issues where agents built, approved, or merged work "
+            "(plain-language from trace actions):"
+        )
+        lines.append("")
+        for issue in features_done:
+            meta = work[issue]
+            bits = []
+            if meta["built"]:
+                bits.append("implemented by Builder")
+            if meta["approved"]:
+                bits.append("approved by Reviewer")
+            if meta["merged"]:
+                bits.append("merged by Gate")
+            # Unique human labels from actions
+            labels = sorted(
+                {
+                    _action_label(a)
+                    for a in meta["actions"]
+                    if a
+                    and not a.startswith("permission")
+                    and a != "weekly_digest"
+                }
+            )
+            detail = "; ".join(bits) if bits else ", ".join(labels[:4])
+            lines.append(f"- **#{issue}** — {detail}")
+
+    lines.extend(["", "### Screenshots & visual evidence", ""])
+    lines.append(
+        "Pre-merge Reviewer captures **PR branch** (local) + **saberistic.com**; "
+        "post-deploy CI captures **saberistic.com** only "
+        "([docs/SCREENSHOTS.md](../docs/SCREENSHOTS.md))."
+    )
+    lines.append("")
+    if not screenshot_issues:
+        lines.append(
+            "_No review/merge actions in this window that imply screenshot "
+            "evidence was posted._"
+        )
+    else:
+        lines.append("| Issue | Evidence (from agent actions) |")
+        lines.append("| ---: | --- |")
+        for issue in screenshot_issues:
+            meta = work[issue]
+            parts = []
+            if meta["approved"] or any(
+                a.startswith("review:") for a in meta["actions"]
+            ):
+                parts.append("pre-merge screenshots (branch + production)")
+            if meta["merged"]:
+                parts.append("post-deploy screenshots (production)")
+            if not parts:
+                parts.append("review / visual gate activity")
+            lines.append(f"| #{issue} | {'; '.join(parts)} |")
 
     lines.extend(["", "### Failures (if any)", ""])
     if not fails:

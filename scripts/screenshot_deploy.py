@@ -7,12 +7,14 @@ import argparse
 import base64
 import json
 import os
+import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, Iterator, NamedTuple
 from urllib.parse import urljoin
 
 from github_api import GitHubError, api, post_issue_comment, split_repo, token
@@ -31,10 +33,36 @@ VIEWPORTS: tuple[tuple[str, int, int], ...] = (
 # Elements that must stay readable inside the viewport (esp. mobile).
 OVERFLOW_SELECTORS = ("h1", ".lede", ".cta-row", ".hero")
 
+# Pre-merge production baseline filenames (compared to post-deploy).
+PRE_PROD_PHASE = "pre"
+# Pre-merge shots of the PR head served locally (not production).
+PRE_BRANCH_PHASE = "branch"
+DEFAULT_PREVIEW_PORT = 8765
+
 
 class CaptureResult(NamedTuple):
     paths: list[Path]
     overflows: list[dict[str, Any]]
+
+
+class PreCaptureResult(NamedTuple):
+    """Dual pre-merge capture: PR branch preview + production baseline."""
+
+    branch_paths: list[Path]
+    prod_paths: list[Path]
+    branch_overflows: list[dict[str, Any]]
+    prod_overflows: list[dict[str, Any]]
+    branch_url: str
+    prod_url: str
+
+    @property
+    def paths(self) -> list[Path]:
+        return [*self.branch_paths, *self.prod_paths]
+
+    @property
+    def overflows(self) -> list[dict[str, Any]]:
+        # Readability gate applies to the code under review (branch), not prod.
+        return self.branch_overflows
 
 
 def screenshot_basename(phase: str, route: str, viewport: str) -> str:
@@ -43,6 +71,25 @@ def screenshot_basename(phase: str, route: str, viewport: str) -> str:
     if viewport == "desktop":
         return f"{phase}-{safe}.png"
     return f"{phase}-{safe}-{viewport}.png"
+
+
+def is_production_pre_shot(name: str) -> bool:
+    """True for production pre baselines (``pre-home.png``), not ``branch-*``."""
+    base = Path(name).name
+    return base.startswith(f"{PRE_PROD_PHASE}-") and base.endswith(".png")
+
+
+def resolve_preview_root(explicit: str | Path | None = None) -> Path:
+    """Directory that contains the PR ``app/`` tree to serve for branch shots."""
+    if explicit is not None and str(explicit).strip():
+        return Path(explicit).resolve()
+    env = (os.environ.get("COVERAGE_ROOT") or os.environ.get("PR_HEAD_ROOT") or "").strip()
+    if env:
+        return Path(env).resolve()
+    candidate = Path("pr-head").resolve()
+    if (candidate / "app").is_dir():
+        return candidate
+    return Path.cwd().resolve()
 
 
 def resolve_base_url(value: str | None = None) -> str:
@@ -54,6 +101,98 @@ def resolve_base_url(value: str | None = None) -> str:
         if candidate and str(candidate).strip():
             return str(candidate).strip().rstrip("/")
     return DEFAULT_BASE
+
+
+def _wait_http_ok(url: str, *, attempts: int = 30) -> None:
+    last: Exception | None = None
+    for _ in range(attempts):
+        try:
+            with urllib.request.urlopen(url, timeout=5) as resp:
+                if 200 <= resp.status < 500:
+                    return
+        except Exception as exc:  # noqa: BLE001
+            last = exc
+        time.sleep(0.5)
+    raise GitHubError(f"local preview not ready at {url}: {last}")
+
+
+@contextmanager
+def local_preview_server(
+    app_root: Path | None = None,
+    *,
+    port: int = DEFAULT_PREVIEW_PORT,
+) -> Iterator[str]:
+    """Serve the PR head (or cwd) with uvicorn for branch screenshot capture."""
+    root = resolve_preview_root(app_root)
+    if not (root / "app" / "main.py").is_file():
+        raise GitHubError(
+            f"PR preview root missing app/main.py: {root} "
+            "(set COVERAGE_ROOT / PR_HEAD_ROOT to the checked-out PR head)"
+        )
+    base = f"http://127.0.0.1:{port}"
+    env = {
+        **os.environ,
+        "BASE_URL": base,
+        # HTML pages must render without requiring production secrets.
+        "DATABASE_URL": os.environ.get("DATABASE_URL") or "",
+    }
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "app.main:app",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+        ],
+        cwd=str(root),
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        try:
+            _wait_http_ok(f"{base}/")
+        except GitHubError:
+            err = ""
+            if proc.poll() is not None and proc.stderr is not None:
+                err = proc.stderr.read().decode("utf-8", errors="replace")[-800:]
+            raise GitHubError(
+                f"failed to start PR preview server in {root}: {err or 'no response'}"
+            ) from None
+        yield base
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
+
+
+def capture_pre_dual(
+    out_dir: Path,
+    *,
+    prod_base_url: str | None = None,
+    preview_root: Path | None = None,
+    preview_port: int = DEFAULT_PREVIEW_PORT,
+) -> PreCaptureResult:
+    """Pre-merge: screenshot PR branch (local) + production (saberistic.com)."""
+    prod_url = resolve_base_url(prod_base_url)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    with local_preview_server(preview_root, port=preview_port) as branch_url:
+        branch = capture(branch_url, out_dir, phase=PRE_BRANCH_PHASE)
+        prod = capture(prod_url, out_dir, phase=PRE_PROD_PHASE)
+    return PreCaptureResult(
+        branch_paths=branch.paths,
+        prod_paths=prod.paths,
+        branch_overflows=branch.overflows,
+        prod_overflows=prod.overflows,
+        branch_url=branch_url,
+        prod_url=prod_url,
+    )
 
 
 def wait_healthy(base_url: str | None = None, attempts: int = 12) -> dict[str, Any]:
@@ -263,6 +402,34 @@ def comment_markdown(
     return "\n".join(lines) + "\n"
 
 
+def comment_markdown_pre_dual(
+    *,
+    branch_url: str,
+    prod_url: str,
+    branch_urls: list[str],
+    prod_urls: list[str],
+    extra: list[str] | None = None,
+) -> str:
+    """PR review comment: branch preview shots + production baseline."""
+    lines = [
+        "### reviewer_screenshots_pre",
+        f"- branch (PR head local): `{branch_url}`",
+        f"- production: `{prod_url}`",
+        "- evidence (headless Chromium):",
+        "  - **PR branch** (code under review):",
+    ]
+    for url in branch_urls:
+        name = url.rsplit("/", 1)[-1]
+        lines.append(f"    - {name}: ![{name}]({url})")
+    lines.append("  - **Production baseline** (saberistic.com before merge):")
+    for url in prod_urls:
+        name = url.rsplit("/", 1)[-1]
+        lines.append(f"    - {name}: ![{name}]({url})")
+    if extra:
+        lines.extend(extra)
+    return "\n".join(lines) + "\n"
+
+
 def comment_on_issue_or_pr(repo: str, number: int, body: str) -> None:
     post_issue_comment(repo, number, body)
 
@@ -277,6 +444,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out-dir", type=Path, default=Path("trace/screenshots"))
     parser.add_argument("--wait-healthy", action="store_true")
     parser.add_argument("--branch", default="")
+    parser.add_argument(
+        "--preview-root",
+        default="",
+        help="PR head directory for pre-merge branch screenshots "
+        "(default: COVERAGE_ROOT / pr-head / cwd)",
+    )
+    parser.add_argument(
+        "--prod-only",
+        action="store_true",
+        help="Pre-merge: capture production only (legacy single-source)",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -285,7 +463,6 @@ def main(argv: list[str] | None = None) -> int:
         if args.wait_healthy or args.phase == "post":
             health = wait_healthy(base_url)
 
-        files = capture(base_url, args.out_dir, phase=args.phase).paths
         owner, name = split_repo(args.repo)
         branch = args.branch
         target = args.pr or args.issue
@@ -303,17 +480,39 @@ def main(argv: list[str] | None = None) -> int:
             if args.pr
             else f".agent/screenshots/issue-{args.issue}"
         )
-        urls = upload_to_branch(args.repo, branch, files, prefix)
-        heading = (
-            "### reviewer_screenshots_pre"
-            if args.phase == "pre"
-            else "### deploy_screenshots_post"
-        )
-        extra = None
-        if health is not None:
-            slim = {k: v for k, v in health.items() if not str(k).startswith("_")}
-            extra = [f"- health: `{json.dumps(slim, separators=(',', ':'))}`"]
-        body = comment_markdown(heading, base_url, urls, extra=extra)
+        dual_pre = args.phase == "pre" and not args.prod_only
+        if dual_pre:
+            preview = Path(args.preview_root) if args.preview_root else None
+            dual = capture_pre_dual(
+                args.out_dir,
+                prod_base_url=base_url,
+                preview_root=preview,
+            )
+            branch_urls = upload_to_branch(
+                args.repo, branch, dual.branch_paths, prefix
+            )
+            prod_urls = upload_to_branch(args.repo, branch, dual.prod_paths, prefix)
+            body = comment_markdown_pre_dual(
+                branch_url=dual.branch_url,
+                prod_url=dual.prod_url,
+                branch_urls=branch_urls,
+                prod_urls=prod_urls,
+            )
+            urls = [*branch_urls, *prod_urls]
+        else:
+            files = capture(base_url, args.out_dir, phase=args.phase).paths
+            urls = upload_to_branch(args.repo, branch, files, prefix)
+            heading = (
+                "### reviewer_screenshots_pre"
+                if args.phase == "pre"
+                else "### deploy_screenshots_post"
+            )
+            extra = None
+            if health is not None:
+                slim = {k: v for k, v in health.items() if not str(k).startswith("_")}
+                extra = [f"- health: `{json.dumps(slim, separators=(',', ':'))}`"]
+            body = comment_markdown(heading, base_url, urls, extra=extra)
+
         comment_on_issue_or_pr(args.repo, target, body)
         if args.issue and args.pr and args.issue != args.pr:
             comment_on_issue_or_pr(args.repo, args.issue, body)

@@ -15,12 +15,14 @@ Before approving you must:
    return the issue to Builder — do not approve or spend the rest of the review
    budget on a conflicted PR
 2. Capture **headless Chromium screenshots** via Actions Playwright
-   (`scripts/screenshot_deploy.py` on the live deploy URL) at **desktop and
-   mobile** viewports and post them on the PR and issue — not Copilot / MCP
-   browsers
-3. Check **visual readability** on those screenshots / live capture: hero and
-   primary copy must stay inside the viewport (no horizontal overflow / text
-   out of frame on mobile)
+   (`scripts/screenshot_deploy.py`) at **desktop and mobile** viewports:
+   - **PR branch** — local uvicorn on the PR head checkout (`branch-*.png`)
+   - **Production** — [saberistic.com](https://saberistic.com) (`pre-*.png`
+     baseline)
+   Post both on the PR and issue — not Copilot / MCP browsers
+3. Check **visual readability** on the **PR branch** screenshots / live
+   capture: hero and primary copy must stay inside the viewport (no horizontal
+   overflow / text out of frame on mobile)
 4. Run **Cursor / OpenAI / Models AI review** ([docs/MODELS.md](../docs/MODELS.md),
    [docs/DESIGN.md](../docs/DESIGN.md), [docs/TESTING.md](../docs/TESTING.md))
    — prefers Cursor when `CURSOR_API_KEY` is set
@@ -35,9 +37,10 @@ than reviewing stale ghost commits.
 
 ## Definition of done
 
-- Desktop + mobile screenshots of deploy (`/` and `/about` by default) appear
-  on the PR + issue
-- Visual readability check passes (no mobile out-of-frame overflow)
+- Desktop + mobile screenshots of the **PR branch** and **production**
+  (`/` and `/about` by default) appear on the PR + issue
+- Visual readability check passes on PR-branch shots (no mobile out-of-frame
+  overflow)
 - AI review is recorded in the PR review body
 - `### acceptance_checklist` is posted with `all_done: true` and evidence links
 - Matching issue-body checkboxes are flipped to `[x]` when verified
