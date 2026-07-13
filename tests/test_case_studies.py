@@ -98,9 +98,9 @@ def test_render_case_study_page_structure() -> None:
     html = case_studies.render_case_study_page(study)
     assert "<title>Brave — Infrastructure for privacy-aligned payments · saberistic</title>" in html
     assert 'name="description"' in html
-    assert 'property="og:title"' in html
-    assert 'name="twitter:card"' in html
-    assert 'type="application/ld+json"' in html
+    assert 'property="og:type" content="website"' in html
+    assert 'name="twitter:card" content="summary_large_image"' in html
+    assert '"@type":"WebPage"' in html
     assert 'id="problem-title"' in html
     assert 'id="intervention-title"' in html
     assert 'id="result-title"' in html
@@ -136,6 +136,20 @@ def test_render_escapes_html_in_content(tmp_path: Path) -> None:
     rendered = case_studies.render_case_study_page(study)
     assert "<script>" not in rendered
     assert "&lt;script&gt;" in rendered
+
+
+@pytest.mark.unit
+def test_case_study_head_metadata_helpers() -> None:
+    study = case_studies.get_case_study("brave")
+    assert study is not None
+    title = case_studies.case_study_page_title(study)
+    assert title == "Brave — Infrastructure for privacy-aligned payments · saberistic"
+    assert case_studies.case_study_canonical_url(study) == (
+        "https://saberistic.com/work/brave"
+    )
+    metadata = case_studies.case_study_head_metadata(study)
+    assert 'property="og:url" content="https://saberistic.com/work/brave"' in metadata
+    assert '"@type":"WebPage"' in metadata
 
 
 @pytest.mark.unit
