@@ -8,11 +8,11 @@ from pathlib import Path
 from typing import AsyncIterator
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app import case_studies, db, email_service, stripe_service
-from app.config import Settings, get_settings
+from app import analytics_service, case_studies, db, email_service, page_service, stripe_service
+from app.config import get_settings
 from app.models import BriefCreateRequest, BriefCreateResponse
 
 logger = logging.getLogger(__name__)
@@ -47,23 +47,23 @@ def hello() -> dict[str, str]:
 
 
 @app.get("/")
-def home() -> FileResponse:
-    return FileResponse(SITE_DIR / "index.html")
+def home() -> HTMLResponse:
+    return page_service.serve_page("index.html", get_settings())
 
 
 @app.get("/about")
-def about() -> FileResponse:
-    return FileResponse(SITE_DIR / "about.html")
+def about() -> HTMLResponse:
+    return page_service.serve_page("about.html", get_settings())
 
 
 @app.get("/brief")
-def brief_form() -> FileResponse:
-    return FileResponse(SITE_DIR / "brief.html")
+def brief_form() -> HTMLResponse:
+    return page_service.serve_page("brief.html", get_settings())
 
 
 @app.get("/brief/success")
-def brief_success() -> FileResponse:
-    return FileResponse(SITE_DIR / "brief-success.html")
+def brief_success() -> HTMLResponse:
+    return page_service.serve_page("brief-success.html", get_settings())
 
 
 @app.get("/work/{slug}")
@@ -83,13 +83,28 @@ def create_brief(payload: BriefCreateRequest) -> BriefCreateResponse:
         raise HTTPException(status_code=503, detail="Stripe not configured")
 
     with db.db_connection(settings.database_url) as conn:
+        utm = payload.utm_attribution()
         brief_id = db.create_brief(
             conn,
             website=payload.website,
             contact_method="email",
             contact_value=payload.email,
             brief=payload.brief,
+            utm_source=utm["utm_source"],
+            utm_medium=utm["utm_medium"],
+            utm_campaign=utm["utm_campaign"],
+            utm_content=utm["utm_content"],
+            utm_term=utm["utm_term"],
         )
+
+        try:
+            analytics_service.track_lead_persisted(
+                settings,
+                brief_id=brief_id,
+                utm=utm,
+            )
+        except Exception:
+            logger.exception("Analytics lead_persisted failed for brief %s", brief_id)
 
         # Lead emails before Stripe so a checkout failure still notifies inbox.
         if settings.email_configured:
@@ -129,6 +144,16 @@ def create_brief(payload: BriefCreateRequest) -> BriefCreateResponse:
             brief_id=brief_id,
             stripe_session_id=session.id,
         )
+
+    try:
+        analytics_service.track_checkout_opened(
+            settings,
+            brief_id=brief_id,
+            price_cents=settings.brief_price_cents,
+            utm=utm,
+        )
+    except Exception:
+        logger.exception("Analytics checkout_opened failed for brief %s", brief_id)
 
     if not session.url:
         raise HTTPException(status_code=502, detail="Payment session missing checkout URL")
@@ -176,6 +201,22 @@ async def stripe_webhook(request: Request) -> JSONResponse:
 
     if paid_brief is None:
         return JSONResponse({"received": True})
+
+    try:
+        analytics_service.track_payment_completed(
+            settings,
+            brief_id=brief_id,
+            price_cents=settings.brief_price_cents,
+            utm={
+                "utm_source": paid_brief.get("utm_source"),
+                "utm_medium": paid_brief.get("utm_medium"),
+                "utm_campaign": paid_brief.get("utm_campaign"),
+                "utm_content": paid_brief.get("utm_content"),
+                "utm_term": paid_brief.get("utm_term"),
+            },
+        )
+    except Exception:
+        logger.exception("Analytics payment_completed failed for brief %s", brief_id)
 
     if settings.email_configured:
         try:

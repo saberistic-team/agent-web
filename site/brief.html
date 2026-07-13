@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Request project brief — saberistic</title>
+    <title>Architecture Diagnostic — saberistic</title>
     <meta
       name="description"
-      content="Submit a project brief for saberistic review. $200 one-time fee."
+      content="Architecture Diagnostic — $200 paid intake. Review of your technical problem and follow-up by email."
     />
     <link rel="icon" href="/assets/logo.png" type="image/png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -32,15 +32,49 @@
 
     <main>
       <section class="block brief-page" aria-labelledby="brief-title">
-        <h1 class="page-title" id="brief-title">Request project brief</h1>
+        <h1 class="page-title" id="brief-title">Architecture Diagnostic</h1>
         <p class="brief-lede">
-          Share your project details. A one-time <strong>$200</strong> fee applies
-          at checkout.
+          Paid intake for founders and engineering leaders who need a focused
+          read on a product or technical problem.
+          <strong>$200</strong> one-time fee.
         </p>
 
-        <p class="form-note" id="cancelled-note" hidden>
-          Checkout was cancelled. Your brief is saved — you can submit again to
-          continue to payment.
+        <div class="offer-block" aria-labelledby="offer-includes">
+          <h2 class="offer-heading" id="offer-includes">What's included</h2>
+          <ul class="offer-list">
+            <li>Review of your submitted product or technical problem</li>
+            <li>Follow-up by email after payment is completed</li>
+          </ul>
+        </div>
+
+        <div class="offer-block" aria-labelledby="how-it-works">
+          <h2 class="offer-heading" id="how-it-works">How payment works</h2>
+          <ol class="offer-steps">
+            <li>
+              <strong>Submit</strong> — Share your website, problem, and email.
+              Your brief is saved; payment is not collected yet.
+            </li>
+            <li>
+              <strong>Checkout</strong> — Continue to Stripe to pay the $200 fee.
+            </li>
+            <li>
+              <strong>Payment completed</strong> — We review your submission and
+              follow up by email.
+            </li>
+          </ol>
+        </div>
+
+        <p class="form-note offer-alt" id="cancelled-note" hidden>
+          Checkout was cancelled. Your submission is saved — submit again to
+          continue to checkout.
+        </p>
+
+        <p class="offer-alt">
+          Not ready to pay?
+          <a href="mailto:inbox@saberistic.com?subject=Introduction"
+            >Email an introduction</a
+          >
+          for a brief qualification conversation.
         </p>
 
         <form class="brief-form" id="brief-form" novalidate>
@@ -57,13 +91,13 @@
           </div>
 
           <div class="field">
-            <label for="brief">Project brief</label>
+            <label for="brief">Product or technical problem</label>
             <textarea
               id="brief"
               name="brief"
               required
               rows="8"
-              placeholder="Describe your project, goals, timeline, and what you need."
+              placeholder="Describe the product, architecture concern, or decision you need help with."
             ></textarea>
           </div>
 
@@ -82,7 +116,7 @@
           <p class="form-error" id="form-error" hidden></p>
 
           <button class="cta brief-submit" type="submit">
-            Continue to payment — $200
+            Submit and continue to checkout — $200
           </button>
         </form>
       </section>
@@ -107,15 +141,28 @@
           errorEl.hidden = true;
           errorEl.textContent = "";
 
+          const utmRaw = sessionStorage.getItem("saberistic_utm");
+          let utm = {};
+          try {
+            utm = utmRaw ? JSON.parse(utmRaw) : {};
+          } catch (_err) {
+            utm = {};
+          }
+
           const payload = {
             website: form.website.value.trim(),
             brief: form.brief.value.trim(),
             email: form.email.value.trim(),
+            utm_source: utm.utm_source || null,
+            utm_medium: utm.utm_medium || null,
+            utm_campaign: utm.utm_campaign || null,
+            utm_content: utm.utm_content || null,
+            utm_term: utm.utm_term || null,
           };
 
           const submitBtn = form.querySelector(".brief-submit");
           submitBtn.disabled = true;
-          submitBtn.textContent = "Redirecting to checkout…";
+          submitBtn.textContent = "Saving submission…";
 
           try {
             const response = await fetch("/api/briefs", {
@@ -134,12 +181,13 @@
             }
 
             const data = await response.json();
+            submitBtn.textContent = "Redirecting to checkout…";
             window.location.href = data.checkout_url;
           } catch (err) {
             errorEl.textContent = err.message || "Something went wrong.";
             errorEl.hidden = false;
             submitBtn.disabled = false;
-            submitBtn.textContent = "Continue to payment — $200";
+            submitBtn.textContent = "Submit and continue to checkout — $200";
           }
         });
       })();

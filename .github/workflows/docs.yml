@@ -73,6 +73,16 @@ jobs:
           EOF
           )"
 
+      - name: Dispatch next queued work
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ steps.docs.outputs.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p trace
+          python scripts/dispatch_queue.py | tee trace/dispatch-after-docs.json
+
       - name: Write trace
         if: always()
         run: |

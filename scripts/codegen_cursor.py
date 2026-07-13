@@ -17,6 +17,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from github_api import GitHubError, api, post_issue_comment, split_repo
+from pr_labels import apply_pr_mirror
 
 DEFAULT_CURSOR_MODEL = "composer-2.5"
 SKIP_PATH_PREFIXES = (
@@ -305,6 +306,13 @@ def _build_local(
         pr_number = int(pr["number"])
         created = True
 
+    apply_pr_mirror(
+        repo,
+        issue,
+        pr_number,
+        default_review="review:needs-review",
+    )
+
     comment = (
         "### builder_result\n"
         "- kind: `cursor`\n"
@@ -451,6 +459,13 @@ def _build_cloud(
             )
     except Exception:
         pass
+
+    apply_pr_mirror(
+        repo,
+        issue,
+        pr_number,
+        default_review="review:needs-review",
+    )
 
     comment = (
         "### builder_result\n"

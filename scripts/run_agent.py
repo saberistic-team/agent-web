@@ -23,6 +23,8 @@ from github_api import (
     post_issue_comment,
     split_repo,
 )
+from pr_labels import apply_pr_mirror
+from priority import infer_priority_label
 
 HANDOFF_DIR = Path("trace")
 BUILDER_HANDOFF = HANDOFF_DIR / "builder-handoff.txt"
@@ -246,6 +248,12 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
             type_label = "type:feature"
         ensure_label(repo, issue, type_label)
 
+    priority_label = infer_priority_label(title, body, labels)
+    if not any(l.startswith("priority:") for l in labels):
+        ensure_label(repo, issue, priority_label)
+    else:
+        priority_label = next(l for l in labels if l.startswith("priority:"))
+
     areas = plan_change_areas(body)
     max_children = 4
     agent_label = "agent:docs" if type_label == "type:docs" else "agent:builder"
@@ -255,20 +263,32 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
         children: list[int] = []
         owner, name = split_repo(repo)
         for area in areas:
+            # Queue only: dispatcher applies agent:* by priority order.
             child = api(
                 "POST",
                 f"/repos/{owner}/{name}/issues",
                 body={
                     "title": f"{title}: {area.strip()[:80]}",
                     "body": child_issue_body(issue, area, body),
-                    "labels": [agent_label, type_label, "status:queued"],
+                    "labels": [
+                        type_label,
+                        priority_label,
+                        "status:queued",
+                    ],
                 },
             )
             children.append(int(child["number"]))
             post_issue_comment(
                 repo,
                 child["number"],
-                f"### planner_plan\nQueued as one-commit child of #{issue}.\n",
+                (
+                    f"### planner_plan\n"
+                    f"Queued as one-commit child of #{issue}.\n"
+                    f"- type: `{type_label}`\n"
+                    f"- priority: `{priority_label}`\n"
+                    f"- intended_agent: `{agent_label}`\n"
+                    "- awaiting: dispatcher (priority queue)\n"
+                ),
             )
         trace = Path(f"trace/planner-{issue}-children.txt")
         trace.parent.mkdir(parents=True, exist_ok=True)
@@ -277,7 +297,8 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
             f"### planner_plan\n"
             f"- mode: children\n"
             f"- type: `{type_label}`\n"
-            f"- agent: `{agent_label}`\n"
+            f"- priority: `{priority_label}`\n"
+            f"- intended_agent: `{agent_label}`\n"
             f"- children: {', '.join(f'#{n}' for n in children)}\n"
             f"- granularity: one commit per child\n"
             f"- brief: `{brief}`\n"
@@ -288,16 +309,19 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
                 remove_label(repo, issue, label)
         ensure_label(repo, issue, "agent:planner")
     else:
+        # Do not apply agent:builder/docs yet — dispatcher starts runs by priority.
         for label in list(labels):
             if label.startswith("agent:"):
                 remove_label(repo, issue, label)
-        ensure_label(repo, issue, agent_label)
+        ensure_label(repo, issue, "agent:planner")
         plan = (
             f"### planner_plan\n"
             f"- mode: single\n"
             f"- type: `{type_label}`\n"
-            f"- agent: `{agent_label}`\n"
+            f"- priority: `{priority_label}`\n"
+            f"- intended_agent: `{agent_label}`\n"
             f"- granularity: one commit on this issue\n"
+            f"- awaiting: dispatcher after `status:queued`\n"
             f"- brief: `{brief}`\n"
         )
         post_issue_comment(repo, issue, plan)
@@ -426,16 +450,30 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
                     ),
                 },
             )
+            pr_number = int(pr["number"])
+            apply_pr_mirror(
+                repo,
+                issue,
+                pr_number,
+                default_review="review:needs-review",
+            )
             post_issue_comment(
                 repo,
                 issue,
-                f"### builder_result\n- kind: `infra-screenshots`\n- pr: #{pr['number']}\n",
+                f"### builder_result\n- kind: `infra-screenshots`\n- pr: #{pr_number}\n",
             )
         else:
+            pr_number = int(prs[0]["number"])
+            apply_pr_mirror(
+                repo,
+                issue,
+                pr_number,
+                default_review="review:needs-review",
+            )
             post_issue_comment(
                 repo,
                 issue,
-                f"### builder_result\n- kind: `infra-screenshots`\n- existing_pr: #{prs[0]['number']}\n",
+                f"### builder_result\n- kind: `infra-screenshots`\n- existing_pr: #{pr_number}\n",
             )
         write_builder_handoff("reviewer")
         return
@@ -536,16 +574,21 @@ def role_docs(repo: str, issue: int, brief: Path) -> None:
                 "body": f"Closes #{issue}\n\nDocs agent brief: `{brief}`.\n",
             },
         )
+        pr_number = int(pr["number"])
+        # Docs skips Reviewer; mirror type/priority only (no review:*).
+        apply_pr_mirror(repo, issue, pr_number, default_review=None)
         post_issue_comment(
             repo,
             issue,
-            f"### docs_result\n- branch: `{branch}`\n- pr: #{pr['number']}\n",
+            f"### docs_result\n- branch: `{branch}`\n- pr: #{pr_number}\n",
         )
     else:
+        pr_number = int(prs[0]["number"])
+        apply_pr_mirror(repo, issue, pr_number, default_review=None)
         post_issue_comment(
             repo,
             issue,
-            f"### docs_result\n- branch: `{branch}`\n- existing_pr: #{prs[0]['number']}\n",
+            f"### docs_result\n- branch: `{branch}`\n- existing_pr: #{pr_number}\n",
         )
 
 
@@ -677,13 +720,15 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
             capture,
             comment_markdown,
             comment_on_issue_or_pr,
+            format_overflow_hard_fail,
             resolve_base_url,
             upload_to_branch,
         )
 
         base_url = resolve_base_url(os.environ.get("DEPLOY_BASE_URL"))
         out_dir = Path("trace/screenshots")
-        shots = capture(base_url, out_dir, phase="pre")
+        captured = capture(base_url, out_dir, phase="pre")
+        shots = captured.paths
         branch = pr["head"]["ref"]
         urls = upload_to_branch(
             repo, branch, shots, f".agent/screenshots/pr-{pr_number}"
@@ -692,6 +737,14 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
         comment_on_issue_or_pr(repo, pr_number, body_shots)
         comment_on_issue_or_pr(repo, issue, body_shots)
         screenshot_note = f"- screenshots_pre: {len(urls)} posted on PR + issue\n"
+        overflow_fail = format_overflow_hard_fail(captured.overflows)
+        if overflow_fail:
+            hard_fail_reasons.append(overflow_fail)
+            screenshot_note += (
+                f"- visual_readability: `fail` ({len(captured.overflows)} overflow(s))\n"
+            )
+        else:
+            screenshot_note += "- visual_readability: `ok`\n"
         pr = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}")
         sha = pr["head"]["sha"]
     except Exception as exc:

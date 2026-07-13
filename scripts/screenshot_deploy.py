@@ -12,7 +12,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 from urllib.parse import urljoin
 
 from github_api import GitHubError, api, post_issue_comment, split_repo, token
@@ -21,6 +21,28 @@ DEFAULT_BASE = "https://saberistic.com"
 # Only HTML pages — never screenshot JSON APIs like /health or /hello.
 HTML_PATHS = ("/", "/about")
 PATHS = HTML_PATHS  # alias for callers
+
+# Desktop + mobile evidence for landing/product acceptance criteria.
+VIEWPORTS: tuple[tuple[str, int, int], ...] = (
+    ("desktop", 1280, 800),
+    ("mobile", 390, 844),
+)
+
+# Elements that must stay readable inside the viewport (esp. mobile).
+OVERFLOW_SELECTORS = ("h1", ".lede", ".cta-row", ".hero")
+
+
+class CaptureResult(NamedTuple):
+    paths: list[Path]
+    overflows: list[dict[str, Any]]
+
+
+def screenshot_basename(phase: str, route: str, viewport: str) -> str:
+    """Build ``pre-home.png`` (desktop) or ``pre-home-mobile.png`` filenames."""
+    safe = "home" if route == "/" else route.strip("/").replace("/", "-")
+    if viewport == "desktop":
+        return f"{phase}-{safe}.png"
+    return f"{phase}-{safe}-{viewport}.png"
 
 
 def resolve_base_url(value: str | None = None) -> str:
@@ -80,7 +102,68 @@ def _is_html_response(url: str) -> bool:
         return False
 
 
-def capture(base_url: str | None, out_dir: Path, *, phase: str = "pre") -> list[Path]:
+def _page_overflows(page: Any, *, viewport: str, route: str) -> list[dict[str, Any]]:
+    """Return horizontal overflow findings for key landing selectors."""
+    try:
+        raw = page.evaluate(
+            """(sels) => {
+              const w = window.innerWidth;
+              const out = [];
+              for (const sel of sels) {
+                for (const el of document.querySelectorAll(sel)) {
+                  const r = el.getBoundingClientRect();
+                  if (!r.width && !r.height) continue;
+                  if (r.right > w + 2 || r.left < -2) {
+                    out.push({
+                      selector: sel,
+                      text: (el.innerText || '').trim().slice(0, 120),
+                      left: Math.round(r.left),
+                      right: Math.round(r.right),
+                      viewport_width: w,
+                    });
+                  }
+                }
+              }
+              return out;
+            }""",
+            list(OVERFLOW_SELECTORS),
+        )
+    except Exception:  # noqa: BLE001
+        return []
+    findings: list[dict[str, Any]] = []
+    for item in raw or []:
+        if not isinstance(item, dict):
+            continue
+        findings.append(
+            {
+                "viewport": viewport,
+                "route": route,
+                "selector": item.get("selector"),
+                "text": item.get("text") or "",
+                "left": item.get("left"),
+                "right": item.get("right"),
+                "viewport_width": item.get("viewport_width"),
+            }
+        )
+    return findings
+
+
+def format_overflow_hard_fail(overflows: list[dict[str, Any]]) -> str | None:
+    """Build a Reviewer hard-fail line for mobile/out-of-frame text."""
+    mobile = [o for o in overflows if o.get("viewport") == "mobile"]
+    if not mobile:
+        return None
+    sample = mobile[0]
+    text = (sample.get("text") or "").replace("\n", " ")[:80]
+    return (
+        "visual readability: text overflows mobile viewport (out of frame) — "
+        f"{sample.get('route')} {sample.get('selector')} "
+        f"right={sample.get('right')} vw={sample.get('viewport_width')} "
+        f"text={text!r}; builder must fix CSS/typography so hero copy fits"
+    )
+
+
+def capture(base_url: str | None, out_dir: Path, *, phase: str = "pre") -> CaptureResult:
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
@@ -90,41 +173,54 @@ def capture(base_url: str | None, out_dir: Path, *, phase: str = "pre") -> list[
 
     out_dir.mkdir(parents=True, exist_ok=True)
     paths: list[Path] = []
+    overflows: list[dict[str, Any]] = []
     base = resolve_base_url(base_url)
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        page = browser.new_page(viewport={"width": 1280, "height": 800})
-        for route in HTML_PATHS:
-            url = urljoin(base + "/", route.lstrip("/")) if route != "/" else base + "/"
-            if not _is_html_response(url):
-                # JSON or non-HTML — skip screenshot (e.g. misconfigured /about).
-                continue
-            last_err: Exception | None = None
-            for _ in range(6):
-                try:
-                    page.goto(url, wait_until="networkidle", timeout=60_000)
-                    # Double-check we did not land on JSON.
-                    body_prefix = page.content()[:200].lstrip().lower()
-                    if body_prefix.startswith("{") or body_prefix.startswith("["):
-                        last_err = GitHubError(f"{url} returned JSON, not HTML")
+        for viewport_name, width, height in VIEWPORTS:
+            page = browser.new_page(viewport={"width": width, "height": height})
+            for route in HTML_PATHS:
+                url = (
+                    urljoin(base + "/", route.lstrip("/"))
+                    if route != "/"
+                    else base + "/"
+                )
+                if not _is_html_response(url):
+                    # JSON or non-HTML — skip screenshot (e.g. misconfigured /about).
+                    continue
+                last_err: Exception | None = None
+                for _ in range(6):
+                    try:
+                        page.goto(url, wait_until="networkidle", timeout=60_000)
+                        # Double-check we did not land on JSON.
+                        body_prefix = page.content()[:200].lstrip().lower()
+                        if body_prefix.startswith("{") or body_prefix.startswith("["):
+                            last_err = GitHubError(f"{url} returned JSON, not HTML")
+                            break
+                        last_err = None
                         break
-                    last_err = None
-                    break
-                except Exception as exc:  # noqa: BLE001
-                    last_err = exc
-                    time.sleep(8)
-            if last_err is not None:
-                raise GitHubError(f"failed to load {url}: {last_err}")
-            safe = "home" if route == "/" else route.strip("/").replace("/", "-")
-            dest = out_dir / f"{phase}-{safe}.png"
-            page.screenshot(path=str(dest), full_page=True)
-            paths.append(dest)
+                    except Exception as exc:  # noqa: BLE001
+                        last_err = exc
+                        time.sleep(8)
+                if last_err is not None:
+                    page.close()
+                    browser.close()
+                    raise GitHubError(f"failed to load {url}: {last_err}")
+                overflows.extend(
+                    _page_overflows(page, viewport=viewport_name, route=route)
+                )
+                dest = out_dir / screenshot_basename(phase, route, viewport_name)
+                page.screenshot(path=str(dest), full_page=True)
+                paths.append(dest)
+            page.close()
         browser.close()
     if not paths:
         raise GitHubError(
             f"no HTML pages to screenshot under {base} (tried {', '.join(HTML_PATHS)})"
         )
-    return paths
+    report = out_dir / f"{phase}-overflow.json"
+    report.write_text(json.dumps(overflows, indent=2) + "\n", encoding="utf-8")
+    return CaptureResult(paths=paths, overflows=overflows)
 
 
 def upload_to_branch(
@@ -189,7 +285,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.wait_healthy or args.phase == "post":
             health = wait_healthy(base_url)
 
-        files = capture(base_url, args.out_dir, phase=args.phase)
+        files = capture(base_url, args.out_dir, phase=args.phase).paths
         owner, name = split_repo(args.repo)
         branch = args.branch
         target = args.pr or args.issue

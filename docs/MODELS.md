@@ -6,12 +6,13 @@ is set. OpenAI and GitHub Models are backups (OpenAI quota is often exhausted).
 
 ## Builder flow
 
-1. Issue gets `agent:builder`
-2. Special cases: verify/smoke (no model); missing landing scaffold → block
-3. **Cursor agent** implements the change (`CURSOR_RUNTIME=local` by default)
-4. Thin child issues that say `Parent: #N` also pull the parent issue body into
+1. Planner queues with `type:*` + `priority:*` + `status:queued`
+2. Dispatcher applies `agent:builder` (highest priority first when free)
+3. Special cases: verify/smoke (no model); missing landing scaffold → block
+4. **Cursor agent** implements the change (`CURSOR_RUNTIME=local` by default)
+5. Thin child issues that say `Parent: #N` also pull the parent issue body into
    the prompt
-5. Reviewer (acceptance checklist + screenshots)
+6. Reviewer (acceptance checklist + screenshots)
 
 ## Reviewer AI flow
 

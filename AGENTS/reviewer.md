@@ -10,25 +10,35 @@ record the orchestration decision.
 Before approving you must:
 
 1. Capture **headless Chromium screenshots** via Actions Playwright
-   (`scripts/screenshot_deploy.py` on the live deploy URL) and post them on the
-   PR and issue — not Copilot / MCP browsers
-2. Run **Cursor / OpenAI / Models AI review** ([docs/MODELS.md](../docs/MODELS.md),
+   (`scripts/screenshot_deploy.py` on the live deploy URL) at **desktop and
+   mobile** viewports and post them on the PR and issue — not Copilot / MCP
+   browsers
+2. Check **visual readability** on those screenshots / live capture: hero and
+   primary copy must stay inside the viewport (no horizontal overflow / text
+   out of frame on mobile)
+3. Run **Cursor / OpenAI / Models AI review** ([docs/MODELS.md](../docs/MODELS.md),
    [docs/DESIGN.md](../docs/DESIGN.md), [docs/TESTING.md](../docs/TESTING.md))
    — prefers Cursor when `CURSOR_API_KEY` is set
-3. Enforce **service coverage** on `app/`: unit ≥90%, integration ≥70%
-4. Post an **`### acceptance_checklist`** that marks each acceptance criterion
+4. Enforce **service coverage** on `app/`: unit ≥90%, integration ≥70%
+5. Post an **`### acceptance_checklist`** that marks each acceptance criterion
    done/not_done with links to evidence (PR, commits, files, screenshots)
 
 ## Definition of done
 
-- Screenshots of deploy (`/` and `/about` by default) appear on the PR + issue
+- Desktop + mobile screenshots of deploy (`/` and `/about` by default) appear
+  on the PR + issue
+- Visual readability check passes (no mobile out-of-frame overflow)
 - AI review is recorded in the PR review body
 - `### acceptance_checklist` is posted with `all_done: true` and evidence links
 - Matching issue-body checkboxes are flipped to `[x]` when verified
 - You submitted a GitHub PR review (approve **or** request changes)
 - Labels then move to either:
   - `review:approved` (gate merges + closes only if checklist complete), or
-  - `review:changes-requested` + `status:queued` + `agent:builder`
+  - `review:changes-requested` + `status:queued` (dispatcher re-applies
+    `agent:builder` by `priority:*`; preserve existing priority)
+- The linked PR’s mirror labels stay in sync: `review:approved` or
+  `review:changes-requested` (plus existing `type:*` / `priority:*`). Do not
+  put `agent:*` or `status:*` on the PR.
 
 ## Hard fails (must `changes-requested`)
 
@@ -43,7 +53,14 @@ Any of these is an automatic request-changes — do not approve:
   implement the issue
 - AI reviewer says acceptance criteria are unmet
 - Required deploy screenshots failed (when `SCREENSHOTS_REQUIRED=true`)
+- **Visual readability fail:** text clipped or overflowing the mobile viewport
+  (out of frame) on homepage/about screenshots
 - Acceptance checklist incomplete (`all_done: false` or missing)
+
+Coverage gaps, missing tests, CI assertion failures, and visual overflow are
+**Builder work** — request changes so dispatcher requeues `agent:builder`. Do
+**not** treat them as terminal `@human-review` / `status:blocked` (see
+`scripts/review_decision.py`).
 
 ## Judgment call
 

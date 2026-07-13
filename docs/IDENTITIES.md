@@ -73,9 +73,11 @@ Every agent action must produce a **visible GitHub event** under the role bot:
 |-------|------------------|
 | `### agent_start` / `### agent_finish` / `### agent_failed` | Issue comment |
 | `### planner_plan` / `### planner_release` | Issue comment (required before queue) |
+| `### dispatcher_dispatch` | Issue comment when the priority queue applies `agent:builder` / `agent:docs` |
 | `### permission_check` | Issue comment (pass **and** fail) |
 | `### gate_release_plan` / `### gate_merge` | Issue comment |
 | Builder/Docs commits + PRs | Commits/PRs as Builder/Docs App |
+| Builder/Docs/Reviewer/Gate PR label mirrors | `type:*` / `priority:*` / `review:*` on the PR only ([LABELS.md](LABELS.md)) |
 | Reviewer decision | **Pull request review** via Review API, then labels |
 
 Fail closed:
@@ -111,6 +113,7 @@ and show only that role’s workflow fails while others still mint tokens and ac
 | Check | Expectation after Builder revoke |
 |-------|----------------------------------|
 | Label an issue `status:new` | Planner workflow still runs; plan comments appear as Planner bot |
+| Label `status:queued` (with `type:*` + `priority:*`) | Dispatcher (Planner App token) may apply `agent:builder` / `agent:docs` |
 | Label `agent:docs` | Docs workflow still runs (commits/comments as Docs bot) |
 | Label `agent:builder` | Builder job fails at **Mint Builder App token** or first Builder API call |
 | Label `agent:reviewer` (with a PR) | Reviewer still runs if its install is intact |
@@ -131,9 +134,14 @@ re-run a Builder-labeled issue to confirm recovery.
 
 - **Planner** never pushes code (no Contents on the App).
 - **Gate** is not its own App: `release-plan` acts as Planner; `review-approved`
-  merge/labels act as Reviewer.
+  merge/labels act as Reviewer (including mirroring `review:approved` onto the
+  merged PR).
 - **Reviewer** Contents write is required so squash-merge attributes to the
   Reviewer App.
+- **PR label mirrors** use the Issues Labels API on the PR number; `issues: write`
+  is enough to add/remove those labels. Opening a PR still needs
+  `pull_requests: write` (Builder/Reviewer have it; Docs still has the create-PR
+  gap noted above).
 - **Docs** Contents is repo-wide at the App layer; path policy is in
   `AGENTS/docs.md`.
 

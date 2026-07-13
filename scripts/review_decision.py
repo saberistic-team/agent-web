@@ -9,9 +9,52 @@ or `blocked` (terminal hard-fail — do not requeue Builder).
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 
 from github_api import api, split_repo
+
+# Builder can (and must) fix these — never escalate to status:blocked solely
+# because Reviewer has requested changes more than once.
+_FIXABLE_RE = re.compile(
+    r"coverage|missing tests|without test file|check `|screenshots failed|"
+    r"acceptance criteria incomplete|visual readability|out of frame|"
+    r"overflow|clipped|pytest|test_",
+    re.I,
+)
+_TERMINAL_RE = re.compile(r"terminal:\s*true|worklog-only", re.I)
+
+
+def is_fixable_changes_requested(body: str) -> bool:
+    """True when hard-fails are Builder work (coverage, tests, visual, CI)."""
+    text = body or ""
+    if _TERMINAL_RE.search(text):
+        return False
+    return bool(_FIXABLE_RE.search(text))
+
+
+def resolve_decision(
+    *,
+    latest_state: str,
+    latest_body: str,
+    prior_changes_requested: int,
+) -> str:
+    """Map the latest submitted review into an orchestration decision."""
+    state = (latest_state or "").upper()
+    if state == "APPROVED":
+        return "approved"
+    if state != "CHANGES_REQUESTED":
+        raise ValueError(f"unexpected review state {latest_state!r}")
+    body = latest_body or ""
+    if _TERMINAL_RE.search(body):
+        return "blocked"
+    # Coverage / tests / visual overflow / CI always requeue Builder.
+    if is_fixable_changes_requested(body):
+        return "changes-requested"
+    # Non-fixable judgment ping-pong: stop after the second request.
+    if prior_changes_requested >= 2:
+        return "blocked"
+    return "changes-requested"
 
 
 def linked_open_prs(repo: str, issue: int) -> list[dict]:
@@ -65,43 +108,31 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         state = (review.get("state") or "").upper()
         user = (review.get("user") or {}).get("login", "unknown")
-        if state == "APPROVED":
-            print("approved")
-            print(f"reviewer={user} pr={prs[0]['number']}", file=sys.stderr)
-            return 0
-        if state == "CHANGES_REQUESTED":
-            body = (review.get("body") or "").lower()
-            # Terminal hard-fails must not requeue Builder (infinite loop).
-            if "terminal: true" in body or "worklog-only" in body:
-                print("blocked")
-                print(
-                    f"reviewer={user} pr={prs[0]['number']} terminal=true",
-                    file=sys.stderr,
-                )
-                return 0
-            # Second+ changes-requested also blocks to stop ping-pong.
-            owner, name = split_repo(args.repo)
-            reviews = (
-                api("GET", f"/repos/{owner}/{name}/pulls/{int(prs[0]['number'])}/reviews")
-                or []
+        owner, name = split_repo(args.repo)
+        reviews = (
+            api("GET", f"/repos/{owner}/{name}/pulls/{int(prs[0]['number'])}/reviews")
+            or []
+        )
+        prior = sum(
+            1
+            for r in reviews
+            if (r.get("state") or "").upper() == "CHANGES_REQUESTED"
+        )
+        try:
+            decision = resolve_decision(
+                latest_state=state,
+                latest_body=review.get("body") or "",
+                prior_changes_requested=prior,
             )
-            prior = sum(
-                1
-                for r in reviews
-                if (r.get("state") or "").upper() == "CHANGES_REQUESTED"
-            )
-            if prior >= 2:
-                print("blocked")
-                print(
-                    f"reviewer={user} pr={prs[0]['number']} prior_changes={prior}",
-                    file=sys.stderr,
-                )
-                return 0
-            print("changes-requested")
-            print(f"reviewer={user} pr={prs[0]['number']}", file=sys.stderr)
-            return 0
-        print(f"FAIL: unexpected review state {state}", file=sys.stderr)
-        return 1
+        except ValueError as exc:
+            print(f"FAIL: {exc}", file=sys.stderr)
+            return 1
+        print(decision)
+        print(
+            f"reviewer={user} pr={prs[0]['number']} prior_changes={prior}",
+            file=sys.stderr,
+        )
+        return 0
     except Exception as exc:
         print(f"FAIL: {exc}", file=sys.stderr)
         return 1

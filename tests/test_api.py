@@ -19,21 +19,25 @@ def test_hello_handler_unit() -> None:
 
 
 @pytest.mark.unit
-def test_home_handler_returns_index() -> None:
+def test_home_handler_returns_index(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ANALYTICS_ENABLED", raising=False)
     response = home()
-    assert response.path.name == "index.html"
+    assert "AmirSaber" in response.body.decode()
 
 
 @pytest.mark.unit
-def test_about_handler_returns_about() -> None:
+def test_about_handler_returns_about(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ANALYTICS_ENABLED", raising=False)
     response = about()
-    assert response.path.name == "about.html"
+    assert "lifelong builder" in response.body.decode()
 
 
 @pytest.mark.unit
-def test_brief_handlers_return_pages() -> None:
-    assert brief_form().path.name == "brief.html"
-    assert brief_success().path.name == "brief-success.html"
+def test_brief_handlers_return_pages(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ANALYTICS_ENABLED", raising=False)
+    assert 'id="brief-form"' in brief_form().body.decode()
+    assert "Payment completed" in brief_success().body.decode()
+    assert "follow up by email" in brief_success().body.decode()
 
 
 @pytest.mark.unit
@@ -55,8 +59,15 @@ def test_home_page() -> None:
     response = client.get("/")
     assert response.status_code == 200
     body = response.text
+    assert "High-stakes architecture" in body
+    assert "Seed–Series B" in body
+    assert "fintech" in body.lower()
+    assert "Problems we solve" in body
+    assert "MVP works but cannot safely scale" in body
+    assert "Track record" in body
     assert "AmirSaber" in body
-    assert "Filling gaps between markets and tech" in body
+    assert "technical architecture" in body.lower()
+    assert "software development" not in body
     assert 'href="/about"' in body
     assert "our-teams-section" not in body
     assert "Queen" not in body
@@ -80,15 +91,13 @@ def test_about_page() -> None:
 
 
 @pytest.mark.unit
-def test_landing_single_linkedin_cta() -> None:
-    """Exactly one LinkedIn profile link — the hero CTA (not header/footer)."""
+def test_landing_ctas() -> None:
+    """Primary commercial CTA (brief) and lower-friction secondary (about)."""
     body = client.get("/").text
     assert body.count("linkedin.com/in/saberistic") == 1
-    assert 'class="cta"' in body
-    assert 'href="https://www.linkedin.com/in/saberistic"' in body
-    assert 'class="cta cta-secondary"' in body
-    assert 'href="/brief"' in body
-    assert 'href="/about"' in body
+    assert 'class="cta" href="/brief"' in body
+    assert "Architecture Diagnostic" in body
+    assert 'class="cta cta-secondary" href="/about"' in body
 
 
 @pytest.mark.unit
