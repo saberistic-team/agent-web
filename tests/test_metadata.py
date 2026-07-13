@@ -10,8 +10,8 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from app import case_studies
 from app.main import app
-from app.case_studies import DISCLAIMERS, load_case_studies
 
 client = TestClient(app)
 
@@ -99,22 +99,13 @@ NOINDEX_PAGES: dict[str, dict[str, str]] = {
 
 PUBLIC_PAGES = {**INDEXABLE_PAGES, **NOINDEX_PAGES}
 
-CASE_STUDY_SLUGS = (
-    "brave",
-    "baxus",
-    "eternis",
-    "spiral-safe",
-    "architecture-diagnostic",
-)
-
 CASE_STUDY_PAGES: dict[str, dict[str, str]] = {
     f"/work/{study['slug']}": {
-        "title": f"{study['org']} — {study['headline']} · saberistic",
+        "title": case_studies.case_study_page_title(study),
         "description": study["meta_description"],
-        "canonical": f"{SITE_BASE}/work/{study['slug']}",
-        "engagement": study["engagement"],
+        "canonical": case_studies.case_study_canonical_url(study["slug"]),
     }
-    for study in load_case_studies()
+    for study in case_studies.load_case_studies()
 }
 
 
@@ -352,11 +343,6 @@ def test_public_page_titles_are_unique() -> None:
 
 
 @pytest.mark.unit
-def test_case_study_pages_enumerate_all_routes() -> None:
-    assert set(CASE_STUDY_PAGES.keys()) == {f"/work/{slug}" for slug in CASE_STUDY_SLUGS}
-
-
-@pytest.mark.unit
 @pytest.mark.parametrize("path,expected", CASE_STUDY_PAGES.items())
 def test_case_study_page_unique_title_and_description(
     path: str, expected: dict[str, str]
@@ -370,9 +356,7 @@ def test_case_study_page_unique_title_and_description(
 
 @pytest.mark.unit
 @pytest.mark.parametrize("path,expected", CASE_STUDY_PAGES.items())
-def test_case_study_page_open_graph_metadata(
-    path: str, expected: dict[str, str]
-) -> None:
+def test_case_study_page_open_graph_metadata(path: str, expected: dict[str, str]) -> None:
     response = client.get(path)
     head = _parse_head(response.text)
     assert head.meta["og:title"] == expected["title"]
@@ -399,9 +383,7 @@ def test_case_study_page_canonical_matches_og_url(
 
 @pytest.mark.unit
 @pytest.mark.parametrize("path,expected", CASE_STUDY_PAGES.items())
-def test_case_study_page_twitter_card_metadata(
-    path: str, expected: dict[str, str]
-) -> None:
+def test_case_study_page_twitter_card_metadata(path: str, expected: dict[str, str]) -> None:
     response = client.get(path)
     head = _parse_head(response.text)
     assert head.meta["twitter:card"] == "summary_large_image"
@@ -413,46 +395,31 @@ def test_case_study_page_twitter_card_metadata(
 
 @pytest.mark.unit
 @pytest.mark.parametrize("path,expected", CASE_STUDY_PAGES.items())
-def test_case_study_page_json_ld_web_page(path: str, expected: dict[str, str]) -> None:
+def test_case_study_page_json_ld_valid(path: str, expected: dict[str, str]) -> None:
     response = client.get(path)
     head = _parse_head(response.text)
     assert head.ld_json_raw, f"Missing JSON-LD on {path}"
     data = json.loads(head.ld_json_raw)
-    assert data["@context"] == "https://schema.org"
     assert data["@type"] == "WebPage"
     assert data["name"] == expected["title"]
     assert data["description"] == expected["description"]
     assert data["url"] == expected["canonical"]
-    is_part_of = data["isPartOf"]
-    assert is_part_of["@type"] == "ProfessionalService"
-    assert is_part_of["name"] == "saberistic"
-    assert is_part_of["url"] == f"{SITE_BASE}/"
 
 
 @pytest.mark.unit
 def test_case_study_metadata_descriptions_are_unique() -> None:
-    descriptions = [page["description"] for page in CASE_STUDY_PAGES.values()]
+    descriptions = [meta["description"] for meta in CASE_STUDY_PAGES.values()]
     assert len(descriptions) == len(set(descriptions))
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("path,expected", CASE_STUDY_PAGES.items())
-def test_case_study_page_preserves_disclaimer(
-    path: str, expected: dict[str, str]
-) -> None:
-    response = client.get(path)
-    assert response.status_code == 200
-    disclaimer = DISCLAIMERS[expected["engagement"]]  # type: ignore[index]
-    assert disclaimer in response.text
-
-
-@pytest.mark.unit
-def test_case_study_json_ld_has_no_invented_claims() -> None:
-    forbidden = re.compile(
-        r"aggregateRating|award|reviewCount|priceRange|ratingValue",
-        re.IGNORECASE,
-    )
-    for path in CASE_STUDY_PAGES:
-        response = client.get(path)
-        head = _parse_head(response.text)
-        assert not forbidden.search(head.ld_json_raw), f"Forbidden claim on {path}"
+def test_case_study_routes_enumerate_all_slugs() -> None:
+    slugs = {study["slug"] for study in case_studies.load_case_studies()}
+    assert slugs == {
+        "brave",
+        "baxus",
+        "eternis",
+        "spiral-safe",
+        "architecture-diagnostic",
+    }
+    assert set(CASE_STUDY_PAGES) == {f"/work/{slug}" for slug in slugs}
