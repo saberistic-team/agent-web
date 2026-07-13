@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+from pathlib import Path
+
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app import articles
-from app.main import app, insight_article, insights_feed, insights_index, sitemap
+from app.main import app, insight_article, insights_feed, insights_index
+
+from app.seo import CANONICAL_BASE
 
 client = TestClient(app)
-BASE_URL = "http://testserver"
 
 
 @pytest.mark.unit
@@ -30,12 +35,45 @@ def test_get_article_known_and_unknown() -> None:
 
 
 @pytest.mark.unit
+def test_article_path_and_canonical_url() -> None:
+    article = articles.get_article("competing-sources-of-truth")
+    assert article is not None
+    assert article.path == "/insights/competing-sources-of-truth"
+    assert (
+        article.canonical_url()
+        == "https://saberistic.com/insights/competing-sources-of-truth"
+    )
+
+
+@pytest.mark.unit
+def test_body_html_missing_file_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    article = articles.get_article("competing-sources-of-truth")
+    assert article is not None
+    missing = replace(article, body_file="missing-body.html")
+    monkeypatch.setattr(articles, "ARTICLES_DIR", tmp_path)
+    with pytest.raises(FileNotFoundError, match="article body missing"):
+        missing.body_html()
+
+
+@pytest.mark.unit
+def test_render_template_unresolved_placeholder_raises(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    templates = tmp_path / "templates"
+    templates.mkdir()
+    (templates / "broken.html").write_text("Hello {{missing}}", encoding="utf-8")
+    monkeypatch.setattr(articles, "TEMPLATES_DIR", templates)
+    with pytest.raises(ValueError, match="unresolved template placeholders"):
+        articles._render_template("broken.html", title="ok")
+
+
+@pytest.mark.unit
 def test_render_insights_index_includes_articles_and_metadata() -> None:
-    html = articles.render_insights_index(BASE_URL)
+    html = articles.render_insights_index()
     assert "Insights" in html
     assert 'href="/insights/competing-sources-of-truth"' in html
     assert 'href="/insights/fintech-architecture-due-diligence"' in html
-    assert 'rel="canonical" href="http://testserver/insights"' in html
+    assert f'rel="canonical" href="{CANONICAL_BASE}/insights"' in html
     assert 'class="top-link" href="/insights"' in html
 
 
@@ -43,7 +81,7 @@ def test_render_insights_index_includes_articles_and_metadata() -> None:
 def test_render_article_page_has_social_and_semantic_markup() -> None:
     article = articles.get_article("competing-sources-of-truth")
     assert article is not None
-    html = articles.render_article_page(article, BASE_URL)
+    html = articles.render_article_page(article)
     assert article.title in html
     assert article.audience in html
     assert article.problem in html
@@ -58,18 +96,17 @@ def test_render_article_page_has_social_and_semantic_markup() -> None:
 
 
 @pytest.mark.unit
-def test_render_sitemap_includes_static_and_article_urls() -> None:
-    xml = articles.render_sitemap(BASE_URL)
-    assert "<urlset" in xml
-    assert "http://testserver/</loc>" in xml
-    assert "http://testserver/about</loc>" in xml
-    assert "http://testserver/insights</loc>" in xml
-    assert "http://testserver/insights/competing-sources-of-truth</loc>" in xml
+def test_render_fintech_article_page() -> None:
+    article = articles.get_article("fintech-architecture-due-diligence")
+    assert article is not None
+    html = articles.render_article_page(article)
+    assert "Ledger design and reconciliation discipline" in html
+    assert "Discuss technical diligence" in html
 
 
 @pytest.mark.unit
 def test_render_atom_feed_lists_entries() -> None:
-    xml = articles.render_atom_feed(BASE_URL)
+    xml = articles.render_atom_feed()
     assert "<feed" in xml
     assert "competing-sources-of-truth" in xml
     assert "fintech-architecture-due-diligence" in xml
@@ -83,17 +120,16 @@ def test_insights_index_handler() -> None:
 
 
 @pytest.mark.unit
-def test_insight_article_handler_404() -> None:
-    with pytest.raises(Exception) as exc_info:
-        insight_article("not-real")
-    assert "404" in str(exc_info.value)
+def test_insight_article_handler_found() -> None:
+    response = insight_article("competing-sources-of-truth")
+    assert "Five signs an MVP has competing sources of truth" in response.body.decode()
 
 
 @pytest.mark.unit
-def test_sitemap_handler_media_type() -> None:
-    response = sitemap()
-    assert response.media_type == "application/xml"
-    assert b"<urlset" in response.body
+def test_insight_article_handler_404() -> None:
+    with pytest.raises(HTTPException) as exc_info:
+        insight_article("not-real")
+    assert exc_info.value.status_code == 404
 
 
 @pytest.mark.unit
@@ -129,10 +165,11 @@ def test_insight_article_route_not_found() -> None:
 
 
 @pytest.mark.unit
-def test_sitemap_route() -> None:
+def test_sitemap_route_includes_insights() -> None:
     response = client.get("/sitemap.xml")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/xml")
+    assert "/insights" in response.text
     assert "/insights/fintech-architecture-due-diligence" in response.text
 
 
