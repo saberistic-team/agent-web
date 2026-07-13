@@ -16,9 +16,18 @@
   const PAGE_EVENTS = {
     "/": { event: "Landing Viewed", step: 1 },
     "/about": { event: "Service Viewed", step: 2 },
+    "/services": { event: "Services Viewed", step: 2 },
+    "/case-studies": { event: "Case Studies Viewed", step: 2 },
     "/insights": { event: "Insights Viewed", step: 2 },
     "/brief": { event: "Brief Viewed", step: 3 },
     "/brief/success": { event: "Brief Success Viewed", step: 7 },
+  };
+
+  const NAV_DESTINATION_EVENTS = {
+    "/services": "Nav Services",
+    "/case-studies": "Nav Case Studies",
+    "/insights": "Nav Insights",
+    "/brief": "Nav Diagnostic",
   };
 
   const domainMeta = document.querySelector(
@@ -133,6 +142,28 @@
     );
   }
 
+  function bindNavLinks() {
+    document
+      .querySelectorAll(".top-nav a[data-nav-destination]")
+      .forEach((link) => {
+        link.addEventListener("click", () => {
+          const destination = link.getAttribute("data-nav-destination");
+          if (!destination) {
+            return;
+          }
+          const eventName = NAV_DESTINATION_EVENTS[destination];
+          if (!eventName) {
+            return;
+          }
+          track(eventName, {
+            page: window.location.pathname,
+            nav_destination: destination,
+            funnel_step: 2,
+          });
+        });
+      });
+  }
+
   captureUtm();
 
   let initialized = false;
@@ -144,6 +175,7 @@
     trackPageView();
     bindBriefForm();
     bindContactLinks();
+    bindNavLinks();
   };
 
   const start = () => loadPlausible(initAnalytics);
