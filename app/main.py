@@ -132,23 +132,22 @@ def case_study(slug: str) -> HTMLResponse:
     return HTMLResponse(case_studies.render_case_study_page(study))
 
 
-@app.get("/insights", response_class=HTMLResponse)
+@app.get("/insights")
 def insights_index() -> HTMLResponse:
-    return HTMLResponse(articles.render_insights_index())
+    return page_service.serve_html(articles.render_index_page(), get_settings())
 
 
-@app.get("/insights/feed.atom")
-def insights_feed() -> Response:
-    body = articles.render_atom_feed()
-    return Response(content=body, media_type="application/atom+xml")
-
-
-@app.get("/insights/{slug}", response_class=HTMLResponse)
+@app.get("/insights/{slug}")
 def insight_article(slug: str) -> HTMLResponse:
     article = articles.get_article(slug)
     if article is None:
         raise HTTPException(status_code=404, detail="Article not found")
-    return HTMLResponse(articles.render_article_page(article))
+    return page_service.serve_html(articles.render_article_page(article), get_settings())
+
+
+@app.get("/insights.atom")
+def insights_atom_feed() -> Response:
+    return Response(content=articles.atom_feed(), media_type="application/atom+xml")
 
 
 for legacy_path, target in LEGACY_REDIRECTS.items():
