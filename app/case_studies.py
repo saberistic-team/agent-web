@@ -7,8 +7,8 @@ import json
 from pathlib import Path
 from typing import Any, Literal
 
-from app.metadata import social_meta_tags, web_page_json_ld
-from app.seo import CANONICAL_BASE
+from app.metadata import case_study_head_metadata
+from app.seo import canonical_url
 
 Engagement = Literal["employer", "founder", "saberistic"]
 
@@ -86,39 +86,24 @@ def list_featured_slugs(path: Path | None = None) -> list[str]:
 
 
 def case_study_page_title(study: dict[str, Any]) -> str:
-    """Full document title for a case study page."""
+    """Return the document title for a case study (unescaped)."""
     return f"{study['org']} — {study['headline']} · saberistic"
-
-
-def case_study_canonical_url(study: dict[str, Any]) -> str:
-    """Canonical URL for a case study page."""
-    return f"{CANONICAL_BASE}/work/{study['slug']}"
-
-
-def case_study_head_metadata(study: dict[str, Any]) -> str:
-    """Open Graph, Twitter, and JSON-LD metadata for a case study page."""
-    title = case_study_page_title(study)
-    description = study["meta_description"]
-    url = case_study_canonical_url(study)
-    social = social_meta_tags(
-        title=title,
-        description=description,
-        url=url,
-        og_type="website",
-    )
-    ld = web_page_json_ld(title=title, description=description, url=url)
-    return f"{social}\n{ld}"
 
 
 def render_case_study_page(study: dict[str, Any]) -> str:
     """Render a full HTML page for one case study."""
-    slug = html.escape(study["slug"])
+    slug_raw = study["slug"]
+    slug = html.escape(slug_raw)
     org = html.escape(study["org"])
     headline = html.escape(study["headline"])
-    page_title = html.escape(case_study_page_title(study))
     meta = html.escape(study["meta_description"])
-    canonical = html.escape(case_study_canonical_url(study), quote=True)
-    head_metadata = case_study_head_metadata(study)
+    page_title = html.escape(case_study_page_title(study))
+    canonical = canonical_url(f"/work/{slug_raw}")
+    head_metadata = case_study_head_metadata(
+        title=case_study_page_title(study),
+        description=study["meta_description"],
+        url=canonical,
+    )
     engagement = study["engagement"]
     disclaimer = html.escape(DISCLAIMERS[engagement])  # type: ignore[index]
     cta_label = html.escape(study["cta_label"])
@@ -139,7 +124,7 @@ def render_case_study_page(study: dict[str, Any]) -> str:
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{page_title}</title>
     <meta name="description" content="{meta}" />
-    <link rel="canonical" href="{canonical}" />
+    <link rel="canonical" href="{html.escape(canonical, quote=True)}" />
 {head_metadata}
     <link rel="icon" href="/assets/logo.png" type="image/png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
