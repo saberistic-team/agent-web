@@ -1,7 +1,9 @@
 from screenshot_deploy import (
     VIEWPORTS,
+    discover_screenshot_routes,
     format_overflow_hard_fail,
     is_production_pre_shot,
+    is_skipped_api_or_meta_route,
     resolve_base_url,
     screenshot_basename,
     wait_healthy,
@@ -21,6 +23,8 @@ def test_screenshot_basename_desktop_keeps_legacy_names() -> None:
     assert screenshot_basename("pre", "/about", "desktop") == "pre-about.png"
     assert screenshot_basename("post", "/", "desktop") == "post-home.png"
     assert screenshot_basename("branch", "/", "desktop") == "branch-home.png"
+    assert screenshot_basename("pre", "/brief/success", "desktop") == "pre-brief-success.png"
+    assert screenshot_basename("pre", "/work/foo", "mobile") == "pre-work-foo-mobile.png"
 
 
 def test_screenshot_basename_mobile_suffix() -> None:
@@ -36,6 +40,40 @@ def test_is_production_pre_shot() -> None:
     assert not is_production_pre_shot("branch-home.png")
     assert not is_production_pre_shot("post-home.png")
     assert not is_production_pre_shot("pre-overflow.json")
+
+
+def test_skip_health_and_json_api_routes() -> None:
+    assert is_skipped_api_or_meta_route("/health")
+    assert is_skipped_api_or_meta_route("/hello")
+    assert is_skipped_api_or_meta_route("/api/briefs")
+    assert is_skipped_api_or_meta_route("/webhooks/stripe")
+    assert is_skipped_api_or_meta_route("/assets/style.css")
+    assert is_skipped_api_or_meta_route("/robots.txt")
+    assert is_skipped_api_or_meta_route("/sitemap.xml")
+    assert not is_skipped_api_or_meta_route("/")
+    assert not is_skipped_api_or_meta_route("/about")
+    assert not is_skipped_api_or_meta_route("/brief")
+    assert not is_skipped_api_or_meta_route("/work/example")
+
+
+def test_discover_screenshot_routes_includes_pages_excludes_apis() -> None:
+    routes = discover_screenshot_routes()
+    assert "/" in routes
+    assert "/about" in routes
+    assert "/services" in routes
+    assert "/brief" in routes
+    assert "/brief/success" in routes
+    assert "/case-studies" in routes
+    assert "/diagnostic" in routes
+    assert "/health" not in routes
+    assert "/hello" not in routes
+    assert not any(r.startswith("/api/") for r in routes)
+    assert not any(r.startswith("/webhooks/") for r in routes)
+    assert any(r.startswith("/work/") for r in routes)
+    assert "/insights" in routes
+    assert any(r.startswith("/insights/") for r in routes)
+    # Home first for stable evidence ordering.
+    assert routes[0] == "/"
 
 
 def test_format_overflow_hard_fail_mobile_only() -> None:
@@ -130,4 +168,3 @@ def test_comment_markdown_pre_dual_lists_both_sources() -> None:
     assert "pre-home.png" in body
     assert "PR branch" in body
     assert "Production baseline" in body
-
