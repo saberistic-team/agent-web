@@ -36,7 +36,7 @@ def test_about_handler_returns_about(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_brief_handlers_return_pages(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ANALYTICS_ENABLED", raising=False)
     assert 'id="brief-form"' in brief_form().body.decode()
-    assert "We received your request." in brief_success().body.decode()
+    assert "Architecture Diagnostic submission is confirmed" in brief_success().body.decode()
 
 
 @pytest.mark.unit
@@ -59,7 +59,13 @@ def test_home_page() -> None:
     assert response.status_code == 200
     body = response.text
     assert "AmirSaber" in body
-    assert "Filling gaps between markets and tech" in body
+    assert "Seed–Series B" in body
+    assert "Architecture" in body
+    assert "when stakes" in body
+    assert "Problems we solve" in body
+    assert "Relevant experience" in body
+    assert "technical architecture &amp; engineering leadership" in body
+    assert "software development" not in body
     assert 'href="/about"' in body
     assert "our-teams-section" not in body
     assert "Queen" not in body
@@ -81,13 +87,12 @@ def test_about_page() -> None:
 
 @pytest.mark.unit
 def test_landing_single_linkedin_cta() -> None:
-    """Exactly one LinkedIn profile link — the hero CTA (not header/footer)."""
+    """Primary commercial CTA is /brief; one LinkedIn link as secondary hero CTA."""
     body = client.get("/").text
     assert body.count("linkedin.com/in/saberistic") == 1
-    assert 'class="cta"' in body
-    assert 'href="https://www.linkedin.com/in/saberistic"' in body
+    assert 'class="cta" href="/brief"' in body
     assert 'class="cta cta-secondary"' in body
-    assert 'href="/brief"' in body
+    assert 'href="https://www.linkedin.com/in/saberistic"' in body
     assert 'href="/about"' in body
 
 
@@ -102,12 +107,33 @@ def test_home_has_brief_cta() -> None:
 def test_home_lists_core_services() -> None:
     body = client.get("/").text
     assert 'id="services"' in body
+    assert "How to engage" in body
     assert "Technical Architecture Diagnostic" in body
     assert "Fractional Principal Architect" in body
     assert "Technical Due Diligence" in body
     assert "Start Architecture Diagnostic" in body
     assert "Email an introduction" in body
     assert "mailto:inbox@saberistic.com" in body
+
+
+@pytest.mark.unit
+def test_home_problems_section() -> None:
+    body = client.get("/").text
+    assert 'id="problems"' in body
+    assert "cannot safely scale" in body
+    assert "source of truth" in body
+    assert "security-sensitive launch" in body
+    assert "without a full-time hire" in body
+
+
+@pytest.mark.unit
+def test_home_positioning_domains() -> None:
+    body = client.get("/").text
+    assert "Infrastructure" in body
+    assert "security" in body.lower()
+    assert "payments" in body.lower()
+    assert "AI" in body
+    assert "digital asset" in body.lower()
 
 
 @pytest.mark.unit
