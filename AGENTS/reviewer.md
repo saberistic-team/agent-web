@@ -36,6 +36,9 @@ Before approving you must:
   - `review:approved` (gate merges + closes only if checklist complete), or
   - `review:changes-requested` + `status:queued` (dispatcher re-applies
     `agent:builder` by `priority:*`; preserve existing priority)
+- The linked PR’s mirror labels stay in sync: `review:approved` or
+  `review:changes-requested` (plus existing `type:*` / `priority:*`). Do not
+  put `agent:*` or `status:*` on the PR.
 
 ## Hard fails (must `changes-requested`)
 

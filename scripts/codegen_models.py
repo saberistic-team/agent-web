@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from github_api import GitHubError, api, post_issue_comment, split_repo, token
+from pr_labels import apply_pr_mirror
 
 DEFAULT_MODEL = "openai/gpt-4o-mini"
 DEFAULT_OPENAI_MODEL = "gpt-4.1-mini"
@@ -593,6 +594,13 @@ def build_with_models(
         )
         pr_number = int(pr["number"])
         created = True
+
+    apply_pr_mirror(
+        repo,
+        issue,
+        pr_number,
+        default_review="review:needs-review",
+    )
 
     comment = (
         "### builder_result\n"

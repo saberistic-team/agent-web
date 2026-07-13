@@ -124,9 +124,14 @@ jobs:
                 --repo "${{ github.repository }}" \
                 --add-label "review:approved" \
                 --remove-label "agent:reviewer"
+              GITHUB_TOKEN="${GH_TOKEN}" python scripts/pr_labels.py \
+                --repo "${{ github.repository }}" \
+                --issue "${ISSUE}" \
+                --review review:approved || true
               gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
           ### reviewer_labels
           - decision: \`approved\` (from GitHub PR review API + Models AI)
+          - pr_labels: mirrored \`review:approved\`
           EOF
           )"
               ;;
@@ -139,10 +144,15 @@ jobs:
                 --add-label "review:changes-requested" \
                 --add-label "status:blocked" \
                 --remove-label "agent:reviewer"
+              GITHUB_TOKEN="${GH_TOKEN}" python scripts/pr_labels.py \
+                --repo "${{ github.repository }}" \
+                --issue "${ISSUE}" \
+                --review review:changes-requested || true
               gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
           ### reviewer_labels
           - decision: \`blocked\` (terminal review hard-fail)
           - next: \`@human-review\` (not requeuing builder)
+          - pr_labels: mirrored \`review:changes-requested\`
           EOF
           )"
               ;;
@@ -156,10 +166,15 @@ jobs:
                 --add-label "review:changes-requested" \
                 --add-label "status:queued" \
                 --remove-label "agent:reviewer"
+              GITHUB_TOKEN="${GH_TOKEN}" python scripts/pr_labels.py \
+                --repo "${{ github.repository }}" \
+                --issue "${ISSUE}" \
+                --review review:changes-requested || true
               gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
           ### reviewer_labels
           - decision: \`changes-requested\` (from GitHub PR review API + Models AI)
           - next: \`status:queued\` (dispatcher will apply \`agent:builder\` by priority)
+          - pr_labels: mirrored \`review:changes-requested\`
           EOF
           )"
               ;;

@@ -48,6 +48,9 @@ The parent is then marked done by the workflow.
 - Never grant yourself Contents access or use Builder/Docs credentials.
 - Never leave `status:new` without setting `type:*` and `priority:*` on the
   issue you queue (parent single-path or each child).
+- Do **not** label pull requests. PR mirrors (`type:*` / `priority:*` /
+  `review:*`) are applied by Builder, Docs, Reviewer, and Gate after a PR
+  exists. You only label issues.
 - Do not assign `agent:reviewer` as the first owner of new work; route to
   `builder` or `docs` via the dispatcher (keep `agent:planner` only while
   still planning).

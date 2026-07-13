@@ -134,6 +134,38 @@ typically used when `status:needs-review` (or after a review cycle).
 
 ---
 
+## Pull request labels (mirrors only)
+
+Orchestration **always** reads issue labels. Pull requests get a **mirror** of a
+subset so the PR list is filterable. Do **not** put `agent:*` or `status:*` on
+PRs — those are issue ownership / pipeline state and runtime triggers.
+
+| On the PR | Source | Notes |
+|-----------|--------|-------|
+| `type:*` | Copied from the linked issue | Set when Builder/Docs open (or refresh) the PR |
+| `priority:*` | Copied from the linked issue | Preserved across review cycles |
+| `review:*` | Kept in sync with the issue review axis | Builder → `needs-review`; Reviewer/Gate update on decision/merge |
+| `agent:*` | **Never on PRs** | Issue-only |
+| `status:*` | **Never on PRs** | Issue-only |
+
+Implementation: `scripts/pr_labels.py` (also invoked from Builder / Reviewer /
+Gate workflows). Label mutations use the Issues Labels API
+(`POST/DELETE .../issues/{number}/labels`), which works for PR numbers.
+
+### Role responsibilities (PR labels)
+
+| Role | PR label actions |
+|------|------------------|
+| **Planner** | None. Labels the **issue** only (`type:*`, `priority:*`, `status:queued`). No `pull_requests` scope; no PR exists yet for new work. |
+| **Builder** | On create/reuse of a code PR: mirror `type:*` + `priority:*`, set `review:needs-review`. On handoff to Reviewer, workflows re-apply the same mirror. |
+| **Docs** | On create/reuse: mirror `type:*` + `priority:*` only (Docs usually skips Reviewer, so no `review:*`). |
+| **Reviewer** | After the PR review API decision, set the matching `review:*` on the PR (`approved` / `changes-requested`) while updating the issue. |
+| **Gate** | On squash merge (`review-approved`): ensure the PR has `review:approved`. Issue still receives `status:done` + `review:approved`. |
+
+Dispatcher and Planner never drive off PR labels.
+
+---
+
 ## Color map
 
 Colors are grouped by axis so labels are scannable in the GitHub UI.

@@ -23,6 +23,7 @@ from github_api import (
     post_issue_comment,
     split_repo,
 )
+from pr_labels import apply_pr_mirror
 from priority import infer_priority_label
 
 HANDOFF_DIR = Path("trace")
@@ -449,16 +450,30 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
                     ),
                 },
             )
+            pr_number = int(pr["number"])
+            apply_pr_mirror(
+                repo,
+                issue,
+                pr_number,
+                default_review="review:needs-review",
+            )
             post_issue_comment(
                 repo,
                 issue,
-                f"### builder_result\n- kind: `infra-screenshots`\n- pr: #{pr['number']}\n",
+                f"### builder_result\n- kind: `infra-screenshots`\n- pr: #{pr_number}\n",
             )
         else:
+            pr_number = int(prs[0]["number"])
+            apply_pr_mirror(
+                repo,
+                issue,
+                pr_number,
+                default_review="review:needs-review",
+            )
             post_issue_comment(
                 repo,
                 issue,
-                f"### builder_result\n- kind: `infra-screenshots`\n- existing_pr: #{prs[0]['number']}\n",
+                f"### builder_result\n- kind: `infra-screenshots`\n- existing_pr: #{pr_number}\n",
             )
         write_builder_handoff("reviewer")
         return
@@ -559,16 +574,21 @@ def role_docs(repo: str, issue: int, brief: Path) -> None:
                 "body": f"Closes #{issue}\n\nDocs agent brief: `{brief}`.\n",
             },
         )
+        pr_number = int(pr["number"])
+        # Docs skips Reviewer; mirror type/priority only (no review:*).
+        apply_pr_mirror(repo, issue, pr_number, default_review=None)
         post_issue_comment(
             repo,
             issue,
-            f"### docs_result\n- branch: `{branch}`\n- pr: #{pr['number']}\n",
+            f"### docs_result\n- branch: `{branch}`\n- pr: #{pr_number}\n",
         )
     else:
+        pr_number = int(prs[0]["number"])
+        apply_pr_mirror(repo, issue, pr_number, default_review=None)
         post_issue_comment(
             repo,
             issue,
-            f"### docs_result\n- branch: `{branch}`\n- existing_pr: #{prs[0]['number']}\n",
+            f"### docs_result\n- branch: `{branch}`\n- existing_pr: #{pr_number}\n",
         )
 
 

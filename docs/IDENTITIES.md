@@ -77,6 +77,7 @@ Every agent action must produce a **visible GitHub event** under the role bot:
 | `### permission_check` | Issue comment (pass **and** fail) |
 | `### gate_release_plan` / `### gate_merge` | Issue comment |
 | Builder/Docs commits + PRs | Commits/PRs as Builder/Docs App |
+| Builder/Docs/Reviewer/Gate PR label mirrors | `type:*` / `priority:*` / `review:*` on the PR only ([LABELS.md](LABELS.md)) |
 | Reviewer decision | **Pull request review** via Review API, then labels |
 
 Fail closed:
@@ -133,9 +134,14 @@ re-run a Builder-labeled issue to confirm recovery.
 
 - **Planner** never pushes code (no Contents on the App).
 - **Gate** is not its own App: `release-plan` acts as Planner; `review-approved`
-  merge/labels act as Reviewer.
+  merge/labels act as Reviewer (including mirroring `review:approved` onto the
+  merged PR).
 - **Reviewer** Contents write is required so squash-merge attributes to the
   Reviewer App.
+- **PR label mirrors** use the Issues Labels API on the PR number; `issues: write`
+  is enough to add/remove those labels. Opening a PR still needs
+  `pull_requests: write` (Builder/Reviewer have it; Docs still has the create-PR
+  gap noted above).
 - **Docs** Contents is repo-wide at the App layer; path policy is in
   `AGENTS/docs.md`.
 

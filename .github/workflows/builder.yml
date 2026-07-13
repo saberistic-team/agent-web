@@ -124,10 +124,16 @@ jobs:
                 --add-label "status:needs-review" \
                 --add-label "review:needs-review" \
                 --add-label "agent:reviewer"
+              # Mirror type/priority/review onto the linked PR (not agent/status).
+              GITHUB_TOKEN="${GH_TOKEN}" python scripts/pr_labels.py \
+                --repo "${{ github.repository }}" \
+                --issue "${ISSUE}" \
+                --review review:needs-review || true
               gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
           ### builder_handoff
           - status: \`status:needs-review\`
           - next: \`agent:reviewer\`
+          - pr_labels: mirrored \`type:*\` \`priority:*\` \`review:needs-review\`
           EOF
           )"
               ;;

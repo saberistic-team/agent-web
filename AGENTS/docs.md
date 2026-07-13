@@ -25,6 +25,9 @@ Workflow moves you `status:in-progress` → `status:done` after you finish.
 - Changes are on a **non-default branch** via PR when Contents writes are
   needed: `docs/<issue-number>-<short-slug>`  
   Example: `docs/7-label-taxonomy`
+- On create/reuse of that PR, mirror `type:*` and `priority:*` from the issue
+  onto the PR. Do **not** add `review:*`, `agent:*`, or `status:*` (Docs
+  usually completes without Reviewer) — [docs/LABELS.md](../docs/LABELS.md).
 - Links and role/label names match `docs/LABELS.md` and
   `docs/IDENTITIES.md` when those are in scope.
 - No open questions left in the doc that the issue already answered.

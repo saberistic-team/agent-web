@@ -11,6 +11,11 @@ Preserve any `priority:*` label on the issue; do not strip or change it.
 Workflow will move you through `status:in-progress`, then hand off with
 `status:needs-review`, `review:needs-review`, and `agent:reviewer`.
 
+When you open or reuse a PR, apply **PR mirror labels** (not orchestration
+triggers): copy `type:*` and `priority:*` from the issue, and set
+`review:needs-review`. Never put `agent:*` or `status:*` on the PR — see
+[docs/LABELS.md](../docs/LABELS.md).
+
 ## Definition of done
 
 - Implementation matches the issue scope (bug fix or feature as labeled).
