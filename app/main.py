@@ -8,10 +8,10 @@ from pathlib import Path
 from typing import AsyncIterator
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from app import db, email_service, stripe_service
+from app import articles, db, email_service, stripe_service
 from app.config import Settings, get_settings
 from app.models import BriefCreateRequest, BriefCreateResponse
 
@@ -64,6 +64,35 @@ def brief_form() -> FileResponse:
 @app.get("/brief/success")
 def brief_success() -> FileResponse:
     return FileResponse(SITE_DIR / "brief-success.html")
+
+
+@app.get("/insights", response_class=HTMLResponse)
+def insights_index() -> HTMLResponse:
+    settings = get_settings()
+    return HTMLResponse(articles.render_insights_index(settings.base_url))
+
+
+@app.get("/insights/feed.atom")
+def insights_feed() -> Response:
+    settings = get_settings()
+    body = articles.render_atom_feed(settings.base_url)
+    return Response(content=body, media_type="application/atom+xml")
+
+
+@app.get("/insights/{slug}", response_class=HTMLResponse)
+def insight_article(slug: str) -> HTMLResponse:
+    article = articles.get_article(slug)
+    if article is None:
+        raise HTTPException(status_code=404, detail="Article not found")
+    settings = get_settings()
+    return HTMLResponse(articles.render_article_page(article, settings.base_url))
+
+
+@app.get("/sitemap.xml")
+def sitemap() -> Response:
+    settings = get_settings()
+    body = articles.render_sitemap(settings.base_url)
+    return Response(content=body, media_type="application/xml")
 
 
 @app.post("/api/briefs", response_model=BriefCreateResponse)
