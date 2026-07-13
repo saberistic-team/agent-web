@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import about, app, brief_form, brief_success, case_study, health, hello, home, insight_article, insights_index
+from app.main import about, app, brief_form, brief_success, case_study, health, hello, home
 
 client = TestClient(app)
 
@@ -159,6 +159,15 @@ def test_home_has_proof_section() -> None:
 
 
 @pytest.mark.unit
+def test_home_has_insights_navigation() -> None:
+    body = client.get("/").text
+    assert 'id="insights"' in body
+    assert 'href="/insights"' in body
+    assert "/insights/empty-wallets-active-positions" in body
+    assert "/insights/mvp-competing-sources-of-truth" in body
+
+
+@pytest.mark.unit
 def test_case_study_page() -> None:
     response = client.get("/work/brave")
     assert response.status_code == 200
@@ -201,63 +210,3 @@ def test_case_study_unique_metadata() -> None:
 def test_case_study_handler_unit() -> None:
     response = case_study("brave")
     assert "Infrastructure for privacy-aligned payments" in response.body.decode()
-
-
-@pytest.mark.unit
-def test_insights_index_page() -> None:
-    response = client.get("/insights")
-    assert response.status_code == 200
-    body = response.text
-    assert "Insights" in body
-    assert "/insights/competing-sources-of-truth" in body
-    assert "/insights/fintech-architecture-diligence" in body
-    assert 'href="/brief"' in body
-    assert 'rel="canonical" href="https://saberistic.com/insights"' in body
-
-
-@pytest.mark.unit
-def test_insight_article_page() -> None:
-    response = client.get("/insights/competing-sources-of-truth")
-    assert response.status_code == 200
-    body = response.text
-    assert "Five signs an MVP has competing sources of truth" in body
-    assert "competing sources of truth" in body
-    assert 'property="og:type" content="article"' in body
-    assert 'href="/brief"' in body
-    assert 'itemtype="https://schema.org/Article"' in body
-
-
-@pytest.mark.unit
-def test_insight_article_investor_cta() -> None:
-    response = client.get("/insights/fintech-architecture-diligence")
-    assert response.status_code == 200
-    assert "Email for diligence scope" in response.text
-    assert "mailto:inbox@saberistic.com" in response.text
-
-
-@pytest.mark.unit
-def test_insight_article_not_found() -> None:
-    assert client.get("/insights/does-not-exist").status_code == 404
-    assert client.get("/insights/empty-wallet-active-positions").status_code == 404
-
-
-@pytest.mark.unit
-def test_insights_feed() -> None:
-    response = client.get("/insights/feed.xml")
-    assert response.status_code == 200
-    assert "application/atom+xml" in response.headers["content-type"]
-    assert "Five signs an MVP has competing sources of truth" in response.text
-
-
-@pytest.mark.unit
-def test_home_footer_has_insights_nav() -> None:
-    body = client.get("/").text
-    assert 'href="/insights"' in body
-
-
-@pytest.mark.unit
-def test_insights_handlers_unit() -> None:
-    index = insights_index()
-    assert "Insights" in index.body.decode()
-    article = insight_article("competing-sources-of-truth")
-    assert "Five signs" in article.body.decode()
