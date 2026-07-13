@@ -33,15 +33,15 @@ LEGACY_REDIRECTS: dict[str, str] = {
 
 
 def indexable_paths() -> tuple[str, ...]:
-    """Return all indexable paths including case studies (#65) and insights (#69)."""
-    from app.articles import article_path, load_articles
+    """Return all indexable paths including case studies (#65) and articles (#69)."""
+    from app.articles import load_articles
     from app.case_studies import load_case_studies
 
     paths = list(STATIC_INDEXABLE_PATHS)
     for study in load_case_studies():
         paths.append(f"/work/{study['slug']}")
     for article in load_articles():
-        paths.append(article_path(article["slug"]))
+        paths.append(f"/insights/{article['slug']}")
     return tuple(paths)
 
 
