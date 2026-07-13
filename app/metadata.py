@@ -14,6 +14,11 @@ OG_IMAGE_ALT = (
 )
 
 
+def _json_ld_safe(value: str) -> str:
+    """Escape characters that could break out of a script block in JSON-LD."""
+    return value.replace("<", "\\u003c").replace(">", "\\u003e")
+
+
 def social_meta_tags(
     *,
     title: str,
@@ -56,6 +61,20 @@ def web_page_json_ld(*, title: str, description: str, url: str) -> str:
             "name": title,
             "description": description,
             "url": url,
+        }
+    )
+
+
+def case_study_json_ld(*, title: str, description: str, url: str) -> str:
+    """JSON-LD for /work/* proof pages (WebPage — no invented dates)."""
+    return json_ld_script(
+        {
+            "@context": "https://schema.org",
+            "@type": "WebPage",
+            "name": _json_ld_safe(title),
+            "description": _json_ld_safe(description),
+            "url": url,
+            "image": OG_IMAGE,
         }
     )
 
