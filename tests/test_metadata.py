@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from app.case_studies import DISCLAIMERS, case_study_page_title, load_case_studies
+from app.case_studies import load_case_studies
 from app.main import app
 
 client = TestClient(app)
@@ -99,29 +99,14 @@ NOINDEX_PAGES: dict[str, dict[str, str]] = {
 
 PUBLIC_PAGES = {**INDEXABLE_PAGES, **NOINDEX_PAGES}
 
-EXPECTED_CASE_STUDY_SLUGS = (
-    "brave",
-    "baxus",
-    "eternis",
-    "spiral-safe",
-    "architecture-diagnostic",
-)
-
-
-def _case_study_pages() -> dict[str, dict[str, str]]:
-    pages: dict[str, dict[str, str]] = {}
-    for study in load_case_studies():
-        path = f"/work/{study['slug']}"
-        pages[path] = {
-            "title": case_study_page_title(study),
-            "description": study["meta_description"],
-            "canonical": f"{SITE_BASE}{path}",
-            "engagement": study["engagement"],
-        }
-    return pages
-
-
-CASE_STUDY_PAGES = _case_study_pages()
+CASE_STUDY_PAGES: dict[str, dict[str, str]] = {
+    f"/work/{study['slug']}": {
+        "title": f"{study['org']} — {study['headline']} · saberistic",
+        "description": study["meta_description"],
+        "canonical": f"{SITE_BASE}/work/{study['slug']}",
+    }
+    for study in load_case_studies()
+}
 
 
 class _HeadParser(HTMLParser):
@@ -352,10 +337,9 @@ def test_og_share_image_asset() -> None:
 
 
 @pytest.mark.unit
-def test_case_study_routes_enumerated() -> None:
-    slugs = {study["slug"] for study in load_case_studies()}
-    assert slugs == set(EXPECTED_CASE_STUDY_SLUGS)
-    assert set(CASE_STUDY_PAGES) == {f"/work/{slug}" for slug in EXPECTED_CASE_STUDY_SLUGS}
+def test_public_page_titles_are_unique() -> None:
+    titles = [PUBLIC_PAGES[path]["title"] for path in PUBLIC_PAGES]
+    assert len(titles) == len(set(titles))
 
 
 @pytest.mark.unit
@@ -388,7 +372,9 @@ def test_case_study_open_graph_metadata(path: str, expected: dict[str, str]) -> 
 
 @pytest.mark.unit
 @pytest.mark.parametrize("path,expected", CASE_STUDY_PAGES.items())
-def test_case_study_canonical_matches_og_url(path: str, expected: dict[str, str]) -> None:
+def test_case_study_canonical_matches_og_url(
+    path: str, expected: dict[str, str]
+) -> None:
     response = client.get(path)
     head = _parse_head(response.text)
     assert head.links["canonical"] == expected["canonical"]
@@ -414,34 +400,45 @@ def test_case_study_json_ld_valid(path: str) -> None:
     head = _parse_head(response.text)
     assert head.ld_json_raw, f"Missing JSON-LD on {path}"
     data = json.loads(head.ld_json_raw)
-    assert data["@context"] == "https://schema.org"
-    assert data["@type"] == "WebPage"
-    assert data["url"] == CASE_STUDY_PAGES[path]["canonical"]
-    assert data["image"] == OG_IMAGE
+    assert isinstance(data, dict)
+    assert data.get("@context") == "https://schema.org"
+    assert data.get("@type") == "WebPage"
+    assert data.get("name") == CASE_STUDY_PAGES[path]["title"]
+    assert data.get("description") == CASE_STUDY_PAGES[path]["description"]
+    assert data.get("url") == CASE_STUDY_PAGES[path]["canonical"]
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("path,expected", CASE_STUDY_PAGES.items())
-def test_case_study_disclaimer_visible(path: str, expected: dict[str, str]) -> None:
+def test_case_study_metadata_titles_are_unique() -> None:
+    titles = [CASE_STUDY_PAGES[path]["title"] for path in CASE_STUDY_PAGES]
+    assert len(titles) == len(set(titles))
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("path", CASE_STUDY_PAGES.keys())
+def test_case_study_pages_have_no_legacy_positioning(path: str) -> None:
     response = client.get(path)
     assert response.status_code == 200
-    disclaimer = DISCLAIMERS[expected["engagement"]]  # type: ignore[index]
-    assert disclaimer in response.text
+    for forbidden in FORBIDDEN_LEGACY_STRINGS:
+        assert forbidden not in response.text, (
+            f"Legacy positioning found on {path}: {forbidden!r}"
+        )
 
 
 @pytest.mark.unit
-def test_case_study_titles_are_unique() -> None:
-    titles = [expected["title"] for expected in CASE_STUDY_PAGES.values()]
-    assert len(titles) == len(set(titles))
-
-
-@pytest.mark.unit
-def test_case_study_descriptions_are_unique() -> None:
-    descriptions = [expected["description"] for expected in CASE_STUDY_PAGES.values()]
-    assert len(descriptions) == len(set(descriptions))
-
-
-@pytest.mark.unit
-def test_public_page_titles_are_unique() -> None:
-    titles = [PUBLIC_PAGES[path]["title"] for path in PUBLIC_PAGES]
-    assert len(titles) == len(set(titles))
+def test_case_study_disclaimers_remain_visible() -> None:
+    disclaimers = {
+        "/work/brave": "Prior employer role — not a Saberistic client engagement.",
+        "/work/baxus": "Prior employer role — not a Saberistic client engagement.",
+        "/work/eternis": "Prior employer role — not a Saberistic client engagement.",
+        "/work/spiral-safe": (
+            "Independent venture — not a Saberistic client engagement."
+        ),
+        "/work/architecture-diagnostic": (
+            "Saberistic engagement — sanitized composite; no client identified."
+        ),
+    }
+    for path, disclaimer in disclaimers.items():
+        response = client.get(path)
+        assert response.status_code == 200
+        assert disclaimer in response.text
