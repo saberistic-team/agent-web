@@ -32,6 +32,8 @@ def test_home_and_about_flow() -> None:
     assert home.status_code == 200
     assert 'href="/about"' in home.text
     assert 'href="/brief"' in home.text
+    assert 'id="services"' in home.text
+    assert "Technical Architecture Diagnostic" in home.text
     about = client.get("/about")
     assert about.status_code == 200
     assert "About" in about.text
@@ -44,9 +46,11 @@ def test_brief_pages_flow() -> None:
     form = client.get("/brief")
     assert form.status_code == 200
     assert "brief-form" in form.text
+    assert "Architecture Diagnostic" in form.text
+    assert "What's included" in form.text
     success = client.get("/brief/success")
     assert success.status_code == 200
-    assert "We received your request." in success.text
+    assert "Payment completed" in success.text
 
 
 @pytest.mark.integration
@@ -62,6 +66,14 @@ def test_case_studies_flow() -> None:
 
     missing = client.get("/work/unknown-slug")
     assert missing.status_code == 404
+
+
+@pytest.mark.integration
+def test_about_page_cta_flow() -> None:
+    about = client.get("/about")
+    assert about.status_code == 200
+    assert 'href="/brief"' in about.text
+    assert 'href="/#proof"' in about.text
 
 
 @pytest.mark.integration
