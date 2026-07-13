@@ -8,11 +8,18 @@ from pathlib import Path
 from typing import AsyncIterator
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+)
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app import analytics_service, db, email_service, page_service, stripe_service
+from app import analytics_service, case_studies, db, email_service, page_service, stripe_service
 from app.config import get_settings
 from app.models import BriefCreateRequest, BriefCreateResponse
 from app.seo import (
@@ -101,6 +108,14 @@ def brief_form() -> HTMLResponse:
 @app.get("/brief/success")
 def brief_success() -> HTMLResponse:
     return page_service.serve_page("brief-success.html", get_settings())
+
+
+@app.get("/work/{slug}")
+def case_study(slug: str) -> HTMLResponse:
+    study = case_studies.get_case_study(slug)
+    if study is None:
+        raise HTTPException(status_code=404, detail="Case study not found")
+    return HTMLResponse(case_studies.render_case_study_page(study))
 
 
 for legacy_path, target in LEGACY_REDIRECTS.items():
