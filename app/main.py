@@ -124,17 +124,14 @@ def brief_success() -> HTMLResponse:
     return page_service.serve_page("brief-success.html", get_settings())
 
 
-@app.get("/work/{slug}")
-def case_study(slug: str) -> HTMLResponse:
-    study = case_studies.get_case_study(slug)
-    if study is None:
-        raise HTTPException(status_code=404, detail="Case study not found")
-    return HTMLResponse(case_studies.render_case_study_page(study))
-
-
 @app.get("/insights")
 def insights_index() -> HTMLResponse:
-    return page_service.serve_html(articles.render_index_page(), get_settings())
+    return HTMLResponse(articles.render_insights_index_page())
+
+
+@app.get("/insights/feed.xml")
+def insights_feed() -> Response:
+    return Response(content=articles.render_atom_feed(), media_type="application/atom+xml")
 
 
 @app.get("/insights/{slug}")
@@ -142,13 +139,15 @@ def insight_article(slug: str) -> HTMLResponse:
     article = articles.get_article(slug)
     if article is None:
         raise HTTPException(status_code=404, detail="Article not found")
-    return page_service.serve_html(articles.render_article_page(article), get_settings())
+    return HTMLResponse(articles.render_article_page(article))
 
 
-@app.get("/insights.atom")
-@app.get("/insights/feed.atom")
-def insights_atom_feed() -> Response:
-    return Response(content=articles.atom_feed(), media_type="application/atom+xml")
+@app.get("/work/{slug}")
+def case_study(slug: str) -> HTMLResponse:
+    study = case_studies.get_case_study(slug)
+    if study is None:
+        raise HTTPException(status_code=404, detail="Case study not found")
+    return HTMLResponse(case_studies.render_case_study_page(study))
 
 
 for legacy_path, target in LEGACY_REDIRECTS.items():
