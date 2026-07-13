@@ -621,12 +621,6 @@ main {
   align-items: center;
 }
 
-.article-index-lede {
-  margin: 0 0 2rem;
-  max-width: 52ch;
-  color: var(--muted);
-}
-
 .article-list {
   list-style: none;
   margin: 0;
@@ -634,11 +628,11 @@ main {
   border-top: 1px solid var(--line);
 }
 
-.article-list-item {
+.article-item {
   border-bottom: 1px solid var(--line);
 }
 
-.article-list-link {
+.article-link {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 1rem;
@@ -648,22 +642,22 @@ main {
   transition: color 0.2s ease;
 }
 
-.article-list-link:hover,
-.article-list-link:focus-visible {
+.article-link:hover,
+.article-link:focus-visible {
   outline: none;
 }
 
-.article-list-link:hover .article-list-title,
-.article-list-link:focus-visible .article-list-title {
+.article-link:hover .article-link-title,
+.article-link:focus-visible .article-link-title {
   color: var(--accent);
 }
 
-.article-list-title {
+.article-link-title {
   color: var(--ink);
   font-weight: 500;
 }
 
-.article-list-meta {
+.article-link-meta {
   color: var(--muted);
   font-size: 0.8rem;
   text-align: right;
@@ -688,40 +682,29 @@ main {
 
 .article-meta {
   margin: 0 0 2rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
   color: var(--muted);
   font-size: 0.85rem;
 }
 
-.article-audience {
+.article-meta .article-author::after {
+  content: "·";
+  margin-left: 1.5rem;
+}
+
+.article-problem {
   margin: 0 0 2.5rem;
   max-width: 58ch;
-  padding: 0.85rem 1rem;
-  border: 1px solid var(--line);
-  background: var(--surface);
-}
-
-.article-audience p {
-  margin: 0;
   color: var(--muted);
-  font-size: 0.9rem;
-  line-height: 1.6;
-}
-
-.article-audience p + p {
-  margin-top: 0.75rem;
-}
-
-.article-audience strong {
-  color: var(--ink);
-  font-weight: 500;
-}
-
-.article-prose {
-  max-width: 58ch;
+  font-size: 1.05rem;
+  line-height: 1.65;
 }
 
 .article-section {
   margin: 0 0 2rem;
+  max-width: 58ch;
 }
 
 .article-section-title {
@@ -759,13 +742,17 @@ main {
     white-space: normal;
   }
 
-  .article-list-link {
+  .article-link {
     grid-template-columns: 1fr;
     gap: 0.35rem;
   }
 
-  .article-list-meta {
+  .article-link-meta {
     text-align: left;
     white-space: normal;
+  }
+
+  .article-meta .article-author::after {
+    content: none;
   }
 }
