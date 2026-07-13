@@ -9,9 +9,7 @@ from typing import Any
 from app.seo import CANONICAL_BASE
 
 OG_IMAGE = f"{CANONICAL_BASE}/assets/og-share.png"
-OG_IMAGE_ALT = (
-    "saberistic — AmirSaber Sharifi — filling gaps between markets and tech"
-)
+OG_IMAGE_ALT = "saberistic — high-stakes architecture and engineering leadership"
 
 
 def _json_ld_safe(value: str) -> str:
@@ -66,7 +64,7 @@ def web_page_json_ld(*, title: str, description: str, url: str) -> str:
 
 
 def case_study_json_ld(*, title: str, description: str, url: str) -> str:
-    """JSON-LD for /work/* proof pages (WebPage — no invented dates)."""
+    """JSON-LD for /work/{slug} proof pages (WebPage with share image)."""
     return json_ld_script(
         {
             "@context": "https://schema.org",
@@ -76,6 +74,14 @@ def case_study_json_ld(*, title: str, description: str, url: str) -> str:
             "url": url,
             "image": OG_IMAGE,
         }
+    )
+
+
+def case_study_head_metadata(*, title: str, description: str, url: str) -> str:
+    """Open Graph, Twitter card, and JSON-LD for a case-study page."""
+    return (
+        f"{social_meta_tags(title=title, description=description, url=url, og_type='website')}\n"
+        f"{case_study_json_ld(title=title, description=description, url=url)}"
     )
 
 
