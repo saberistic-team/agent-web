@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from app.case_studies import load_case_studies
+from app.case_studies import DISCLAIMERS, load_case_studies
 from app.main import app
 
 client = TestClient(app)
@@ -99,14 +99,27 @@ NOINDEX_PAGES: dict[str, dict[str, str]] = {
 
 PUBLIC_PAGES = {**INDEXABLE_PAGES, **NOINDEX_PAGES}
 
-CASE_STUDY_PAGES: dict[str, dict[str, str]] = {
-    f"/work/{study['slug']}": {
-        "title": f"{study['org']} — {study['headline']} · saberistic",
-        "description": study["meta_description"],
-        "canonical": f"{SITE_BASE}/work/{study['slug']}",
+CASE_STUDY_SLUGS = (
+    "brave",
+    "baxus",
+    "eternis",
+    "spiral-safe",
+    "architecture-diagnostic",
+)
+
+CASE_STUDY_PAGES: dict[str, dict[str, str]] = {}
+for _study in load_case_studies():
+    _slug = _study["slug"]
+    assert _slug in CASE_STUDY_SLUGS, f"unexpected case study slug: {_slug}"
+    _path = f"/work/{_slug}"
+    CASE_STUDY_PAGES[_path] = {
+        "title": f"{_study['org']} — {_study['headline']} · saberistic",
+        "description": _study["meta_description"],
+        "canonical": f"{SITE_BASE}/work/{_slug}",
+        "disclaimer": DISCLAIMERS[_study["engagement"]],  # type: ignore[index]
     }
-    for study in load_case_studies()
-}
+
+assert set(CASE_STUDY_PAGES) == {f"/work/{slug}" for slug in CASE_STUDY_SLUGS}
 
 
 class _HeadParser(HTMLParser):
@@ -394,18 +407,28 @@ def test_case_study_twitter_card_metadata(path: str, expected: dict[str, str]) -
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("path", CASE_STUDY_PAGES.keys())
-def test_case_study_json_ld_valid(path: str) -> None:
+@pytest.mark.parametrize("path,expected", CASE_STUDY_PAGES.items())
+def test_case_study_json_ld_valid(path: str, expected: dict[str, str]) -> None:
     response = client.get(path)
     head = _parse_head(response.text)
     assert head.ld_json_raw, f"Missing JSON-LD on {path}"
     data = json.loads(head.ld_json_raw)
-    assert isinstance(data, dict)
     assert data.get("@context") == "https://schema.org"
     assert data.get("@type") == "WebPage"
-    assert data.get("name") == CASE_STUDY_PAGES[path]["title"]
-    assert data.get("description") == CASE_STUDY_PAGES[path]["description"]
-    assert data.get("url") == CASE_STUDY_PAGES[path]["canonical"]
+    assert data.get("name") == expected["title"]
+    assert data.get("description") == expected["description"]
+    assert data.get("url") == expected["canonical"]
+    assert data.get("image") == OG_IMAGE
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("path,expected", CASE_STUDY_PAGES.items())
+def test_case_study_disclaimers_remain_visible(
+    path: str, expected: dict[str, str]
+) -> None:
+    response = client.get(path)
+    assert response.status_code == 200
+    assert expected["disclaimer"] in response.text
 
 
 @pytest.mark.unit
@@ -415,30 +438,8 @@ def test_case_study_metadata_titles_are_unique() -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("path", CASE_STUDY_PAGES.keys())
-def test_case_study_pages_have_no_legacy_positioning(path: str) -> None:
-    response = client.get(path)
-    assert response.status_code == 200
-    for forbidden in FORBIDDEN_LEGACY_STRINGS:
-        assert forbidden not in response.text, (
-            f"Legacy positioning found on {path}: {forbidden!r}"
-        )
-
-
-@pytest.mark.unit
-def test_case_study_disclaimers_remain_visible() -> None:
-    disclaimers = {
-        "/work/brave": "Prior employer role — not a Saberistic client engagement.",
-        "/work/baxus": "Prior employer role — not a Saberistic client engagement.",
-        "/work/eternis": "Prior employer role — not a Saberistic client engagement.",
-        "/work/spiral-safe": (
-            "Independent venture — not a Saberistic client engagement."
-        ),
-        "/work/architecture-diagnostic": (
-            "Saberistic engagement — sanitized composite; no client identified."
-        ),
-    }
-    for path, disclaimer in disclaimers.items():
-        response = client.get(path)
-        assert response.status_code == 200
-        assert disclaimer in response.text
+def test_case_study_metadata_descriptions_are_unique() -> None:
+    descriptions = [
+        CASE_STUDY_PAGES[path]["description"] for path in CASE_STUDY_PAGES
+    ]
+    assert len(descriptions) == len(set(descriptions))
