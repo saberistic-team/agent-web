@@ -26,6 +26,9 @@ Do **not** apply `agent:builder` or `agent:docs` when queuing. The dispatcher
 reads `type:*` + `priority:*`, then applies the agent label when that agent is
 free (highest priority first). Record `intended_agent` in `### planner_plan`.
 
+Board columns follow `status:*` via project sync; you do not edit the project
+UI directly ([docs/LABELS.md](../docs/LABELS.md) — Project board).
+
 If you spawn children, write their numbers (one per line) to
 `trace/planner-<parent>-children.txt`, and ensure each child already has
 `type:*`, `priority:*`, and `status:queued` (no run-agent label yet). Each

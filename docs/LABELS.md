@@ -22,6 +22,53 @@ Built-in Project field types that **cannot** be created as custom fields
 Repository, Title, Linked pull requests, Reviewers, Parent issue,
 Sub-issues progress, Issue type.
 
+## Project board
+
+Org project **[agent-web](https://github.com/orgs/saberistic-team/projects/8)**
+(public) is linked to this repository. Open the **Kanban** view for columns.
+
+### Built-in Project workflows (already on)
+
+Configured under Project → **⋯** → **Workflows**. These run inside Projects
+itself (no Actions) and cover lifecycle events:
+
+| Workflow | Effect |
+|----------|--------|
+| Item added to project | Status → **Todo** |
+| Item closed | Status → **Done** |
+| Pull request merged | Status → **Done** |
+| Auto-close issue | Closing when Status is set to Done |
+| Pull request linked to issue | Keeps linked PR on the board |
+| Auto-add sub-issues to project | Child issues join the parent’s project |
+
+Optional (UI only — GitHub has no create API): enable **Auto-add to project**
+for `saberistic-team/agent-web` so new issues/PRs land on the board without a
+script. Filter suggestion: `is:open`.
+
+Built-in workflows **cannot** react to our `status:*` / `priority:*` /
+`agent:*` / `review:*` labels. There is no “when labeled X, set Status Y”
+preset, and workflow config is not writable via GraphQL (only
+`deleteProjectV2Workflow`).
+
+### Label → column sync (Actions)
+
+`.github/workflows/project-sync.yml` watches issue/PR label events and runs
+`scripts/project_sync.py` with the existing **`MODELS_TOKEN`** secret (user
+PAT). Ensure that PAT includes classic scope **`project`** (or fine-grained
+organization Projects write); Models inference alone is not enough.
+
+| Board Status | Source label |
+|--------------|--------------|
+| Todo | `status:new`, `status:queued` |
+| In Progress | `status:in-progress` (open PRs default here) |
+| Blocked | `status:blocked` (also open PRs with `review:changes-requested`) |
+| Needs Review | `status:needs-review` |
+| Done | `status:done` / closed |
+| Failed | `status:failed` |
+
+Custom fields **Priority**, **Agent**, and **Review** mirror the matching
+label axes. Do **not** invent a custom project field named Status or Type.
+
 **Internal disambiguation:** `needs-review` exists on both `status` and
 `review`; `docs` exists on both `agent` and `type`. The `axis:` prefix makes
 each label unique (`status:needs-review` ≠ `review:needs-review`).

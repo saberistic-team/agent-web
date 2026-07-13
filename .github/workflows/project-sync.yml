@@ -1,0 +1,72 @@
+name: Project board sync
+
+# Mirror orchestration labels onto org project #8 (agent-web).
+#
+# Built-in Project workflows already handle: item added → Todo, issue/PR
+# closed → Done, PR merged → Done, linked PR, auto-close on Done, sub-issues.
+# Native workflows cannot map status:*/priority:*/agent:*/review:* labels onto
+# columns/fields — that gap is what this Action fills (using MODELS_TOKEN).
+
+on:
+  issues:
+    types: [opened, reopened, closed, labeled, unlabeled]
+  pull_request:
+    types: [opened, reopened, closed, labeled, unlabeled, converted_to_draft, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      numbers:
+        description: Comma-separated issue/PR numbers to sync
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Resolve numbers
+        id: meta
+        run: |
+          set -euo pipefail
+          if [[ -n "${{ inputs.numbers }}" ]]; then
+            echo "numbers=${{ inputs.numbers }}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.event_name }}" == "issues" ]]; then
+            echo "numbers=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "numbers=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "numbers=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Sync project board
+        if: steps.meta.outputs.numbers != ''
+        env:
+          # Existing user PAT (already used for Models). Needs classic `project`
+          # scope (or fine-grained org Projects write) to mutate org project #8.
+          GITHUB_TOKEN: ${{ secrets.MODELS_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PROJECT_OWNER: ${{ github.repository_owner }}
+          PROJECT_NUMBER: "8"
+        run: |
+          set -euo pipefail
+          if [[ -z "${GITHUB_TOKEN}" ]]; then
+            echo "::error::MODELS_TOKEN secret is empty; cannot sync org project"
+            exit 1
+          fi
+          python scripts/project_sync.py \
+            --repo "${{ github.repository }}" \
+            --owner "${{ github.repository_owner }}" \
+            --project-number 8 \
+            --numbers "${{ steps.meta.outputs.numbers }}"

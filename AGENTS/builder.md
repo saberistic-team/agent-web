@@ -9,7 +9,9 @@ that issue’s acceptance criteria.
 Preserve any `priority:*` label on the issue; do not strip or change it.
 
 Workflow will move you through `status:in-progress`, then hand off with
-`status:needs-review`, `review:needs-review`, and `agent:reviewer`.
+`status:needs-review`, `review:needs-review`, and `agent:reviewer`. Project
+board Status / Priority / Review are synced automatically from those labels
+([docs/LABELS.md](../docs/LABELS.md) — Project board).
 
 When you open or reuse a PR, apply **PR mirror labels** (not orchestration
 triggers): copy `type:*` and `priority:*` from the issue, and set
