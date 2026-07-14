@@ -100,10 +100,84 @@ def test_apply_migrations_records_schema_versions() -> None:
     cur.fetchall.return_value = []
 
     versions = apply_migrations(conn)
-    assert versions == ["001", "002", "003", "004", "005", "006"]
+    assert versions == ["001", "002", "003", "004", "005", "006", "007"]
     insert_calls = [
         call
         for call in cur.execute.call_args_list
         if "schema_migrations" in str(call.args[0]) and "INSERT" in str(call.args[0])
     ]
-    assert len(insert_calls) == 6
+    assert len(insert_calls) == 7
+
+
+@pytest.mark.integration
+def test_pipeline_service_transition_records_history_and_audit() -> None:
+    service = CrmService()
+    conn = MagicMock()
+    company_id = COMPANY_ID
+
+    with patch.object(service._repos.companies, "get_by_id") as get_company:
+        with patch.object(service._repos.companies, "update") as update_company:
+            with patch.object(service._repos.stage_history, "create") as create_history:
+                with patch.object(service._repos.activities, "create") as create_activity:
+                    with patch.object(service._repos.audit_events, "create") as create_audit:
+                        get_company.return_value = {
+                            "id": company_id,
+                            "pipeline_stage": "researching",
+                        }
+                        update_company.return_value = {
+                            "id": company_id,
+                            "pipeline_stage": "qualified",
+                        }
+                        create_history.return_value = {
+                            "id": "history-1",
+                            "from_stage": "researching",
+                            "to_stage": "qualified",
+                        }
+
+                        result = service.transition_company_stage(
+                            conn,
+                            company_id=company_id,
+                            to_stage="qualified",
+                            actor="operator",
+                        )
+
+    assert result["company"]["pipeline_stage"] == "qualified"
+    create_history.assert_called_once()
+    create_activity.assert_called_once()
+    create_audit.assert_called_once()
+    conn.commit.assert_called_once()
+
+
+@pytest.mark.integration
+def test_admin_pipeline_api_requires_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.main import app
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
+    monkeypatch.setenv("ADMIN_USERNAME", "operator")
+    monkeypatch.setenv(
+        "ADMIN_PASSWORD_HASH",
+        "$argon2id$v=19$m=65536,t=3,p=4$fake$fake",
+    )
+    monkeypatch.setenv("ADMIN_SESSION_SECRET", "test-session-secret-32chars-minimum")
+
+    client = TestClient(app, follow_redirects=False)
+    response = client.get("/admin/api/pipeline/actions/upcoming")
+    assert response.status_code == 303
+    assert "/admin/login" in response.headers["location"]
+    service = CrmService()
+    conn = MagicMock()
+    overdue_company = {
+        "id": COMPANY_ID,
+        "pipeline_stage": "qualified",
+        "next_action": "Follow up",
+    }
+
+    with patch.object(
+        service._repos.companies,
+        "list_overdue_actions",
+        return_value=[overdue_company],
+    ) as list_overdue:
+        results = service.list_overdue_actions(conn)
+
+    assert results[0]["pipeline_stage"] == "qualified"
+    list_overdue.assert_called_once()
