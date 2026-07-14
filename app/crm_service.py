@@ -18,7 +18,9 @@ from app.repositories import (
     PostgresAdminUserRepository,
     PostgresCompanyRepository,
     PostgresContactRepository,
+    PostgresResearchRecordRepository,
     PostgresSourceRecordRepository,
+    ResearchRecordRepository,
     SourceRecordRepository,
 )
 
@@ -29,6 +31,7 @@ class CrmRepositories:
     contacts: ContactRepository
     source_records: SourceRecordRepository
     activities: ActivityRepository
+    research_records: ResearchRecordRepository
     admin_users: AdminUserRepository
 
 
@@ -38,6 +41,7 @@ def default_crm_repositories() -> CrmRepositories:
         contacts=PostgresContactRepository(),
         source_records=PostgresSourceRecordRepository(),
         activities=PostgresActivityRepository(),
+        research_records=PostgresResearchRecordRepository(),
         admin_users=PostgresAdminUserRepository(),
     )
 
@@ -118,3 +122,96 @@ class CrmService:
         email: str,
     ) -> dict[str, Any] | None:
         return self._repos.admin_users.get_by_email(conn, email)
+
+    def list_companies(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        return self._repos.companies.list_all(conn, limit=limit)
+
+    def get_company(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+    ) -> dict[str, Any] | None:
+        return self._repos.companies.get_by_id(conn, company_id)
+
+    def list_contacts_for_company(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        return self._repos.contacts.list_for_company(conn, company_id, limit=limit)
+
+    def get_contact(
+        self,
+        conn: psycopg.Connection,
+        contact_id: UUID,
+    ) -> dict[str, Any] | None:
+        return self._repos.contacts.get_by_id(conn, contact_id)
+
+    def list_research_for_company(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        return self._repos.research_records.list_for_company(
+            conn,
+            company_id,
+            limit=limit,
+        )
+
+    def list_research_for_contact(
+        self,
+        conn: psycopg.Connection,
+        contact_id: UUID,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        return self._repos.research_records.list_for_contact(
+            conn,
+            contact_id,
+            limit=limit,
+        )
+
+    def attach_research_record(
+        self,
+        conn: psycopg.Connection,
+        *,
+        record_type: str,
+        company_id: UUID,
+        body: str,
+        contact_id: UUID | None = None,
+        source_name: str | None = None,
+        source_url: str | None = None,
+        observed_value: str | None = None,
+        observed_at: Any | None = None,
+        confidence: float | None = None,
+        review_at: Any | None = None,
+        expires_at: Any | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Append a research record without overwriting prior observations."""
+        with crm_transaction(conn):
+            record = self._repos.research_records.create(
+                conn,
+                record_type=record_type,
+                company_id=company_id,
+                body=body,
+                contact_id=contact_id,
+                source_name=source_name,
+                source_url=source_url,
+                observed_value=observed_value,
+                observed_at=observed_at,
+                confidence=confidence,
+                review_at=review_at,
+                expires_at=expires_at,
+                metadata=metadata,
+            )
+        return record
