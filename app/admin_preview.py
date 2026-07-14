@@ -1,4 +1,4 @@
-"""Mock admin dashboard data for ADMIN_PREVIEW_MODE screenshots.
+"""Mock admin page data for ADMIN_PREVIEW_MODE screenshots.
 
 Never used in production — only when ``Settings.admin_preview_enabled`` is true.
 """
@@ -49,6 +49,23 @@ CONTACT_LAST = (
 
 STATUSES = ("new", "paid", "follow-up", "closed")
 SOURCES = ("brief", "referral", "inbound", "partner")
+SIGNAL_TYPES = ("hiring", "funding", "tech-stack", "intent", "news")
+PIPELINE_STAGES = ("qualified", "discovery", "proposal", "negotiation", "won")
+IMPORT_STATUSES = ("queued", "running", "complete", "failed")
+CONTENT_KINDS = ("insight", "case-study", "landing", "brief copy")
+
+# Section path → short column labels for preview tables.
+_SECTION_COLUMNS: dict[str, tuple[str, ...]] = {
+    "/admin/companies": ("Company", "Industry", "Employees", "Owner", "Updated"),
+    "/admin/contacts": ("Name", "Title", "Company", "Email", "Last touch"),
+    "/admin/signals": ("Signal", "Company", "Score", "Source", "Seen"),
+    "/admin/pipeline": ("Deal", "Company", "Stage", "Value", "Next step"),
+    "/admin/imports": ("Job", "Rows", "Status", "Source", "Started"),
+    "/admin/discovery": ("List", "Prospects", "Filter", "Owner", "Refreshed"),
+    "/admin/analytics": ("Metric", "Period", "Value", "Delta", "Segment"),
+    "/admin/content": ("Title", "Kind", "Status", "Author", "Updated"),
+    "/admin/settings": ("Setting", "Value", "Scope", "Owner", "Changed"),
+}
 
 
 @dataclass(frozen=True)
@@ -203,6 +220,180 @@ def render_preview_dashboard_main(data: PreviewDashboardData) -> str:
               </thead>
               <tbody>
                 {rows}
+              </tbody>
+            </table>
+          </div>
+        </section>"""
+
+
+def _person(rng: random.Random) -> str:
+    return f"{rng.choice(CONTACT_FIRST)} {rng.choice(CONTACT_LAST)}"
+
+
+def _relative_stamp(rng: random.Random, now: datetime) -> str:
+    hours_ago = rng.randint(1, 120)
+    stamp = now - timedelta(hours=hours_ago, minutes=rng.randint(0, 50))
+    return stamp.strftime("%Y-%m-%d %H:%M UTC")
+
+
+def build_preview_section_rows(
+    active_path: str,
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> tuple[tuple[str, ...], ...]:
+    """Build randomized table rows for an admin section preview page."""
+    rng = rng or _preview_rng()
+    now = now or datetime.now(timezone.utc)
+    companies = list(COMPANY_NAMES)
+    rng.shuffle(companies)
+    count = rng.randint(4, 8)
+    rows: list[tuple[str, ...]] = []
+
+    for i in range(count):
+        company = companies[i % len(companies)]
+        person = _person(rng)
+        first, last = person.split(" ", 1)
+        stamp = _relative_stamp(rng, now)
+        if active_path == "/admin/companies":
+            rows.append(
+                (
+                    company,
+                    rng.choice(("Logistics", "SaaS", "Industrial", "Fintech")),
+                    str(rng.choice((12, 28, 45, 80, 140))),
+                    person,
+                    stamp,
+                )
+            )
+        elif active_path == "/admin/contacts":
+            rows.append(
+                (
+                    person,
+                    rng.choice(("CTO", "VP Eng", "Founder", "Ops lead")),
+                    company,
+                    _slug_email(first, last, company, rng),
+                    stamp,
+                )
+            )
+        elif active_path == "/admin/signals":
+            rows.append(
+                (
+                    rng.choice(SIGNAL_TYPES),
+                    company,
+                    str(rng.randint(42, 98)),
+                    rng.choice(SOURCES),
+                    stamp,
+                )
+            )
+        elif active_path == "/admin/pipeline":
+            rows.append(
+                (
+                    f"{company.split()[0]} pilot",
+                    company,
+                    rng.choice(PIPELINE_STAGES),
+                    _format_amount(rng.choice((20_000, 35_000, 50_000, 75_000))),
+                    stamp,
+                )
+            )
+        elif active_path == "/admin/imports":
+            rows.append(
+                (
+                    f"import-{rng.randint(100, 999)}",
+                    str(rng.randint(40, 2400)),
+                    rng.choice(IMPORT_STATUSES),
+                    rng.choice(("csv", "enrichment", "crm sync")),
+                    stamp,
+                )
+            )
+        elif active_path == "/admin/discovery":
+            rows.append(
+                (
+                    f"{company.split()[0]} ICP",
+                    str(rng.randint(18, 220)),
+                    rng.choice(("geo+size", "tech stack", "hiring")),
+                    person,
+                    stamp,
+                )
+            )
+        elif active_path == "/admin/analytics":
+            rows.append(
+                (
+                    rng.choice(("Conversion", "Paid rate", "Time-to-reply", "Pipeline $")),
+                    rng.choice(("7d", "30d", "90d")),
+                    str(rng.randint(8, 96)),
+                    f"{rng.choice(('+', '-'))}{rng.randint(1, 18)}%",
+                    rng.choice(("all", "inbound", "partner")),
+                )
+            )
+        elif active_path == "/admin/content":
+            rows.append(
+                (
+                    f"{company} note",
+                    rng.choice(CONTENT_KINDS),
+                    rng.choice(("draft", "review", "published")),
+                    person,
+                    stamp,
+                )
+            )
+        elif active_path == "/admin/settings":
+            rows.append(
+                (
+                    rng.choice(
+                        ("session TTL", "MFA required", "webhook URL", "timezone")
+                    ),
+                    rng.choice(("14d", "on", "https://hooks.example/…", "UTC")),
+                    rng.choice(("security", "integrations", "team")),
+                    person,
+                    stamp,
+                )
+            )
+        else:
+            rows.append((company, person, stamp, rng.choice(STATUSES), "preview"))
+
+    return tuple(rows)
+
+
+def render_preview_section_main(
+    *,
+    label: str,
+    summary: str,
+    active_path: str,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> str:
+    """HTML main fragment for an admin section page in preview mode."""
+    rng = rng or _preview_rng()
+    now = now or datetime.now(timezone.utc)
+    columns = _SECTION_COLUMNS.get(
+        active_path, ("Item", "Detail", "Owner", "Status", "Updated")
+    )
+    data_rows = build_preview_section_rows(active_path, rng=rng, now=now)
+    head = "".join(f"<th scope=\"col\">{html.escape(col)}</th>" for col in columns)
+    body = "\n".join(
+        "<tr>"
+        + "".join(f"<td>{html.escape(cell)}</td>" for cell in row)
+        + "</tr>"
+        for row in data_rows
+    )
+    generated = now.strftime("%Y-%m-%d %H:%M:%S UTC")
+    safe_label = html.escape(label)
+    return f"""        <section class="admin-empty" aria-labelledby="admin-section-title">
+          <p class="admin-preview-banner" role="status">Preview data — not production</p>
+          <p class="admin-eyebrow">Preview</p>
+          <h1 class="admin-title" id="admin-section-title">{safe_label}</h1>
+          <p class="admin-lede">
+            {html.escape(summary)} Mock rows for screenshots
+            (<time datetime="{html.escape(generated)}">{html.escape(generated)}</time>).
+          </p>
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  {head}
+                </tr>
+              </thead>
+              <tbody>
+                {body}
               </tbody>
             </table>
           </div>

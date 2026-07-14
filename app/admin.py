@@ -36,13 +36,21 @@ def render_admin_page(
             admin_username=admin_username,
             csrf_token=csrf_token,
         )
-    if active_path == "/admin" and get_settings().admin_preview_enabled:
+    if get_settings().admin_preview_enabled:
         from app.admin_preview import (
             build_preview_dashboard_data,
             render_preview_dashboard_main,
+            render_preview_section_main,
         )
 
-        main = render_preview_dashboard_main(build_preview_dashboard_data())
+        if active_path == "/admin":
+            main = render_preview_dashboard_main(build_preview_dashboard_data())
+        else:
+            main = render_preview_section_main(
+                label=link["label"],
+                summary=link["summary"],
+                active_path=active_path,
+            )
     else:
         main = _render_empty_state(link)
     return render_admin_shell(

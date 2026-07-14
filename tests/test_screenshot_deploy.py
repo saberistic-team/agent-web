@@ -107,7 +107,20 @@ def test_discover_screenshot_routes_include_admin() -> None:
     routes = discover_screenshot_routes(include_admin=True)
     assert "/admin" in routes
     assert "/admin/login" in routes
+    assert "/admin/companies" in routes
+    assert "/admin/settings" in routes
     assert "/" in routes
+
+
+def test_admin_screenshot_routes_match_layout() -> None:
+    from app.admin_layout import ADMIN_SCREENSHOT_PATHS
+    from scripts.screenshot_deploy import (
+        ADMIN_SCREENSHOT_ROUTES,
+        resolved_admin_screenshot_routes,
+    )
+
+    assert tuple(ADMIN_SCREENSHOT_PATHS) == ADMIN_SCREENSHOT_ROUTES
+    assert resolved_admin_screenshot_routes() == ADMIN_SCREENSHOT_ROUTES
 
 
 def test_routes_affected_by_single_html_file() -> None:
@@ -127,17 +140,23 @@ def test_routes_affected_by_site_css_is_all_public() -> None:
 
 
 def test_routes_affected_admin_only_with_include_admin() -> None:
-    candidates = ["/", "/about", "/admin", "/admin/login"]
+    candidates = [
+        "/",
+        "/about",
+        "/admin",
+        "/admin/companies",
+        "/admin/login",
+    ]
     got = routes_affected_by_changed_files(
         ["app/admin_routes.py", "app/admin_pages.py"],
         candidate_routes=candidates,
         include_admin=True,
     )
-    assert got == ["/admin", "/admin/login"]
+    assert got == ["/admin", "/admin/companies", "/admin/login"]
 
 
 def test_routes_affected_admin_only_excluded_post_deploy() -> None:
-    candidates = ["/", "/about", "/admin", "/admin/login"]
+    candidates = ["/", "/about", "/admin", "/admin/companies", "/admin/login"]
     got = routes_affected_by_changed_files(
         ["app/admin_routes.py", "app/admin_auth.py"],
         candidate_routes=candidates,
