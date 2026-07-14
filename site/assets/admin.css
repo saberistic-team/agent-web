@@ -203,3 +203,164 @@ body.admin-app {
     display: none;
   }
 }
+
+.admin-section-heading {
+  margin: 2rem 0 0.75rem;
+  font-family: var(--display);
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 400;
+}
+
+.admin-breadcrumb {
+  margin: 0 0 0.75rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.admin-breadcrumb a {
+  color: var(--ink);
+}
+
+.admin-list {
+  margin: 0 0 1.5rem;
+  padding-left: 1.25rem;
+  color: var(--muted);
+}
+
+.admin-list a {
+  color: var(--ink);
+}
+
+.research-form {
+  max-width: 48ch;
+  margin-bottom: 2.5rem;
+}
+
+.research-form .field {
+  margin-bottom: 1rem;
+}
+
+.research-form textarea,
+.research-form select,
+.research-form input[type="text"],
+.research-form input[type="url"],
+.research-form input[type="number"] {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 0.85rem;
+}
+
+.research-evidence-fields {
+  border: 1px solid var(--line);
+  padding: 1rem 1.25rem;
+  margin: 0;
+}
+
+.research-evidence-fields legend {
+  padding: 0 0.35rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.research-record-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.research-record {
+  border: 1px solid var(--line);
+  padding: 1rem 1.25rem;
+  background: var(--surface);
+}
+
+.research-record--stale {
+  opacity: 0.72;
+  border-style: dashed;
+}
+
+.research-record-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.research-type-badge {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 1px solid var(--line);
+}
+
+.research-type-badge--fact {
+  border-color: #4a9fd4;
+  color: #7ec8f0;
+}
+
+.research-type-badge--signal {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.research-type-badge--hypothesis {
+  border-color: #9a8fc2;
+  color: #c4b8e8;
+}
+
+.research-type-badge--context,
+.research-type-badge--angle,
+.research-type-badge--note {
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+.research-stale-badge {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.research-body {
+  margin: 0 0 0.75rem;
+  color: var(--ink);
+}
+
+.research-provenance {
+  margin: 0;
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.research-provenance div {
+  display: grid;
+  grid-template-columns: 8rem 1fr;
+  gap: 0.5rem;
+}
+
+.research-provenance dt {
+  margin: 0;
+  color: var(--muted);
+}
+
+.research-provenance dd {
+  margin: 0;
+  color: var(--ink);
+}
+
+.research-source-link {
+  color: var(--accent);
+  word-break: break-all;
+}
