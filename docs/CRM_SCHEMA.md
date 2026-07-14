@@ -19,7 +19,31 @@ unchanged; CRM tables are storage-only until later admin/import issues wire rout
 Route handlers must not embed SQL. Use `app/db.py` for brief/payment flows and
 `app/crm_service.py` + `app/repositories/` for CRM reads/writes.
 
-## Identifiers
+## Transaction ownership
+
+CRM write paths use a **service-owned transaction boundary**. Repositories execute
+SQL against a caller-supplied `psycopg.Connection` but never call `commit()` or
+`rollback()`. `CrmService` wraps each write operation in `crm_transaction()` from
+`app/crm_uow.py`: one commit after all repository mutations succeed, rollback on
+any failure.
+
+| Layer | Responsibility |
+|-------|----------------|
+| Route / caller | Opens a connection (`db.db_connection`) and passes it to `CrmService` |
+| `CrmService` | Orchestrates repositories; owns commit/rollback via `crm_transaction()` |
+| `app/repositories/postgres.py` | Parameterized SQL only; no transaction side effects |
+| Read methods | No commit/rollback — queries leave the connection transaction state unchanged |
+
+Multi-step operations (e.g. `record_company_with_contact`) are atomic: if contact
+creation fails, the company insert is rolled back with the rest of the operation.
+
+**Brief/payment flows** (`app/db.py` — `create_brief`, Stripe session updates,
+`mark_brief_paid`, admin session helpers) keep their existing per-helper commit
+behavior and are out of scope for CRM transaction migration.
+
+Direct repository use in tests or future admin tooling must commit explicitly when
+bypassing `CrmService`.
+
 
 - **Brief rows** keep `SERIAL` primary keys (`project_briefs.id`) for Stripe metadata
   compatibility.
@@ -143,36 +167,6 @@ steps on restart.
    not raw SQL.
 4. Map new inbound channels via `source_records` with a distinct `source_type`.
 5. Add tests under `tests/` for migration SQL, constraints, and repository CRUD.
-
-## Transaction ownership
-
-CRM write paths use a caller-owned `psycopg.Connection`. Repositories execute SQL
-only; services own commit/rollback boundaries.
-
-| Layer | Module | Transaction rule |
-|-------|--------|------------------|
-| Repository | `app/repositories/postgres.py` | Run statements on the passed connection. **Never** call `commit()` or `rollback()`. |
-| Service | `app/crm_service.py` | Wrap mutating operations in `crm_transaction(conn)`. Commit once after every related repository write succeeds; roll back the full operation on any failure. |
-| Brief/payment | `app/db.py` | Unchanged — each mutating helper commits internally (see [PROJECT_BRIEF.md](PROJECT_BRIEF.md)). |
-
-### Service boundaries
-
-- **Single-record writes** (`record_activity_for_company`, `link_project_brief_source`):
-  one `crm_transaction` scope → one commit on success.
-- **Multi-record writes** (`record_company_with_contact`): one transaction spans
-  company + contact inserts; a contact failure rolls back the company insert.
-- **Reads** (`get_admin_user_by_email`, repository lookups): no transaction state
-  changes.
-
-Callers open a connection (e.g. via `app/db.db_connection`) and pass it to
-`CrmService` methods. Do not commit inside route handlers for CRM writes — the
-service method commits when the operation completes.
-
-### Retry
-
-After a rolled-back CRM operation, the connection is usable for a new
-`CrmService` call on the same connection scope (idempotent retries or corrected
-input).
 
 ## Deferred (not #100)
 
