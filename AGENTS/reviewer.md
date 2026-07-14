@@ -98,9 +98,9 @@ Any of these is an automatic request-changes — do not approve:
   milestone copy) instead of randomized mock rows — Builder must extend
   `app/admin_preview.py` (`scripts/screenshot_deploy.format_empty_data_hard_fail`)
 - **Admin desktop nav invisible:** desktop captures of `/admin/*` shells where
-  `.admin-nav-link` nodes exist but none are visible (common after dropping
-  `<details open>` without a CSS override that beats UA closed-details rules) —
-  Builder must fix desktop CSS (`format_admin_nav_hard_fail`)
+  `.admin-nav-link` nodes exist but none are visible (common when nav links live
+  inside a closed `<details>` without a separate desktop list) — Builder must
+  keep the desktop list **outside** `<details>` (`format_admin_nav_hard_fail`)
 - Acceptance checklist incomplete (`all_done: false` or missing)
 
 Coverage gaps, missing tests, CI assertion failures, visual overflow, empty

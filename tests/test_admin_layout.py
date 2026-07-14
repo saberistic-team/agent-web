@@ -94,8 +94,11 @@ def test_render_admin_nav_marks_active_page() -> None:
     nav = render_admin_nav("/admin/companies")
     assert 'href="/admin/companies"' in nav
     assert 'aria-current="page"' in nav
-    assert nav.count('aria-current="page"') == 1
+    # Desktop + mobile lists both mark the current page; one is CSS-hidden.
+    assert nav.count('aria-current="page"') == 2
     assert 'aria-label="Admin"' in nav
+    assert 'class="admin-nav-list admin-nav-desktop"' in nav
+    assert 'class="admin-nav-list admin-nav-mobile-list"' in nav
 
 
 @pytest.mark.unit
@@ -118,10 +121,9 @@ def test_render_admin_nav_unknown_path_uses_admin_label() -> None:
 def test_admin_css_mobile_nav_and_table_scroll_guardrails() -> None:
     css = ADMIN_CSS.read_text(encoding="utf-8")
     assert "@media (min-width: 769px)" in css
-    assert ".admin-nav-toggle:not([open]) .admin-nav-list" in css
-    # Desktop must override UA closed-details hiding (specificity + !important).
-    assert "details.admin-nav-toggle:not([open]) > .admin-nav-list" in css
-    assert "display: flex !important" in css
+    assert "@media (max-width: 768px)" in css
+    assert ".admin-nav-desktop" in css
+    assert ".admin-nav-toggle:not([open]) .admin-nav-mobile-list" in css
     assert ".admin-table-wrap" in css
     assert ".admin-table-wrap::before" in css
     assert "overflow-x: auto" in css
@@ -132,8 +134,13 @@ def test_admin_css_mobile_nav_and_table_scroll_guardrails() -> None:
 def test_admin_css_desktop_nav_list_visible_when_collapsed() -> None:
     css = ADMIN_CSS.read_text(encoding="utf-8")
     desktop_block = css.split("@media (min-width: 769px)")[1].split("@media")[0]
-    assert "details.admin-nav-toggle:not([open]) > .admin-nav-list" in desktop_block
-    assert "display: flex !important" in desktop_block
+    assert ".admin-nav-desktop" in desktop_block
+    assert "display: flex" in desktop_block
+    assert ".admin-nav-toggle" in desktop_block
+    assert "display: none" in desktop_block
+    # Desktop list must not live inside closed details (UA hide trap).
+    assert "display: flex !important" not in desktop_block
+    assert "details.admin-nav-toggle:not([open])" not in desktop_block
 
 
 @pytest.mark.unit
@@ -237,7 +244,7 @@ def test_admin_active_nav(path: str, label: str) -> None:
     assert response.status_code == 200
     body = response.text
     assert f'id="admin-empty-title">{label}</h1>' in body
-    assert body.count('aria-current="page"') == 1
+    assert body.count('aria-current="page"') == 2
     assert f'href="{path}"' in body
     assert 'aria-current="page"' in body
     assert f'class="admin-nav-link" aria-current="page">{label}</a>' in body
@@ -268,7 +275,7 @@ def test_admin_companies_page_renders_research_list() -> None:
     body = response.text
     assert 'class="admin-app"' in body
     assert 'id="companies-title">Companies</h1>' in body
-    assert body.count('aria-current="page"') == 1
+    assert body.count('aria-current="page"') == 2
     assert 'href="/admin/companies"' in body
     assert 'aria-current="page"' in body
     assert 'class="admin-nav-link" aria-current="page">Companies</a>' in body

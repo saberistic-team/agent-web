@@ -84,13 +84,14 @@ body.admin-app {
 }
 
 .admin-nav-toggle {
+  display: none;
   border: 0;
   margin: 0;
   padding: 0;
 }
 
 .admin-nav-summary {
-  display: none;
+  display: flex;
   list-style: none;
   cursor: pointer;
   align-items: center;
@@ -599,16 +600,12 @@ body.admin-app {
 }
 
 @media (min-width: 769px) {
-  .admin-nav-summary {
-    display: none;
+  .admin-nav-desktop {
+    display: flex;
   }
 
-  /* Beat UA `details:not([open]) > *:not(summary) { display: none }`.
-     Collapsed-by-default markup must still show the full sidebar on desktop. */
-  details.admin-nav-toggle:not([open]) > .admin-nav-list,
-  details.admin-nav-toggle > .admin-nav-list {
-    display: flex !important;
-    flex-direction: column;
+  .admin-nav-toggle {
+    display: none;
   }
 }
 
@@ -667,15 +664,19 @@ body.admin-app {
     padding: 0.75rem clamp(1rem, 4vw, 1.5rem);
   }
 
-  .admin-nav-summary {
-    display: flex;
+  .admin-nav-desktop {
+    display: none;
   }
 
-  .admin-nav-list {
+  .admin-nav-toggle {
+    display: block;
+  }
+
+  .admin-nav-mobile-list {
     margin-top: 0.75rem;
   }
 
-  .admin-nav-toggle:not([open]) .admin-nav-list {
+  .admin-nav-toggle:not([open]) .admin-nav-mobile-list {
     display: none;
   }
 

@@ -921,9 +921,8 @@ def format_admin_nav_hard_fail(nav_failures: list[dict[str, Any]]) -> str | None
     return (
         "admin desktop nav invisible: screenshot page(s) have `.admin-nav-link` in "
         f"DOM but none visible — {routes} reason=`{sample.get('reason')}`; "
-        "builder must override UA closed-`details` display on desktop "
-        "(e.g. `details.admin-nav-toggle:not([open]) > .admin-nav-list` with "
-        "`display: flex !important`) so sidebar nav stays visible without JS"
+        "builder must keep the desktop nav list *outside* closed `<details>` "
+        "(`.admin-nav-desktop`) so the sidebar stays visible without JS"
     )
 
 

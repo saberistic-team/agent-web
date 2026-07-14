@@ -99,7 +99,13 @@ def _active_nav_label(active_path: str) -> str:
 
 
 def render_admin_nav(active_path: str) -> str:
-    """Return the admin sidebar navigation list."""
+    """Return the admin sidebar navigation list.
+
+    Desktop gets a always-visible list outside ``<details>``. Mobile uses a
+    collapsed ``details/summary`` disclosure for the same links. Keeping the
+    desktop list *outside* ``details`` avoids fighting the UA rule that hides
+    non-summary children of closed details.
+    """
     current_label = html.escape(_active_nav_label(active_path))
     items: list[str] = []
     for link in ADMIN_NAV_LINKS:
@@ -108,9 +114,12 @@ def render_admin_nav(active_path: str) -> str:
         attrs = [f'href="{href}"', 'class="admin-nav-link"']
         if active_path == href:
             attrs.append('aria-current="page"')
-        items.append(f'          <li><a {" ".join(attrs)}>{label}</a></li>')
+        items.append(f"          <li><a {' '.join(attrs)}>{label}</a></li>")
     items_html = "\n".join(items)
     return f"""        <nav class="admin-nav" aria-label="Admin">
+          <ul class="admin-nav-list admin-nav-desktop">
+{items_html}
+          </ul>
           <details class="admin-nav-toggle">
             <summary
               class="admin-nav-summary"
@@ -119,7 +128,7 @@ def render_admin_nav(active_path: str) -> str:
               <span class="admin-nav-current">{current_label}</span>
               <span class="admin-nav-expand-label">Menu</span>
             </summary>
-            <ul class="admin-nav-list">
+            <ul class="admin-nav-list admin-nav-mobile-list">
 {items_html}
             </ul>
           </details>

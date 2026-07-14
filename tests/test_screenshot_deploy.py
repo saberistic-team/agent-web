@@ -273,8 +273,8 @@ def test_format_admin_nav_hard_fail_dedupes_routes() -> None:
     assert "admin desktop nav invisible" in msg
     assert "`/admin`" in msg
     assert "`/admin/audit`" in msg
-    assert "closed-`details`" in msg or "details" in msg
-    assert "display: flex !important" in msg
+    assert "admin-nav-desktop" in msg
+    assert "details" in msg
 
 def test_page_empty_data_helper_flags_empty_table_phrases() -> None:
     """Pure helper parity: empty shell phrases used by Playwright checks."""
