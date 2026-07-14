@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import pytest
 
-from app.metadata import OG_IMAGE_ALT, article_json_ld, case_study_page_metadata, json_ld_script, social_meta_tags
+from app.metadata import (
+    OG_IMAGE,
+    OG_IMAGE_ALT,
+    article_json_ld,
+    case_study_page_json_ld,
+    json_ld_script,
+    social_meta_tags,
+)
 
 
 @pytest.mark.unit
@@ -42,14 +49,24 @@ def test_article_json_ld_includes_modified_date() -> None:
 
 
 @pytest.mark.unit
-def test_case_study_page_metadata_includes_social_and_json_ld() -> None:
-    metadata = case_study_page_metadata(
+def test_case_study_page_json_ld_uses_web_page_schema() -> None:
+    data = case_study_page_json_ld(
         title="Brave — Infrastructure for privacy-aligned payments · saberistic",
         description="How infrastructure architecture supported privacy-sensitive payment systems at Brave.",
         url="https://saberistic.com/work/brave",
     )
-    assert 'property="og:type" content="website"' in metadata
-    assert 'property="og:url" content="https://saberistic.com/work/brave"' in metadata
-    assert 'name="twitter:card" content="summary_large_image"' in metadata
-    assert '"@type":"WebPage"' in metadata
-    assert OG_IMAGE_ALT in metadata
+    assert data["@type"] == "WebPage"
+    assert data["image"] == OG_IMAGE
+    assert data["isPartOf"]["name"] == "saberistic"
+    assert data["description"].startswith("How infrastructure architecture")
+
+
+@pytest.mark.unit
+def test_case_study_page_json_ld_escapes_script_sequences() -> None:
+    data = case_study_page_json_ld(
+        title="Org<script>",
+        description="Meta<script>",
+        url="https://saberistic.com/work/xss",
+    )
+    assert "<script>" not in data["name"]
+    assert "\\u003cscript\\u003e" in data["name"]
