@@ -281,6 +281,18 @@ CREATE INDEX IF NOT EXISTS idx_research_records_observed_at
     ),
     Migration(
         version="009",
+        name="admin_login_flows_cleanup_indexes",
+        up_sql="""
+CREATE INDEX IF NOT EXISTS admin_login_flows_expires_at_idx
+    ON admin_login_flows (expires_at)
+    WHERE consumed_at IS NULL;
+CREATE INDEX IF NOT EXISTS admin_login_flows_consumed_at_idx
+    ON admin_login_flows (consumed_at)
+    WHERE consumed_at IS NOT NULL;
+""",
+    ),
+    Migration(
+        version="010",
         name="acquisition_pipeline",
         up_sql="""
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS pipeline_stage TEXT;

@@ -12,8 +12,9 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import ValidationError
 
 from app import admin, admin_auth, admin_pages, admin_research_pages, audit_service, brief_service, db
-from app.actor_context import actor_context_from_request, anonymous_actor_context
+from app.actor_context import actor_context_from_request, anonymous_actor_context, correlation_id_from_request
 from app.admin_layout import ADMIN_NAV_LINKS, render_admin_shell
+from app.admin_preview import PREVIEW_BRIEF_DATABASE_ERROR_ID
 from app.config import Settings, get_settings
 from app.crm_service import CrmService
 from app.research_records import ResearchRecordCreate
@@ -144,6 +145,19 @@ def _issue_login_flow_response(
     csrf_hash = admin_auth.hash_csrf_token(raw_csrf_token)
     expires_at = admin_auth.login_flow_expires_at()
     with db.db_connection(settings.database_url) as conn:
+        try:
+            db.cleanup_stale_admin_login_flows(
+                conn,
+                now=datetime.now(timezone.utc),
+                expired_retention_seconds=admin_auth.LOGIN_FLOW_EXPIRED_RETENTION_SECONDS,
+                consumed_retention_seconds=admin_auth.LOGIN_FLOW_CONSUMED_RETENTION_SECONDS,
+                batch_size=admin_auth.LOGIN_FLOW_CLEANUP_BATCH_SIZE,
+            )
+        except Exception:
+            logger.warning(
+                "Admin login flow cleanup failed; continuing with new flow",
+                exc_info=True,
+            )
         db.create_admin_login_flow(
             conn,
             flow_token_hash=flow_hash,
@@ -277,6 +291,18 @@ def admin_login_submit(
     csrf_token: str = Form(..., alias="csrf_token"),
     next: str | None = Form(default=None),
 ) -> Response:
+    """Authenticate an admin operator.
+
+    Login-flow cookie lifecycle (``admin_login_flow``):
+
+    * **Invalid CSRF** — consume the submitted flow (single-use), render a fresh
+      form with a new CSRF token, and retain the replacement flow cookie.
+    * **Invalid credentials** — same as invalid CSRF: consumed flow is not
+      replayable; the replacement flow binds the returned CSRF token.
+    * **Rate limited** — consume the submitted flow and retain a replacement so
+      the operator can retry after lockout without refreshing.
+    * **Success** — clear the pre-auth flow cookie and issue the session cookie.
+    """
     settings = get_settings()
     _require_admin_auth_configured(settings)
     normalized_username = username.strip()
@@ -286,14 +312,12 @@ def admin_login_submit(
             request, reason="rate_limited", attempted_username=normalized_username
         )
         _consume_login_flow(request, settings)
-        response = _issue_login_flow_response(
+        return _issue_login_flow_response(
             settings=settings,
             error_message=admin_auth.LOGIN_THROTTLED_MESSAGE,
             next_path=next,
             status_code=429,
         )
-        admin_auth.clear_login_flow_cookie(response, settings)
-        return response
 
     csrf_valid = _verify_login_flow_csrf(request, settings, csrf_token)
     _consume_login_flow(request, settings)
@@ -303,28 +327,24 @@ def admin_login_submit(
         _record_login_failure(
             request, reason="invalid_csrf", attempted_username=normalized_username
         )
-        response = _issue_login_flow_response(
+        return _issue_login_flow_response(
             settings=settings,
             error_message=admin_auth.INVALID_CREDENTIALS_MESSAGE,
             next_path=next,
             status_code=400,
         )
-        admin_auth.clear_login_flow_cookie(response, settings)
-        return response
 
     if not admin_auth.verify_admin_credentials(normalized_username, password, settings):
         admin_auth.record_failed_login(request, settings, username=normalized_username)
         _record_login_failure(
             request, reason="invalid_credentials", attempted_username=normalized_username
         )
-        response = _issue_login_flow_response(
+        return _issue_login_flow_response(
             settings=settings,
             error_message=admin_auth.INVALID_CREDENTIALS_MESSAGE,
             next_path=next,
             status_code=401,
         )
-        admin_auth.clear_login_flow_cookie(response, settings)
-        return response
 
     destination = admin_auth.safe_admin_next_path(next)
     response = RedirectResponse(url=destination, status_code=303)
@@ -668,8 +688,12 @@ def admin_briefs_list(
                     date_from=date_from,
                     date_to=date_to,
                 )
-        except Exception:
-            logger.exception("Failed to load admin briefs list")
+        except brief_service.BRIEF_DATABASE_ERRORS:
+            correlation_id = correlation_id_from_request(request)
+            logger.exception(
+                "Failed to load admin briefs list (correlation_id=%s)",
+                correlation_id,
+            )
             db_error = True
     return HTMLResponse(
         admin_pages.render_admin_briefs_page(
@@ -707,6 +731,21 @@ def admin_brief_detail(
         date_to=date_to,
     )
     if settings.admin_preview_enabled:
+        if brief_id == PREVIEW_BRIEF_DATABASE_ERROR_ID:
+            correlation_id = correlation_id_from_request(request)
+            retry_href = request.url.path
+            if request.url.query:
+                retry_href = f"{retry_href}?{request.url.query}"
+            return HTMLResponse(
+                admin_pages.render_admin_brief_database_unavailable(
+                    admin_username=session.admin_username,
+                    back_filters=back_filters,
+                    retry_href=retry_href,
+                    correlation_id=correlation_id,
+                    csrf_token=csrf_token,
+                ),
+                status_code=503,
+            )
         brief = brief_service.preview_brief_detail(brief_id)
         if brief is None:
             return HTMLResponse(
@@ -740,16 +779,25 @@ def admin_brief_detail(
     try:
         with db.db_connection(settings.database_url) as conn:
             brief = brief_service.get_brief(conn, brief_id)
-    except Exception:
-        logger.exception("Failed to load admin brief detail for id %s", brief_id)
+    except brief_service.BRIEF_DATABASE_ERRORS:
+        correlation_id = correlation_id_from_request(request)
+        logger.exception(
+            "Failed to load admin brief detail for id %s (correlation_id=%s)",
+            brief_id,
+            correlation_id,
+        )
+        retry_href = request.url.path
+        if request.url.query:
+            retry_href = f"{retry_href}?{request.url.query}"
         return HTMLResponse(
-            admin_pages.render_admin_brief_not_found(
-                brief_id=brief_id,
+            admin_pages.render_admin_brief_database_unavailable(
                 admin_username=session.admin_username,
                 back_filters=back_filters,
+                retry_href=retry_href,
+                correlation_id=correlation_id,
                 csrf_token=csrf_token,
             ),
-            status_code=404,
+            status_code=503,
         )
     if brief is None:
         return HTMLResponse(
