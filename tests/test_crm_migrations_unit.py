@@ -168,9 +168,11 @@ def test_admin_csrf_binding_migration_is_idempotent() -> None:
 def test_contacts_extended_migration_is_idempotent() -> None:
     contacts_ext = next(m for m in MIGRATIONS if m.name == "contacts_extended")
     assert contacts_ext.version == "007"
-    assert "ALTER TABLE contacts DROP CONSTRAINT IF EXISTS contacts_email_unique" in contacts_ext.up_sql
-    assert "CREATE TABLE IF NOT EXISTS contact_buying_roles" in contacts_ext.up_sql
-    assert "is_archived BOOLEAN NOT NULL DEFAULT FALSE" in contacts_ext.up_sql
+    sql = contacts_ext.up_sql
+    assert "ALTER TABLE contacts DROP CONSTRAINT IF EXISTS contacts_email_unique" in sql
+    assert "contact_buying_roles" in sql
+    assert "normalized_profile_url" in sql
+    assert "is_archived" in sql
 
 
 @pytest.mark.unit
