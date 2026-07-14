@@ -22,7 +22,7 @@ from app import analytics_service, case_studies, db, email_service, insights, pa
 from app.config import get_settings
 from app.models import BriefCreateRequest, BriefCreateResponse
 from app.seo import (
-    LEGACY_REDIRECTS,
+    PERMANENT_REDIRECTS,
     apex_redirect_url,
     is_www_host,
     robots_txt,
@@ -111,11 +111,6 @@ def case_studies_index() -> HTMLResponse:
     return page_service.serve_page("case-studies.html", get_settings())
 
 
-@app.get("/diagnostic")
-def diagnostic() -> HTMLResponse:
-    return page_service.serve_page("diagnostic.html", get_settings())
-
-
 @app.get("/brief")
 def brief_form() -> HTMLResponse:
     return page_service.serve_page("brief.html", get_settings())
@@ -130,7 +125,12 @@ def case_study(slug: str) -> HTMLResponse:
     study = case_studies.get_case_study(slug)
     if study is None:
         raise HTTPException(status_code=404, detail="Case study not found")
-    return HTMLResponse(case_studies.render_case_study_page(study))
+    return page_service.serve_html(
+        case_studies.render_case_study_page(study),
+        get_settings(),
+        page_event="Case Study Viewed",
+        case_study_slug=study["slug"],
+    )
 
 
 @app.get("/insights")
@@ -148,17 +148,24 @@ def insight_article(slug: str) -> HTMLResponse:
     article = insights.get_insight(slug)
     if article is None:
         raise HTTPException(status_code=404, detail="Insight not found")
-    return page_service.serve_html(insights.render_insight_page(article), get_settings())
+    return page_service.serve_html(
+        insights.render_insight_page(article),
+        get_settings(),
+        page_event="Insight Viewed",
+        article_slug=article["slug"],
+    )
 
 
-for legacy_path, target in LEGACY_REDIRECTS.items():
+for redirect_path, target in PERMANENT_REDIRECTS.items():
 
-    def _legacy_redirect(
+    def _permanent_redirect(
         _target: str = target,
     ) -> RedirectResponse:
         return RedirectResponse(url=_target, status_code=301)
 
-    app.add_api_route(legacy_path, _legacy_redirect, methods=["GET"], include_in_schema=False)
+    app.add_api_route(
+        redirect_path, _permanent_redirect, methods=["GET"], include_in_schema=False
+    )
 
 
 @app.post("/api/briefs", response_model=BriefCreateResponse)

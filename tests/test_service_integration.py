@@ -54,6 +54,19 @@ def test_brief_pages_flow() -> None:
 
 
 @pytest.mark.integration
+def test_case_studies_index_flow() -> None:
+    index = client.get("/case-studies")
+    assert index.status_code == 200
+    assert "/work/brave" in index.text
+    assert "/work/architecture-diagnostic" in index.text
+    assert "Request an Architecture Diagnostic" in index.text
+
+    diagnostic = client.get("/diagnostic", follow_redirects=False)
+    assert diagnostic.status_code == 301
+    assert diagnostic.headers["location"] == "/brief"
+
+
+@pytest.mark.integration
 def test_case_studies_flow() -> None:
     home = client.get("/")
     assert home.status_code == 200

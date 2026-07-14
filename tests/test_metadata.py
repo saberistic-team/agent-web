@@ -10,14 +10,27 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from app import case_studies
 from app.main import app
 
 client = TestClient(app)
 
 SITE_BASE = "https://saberistic.com"
 OG_IMAGE = f"{SITE_BASE}/assets/og-share.png"
-OG_IMAGE_ALT = (
-    "saberistic — AmirSaber Sharifi — filling gaps between markets and tech"
+OG_IMAGE_ALT = "saberistic — high-stakes architecture and engineering leadership"
+
+PROFESSIONAL_SERVICE_DESCRIPTION = (
+    "Architecture and engineering leadership for Seed–Series B fintech, AI, "
+    "digital-asset, and technically complex products."
+)
+PERSON_DESCRIPTION = (
+    "Software architect and engineering leader helping startups resolve "
+    "high-stakes architecture, reliability, security, and scaling problems."
+)
+
+FORBIDDEN_LEGACY_STRINGS = (
+    "Software development — filling gaps between markets and tech",
+    "filling gaps between markets and tech",
 )
 
 # Titles/descriptions match post-#68 SEO copy; OG/Twitter must stay aligned.
@@ -41,18 +54,21 @@ INDEXABLE_PAGES: dict[str, dict[str, str]] = {
     },
     "/services": {
         "title": "Services — saberistic",
-        "description": "Software development and technical advisory from saberistic.",
+        "description": (
+            "Architecture Diagnostic, Fractional Principal Architect, and "
+            "Technical Due Diligence for Seed–Series B fintech, AI, and "
+            "digital-asset companies."
+        ),
         "canonical": f"{SITE_BASE}/services",
     },
     "/case-studies": {
         "title": "Case studies — saberistic",
-        "description": "Selected work from AmirSaber Sharifi and saberistic.",
+        "description": (
+            "Outcome-oriented case studies — architecture, security, and "
+            "engineering leadership at Brave, BAXUS, Eternis, Spiral Safe, "
+            "and Saberistic diagnostic work."
+        ),
         "canonical": f"{SITE_BASE}/case-studies",
-    },
-    "/diagnostic": {
-        "title": "Diagnostic — saberistic",
-        "description": "Technical assessment and diagnostic services from saberistic.",
-        "canonical": f"{SITE_BASE}/diagnostic",
     },
     "/insights": {
         "title": "Insights — saberistic",
@@ -85,6 +101,23 @@ NOINDEX_PAGES: dict[str, dict[str, str]] = {
 }
 
 PUBLIC_PAGES = {**INDEXABLE_PAGES, **NOINDEX_PAGES}
+
+CASE_STUDY_PAGES: dict[str, dict[str, str]] = {
+    f"/work/{study['slug']}": {
+        "title": case_studies.case_study_page_title(study),
+        "description": study["meta_description"],
+        "canonical": f"{SITE_BASE}/work/{study['slug']}",
+    }
+    for study in case_studies.load_case_studies()
+}
+
+EXPECTED_CASE_STUDY_SLUGS = (
+    "brave",
+    "baxus",
+    "eternis",
+    "spiral-safe",
+    "architecture-diagnostic",
+)
 
 
 class _HeadParser(HTMLParser):
@@ -248,6 +281,37 @@ def test_home_json_ld_person_and_professional_service() -> None:
     assert "Person" in types
     assert "ProfessionalService" in types
 
+    graph = data.get("@graph", [])
+    person = next(item for item in graph if item.get("@type") == "Person")
+    org = next(item for item in graph if item.get("@type") == "ProfessionalService")
+    assert person["description"] == PERSON_DESCRIPTION
+    assert org["description"] == PROFESSIONAL_SERVICE_DESCRIPTION
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("path", PUBLIC_PAGES.keys())
+def test_public_pages_have_no_legacy_positioning(path: str) -> None:
+    response = client.get(path)
+    assert response.status_code == 200
+    for forbidden in FORBIDDEN_LEGACY_STRINGS:
+        assert forbidden not in response.text, (
+            f"Legacy positioning found on {path}: {forbidden!r}"
+        )
+
+
+@pytest.mark.unit
+def test_insight_pages_have_no_legacy_positioning() -> None:
+    for slug in ("empty-wallets-active-positions", "mvp-competing-sources-of-truth"):
+        response = client.get(f"/insights/{slug}")
+        assert response.status_code == 200
+        for forbidden in FORBIDDEN_LEGACY_STRINGS:
+            assert forbidden not in response.text, (
+                f"Legacy positioning found on /insights/{slug}: {forbidden!r}"
+            )
+        head = _parse_head(response.text)
+        assert head.meta["og:image:alt"] == OG_IMAGE_ALT
+        assert head.meta["twitter:image:alt"] == OG_IMAGE_ALT
+
 
 @pytest.mark.unit
 def test_about_json_ld_person() -> None:
@@ -287,3 +351,107 @@ def test_og_share_image_asset() -> None:
 def test_public_page_titles_are_unique() -> None:
     titles = [PUBLIC_PAGES[path]["title"] for path in PUBLIC_PAGES]
     assert len(titles) == len(set(titles))
+
+
+@pytest.mark.unit
+def test_case_study_pages_enumerate_all_routes() -> None:
+    assert tuple(CASE_STUDY_PAGES.keys()) == tuple(
+        f"/work/{slug}" for slug in EXPECTED_CASE_STUDY_SLUGS
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("path,expected", CASE_STUDY_PAGES.items())
+def test_case_study_page_unique_title_and_description(
+    path: str, expected: dict[str, str]
+) -> None:
+    response = client.get(path)
+    assert response.status_code == 200
+    head = _parse_head(response.text)
+    assert head.title.strip() == expected["title"]
+    assert head.meta["description"] == expected["description"]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("path,expected", CASE_STUDY_PAGES.items())
+def test_case_study_page_open_graph_metadata(
+    path: str, expected: dict[str, str]
+) -> None:
+    response = client.get(path)
+    head = _parse_head(response.text)
+    assert head.meta["og:title"] == expected["title"]
+    assert head.meta["og:description"] == expected["description"]
+    assert head.meta["og:url"] == expected["canonical"]
+    assert head.meta["og:type"] == "website"
+    assert head.meta["og:site_name"] == "saberistic"
+    assert head.meta["og:image"] == OG_IMAGE
+    assert head.meta["og:image:width"] == "1200"
+    assert head.meta["og:image:height"] == "630"
+    assert head.meta["og:image:alt"] == OG_IMAGE_ALT
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("path,expected", CASE_STUDY_PAGES.items())
+def test_case_study_page_canonical_matches_og_url(
+    path: str, expected: dict[str, str]
+) -> None:
+    response = client.get(path)
+    head = _parse_head(response.text)
+    assert head.links["canonical"] == expected["canonical"]
+    assert head.meta["og:url"] == head.links["canonical"]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("path,expected", CASE_STUDY_PAGES.items())
+def test_case_study_page_twitter_card_metadata(
+    path: str, expected: dict[str, str]
+) -> None:
+    response = client.get(path)
+    head = _parse_head(response.text)
+    assert head.meta["twitter:card"] == "summary_large_image"
+    assert head.meta["twitter:title"] == expected["title"]
+    assert head.meta["twitter:description"] == expected["description"]
+    assert head.meta["twitter:image"] == OG_IMAGE
+    assert head.meta["twitter:image:alt"] == OG_IMAGE_ALT
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("path", CASE_STUDY_PAGES.keys())
+def test_case_study_page_json_ld_valid(path: str) -> None:
+    response = client.get(path)
+    head = _parse_head(response.text)
+    assert head.ld_json_raw, f"Missing JSON-LD on {path}"
+    data = json.loads(head.ld_json_raw)
+    assert data["@context"] == "https://schema.org"
+    assert data["@type"] == "WebPage"
+    assert data["image"] == OG_IMAGE
+    assert data["isPartOf"]["@type"] == "WebSite"
+
+
+@pytest.mark.unit
+def test_case_study_metadata_descriptions_are_unique() -> None:
+    descriptions = [page["description"] for page in CASE_STUDY_PAGES.values()]
+    assert len(descriptions) == len(set(descriptions))
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "path,disclaimer",
+    [
+        ("/work/brave", "Prior employer role — not a Saberistic client engagement."),
+        ("/work/baxus", "Prior employer role — not a Saberistic client engagement."),
+        ("/work/eternis", "Prior employer role — not a Saberistic client engagement."),
+        (
+            "/work/spiral-safe",
+            "Independent venture — not a Saberistic client engagement.",
+        ),
+        (
+            "/work/architecture-diagnostic",
+            "Saberistic engagement — sanitized composite; no client identified.",
+        ),
+    ],
+)
+def test_case_study_disclaimers_remain_visible(path: str, disclaimer: str) -> None:
+    response = client.get(path)
+    assert response.status_code == 200
+    assert disclaimer in response.text

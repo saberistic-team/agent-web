@@ -34,12 +34,15 @@ def test_about_handler_returns_about(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.unit
 def test_site_page_handlers_return_pages(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.main import case_studies_index, diagnostic, services
+    from app.main import case_studies_index, services
 
     monkeypatch.delenv("ANALYTICS_ENABLED", raising=False)
-    assert "Services" in services().body.decode()
-    assert "Case studies" in case_studies_index().body.decode()
-    assert "Diagnostic" in diagnostic().body.decode()
+    services_body = services().body.decode()
+    assert "Architecture Diagnostic — $200" in services_body
+    assert "Fractional Principal Architect" in services_body
+    case_studies_body = case_studies_index().body.decode()
+    assert "Case studies" in case_studies_body
+    assert 'href="/work/brave"' in case_studies_body
 
 
 @pytest.mark.unit

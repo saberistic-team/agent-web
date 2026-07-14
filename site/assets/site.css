@@ -611,6 +611,14 @@ main {
   white-space: nowrap;
 }
 
+.proof-summary {
+  margin: 0 0 1.25rem;
+  padding: 0 0 0.25rem;
+  max-width: 52ch;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 .case-study {
   padding-top: 3rem;
 }
@@ -625,6 +633,8 @@ main {
 
 .case-title {
   margin-bottom: 1.25rem;
+  font-size: clamp(1.65rem, 6vw, 4rem);
+  overflow-wrap: break-word;
 }
 
 .case-disclaimer {

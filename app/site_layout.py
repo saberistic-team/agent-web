@@ -17,7 +17,6 @@ PAGE_PATH_BY_FILENAME: dict[str, str | None] = {
     "about.html": "/about",
     "services.html": "/services",
     "case-studies.html": "/case-studies",
-    "diagnostic.html": "/diagnostic",
     "brief.html": "/brief",
     "brief-success.html": "/brief/success",
     "404.html": None,

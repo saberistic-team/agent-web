@@ -15,10 +15,10 @@
 
   const PAGE_EVENTS = {
     "/": { event: "Landing Viewed", step: 1 },
-    "/about": { event: "Service Viewed", step: 2 },
-    "/services": { event: "Services Viewed", step: 2 },
-    "/case-studies": { event: "Case Studies Viewed", step: 2 },
-    "/insights": { event: "Insights Viewed", step: 2 },
+    "/about": { event: "About Viewed" },
+    "/services": { event: "Services Viewed" },
+    "/case-studies": { event: "Case Studies Viewed" },
+    "/insights": { event: "Insights Viewed" },
     "/brief": { event: "Brief Viewed", step: 3 },
     "/brief/success": { event: "Brief Success Viewed", step: 7 },
   };
@@ -96,13 +96,38 @@
     window.plausible(eventName, { props: finalProps });
   }
 
+  function metaContent(name) {
+    const el = document.querySelector('meta[name="' + name + '"]');
+    return el && el.content ? el.content : null;
+  }
+
   function trackPageView() {
     const path = window.location.pathname.replace(/\/$/, "") || "/";
+
+    const serverEvent = metaContent("saberistic-analytics-page-event");
+    if (serverEvent) {
+      const props = { page: path };
+      const caseStudySlug = metaContent("saberistic-analytics-case-study-slug");
+      if (caseStudySlug) {
+        props.case_study_slug = caseStudySlug;
+      }
+      const articleSlug = metaContent("saberistic-analytics-article-slug");
+      if (articleSlug) {
+        props.article_slug = articleSlug;
+      }
+      track(serverEvent, props);
+      return;
+    }
+
     const page = PAGE_EVENTS[path];
     if (!page) {
       return;
     }
-    track(page.event, { page: path, funnel_step: page.step });
+    const props = { page: path };
+    if (page.step) {
+      props.funnel_step = page.step;
+    }
+    track(page.event, props);
   }
 
   function bindBriefForm() {
@@ -158,7 +183,6 @@
           track(eventName, {
             page: window.location.pathname,
             nav_destination: destination,
-            funnel_step: 2,
           });
         });
       });

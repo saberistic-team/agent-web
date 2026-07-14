@@ -169,9 +169,9 @@ def discover_screenshot_routes(app_root: Path | None = None) -> list[str]:
         if str(root) not in sys.path:
             sys.path.insert(0, str(root))
         from app.main import app as fastapi_app  # type: ignore
-        from app.seo import LEGACY_REDIRECTS  # type: ignore
+        from app.seo import PERMANENT_REDIRECTS  # type: ignore
 
-        legacy = set(LEGACY_REDIRECTS.keys())
+        legacy = set(PERMANENT_REDIRECTS.keys())
         for route in fastapi_app.routes:
             methods = getattr(route, "methods", None) or set()
             path = getattr(route, "path", None)
@@ -199,7 +199,6 @@ def discover_screenshot_routes(app_root: Path | None = None) -> list[str]:
         "/about",
         "/services",
         "/case-studies",
-        "/diagnostic",
         "/brief",
         "/brief/success",
         "/insights",

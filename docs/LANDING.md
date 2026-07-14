@@ -40,10 +40,11 @@ Served by the FastAPI app:
 | Route | Purpose |
 |-------|---------|
 | `/robots.txt` | Crawl rules + sitemap pointer |
-| `/sitemap.xml` | Canonical indexable pages (`/`, `/about`, `/brief`, `/services`, `/case-studies`, `/diagnostic`, `/insights`, plus `/work/{slug}` case studies and `/insights/{slug}` articles) |
+| `/sitemap.xml` | Canonical indexable pages (`/`, `/about`, `/brief`, `/services`, `/case-studies`, `/insights`, plus `/work/{slug}` case studies and `/insights/{slug}` articles) |
 | `/what-we-do.html` | 301 → `/#services` |
 | `/what-we-did.html` | 301 → `/#work` |
 | `/who-we-are.html` | 301 → `/about` |
+| `/diagnostic` | 301 → `/brief` |
 
 Each indexable HTML page includes a self-referencing `<link rel="canonical">`
 on `https://saberistic.com`. Unknown browser paths return the branded HTML

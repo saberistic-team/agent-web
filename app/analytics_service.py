@@ -17,10 +17,12 @@ PLAUSIBLE_EVENTS_URL = "https://plausible.io/api/event"
 SENSITIVE_PROPERTY_NAMES = frozenset(
     {
         "email",
+        "phone",
         "website",
         "brief",
         "contact_value",
         "contact_method",
+        "wallet_address",
         "stripe_session_id",
         "stripe_payment_intent_id",
         "checkout_url",
@@ -28,6 +30,7 @@ SENSITIVE_PROPERTY_NAMES = frozenset(
         "payment_intent",
         "url",
         "submitted_url",
+        "query_string",
     }
 )
 
@@ -45,6 +48,8 @@ ALLOWED_PROPERTY_NAMES = frozenset(
         "page",
         "contact_channel",
         "funnel_step",
+        "case_study_slug",
+        "article_slug",
     }
 )
 

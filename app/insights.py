@@ -7,15 +7,11 @@ import json
 from pathlib import Path
 from typing import Any
 
+from app.metadata import OG_IMAGE, OG_IMAGE_ALT
 from app.seo import CANONICAL_BASE
 from app.site_layout import render_site_header
 
 DATA_PATH = Path(__file__).resolve().parent.parent / "site" / "data" / "insights.json"
-
-OG_IMAGE = f"{CANONICAL_BASE}/assets/og-share.png"
-OG_IMAGE_ALT = (
-    "saberistic — AmirSaber Sharifi — filling gaps between markets and tech"
-)
 DEFAULT_AUTHOR = "AmirSaber Sharifi"
 
 REQUIRED_FIELDS = (

@@ -66,15 +66,34 @@ def test_sanitize_properties_blocks_sensitive_fields() -> None:
         {
             "brief_id": 42,
             "email": "secret@example.com",
+            "phone": "+15551234567",
+            "wallet_address": "0xabc123",
             "website": "https://secret.com",
             "brief": "confidential scope",
             "stripe_session_id": "cs_live_secret",
             "checkout_url": "https://checkout.stripe.com/secret",
+            "query_string": "utm_source=secret",
             "utm_source": "linkedin",
             "unknown_field": "drop me",
         }
     )
     assert props == {"brief_id": 42, "utm_source": "linkedin"}
+
+
+@pytest.mark.unit
+def test_sanitize_properties_allows_content_slugs() -> None:
+    props = analytics_service.sanitize_properties(
+        {
+            "case_study_slug": "brave",
+            "article_slug": "mvp-competing-sources-of-truth",
+            "page": "/work/brave",
+        }
+    )
+    assert props == {
+        "case_study_slug": "brave",
+        "article_slug": "mvp-competing-sources-of-truth",
+        "page": "/work/brave",
+    }
 
 
 @pytest.mark.unit
@@ -277,12 +296,67 @@ def test_pages_inject_analytics_when_enabled(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("ANALYTICS_ENABLED", "true")
     monkeypatch.setenv("PLAUSIBLE_DOMAIN", "saberistic.com")
 
-    for path in ("/", "/about", "/brief", "/brief/success", "/insights"):
+    static_paths = (
+        "/",
+        "/about",
+        "/services",
+        "/case-studies",
+        "/brief",
+        "/brief/success",
+        "/insights",
+    )
+    for path in static_paths:
         response = client.get(path)
         assert response.status_code == 200
         assert 'name="saberistic-analytics-domain"' in response.text
         assert 'content="saberistic.com"' in response.text
         assert 'src="/assets/analytics.js"' in response.text
+        assert 'name="saberistic-analytics-page-event"' not in response.text
+
+
+@pytest.mark.unit
+def test_case_study_page_injects_server_page_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANALYTICS_ENABLED", "true")
+    monkeypatch.setenv("PLAUSIBLE_DOMAIN", "saberistic.com")
+
+    response = client.get("/work/brave")
+    assert response.status_code == 200
+    assert 'name="saberistic-analytics-page-event" content="Case Study Viewed"' in (
+        response.text
+    )
+    assert 'name="saberistic-analytics-case-study-slug" content="brave"' in response.text
+    assert "saberistic-analytics-article-slug" not in response.text
+
+
+@pytest.mark.unit
+def test_insight_article_injects_server_page_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANALYTICS_ENABLED", "true")
+    monkeypatch.setenv("PLAUSIBLE_DOMAIN", "saberistic.com")
+
+    response = client.get("/insights/mvp-competing-sources-of-truth")
+    assert response.status_code == 200
+    assert 'name="saberistic-analytics-page-event" content="Insight Viewed"' in (
+        response.text
+    )
+    assert (
+        'name="saberistic-analytics-article-slug" '
+        'content="mvp-competing-sources-of-truth"'
+    ) in response.text
+    assert "saberistic-analytics-case-study-slug" not in response.text
+
+
+@pytest.mark.unit
+def test_redirect_route_omits_page_event_meta(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ANALYTICS_ENABLED", "true")
+    monkeypatch.setenv("PLAUSIBLE_DOMAIN", "saberistic.com")
+
+    response = client.get("/diagnostic", follow_redirects=False)
+    assert response.status_code == 301
+    assert "saberistic-analytics-domain" not in response.text
 
 
 @pytest.mark.unit
@@ -308,6 +382,39 @@ def test_analytics_js_exists_and_documents_funnel() -> None:
     assert "Case Studies Viewed" in body
     assert "saberistic_utm" in body
     assert "Never sends brief text" in body
+    assert "About Viewed" in body
+    assert "Services Viewed" in body
+    assert "Case Studies Viewed" in body
+    assert "saberistic-analytics-page-event" in body
+    assert "saberistic-analytics-case-study-slug" in body
+    assert "saberistic-analytics-article-slug" in body
+    assert "Service Viewed" not in body
+    assert '"/about": { event: "About Viewed" }' in body
+    assert '"/services": { event: "Services Viewed" }' in body
+    assert "replace(/\\/$/, \"\")" in body
+
+
+@pytest.mark.unit
+def test_analytics_js_content_pages_omit_funnel_step() -> None:
+    body = client.get("/assets/analytics.js").text
+    assert '"/about": { event: "About Viewed" }' in body
+    assert '"/services": { event: "Services Viewed" }' in body
+    assert '"/insights": { event: "Insights Viewed" }' in body
+    assert '"/brief": { event: "Brief Viewed", step: 3 }' in body
+
+
+@pytest.mark.unit
+def test_trailing_slash_pages_still_inject_analytics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANALYTICS_ENABLED", "true")
+    monkeypatch.setenv("PLAUSIBLE_DOMAIN", "saberistic.com")
+
+    for path in ("/about/", "/services/", "/work/brave/"):
+        response = client.get(path)
+        assert response.status_code == 200
+        assert 'name="saberistic-analytics-domain"' in response.text
+        assert 'src="/assets/analytics.js"' in response.text
 
 
 @pytest.mark.unit
