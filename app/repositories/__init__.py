@@ -5,6 +5,7 @@ from app.repositories.postgres import (
     PostgresAdminUserRepository,
     PostgresCompanyRepository,
     PostgresContactRepository,
+    PostgresResearchRecordRepository,
     PostgresSourceRecordRepository,
     default_repositories,
 )
@@ -13,6 +14,7 @@ from app.repositories.protocols import (
     AdminUserRepository,
     CompanyRepository,
     ContactRepository,
+    ResearchRecordRepository,
     SourceRecordRepository,
 )
 
@@ -21,11 +23,13 @@ __all__ = [
     "AdminUserRepository",
     "CompanyRepository",
     "ContactRepository",
+    "ResearchRecordRepository",
     "SourceRecordRepository",
     "PostgresActivityRepository",
     "PostgresAdminUserRepository",
     "PostgresCompanyRepository",
     "PostgresContactRepository",
+    "PostgresResearchRecordRepository",
     "PostgresSourceRecordRepository",
     "default_repositories",
 ]
