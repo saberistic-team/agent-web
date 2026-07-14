@@ -413,13 +413,15 @@ def test_admin_briefs_page_passes_search_and_filters() -> None:
 @pytest.mark.unit
 @pytest.mark.integration
 def test_admin_briefs_page_handles_database_errors() -> None:
+    import psycopg
+
     token_hash = admin_auth.hash_session_token("briefs-db-error")
     row = _session_row(token_hash=token_hash)
     with mock_db_connection():
         with patch("app.admin_routes.db.get_admin_session_by_token_hash", return_value=row):
             with patch(
                 "app.admin_routes.brief_service.list_briefs",
-                side_effect=RuntimeError("connection refused"),
+                side_effect=psycopg.OperationalError("connection refused"),
             ):
                 response = client.get(
                     "/admin/briefs",

@@ -14,6 +14,13 @@ from app.repositories.protocols import ProjectBriefRepository
 VALID_STATUSES = frozenset({"pending_payment", "paid", "abandoned"})
 MAX_QUERY_LENGTH = 100
 
+# Expected failures from brief DB connectivity or query execution — not programming bugs.
+BRIEF_DATABASE_ERRORS: tuple[type[BaseException], ...] = (
+    psycopg.Error,
+    OSError,
+    TimeoutError,
+)
+
 
 @dataclass(frozen=True)
 class BriefListFilters:
