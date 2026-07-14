@@ -132,6 +132,16 @@ def test_admin_sessions_migration_is_idempotent() -> None:
 
 
 @pytest.mark.unit
+def test_admin_login_rate_limits_migration_is_idempotent() -> None:
+    rate_limits = next(m for m in MIGRATIONS if m.name == "admin_login_rate_limits")
+    assert rate_limits.version == "005"
+    assert "CREATE TABLE IF NOT EXISTS admin_login_rate_limits" in rate_limits.up_sql
+    assert "limiter_key TEXT PRIMARY KEY" in rate_limits.up_sql
+    assert "locked_until TIMESTAMPTZ" in rate_limits.up_sql
+    assert "CREATE INDEX IF NOT EXISTS admin_login_rate_limits_locked_until_idx" in rate_limits.up_sql
+
+
+@pytest.mark.unit
 def test_migration_rollback_strategy_is_forward_only() -> None:
     for migration in MIGRATIONS:
         assert not hasattr(migration, "down_sql")
