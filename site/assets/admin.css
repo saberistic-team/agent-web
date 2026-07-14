@@ -266,8 +266,8 @@ body.admin-app {
   border-bottom: 1px solid transparent;
 }
 
-.audit-pager-link:hover,
-.audit-pager-link:focus-visible {
+.admin-pager-link:hover,
+.admin-pager-link:focus-visible {
   border-color: var(--accent);
   outline: none;
 }
