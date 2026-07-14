@@ -9,7 +9,7 @@ from typing import Any
 import psycopg
 
 from app.actor_context import ActorContext
-from app.repositories import get_repositories
+from app.repositories.postgres import get_repositories
 from app.repositories.protocols import AuditEventRepository
 
 logger = logging.getLogger(__name__)
