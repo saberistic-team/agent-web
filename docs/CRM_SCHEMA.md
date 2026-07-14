@@ -33,7 +33,7 @@ owns the single commit/rollback boundary via `crm_transaction()` in
 | `CrmService` mutations | `with crm_transaction(conn):` | Business writes + required audit event |
 | `CrmService.import_batch` | same | Source-record inserts + `import.batch` audit |
 | `CrmService.link_project_brief_source` | same | Brief-to-CRM source linkage (brief conversion) |
-| Admin login success | `crm_transaction` in `admin_routes._issue_session` | Session row + `auth.login.success` audit |
+| Admin login success | `crm_transaction` in `admin_routes._issue_session` | Prior-session revocation (if any) + new session row + `auth.login.success` audit |
 | Admin logout (authenticated) | `crm_transaction` in `admin_logout` | Session revocation + `auth.logout` audit |
 | Admin login failure | `crm_transaction` in `_record_login_failure` | `auth.login.failure` audit only (best-effort) |
 

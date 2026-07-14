@@ -230,12 +230,6 @@ def _issue_session(
     admin_username: str,
     prior_raw_token: str | None,
 ) -> int:
-    if prior_raw_token:
-        prior_hash = admin_auth.hash_session_token(prior_raw_token)
-        with db.db_connection(settings.database_url) as conn:
-            with crm_transaction(conn):
-                db.revoke_admin_session(conn, token_hash=prior_hash)
-
     raw_token = admin_auth.generate_session_token()
     token_hash = admin_auth.hash_session_token(raw_token)
     expires_at = admin_auth.session_expires_at(settings)
@@ -243,6 +237,9 @@ def _issue_session(
     csrf_hash = admin_auth.hash_csrf_token(initial_csrf)
     with db.db_connection(settings.database_url) as conn:
         with crm_transaction(conn):
+            if prior_raw_token:
+                prior_hash = admin_auth.hash_session_token(prior_raw_token)
+                db.revoke_admin_session(conn, token_hash=prior_hash)
             session_id = db.create_admin_session(
                 conn,
                 token_hash=token_hash,
