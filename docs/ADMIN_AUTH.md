@@ -88,8 +88,8 @@ checks are likewise not relied upon for CSRF protection.
 | `ADMIN_LOGIN_RATE_WINDOW_SECONDS` | Optional | Rate-limit counting window in seconds (default `900`) |
 | `ADMIN_LOGIN_LOCKOUT_SECONDS` | Optional | Lockout duration after limit exceeded (default `900`) |
 | `ADMIN_TRUST_PROXY_HEADERS` | Optional | Trust `X-Forwarded-For` for client source (default off; set `true` on Render) |
-| `ADMIN_PREVIEW_MODE` | Optional | **CI / local only.** When `1`/`true`, protected `/admin` GET pages render without login and the dashboard fills with **randomized mock intake data** for Playwright screenshots. Hard-disabled if `BASE_URL` contains `saberistic.com`. Never set on production Render. |
-| `ADMIN_PREVIEW_SEED` | Optional | Seed for mock dashboard randomization (stable screenshots/tests). |
+| `ADMIN_PREVIEW_MODE` | Optional | **CI / local only.** When `1`/`true`, protected `/admin` GET pages render without login and admin pages fill with **randomized mock data** for Playwright screenshots. Hard-disabled if `BASE_URL` contains `saberistic.com`. Never set on production Render. |
+| `ADMIN_PREVIEW_SEED` | Optional | Seed for mock admin randomization (stable screenshots/tests). |
 | `BASE_URL` | Yes | Public site URL; `https://…` enables `Secure` session cookies |
 
 Set secrets in the Render dashboard (or locally via `.env` — never commit).
@@ -218,4 +218,4 @@ WHERE updated_at < NOW() - INTERVAL '30 minutes'
 - Authentication failures return a generic *Invalid username or password* message.
 - Login always mints a fresh session ID and revokes any prior session cookie
   presented during sign-in (session fixation resistance).
-- Brief browse/search admin UI remains intentionally deferred ([#44](https://github.com/saberistic-team/agent-web/issues/44)).
+- Submitted briefs are listed at `/admin/briefs` (read-only; requires admin session).

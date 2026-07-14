@@ -12,6 +12,18 @@ ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
         "summary": "Operational overview and brief summaries",
     },
     {
+        "label": "Audit",
+        "href": "/admin/audit",
+        "milestone": "Audit trail",
+        "summary": "Immutable security and mutation history",
+    },
+    {
+        "label": "Briefs",
+        "href": "/admin/briefs",
+        "milestone": "Brief intake",
+        "summary": "Submitted project brief leads",
+    },
+    {
         "label": "Companies",
         "href": "/admin/companies",
         "milestone": "CRM data model",
@@ -68,6 +80,14 @@ ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
 )
 
 ADMIN_PATHS: frozenset[str] = frozenset(link["href"] for link in ADMIN_NAV_LINKS)
+
+# Pre-merge Playwright capture targets (shell pages + login). Never production.
+ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
+    *(link["href"] for link in ADMIN_NAV_LINKS),
+    "/admin/login",
+    "/admin/briefs/1",
+    "/admin/briefs/2",
+)
 
 
 def render_admin_nav(active_path: str) -> str:

@@ -20,6 +20,13 @@ is set. OpenAI and GitHub Models are backups (OpenAI quota is often exhausted).
    **Pitfall:** the conflict clone uses `--single-branch`; fetching the base
    must use an explicit refspec (`+refs/heads/main:refs/remotes/origin/main`)
    or `git merge origin/main` fails and loops Builder↔Reviewer.
+   **Pitfall:** a “resolved” merge that drops imports / router wiring / Protocol
+   exports breaks CI (`NameError` / `ImportError`) and also loops — resolution
+   must smoke `from app.main import app` before push (`broken_after_resolve`
+   → `waiting`, never Reviewer).
+   **Pitfall:** per-file Contents API commits (Builder file loop or Reviewer
+   screenshots) storm CI and race other merges — codegen/uploads must use
+   `put_files` / `put_file_batch` / batched `upload_to_branch` (one commit).
 7. Reviewer (acceptance checklist + screenshots). If the PR is dirty again
    (e.g. another merge landed), Reviewer requests changes and requeues Builder.
 
@@ -37,8 +44,10 @@ Title-only slugs drift (e.g. `P1 — …` vs bare title) and previously forked
 Reviewer onto a ghost branch while the real PR stayed stale. See
 [AGENTS/builder.md](../AGENTS/builder.md) — **Branch and PR reuse**.
 
-Binary paths (`.png`, `.jpg`, …) go through Contents API as raw bytes so share
-images are not UTF-8-corrupted.
+Binary paths (`.png`, `.jpg`, …) go through the Git Data API as base64 blobs
+(`put_files` / `put_file_batch`) so share images are not UTF-8-corrupted, and
+so Builder/Reviewer land **one commit per agent step** (not one Contents API
+commit per file, which storms CI and races merges).
 
 ## Reviewer AI flow
 

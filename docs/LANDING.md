@@ -4,8 +4,8 @@ Brutal-minimalist about/landing page for **AmirSaber Sharifi**, served at `/`
 from this repo (`site/`).
 
 The **Request project brief** flow ([PROJECT_BRIEF.md](PROJECT_BRIEF.md)) is live
-at `/brief`. Admin UI, variable pricing/coupons, and CRM sync stay out of scope
-([deferred items](PROJECT_BRIEF.md#intentionally-deferred)).
+at `/brief`. Operators browse submissions at `/admin/briefs`. Variable pricing/coupons
+and CRM sync stay out of scope ([deferred items](PROJECT_BRIEF.md#intentionally-deferred)).
 
 ## Local
 

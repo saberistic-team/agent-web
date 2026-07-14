@@ -49,8 +49,37 @@ correct in those scripts — see [docs/MODELS.md](../docs/MODELS.md).
 
 PNG/JPEG/WebP/GIF/ICO (and similar) must be committed as **raw bytes**. Never
 rewrite them through UTF-8 text (`errors=replace` turns `0x89` into `U+FFFD`
-and corrupts Open Graph / share images). Codegen `put_file` accepts `bytes` for
-binary paths.
+and corrupts Open Graph / share images). Codegen `put_file` / `put_files`
+accept `bytes` for binary paths (Git Data API base64 blobs).
+
+## Preview / screenshot mock data (mandatory)
+
+When you add or change an **admin page, public UI surface, table, or detail
+view** that Reviewer will screenshot, you **must** also ship
+**randomized mock data** for ``ADMIN_PREVIEW_MODE`` (and matching unit tests).
+
+Follow the pattern in ``app/admin_preview.py``:
+
+1. Builders like ``build_preview_*`` use ``_preview_rng()`` /
+   ``ADMIN_PREVIEW_SEED`` so content is random across runs but stable in tests.
+2. Wire the route: when ``settings.admin_preview_enabled``, return mock rows —
+   **never** an empty shell that says “no records yet” for brand-new surfaces.
+3. Cover representative states needed by acceptance (populated +
+   empty/nullable fields) via distinct preview IDs or fixtures (e.g. briefs
+   ``/admin/briefs/1`` paid+UTM, ``/admin/briefs/2`` pending/nullables).
+4. Add/update tests under ``tests/test_admin_preview.py`` (and route tests)
+   proving preview HTML contains mock content with a fixed seed.
+
+Empty real-DB “0 items” empty-states remain valid **outside** preview mode.
+Do not skip mocks because “production will have data.”
+
+## Batched commits (mandatory)
+
+Builder codegen and Reviewer screenshot uploads must land as **one Git
+commit per agent step**, not one Contents API commit per file. Per-file
+pushes storm CI and race other merges into dirty heads (Builder↔Reviewer
+loop). Use `github_api.put_files` / `codegen_models.put_file_batch` /
+`screenshot_deploy.upload_to_branch` (already batched).
 
 ## Merge conflicts (mandatory)
 
@@ -72,6 +101,11 @@ a dirty PR as unfinished Builder work.
    `git merge origin/main` fails with “not something we can merge” and loops
    Builder↔Reviewer. `builder_conflicts.py` must fetch with an explicit refspec:
    `+refs/heads/{base}:refs/remotes/origin/{base}`.
+   **Post-merge smoke (mandatory):** after conflict resolution, `builder_conflicts`
+   must run `from app.main import app` and refuse to push / claim `resolved`
+   when markers remain or import fails (typical breaks: dropped `admin_router`,
+   missing Protocol exports, obsolete Basic-auth imports). Status
+   `broken_after_resolve` → `waiting` handoff — never Reviewer.
 4. Comment `### builder_conflict_context` and `### builder_conflict_result` on
    the issue.
 5. **Re-check** `mergeable` / `mergeable_state`. Only when clean → hand off

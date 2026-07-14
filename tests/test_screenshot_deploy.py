@@ -107,7 +107,20 @@ def test_discover_screenshot_routes_include_admin() -> None:
     routes = discover_screenshot_routes(include_admin=True)
     assert "/admin" in routes
     assert "/admin/login" in routes
+    assert "/admin/companies" in routes
+    assert "/admin/settings" in routes
     assert "/" in routes
+
+
+def test_admin_screenshot_routes_match_layout() -> None:
+    from app.admin_layout import ADMIN_SCREENSHOT_PATHS
+    from scripts.screenshot_deploy import (
+        ADMIN_SCREENSHOT_ROUTES,
+        resolved_admin_screenshot_routes,
+    )
+
+    assert tuple(ADMIN_SCREENSHOT_PATHS) == ADMIN_SCREENSHOT_ROUTES
+    assert resolved_admin_screenshot_routes() == ADMIN_SCREENSHOT_ROUTES
 
 
 def test_routes_affected_by_single_html_file() -> None:
@@ -127,17 +140,23 @@ def test_routes_affected_by_site_css_is_all_public() -> None:
 
 
 def test_routes_affected_admin_only_with_include_admin() -> None:
-    candidates = ["/", "/about", "/admin", "/admin/login"]
+    candidates = [
+        "/",
+        "/about",
+        "/admin",
+        "/admin/companies",
+        "/admin/login",
+    ]
     got = routes_affected_by_changed_files(
         ["app/admin_routes.py", "app/admin_pages.py"],
         candidate_routes=candidates,
         include_admin=True,
     )
-    assert got == ["/admin", "/admin/login"]
+    assert got == ["/admin", "/admin/companies", "/admin/login"]
 
 
 def test_routes_affected_admin_only_excluded_post_deploy() -> None:
-    candidates = ["/", "/about", "/admin", "/admin/login"]
+    candidates = ["/", "/about", "/admin", "/admin/companies", "/admin/login"]
     got = routes_affected_by_changed_files(
         ["app/admin_routes.py", "app/admin_auth.py"],
         candidate_routes=candidates,
@@ -193,6 +212,50 @@ def test_format_overflow_hard_fail_mobile_only() -> None:
     assert "visual readability" in msg
     assert "out of frame" in msg
     assert "mobile" in msg or "390" in msg
+
+
+def test_format_empty_data_hard_fail_dedupes_routes() -> None:
+    from screenshot_deploy import format_empty_data_hard_fail
+
+    assert format_empty_data_hard_fail([]) is None
+    msg = format_empty_data_hard_fail(
+        [
+            {
+                "viewport": "desktop",
+                "route": "/admin/briefs",
+                "reason": "empty_table",
+                "phrase": "no project briefs submitted yet",
+            },
+            {
+                "viewport": "mobile",
+                "route": "/admin/briefs",
+                "reason": "empty_table",
+                "phrase": "no project briefs submitted yet",
+            },
+            {
+                "viewport": "desktop",
+                "route": "/admin/audit",
+                "reason": "empty_table",
+                "phrase": "no audit events recorded yet",
+            },
+        ]
+    )
+    assert msg is not None
+    assert "admin preview empty data" in msg
+    assert "`/admin/briefs`" in msg
+    assert "`/admin/audit`" in msg
+    assert "admin_preview.py" in msg
+
+
+def test_page_empty_data_helper_flags_empty_table_phrases() -> None:
+    """Pure helper parity: empty shell phrases used by Playwright checks."""
+    from screenshot_deploy import ADMIN_EMPTY_SHELL_PHRASES
+
+    body = "Submitted briefs\n0 briefs\nNo project briefs submitted yet."
+    lowered = body.lower()
+    assert any(p in lowered for p in ADMIN_EMPTY_SHELL_PHRASES)
+    preview_ok = "Submitted briefs\n#1\nhttps://acme.example\nPaid"
+    assert not any(p in preview_ok.lower() for p in ADMIN_EMPTY_SHELL_PHRASES)
 
 
 def test_resolve_base_url_ignores_empty(monkeypatch) -> None:
@@ -266,3 +329,28 @@ def test_comment_markdown_title_before_image() -> None:
     )
     assert "- **post-about.png**\n    ![post-about.png](" in body
     assert "post-about.png: ![" not in body
+
+
+def test_upload_to_branch_batches_one_commit(tmp_path, monkeypatch) -> None:
+    from screenshot_deploy import upload_to_branch
+
+    a = tmp_path / "branch-home.png"
+    b = tmp_path / "branch-about.png"
+    a.write_bytes(b"\x89PNG1")
+    b.write_bytes(b"\x89PNG2")
+    seen: dict[str, object] = {}
+
+    def fake_put_files(repo, branch, files, message):  # noqa: ANN001
+        seen["repo"] = repo
+        seen["branch"] = branch
+        seen["files"] = files
+        seen["message"] = message
+        return "sha"
+
+    monkeypatch.setattr("screenshot_deploy.put_files", fake_put_files)
+    urls = upload_to_branch("o/n", "builder/x", [a, b], ".agent/screenshots/pr-1")
+    assert len(seen["files"]) == 2
+    assert seen["files"][0][0].endswith("branch-home.png")
+    assert "2 screenshot" in str(seen["message"])
+    assert urls[0].endswith(".agent/screenshots/pr-1/branch-home.png")
+    assert urls[1].endswith(".agent/screenshots/pr-1/branch-about.png")

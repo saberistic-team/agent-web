@@ -223,6 +223,92 @@ def test_merge_fetch_uses_explicit_refspec_for_single_branch_clone(monkeypatch) 
     assert fetch[2] == "+refs/heads/main:refs/remotes/origin/main"
 
 
+def test_leftover_conflict_markers(tmp_path) -> None:
+    from builder_conflicts import leftover_conflict_markers
+
+    clean = tmp_path / "ok.py"
+    clean.write_text("x = 1\n", encoding="utf-8")
+    dirty = tmp_path / "bad.py"
+    dirty.write_text("<<<<<<< HEAD\na\n=======\nb\n>>>>>>> main\n", encoding="utf-8")
+    assert leftover_conflict_markers(tmp_path, ["ok.py", "bad.py"]) == ["bad.py"]
+
+
+def test_smoke_import_app_reports_failure(tmp_path) -> None:
+    from builder_conflicts import smoke_import_app
+
+    # Empty tree cannot import app.main
+    ok, detail = smoke_import_app(tmp_path)
+    assert ok is False
+    assert detail
+
+
+def test_merge_conflict_resolve_skips_push_when_smoke_fails(monkeypatch, tmp_path) -> None:
+    """Broken conflict merges must not claim resolved / push (anti-loop)."""
+    from pathlib import Path
+
+    from builder_conflicts import merge_default_into_pr_branch
+
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "app").mkdir()
+    (root / "app" / "main.py").write_text(
+        "<<<<<<< HEAD\nfrom broken import x\n=======\nfrom other import y\n>>>>>>> main\n",
+        encoding="utf-8",
+    )
+
+    def fake_run_git(args: list[str], *, cwd: Path, check: bool = True):
+        class _Proc:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        if args[:1] == ["merge"]:
+            _Proc.returncode = 1
+            return _Proc()
+        if args[:2] == ["diff", "--name-only"]:
+            _Proc.stdout = "app/main.py\n"
+            return _Proc()
+        if args[0] == "push":
+            raise AssertionError("must not push when smoke fails")
+        return _Proc()
+
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    monkeypatch.setattr("builder_conflicts._run_git", fake_run_git)
+    monkeypatch.setattr(
+        "builder_conflicts.summarize_recent_closed_work",
+        lambda repo, **kwargs: "",
+    )
+    monkeypatch.setattr(
+        "builder_conflicts.list_unmerged_paths",
+        lambda cwd: ["app/main.py"],
+    )
+    monkeypatch.setattr(
+        "builder_conflicts.default_resolve_file",
+        lambda path, text, brief, chat=None: "from broken import x\n",
+    )
+    monkeypatch.setattr(
+        "builder_conflicts.smoke_import_app",
+        lambda cwd: (False, "NameError: name 'admin_router' is not defined"),
+    )
+
+    pr = {
+        "number": 135,
+        "title": "builder: contacts (#105)",
+        "body": "Closes #105",
+        "head": {"ref": "builder/105-x"},
+        "base": {"ref": "main"},
+    }
+    result = merge_default_into_pr_branch(
+        "saberistic-team/agent-web",
+        pr,
+        work_dir=root,
+        push=True,
+    )
+    assert result["status"] == "broken_after_resolve"
+    assert result.get("pushed") is False
+    assert "admin_router" in (result.get("smoke_error") or "")
+
+
 def test_linked_pr_conflict_status_clean(monkeypatch) -> None:
     from builder_conflicts import linked_pr_conflict_status
 

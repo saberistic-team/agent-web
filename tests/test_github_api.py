@@ -120,3 +120,69 @@ def test_list_issue_comments_paginates(monkeypatch: pytest.MonkeyPatch) -> None:
     comments = github_api.list_issue_comments("o/n", 83)
     assert len(comments) == 101
     assert "all_done" in comments[-1]["body"]
+
+
+def test_put_files_creates_one_commit(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Batch upload must use Git Data API once — not N Contents PUTs."""
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    calls: list[tuple[str, str]] = []
+
+    def fake_api(method: str, path: str, body: dict[str, Any] | None = None, **_k: Any) -> Any:
+        calls.append((method, path))
+        if method == "GET" and path.endswith("/git/ref/heads/builder/x"):
+            return {"object": {"sha": "headsha"}}
+        if method == "GET" and "/git/commits/" in path:
+            return {"tree": {"sha": "treesha"}}
+        if method == "POST" and path.endswith("/git/blobs"):
+            assert body and body.get("encoding") == "base64"
+            return {"sha": f"blob-{len([c for c in calls if c[0] == 'POST' and 'blobs' in c[1]])}"}
+        if method == "POST" and path.endswith("/git/trees"):
+            assert body and len(body["tree"]) == 2
+            assert body["base_tree"] == "treesha"
+            return {"sha": "newtree"}
+        if method == "POST" and path.endswith("/git/commits"):
+            assert body and body["message"] == "batch"
+            assert body["parents"] == ["headsha"]
+            return {"sha": "newcommit"}
+        if method == "PATCH" and path.endswith("/git/refs/heads/builder/x"):
+            assert body == {"sha": "newcommit"}
+            return {"object": {"sha": "newcommit"}}
+        raise AssertionError(f"unexpected {method} {path}")
+
+    monkeypatch.setattr(github_api, "api", fake_api)
+    sha = github_api.put_files(
+        "o/n",
+        "builder/x",
+        [("a.txt", b"one"), ("b.png", b"\x89PNG")],
+        "batch",
+    )
+    assert sha == "newcommit"
+    assert ("PUT",) not in { (m,) for m, _ in calls }
+    assert not any("/contents/" in p for _, p in calls)
+    assert sum(1 for m, p in calls if m == "POST" and p.endswith("/git/commits")) == 1
+
+
+def test_put_files_empty_returns_head(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+
+    def fake_api(method: str, path: str, **_k: Any) -> Any:
+        assert method == "GET"
+        return {"object": {"sha": "only-head"}}
+
+    monkeypatch.setattr(github_api, "api", fake_api)
+    assert github_api.put_files("o/n", "main", [], "noop") == "only-head"
+
+
+def test_put_files_rejects_unsafe_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+
+    def fake_api(method: str, path: str, **_k: Any) -> Any:
+        if "ref/heads" in path:
+            return {"object": {"sha": "h"}}
+        if "/git/commits/" in path:
+            return {"tree": {"sha": "t"}}
+        raise AssertionError(path)
+
+    monkeypatch.setattr(github_api, "api", fake_api)
+    with pytest.raises(github_api.GitHubError, match="unsafe path"):
+        github_api.put_files("o/n", "main", [("../etc/passwd", b"x")], "bad")
