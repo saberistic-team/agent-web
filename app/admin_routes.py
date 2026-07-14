@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
-from app import admin_auth, admin_db, admin_pages, audit_service, db
+from app import admin_auth, admin_pages, audit_service, db
 from app.actor_context import actor_context_from_request, anonymous_actor_context
 from app.admin_layout import ADMIN_NAV_LINKS
 from app.config import Settings, get_settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -26,7 +29,7 @@ def _load_valid_session(request: Request, settings: Settings) -> admin_auth.Admi
         return None
     token_hash = admin_auth.hash_session_token(raw_token)
     with db.db_connection(settings.database_url) as conn:
-        row = admin_db.get_admin_session_by_token_hash(conn, token_hash)
+        row = db.get_admin_session_by_token_hash(conn, token_hash)
     if row is None or row.get("revoked_at") is not None:
         return None
     session = admin_auth.session_from_row(row)
@@ -56,13 +59,16 @@ def _record_login_failure(
     settings = get_settings()
     actor = attempted_username.strip() if attempted_username else "anonymous"
     actor_context = actor_context_from_request(request, actor=actor)
-    with db.db_connection(settings.database_url) as conn:
-        audit_service.record_login_failure(
-            conn,
-            actor_context=actor_context,
-            reason=reason,
-            attempted_username=attempted_username,
-        )
+    try:
+        with db.db_connection(settings.database_url) as conn:
+            audit_service.record_login_failure(
+                conn,
+                actor_context=actor_context,
+                reason=reason,
+                attempted_username=attempted_username,
+            )
+    except Exception:
+        logger.exception("Failed to record login failure audit event")
 
 
 def _issue_session(
@@ -76,23 +82,26 @@ def _issue_session(
     if prior_raw_token:
         prior_hash = admin_auth.hash_session_token(prior_raw_token)
         with db.db_connection(settings.database_url) as conn:
-            admin_db.revoke_admin_session(conn, token_hash=prior_hash)
+            db.revoke_admin_session(conn, token_hash=prior_hash)
 
     raw_token = admin_auth.generate_session_token()
     token_hash = admin_auth.hash_session_token(raw_token)
     expires_at = admin_auth.session_expires_at(settings)
     with db.db_connection(settings.database_url) as conn:
-        session_id = admin_db.create_admin_session(
+        session_id = db.create_admin_session(
             conn,
             token_hash=token_hash,
             admin_username=admin_username,
             expires_at=expires_at,
         )
-        audit_service.record_login_success(
-            conn,
-            actor_context=actor_context_from_request(request, actor=admin_username),
-            session_id=session_id,
-        )
+        try:
+            audit_service.record_login_success(
+                conn,
+                actor_context=actor_context_from_request(request, actor=admin_username),
+                session_id=session_id,
+            )
+        except Exception:
+            logger.exception("Failed to record login success audit event")
     admin_auth.set_session_cookie(response, raw_token, settings)
     return session_id
 
@@ -154,7 +163,11 @@ def admin_login_submit(
 
     if not admin_auth.verify_admin_credentials(attempted_username, password, settings):
         admin_auth.record_failed_login(request, settings)
-        _record_login_failure(request, reason="invalid_credentials", attempted_username=attempted_username)
+        _record_login_failure(
+            request,
+            reason="invalid_credentials",
+            attempted_username=attempted_username,
+        )
         csrf = admin_auth.generate_csrf_token(settings)
         return HTMLResponse(
             admin_pages.render_admin_login_page(
@@ -186,24 +199,33 @@ def admin_logout(request: Request) -> RedirectResponse:
     actor = "anonymous"
     if raw_token is not None:
         token_hash = admin_auth.hash_session_token(raw_token)
-        with db.db_connection(settings.database_url) as conn:
-            row = admin_db.get_admin_session_by_token_hash(conn, token_hash)
-            if row is not None:
-                session_id = int(row["id"])
-                actor = str(row["admin_username"])
-            admin_db.revoke_admin_session(conn, token_hash=token_hash)
-            audit_service.record_logout(
-                conn,
-                actor_context=actor_context_from_request(request, actor=actor),
-                session_id=session_id,
-            )
+        try:
+            with db.db_connection(settings.database_url) as conn:
+                row = db.get_admin_session_by_token_hash(conn, token_hash)
+                if row is not None:
+                    session_id = int(row["id"])
+                    actor = str(row["admin_username"])
+                db.revoke_admin_session(conn, token_hash=token_hash)
+                try:
+                    audit_service.record_logout(
+                        conn,
+                        actor_context=actor_context_from_request(request, actor=actor),
+                        session_id=session_id,
+                    )
+                except Exception:
+                    logger.exception("Failed to record logout audit event")
+        except Exception:
+            logger.exception("Failed to revoke admin session during logout")
     else:
-        with db.db_connection(settings.database_url) as conn:
-            audit_service.record_logout(
-                conn,
-                actor_context=anonymous_actor_context(request),
-                session_id=None,
-            )
+        try:
+            with db.db_connection(settings.database_url) as conn:
+                audit_service.record_logout(
+                    conn,
+                    actor_context=anonymous_actor_context(request),
+                    session_id=None,
+                )
+        except Exception:
+            logger.exception("Failed to record anonymous logout audit event")
     response = RedirectResponse(url="/admin/login", status_code=303)
     admin_auth.clear_session_cookie(response, settings)
     return response
