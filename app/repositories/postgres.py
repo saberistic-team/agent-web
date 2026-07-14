@@ -332,7 +332,7 @@ class PostgresContactRepository:
                     FROM contacts c
                     LEFT JOIN companies co ON co.id = c.company_id
                 """
-                params: list[Any] = []
+                params = []
                 if not include_archived:
                     sql += " WHERE c.is_archived = FALSE"
                 sql += " ORDER BY c.updated_at DESC LIMIT %s"
@@ -556,6 +556,11 @@ class PostgresProjectBriefRepository:
         id, created_at, website, contact_value, status, paid_at,
         utm_source, utm_campaign
     """
+    _DETAIL_COLUMNS = """
+        id, created_at, website, contact_method, contact_value, brief, status,
+        stripe_session_id, stripe_payment_intent_id, paid_at,
+        utm_source, utm_medium, utm_campaign, utm_content, utm_term
+    """
 
     def _build_filters(
         self,
@@ -630,6 +635,23 @@ class PostgresProjectBriefRepository:
             )
             rows = [dict(row) for row in cur.fetchall()]
         return rows, total
+
+    def get_by_id(
+        self,
+        conn: psycopg.Connection,
+        brief_id: int,
+    ) -> dict[str, Any] | None:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT {self._DETAIL_COLUMNS}
+                FROM project_briefs
+                WHERE id = %s
+                """,
+                (brief_id,),
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
 
 
 class PostgresAuditEventRepository:
@@ -731,6 +753,7 @@ def default_repositories() -> dict[str, Any]:
     }
 
 
+# Type aliases for consumers that want concrete defaults.
 CompanyRepo = PostgresCompanyRepository
 ContactRepo = PostgresContactRepository
 SourceRecordRepo = PostgresSourceRecordRepository
