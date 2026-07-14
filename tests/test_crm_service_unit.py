@@ -255,3 +255,38 @@ def test_read_methods_do_not_change_transaction_state() -> None:
     assert user is not None
     conn.commit.assert_not_called()
     conn.rollback.assert_not_called()
+
+
+@pytest.mark.unit
+def test_crm_service_research_record_helpers() -> None:
+    company_repo = MagicMock()
+    contact_repo = MagicMock()
+    company_repo.list_all.return_value = [{"id": COMPANY_ID, "name": "Acme"}]
+    company_repo.get_by_id.return_value = {"id": COMPANY_ID, "name": "Acme"}
+    contact_repo.list_for_company.return_value = [{"id": CONTACT_ID, "email": "lead@example.com"}]
+    contact_repo.get_by_id.return_value = {"id": CONTACT_ID, "email": "lead@example.com"}
+
+    service, conn, repos = _service_with_mocks(
+        company_repo=company_repo,
+        contact_repo=contact_repo,
+    )
+    research_repo = repos["research_records"]
+    research_repo.list_for_company.return_value = [{"record_type": "hypothesis"}]
+    research_repo.list_for_contact.return_value = [{"record_type": "verified_fact"}]
+    research_repo.create.return_value = {"id": "rec-1", "body": "Series B"}
+
+    assert len(service.list_companies(conn)) == 1
+    assert service.get_company(conn, COMPANY_ID)["name"] == "Acme"
+    assert len(service.list_contacts_for_company(conn, COMPANY_ID)) == 1
+    assert service.get_contact(conn, CONTACT_ID)["email"] == "lead@example.com"
+    assert len(service.list_research_for_company(conn, COMPANY_ID)) == 1
+    assert len(service.list_research_for_contact(conn, CONTACT_ID)) == 1
+
+    record = service.attach_research_record(
+        conn,
+        record_type="hypothesis",
+        company_id=COMPANY_ID,
+        body="Likely buyer",
+    )
+    assert record["body"] == "Series B"
+    conn.commit.assert_called_once()
