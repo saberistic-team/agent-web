@@ -11,9 +11,11 @@ from app.crm_service import CrmRepositories, CrmService
 from app.repositories.postgres import (
     PostgresActivityRepository,
     PostgresAdminUserRepository,
+    PostgresAuditEventRepository,
     PostgresCompanyRepository,
     PostgresContactRepository,
     PostgresSourceRecordRepository,
+    PostgresStageHistoryRepository,
 )
 
 
@@ -39,6 +41,8 @@ def test_crm_service_records_company_contact_and_activity() -> None:
             contacts=contact_repo,
             source_records=source_repo,
             activities=activity_repo,
+            stage_history=MagicMock(),
+            audit_events=MagicMock(),
             admin_users=admin_repo,
         )
     )
@@ -77,6 +81,8 @@ def test_crm_service_links_project_brief_source() -> None:
             contacts=MagicMock(),
             source_records=source_repo,
             activities=MagicMock(),
+            stage_history=MagicMock(),
+            audit_events=MagicMock(),
             admin_users=MagicMock(),
         )
     )
@@ -108,6 +114,8 @@ def test_default_crm_repositories_use_postgres_backends() -> None:
     assert isinstance(service._repos.contacts, PostgresContactRepository)
     assert isinstance(service._repos.source_records, PostgresSourceRecordRepository)
     assert isinstance(service._repos.activities, PostgresActivityRepository)
+    assert isinstance(service._repos.stage_history, PostgresStageHistoryRepository)
+    assert isinstance(service._repos.audit_events, PostgresAuditEventRepository)
     assert isinstance(service._repos.admin_users, PostgresAdminUserRepository)
 
 
@@ -124,6 +132,8 @@ def _service_with_mocks(
         "contacts": contact_repo or MagicMock(),
         "source_records": source_repo or MagicMock(),
         "activities": activity_repo or MagicMock(),
+        "stage_history": MagicMock(),
+        "audit_events": MagicMock(),
         "admin_users": admin_repo or MagicMock(),
     }
     service = CrmService(repos=CrmRepositories(**repos))
