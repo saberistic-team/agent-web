@@ -151,10 +151,13 @@ body.admin-app {
 .admin-title {
   margin: 0 0 1rem;
   font-family: var(--display);
-  font-size: clamp(1.6rem, 4vw, 2.2rem);
-  line-height: 1.1;
+  font-size: clamp(1.35rem, 5.5vw, 2.2rem);
+  line-height: 1.12;
   font-weight: 400;
   text-transform: uppercase;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
 }
 
 .admin-lede {
@@ -181,6 +184,11 @@ body.admin-app {
 }
 
 @media (max-width: 768px) {
+  .admin-title {
+    font-size: clamp(1.15rem, 7vw, 1.6rem);
+    letter-spacing: -0.02em;
+  }
+
   .admin-layout {
     grid-template-columns: 1fr;
   }
@@ -287,6 +295,11 @@ body.admin-app {
 }
 
 @media (max-width: 768px) {
+  .admin-title {
+    font-size: clamp(1.15rem, 7vw, 1.6rem);
+    letter-spacing: -0.02em;
+  }
+
   .admin-layout {
     grid-template-columns: 1fr;
   }
