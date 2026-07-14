@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Generator
 from unittest.mock import MagicMock, patch
 
@@ -21,6 +22,7 @@ TEST_USERNAME = "operator"
 TEST_PASSWORD = "correct-horse-battery-staple"
 TEST_HASH = PasswordHasher().hash(TEST_PASSWORD)
 TEST_SECRET = "test-session-secret-32chars-minimum"
+ADMIN_CSS = Path(__file__).resolve().parents[1] / "site/assets/admin.css"
 
 ADMIN_HREFS = tuple(link["href"] for link in ADMIN_NAV_LINKS)
 ADMIN_LABELS = tuple(link["label"] for link in ADMIN_NAV_LINKS)
@@ -97,6 +99,32 @@ def test_render_admin_nav_marks_active_page() -> None:
 
 
 @pytest.mark.unit
+def test_render_admin_nav_collapsed_by_default() -> None:
+    nav = render_admin_nav("/admin/audit")
+    assert 'class="admin-nav-toggle"' in nav
+    assert 'admin-nav-toggle" open' not in nav
+    assert '<span class="admin-nav-current">Audit</span>' in nav
+    assert '<span class="admin-nav-expand-label">All sections</span>' in nav
+
+
+@pytest.mark.unit
+def test_render_admin_nav_unknown_path_uses_admin_label() -> None:
+    nav = render_admin_nav("/admin/unknown-section")
+    assert '<span class="admin-nav-current">Admin</span>' in nav
+
+
+@pytest.mark.unit
+def test_admin_css_mobile_nav_and_table_scroll_guardrails() -> None:
+    css = ADMIN_CSS.read_text(encoding="utf-8")
+    assert "@media (min-width: 769px)" in css
+    assert ".admin-nav-toggle:not([open]) .admin-nav-list" in css
+    assert ".admin-table-wrap" in css
+    assert ".admin-table-wrap::before" in css
+    assert "overflow-x: auto" in css
+    assert "Scroll horizontally for more columns" in css
+
+
+@pytest.mark.unit
 @pytest.mark.integration
 def test_anonymous_admin_dashboard_redirects_to_login() -> None:
     response = client.get("/admin")
@@ -135,6 +163,8 @@ def test_admin_dashboard_renders_shell() -> None:
     assert 'meta name="robots" content="noindex, nofollow"' in body
     assert 'href="/assets/admin.css"' in body
     assert "Admin foundation" in body
+    assert 'admin-nav-toggle" open' not in body
+    assert '<span class="admin-nav-current">Dashboard</span>' in body
 
 
 @pytest.mark.parametrize("path", ADMIN_HREFS)

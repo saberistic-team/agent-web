@@ -93,6 +93,9 @@ body.admin-app {
   display: none;
   list-style: none;
   cursor: pointer;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
   font-size: 0.75rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -102,6 +105,44 @@ body.admin-app {
 
 .admin-nav-summary::-webkit-details-marker {
   display: none;
+}
+
+.admin-nav-summary:hover,
+.admin-nav-summary:focus-visible {
+  color: var(--ink);
+  outline: none;
+}
+
+.admin-nav-summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.admin-nav-current {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.admin-nav-expand-label {
+  color: var(--muted);
+  font-size: 0.65rem;
+}
+
+.admin-nav-summary::after {
+  content: "";
+  flex-shrink: 0;
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-left: 0.25rem;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: rotate(45deg);
+  transition: transform 0.15s ease;
+}
+
+.admin-nav-toggle[open] .admin-nav-summary::after {
+  transform: rotate(-135deg);
 }
 
 .admin-nav-list {
@@ -201,10 +242,22 @@ body.admin-app {
   color: var(--muted);
 }
 
+.admin-table-wrap,
 .audit-table-wrap {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--accent) 55%, var(--line)) transparent;
   border: 1px solid var(--line);
   background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+
+.admin-table-wrap .admin-table,
+.audit-table-wrap .audit-table,
+.audit-table-wrap .brief-table {
+  max-width: none;
+  width: max-content;
+  min-width: 100%;
 }
 
 .audit-table {
@@ -545,7 +598,46 @@ body.admin-app {
   word-break: break-all;
 }
 
+@media (min-width: 769px) {
+  .admin-nav-summary {
+    display: none;
+  }
+
+  .admin-nav-toggle .admin-nav-list {
+    display: flex;
+  }
+}
+
 @media (max-width: 768px) {
+  .admin-top {
+    gap: 0.75rem 1rem;
+    padding: 0.85rem 1rem;
+  }
+
+  .admin-top-actions {
+    gap: 0.65rem 1rem;
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
+
+  .admin-user {
+    font-size: 0.72rem;
+    color: var(--muted);
+  }
+
+  .admin-table-wrap::before,
+  .audit-table-wrap::before {
+    content: "Scroll horizontally for more columns";
+    display: block;
+    padding: 0.4rem 0.75rem;
+    font-size: 0.62rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 1px solid var(--line);
+    background: color-mix(in srgb, var(--surface) 85%, transparent);
+  }
+
   .admin-title {
     font-family: var(--mono), "IBM Plex Mono", ui-monospace, monospace;
     font-size: 1.2rem;
@@ -572,7 +664,7 @@ body.admin-app {
   }
 
   .admin-nav-summary {
-    display: block;
+    display: flex;
   }
 
   .admin-nav-list {
@@ -581,6 +673,11 @@ body.admin-app {
 
   .admin-nav-toggle:not([open]) .admin-nav-list {
     display: none;
+  }
+
+  .admin-nav-toggle:not([open]) .admin-nav-current {
+    border-left: 2px solid var(--accent);
+    padding-left: 0.5rem;
   }
 
   .brief-detail-row {

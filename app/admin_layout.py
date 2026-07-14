@@ -90,8 +90,17 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
 )
 
 
+def _active_nav_label(active_path: str) -> str:
+    """Return the label for the current admin section."""
+    for link in ADMIN_NAV_LINKS:
+        if link["href"] == active_path:
+            return link["label"]
+    return "Admin"
+
+
 def render_admin_nav(active_path: str) -> str:
     """Return the admin sidebar navigation list."""
+    current_label = html.escape(_active_nav_label(active_path))
     items: list[str] = []
     for link in ADMIN_NAV_LINKS:
         href = link["href"]
@@ -102,8 +111,11 @@ def render_admin_nav(active_path: str) -> str:
         items.append(f'          <li><a {" ".join(attrs)}>{label}</a></li>')
     items_html = "\n".join(items)
     return f"""        <nav class="admin-nav" aria-label="Admin">
-          <details class="admin-nav-toggle" open>
-            <summary class="admin-nav-summary">Sections</summary>
+          <details class="admin-nav-toggle">
+            <summary class="admin-nav-summary">
+              <span class="admin-nav-current">{current_label}</span>
+              <span class="admin-nav-expand-label">All sections</span>
+            </summary>
             <ul class="admin-nav-list">
 {items_html}
             </ul>
