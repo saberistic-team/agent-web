@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -16,6 +17,9 @@ class CompanyRepository(Protocol):
         name: str,
         website: str | None = None,
         status: str = "prospect",
+        pipeline_stage: str = "researching",
+        owner: str | None = None,
+        expected_value: float | None = None,
     ) -> dict[str, Any]: ...
 
     def get_by_id(self, conn: psycopg.Connection, company_id: UUID) -> dict[str, Any] | None: ...
@@ -28,7 +32,40 @@ class CompanyRepository(Protocol):
         name: str | None = None,
         website: str | None = None,
         status: str | None = None,
+        pipeline_stage: str | None = None,
+        next_action: str | None = None,
+        next_action_due_at: datetime | None = None,
+        clear_next_action_due_at: bool = False,
+        owner: str | None = None,
+        expected_value: float | None = None,
+        stage_reason: str | None = None,
+        clear_stage_reason: bool = False,
     ) -> dict[str, Any] | None: ...
+
+    def list_by_pipeline_stage(
+        self,
+        conn: psycopg.Connection,
+        *,
+        pipeline_stage: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]: ...
+
+    def list_overdue_actions(
+        self,
+        conn: psycopg.Connection,
+        *,
+        as_of: datetime,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]: ...
+
+    def list_upcoming_actions(
+        self,
+        conn: psycopg.Connection,
+        *,
+        as_of: datetime,
+        until: datetime,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]: ...
 
 
 class ContactRepository(Protocol):
@@ -85,6 +122,50 @@ class ActivityRepository(Protocol):
         conn: psycopg.Connection,
         company_id: UUID,
         *,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]: ...
+
+
+class StageHistoryRepository(Protocol):
+    def create(
+        self,
+        conn: psycopg.Connection,
+        *,
+        company_id: UUID,
+        from_stage: str,
+        to_stage: str,
+        changed_by: str,
+        reason: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]: ...
+
+    def list_for_company(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]: ...
+
+
+class AuditEventRepository(Protocol):
+    def create(
+        self,
+        conn: psycopg.Connection,
+        *,
+        entity_type: str,
+        entity_id: UUID,
+        action: str,
+        actor: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]: ...
+
+    def list_for_entity(
+        self,
+        conn: psycopg.Connection,
+        *,
+        entity_type: str,
+        entity_id: UUID,
         limit: int = 50,
     ) -> list[dict[str, Any]]: ...
 
