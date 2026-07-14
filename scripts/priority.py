@@ -8,6 +8,7 @@ import re
 PRIORITY_LABELS = (
     "priority:critical",
     "priority:high",
+    "priority:medium",
     "priority:normal",
     "priority:low",
 )
@@ -16,12 +17,48 @@ PRIORITY_RANK = {label: index for index, label in enumerate(PRIORITY_LABELS)}
 DEFAULT_PRIORITY = "priority:normal"
 
 
+def all_priority_labels(labels: set[str] | list[str] | None) -> list[str]:
+    """Return every priority:* label on the issue, sorted for stable comparison."""
+    return sorted(label for label in (labels or []) if label.startswith("priority:"))
+
+
+def resolve_priority_label(priority_labels: list[str]) -> str | None:
+    """Pick one priority when duplicates exist; None if intent stays ambiguous."""
+    if len(priority_labels) <= 1:
+        return priority_labels[0] if priority_labels else None
+
+    non_default = [label for label in priority_labels if label != DEFAULT_PRIORITY]
+    if len(non_default) == 1:
+        return non_default[0]
+    if not non_default:
+        return DEFAULT_PRIORITY
+
+    ranked = sorted(
+        non_default,
+        key=lambda label: PRIORITY_RANK.get(label, len(PRIORITY_RANK)),
+    )
+    best = ranked[0]
+    second = ranked[1]
+    if PRIORITY_RANK.get(best, len(PRIORITY_RANK)) == PRIORITY_RANK.get(
+        second, len(PRIORITY_RANK)
+    ):
+        return None
+    return best
+
+
+def has_duplicate_priority_labels(labels: set[str] | list[str] | None) -> bool:
+    """True when more than one priority:* label is present."""
+    return len(all_priority_labels(labels)) > 1
+
+
 def priority_from_labels(labels: set[str] | list[str] | None) -> str | None:
-    """Return the issue's priority:* label if present."""
-    for label in labels or []:
-        if label in PRIORITY_RANK:
-            return label
-    return None
+    """Return the resolved priority:* label, or None when absent/ambiguous."""
+    found = all_priority_labels(labels)
+    if not found:
+        return None
+    if len(found) == 1:
+        return found[0]
+    return resolve_priority_label(found)
 
 
 def infer_priority_label(
@@ -47,6 +84,11 @@ def infer_priority_label(
         text,
     ):
         return "priority:high"
+    if re.search(
+        r"\b(priority:\s*medium|p2|sev(?:erity)?\s*[-:]?\s*2|medium[\s-]?priority)\b",
+        text,
+    ):
+        return "priority:medium"
     if re.search(
         r"\b(priority:\s*low|p3|sev(?:erity)?\s*[-:]?\s*3|low[\s-]?priority|"
         r"nice[\s-]to[\s-]have|whenever)\b",
