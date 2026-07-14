@@ -41,12 +41,25 @@ ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS utm_content TEXT;
 ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS utm_term TEXT;
 """
 
+ADMIN_SESSIONS_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS admin_sessions (
+    id SERIAL PRIMARY KEY,
+    token_hash TEXT NOT NULL UNIQUE,
+    admin_username TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL,
+    revoked_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS admin_sessions_token_hash_idx ON admin_sessions (token_hash);
+"""
+
 
 def init_db(database_url: str) -> None:
     with psycopg.connect(database_url) as conn:
         with conn.cursor() as cur:
             cur.execute(SCHEMA_SQL)
             cur.execute(MIGRATION_SQL)
+            cur.execute(ADMIN_SESSIONS_SCHEMA_SQL)
         conn.commit()
 
 
@@ -144,3 +157,54 @@ def mark_brief_paid(
         row = cur.fetchone()
         conn.commit()
     return row
+
+
+def create_admin_session(
+    conn: psycopg.Connection,
+    *,
+    token_hash: str,
+    admin_username: str,
+    expires_at: datetime,
+) -> int:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO admin_sessions (token_hash, admin_username, expires_at)
+            VALUES (%s, %s, %s)
+            RETURNING id
+            """,
+            (token_hash, admin_username, expires_at),
+        )
+        row = cur.fetchone()
+        conn.commit()
+    return int(row["id"])
+
+
+def get_admin_session_by_token_hash(
+    conn: psycopg.Connection,
+    token_hash: str,
+) -> dict[str, Any] | None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, token_hash, admin_username, created_at, expires_at, revoked_at
+            FROM admin_sessions
+            WHERE token_hash = %s
+            """,
+            (token_hash,),
+        )
+        return cur.fetchone()
+
+
+def revoke_admin_session(conn: psycopg.Connection, *, token_hash: str) -> None:
+    revoked_at = datetime.now(timezone.utc)
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE admin_sessions
+            SET revoked_at = %s
+            WHERE token_hash = %s AND revoked_at IS NULL
+            """,
+            (revoked_at, token_hash),
+        )
+        conn.commit()
