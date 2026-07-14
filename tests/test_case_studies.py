@@ -107,6 +107,44 @@ def test_render_case_study_page_structure() -> None:
 
 
 @pytest.mark.unit
+def test_render_case_studies_index_lists_all_studies() -> None:
+    html_out = case_studies.render_case_studies_index()
+    assert "Case studies — saberistic" in html_out
+    assert "in progress" not in html_out
+    for slug in ("brave", "baxus", "eternis", "spiral-safe", "architecture-diagnostic"):
+        assert f'href="/work/{slug}"' in html_out
+    assert "Request an Architecture Diagnostic" in html_out
+    assert 'rel="canonical" href="https://saberistic.com/case-studies"' in html_out
+
+
+@pytest.mark.unit
+def test_render_case_studies_index_escapes_html(tmp_path: Path) -> None:
+    data = {
+        "studies": [
+            {
+                "slug": "xss",
+                "org": "Org<script>",
+                "headline": "Head<script>",
+                "engagement": "saberistic",
+                "meta_description": "Meta<script>",
+                "context": "Ctx<script>",
+                "problem": "Prob<script>",
+                "role": "Role<script>",
+                "intervention": "Int<script>",
+                "result": "Res<script>",
+                "cta_label": "CTA<script>",
+                "cta_href": "/brief",
+            }
+        ]
+    }
+    path = tmp_path / "case-studies.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    rendered = case_studies.render_case_studies_index(path=path)
+    assert "<script>" not in rendered
+    assert "&lt;script&gt;" in rendered
+
+
+@pytest.mark.unit
 def test_render_escapes_html_in_content(tmp_path: Path) -> None:
     data = {
         "studies": [
