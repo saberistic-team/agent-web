@@ -136,6 +136,21 @@ def test_render_escapes_html_in_content(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_render_case_studies_index_structure() -> None:
+    html = case_studies.render_case_studies_index()
+    assert "<title>Case studies — saberistic</title>" in html
+    assert 'href="/work/brave"' in html
+    assert 'href="/work/baxus"' in html
+    assert 'href="/work/eternis"' in html
+    assert 'href="/work/spiral-safe"' in html
+    assert 'href="/work/architecture-diagnostic"' in html
+    assert "Request an Architecture Diagnostic" in html
+    assert 'href="/brief"' in html
+    assert "proof-summary" in html
+    assert '"@type": "CollectionPage"' in html
+
+
+@pytest.mark.unit
 def test_list_featured_slugs() -> None:
     featured = case_studies.list_featured_slugs()
     assert featured == ["brave", "baxus", "eternis"]
