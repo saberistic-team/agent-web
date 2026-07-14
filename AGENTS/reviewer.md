@@ -27,7 +27,9 @@ Before approving you must:
    image — that storms CI and can dirty the PR mid-review).
 3. Check **visual readability** on the **PR branch** screenshots / live
    capture: hero and primary copy must stay inside the viewport (no horizontal
-   overflow / text out of frame on mobile)
+   overflow / text out of frame on mobile). New admin/data tables under
+   ``ADMIN_PREVIEW_MODE`` must show **randomized mock rows** (not an empty
+   “no records yet” shell) unless the issue is explicitly about empty states.
 4. Run **Cursor / OpenAI / Models AI review** ([docs/MODELS.md](../docs/MODELS.md),
    [docs/DESIGN.md](../docs/DESIGN.md), [docs/TESTING.md](../docs/TESTING.md))
    — prefers Cursor when `CURSOR_API_KEY` is set. Do **not** request changes

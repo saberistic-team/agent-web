@@ -95,6 +95,9 @@ def build_prompt(
             "- Live site reference: https://saberistic.com/\n"
             "- Do not modify .github/workflows agent orchestration unless required\n"
             "- Binary assets (PNG/JPEG/WebP) must remain valid binary files\n"
+            "- New admin/UI pages MUST include ADMIN_PREVIEW_MODE randomized "
+            "mock data (see app/admin_preview.py + AGENTS/builder.md) so "
+            "Reviewer screenshots are not empty shells\n"
         )
     else:
         ship_rules = (
@@ -109,6 +112,9 @@ def build_prompt(
             "- Follow brutal-minimalist brand rules below for any UI work\n"
             "- Live site reference: https://saberistic.com/\n"
             "- Binary assets (PNG/JPEG/WebP) must remain valid binary files\n"
+            "- New admin/UI pages MUST include ADMIN_PREVIEW_MODE randomized "
+            "mock data (see app/admin_preview.py + AGENTS/builder.md) so "
+            "Reviewer screenshots are not empty shells\n"
         )
     return (
         f"You are the Builder agent for `{repo}`.\n"

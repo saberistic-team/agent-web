@@ -379,7 +379,16 @@ def admin_briefs_list(
         date_to=date_to,
     )
     db_error = False
-    if settings.admin_preview_enabled or not settings.database_url:
+    if settings.admin_preview_enabled:
+        briefs, total, filters = brief_service.preview_briefs_list(
+            page=page,
+            per_page=settings.brief_page_size,
+            query=q,
+            status=status,
+            date_from=date_from,
+            date_to=date_to,
+        )
+    elif not settings.database_url:
         pass
     else:
         try:

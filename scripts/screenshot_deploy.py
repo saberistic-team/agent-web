@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Iterator, NamedTuple
 from urllib.parse import urljoin
 
-from github_api import GitHubError, api, post_issue_comment, put_files, split_repo, token
+from github_api import GitHubError, api, post_issue_comment, put_files, split_repo
 
 DEFAULT_BASE = "https://saberistic.com"
 # Minimum HTML set if app discovery fails (kept for tests / emergency fallback).
@@ -845,7 +845,6 @@ def upload_to_branch(
 ) -> list[str]:
     """Upload screenshot PNGs in **one** commit (avoids CI storms / race loops)."""
     owner, name = split_repo(repo)
-    token()
     if not files:
         return []
     batch: list[tuple[str, bytes]] = [
