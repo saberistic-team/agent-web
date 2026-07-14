@@ -442,6 +442,13 @@ main {
   color: var(--muted);
 }
 
+.services-qual {
+  margin: 2rem 0;
+  max-width: 52ch;
+  color: var(--muted);
+  font-style: italic;
+}
+
 .offer-alt a,
 .services-alt a,
 .service-detail a {
@@ -564,6 +571,22 @@ main {
   font-size: 0.8rem;
   text-align: right;
   white-space: nowrap;
+}
+
+.case-summary {
+  margin: 0 0 1.25rem;
+  max-width: 52ch;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.case-index .proof-link {
+  padding-bottom: 0.75rem;
+}
+
+.case-index-cta {
+  margin: 2rem 0 1rem;
+  max-width: 52ch;
 }
 
 .case-study {
