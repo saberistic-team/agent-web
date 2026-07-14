@@ -407,13 +407,30 @@ def _extract_csrf_token(html: str) -> str:
 
 
 def _parse_login_form(response: Any) -> tuple[str, dict[str, str]]:
-    assert response.status_code == 200
     csrf_token = _extract_csrf_token(response.text)
     cookies: dict[str, str] = {}
     flow_cookie = response.cookies.get(LOGIN_FLOW_COOKIE_NAME)
     if flow_cookie:
         cookies[LOGIN_FLOW_COOKIE_NAME] = flow_cookie
     return csrf_token, cookies
+
+
+def _login_flow_set_cookie_headers(response: Any) -> list[str]:
+    """Return raw Set-Cookie header values for the pre-auth login-flow cookie."""
+    if hasattr(response.headers, "get_list"):
+        raw_headers = response.headers.get_list("set-cookie")
+    else:
+        combined = response.headers.get("set-cookie", "")
+        raw_headers = [combined] if combined else []
+    return [header for header in raw_headers if LOGIN_FLOW_COOKIE_NAME in header]
+
+
+def _assert_replacement_login_flow_cookie_retained(response: Any) -> None:
+    """Failed auth must retain exactly one non-expiring replacement flow cookie."""
+    headers = _login_flow_set_cookie_headers(response)
+    assert len(headers) == 1, headers
+    assert "Max-Age=0" not in headers[0]
+    assert response.cookies.get(LOGIN_FLOW_COOKIE_NAME)
 
 
 def _fetch_login_form() -> tuple[str, dict[str, str]]:
@@ -683,6 +700,84 @@ def test_login_invalid_credentials_use_generic_message(rate_limit_store: FakeRat
         response = _login(password="not-the-password")
     assert response.status_code == 401
     assert admin_auth.INVALID_CREDENTIALS_MESSAGE in response.text
+    _assert_replacement_login_flow_cookie_retained(response)
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_login_retry_after_wrong_password_without_refresh(
+    rate_limit_store: FakeRateLimitStore,
+) -> None:
+    """Wrong password then corrected password on the same client without refresh."""
+    with shared_rate_limiter(rate_limit_store):
+        with mock_db_connection():
+            form = client.get("/admin/login")
+            csrf_token, _ = _parse_login_form(form)
+
+            failed = client.post(
+                "/admin/login",
+                data={
+                    "username": TEST_USERNAME,
+                    "password": "wrong-password",
+                    "csrf_token": csrf_token,
+                },
+            )
+            assert failed.status_code == 401
+            assert admin_auth.INVALID_CREDENTIALS_MESSAGE in failed.text
+            _assert_replacement_login_flow_cookie_retained(failed)
+
+            retry_csrf = _extract_csrf_token(failed.text)
+            assert retry_csrf != csrf_token
+
+            success = client.post(
+                "/admin/login",
+                data={
+                    "username": TEST_USERNAME,
+                    "password": TEST_PASSWORD,
+                    "csrf_token": retry_csrf,
+                },
+            )
+            assert success.status_code == 303
+            assert success.headers["location"] == "/admin"
+            assert _extract_session_cookie(success)
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_login_invalid_csrf_retains_replacement_flow_cookie(
+    rate_limit_store: FakeRateLimitStore,
+) -> None:
+    csrf_token, cookies = _fetch_login_form()
+    with shared_rate_limiter(rate_limit_store):
+        with mock_db_connection():
+            response = client.post(
+                "/admin/login",
+                data={
+                    "username": TEST_USERNAME,
+                    "password": TEST_PASSWORD,
+                    "csrf_token": "not-a-valid-token",
+                },
+                cookies=cookies,
+            )
+    assert response.status_code == 400
+    assert admin_auth.INVALID_CREDENTIALS_MESSAGE in response.text
+    _assert_replacement_login_flow_cookie_retained(response)
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_login_rate_limit_retains_replacement_flow_cookie(
+    rate_limit_store: FakeRateLimitStore,
+) -> None:
+    with shared_rate_limiter(rate_limit_store):
+        for _ in range(5):
+            response = _login(password="wrong")
+            assert response.status_code == 401
+
+        blocked = _login(password="wrong")
+    assert blocked.status_code == 429
+    assert admin_auth.LOGIN_THROTTLED_MESSAGE in blocked.text
+    _assert_replacement_login_flow_cookie_retained(blocked)
 
 
 @pytest.mark.unit
