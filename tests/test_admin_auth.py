@@ -367,14 +367,7 @@ def _mock_revoke_admin_session(conn: MagicMock, *, token_hash: str) -> None:
 def mock_db_connection() -> Generator[MagicMock, None, None]:
     conn = MagicMock()
     with ExitStack() as stack:
-        for target in (
-            "app.admin_routes.db.db_connection",
-            "app.admin_deps.db.db_connection",
-            "app.admin_crm_routes.db.db_connection",
-        ):
-            db_conn_patch = stack.enter_context(patch(target))
-            db_conn_patch.return_value.__enter__.return_value = conn
-            db_conn_patch.return_value.__exit__.return_value = None
+        db_conn_patch = stack.enter_context(patch("app.admin_routes.db.db_connection"))
         stack.enter_context(
             patch("app.admin_routes.db.create_admin_login_flow", _mock_create_admin_login_flow)
         )
@@ -390,23 +383,20 @@ def mock_db_connection() -> Generator[MagicMock, None, None]:
         stack.enter_context(
             patch("app.admin_routes.db.create_admin_session", _mock_create_admin_session)
         )
-        for target in (
-            "app.admin_routes.db.get_admin_session_by_token_hash",
-            "app.admin_deps.db.get_admin_session_by_token_hash",
-        ):
-            stack.enter_context(
-                patch(target, _mock_get_admin_session_by_token_hash),
+        stack.enter_context(
+            patch(
+                "app.admin_routes.db.get_admin_session_by_token_hash",
+                _mock_get_admin_session_by_token_hash,
             )
-        for target in (
-            "app.admin_routes.db.update_admin_session_csrf",
-            "app.admin_deps.db.update_admin_session_csrf",
-        ):
-            stack.enter_context(
-                patch(target, _mock_update_admin_session_csrf),
-            )
+        )
+        stack.enter_context(
+            patch("app.admin_routes.db.update_admin_session_csrf", _mock_update_admin_session_csrf)
+        )
         stack.enter_context(
             patch("app.admin_routes.db.revoke_admin_session", _mock_revoke_admin_session)
         )
+        db_conn_patch.return_value.__enter__.return_value = conn
+        db_conn_patch.return_value.__exit__.return_value = None
         yield conn
 
 
@@ -505,7 +495,7 @@ def test_admin_preview_mode_allows_dashboard_without_login(
     dash = client.get("/admin")
     assert dash.status_code == 200
     assert "Preview data — not production" in dash.text
-    assert "Recent briefs" in dash.text
+    assert "Recent submissions" in dash.text
     assert "admin-stat-row" in dash.text
     login = client.get("/admin/login")
     assert login.status_code == 200
@@ -669,13 +659,10 @@ def test_login_logout_flow(rate_limit_store: FakeRateLimitStore) -> None:
             assert logout.headers["location"] == "/admin/login"
             assert _session_store[token_hash]["revoked_at"] is not None
 
-            client.cookies.clear()
-
 
 @pytest.mark.unit
 @pytest.mark.integration
 def test_anonymous_admin_dashboard_redirects_to_login() -> None:
-    client.cookies.clear()
     response = client.get("/admin")
     assert response.status_code == 303
     assert response.headers["location"].startswith("/admin/login?next=")
@@ -684,7 +671,6 @@ def test_anonymous_admin_dashboard_redirects_to_login() -> None:
 @pytest.mark.unit
 @pytest.mark.integration
 def test_anonymous_nested_admin_route_redirects_to_login() -> None:
-    client.cookies.clear()
     response = client.get("/admin/reports")
     assert response.status_code == 303
     assert "/admin/login" in response.headers["location"]
