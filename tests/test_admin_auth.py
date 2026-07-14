@@ -308,6 +308,28 @@ def _mock_create_admin_login_flow(conn: MagicMock, **kwargs: Any) -> int:
     return int(_login_flows[flow_hash]["id"])
 
 
+def _mock_cleanup_stale_admin_login_flows(conn: MagicMock, **kwargs: Any) -> int:
+    now = kwargs["now"]
+    expired_cutoff = now - timedelta(seconds=kwargs["expired_retention_seconds"])
+    consumed_cutoff = now - timedelta(seconds=kwargs["consumed_retention_seconds"])
+    batch_size = kwargs["batch_size"]
+    stale_hashes = sorted(
+        flow_hash
+        for flow_hash, row in _login_flows.items()
+        if (
+            row["consumed_at"] is None
+            and row["expires_at"] < expired_cutoff
+        )
+        or (
+            row["consumed_at"] is not None
+            and row["consumed_at"] < consumed_cutoff
+        )
+    )[:batch_size]
+    for flow_hash in stale_hashes:
+        del _login_flows[flow_hash]
+    return len(stale_hashes)
+
+
 def _mock_get_admin_login_flow_by_token_hash(
     conn: MagicMock,
     flow_token_hash: str,
@@ -370,6 +392,12 @@ def mock_db_connection() -> Generator[MagicMock, None, None]:
         db_conn_patch = stack.enter_context(patch("app.admin_routes.db.db_connection"))
         stack.enter_context(
             patch("app.admin_routes.db.create_admin_login_flow", _mock_create_admin_login_flow)
+        )
+        stack.enter_context(
+            patch(
+                "app.admin_routes.db.cleanup_stale_admin_login_flows",
+                _mock_cleanup_stale_admin_login_flows,
+            )
         )
         stack.enter_context(
             patch(
@@ -1214,3 +1242,77 @@ def test_admin_unconfigured_returns_service_unavailable(
     monkeypatch.delenv("ADMIN_USERNAME", raising=False)
     response = client.get("/admin/login")
     assert response.status_code == 503
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_login_flow_cleanup_runs_when_minting_new_flow() -> None:
+    now = datetime.now(timezone.utc)
+    stale_hash = admin_auth.hash_session_token("stale-flow-token")
+    _login_flows[stale_hash] = {
+        "id": 99,
+        "flow_token_hash": stale_hash,
+        "csrf_token_hash": "stale-csrf",
+        "created_at": now - timedelta(hours=2),
+        "expires_at": now - timedelta(seconds=admin_auth.LOGIN_FLOW_EXPIRED_RETENTION_SECONDS + 1),
+        "consumed_at": None,
+    }
+    active_hash = admin_auth.hash_session_token("active-flow-token")
+    _login_flows[active_hash] = {
+        "id": 100,
+        "flow_token_hash": active_hash,
+        "csrf_token_hash": "active-csrf",
+        "created_at": now,
+        "expires_at": now + timedelta(minutes=10),
+        "consumed_at": None,
+    }
+
+    with mock_db_connection():
+        response = client.get("/admin/login")
+
+    assert response.status_code == 200
+    assert stale_hash not in _login_flows
+    assert active_hash in _login_flows
+    assert len(_login_flows) == 2
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_login_flow_cleanup_failure_still_mints_flow() -> None:
+    with mock_db_connection():
+        with patch(
+            "app.admin_routes.db.cleanup_stale_admin_login_flows",
+            side_effect=Exception("database unavailable"),
+        ):
+            response = client.get("/admin/login")
+
+    assert response.status_code == 200
+    assert "Admin sign in" in response.text
+    assert response.cookies.get(LOGIN_FLOW_COOKIE_NAME)
+    assert len(_login_flows) == 1
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_login_flow_cleanup_failure_retry_succeeds(rate_limit_store: FakeRateLimitStore) -> None:
+    cleanup_calls = {"count": 0}
+
+    def flaky_cleanup(conn: Any, **kwargs: Any) -> int:
+        cleanup_calls["count"] += 1
+        if cleanup_calls["count"] == 1:
+            raise Exception("transient database error")
+        return _mock_cleanup_stale_admin_login_flows(conn, **kwargs)
+
+    with shared_rate_limiter(rate_limit_store):
+        with mock_db_connection():
+            with patch(
+                "app.admin_routes.db.cleanup_stale_admin_login_flows",
+                side_effect=flaky_cleanup,
+            ):
+                first = client.get("/admin/login")
+                assert first.status_code == 200
+
+                second = client.get("/admin/login")
+                assert second.status_code == 200
+
+    assert cleanup_calls["count"] == 2
