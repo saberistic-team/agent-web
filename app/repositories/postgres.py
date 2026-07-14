@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
@@ -15,6 +15,7 @@ from app.repositories.protocols import (
     AuditEventRepository,
     CompanyRepository,
     ContactRepository,
+    ResearchRecordRepository,
     SourceRecordRepository,
     StageHistoryRepository,
 )
@@ -55,6 +56,24 @@ class PostgresCompanyRepository:
             cur.execute("SELECT * FROM companies WHERE id = %s", (company_id,))
             row = cur.fetchone()
         return dict(row) if row else None
+
+    def list_all(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT * FROM companies
+                ORDER BY name ASC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
 
     def update(
         self,
@@ -237,6 +256,26 @@ class PostgresContactRepository:
             row = cur.fetchone()
         return dict(row) if row else None
 
+    def list_for_company(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT * FROM contacts
+                WHERE company_id = %s
+                ORDER BY email ASC
+                LIMIT %s
+                """,
+                (company_id, limit),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
 
 class PostgresSourceRecordRepository:
     def create(
@@ -397,54 +436,89 @@ class PostgresStageHistoryRepository:
         return [dict(row) for row in rows]
 
 
-class PostgresAuditEventRepository:
+class PostgresResearchRecordRepository:
     def create(
         self,
         conn: psycopg.Connection,
         *,
-        entity_type: str,
-        entity_id: UUID,
-        action: str,
-        actor: str,
+        record_type: str,
+        company_id: UUID,
+        body: str,
+        contact_id: UUID | None = None,
+        source_name: str | None = None,
+        source_url: str | None = None,
+        observed_value: str | None = None,
+        observed_at: datetime | None = None,
+        confidence: float | None = None,
+        review_at: datetime | None = None,
+        expires_at: datetime | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO crm_audit_events (
-                    entity_type, entity_id, action, actor, metadata
+                INSERT INTO research_records (
+                    record_type, company_id, contact_id, body,
+                    source_name, source_url, observed_value, observed_at,
+                    confidence, review_at, expires_at, metadata
                 )
-                VALUES (%s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING *
                 """,
                 (
-                    entity_type,
-                    entity_id,
-                    action,
-                    actor,
+                    record_type,
+                    company_id,
+                    contact_id,
+                    body,
+                    source_name,
+                    source_url,
+                    observed_value,
+                    observed_at,
+                    confidence,
+                    review_at,
+                    expires_at,
                     json.dumps(metadata) if metadata is not None else None,
                 ),
             )
             row = cur.fetchone()
         return dict(row)
 
-    def list_for_entity(
+    def list_for_company(
         self,
         conn: psycopg.Connection,
+        company_id: UUID,
         *,
-        entity_type: str,
-        entity_id: UUID,
-        limit: int = 50,
+        limit: int = 100,
     ) -> list[dict[str, Any]]:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT * FROM crm_audit_events
-                WHERE entity_type = %s AND entity_id = %s
-                ORDER BY created_at DESC
+                SELECT * FROM research_records
+                WHERE company_id = %s
+                ORDER BY observed_at DESC NULLS LAST, created_at DESC
                 LIMIT %s
                 """,
-                (entity_type, entity_id, limit),
+                (company_id, limit),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def list_for_contact(
+        self,
+        conn: psycopg.Connection,
+        contact_id: UUID,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT * FROM research_records
+                WHERE contact_id = %s
+                ORDER BY observed_at DESC NULLS LAST, created_at DESC
+                LIMIT %s
+                """,
+                (contact_id, limit),
             )
             rows = cur.fetchall()
         return [dict(row) for row in rows]
@@ -485,15 +559,233 @@ class PostgresAdminUserRepository:
         return dict(row) if row else None
 
 
+
+class PostgresProjectBriefRepository:
+    _LIST_COLUMNS = """
+        id, created_at, website, contact_value, status, paid_at,
+        utm_source, utm_campaign
+    """
+    _DETAIL_COLUMNS = """
+        id, created_at, website, contact_method, contact_value, brief, status,
+        stripe_session_id, stripe_payment_intent_id, paid_at,
+        utm_source, utm_medium, utm_campaign, utm_content, utm_term
+    """
+
+    def _build_filters(
+        self,
+        *,
+        query: str | None,
+        status: str | None,
+        date_from: date | None,
+        date_to: date | None,
+    ) -> tuple[str, list[Any]]:
+        conditions: list[str] = []
+        params: list[Any] = []
+        if query:
+            if query.isdigit():
+                conditions.append("id = %s")
+                params.append(int(query))
+            else:
+                pattern = f"%{query}%"
+                conditions.append("(website ILIKE %s OR contact_value ILIKE %s)")
+                params.extend([pattern, pattern])
+        if status:
+            conditions.append("status = %s")
+            params.append(status)
+        if date_from is not None:
+            start = datetime.combine(date_from, time.min, tzinfo=timezone.utc)
+            conditions.append("created_at >= %s")
+            params.append(start)
+        if date_to is not None:
+            end = datetime.combine(
+                date_to + timedelta(days=1), time.min, tzinfo=timezone.utc
+            )
+            conditions.append("created_at < %s")
+            params.append(end)
+        if not conditions:
+            return "", params
+        return " WHERE " + " AND ".join(conditions), params
+
+    def list_page(
+        self,
+        conn: psycopg.Connection,
+        *,
+        page: int = 1,
+        per_page: int = 50,
+        query: str | None = None,
+        status: str | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+    ) -> tuple[list[dict[str, Any]], int]:
+        offset = (page - 1) * per_page
+        where_sql, filter_params = self._build_filters(
+            query=query,
+            status=status,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT COUNT(*) AS total FROM project_briefs{where_sql}",
+                filter_params,
+            )
+            total_row = cur.fetchone()
+            total = int(total_row["total"]) if total_row else 0
+            list_params = [*filter_params, per_page, offset]
+            cur.execute(
+                f"""
+                SELECT {self._LIST_COLUMNS}
+                FROM project_briefs
+                {where_sql}
+                ORDER BY created_at DESC, id DESC
+                LIMIT %s OFFSET %s
+                """,
+                list_params,
+            )
+            rows = [dict(row) for row in cur.fetchall()]
+        return rows, total
+
+    def get_by_id(
+        self,
+        conn: psycopg.Connection,
+        brief_id: int,
+    ) -> dict[str, Any] | None:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT {self._DETAIL_COLUMNS}
+                FROM project_briefs
+                WHERE id = %s
+                """,
+                (brief_id,),
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+
+class PostgresAuditEventRepository:
+    def list_page(
+        self,
+        conn: psycopg.Connection,
+        *,
+        page: int = 1,
+        per_page: int = 50,
+    ) -> tuple[list[dict[str, Any]], int]:
+        offset = (page - 1) * per_page
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) AS total FROM audit_events")
+            total_row = cur.fetchone()
+            total = int(total_row["total"]) if total_row else 0
+            cur.execute(
+                """
+                SELECT
+                    id, created_at, actor, action, entity_type, entity_id,
+                    correlation_id, summary_before, summary_after, metadata
+                FROM audit_events
+                ORDER BY created_at DESC, id DESC
+                LIMIT %s OFFSET %s
+                """,
+                (per_page, offset),
+            )
+            rows = [dict(row) for row in cur.fetchall()]
+        return rows, total
+
+    def append(
+        self,
+        conn: psycopg.Connection,
+        *,
+        actor: str,
+        action: str,
+        correlation_id: str,
+        entity_type: str | None = None,
+        entity_id: str | None = None,
+        summary_before: dict[str, Any] | None = None,
+        summary_after: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO audit_events (
+                    actor, action, entity_type, entity_id, correlation_id,
+                    summary_before, summary_after, metadata
+                )
+                VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb)
+                RETURNING *
+                """,
+                (
+                    actor,
+                    action,
+                    entity_type,
+                    entity_id,
+                    correlation_id,
+                    json.dumps(summary_before) if summary_before is not None else None,
+                    json.dumps(summary_after) if summary_after is not None else None,
+                    json.dumps(metadata) if metadata is not None else None,
+                ),
+            )
+            row = cur.fetchone()
+        return dict(row)
+
+    def list_for_entity(
+        self,
+        conn: psycopg.Connection,
+        *,
+        entity_type: str,
+        entity_id: str,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    id, created_at, actor, action, entity_type, entity_id,
+                    correlation_id, summary_before, summary_after, metadata
+                FROM audit_events
+                WHERE entity_type = %s AND entity_id = %s
+                ORDER BY created_at DESC, id DESC
+                LIMIT %s
+                """,
+                (entity_type, entity_id, limit),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+
+class PostgresRepositories:
+    """Bundle of Postgres repository implementations including CRM + audit."""
+
+    def __init__(self) -> None:
+        self.companies = PostgresCompanyRepository()
+        self.contacts = PostgresContactRepository()
+        self.source_records = PostgresSourceRecordRepository()
+        self.activities = PostgresActivityRepository()
+        self.stage_history = PostgresStageHistoryRepository()
+        self.research_records = PostgresResearchRecordRepository()
+        self.admin_users = PostgresAdminUserRepository()
+        self.audit_events = PostgresAuditEventRepository()
+        self.project_briefs = PostgresProjectBriefRepository()
+
+
+_default_repositories = PostgresRepositories()
+
+
+def get_repositories() -> PostgresRepositories:
+    return _default_repositories
+
+
 def default_repositories() -> dict[str, Any]:
+    repos = get_repositories()
     return {
-        "companies": PostgresCompanyRepository(),
-        "contacts": PostgresContactRepository(),
-        "source_records": PostgresSourceRecordRepository(),
-        "activities": PostgresActivityRepository(),
-        "stage_history": PostgresStageHistoryRepository(),
-        "audit_events": PostgresAuditEventRepository(),
-        "admin_users": PostgresAdminUserRepository(),
+        "companies": repos.companies,
+        "contacts": repos.contacts,
+        "source_records": repos.source_records,
+        "activities": repos.activities,
+        "stage_history": repos.stage_history,
+        "research_records": repos.research_records,
+        "admin_users": repos.admin_users,
+        "audit_events": repos.audit_events,
+        "project_briefs": repos.project_briefs,
     }
 
 
@@ -503,5 +795,5 @@ ContactRepo = PostgresContactRepository
 SourceRecordRepo = PostgresSourceRecordRepository
 ActivityRepo = PostgresActivityRepository
 StageHistoryRepo = PostgresStageHistoryRepository
-AuditEventRepo = PostgresAuditEventRepository
+ResearchRecordRepo = PostgresResearchRecordRepository
 AdminUserRepo = PostgresAdminUserRepository

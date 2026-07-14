@@ -124,7 +124,7 @@ def test_record_company_with_contact_commits_once_on_success() -> None:
             source_records=MagicMock(),
             activities=MagicMock(),
             stage_history=MagicMock(),
-            audit_events=MagicMock(),
+            research_records=MagicMock(),
             admin_users=MagicMock(),
         )
     )
@@ -156,7 +156,7 @@ def test_record_company_with_contact_rolls_back_when_contact_fails() -> None:
             source_records=MagicMock(),
             activities=MagicMock(),
             stage_history=MagicMock(),
-            audit_events=MagicMock(),
+            research_records=MagicMock(),
             admin_users=MagicMock(),
         )
     )
@@ -190,7 +190,7 @@ def test_single_record_service_operations_commit_once() -> None:
             source_records=source_repo,
             activities=activity_repo,
             stage_history=MagicMock(),
-            audit_events=MagicMock(),
+            research_records=MagicMock(),
             admin_users=MagicMock(),
         )
     )
@@ -224,7 +224,7 @@ def test_read_methods_do_not_change_transaction_state() -> None:
             source_records=MagicMock(),
             activities=MagicMock(),
             stage_history=MagicMock(),
-            audit_events=MagicMock(),
+            research_records=MagicMock(),
             admin_users=admin_repo,
         )
     )

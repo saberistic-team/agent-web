@@ -6,9 +6,13 @@ from app.repositories.postgres import (
     PostgresAuditEventRepository,
     PostgresCompanyRepository,
     PostgresContactRepository,
+    PostgresProjectBriefRepository,
+    PostgresRepositories,
+    PostgresResearchRecordRepository,
     PostgresSourceRecordRepository,
     PostgresStageHistoryRepository,
     default_repositories,
+    get_repositories,
 )
 from app.repositories.protocols import (
     ActivityRepository,
@@ -16,6 +20,8 @@ from app.repositories.protocols import (
     AuditEventRepository,
     CompanyRepository,
     ContactRepository,
+    ProjectBriefRepository,
+    ResearchRecordRepository,
     SourceRecordRepository,
     StageHistoryRepository,
 )
@@ -26,6 +32,8 @@ __all__ = [
     "AuditEventRepository",
     "CompanyRepository",
     "ContactRepository",
+    "ProjectBriefRepository",
+    "ResearchRecordRepository",
     "SourceRecordRepository",
     "StageHistoryRepository",
     "PostgresActivityRepository",
@@ -33,7 +41,11 @@ __all__ = [
     "PostgresAuditEventRepository",
     "PostgresCompanyRepository",
     "PostgresContactRepository",
+    "PostgresProjectBriefRepository",
+    "PostgresRepositories",
+    "PostgresResearchRecordRepository",
     "PostgresSourceRecordRepository",
     "PostgresStageHistoryRepository",
     "default_repositories",
+    "get_repositories",
 ]

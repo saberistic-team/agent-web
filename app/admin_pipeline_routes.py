@@ -7,10 +7,11 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from app import db
 from app.admin_routes import require_admin_session
+from app.actor_context import correlation_id_from_request
 from app.config import get_settings
 from app.crm_service import (
     ConfirmRequiredError,
@@ -19,9 +20,9 @@ from app.crm_service import (
     InvalidTransitionError,
     ReasonRequiredError,
 )
-from app.pipeline import PIPELINE_STAGES, PIPELINE_ACTIVITY_TYPES
+from app.pipeline import PIPELINE_ACTIVITY_TYPES, PIPELINE_STAGES
 
-router = APIRouter(prefix="/admin/api/pipeline", tags=["admin-pipeline"])
+router = APIRouter(prefix="/api/pipeline", tags=["admin-pipeline"])
 
 
 class StageTransitionRequest(BaseModel):
@@ -99,6 +100,7 @@ def transition_stage(
     body: StageTransitionRequest,
 ) -> dict[str, Any]:
     session = require_admin_session(request)
+    correlation_id = correlation_id_from_request(request)
     try:
         with _with_db_conn() as conn:
             result = _crm_service().transition_company_stage(
@@ -108,6 +110,7 @@ def transition_stage(
                 actor=session.admin_username,
                 reason=body.reason,
                 confirm=body.confirm,
+                correlation_id=correlation_id,
             )
     except ReasonRequiredError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -125,6 +128,7 @@ def update_next_action(
     body: NextActionUpdateRequest,
 ) -> dict[str, Any]:
     session = require_admin_session(request)
+    correlation_id = correlation_id_from_request(request)
     try:
         with _with_db_conn() as conn:
             company = _crm_service().update_company_next_action(
@@ -136,6 +140,7 @@ def update_next_action(
                 owner=body.owner,
                 expected_value=body.expected_value,
                 clear_due_at=body.clear_due_at,
+                correlation_id=correlation_id,
             )
     except InvalidStageError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -149,6 +154,7 @@ def record_activity(
     body: ActivityCreateRequest,
 ) -> dict[str, Any]:
     session = require_admin_session(request)
+    correlation_id = correlation_id_from_request(request)
     try:
         with _with_db_conn() as conn:
             activity = _crm_service().record_activity_for_company(
@@ -159,6 +165,7 @@ def record_activity(
                 contact_id=body.contact_id,
                 metadata=body.metadata,
                 actor=session.admin_username,
+                correlation_id=correlation_id,
             )
     except InvalidStageError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

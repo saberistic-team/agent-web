@@ -9,6 +9,8 @@ from uuid import UUID
 
 import psycopg
 
+from app import audit_service
+from app.actor_context import ActorContext
 from app.crm_uow import crm_transaction
 from app.pipeline import (
     ConfirmRequiredError,
@@ -23,19 +25,20 @@ from app.pipeline import (
 from app.repositories import (
     ActivityRepository,
     AdminUserRepository,
-    AuditEventRepository,
     CompanyRepository,
     ContactRepository,
     PostgresActivityRepository,
     PostgresAdminUserRepository,
-    PostgresAuditEventRepository,
     PostgresCompanyRepository,
     PostgresContactRepository,
+    PostgresResearchRecordRepository,
     PostgresSourceRecordRepository,
     PostgresStageHistoryRepository,
+    ResearchRecordRepository,
     SourceRecordRepository,
     StageHistoryRepository,
 )
+from app.repositories.postgres import get_repositories
 
 
 @dataclass(frozen=True)
@@ -45,7 +48,7 @@ class CrmRepositories:
     source_records: SourceRecordRepository
     activities: ActivityRepository
     stage_history: StageHistoryRepository
-    audit_events: AuditEventRepository
+    research_records: ResearchRecordRepository
     admin_users: AdminUserRepository
 
 
@@ -56,7 +59,7 @@ def default_crm_repositories() -> CrmRepositories:
         source_records=PostgresSourceRecordRepository(),
         activities=PostgresActivityRepository(),
         stage_history=PostgresStageHistoryRepository(),
-        audit_events=PostgresAuditEventRepository(),
+        research_records=PostgresResearchRecordRepository(),
         admin_users=PostgresAdminUserRepository(),
     )
 
@@ -104,6 +107,7 @@ class CrmService:
         contact_id: UUID | None = None,
         metadata: dict[str, Any] | None = None,
         actor: str | None = None,
+        correlation_id: str | None = None,
     ) -> dict[str, Any]:
         validate_activity_type(activity_type)
         with crm_transaction(conn):
@@ -116,17 +120,16 @@ class CrmService:
                 metadata=metadata,
             )
             if actor is not None:
-                self._repos.audit_events.create(
+                audit_service.record_pipeline_activity(
                     conn,
-                    entity_type="company",
-                    entity_id=company_id,
-                    action="activity_recorded",
-                    actor=actor,
-                    metadata={
+                    actor_context=_actor_context(actor, correlation_id, company_id),
+                    company_id=str(company_id),
+                    summary_after={
                         "activity_type": activity_type,
                         "summary": summary,
                         "activity_id": str(activity["id"]),
                     },
+                    repository=get_repositories().audit_events,
                 )
         return activity
 
@@ -139,12 +142,13 @@ class CrmService:
         actor: str,
         reason: str | None = None,
         confirm: bool = False,
+        correlation_id: str | None = None,
     ) -> dict[str, Any]:
         company = self._repos.companies.get_by_id(conn, company_id)
         if company is None:
             raise InvalidStageError(f"Company not found: {company_id}")
 
-        from_stage = str(company["pipeline_stage"])
+        from_stage = str(company.get("pipeline_stage") or "researching")
         validate_transition(from_stage, to_stage, confirm=confirm, reason=reason)
 
         with crm_transaction(conn):
@@ -179,19 +183,17 @@ class CrmService:
                     "reason": reason,
                 },
             )
-            self._repos.audit_events.create(
+            audit_service.record_pipeline_stage_change(
                 conn,
-                entity_type="company",
-                entity_id=company_id,
-                action="stage_change",
-                actor=actor,
+                actor_context=_actor_context(actor, correlation_id, company_id),
+                company_id=str(company_id),
+                summary_before={"pipeline_stage": from_stage},
+                summary_after={"pipeline_stage": to_stage, "reason": reason},
                 metadata={
-                    "from_stage": from_stage,
-                    "to_stage": to_stage,
-                    "reason": reason,
                     "confirm": confirm,
                     "history_id": str(history["id"]),
                 },
+                repository=get_repositories().audit_events,
             )
 
         return {"company": updated, "history": history}
@@ -207,6 +209,7 @@ class CrmService:
         owner: str | None = None,
         expected_value: float | None = None,
         clear_due_at: bool = False,
+        correlation_id: str | None = None,
     ) -> dict[str, Any]:
         company = self._repos.companies.get_by_id(conn, company_id)
         if company is None:
@@ -225,26 +228,23 @@ class CrmService:
             if updated is None:
                 raise InvalidStageError(f"Company not found: {company_id}")
 
-            self._repos.audit_events.create(
+            audit_service.record_pipeline_next_action_update(
                 conn,
-                entity_type="company",
-                entity_id=company_id,
-                action="next_action_updated",
-                actor=actor,
-                metadata={
-                    "before": {
-                        "next_action": company.get("next_action"),
-                        "next_action_due_at": _serialize_dt(company.get("next_action_due_at")),
-                        "owner": company.get("owner"),
-                        "expected_value": _serialize_decimal(company.get("expected_value")),
-                    },
-                    "after": {
-                        "next_action": updated.get("next_action"),
-                        "next_action_due_at": _serialize_dt(updated.get("next_action_due_at")),
-                        "owner": updated.get("owner"),
-                        "expected_value": _serialize_decimal(updated.get("expected_value")),
-                    },
+                actor_context=_actor_context(actor, correlation_id, company_id),
+                company_id=str(company_id),
+                summary_before={
+                    "next_action": company.get("next_action"),
+                    "next_action_due_at": _serialize_dt(company.get("next_action_due_at")),
+                    "owner": company.get("owner"),
+                    "expected_value": _serialize_decimal(company.get("expected_value")),
                 },
+                summary_after={
+                    "next_action": updated.get("next_action"),
+                    "next_action_due_at": _serialize_dt(updated.get("next_action_due_at")),
+                    "owner": updated.get("owner"),
+                    "expected_value": _serialize_decimal(updated.get("expected_value")),
+                },
+                repository=get_repositories().audit_events,
             )
         return updated
 
@@ -260,10 +260,10 @@ class CrmService:
             "company": company,
             "stage_history": self._repos.stage_history.list_for_company(conn, company_id),
             "activities": self._repos.activities.list_for_company(conn, company_id),
-            "audit_events": self._repos.audit_events.list_for_entity(
+            "audit_events": get_repositories().audit_events.list_for_entity(
                 conn,
                 entity_type="company",
-                entity_id=company_id,
+                entity_id=str(company_id),
             ),
         }
 
@@ -335,6 +335,228 @@ class CrmService:
         email: str,
     ) -> dict[str, Any] | None:
         return self._repos.admin_users.get_by_email(conn, email)
+
+    def list_companies(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        return self._repos.companies.list_all(conn, limit=limit)
+
+    def get_company(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+    ) -> dict[str, Any] | None:
+        return self._repos.companies.get_by_id(conn, company_id)
+
+    def list_contacts_for_company(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        return self._repos.contacts.list_for_company(conn, company_id, limit=limit)
+
+    def get_contact(
+        self,
+        conn: psycopg.Connection,
+        contact_id: UUID,
+    ) -> dict[str, Any] | None:
+        return self._repos.contacts.get_by_id(conn, contact_id)
+
+    def list_research_for_company(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        return self._repos.research_records.list_for_company(
+            conn,
+            company_id,
+            limit=limit,
+        )
+
+    def list_research_for_contact(
+        self,
+        conn: psycopg.Connection,
+        contact_id: UUID,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        return self._repos.research_records.list_for_contact(
+            conn,
+            contact_id,
+            limit=limit,
+        )
+
+    def attach_research_record(
+        self,
+        conn: psycopg.Connection,
+        *,
+        record_type: str,
+        company_id: UUID,
+        body: str,
+        contact_id: UUID | None = None,
+        source_name: str | None = None,
+        source_url: str | None = None,
+        observed_value: str | None = None,
+        observed_at: Any | None = None,
+        confidence: float | None = None,
+        review_at: Any | None = None,
+        expires_at: Any | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Append a research record without overwriting prior observations."""
+        with crm_transaction(conn):
+            record = self._repos.research_records.create(
+                conn,
+                record_type=record_type,
+                company_id=company_id,
+                body=body,
+                contact_id=contact_id,
+                source_name=source_name,
+                source_url=source_url,
+                observed_value=observed_value,
+                observed_at=observed_at,
+                confidence=confidence,
+                review_at=review_at,
+                expires_at=expires_at,
+                metadata=metadata,
+            )
+        return record
+
+    def import_batch(
+        self,
+        conn: psycopg.Connection,
+        *,
+        actor_context: ActorContext,
+        batch_id: str,
+        source_type: str,
+        records: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Import source records and append an audit event."""
+        created: list[dict[str, Any]] = []
+        for index, record in enumerate(records):
+            created.append(
+                self._repos.source_records.create(
+                    conn,
+                    source_type="import",
+                    external_id=f"{batch_id}:{index}",
+                    payload={"source_type": source_type, **record},
+                )
+            )
+        audit_service.record_import_batch(
+            conn,
+            actor_context=actor_context,
+            batch_id=batch_id,
+            source_type=source_type,
+            record_count=len(created),
+        )
+        return {"batch_id": batch_id, "created": created, "record_count": len(created)}
+
+    def delete_entity(
+        self,
+        conn: psycopg.Connection,
+        *,
+        actor_context: ActorContext,
+        entity_type: str,
+        entity_id: str,
+        summary_before: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Record a destructive delete audit event (storage delete ships later)."""
+        audit_service.record_entity_delete(
+            conn,
+            actor_context=actor_context,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            summary_before=summary_before,
+        )
+        return {"entity_type": entity_type, "entity_id": entity_id, "deleted": True}
+
+    def update_pipeline(
+        self,
+        conn: psycopg.Connection,
+        *,
+        actor_context: ActorContext,
+        entity_id: str,
+        summary_before: dict[str, Any] | None,
+        summary_after: dict[str, Any],
+    ) -> dict[str, Any]:
+        audit_service.record_pipeline_update(
+            conn,
+            actor_context=actor_context,
+            entity_id=entity_id,
+            summary_before=summary_before,
+            summary_after=summary_after,
+        )
+        return {"entity_id": entity_id, "summary_after": summary_after}
+
+    def update_scoring_rule(
+        self,
+        conn: psycopg.Connection,
+        *,
+        actor_context: ActorContext,
+        rule_id: str,
+        summary_before: dict[str, Any] | None,
+        summary_after: dict[str, Any],
+    ) -> dict[str, Any]:
+        audit_service.record_scoring_rule_update(
+            conn,
+            actor_context=actor_context,
+            rule_id=rule_id,
+            summary_before=summary_before,
+            summary_after=summary_after,
+        )
+        return {"rule_id": rule_id, "summary_after": summary_after}
+
+    def update_analytics_config(
+        self,
+        conn: psycopg.Connection,
+        *,
+        actor_context: ActorContext,
+        config_key: str,
+        summary_before: dict[str, Any] | None,
+        summary_after: dict[str, Any],
+    ) -> dict[str, Any]:
+        audit_service.record_analytics_config_update(
+            conn,
+            actor_context=actor_context,
+            config_key=config_key,
+            summary_before=summary_before,
+            summary_after=summary_after,
+        )
+        return {"config_key": config_key, "summary_after": summary_after}
+
+    def request_export(
+        self,
+        conn: psycopg.Connection,
+        *,
+        actor_context: ActorContext,
+        export_type: str,
+        filters: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        audit_service.record_export_request(
+            conn,
+            actor_context=actor_context,
+            export_type=export_type,
+            filters=filters,
+        )
+        return {"export_type": export_type, "filters": filters or {}}
+
+
+def _actor_context(
+    actor: str,
+    correlation_id: str | None,
+    company_id: UUID,
+) -> ActorContext:
+    return ActorContext(
+        actor=actor,
+        correlation_id=correlation_id or f"crm-{company_id}",
+    )
 
 
 def _serialize_dt(value: Any) -> str | None:

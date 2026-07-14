@@ -192,6 +192,95 @@ ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS csrf_token_hash TEXT;
     ),
     Migration(
         version="007",
+        name="audit_events",
+        up_sql="""
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+CREATE TABLE IF NOT EXISTS audit_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    actor TEXT NOT NULL,
+    action TEXT NOT NULL,
+    entity_type TEXT,
+    entity_id TEXT,
+    correlation_id TEXT NOT NULL,
+    summary_before JSONB,
+    summary_after JSONB,
+    metadata JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_events_action ON audit_events (action);
+CREATE INDEX IF NOT EXISTS idx_audit_events_actor ON audit_events (actor);
+CREATE INDEX IF NOT EXISTS idx_audit_events_correlation_id ON audit_events (correlation_id);
+
+CREATE OR REPLACE FUNCTION prevent_audit_events_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RAISE EXCEPTION 'audit_events records are append-only';
+END;
+$$;
+
+DROP TRIGGER IF EXISTS audit_events_no_update ON audit_events;
+CREATE TRIGGER audit_events_no_update
+    BEFORE UPDATE ON audit_events
+    FOR EACH ROW
+    EXECUTE FUNCTION prevent_audit_events_mutation();
+
+DROP TRIGGER IF EXISTS audit_events_no_delete ON audit_events;
+CREATE TRIGGER audit_events_no_delete
+    BEFORE DELETE ON audit_events
+    FOR EACH ROW
+    EXECUTE FUNCTION prevent_audit_events_mutation();
+""",
+    ),
+    Migration(
+        version="008",
+        name="research_records",
+        up_sql="""
+CREATE TABLE IF NOT EXISTS research_records (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    record_type TEXT NOT NULL
+        CHECK (record_type IN (
+            'verified_fact',
+            'public_signal',
+            'relationship_context',
+            'hypothesis',
+            'outreach_angle',
+            'follow_up_note'
+        )),
+    company_id UUID NOT NULL REFERENCES companies (id) ON DELETE CASCADE,
+    contact_id UUID REFERENCES contacts (id) ON DELETE SET NULL,
+    body TEXT NOT NULL,
+    source_name TEXT,
+    source_url TEXT,
+    observed_value TEXT,
+    observed_at TIMESTAMPTZ,
+    confidence NUMERIC(4, 3)
+        CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
+    review_at TIMESTAMPTZ,
+    expires_at TIMESTAMPTZ,
+    metadata JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_research_records_company_id
+    ON research_records (company_id);
+CREATE INDEX IF NOT EXISTS idx_research_records_contact_id
+    ON research_records (contact_id);
+CREATE INDEX IF NOT EXISTS idx_research_records_record_type
+    ON research_records (record_type);
+CREATE INDEX IF NOT EXISTS idx_research_records_expires_at
+    ON research_records (expires_at);
+CREATE INDEX IF NOT EXISTS idx_research_records_observed_at
+    ON research_records (observed_at);
+""",
+    ),
+    Migration(
+        version="009",
         name="acquisition_pipeline",
         up_sql="""
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS pipeline_stage TEXT;
@@ -233,22 +322,6 @@ CREATE INDEX IF NOT EXISTS idx_company_stage_history_company_id
 CREATE INDEX IF NOT EXISTS idx_company_stage_history_changed_at
     ON company_stage_history (changed_at);
 
-CREATE TABLE IF NOT EXISTS crm_audit_events (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    entity_type TEXT NOT NULL
-        CHECK (entity_type IN ('company')),
-    entity_id UUID NOT NULL,
-    action TEXT NOT NULL,
-    actor TEXT NOT NULL,
-    metadata JSONB
-);
-
-CREATE INDEX IF NOT EXISTS idx_crm_audit_events_entity
-    ON crm_audit_events (entity_type, entity_id);
-CREATE INDEX IF NOT EXISTS idx_crm_audit_events_created_at
-    ON crm_audit_events (created_at);
-
 ALTER TABLE activities DROP CONSTRAINT IF EXISTS activities_activity_type_check;
 ALTER TABLE activities ADD CONSTRAINT activities_activity_type_check
     CHECK (activity_type IN (
@@ -257,4 +330,5 @@ ALTER TABLE activities ADD CONSTRAINT activities_activity_type_check
     ));
 """,
     ),
+
 )

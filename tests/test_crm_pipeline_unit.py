@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from uuid import UUID
 
 import pytest
@@ -40,7 +40,7 @@ def _service_with_mocks() -> tuple[CrmService, MagicMock, dict[str, MagicMock]]:
         "source_records": MagicMock(),
         "activities": MagicMock(),
         "stage_history": MagicMock(),
-        "audit_events": MagicMock(),
+        "research_records": MagicMock(),
         "admin_users": MagicMock(),
     }
     service = CrmService(repos=CrmRepositories(**repos))
@@ -114,36 +114,25 @@ def test_stage_history_repository_create_and_list() -> None:
 
 
 @pytest.mark.unit
-def test_audit_event_repository_create_and_list() -> None:
+def test_audit_event_repository_list_for_entity() -> None:
     repo = PostgresAuditEventRepository()
     row = {
         "id": AUDIT_ID,
         "entity_type": "company",
-        "entity_id": COMPANY_ID,
-        "action": "stage_change",
+        "entity_id": str(COMPANY_ID),
+        "action": "pipeline.stage_change",
         "actor": "operator",
     }
-    conn = _mock_conn(row)
-
-    created = repo.create(
-        conn,
-        entity_type="company",
-        entity_id=COMPANY_ID,
-        action="stage_change",
-        actor="operator",
-        metadata={"from_stage": "researching", "to_stage": "qualified"},
-    )
-    assert created["action"] == "stage_change"
-
     list_conn = _mock_conn([row])
     events = repo.list_for_entity(
         list_conn,
         entity_type="company",
-        entity_id=COMPANY_ID,
+        entity_id=str(COMPANY_ID),
     )
     assert len(events) == 1
     list_sql = str(list_conn.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
-    assert "crm_audit_events" in list_sql
+    assert "audit_events" in list_sql
+    assert "entity_type = %s AND entity_id = %s" in list_sql
 
 
 @pytest.mark.unit
@@ -163,17 +152,20 @@ def test_transition_company_stage_writes_history_activity_and_audit() -> None:
         "to_stage": "qualified",
     }
 
-    result = service.transition_company_stage(
-        conn,
-        company_id=COMPANY_ID,
-        to_stage="qualified",
-        actor="operator",
-    )
+    with patch("app.crm_service.audit_service.record_pipeline_stage_change") as audit_fn:
+        with patch("app.crm_service.get_repositories") as get_repos:
+            get_repos.return_value.audit_events = MagicMock()
+            result = service.transition_company_stage(
+                conn,
+                company_id=COMPANY_ID,
+                to_stage="qualified",
+                actor="operator",
+            )
 
     assert result["company"]["pipeline_stage"] == "qualified"
     repos["stage_history"].create.assert_called_once()
     repos["activities"].create.assert_called_once()
-    repos["audit_events"].create.assert_called_once()
+    audit_fn.assert_called_once()
     conn.commit.assert_called_once()
 
 
@@ -233,20 +225,23 @@ def test_update_company_next_action_writes_audit_event() -> None:
         "expected_value": 1500,
     }
 
-    updated = service.update_company_next_action(
-        conn,
-        company_id=COMPANY_ID,
-        actor="operator",
-        next_action="Email",
-        due_at=datetime(2026, 7, 2, tzinfo=timezone.utc),
-        expected_value=1500,
-    )
+    with patch("app.crm_service.audit_service.record_pipeline_next_action_update") as audit_fn:
+        with patch("app.crm_service.get_repositories") as get_repos:
+            get_repos.return_value.audit_events = MagicMock()
+            updated = service.update_company_next_action(
+                conn,
+                company_id=COMPANY_ID,
+                actor="operator",
+                next_action="Email",
+                due_at=datetime(2026, 7, 2, tzinfo=timezone.utc),
+                expected_value=1500,
+            )
 
     assert updated["next_action"] == "Email"
-    repos["audit_events"].create.assert_called_once()
-    audit_metadata = repos["audit_events"].create.call_args.kwargs["metadata"]
-    assert audit_metadata["before"]["next_action"] == "Call"
-    assert audit_metadata["after"]["next_action"] == "Email"
+    audit_fn.assert_called_once()
+    audit_kwargs = audit_fn.call_args.kwargs
+    assert audit_kwargs["summary_before"]["next_action"] == "Call"
+    assert audit_kwargs["summary_after"]["next_action"] == "Email"
 
 
 @pytest.mark.unit
@@ -275,16 +270,19 @@ def test_record_activity_with_actor_writes_audit_event() -> None:
         "summary": "Sent intro email",
     }
 
-    activity = service.record_activity_for_company(
-        conn,
-        company_id=COMPANY_ID,
-        activity_type="outreach",
-        summary="Sent intro email",
-        actor="operator",
-    )
+    with patch("app.crm_service.audit_service.record_pipeline_activity") as audit_fn:
+        with patch("app.crm_service.get_repositories") as get_repos:
+            get_repos.return_value.audit_events = MagicMock()
+            activity = service.record_activity_for_company(
+                conn,
+                company_id=COMPANY_ID,
+                activity_type="outreach",
+                summary="Sent intro email",
+                actor="operator",
+            )
 
     assert activity["activity_type"] == "outreach"
-    repos["audit_events"].create.assert_called_once()
+    audit_fn.assert_called_once()
 
 
 @pytest.mark.unit
@@ -301,9 +299,12 @@ def test_get_company_pipeline_detail_assembles_related_records() -> None:
     repos["companies"].get_by_id.return_value = {"id": COMPANY_ID, "pipeline_stage": "qualified"}
     repos["stage_history"].list_for_company.return_value = [{"to_stage": "qualified"}]
     repos["activities"].list_for_company.return_value = [{"summary": "Call"}]
-    repos["audit_events"].list_for_entity.return_value = [{"action": "stage_change"}]
 
-    detail = service.get_company_pipeline_detail(conn, COMPANY_ID)
+    with patch("app.crm_service.get_repositories") as get_repos:
+        audit_repo = MagicMock()
+        audit_repo.list_for_entity.return_value = [{"action": "pipeline.stage_change"}]
+        get_repos.return_value.audit_events = audit_repo
+        detail = service.get_company_pipeline_detail(conn, COMPANY_ID)
 
     assert detail is not None
     assert detail["company"]["pipeline_stage"] == "qualified"
