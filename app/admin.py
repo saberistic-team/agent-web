@@ -56,10 +56,11 @@ def render_admin_page(
             admin_username=admin_username,
             csrf_token=csrf_token,
         )
-    if active_path == "/admin" and get_settings().admin_preview_enabled:
+    if get_settings().admin_preview_enabled:
         from app.admin_preview import (
             build_preview_dashboard_data,
             render_preview_dashboard_main,
+            render_preview_section_main,
         )
 
         main = render_preview_dashboard_main(build_preview_dashboard_data())

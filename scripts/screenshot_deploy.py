@@ -64,7 +64,20 @@ SITE_HTML_TO_ROUTE: dict[str, str] = {
 }
 
 # Admin HTML surfaces captured only on the PR-head preview server.
-ADMIN_SCREENSHOT_ROUTES: tuple[str, ...] = ("/admin", "/admin/login")
+# Keep in sync with app.admin_layout.ADMIN_SCREENSHOT_PATHS (nav shell + login).
+ADMIN_SCREENSHOT_ROUTES: tuple[str, ...] = (
+    "/admin",
+    "/admin/companies",
+    "/admin/contacts",
+    "/admin/signals",
+    "/admin/pipeline",
+    "/admin/imports",
+    "/admin/discovery",
+    "/admin/analytics",
+    "/admin/content",
+    "/admin/settings",
+    "/admin/login",
+)
 
 # Shared presentation — any change here affects all public pages.
 SITE_WIDE_PATH_PREFIXES = ("site/assets/",)
@@ -226,6 +239,19 @@ def _expand_param_route(path: str, app_root: Path) -> list[str]:
     return []
 
 
+def resolved_admin_screenshot_routes(app_root: Path | None = None) -> tuple[str, ...]:
+    """Prefer live ``ADMIN_SCREENSHOT_PATHS``; fall back to script constant."""
+    root = resolve_preview_root(app_root)
+    try:
+        if str(root) not in sys.path:
+            sys.path.insert(0, str(root))
+        from app.admin_layout import ADMIN_SCREENSHOT_PATHS  # type: ignore
+
+        return tuple(ADMIN_SCREENSHOT_PATHS)
+    except Exception:  # noqa: BLE001
+        return ADMIN_SCREENSHOT_ROUTES
+
+
 def discover_screenshot_routes(
     app_root: Path | None = None,
     *,
@@ -236,8 +262,8 @@ def discover_screenshot_routes(
     Discovers FastAPI GET routes under ``app_root`` (PR head / cwd). Skips
     ``/health`` (JSON evidence only), other JSON APIs, OpenAPI docs, static
     mounts, and legacy redirects. When ``include_admin`` is True (pre-merge
-    branch only), also includes ``/admin`` and ``/admin/login`` for capture
-    under ``ADMIN_PREVIEW_MODE``. Production post-deploy must pass
+    branch only), also includes all admin nav shell pages + ``/admin/login``
+    for capture under ``ADMIN_PREVIEW_MODE``. Production post-deploy must pass
     ``include_admin=False``.
     """
     root = resolve_preview_root(app_root)
@@ -294,7 +320,7 @@ def discover_screenshot_routes(
 
     found = {p for p in found if is_public_screenshot_route(p)}
     if include_admin:
-        found.update(ADMIN_SCREENSHOT_ROUTES)
+        found.update(resolved_admin_screenshot_routes(root))
 
     # Stable order: home first, then lexical (admin after public).
     ordered = sorted(found, key=lambda p: (p != "/", is_admin_screenshot_route(p), p))
@@ -392,11 +418,15 @@ def routes_affected_by_changed_files(
         result.extend(public_candidates)
         if include_admin and (saw_admin or site_wide):
             # Shared CSS/assets also style admin login / shell.
-            result.extend(admin_candidates or list(ADMIN_SCREENSHOT_ROUTES))
+            result.extend(
+                admin_candidates or list(resolved_admin_screenshot_routes(app_root))
+            )
     else:
         result.extend(r for r in public_candidates if r in affected)
         if include_admin and saw_admin:
-            result.extend(admin_candidates or list(ADMIN_SCREENSHOT_ROUTES))
+            result.extend(
+                admin_candidates or list(resolved_admin_screenshot_routes(app_root))
+            )
 
     # Dedupe preserving order.
     seen: set[str] = set()
