@@ -41,7 +41,6 @@ class PostgresCompanyRepository:
                 (name, website, status),
             )
             row = cur.fetchone()
-            conn.commit()
         return dict(row)
 
     def get_by_id(self, conn: psycopg.Connection, company_id: UUID) -> dict[str, Any] | None:
@@ -87,7 +86,6 @@ class PostgresCompanyRepository:
                 values,
             )
             row = cur.fetchone()
-            conn.commit()
         return dict(row) if row else None
 
 
@@ -110,7 +108,6 @@ class PostgresContactRepository:
                 (email, full_name, company_id),
             )
             row = cur.fetchone()
-            conn.commit()
         return dict(row)
 
     def get_by_id(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None:
@@ -155,7 +152,6 @@ class PostgresSourceRecordRepository:
                 ),
             )
             row = cur.fetchone()
-            conn.commit()
         return dict(row)
 
     def get_by_source(
@@ -209,7 +205,6 @@ class PostgresActivityRepository:
                 ),
             )
             row = cur.fetchone()
-            conn.commit()
         return dict(row)
 
     def list_for_company(
@@ -253,7 +248,6 @@ class PostgresAdminUserRepository:
                 (email, display_name, role, is_active),
             )
             row = cur.fetchone()
-            conn.commit()
         return dict(row)
 
     def get_by_email(self, conn: psycopg.Connection, email: str) -> dict[str, Any] | None:

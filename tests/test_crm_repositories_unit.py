@@ -46,6 +46,7 @@ def test_company_repository_crud() -> None:
 
     result = repo.create(conn, name="Acme", website="https://acme.dev")
     assert result["name"] == "Acme"
+    conn.commit.assert_not_called()
     insert_sql = str(conn.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
     assert "INSERT INTO companies" in insert_sql
 
@@ -56,6 +57,7 @@ def test_company_repository_crud() -> None:
     conn3 = _mock_conn(updated)
     row = repo.update(conn3, COMPANY_ID, status="active")
     assert row is not None
+    conn3.commit.assert_not_called()
     update_sql = str(conn3.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
     assert "UPDATE companies" in update_sql
     assert "updated_at" in update_sql
@@ -79,6 +81,7 @@ def test_contact_repository_create_and_lookup() -> None:
         company_id=COMPANY_ID,
     )
     assert created["email"] == "lead@example.com"
+    conn.commit.assert_not_called()
 
     conn2 = _mock_conn(row)
     assert repo.get_by_email(conn2, "lead@example.com")["id"] == CONTACT_ID
@@ -106,6 +109,7 @@ def test_source_record_repository_links_external_id() -> None:
         payload={"brief": "hello"},
     )
     assert created["external_id"] == "42"
+    conn.commit.assert_not_called()
 
     conn2 = _mock_conn(row)
     found = repo.get_by_source(conn2, source_type="project_brief", external_id="42")
@@ -132,6 +136,7 @@ def test_activity_repository_create_and_list() -> None:
         company_id=COMPANY_ID,
     )
     assert created["summary"] == "Initial outreach"
+    conn.commit.assert_not_called()
 
     conn2 = _mock_conn([row])
     activities = repo.list_for_company(conn2, COMPANY_ID, limit=10)
@@ -159,6 +164,7 @@ def test_admin_user_repository_create_and_lookup() -> None:
         role="admin",
     )
     assert created["role"] == "admin"
+    conn.commit.assert_not_called()
 
     conn2 = _mock_conn(row)
     assert repo.get_by_email(conn2, "admin@saberistic.com")["id"] == ADMIN_ID

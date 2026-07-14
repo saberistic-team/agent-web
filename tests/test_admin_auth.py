@@ -154,6 +154,131 @@ def shared_rate_limiter(store: FakeRateLimitStore) -> Generator[None, None, None
         yield
 
 
+class FakeRateLimitStore:
+    """In-memory Postgres stand-in for shared login rate-limit state."""
+
+    def __init__(self) -> None:
+        self.rows: dict[str, dict[str, Any]] = {}
+
+    def is_throttled(self, limiter_key: str, now: datetime) -> bool:
+        row = self.rows.get(limiter_key)
+        if row is None:
+            return False
+        locked_until = row.get("locked_until")
+        if locked_until is None:
+            return False
+        return locked_until > now
+
+    def record_failure(
+        self,
+        limiter_key: str,
+        now: datetime,
+        *,
+        rate_limit: int,
+        window_seconds: int,
+        lockout_seconds: int,
+    ) -> None:
+        row = self.rows.get(limiter_key)
+        window_start = now - timedelta(seconds=window_seconds)
+        if row is None or row["window_started_at"] < window_start:
+            failure_count = 1
+            window_started_at = now
+        else:
+            failure_count = row["failure_count"] + 1
+            window_started_at = row["window_started_at"]
+        locked_until = (
+            now + timedelta(seconds=lockout_seconds) if failure_count >= rate_limit else None
+        )
+        self.rows[limiter_key] = {
+            "failure_count": failure_count,
+            "window_started_at": window_started_at,
+            "locked_until": locked_until,
+            "updated_at": now,
+        }
+
+    def clear(self, limiter_key: str) -> None:
+        self.rows.pop(limiter_key, None)
+
+    def cleanup(
+        self,
+        now: datetime,
+        *,
+        window_seconds: int,
+        lockout_seconds: int,
+    ) -> int:
+        retention = max(window_seconds, lockout_seconds) * 2
+        cutoff = now - timedelta(seconds=retention)
+        expired = [
+            key
+            for key, row in self.rows.items()
+            if row["updated_at"] < cutoff
+            and (row["locked_until"] is None or row["locked_until"] < now)
+        ]
+        for key in expired:
+            del self.rows[key]
+        return len(expired)
+
+
+@pytest.fixture
+def rate_limit_store() -> FakeRateLimitStore:
+    return FakeRateLimitStore()
+
+
+@contextmanager
+def shared_rate_limiter(store: FakeRateLimitStore) -> Generator[None, None, None]:
+    """Patch db rate-limit functions to use shared durable storage."""
+
+    def is_throttled(conn: Any, *, limiter_key: str, now: datetime) -> bool:
+        return store.is_throttled(limiter_key, now)
+
+    def record_failure(
+        conn: Any,
+        *,
+        limiter_key: str,
+        now: datetime,
+        rate_limit: int,
+        window_seconds: int,
+        lockout_seconds: int,
+    ) -> None:
+        store.record_failure(
+            limiter_key,
+            now,
+            rate_limit=rate_limit,
+            window_seconds=window_seconds,
+            lockout_seconds=lockout_seconds,
+        )
+
+    def clear(conn: Any, *, limiter_key: str) -> None:
+        store.clear(limiter_key)
+
+    def cleanup(
+        conn: Any,
+        *,
+        now: datetime,
+        window_seconds: int,
+        lockout_seconds: int,
+    ) -> int:
+        return store.cleanup(
+            now,
+            window_seconds=window_seconds,
+            lockout_seconds=lockout_seconds,
+        )
+
+    with (
+        patch("app.admin_auth.db.is_admin_login_throttled", side_effect=is_throttled),
+        patch("app.admin_auth.db.record_admin_login_failure", side_effect=record_failure),
+        patch("app.admin_auth.db.clear_admin_login_rate_limit", side_effect=clear),
+        patch(
+            "app.admin_auth.db.cleanup_expired_admin_login_rate_limits",
+            side_effect=cleanup,
+        ),
+        patch("app.admin_auth.db.db_connection") as db_conn,
+    ):
+        db_conn.return_value.__enter__.return_value = MagicMock()
+        db_conn.return_value.__exit__.return_value = None
+        yield
+
+
 @pytest.fixture(autouse=True)
 def admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
@@ -405,6 +530,40 @@ def test_csrf_value_rejects_missing_or_malformed() -> None:
     assert not admin_auth.verify_csrf_value("", stored)
     assert not admin_auth.verify_csrf_value("bad-token", None)
     assert not admin_auth.verify_csrf_value("bad-token", "")
+
+
+@pytest.mark.unit
+def test_build_rate_limit_key_hashes_username_and_source() -> None:
+    key_a = admin_auth.build_rate_limit_key("Operator", "203.0.113.1")
+    key_b = admin_auth.build_rate_limit_key("operator", "203.0.113.1")
+    key_c = admin_auth.build_rate_limit_key("operator", "203.0.113.2")
+    assert key_a == key_b
+    assert key_a != key_c
+    assert len(key_a) == 64
+
+
+@pytest.mark.unit
+def test_client_ip_ignores_forwarded_without_trusted_proxy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ADMIN_TRUST_PROXY_HEADERS", raising=False)
+    settings = get_settings()
+    request = _request_with_client("198.51.100.10")
+    request.headers.__dict__["_list"].append((b"x-forwarded-for", b"203.0.113.99"))
+    assert admin_auth.client_ip(request, settings) == "198.51.100.10"
+
+
+@pytest.mark.unit
+def test_client_ip_uses_forwarded_when_trusted_proxy_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_TRUST_PROXY_HEADERS", "true")
+    settings = get_settings()
+    request = _request_with_client("10.0.0.1")
+    request.headers.__dict__["_list"].append(
+        (b"x-forwarded-for", b"203.0.113.50, 10.0.0.1")
+    )
+    assert admin_auth.client_ip(request, settings) == "203.0.113.50"
 
 
 @pytest.mark.unit
