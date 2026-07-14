@@ -11,8 +11,12 @@ Parent issue: [#101](https://github.com/saberistic-team/agent-web/issues/101).
 - Admin credentials are configured only through Render environment variables.
 - Successful login creates a new server-side session and sets a `Secure`,
   `HttpOnly`, `SameSite=strict` cookie scoped to `/admin`.
-- Login POST requests require a signed CSRF token and are rate limited per
-  username-and-source key in shared Postgres storage (consistent across instances).
+- Login POST requests require a CSRF synchronizer token bound to a short-lived
+  pre-authentication browser flow stored server-side.
+- Authenticated state-changing requests (e.g. logout) require a CSRF token bound
+  to the active server-side session.
+- Login POST requests are rate limited per username-and-source key in shared
+  Postgres storage (consistent across instances).
 - Logout revokes the active session server-side and clears the cookie.
 - Anonymous requests to protected `/admin` routes receive a safe redirect to
   `/admin/login`.
@@ -21,20 +25,64 @@ Parent issue: [#101](https://github.com/saberistic-team/agent-web/issues/101).
 
 | Route | Auth | Purpose |
 |-------|------|---------|
-| `GET /admin/login` | Public | Sign-in form |
-| `POST /admin/login` | Public | Authenticate; CSRF + rate limit enforced |
-| `POST /admin/logout` | Cookie optional | Revoke session and clear cookie |
+| `GET /admin/login` | Public | Sign-in form; mints pre-auth flow + CSRF |
+| `POST /admin/login` | Public | Authenticate; flow-bound CSRF + rate limit enforced |
+| `POST /admin/logout` | Session optional | Revoke session; session-bound CSRF when signed in |
 | `GET /admin` | Required | Authenticated operator landing (stub) |
 | Other `GET /admin/*` | Required | Redirect to login when anonymous |
+
+## CSRF token lifecycle
+
+CSRF uses a **synchronizer-token** pattern. Only hashed tokens are stored
+server-side; raw tokens appear in HTML forms only and are never logged.
+
+### Pre-authentication login flow
+
+1. `GET /admin/login` creates an `admin_login_flows` row containing
+   `flow_token_hash` and `csrf_token_hash`, then sets an `admin_login_flow`
+   cookie (`HttpOnly`, `SameSite=strict`, path `/admin`, 15-minute TTL).
+2. The login form embeds the raw CSRF token in a hidden field.
+3. `POST /admin/login` requires both the flow cookie and matching CSRF field.
+   The flow row is consumed (one-time use) on every POST attempt.
+4. On failure or throttle, a fresh flow and CSRF token are issued.
+5. On success, the flow cookie is cleared and a new authenticated session is
+   minted (session fixation resistance).
+
+A CSRF token copied from one browser cannot be submitted from another: the
+paired `admin_login_flow` cookie is `HttpOnly` and bound to the initiating
+browser context.
+
+### Authenticated session CSRF
+
+1. Session creation stores an initial `csrf_token_hash` on the `admin_sessions`
+   row.
+2. Each protected GET that renders a form (e.g. dashboard) rotates the session
+   CSRF hash and embeds the new raw token.
+3. State-changing POST handlers validate the submitted token with constant-time
+   hash comparison.
+4. CSRF hashes are cleared when the session is revoked, expires, or is replaced
+   during login rotation.
+
+### Failure handling
+
+Missing, malformed, expired, cross-session, or replayed tokens fail with generic
+messages (*Invalid username or password* on login; *Invalid request* on
+authenticated forms). No token values or validation internals are exposed.
+
+### Cookie assumptions
+
+`SameSite=strict` on session and login-flow cookies is defense-in-depth against
+cross-site cookie delivery; it is **not** the sole CSRF defense. Origin/Referer
+checks are likewise not relied upon for CSRF protection.
 
 ## Environment variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `DATABASE_URL` | Yes | Render Postgres connection string (stores `admin_sessions`) |
+| `DATABASE_URL` | Yes | Render Postgres connection string (stores `admin_sessions`, `admin_login_flows`) |
 | `ADMIN_USERNAME` | Yes | Operator username (plain text identifier) |
 | `ADMIN_PASSWORD_HASH` | Yes | Argon2id hash of the operator password |
-| `ADMIN_SESSION_SECRET` | Yes | HMAC secret for CSRF tokens (≥ 32 random bytes) |
+| `ADMIN_SESSION_SECRET` | Yes | Retained for configuration parity (≥ 32 random bytes); CSRF is session-bound, not HMAC-signed with this secret |
 | `ADMIN_SESSION_TTL_SECONDS` | Optional | Session lifetime in seconds (default `86400`) |
 | `ADMIN_LOGIN_RATE_LIMIT` | Optional | Failed login attempts allowed per window (default `5`) |
 | `ADMIN_LOGIN_RATE_WINDOW_SECONDS` | Optional | Rate-limit counting window in seconds (default `900`) |
@@ -86,9 +134,8 @@ Redeploy after changing any of the above.
 
 1. Generate a new `ADMIN_SESSION_SECRET`.
 2. Update the variable in Render and redeploy.
-3. All outstanding CSRF tokens become invalid; operators must reload `/admin/login`.
-4. Existing session cookies remain valid (they are stored server-side, not signed
-   with this secret).
+3. CSRF tokens are session- and flow-bound; rotating this secret does not
+   invalidate active sessions or in-flight login flows.
 
 ### Emergency session revocation
 
