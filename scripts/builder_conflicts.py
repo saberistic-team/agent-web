@@ -12,6 +12,7 @@ import argparse
 import os
 import re
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Callable
@@ -23,6 +24,11 @@ DEFAULT_RECENT_PRS = 8
 DEFAULT_RECENT_ISSUES = 8
 MAX_BODY_CHARS = 1200
 MAX_FILE_CHARS = 60_000
+# Fast import check after conflict resolution. Broken merges that still claim
+# ``resolved`` were looping Builder↔Reviewer (e.g. dropped ``admin_router``,
+# missing Protocol exports). Fail closed until smoke passes.
+SMOKE_IMPORT = "from app.main import app"
+SMOKE_TIMEOUT_SEC = 90
 
 
 def linked_open_prs(repo: str, issue: int) -> list[dict[str, Any]]:
@@ -261,6 +267,45 @@ def strip_conflict_markers_prefer_head(text: str) -> str:
 ResolveFn = Callable[[str, str, str], str]
 
 
+def leftover_conflict_markers(cwd: Path, paths: list[str]) -> list[str]:
+    """Return relative paths that still contain git conflict markers."""
+    dirty: list[str] = []
+    for rel in paths:
+        path = cwd / rel
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if CONFLICT_MARKER.search(text):
+            dirty.append(rel)
+    return dirty
+
+
+def smoke_import_app(cwd: Path) -> tuple[bool, str]:
+    """Import ``app.main`` after a merge; return ``(ok, detail)``."""
+    env = {**os.environ, "PYTHONPATH": str(cwd)}
+    # Preview/auth settings are optional for import; avoid requiring secrets.
+    env.setdefault("ADMIN_PREVIEW_MODE", "1")
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-c", SMOKE_IMPORT],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=SMOKE_TIMEOUT_SEC,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return False, f"smoke timed out after {SMOKE_TIMEOUT_SEC}s ({SMOKE_IMPORT})"
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip() or f"exit {proc.returncode}"
+        return False, detail[:800]
+    return True, "ok"
+
+
 def default_resolve_file(
     path: str,
     conflicted_text: str,
@@ -276,7 +321,11 @@ def default_resolve_file(
     system = (
         "You resolve git merge conflicts for a product repo. "
         "Return ONLY the full resolved file contents — no markdown fences, "
-        "no explanation. Preserve both feature intent and recently merged work."
+        "no explanation. Preserve both feature intent and recently merged work. "
+        "Never drop imports, router wiring (`admin_router`), Protocol/repository "
+        "exports, cookie/session symbol names, or migration catalog entries that "
+        "either side defines — union both sides when unsure. Prefer keeping "
+        "main's auth/session APIs when they conflict with obsolete Basic-auth tests."
     )
     user = (
         f"{brief}\n\n"
@@ -436,6 +485,23 @@ def merge_default_into_pr_branch(
             ],
             cwd=root,
         )
+
+        # Fail closed: do not push or claim ``resolved`` when markers remain or
+        # ``app.main`` no longer imports (classic Builder↔Reviewer loop).
+        marker_hits = leftover_conflict_markers(root, resolved_paths)
+        smoke_ok, smoke_detail = smoke_import_app(root)
+        if marker_hits or not smoke_ok:
+            return {
+                "status": "broken_after_resolve",
+                "pr": pr_number,
+                "head": head_ref,
+                "base": base_ref,
+                "conflicted": resolved_paths,
+                "leftover_markers": marker_hits,
+                "smoke_error": None if smoke_ok else smoke_detail,
+                "pushed": False,
+            }
+
         if push:
             _run_git(["push", "origin", f"HEAD:{head_ref}"], cwd=root)
         return {
@@ -498,18 +564,29 @@ def maybe_resolve_pr_conflicts(
         recent_brief=recent,
     )
     result["issue"] = issue
-    post_issue_comment(
-        repo,
-        issue,
-        (
-            "### builder_conflict_result\n"
-            f"- status: `{result.get('status')}`\n"
-            f"- pr: #{pr_number}\n"
-            f"- head: `{result.get('head')}`\n"
-            f"- base: `{result.get('base')}`\n"
-            f"- conflicted: {', '.join(f'`{p}`' for p in result.get('conflicted') or []) or '(none)'}\n"
-        ),
-    )
+    lines = [
+        "### builder_conflict_result\n",
+        f"- status: `{result.get('status')}`\n",
+        f"- pr: #{pr_number}\n",
+        f"- head: `{result.get('head')}`\n",
+        f"- base: `{result.get('base')}`\n",
+        f"- conflicted: {', '.join(f'`{p}`' for p in result.get('conflicted') or []) or '(none)'}\n",
+    ]
+    if result.get("status") == "broken_after_resolve":
+        markers = result.get("leftover_markers") or []
+        if markers:
+            lines.append(
+                "- leftover_markers: "
+                + ", ".join(f"`{p}`" for p in markers)
+                + "\n"
+            )
+        if result.get("smoke_error"):
+            lines.append(f"- smoke_error: `{result['smoke_error']}`\n")
+        lines.append(
+            "- note: resolution did **not** push; re-enter Builder (`waiting`) — "
+            "do not hand off to Reviewer until `from app.main import app` succeeds.\n"
+        )
+    post_issue_comment(repo, issue, "".join(lines))
     return result
 
 
@@ -535,7 +612,11 @@ def main(argv: list[str] | None = None) -> int:
         push=not args.no_push,
     )
     print(result)
-    return 0 if result.get("status") in {"clean", "merged_clean", "resolved", "no_pr"} else 1
+    return (
+        0
+        if result.get("status") in {"clean", "merged_clean", "resolved", "no_pr"}
+        else 1
+    )
 
 
 if __name__ == "__main__":
