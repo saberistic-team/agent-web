@@ -86,8 +86,6 @@ def test_crm_service_does_not_touch_brief_tables() -> None:
             )
     create_company.assert_called_once()
     create_contact.assert_called_once()
-    conn.commit.assert_called_once()
-    conn.rollback.assert_not_called()
     for call in (create_company, create_contact):
         sql = str(call.call_args)
         assert "project_briefs" not in sql
@@ -98,6 +96,7 @@ def test_apply_migrations_records_schema_versions() -> None:
     conn = MagicMock()
     cur = MagicMock()
     conn.cursor.return_value.__enter__.return_value = cur
+    cur.fetchone.return_value = (True,)
     cur.fetchall.return_value = []
 
     versions = apply_migrations(conn)

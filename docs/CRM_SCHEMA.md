@@ -21,31 +21,7 @@ unchanged; CRM tables are storage-only until later admin/import issues wire rout
 Route handlers must not embed SQL. Use `app/db.py` for brief/payment flows and
 `app/crm_service.py` + `app/repositories/` for CRM reads/writes.
 
-## Transaction ownership
-
-CRM write paths use a **service-owned transaction boundary**. Repositories execute
-SQL against a caller-supplied `psycopg.Connection` but never call `commit()` or
-`rollback()`. `CrmService` wraps each write operation in `crm_transaction()` from
-`app/crm_uow.py`: one commit after all repository mutations succeed, rollback on
-any failure.
-
-| Layer | Responsibility |
-|-------|----------------|
-| Route / caller | Opens a connection (`db.db_connection`) and passes it to `CrmService` |
-| `CrmService` | Orchestrates repositories; owns commit/rollback via `crm_transaction()` |
-| `app/repositories/postgres.py` | Parameterized SQL only; no transaction side effects |
-| Read methods | No commit/rollback — queries leave the connection transaction state unchanged |
-
-Multi-step operations (e.g. `record_company_with_contact`) are atomic: if contact
-creation fails, the company insert is rolled back with the rest of the operation.
-
-**Brief/payment flows** (`app/db.py` — `create_brief`, Stripe session updates,
-`mark_brief_paid`, admin session helpers) keep their existing per-helper commit
-behavior and are out of scope for CRM transaction migration.
-
-Direct repository use in tests or future admin tooling must commit explicitly when
-bypassing `CrmService`.
-
+## Identifiers
 
 - **Brief rows** keep `SERIAL` primary keys (`project_briefs.id`) for Stripe metadata
   compatibility.
@@ -180,6 +156,30 @@ Migrations live in `app/migrations/definitions.py` and are applied at startup vi
 Applied versions are recorded in `schema_migrations`. Steps are **idempotent**
 (`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`) so empty and existing Render Postgres
 databases both converge safely.
+
+### Concurrent startup
+
+When multiple app instances start together (for example during a rolling deploy),
+`apply_migrations()` serializes discovery and execution with a **transaction-scoped**
+Postgres advisory lock (`pg_try_advisory_xact_lock`):
+
+| Constant | Value | Meaning |
+|----------|-------|---------|
+| `MIGRATION_ADVISORY_LOCK_KEY1` | `0x41474557` (`"AGEW"`) | agent-web namespace |
+| `MIGRATION_ADVISORY_LOCK_KEY2` | `0x53434D47` (`"SCMG"`) | schema-migrations sub-key |
+
+Lock acquisition, pending-version discovery, migration SQL, and `schema_migrations`
+inserts run in **one transaction**. The lock is released automatically on commit,
+rollback, or connection loss.
+
+A second initializer **retries** lock acquisition every 250ms for up to **120 seconds**.
+If the lock is still held after that budget, startup fails with
+`MigrationLockTimeoutError` and an actionable log message — investigate a stuck peer
+or retry once the other instance finishes.
+
+If a migration statement fails, the transaction rolls back: no new `schema_migrations`
+row is committed and the lock is released. A later startup retries from the last
+applied version.
 
 ### Rollback strategy
 
