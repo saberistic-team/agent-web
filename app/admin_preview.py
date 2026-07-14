@@ -204,7 +204,7 @@ def render_preview_dashboard_main(data: PreviewDashboardData) -> str:
               <dd>{data.sessions_active}</dd>
             </div>
           </dl>
-          <h2 class="admin-section-title">Recent briefs</h2>
+          <h2 class="admin-section-title">Recent submissions</h2>
           <div class="admin-table-wrap">
             <table class="admin-table">
               <thead>

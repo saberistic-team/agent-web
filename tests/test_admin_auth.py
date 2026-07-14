@@ -495,7 +495,7 @@ def test_admin_preview_mode_allows_dashboard_without_login(
     dash = client.get("/admin")
     assert dash.status_code == 200
     assert "Preview data — not production" in dash.text
-    assert "Recent briefs" in dash.text
+    assert "Recent submissions" in dash.text
     assert "admin-stat-row" in dash.text
     login = client.get("/admin/login")
     assert login.status_code == 200

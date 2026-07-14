@@ -59,6 +59,7 @@ def _session_row(*, token_hash: str) -> dict[str, Any]:
 def test_admin_nav_links_include_required_destinations() -> None:
     assert ADMIN_HREFS == (
         "/admin",
+        "/admin/audit",
         "/admin/companies",
         "/admin/contacts",
         "/admin/signals",
@@ -71,6 +72,7 @@ def test_admin_nav_links_include_required_destinations() -> None:
     )
     assert ADMIN_LABELS == (
         "Dashboard",
+        "Audit",
         "Companies",
         "Contacts",
         "Signals",

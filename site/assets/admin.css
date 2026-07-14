@@ -4,6 +4,8 @@ body.admin-app {
   background:
     radial-gradient(900px 480px at 0% -5%, #1a2036 0%, transparent 55%),
     var(--bg);
+  overflow-x: clip;
+  max-width: 100vw;
 }
 
 .admin-top {
@@ -71,6 +73,8 @@ body.admin-app {
   grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
   gap: 0;
   min-height: calc(100vh - 72px);
+  min-width: 0;
+  width: 100%;
 }
 
 .admin-nav {
@@ -138,6 +142,9 @@ body.admin-app {
 .admin-main {
   padding: clamp(1.5rem, 4vw, 2.75rem);
   max-width: 960px;
+  min-width: 0;
+  width: 100%;
+  overflow-x: clip;
 }
 
 .admin-eyebrow {
@@ -151,10 +158,13 @@ body.admin-app {
 .admin-title {
   margin: 0 0 1rem;
   font-family: var(--display);
-  font-size: clamp(1.6rem, 4vw, 2.2rem);
-  line-height: 1.1;
+  font-size: clamp(1.35rem, 5.5vw, 2.2rem);
+  line-height: 1.12;
   font-weight: 400;
   text-transform: uppercase;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
 }
 
 .admin-lede {
@@ -180,7 +190,104 @@ body.admin-app {
   border-radius: 2px;
 }
 
+.audit-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 2rem;
+  margin: 0 0 1rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.audit-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+
+.audit-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.audit-table th,
+.audit-table td {
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.audit-table th {
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+}
+
+.audit-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.audit-json {
+  display: inline-block;
+  max-width: 18rem;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font-size: 0.72rem;
+}
+
+.audit-muted {
+  color: var(--muted);
+}
+
+.audit-empty {
+  text-align: center;
+  color: var(--muted);
+  padding: 2rem 1rem;
+}
+
+.audit-pager {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.audit-pager-link {
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--accent-ink);
+  border-bottom: 1px solid transparent;
+}
+
+.audit-pager-link:hover,
+.audit-pager-link:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
 @media (max-width: 768px) {
+  .admin-title {
+    font-family: var(--mono), "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 1.2rem;
+    line-height: 1.25;
+    text-transform: none;
+    letter-spacing: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    max-width: 100%;
+  }
+
+  .admin-main {
+    min-width: 0;
+  }
+
   .admin-layout {
     grid-template-columns: 1fr;
   }
