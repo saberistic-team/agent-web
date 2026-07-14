@@ -14,7 +14,11 @@ def _esc(value: Any) -> str:
     return html.escape(str(value))
 
 
-def render_companies_list_page(*, companies: list[dict[str, Any]]) -> str:
+def render_companies_list_page(
+    *,
+    companies: list[dict[str, Any]],
+    csrf_token: str | None = None,
+) -> str:
     rows: list[str] = []
     for company in companies:
         company_id = _esc(company["id"])
@@ -54,4 +58,4 @@ def render_companies_list_page(*, companies: list[dict[str, Any]]) -> str:
             </table>
           </div>
         </section>"""
-    return render_admin_shell(title="Companies", main=main, active_path="/admin/companies")
+    return render_admin_shell(title="Companies", main=main, active_path="/admin/companies", csrf_token=csrf_token)
