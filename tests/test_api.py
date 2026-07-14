@@ -34,12 +34,13 @@ def test_about_handler_returns_about(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.unit
 def test_site_page_handlers_return_pages(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.main import case_studies_index, diagnostic, services
+    from app.main import case_studies_index, services
 
     monkeypatch.delenv("ANALYTICS_ENABLED", raising=False)
-    assert "Services" in services().body.decode()
+    assert "Architecture Diagnostic" in services().body.decode()
+    assert "Fractional Principal Architect" in services().body.decode()
+    assert "Technical Due Diligence" in services().body.decode()
     assert "Case studies" in case_studies_index().body.decode()
-    assert "Diagnostic" in diagnostic().body.decode()
 
 
 @pytest.mark.unit
