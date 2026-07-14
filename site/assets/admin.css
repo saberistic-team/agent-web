@@ -4,6 +4,8 @@ body.admin-app {
   background:
     radial-gradient(900px 480px at 0% -5%, #1a2036 0%, transparent 55%),
     var(--bg);
+  overflow-x: clip;
+  max-width: 100vw;
 }
 
 .admin-top {
@@ -71,6 +73,8 @@ body.admin-app {
   grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
   gap: 0;
   min-height: calc(100vh - 72px);
+  min-width: 0;
+  width: 100%;
 }
 
 .admin-nav {
@@ -138,6 +142,9 @@ body.admin-app {
 .admin-main {
   padding: clamp(1.5rem, 4vw, 2.75rem);
   max-width: 960px;
+  min-width: 0;
+  width: 100%;
+  overflow-x: clip;
 }
 
 .admin-eyebrow {
@@ -181,35 +188,6 @@ body.admin-app {
   background: color-mix(in srgb, var(--surface) 90%, transparent);
   padding: 0.1rem 0.35rem;
   border-radius: 2px;
-}
-
-@media (max-width: 768px) {
-  .admin-title {
-    font-size: clamp(1.15rem, 7vw, 1.6rem);
-    letter-spacing: -0.02em;
-  }
-
-  .admin-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .admin-nav {
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-    padding: 0.75rem clamp(1rem, 4vw, 1.5rem);
-  }
-
-  .admin-nav-summary {
-    display: block;
-  }
-
-  .admin-nav-list {
-    margin-top: 0.75rem;
-  }
-
-  .admin-nav-toggle:not([open]) .admin-nav-list {
-    display: none;
-  }
 }
 
 .audit-meta {
@@ -296,7 +274,7 @@ body.admin-app {
 
 @media (max-width: 768px) {
   .admin-title {
-    font-size: clamp(1.15rem, 7vw, 1.6rem);
+    font-size: clamp(1rem, 6vw, 1.45rem);
     letter-spacing: -0.02em;
   }
 
@@ -322,22 +300,3 @@ body.admin-app {
     display: none;
   }
 }
-
-/* mobile title readability — Archivo Black + uppercase overflows 390px viewport */
-@media (max-width: 768px) {
-  .admin-title {
-    font-family: var(--mono), "IBM Plex Mono", ui-monospace, monospace;
-    font-size: 1.2rem;
-    line-height: 1.25;
-    text-transform: none;
-    letter-spacing: 0;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-    max-width: 100%;
-  }
-
-  .admin-main {
-    min-width: 0;
-  }
-}
-
