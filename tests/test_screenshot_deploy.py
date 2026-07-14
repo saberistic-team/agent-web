@@ -1,10 +1,12 @@
 from screenshot_deploy import (
     VIEWPORTS,
+    admin_screenshot_session_cookie,
     discover_screenshot_routes,
     format_overflow_hard_fail,
     is_production_pre_shot,
     is_skipped_api_or_meta_route,
     resolve_base_url,
+    route_requires_admin_auth,
     screenshot_basename,
     wait_healthy,
 )
@@ -74,6 +76,23 @@ def test_discover_screenshot_routes_includes_pages_excludes_apis() -> None:
     assert any(r.startswith("/insights/") for r in routes)
     # Home first for stable evidence ordering.
     assert routes[0] == "/"
+
+
+def test_route_requires_admin_auth() -> None:
+    assert route_requires_admin_auth("/admin")
+    assert route_requires_admin_auth("/admin/companies")
+    assert not route_requires_admin_auth("/")
+
+
+def test_admin_screenshot_session_cookie() -> None:
+    cookie = admin_screenshot_session_cookie()
+    assert cookie["name"] == "admin_session"
+    assert cookie["value"] == "preview-screenshot-session"
+
+
+def test_discover_screenshot_routes_includes_admin_dashboard() -> None:
+    routes = discover_screenshot_routes()
+    assert "/admin" in routes
 
 
 def test_format_overflow_hard_fail_mobile_only() -> None:

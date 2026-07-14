@@ -7,10 +7,13 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
-from app import admin_auth, admin_pages, db
+from app import admin, admin_auth, admin_pages, db
+from app.admin_layout import ADMIN_NAV_LINKS
 from app.config import Settings, get_settings
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+PREVIEW_SESSION_TOKEN = "preview-screenshot-session"
 
 
 def _require_admin_auth_configured(settings: Settings) -> None:
@@ -18,10 +21,22 @@ def _require_admin_auth_configured(settings: Settings) -> None:
         raise HTTPException(status_code=503, detail="Admin authentication not configured")
 
 
+def _preview_session(settings: Settings) -> admin_auth.AdminSession:
+    return admin_auth.AdminSession(
+        id=0,
+        admin_username=settings.admin_username or "preview",
+        token_hash="preview",
+        expires_at=datetime.max.replace(tzinfo=timezone.utc),
+        csrf_token_hash=None,
+    )
+
+
 def _load_valid_session(request: Request, settings: Settings) -> admin_auth.AdminSession | None:
     raw_token = admin_auth.read_session_token(request)
     if raw_token is None:
         return None
+    if settings.admin_preview_mode and raw_token == PREVIEW_SESSION_TOKEN:
+        return _preview_session(settings)
     token_hash = admin_auth.hash_session_token(raw_token)
     with db.db_connection(settings.database_url) as conn:
         row = db.get_admin_session_by_token_hash(conn, token_hash)
@@ -243,25 +258,61 @@ def admin_logout(
     return response
 
 
+def _render_admin_shell_page(request: Request, active_path: str) -> HTMLResponse:
+    """Authenticate and render the shared admin shell for a nav path."""
+    session = require_admin_session(request)
+    settings = get_settings()
+    csrf_token = ""
+    if session.id:
+        csrf_token = _issue_session_csrf(settings, session.id)
+    kwargs = dict(admin_username=session.admin_username, csrf_token=csrf_token)
+    if not admin.is_admin_path(active_path):
+        return HTMLResponse(admin.render_admin_not_found(active_path, **kwargs), status_code=404)
+    return HTMLResponse(admin.render_admin_page(active_path, **kwargs))
+
+
+for _link in ADMIN_NAV_LINKS:
+    if _link["href"] == "/admin":
+        continue
+    _section = _link["href"].removeprefix("/admin/")
+
+    def _section_handler(
+        request: Request,
+        *,
+        _active_path: str = _link["href"],
+    ) -> HTMLResponse:
+        return _render_admin_shell_page(request, _active_path)
+
+    router.add_api_route(
+        f"/{_section}",
+        _section_handler,
+        methods=["GET"],
+        response_class=HTMLResponse,
+    )
+
+
 @router.get("", response_class=HTMLResponse)
 @router.get("/", response_class=HTMLResponse)
 def admin_dashboard(request: Request) -> HTMLResponse:
-    session = require_admin_session(request)
-    settings = get_settings()
-    csrf_token = _issue_session_csrf(settings, session.id)
-    return HTMLResponse(
-        admin_pages.render_admin_dashboard_page(
-            admin_username=session.admin_username,
-            settings=settings,
-            csrf_token=csrf_token,
-        )
-    )
+    return _render_admin_shell_page(request, "/admin")
 
 
 @router.api_route("/{full_path:path}", methods=["GET", "HEAD"], response_model=None)
 def admin_protected_fallback(request: Request, full_path: str) -> Response:
-    """Redirect anonymous visitors for any other /admin path."""
+    """Auth gate + shell 404 for unknown /admin paths."""
     if full_path.rstrip("/") == "login":
         raise HTTPException(status_code=404, detail="Not found")
-    require_admin_session(request)
-    raise HTTPException(status_code=404, detail="Not found")
+    session = require_admin_session(request)
+    settings = get_settings()
+    csrf_token = ""
+    if session.id:
+        csrf_token = _issue_session_csrf(settings, session.id)
+    path = f"/admin/{full_path.rstrip('/')}"
+    return HTMLResponse(
+        admin.render_admin_not_found(
+            path,
+            admin_username=session.admin_username,
+            csrf_token=csrf_token,
+        ),
+        status_code=404,
+    )

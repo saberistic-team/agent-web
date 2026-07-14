@@ -65,6 +65,7 @@ def robots_txt() -> str:
     return (
         "User-agent: *\n"
         "Allow: /\n"
+        "Disallow: /admin\n"
         "\n"
         f"Sitemap: {CANONICAL_BASE}/sitemap.xml\n"
     )

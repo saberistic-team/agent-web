@@ -15,7 +15,7 @@ DEFERRED_HEADINGS = (
     "Full CRM integration",
 )
 
-ADMIN_PATTERNS = (
+ADMIN_BRIEF_PATTERNS = (
     re.compile(r"\badmin.*brief", re.I),
     re.compile(r"\bbrief.*admin", re.I),
     # Block admin list UIs at /briefs; allow the public create API at /api/briefs.
@@ -73,7 +73,7 @@ def test_readme_links_project_brief_doc() -> None:
 
 
 def test_no_admin_brief_ui_in_product() -> None:
-    hits = _scan_patterns(ADMIN_PATTERNS)
+    hits = _scan_patterns(ADMIN_BRIEF_PATTERNS)
     assert not hits, "admin brief UI patterns found: " + ", ".join(hits)
 
 
