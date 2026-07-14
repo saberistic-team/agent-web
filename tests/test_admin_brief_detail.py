@@ -10,10 +10,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
+import psycopg
 
 from app import admin_auth, brief_service
 from app.admin_auth import SESSION_COOKIE_NAME
 from app.admin_pages import (
+    render_admin_brief_db_error,
     render_admin_brief_detail_page,
     render_admin_brief_not_found,
 )
@@ -232,6 +234,24 @@ def test_render_admin_brief_detail_page_ignores_unsafe_back_params() -> None:
 
 
 @pytest.mark.unit
+def test_render_admin_brief_db_error_includes_retry_and_back_links() -> None:
+    html_out = render_admin_brief_db_error(
+        admin_username=TEST_USERNAME,
+        back_filters=_back_filters(),
+        retry_href="/admin/briefs/42?page=2&q=acme",
+    )
+    assert "Brief temporarily unavailable" in html_out
+    assert "Could not load briefs from the database." in html_out
+    assert "temporarily unavailable" in html_out
+    assert "Retry loading this brief" in html_out
+    assert "/admin/briefs/42?page=2&amp;q=acme" in html_out
+    assert "page=2" in html_out
+    assert "Back to briefs" in html_out
+    assert "SELECT" not in html_out
+    assert 'meta name="robots" content="noindex, nofollow"' in html_out
+
+
+@pytest.mark.unit
 def test_render_admin_brief_not_found_includes_back_link() -> None:
     html_out = render_admin_brief_not_found(
         brief_id=99,
@@ -281,6 +301,90 @@ def test_admin_brief_detail_renders_record() -> None:
 
 @pytest.mark.unit
 @pytest.mark.integration
+def test_admin_brief_detail_malformed_id_returns_validation_error() -> None:
+    token_hash = admin_auth.hash_session_token("detail-bad-id")
+    row = _session_row(token_hash=token_hash)
+    with mock_db_connection():
+        with patch("app.admin_routes.db.get_admin_session_by_token_hash", return_value=row):
+            response = client.get(
+                "/admin/briefs/not-a-number",
+                cookies={SESSION_COOKIE_NAME: "detail-bad-id"},
+            )
+    assert response.status_code == 422
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_admin_brief_detail_database_error_returns_authenticated_503() -> None:
+    token_hash = admin_auth.hash_session_token("detail-db-error")
+    row = _session_row(token_hash=token_hash)
+    with mock_db_connection():
+        with patch("app.admin_routes.db.get_admin_session_by_token_hash", return_value=row):
+            with patch(
+                "app.admin_routes.brief_service.get_brief",
+                side_effect=psycopg.OperationalError("connection refused"),
+            ):
+                response = client.get(
+                    "/admin/briefs/42?page=2&q=acme",
+                    cookies={SESSION_COOKIE_NAME: "detail-db-error"},
+                )
+    assert response.status_code == 503
+    body = response.text
+    assert "Brief temporarily unavailable" in body
+    assert "Could not load briefs from the database." in body
+    assert "temporarily unavailable" in body
+    assert "Retry loading this brief" in body
+    assert "/admin/briefs/42?page=2&amp;q=acme" in body
+    assert "Brief not found" not in body
+    assert "connection refused" not in body
+    assert "postgresql://" not in body
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_admin_brief_detail_database_error_retry_succeeds() -> None:
+    token_hash = admin_auth.hash_session_token("detail-retry")
+    row = _session_row(token_hash=token_hash)
+    with mock_db_connection() as conn:
+        with patch("app.admin_routes.db.get_admin_session_by_token_hash", return_value=row):
+            with patch(
+                "app.admin_routes.brief_service.get_brief",
+                side_effect=[psycopg.OperationalError("timeout"), _detail_brief()],
+            ) as get_brief:
+                failed = client.get(
+                    "/admin/briefs/42",
+                    cookies={SESSION_COOKIE_NAME: "detail-retry"},
+                )
+                recovered = client.get(
+                    "/admin/briefs/42",
+                    cookies={SESSION_COOKIE_NAME: "detail-retry"},
+                )
+    assert failed.status_code == 503
+    assert recovered.status_code == 200
+    assert "Project brief #42" in recovered.text
+    assert get_brief.call_count == 2
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_admin_brief_detail_programming_error_is_not_masked() -> None:
+    token_hash = admin_auth.hash_session_token("detail-bug")
+    row = _session_row(token_hash=token_hash)
+    with mock_db_connection():
+        with patch("app.admin_routes.db.get_admin_session_by_token_hash", return_value=row):
+            with patch(
+                "app.admin_routes.brief_service.get_brief",
+                side_effect=RuntimeError("unexpected bug"),
+            ):
+                with pytest.raises(RuntimeError, match="unexpected bug"):
+                    client.get(
+                        "/admin/briefs/42",
+                        cookies={SESSION_COOKIE_NAME: "detail-bug"},
+                    )
+
+
+@pytest.mark.unit
+@pytest.mark.integration
 def test_admin_brief_detail_missing_record_returns_authenticated_404() -> None:
     token_hash = admin_auth.hash_session_token("detail-missing")
     row = _session_row(token_hash=token_hash)
@@ -297,19 +401,14 @@ def test_admin_brief_detail_missing_record_returns_authenticated_404() -> None:
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_admin_brief_detail_database_error_returns_404_without_leak() -> None:
-    token_hash = admin_auth.hash_session_token("detail-db-error")
+def test_admin_brief_detail_invalid_id_returns_authenticated_404() -> None:
+    token_hash = admin_auth.hash_session_token("detail-zero")
     row = _session_row(token_hash=token_hash)
     with mock_db_connection():
         with patch("app.admin_routes.db.get_admin_session_by_token_hash", return_value=row):
-            with patch(
-                "app.admin_routes.brief_service.get_brief",
-                side_effect=RuntimeError("connection refused"),
-            ):
-                response = client.get(
-                    "/admin/briefs/42",
-                    cookies={SESSION_COOKIE_NAME: "detail-db-error"},
-                )
+            response = client.get(
+                "/admin/briefs/0",
+                cookies={SESSION_COOKIE_NAME: "detail-zero"},
+            )
     assert response.status_code == 404
     assert "Brief not found" in response.text
-    assert "connection refused" not in response.text

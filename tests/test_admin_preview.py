@@ -152,6 +152,11 @@ def test_admin_preview_briefs_list_and_detail_have_mock_data(
     assert "Pending" in emptyish.text
     missing = client.get("/admin/briefs/999")
     assert missing.status_code == 404
+    db_error = client.get("/admin/briefs/503")
+    assert db_error.status_code == 503
+    assert "Brief temporarily unavailable" in db_error.text
+    assert "Retry loading this brief" in db_error.text
+    assert "Could not load briefs from the database." in db_error.text
     audit = client.get("/admin/audit")
     assert audit.status_code == 200
     assert "No audit events recorded yet." not in audit.text

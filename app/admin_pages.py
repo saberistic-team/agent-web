@@ -434,6 +434,41 @@ def _brief_stripe_references(brief: dict[str, Any]) -> tuple[str, str] | None:
     return None
 
 
+def render_admin_brief_db_error(
+    *,
+    admin_username: str,
+    back_filters: BriefListFilters,
+    retry_href: str,
+    csrf_token: str = "",
+) -> str:
+    back_href = html.escape(_briefs_href(back_filters), quote=True)
+    safe_retry_href = html.escape(retry_href, quote=True)
+    main = f"""        <section class="admin-panel" aria-labelledby="admin-brief-db-error-title">
+          <p class="brief-detail-back">
+            <a class="audit-pager-link" href="{back_href}">← Back to briefs</a>
+          </p>
+          <p class="admin-eyebrow">Brief intake</p>
+          <h1 class="admin-title" id="admin-brief-db-error-title">Brief temporarily unavailable</h1>
+          <p class="brief-error" role="alert">
+            Could not load briefs from the database.
+          </p>
+          <p class="admin-lede">
+            Briefs are temporarily unavailable. Try again shortly.
+          </p>
+          <p class="admin-note">
+            <a href="{safe_retry_href}">Retry loading this brief</a>
+            or <a href="{back_href}">return to the briefs list</a>.
+          </p>
+        </section>"""
+    return render_admin_shell(
+        title="Brief unavailable",
+        main=main,
+        active_path="/admin/briefs",
+        admin_username=admin_username,
+        csrf_token=csrf_token,
+    )
+
+
 def render_admin_brief_not_found(
     *,
     brief_id: int,
