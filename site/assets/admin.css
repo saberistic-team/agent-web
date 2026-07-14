@@ -35,6 +35,13 @@ body.admin-app {
   border-radius: 2px;
 }
 
+.admin-top-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem 1.25rem;
+}
+
 .admin-exit {
   font-size: 0.75rem;
   letter-spacing: 0.06em;
@@ -49,6 +56,14 @@ body.admin-app {
   color: var(--ink);
   border-color: var(--accent);
   outline: none;
+}
+
+.admin-signout {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
 }
 
 .admin-layout {
