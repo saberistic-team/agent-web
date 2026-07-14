@@ -9,16 +9,30 @@ from fastapi import HTTPException, Request
 from app import admin_auth, db
 from app.config import Settings, get_settings
 
+PREVIEW_SESSION_TOKEN = "preview-screenshot-session"
+
 
 def require_admin_auth_configured(settings: Settings) -> None:
     if not settings.admin_auth_configured:
         raise HTTPException(status_code=503, detail="Admin authentication not configured")
 
 
+def _preview_session(settings: Settings) -> admin_auth.AdminSession:
+    return admin_auth.AdminSession(
+        id=0,
+        admin_username=settings.admin_username or "preview",
+        token_hash="preview",
+        expires_at=datetime.max.replace(tzinfo=timezone.utc),
+        csrf_token_hash=None,
+    )
+
+
 def load_valid_session(request: Request, settings: Settings) -> admin_auth.AdminSession | None:
     raw_token = admin_auth.read_session_token(request)
     if raw_token is None:
         return None
+    if settings.admin_preview_mode and raw_token == PREVIEW_SESSION_TOKEN:
+        return _preview_session(settings)
     token_hash = admin_auth.hash_session_token(raw_token)
     with db.db_connection(settings.database_url) as conn:
         row = db.get_admin_session_by_token_hash(conn, token_hash)
