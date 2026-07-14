@@ -175,6 +175,8 @@ Migrations live in `app/migrations/definitions.py` and are applied at startup vi
 | `004` | `admin_sessions` | Server-side admin session rows |
 | `005` | `admin_login_rate_limits` | Shared admin login rate-limit state |
 | `006` | `admin_csrf_binding` | Login-flow CSRF rows and session CSRF column |
+| `007` | `audit_events` | Append-only audit trail |
+| `008` | `contacts_extended` | Contact fields, buying roles, optional email |
 
 Applied versions are recorded in `schema_migrations`. Steps are **idempotent**
 (`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`) so empty and existing Render Postgres
