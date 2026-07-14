@@ -76,7 +76,7 @@ def test_brief_migrations_remain_idempotent() -> None:
 def test_pending_migrations_skips_applied_versions() -> None:
     applied = {"001", "002"}
     pending = pending_migrations(applied_versions=applied)
-    assert [m.version for m in pending] == ["003", "004", "005", "006", "007"]
+    assert [m.version for m in pending] == ["003", "004", "005", "006", "007", "008"]
 
 
 @pytest.mark.unit
@@ -86,7 +86,7 @@ def test_apply_migrations_runs_only_pending_steps() -> None:
 
     applied = apply_migrations(conn, migrations=MIGRATIONS)
 
-    assert applied == ["003", "004", "005", "006", "007"]
+    assert applied == ["003", "004", "005", "006", "007", "008"]
     execute_calls = [str(call.args[0]) for call in cur.execute.call_args_list]
     assert execute_calls[0] == ADVISORY_LOCK_SQL
     assert cur.execute.call_args_list[0].args[1] == (
@@ -118,6 +118,10 @@ def test_apply_migrations_runs_only_pending_steps() -> None:
         "INSERT INTO schema_migrations" in str(call.args[0]) and "007" in str(call.args[1])
         for call in cur.execute.call_args_list
     )
+    assert any(
+        "INSERT INTO schema_migrations" in str(call.args[0]) and "008" in str(call.args[1])
+        for call in cur.execute.call_args_list
+    )
     conn.commit.assert_called_once()
 
 
@@ -127,7 +131,7 @@ def test_apply_migrations_on_empty_database_applies_all() -> None:
 
     applied = apply_migrations(conn, migrations=MIGRATIONS)
 
-    assert applied == ["001", "002", "003", "004", "005", "006", "007"]
+    assert applied == ["001", "002", "003", "004", "005", "006", "007", "008"]
     conn.commit.assert_called_once()
 
 
@@ -162,17 +166,6 @@ def test_admin_csrf_binding_migration_is_idempotent() -> None:
     assert "ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS csrf_token_hash TEXT" in (
         csrf_binding.up_sql
     )
-
-
-@pytest.mark.unit
-def test_contacts_extended_migration_is_idempotent() -> None:
-    contacts_ext = next(m for m in MIGRATIONS if m.name == "contacts_extended")
-    assert contacts_ext.version == "007"
-    sql = contacts_ext.up_sql
-    assert "ALTER TABLE contacts DROP CONSTRAINT IF EXISTS contacts_email_unique" in sql
-    assert "contact_buying_roles" in sql
-    assert "normalized_profile_url" in sql
-    assert "is_archived" in sql
 
 
 @pytest.mark.unit
@@ -267,7 +260,7 @@ def test_concurrent_initializers_apply_each_migration_once(
         thread.join()
 
     assert errors == []
-    assert shared_db._applied_versions == {"001", "002", "003", "004", "005", "006", "007"}
+    assert shared_db._applied_versions == {"001", "002", "003", "004", "005", "006", "007", "008"}
     assert all(count == 1 for count in shared_db._up_sql_runs.values())
     assert len(shared_db._up_sql_runs) == len(MIGRATIONS)
 
@@ -320,3 +313,24 @@ def test_apply_migrations_raises_when_lock_times_out(monkeypatch: pytest.MonkeyP
 
     conn.rollback.assert_called_once()
     conn.commit.assert_not_called()
+
+@pytest.mark.unit
+def test_contacts_extended_migration_is_idempotent() -> None:
+    contacts_ext = next(m for m in MIGRATIONS if m.name == "contacts_extended")
+    assert contacts_ext.version == "008"
+    sql = contacts_ext.up_sql
+    assert "ALTER TABLE contacts DROP CONSTRAINT IF EXISTS contacts_email_unique" in sql
+    assert "contact_buying_roles" in sql
+    assert "normalized_profile_url" in sql
+    assert "is_archived" in sql
+
+
+@pytest.mark.unit
+def test_audit_events_migration_is_append_only() -> None:
+    audit = next(m for m in MIGRATIONS if m.name == "audit_events")
+    assert audit.version == "007"
+    assert "CREATE TABLE IF NOT EXISTS audit_events" in audit.up_sql
+    assert "prevent_audit_events_mutation" in audit.up_sql
+    assert "BEFORE UPDATE ON audit_events" in audit.up_sql
+    assert "BEFORE DELETE ON audit_events" in audit.up_sql
+
