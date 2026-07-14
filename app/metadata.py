@@ -56,25 +56,24 @@ def web_page_json_ld(*, title: str, description: str, url: str) -> str:
         {
             "@context": "https://schema.org",
             "@type": "WebPage",
-            "name": _json_ld_safe(title),
-            "description": _json_ld_safe(description),
+            "name": title,
+            "description": description,
             "url": url,
         }
     )
 
 
-def case_study_page_metadata(
-    *,
-    title: str,
-    description: str,
-    url: str,
-) -> str:
-    """Return Open Graph, Twitter, and JSON-LD for a /work/{slug} case study."""
-    return (
-        social_meta_tags(title=title, description=description, url=url, og_type="website")
-        + "\n"
-        + web_page_json_ld(title=title, description=description, url=url)
-    )
+def case_study_page_json_ld(*, title: str, description: str, url: str) -> dict[str, Any]:
+    """Return JSON-LD for a /work/{slug} proof page (WebPage, not Article)."""
+    return {
+        "@context": "https://schema.org",
+        "@type": "WebPage",
+        "name": _json_ld_safe(title),
+        "description": _json_ld_safe(description),
+        "url": url,
+        "image": OG_IMAGE,
+        "isPartOf": {"@type": "WebSite", "name": "saberistic", "url": f"{CANONICAL_BASE}/"},
+    }
 
 
 def article_json_ld(
