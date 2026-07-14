@@ -86,6 +86,8 @@ def test_crm_service_does_not_touch_brief_tables() -> None:
             )
     create_company.assert_called_once()
     create_contact.assert_called_once()
+    conn.commit.assert_called_once()
+    conn.rollback.assert_not_called()
     for call in (create_company, create_contact):
         sql = str(call.call_args)
         assert "project_briefs" not in sql

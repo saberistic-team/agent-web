@@ -19,7 +19,31 @@ unchanged; CRM tables are storage-only until later admin/import issues wire rout
 Route handlers must not embed SQL. Use `app/db.py` for brief/payment flows and
 `app/crm_service.py` + `app/repositories/` for CRM reads/writes.
 
-## Identifiers
+## Transaction ownership
+
+CRM write paths use a **service-owned transaction boundary**. Repositories execute
+SQL against a caller-supplied `psycopg.Connection` but never call `commit()` or
+`rollback()`. `CrmService` wraps each write operation in `crm_transaction()` from
+`app/crm_uow.py`: one commit after all repository mutations succeed, rollback on
+any failure.
+
+| Layer | Responsibility |
+|-------|----------------|
+| Route / caller | Opens a connection (`db.db_connection`) and passes it to `CrmService` |
+| `CrmService` | Orchestrates repositories; owns commit/rollback via `crm_transaction()` |
+| `app/repositories/postgres.py` | Parameterized SQL only; no transaction side effects |
+| Read methods | No commit/rollback — queries leave the connection transaction state unchanged |
+
+Multi-step operations (e.g. `record_company_with_contact`) are atomic: if contact
+creation fails, the company insert is rolled back with the rest of the operation.
+
+**Brief/payment flows** (`app/db.py` — `create_brief`, Stripe session updates,
+`mark_brief_paid`, admin session helpers) keep their existing per-helper commit
+behavior and are out of scope for CRM transaction migration.
+
+Direct repository use in tests or future admin tooling must commit explicitly when
+bypassing `CrmService`.
+
 
 - **Brief rows** keep `SERIAL` primary keys (`project_briefs.id`) for Stripe metadata
   compatibility.
