@@ -42,6 +42,10 @@ SKIP_SCREENSHOT_EXACT = frozenset(
 )
 SKIP_SCREENSHOT_PREFIXES = ("/api/", "/webhooks/", "/assets")
 
+# Preview-only admin credentials for branch screenshot capture (#102).
+PREVIEW_ADMIN_USERNAME = "preview-admin"
+PREVIEW_ADMIN_PASSWORD = "preview-admin-pass"
+
 # Desktop + mobile evidence for landing/product acceptance criteria.
 VIEWPORTS: tuple[tuple[str, int, int], ...] = (
     ("desktop", 1280, 800),
@@ -119,6 +123,25 @@ def is_skipped_api_or_meta_route(path: str) -> bool:
     if route in SKIP_SCREENSHOT_EXACT:
         return True
     return any(route.startswith(prefix) for prefix in SKIP_SCREENSHOT_PREFIXES)
+
+
+def route_requires_admin_auth(path: str) -> bool:
+    """True when a screenshot target needs HTTP Basic auth."""
+    route = path if path.startswith("/") else f"/{path}"
+    return route == "/admin" or route.startswith("/admin/")
+
+
+def admin_screenshot_credentials() -> tuple[str, str] | None:
+    """Return admin basic-auth credentials when configured for capture."""
+    username = (
+        os.environ.get("ADMIN_USERNAME") or PREVIEW_ADMIN_USERNAME
+    ).strip()
+    password = (
+        os.environ.get("ADMIN_PASSWORD") or PREVIEW_ADMIN_PASSWORD
+    ).strip()
+    if username and password:
+        return username, password
+    return None
 
 
 def _normalize_route_path(path: str) -> str:
@@ -260,6 +283,8 @@ def local_preview_server(
         "BASE_URL": base,
         # HTML pages must render without requiring production secrets.
         "DATABASE_URL": os.environ.get("DATABASE_URL") or "",
+        "ADMIN_USERNAME": os.environ.get("ADMIN_USERNAME") or PREVIEW_ADMIN_USERNAME,
+        "ADMIN_PASSWORD": os.environ.get("ADMIN_PASSWORD") or PREVIEW_ADMIN_PASSWORD,
     }
     proc = subprocess.Popen(
         [
@@ -364,15 +389,19 @@ def wait_healthy(base_url: str | None = None, attempts: int = 12) -> dict[str, A
     raise GitHubError(f"deploy not healthy at {health_url}: {last}")
 
 
-def _is_html_response(url: str) -> bool:
+def _is_html_response(url: str, *, route: str | None = None) -> bool:
     """Return True if the URL serves HTML (skip JSON API routes).
 
     ``/health`` and other JSON endpoints are never screenshot targets.
     """
+    headers = {"User-Agent": "agent-web-screenshots"}
+    if route and route_requires_admin_auth(route):
+        creds = admin_screenshot_credentials()
+        if creds:
+            token = base64.b64encode(f"{creds[0]}:{creds[1]}".encode()).decode("ascii")
+            headers["Authorization"] = f"Basic {token}"
     try:
-        req = urllib.request.Request(
-            url, method="GET", headers={"User-Agent": "agent-web-screenshots"}
-        )
+        req = urllib.request.Request(url, method="GET", headers=headers)
         with urllib.request.urlopen(req, timeout=30) as resp:
             if not (200 <= resp.status < 300):
                 return False
@@ -490,14 +519,30 @@ def capture(
             page = browser.new_page(viewport={"width": width, "height": height})
             for route in html_routes:
                 url = _route_url(base, route)
-                if not _is_html_response(url):
+                if not _is_html_response(url, route=route):
                     # JSON API, redirect miss, or non-HTML — skip (e.g. /hello, new
                     # PR route not yet on production).
                     continue
                 last_err: Exception | None = None
+                auth_creds = (
+                    admin_screenshot_credentials()
+                    if route_requires_admin_auth(route)
+                    else None
+                )
                 for _ in range(6):
                     try:
-                        page.goto(url, wait_until="networkidle", timeout=60_000)
+                        if auth_creds:
+                            page.goto(
+                                url,
+                                wait_until="networkidle",
+                                timeout=60_000,
+                                http_credentials={
+                                    "username": auth_creds[0],
+                                    "password": auth_creds[1],
+                                },
+                            )
+                        else:
+                            page.goto(url, wait_until="networkidle", timeout=60_000)
                         # Double-check we did not land on JSON.
                         body_prefix = page.content()[:200].lstrip().lower()
                         if body_prefix.startswith("{") or body_prefix.startswith("["):
