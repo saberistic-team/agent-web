@@ -123,7 +123,7 @@ at intake; otherwise the Planner infers or defaults to `priority:normal`.
 |-------|---------|----------------|
 | `priority:critical` | Drop everything else; ship or unblock now (P0 / urgent / blocker). | 1st |
 | `priority:high` | Important; ahead of normal backlog (P1). | 2nd |
-| `priority:medium` | Planned work between high and normal backlog (P2). | 3rd |
+| `priority:medium` | Planned work between high and normal (P2). | 3rd |
 | `priority:normal` | Default planned work. | 4th |
 | `priority:low` | Opportunistic / nice-to-have (P3). | 5th |
 
@@ -131,6 +131,9 @@ at intake; otherwise the Planner infers or defaults to `priority:normal`.
 
 - **Preserve** `priority:*` across handoffs (review → re-queue → builder). Do
   not strip it when changing `status:*` or `agent:*`.
+- **Exactly one** `priority:*` label per issue. `scripts/dispatch_queue.py`
+  and the Planner replace any existing `priority:*` labels when setting a new
+  one instead of stacking a second value (see issue #97).
 - Within the same priority, older issue numbers run first (FIFO).
 - Reviewer `changes-requested` re-enters `status:queued` (same priority) and
   waits for the dispatcher — it does not skip the queue by re-applying
@@ -236,6 +239,22 @@ Suggested GitHub label colors:
 |-------|-------|
 | `priority:critical` | `#B60205` |
 | `priority:high` | `#D93F0B` |
-| `priority:medium` | `#FBCA04` |
+| `priority:medium` | `#FEF2C0` |
 | `priority:normal` | `#FBCA04` |
 | `priority:low` | `#C5DEF5` |
+
+### Duplicate priority labels (issue #97)
+
+**Root cause:** `priority:medium` existed on GitHub but was missing from the
+canonical `PRIORITY_LABELS` set in `scripts/priority.py`. The Planner treated
+any `priority:*` prefix as satisfied and skipped backfill; the dispatcher's
+`ensure_priority()` did not recognize `priority:medium`, inferred
+`priority:normal`, and **added** it without removing the existing label.
+
+**Guard:** `replace_priority_label()` in `scripts/dispatch_queue.py` deletes
+all `priority:*` labels before applying the resolved canonical value. Both the
+dispatcher (`ensure_priority`) and Planner (`role_planner`) use this replace
+path. `resolve_priority_label()` picks the highest-urgency canonical label when
+duplicates are present.
+
+Audit open and closed issues: `python scripts/audit_priority_labels.py --repo owner/name`.
