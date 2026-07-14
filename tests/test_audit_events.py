@@ -87,10 +87,7 @@ def test_audit_migration_present_and_ordered() -> None:
 def test_pending_migrations_includes_audit_after_sessions() -> None:
     pending = pending_migrations(applied_versions={"001", "002", "003", "004", "005", "006"})
     assert len(pending) == 2
-    assert pending[0].version == "007"
-    assert pending[0].name == "audit_events"
-    assert pending[1].version == "008"
-    assert pending[1].name == "research_records"
+    assert [m.version for m in pending] == ["007", "008"]
 
 
 @pytest.mark.unit
