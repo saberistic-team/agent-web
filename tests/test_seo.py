@@ -14,6 +14,7 @@ from app.seo import (
     CANONICAL_BASE,
     INDEXABLE_PATHS,
     LEGACY_REDIRECTS,
+    MARKETING_REDIRECTS,
     canonical_url,
     indexable_paths,
     robots_txt,
@@ -97,21 +98,6 @@ def test_brief_success_is_noindex_without_canonical() -> None:
 
 
 @pytest.mark.unit
-def test_diagnostic_redirects_to_brief() -> None:
-    response = client.get("/diagnostic", follow_redirects=False)
-    assert response.status_code == 301
-    assert response.headers["location"] == "/brief"
-
-
-@pytest.mark.unit
-def test_diagnostic_redirect_does_not_chain() -> None:
-    response = client.get("/diagnostic", follow_redirects=True)
-    assert response.status_code == 200
-    assert 'id="brief-form"' in response.text
-    assert response.url.path == "/brief"
-
-
-@pytest.mark.unit
 @pytest.mark.parametrize(
     "legacy_path,target",
     list(LEGACY_REDIRECTS.items()),
@@ -120,6 +106,59 @@ def test_legacy_marketing_redirects(legacy_path: str, target: str) -> None:
     response = client.get(legacy_path, follow_redirects=False)
     assert response.status_code == 301
     assert response.headers["location"] == target
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "redirect_path,target",
+    list(MARKETING_REDIRECTS.items()),
+)
+def test_marketing_redirects(redirect_path: str, target: str) -> None:
+    response = client.get(redirect_path, follow_redirects=False)
+    assert response.status_code == 301
+    assert response.headers["location"] == target
+
+
+@pytest.mark.unit
+def test_diagnostic_redirects_directly_to_brief_without_chain() -> None:
+    response = client.get("/diagnostic", follow_redirects=False)
+    assert response.status_code == 301
+    assert response.headers["location"] == "/brief"
+    brief = client.get("/brief", follow_redirects=False)
+    assert brief.status_code == 200
+    assert brief.headers.get("location") is None
+
+
+@pytest.mark.unit
+def test_services_page_lists_finalized_offers() -> None:
+    response = client.get("/services")
+    assert response.status_code == 200
+    body = response.text
+    assert "Architecture Diagnostic — $200" in body
+    assert "Fractional Principal Architect" in body
+    assert "Technical Due Diligence" in body
+    assert 'href="/brief"' in body
+    assert "being finalized" not in body.lower()
+    assert "software development" not in body.lower()
+    assert "Seed–Series B" in body
+
+
+@pytest.mark.unit
+def test_case_studies_index_links_all_work_pages() -> None:
+    response = client.get("/case-studies")
+    assert response.status_code == 200
+    body = response.text
+    for slug in (
+        "brave",
+        "baxus",
+        "eternis",
+        "spiral-safe",
+        "architecture-diagnostic",
+    ):
+        assert f'href="/work/{slug}"' in body
+    assert "in progress" not in body.lower()
+    assert "Request an Architecture Diagnostic" in body
+    assert 'href="/brief"' in body
 
 
 @pytest.mark.unit
