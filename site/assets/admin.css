@@ -4,6 +4,7 @@ body.admin-app {
   background:
     radial-gradient(900px 480px at 0% -5%, #1a2036 0%, transparent 55%),
     var(--bg);
+  overflow-x: clip;
 }
 
 .admin-top {
@@ -71,6 +72,9 @@ body.admin-app {
   grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
   gap: 0;
   min-height: calc(100vh - 72px);
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
 }
 
 .admin-nav {
@@ -137,7 +141,11 @@ body.admin-app {
 
 .admin-main {
   padding: clamp(1.5rem, 4vw, 2.75rem);
-  max-width: 960px;
+  width: 100%;
+  max-width: min(960px, 100%);
+  min-width: 0;
+  box-sizing: border-box;
+  overflow-x: clip;
 }
 
 .admin-eyebrow {
@@ -155,6 +163,9 @@ body.admin-app {
   line-height: 1.1;
   font-weight: 400;
   text-transform: uppercase;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .admin-lede {
@@ -180,6 +191,58 @@ body.admin-app {
   border-radius: 2px;
 }
 
+.admin-table-wrap {
+  overflow-x: auto;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
+.admin-table-wrap .admin-table {
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+}
+
+.admin-stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 1rem 1.5rem;
+  margin: 0 0 2rem;
+}
+
+.admin-stat-row dt {
+  margin: 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.admin-stat-row dd {
+  margin: 0.25rem 0 0;
+  font-family: var(--display);
+  font-size: 1.5rem;
+  color: var(--ink);
+}
+
+.admin-section-title {
+  margin: 0 0 0.75rem;
+  font-family: var(--display);
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 400;
+}
+
+.admin-preview-banner {
+  margin: 0 0 1rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
 @media (max-width: 768px) {
   .admin-layout {
     grid-template-columns: 1fr;
@@ -201,6 +264,10 @@ body.admin-app {
 
   .admin-nav-toggle:not([open]) .admin-nav-list {
     display: none;
+  }
+
+  .admin-title {
+    font-size: clamp(1.25rem, 6.5vw, 1.75rem);
   }
 }
 
