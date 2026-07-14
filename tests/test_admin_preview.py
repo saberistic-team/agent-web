@@ -53,5 +53,5 @@ def test_preview_dashboard_main_html_includes_mock_table() -> None:
     html = render_preview_dashboard_main(data)
     assert "Preview data — not production" in html
     assert "admin-stat-row" in html
-    assert "Recent briefs" in html
+    assert "Recent submissions" in html
     assert data.recent_briefs[0].company in html
