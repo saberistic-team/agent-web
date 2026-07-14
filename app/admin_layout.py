@@ -96,10 +96,20 @@ def render_admin_shell(
     title: str,
     main: str,
     active_path: str,
+    csrf_token: str | None = None,
 ) -> str:
     """Return a complete admin HTML document."""
     page_title = html.escape(title)
     nav = render_admin_nav(active_path)
+    logout_html = ""
+    if csrf_token:
+        safe_csrf = html.escape(csrf_token, quote=True)
+        logout_html = f"""      <form method="post" action="/admin/logout" class="admin-logout-form">
+        <input type="hidden" name="csrf_token" value="{safe_csrf}" />
+        <button class="admin-exit admin-logout" type="submit">Sign out</button>
+      </form>"""
+    else:
+        logout_html = '      <a class="admin-exit" href="/">Public site</a>'
     return f"""<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -128,7 +138,7 @@ def render_admin_shell(
         />
         <span class="admin-badge">Admin</span>
       </a>
-      <a class="admin-exit" href="/">Public site</a>
+{logout_html}
     </header>
     <div class="admin-layout">
 {nav}
