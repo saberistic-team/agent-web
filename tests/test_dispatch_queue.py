@@ -149,3 +149,54 @@ def test_list_awaiting_dispatch_filters_closed_milestone(
     assert len(skipped) == 1
     assert skipped[0]["issue"] == 102
     assert skipped[0]["reason"] == "milestone_not_open"
+
+
+@pytest.mark.unit
+def test_list_awaiting_dispatch_orders_by_earliest_due(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "dispatch_queue.search_issues",
+        lambda repo, query: [
+            {
+                "number": 201,
+                "labels": [
+                    {"name": "status:queued"},
+                    {"name": "type:feature"},
+                    {"name": "priority:high"},
+                ],
+                "milestone": {"number": 2, "title": "Later"},
+            },
+            {
+                "number": 202,
+                "labels": [
+                    {"name": "status:queued"},
+                    {"name": "type:feature"},
+                    {"name": "priority:normal"},
+                ],
+                "milestone": {"number": 1, "title": "Soon"},
+            },
+        ],
+    )
+    monkeypatch.setattr(
+        "dispatch_queue.list_open_milestones",
+        lambda repo: [
+            {
+                "number": 1,
+                "title": "Soon",
+                "state": "open",
+                "due_on": "2026-08-01T00:00:00Z",
+            },
+            {
+                "number": 2,
+                "title": "Later",
+                "state": "open",
+                "due_on": "2026-12-01T00:00:00Z",
+            },
+        ],
+    )
+
+    awaiting, skipped = list_awaiting_dispatch("o/r")
+
+    assert [i["number"] for i in awaiting] == [202, 201]
+    assert skipped == []

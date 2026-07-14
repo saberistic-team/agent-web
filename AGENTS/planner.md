@@ -25,10 +25,10 @@ Before any issue enters `status:queued`, it must already carry:
 - `status:queued`
 
 Do **not** apply `agent:builder` or `agent:docs` when queuing. The dispatcher
-reads `type:*` + `priority:*`, filters to open-milestone work (plus critical),
-then applies the agent label when that agent is free (highest priority first:
-critical → high → medium → normal → low). Record `intended_agent` and
-`milestone` in `### planner_plan`.
+filters to open-milestone work (plus critical), then picks the next issue by
+earliest milestone due date, then `priority:*` (critical → high → medium →
+normal → low), then issue number. Record `intended_agent` and `milestone` in
+`### planner_plan`.
 
 Humans open/close milestones to mark the current phase. You assign issues to an
 open milestone (prefer the parent’s open milestone, else the earliest-due open

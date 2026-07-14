@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from milestones import (
+    dispatch_sort_key,
     ensure_open_milestone,
     is_dispatch_eligible,
     issue_milestone_number,
@@ -101,6 +102,38 @@ def test_ensure_open_milestone_assigns_current(
     assert result is not None
     assert result["number"] == 1
     assert assigned == [(40, 1)]
+
+
+@pytest.mark.unit
+def test_dispatch_sort_key_earliest_due_before_higher_priority() -> None:
+    by_number = {
+        1: {"number": 1, "title": "Soon", "due_on": "2026-08-01T00:00:00Z"},
+        2: {"number": 2, "title": "Later", "due_on": "2026-12-01T00:00:00Z"},
+    }
+    early_normal = {
+        "number": 50,
+        "milestone": {"number": 1},
+        "labels": [{"name": "priority:normal"}],
+    }
+    late_high = {
+        "number": 40,
+        "milestone": {"number": 2},
+        "labels": [{"name": "priority:high"}],
+    }
+    critical = {
+        "number": 99,
+        "milestone": None,
+        "labels": [{"name": "priority:critical"}],
+    }
+    ordered = sorted(
+        [late_high, early_normal, critical],
+        key=lambda issue: dispatch_sort_key(
+            issue,
+            {label["name"] for label in issue["labels"]},
+            open_milestones_by_number=by_number,
+        ),
+    )
+    assert [i["number"] for i in ordered] == [99, 50, 40]
 
 
 @pytest.mark.unit

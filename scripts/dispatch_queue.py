@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Dispatch the highest-priority queued issue to its owning agent.
+"""Dispatch the next queued issue to its owning agent.
 
 Queued work carries ``status:queued`` + ``type:*`` + ``priority:*`` without
 ``agent:builder`` / ``agent:docs``. This script lists those issues, keeps only
 issues on an **open** GitHub milestone (or ``priority:critical`` hotfixes),
-sorts by priority (critical → high → medium → normal → low), then issue
-number, and applies the intended agent label when that agent is not already
+sorts by earliest milestone due date, then priority, then issue number, and
+applies the intended agent label when that agent is not already
 ``status:in-progress``.
 """
 
@@ -26,6 +26,7 @@ from github_api import (
     split_repo,
 )
 from milestones import (
+    dispatch_sort_key,
     is_dispatch_eligible,
     list_open_milestones,
     open_milestone_numbers,
@@ -37,7 +38,6 @@ from priority import (
     is_awaiting_dispatch,
     priority_from_labels,
     priority_labels_on_issue,
-    priority_sort_key,
     resolve_priority_label,
 )
 
@@ -75,7 +75,11 @@ def list_awaiting_dispatch(
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Return (eligible queued issues, skipped for closed/missing milestone)."""
     issues = search_issues(repo, 'label:"status:queued"')
-    open_numbers = open_milestone_numbers(list_open_milestones(repo))
+    open_milestones = list_open_milestones(repo)
+    open_numbers = open_milestone_numbers(open_milestones)
+    by_number = {
+        int(m["number"]): m for m in open_milestones if m.get("number") is not None
+    }
     awaiting: list[dict[str, Any]] = []
     skipped_milestone: list[dict[str, Any]] = []
     for issue in issues:
@@ -95,7 +99,11 @@ def list_awaiting_dispatch(
             continue
         awaiting.append(issue)
     awaiting.sort(
-        key=lambda issue: priority_sort_key(_label_names(issue), int(issue["number"]))
+        key=lambda issue: dispatch_sort_key(
+            issue,
+            _label_names(issue),
+            open_milestones_by_number=by_number,
+        )
     )
     return awaiting, skipped_milestone
 
@@ -187,7 +195,7 @@ def dispatch_next(repo: str, *, dry_run: bool = False) -> dict[str, Any]:
                     f"- priority: `{priority}`\n"
                     f"- milestone: `{milestone_title}`\n"
                     f"- agent: `{agent}`\n"
-                    "- reason: highest-priority open-milestone work for this agent\n"
+                    "- reason: earliest-due open-milestone work for this agent\n"
                 ),
             )
         dispatched.append(

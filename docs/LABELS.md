@@ -109,10 +109,10 @@ while the issue is in the orchestration pipeline.
   until the dispatcher (or a human emergency override) applies the agent label.
 - `.github/workflows/dispatch.yml` + `scripts/dispatch_queue.py` keep only
   issues on an **open** GitHub milestone (see Milestones below), then sort by
-  priority and issue number, and apply at most one run per agent while that
-  agent already has `status:in-progress` work. The dispatch workflow also runs
-  on a `*/10 * * * *` cron so queued work is drained without waiting for a new
-  label event.
+  earliest milestone due date, then priority, then issue number, and apply at
+  most one run per agent while that agent already has `status:in-progress`
+  work. The dispatch workflow also runs on a `*/10 * * * *` cron so queued
+  work is drained without waiting for a new label event.
 
 ---
 
@@ -126,14 +126,22 @@ custom Project field that duplicates Milestone.
 |------|----------------|
 | Human | Open the current phase milestone; close it when the phase ships; open the next. |
 | Planner | Before `status:queued`, put the issue (and children) on an **open** milestone — prefer the parent’s open milestone, else the earliest-due open milestone (`scripts/milestones.py`). |
-| Dispatcher | Dequeue only open-milestone queued work, sorted by `priority:*`. |
+| Dispatcher | Dequeue open-milestone queued work, ordered by earliest milestone due date, then `priority:*`. |
+
+**Dispatch order** (among eligible issues):
+
+1. `priority:critical` hotfixes (any milestone / none)
+2. Earliest milestone `due_on` (milestones with no due date last)
+3. `priority:*` within that milestone
+4. Older issue number
 
 **Escape hatch:** `priority:critical` is always dispatch-eligible (hotfix /
 unblocker), even with no milestone or a closed milestone.
 
 **Empty open set:** If the repo has **no** open milestones, the dispatcher does
 not filter by milestone (avoids a stuck queue). Prefer keeping exactly one
-current open milestone in normal operation.
+current open milestone in normal operation; use due dates when multiple are
+open so agents drain earlier phases first.
 
 ---
 
