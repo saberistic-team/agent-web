@@ -255,7 +255,11 @@ def render_admin_briefs_page(
             payment_cell = "<br>".join(paid_parts)
         website = html.escape(str(brief.get("website", "")))
         email = html.escape(str(brief.get("contact_value", "")))
-        detail_href = f"/admin/briefs/{html.escape(str(brief_id), quote=True)}"
+        back_params = _briefs_query_params(filters)
+        detail_suffix = f"?{urlencode(back_params)}" if back_params else ""
+        detail_href = (
+            f"/admin/briefs/{html.escape(str(brief_id), quote=True)}{detail_suffix}"
+        )
         rows.append(
             "<tr>"
             f'<td><a class="brief-row-link" href="{detail_href}">#{html.escape(str(brief_id))}</a></td>'
@@ -387,6 +391,188 @@ def render_admin_briefs_page(
         </section>"""
     return render_admin_shell(
         title="Briefs",
+        main=main,
+        active_path="/admin/briefs",
+        admin_username=admin_username,
+        csrf_token=csrf_token,
+    )
+
+
+def _format_optional_text(value: Any) -> str:
+    if value is None or str(value).strip() == "":
+        return '<span class="audit-muted">—</span>'
+    return html.escape(str(value))
+
+
+def _format_stripe_reference(value: str | None) -> str:
+    """Render a Stripe identifier in body text only — never in titles or metadata."""
+    if not value or not str(value).strip():
+        return '<span class="audit-muted">—</span>'
+    return f'<code class="brief-stripe-ref">{html.escape(str(value))}</code>'
+
+
+def _brief_stripe_references(brief: dict[str, Any]) -> tuple[str, str] | None:
+    """Return Stripe reference rows when they help operators reconcile payment state."""
+    status = str(brief.get("status", ""))
+    session_id = brief.get("stripe_session_id")
+    intent_id = brief.get("stripe_payment_intent_id")
+    if status == "paid" and (session_id or intent_id):
+        return (
+            _format_stripe_reference(session_id),
+            _format_stripe_reference(intent_id),
+        )
+    if status == "pending_payment" and session_id:
+        return (
+            _format_stripe_reference(session_id),
+            '<span class="audit-muted">—</span>',
+        )
+    if status == "abandoned" and session_id:
+        return (
+            _format_stripe_reference(session_id),
+            '<span class="audit-muted">—</span>',
+        )
+    return None
+
+
+def render_admin_brief_not_found(
+    *,
+    brief_id: int,
+    admin_username: str,
+    back_filters: BriefListFilters,
+    csrf_token: str = "",
+) -> str:
+    back_href = html.escape(_briefs_href(back_filters), quote=True)
+    main = f"""        <section class="admin-panel" aria-labelledby="admin-brief-missing-title">
+          <p class="brief-detail-back">
+            <a class="audit-pager-link" href="{back_href}">← Back to briefs</a>
+          </p>
+          <p class="admin-eyebrow">Brief intake</p>
+          <h1 class="admin-title" id="admin-brief-missing-title">Brief not found</h1>
+          <p class="admin-lede">
+            No project brief exists with ID #{html.escape(str(brief_id))}.
+          </p>
+          <p class="admin-note">
+            <a href="{back_href}">Return to the briefs list</a>.
+          </p>
+        </section>"""
+    return render_admin_shell(
+        title="Brief not found",
+        main=main,
+        active_path="/admin/briefs",
+        admin_username=admin_username,
+        csrf_token=csrf_token,
+    )
+
+
+def render_admin_brief_detail_page(
+    *,
+    admin_username: str,
+    brief: dict[str, Any],
+    back_filters: BriefListFilters,
+    price_cents: int,
+    csrf_token: str = "",
+) -> str:
+    brief_id = brief.get("id", "")
+    status = str(brief.get("status", ""))
+    status_label = _format_brief_status(status)
+    status_class = html.escape(status, quote=True)
+    status_html = (
+        f'<span class="admin-status admin-status-{status_class}">'
+        f"{html.escape(status_label)}</span>"
+    )
+    payment_lines = [status_html]
+    if status == "paid":
+        payment_lines.append(html.escape(_format_amount(price_cents)))
+        paid_at = brief.get("paid_at")
+        if paid_at:
+            payment_lines.append(_format_timestamp(paid_at))
+    payment_html = "<br>".join(payment_lines)
+
+    stripe_refs = _brief_stripe_references(brief)
+    stripe_section = ""
+    if stripe_refs is not None:
+        session_cell, intent_cell = stripe_refs
+        stripe_section = f"""
+          <section class="brief-detail-section" aria-labelledby="brief-stripe-title">
+            <h2 class="brief-detail-heading" id="brief-stripe-title">Stripe references</h2>
+            <p class="admin-note">For operator reconciliation only. Not indexed or logged.</p>
+            <dl class="brief-detail-dl">
+              <div class="brief-detail-row">
+                <dt>Checkout session</dt>
+                <dd>{session_cell}</dd>
+              </div>
+              <div class="brief-detail-row">
+                <dt>Payment intent</dt>
+                <dd>{intent_cell}</dd>
+              </div>
+            </dl>
+          </section>"""
+
+    back_href = html.escape(_briefs_href(back_filters), quote=True)
+    website = html.escape(str(brief.get("website", "")))
+    email = html.escape(str(brief.get("contact_value", "")))
+    brief_text = html.escape(str(brief.get("brief", "")))
+
+    main = f"""        <section class="admin-panel" aria-labelledby="admin-brief-detail-title">
+          <p class="brief-detail-back">
+            <a class="audit-pager-link" href="{back_href}">← Back to briefs</a>
+          </p>
+          <p class="admin-eyebrow">Brief intake</p>
+          <h1 class="admin-title" id="admin-brief-detail-title">Project brief #{html.escape(str(brief_id))}</h1>
+          <p class="admin-lede">
+            Read-only intake record. Payment state is derived from Stripe — not editable here.
+          </p>
+          <dl class="brief-detail-dl">
+            <div class="brief-detail-row">
+              <dt>Submitted (UTC)</dt>
+              <dd>{_format_timestamp(brief.get("created_at", ""))}</dd>
+            </div>
+            <div class="brief-detail-row">
+              <dt>Website</dt>
+              <dd class="brief-detail-url">{website}</dd>
+            </div>
+            <div class="brief-detail-row">
+              <dt>Email</dt>
+              <dd>{email}</dd>
+            </div>
+            <div class="brief-detail-row">
+              <dt>Payment</dt>
+              <dd>{payment_html}</dd>
+            </div>
+          </dl>
+          <section class="brief-detail-section" aria-labelledby="brief-text-title">
+            <h2 class="brief-detail-heading" id="brief-text-title">Project brief</h2>
+            <div class="brief-detail-text">{brief_text}</div>
+          </section>
+          {stripe_section}
+          <section class="brief-detail-section" aria-labelledby="brief-utm-title">
+            <h2 class="brief-detail-heading" id="brief-utm-title">Attribution</h2>
+            <dl class="brief-detail-dl">
+              <div class="brief-detail-row">
+                <dt>Source</dt>
+                <dd>{_format_optional_text(brief.get("utm_source"))}</dd>
+              </div>
+              <div class="brief-detail-row">
+                <dt>Medium</dt>
+                <dd>{_format_optional_text(brief.get("utm_medium"))}</dd>
+              </div>
+              <div class="brief-detail-row">
+                <dt>Campaign</dt>
+                <dd>{_format_optional_text(brief.get("utm_campaign"))}</dd>
+              </div>
+              <div class="brief-detail-row">
+                <dt>Content</dt>
+                <dd>{_format_optional_text(brief.get("utm_content"))}</dd>
+              </div>
+              <div class="brief-detail-row">
+                <dt>Term</dt>
+                <dd>{_format_optional_text(brief.get("utm_term"))}</dd>
+              </div>
+            </dl>
+          </section>
+        </section>"""
+    return render_admin_shell(
+        title=f"Brief #{brief_id}",
         main=main,
         active_path="/admin/briefs",
         admin_username=admin_username,
