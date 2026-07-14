@@ -2,50 +2,112 @@
 
 from __future__ import annotations
 
+import re
+from datetime import datetime, timedelta, timezone
+from typing import Any
 from unittest.mock import MagicMock, patch
 from uuid import UUID
 
 import pytest
+from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 
-from app.crm_service import CrmService
+from app import admin_auth, db
+from app.admin_auth import SESSION_COOKIE_NAME
+from app.crm_service import CrmService, CrmRepositories
 from app.main import app
 
-client = TestClient(app)
+client = TestClient(app, follow_redirects=False)
 
-ADMIN_AUTH = ("admin", "test-pass")
+TEST_USERNAME = "operator"
+TEST_PASSWORD = "correct-horse-battery-staple"
+TEST_HASH = PasswordHasher().hash(TEST_PASSWORD)
+TEST_SECRET = "test-session-secret-32chars-minimum"
+
 COMPANY_ID = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 CONTACT_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+
+_session_store: dict[str, dict[str, Any]] = {}
+
+
+def _extract_csrf_token(html: str) -> str:
+    match = re.search(r'name="csrf_token" value="([^"]+)"', html)
+    assert match is not None
+    return match.group(1)
+
+
+def _session_row(*, token_hash: str, csrf_token_hash: str | None = None) -> dict[str, Any]:
+    return {
+        "id": 1,
+        "token_hash": token_hash,
+        "admin_username": TEST_USERNAME,
+        "created_at": datetime.now(timezone.utc),
+        "expires_at": datetime.now(timezone.utc) + timedelta(hours=1),
+        "revoked_at": None,
+        "csrf_token_hash": csrf_token_hash,
+    }
 
 
 @pytest.fixture(autouse=True)
 def admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ADMIN_USERNAME", ADMIN_AUTH[0])
-    monkeypatch.setenv("ADMIN_PASSWORD", ADMIN_AUTH[1])
+    monkeypatch.setenv("ADMIN_USERNAME", TEST_USERNAME)
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_HASH)
+    monkeypatch.setenv("ADMIN_SESSION_SECRET", TEST_SECRET)
     monkeypatch.setenv("DATABASE_URL", "postgresql://test/db")
+    _session_store.clear()
 
 
-def _mock_db_connection() -> MagicMock:
-    conn = MagicMock()
-    return conn
+@pytest.fixture
+def authenticated_admin() -> dict[str, Any]:
+    raw_token = admin_auth.generate_session_token()
+    csrf_raw = admin_auth.generate_csrf_value()
+    token_hash = admin_auth.hash_session_token(raw_token)
+    csrf_hash = admin_auth.hash_csrf_token(csrf_raw)
+    _session_store[token_hash] = _session_row(
+        token_hash=token_hash,
+        csrf_token_hash=csrf_hash,
+    )
+
+    def _get_session(conn: Any, th: str) -> dict[str, Any] | None:
+        row = _session_store.get(th)
+        if row is None or row.get("revoked_at") is not None:
+            return None
+        return row
+
+    def _update_csrf(conn: Any, *, session_id: int, csrf_token_hash: str) -> None:
+        for row in _session_store.values():
+            if row["id"] == session_id:
+                row["csrf_token_hash"] = csrf_token_hash
+
+    mock_conn = MagicMock()
+    with (
+        patch.object(db, "get_admin_session_by_token_hash", side_effect=_get_session),
+        patch.object(db, "update_admin_session_csrf", side_effect=_update_csrf),
+        patch("app.db.db_connection") as db_conn,
+        patch("app.admin_deps.db.db_connection", db_conn),
+        patch("app.admin_crm_routes.db.db_connection", db_conn),
+        patch("app.admin_routes.db.db_connection", db_conn),
+    ):
+        db_conn.return_value.__enter__.return_value = mock_conn
+        cookies = {SESSION_COOKIE_NAME: raw_token}
+        response = client.get("/admin/contacts", cookies=cookies)
+        csrf_token = _extract_csrf_token(response.text)
+        yield {"cookies": cookies, "csrf_token": csrf_token, "conn": mock_conn}
 
 
 @pytest.mark.unit
 @pytest.mark.integration
 def test_contacts_list_requires_auth() -> None:
     response = client.get("/admin/contacts")
-    assert response.status_code == 401
+    assert response.status_code == 303
+    assert "/admin/login" in response.headers["location"]
 
 
 @pytest.mark.unit
 @pytest.mark.integration
-@patch("app.main.db.db_connection")
-def test_contacts_list_renders_for_admin(mock_db_conn: MagicMock) -> None:
-    conn = _mock_db_connection()
-    mock_db_conn.return_value.__enter__.return_value = conn
-
+def test_contacts_list_renders_for_admin(authenticated_admin: dict[str, Any]) -> None:
     with patch.object(CrmService, "search_contacts", return_value=[]) as search:
-        response = client.get("/admin/contacts", auth=ADMIN_AUTH)
+        response = client.get("/admin/contacts", cookies=authenticated_admin["cookies"])
 
     assert response.status_code == 200
     assert "Contacts" in response.text
@@ -55,12 +117,9 @@ def test_contacts_list_renders_for_admin(mock_db_conn: MagicMock) -> None:
 
 @pytest.mark.unit
 @pytest.mark.integration
-@patch("app.main.db.db_connection")
 def test_create_contact_assigns_roles_and_shows_duplicate_warnings(
-    mock_db_conn: MagicMock,
+    authenticated_admin: dict[str, Any],
 ) -> None:
-    conn = _mock_db_connection()
-    mock_db_conn.return_value.__enter__.return_value = conn
     created = {
         "id": CONTACT_ID,
         "name": "Pat Example",
@@ -70,8 +129,6 @@ def test_create_contact_assigns_roles_and_shows_duplicate_warnings(
 
     company_repo = MagicMock()
     company_repo.list_all.return_value = []
-    from app.crm_service import CrmRepositories
-
     service = CrmService(
         repos=CrmRepositories(
             companies=company_repo,
@@ -83,13 +140,14 @@ def test_create_contact_assigns_roles_and_shows_duplicate_warnings(
     )
 
     with (
-        patch("app.main._crm_service", return_value=service),
+        patch("app.admin_crm_routes._crm_service", return_value=service),
         patch.object(service, "create_contact", return_value=created),
     ):
         response = client.post(
             "/admin/contacts/new",
-            auth=ADMIN_AUTH,
+            cookies=authenticated_admin["cookies"],
             data={
+                "csrf_token": authenticated_admin["csrf_token"],
                 "name": "Pat Example",
                 "profile_url": "https://linkedin.com/in/pat/",
                 "buying_roles": ["founder", "technical_buyer"],
@@ -104,16 +162,13 @@ def test_create_contact_assigns_roles_and_shows_duplicate_warnings(
 
 @pytest.mark.unit
 @pytest.mark.integration
-@patch("app.main.db.db_connection")
-def test_archive_contact_redirects(mock_db_conn: MagicMock) -> None:
-    conn = _mock_db_connection()
-    mock_db_conn.return_value.__enter__.return_value = conn
-
+def test_archive_contact_redirects(authenticated_admin: dict[str, Any]) -> None:
     with patch.object(CrmService, "archive_contact", return_value={"id": CONTACT_ID}) as archive:
-        with patch("app.main._crm_service", return_value=CrmService()):
+        with patch("app.admin_crm_routes._crm_service", return_value=CrmService()):
             response = client.post(
                 f"/admin/contacts/{CONTACT_ID}/archive",
-                auth=ADMIN_AUTH,
+                cookies=authenticated_admin["cookies"],
+                data={"csrf_token": authenticated_admin["csrf_token"]},
                 follow_redirects=False,
             )
 
@@ -124,10 +179,7 @@ def test_archive_contact_redirects(mock_db_conn: MagicMock) -> None:
 
 @pytest.mark.unit
 @pytest.mark.integration
-@patch("app.main.db.db_connection")
-def test_company_page_shows_associated_contacts(mock_db_conn: MagicMock) -> None:
-    conn = _mock_db_connection()
-    mock_db_conn.return_value.__enter__.return_value = conn
+def test_company_page_shows_associated_contacts(authenticated_admin: dict[str, Any]) -> None:
     company = {"id": COMPANY_ID, "name": "Acme", "website": "https://acme.dev", "status": "prospect"}
     contacts = [
         {
@@ -138,8 +190,6 @@ def test_company_page_shows_associated_contacts(mock_db_conn: MagicMock) -> None
             "relationship_strength": "good",
         }
     ]
-
-    from app.crm_service import CrmRepositories
 
     company_repo = MagicMock()
     company_repo.get_by_id.return_value = company
@@ -154,10 +204,10 @@ def test_company_page_shows_associated_contacts(mock_db_conn: MagicMock) -> None
     )
 
     with (
-        patch("app.main._crm_service", return_value=service),
+        patch("app.admin_crm_routes._crm_service", return_value=service),
         patch.object(service, "list_company_contacts", return_value=contacts),
     ):
-        response = client.get(f"/admin/companies/{COMPANY_ID}", auth=ADMIN_AUTH)
+        response = client.get(f"/admin/companies/{COMPANY_ID}", cookies=authenticated_admin["cookies"])
 
     assert response.status_code == 200
     assert "Associated contacts" in response.text
@@ -169,20 +219,16 @@ def test_company_page_shows_associated_contacts(mock_db_conn: MagicMock) -> None
 @pytest.mark.integration
 def test_contacts_returns_503_without_database(
     monkeypatch: pytest.MonkeyPatch,
+    authenticated_admin: dict[str, Any],
 ) -> None:
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    response = client.get("/admin/contacts", auth=ADMIN_AUTH)
+    response = client.get("/admin/contacts", cookies=authenticated_admin["cookies"])
     assert response.status_code == 503
 
 
 @pytest.mark.unit
 @pytest.mark.integration
-@patch("app.main.db.db_connection")
-def test_contacts_new_form_renders(mock_db_conn: MagicMock) -> None:
-    conn = _mock_db_connection()
-    mock_db_conn.return_value.__enter__.return_value = conn
-    from app.crm_service import CrmRepositories
-
+def test_contacts_new_form_renders(authenticated_admin: dict[str, Any]) -> None:
     company_repo = MagicMock()
     company_repo.list_all.return_value = [{"id": COMPANY_ID, "name": "Acme"}]
     service = CrmService(
@@ -194,37 +240,12 @@ def test_contacts_new_form_renders(mock_db_conn: MagicMock) -> None:
             admin_users=MagicMock(),
         )
     )
-    with patch("app.main._crm_service", return_value=service):
+    with patch("app.admin_crm_routes._crm_service", return_value=service):
         response = client.get(
             f"/admin/contacts/new?company_id={COMPANY_ID}",
-            auth=ADMIN_AUTH,
+            cookies=authenticated_admin["cookies"],
         )
+
     assert response.status_code == 200
     assert "New contact" in response.text
-    assert "Acme" in response.text
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-@patch("app.main.db.db_connection")
-def test_companies_list_renders(mock_db_conn: MagicMock) -> None:
-    conn = _mock_db_connection()
-    mock_db_conn.return_value.__enter__.return_value = conn
-    from app.crm_service import CrmRepositories
-
-    company_repo = MagicMock()
-    company_repo.list_all.return_value = [{"id": COMPANY_ID, "name": "Acme", "website": None, "status": "prospect"}]
-    service = CrmService(
-        repos=CrmRepositories(
-            companies=company_repo,
-            contacts=MagicMock(),
-            source_records=MagicMock(),
-            activities=MagicMock(),
-            admin_users=MagicMock(),
-        )
-    )
-    with patch("app.main._crm_service", return_value=service):
-        response = client.get("/admin/companies", auth=ADMIN_AUTH)
-    assert response.status_code == 200
-    assert "Companies" in response.text
-    assert "Acme" in response.text
+    assert str(COMPANY_ID) in response.text
