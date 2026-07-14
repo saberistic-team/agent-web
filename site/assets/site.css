@@ -475,13 +475,36 @@ main {
 }
 
 .service-name {
-  margin: 0 0 1rem;
+  margin: 0 0 0.75rem;
   font-family: var(--display);
   font-size: clamp(1rem, 2.5vw, 1.25rem);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   font-weight: 400;
   color: var(--ink);
+}
+
+.service-summary {
+  margin: 0 0 1.25rem;
+  max-width: 52ch;
+  color: var(--muted);
+}
+
+.qualification {
+  margin: 2.5rem 0 0;
+  padding: 1.25rem 0 0;
+  border-top: 1px solid var(--line);
+  max-width: 52ch;
+  color: var(--muted);
+  font-style: normal;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.case-studies-cta {
+  margin: 2.5rem 0 0;
+  max-width: 52ch;
+  color: var(--muted);
 }
 
 .service-detail {
@@ -519,25 +542,6 @@ main {
 
 .proof-lede {
   margin: 0 0 2rem;
-  max-width: 52ch;
-  color: var(--muted);
-}
-
-.qualification {
-  margin: 2.5rem 0 0;
-  padding: 1.25rem 1.5rem;
-  border-left: 3px solid var(--accent);
-  background: var(--surface);
-}
-
-.qualification p {
-  margin: 0;
-  color: var(--muted);
-  max-width: 52ch;
-}
-
-.case-studies-close {
-  margin: 2.5rem 0 0;
   max-width: 52ch;
   color: var(--muted);
 }
@@ -583,6 +587,25 @@ main {
   font-size: 0.8rem;
   text-align: right;
   white-space: nowrap;
+}
+
+.proof-link-stacked {
+  display: block;
+}
+
+.proof-link-stacked .proof-meta {
+  display: block;
+  margin-top: 0.5rem;
+  text-align: left;
+  white-space: normal;
+}
+
+.proof-summary {
+  display: block;
+  margin-top: 0.35rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  max-width: 52ch;
 }
 
 .case-study {
