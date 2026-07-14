@@ -48,7 +48,7 @@ server-side; raw tokens appear in HTML forms only and are never logged.
 5. On success, the flow cookie is cleared and a new authenticated session is
    minted (session fixation resistance).
 
-Stale login-flow rows are removed opportunistically when a new flow is minted
+Stale flows are removed opportunistically when minting a new flow
 (see [Login flow retention](#login-flow-retention)). Only hashed tokens are
 stored; cleanup never logs or returns raw flow or CSRF values.
 
