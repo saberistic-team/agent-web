@@ -19,6 +19,8 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import analytics_service, case_studies, db, email_service, insights, page_service, stripe_service
+from app.admin_auth import AdminLoginRequired, login_redirect_url
+from app.admin_routes import router as admin_router
 from app.config import get_settings
 from app.models import BriefCreateRequest, BriefCreateResponse
 from app.seo import (
@@ -41,7 +43,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     if settings.database_configured:
         db.init_db(settings.database_url)
-        logger.info("project_briefs table ready")
+        logger.info("database schema ready")
     else:
         logger.warning("DATABASE_URL not set — brief persistence disabled")
     yield
@@ -49,6 +51,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="agent-web", version="0.3.0", lifespan=lifespan)
 app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
+app.include_router(admin_router)
+
+
+@app.exception_handler(AdminLoginRequired)
+async def redirect_unauthenticated_admin(
+    request: Request,
+    exc: AdminLoginRequired,
+) -> RedirectResponse:
+    return RedirectResponse(url=login_redirect_url(exc.next_path), status_code=303)
 
 
 @app.middleware("http")
