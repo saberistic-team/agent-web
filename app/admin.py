@@ -21,14 +21,24 @@ def _render_empty_state(link: dict[str, str]) -> str:
         </section>"""
 
 
-def render_admin_dashboard_page(*, csrf_token: str | None = None) -> str:
+def render_admin_dashboard_page(
+    *,
+    admin_username: str = "",
+    csrf_token: str | None = None,
+) -> str:
     main = """        <section class="admin-empty" aria-labelledby="admin-dashboard-title">
           <p class="admin-eyebrow">Dashboard</p>
           <h1 class="admin-title" id="admin-dashboard-title">Operations</h1>
           <p class="admin-lede">Use Companies and Contacts to manage acquisition targets and relationships.</p>
           <p class="admin-note"><a href="/admin/contacts">View contacts</a> · <a href="/admin/companies">View companies</a></p>
         </section>"""
-    return render_admin_shell(title="Dashboard", main=main, active_path="/admin", csrf_token=csrf_token)
+    return render_admin_shell(
+        title="Dashboard",
+        main=main,
+        active_path="/admin",
+        admin_username=admin_username,
+        csrf_token=csrf_token,
+    )
 
 
 def render_admin_page(active_path: str, *, csrf_token: str | None = None) -> str:
