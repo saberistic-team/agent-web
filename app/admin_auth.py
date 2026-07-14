@@ -146,6 +146,12 @@ def set_login_flow_cookie(response: Response, raw_flow_token: str, settings: Set
 
 
 def clear_login_flow_cookie(response: Response, settings: Settings) -> None:
+    """Expire the pre-auth flow cookie after successful login only.
+
+    Failed login responses mint a replacement flow via ``set_login_flow_cookie``;
+    calling this on those responses would delete the cookie the form's CSRF token
+    depends on.
+    """
     response.delete_cookie(
         key=LOGIN_FLOW_COOKIE_NAME,
         path="/admin",

@@ -277,6 +277,18 @@ def admin_login_submit(
     csrf_token: str = Form(..., alias="csrf_token"),
     next: str | None = Form(default=None),
 ) -> Response:
+    """Authenticate an admin operator.
+
+    Login-flow cookie lifecycle (``admin_login_flow``):
+
+    * **Invalid CSRF** — consume the submitted flow (single-use), render a fresh
+      form with a new CSRF token, and retain the replacement flow cookie.
+    * **Invalid credentials** — same as invalid CSRF: consumed flow is not
+      replayable; the replacement flow binds the returned CSRF token.
+    * **Rate limited** — consume the submitted flow and retain a replacement so
+      the operator can retry after lockout without refreshing.
+    * **Success** — clear the pre-auth flow cookie and issue the session cookie.
+    """
     settings = get_settings()
     _require_admin_auth_configured(settings)
     normalized_username = username.strip()
@@ -286,14 +298,12 @@ def admin_login_submit(
             request, reason="rate_limited", attempted_username=normalized_username
         )
         _consume_login_flow(request, settings)
-        response = _issue_login_flow_response(
+        return _issue_login_flow_response(
             settings=settings,
             error_message=admin_auth.LOGIN_THROTTLED_MESSAGE,
             next_path=next,
             status_code=429,
         )
-        admin_auth.clear_login_flow_cookie(response, settings)
-        return response
 
     csrf_valid = _verify_login_flow_csrf(request, settings, csrf_token)
     _consume_login_flow(request, settings)
@@ -303,28 +313,24 @@ def admin_login_submit(
         _record_login_failure(
             request, reason="invalid_csrf", attempted_username=normalized_username
         )
-        response = _issue_login_flow_response(
+        return _issue_login_flow_response(
             settings=settings,
             error_message=admin_auth.INVALID_CREDENTIALS_MESSAGE,
             next_path=next,
             status_code=400,
         )
-        admin_auth.clear_login_flow_cookie(response, settings)
-        return response
 
     if not admin_auth.verify_admin_credentials(normalized_username, password, settings):
         admin_auth.record_failed_login(request, settings, username=normalized_username)
         _record_login_failure(
             request, reason="invalid_credentials", attempted_username=normalized_username
         )
-        response = _issue_login_flow_response(
+        return _issue_login_flow_response(
             settings=settings,
             error_message=admin_auth.INVALID_CREDENTIALS_MESSAGE,
             next_path=next,
             status_code=401,
         )
-        admin_auth.clear_login_flow_cookie(response, settings)
-        return response
 
     destination = admin_auth.safe_admin_next_path(next)
     response = RedirectResponse(url=destination, status_code=303)
