@@ -97,13 +97,23 @@ Any of these is an automatic request-changes — do not approve:
   `ADMIN_PREVIEW_MODE` show empty shells (“no … yet”, empty tables, placeholder
   milestone copy) instead of randomized mock rows — Builder must extend
   `app/admin_preview.py` (`scripts/screenshot_deploy.format_empty_data_hard_fail`)
+- **Admin desktop nav invisible:** desktop captures of `/admin/*` shells where
+  `.admin-nav-link` nodes exist but none are visible (common when nav links live
+  inside a closed `<details>` without a separate desktop list) — Builder must
+  keep the desktop list **outside** `<details>` (`format_admin_nav_hard_fail`)
 - Acceptance checklist incomplete (`all_done: false` or missing)
 
 Coverage gaps, missing tests, CI assertion failures, visual overflow, empty
-preview shells, and **merge conflicts** are **Builder work** — request changes
-so dispatcher requeues `agent:builder` (Builder resolves on the same PR head).
+preview shells, invisible desktop admin nav, and **merge conflicts** are
+**Builder work** — request changes so dispatcher requeues `agent:builder`
+(Builder resolves on the same PR head).
 Do **not** treat them as terminal `@human-review` / `status:blocked` (see
 `scripts/review_decision.py`). Do **not** resolve conflicts yourself.
+
+When posting `### acceptance_checklist`, mark a criterion **not_done** if
+screenshot evidence contradicts it (e.g. empty desktop sidebar while claiming
+“desktop navigation unchanged”). Do not set `all_done: true` while any
+screenshot-backed criterion fails.
 
 ## Judgment call
 

@@ -159,6 +159,23 @@ When coverage is below gate **or** Reviewer requeues with coverage hard_fails:
 Re-queued `review:changes-requested` runs that cite coverage or missing tests
 must ship test updates on the same PR before re-requesting review.
 
+## Responsive admin navigation (mandatory when touched)
+
+Admin mobile nav uses a **collapsed** `<details class="admin-nav-toggle">`
+with the current section in the summary. Desktop must **not** rely on forcing
+closed-`details` children visible — browsers hide them via
+`details:not([open]) > *:not(summary)`, and CSS specificity fights are easy to
+get wrong (screenshot empty sidebar while unit tests still pass).
+
+**Preferred pattern (no-JS):** dual lists:
+
+1. `.admin-nav-desktop` — always-visible `<ul>` **outside** `<details>`
+2. `.admin-nav-toggle` — mobile-only disclosure with the same links
+
+Hide one with CSS at each breakpoint. Reviewer hard-fails when desktop
+`.admin-nav-link` nodes exist but none are visible
+(`format_admin_nav_hard_fail` / `desktop_nav_invisible`).
+
 ## Constraints
 
 - **Never push to the default branch** (`main` / `master`).

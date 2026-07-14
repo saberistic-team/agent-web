@@ -33,6 +33,26 @@ def test_fixable_includes_empty_preview_data() -> None:
     )
 
 
+def test_fixable_includes_invisible_desktop_admin_nav() -> None:
+    body = (
+        "### reviewer_decision\n"
+        "- decision: `changes-requested`\n"
+        "- hard_fails:\n"
+        "  - admin desktop nav invisible: screenshot page(s) have `.admin-nav-link` in "
+        "DOM but none visible — `/admin` reason=`desktop_nav_invisible`; "
+        "builder must override UA closed-`details` display on desktop\n"
+    )
+    assert is_fixable_changes_requested(body)
+    assert (
+        resolve_decision(
+            latest_state="CHANGES_REQUESTED",
+            latest_body=body,
+            prior_changes_requested=3,
+        )
+        == "changes-requested"
+    )
+
+
 def test_fixable_includes_merge_conflicts() -> None:
     body = (
         "### reviewer_decision\n"

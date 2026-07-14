@@ -225,9 +225,43 @@ def put_files(
         },
     )
     new_sha = str(commit["sha"])
-    api(
-        "PATCH",
-        f"/repos/{owner}/{name}/git/refs/heads/{branch}",
-        body={"sha": new_sha},
-    )
-    return new_sha
+    last_err: Exception | None = None
+    for attempt in range(4):
+        try:
+            # Re-read tip when retrying so a racing push (Builder/Reviewer) does
+            # not strand screenshot uploads on "Update is not a fast forward".
+            if attempt:
+                ref = api("GET", f"/repos/{owner}/{name}/git/ref/heads/{branch}")
+                head_sha = str(ref["object"]["sha"])
+                head_commit = api(
+                    "GET", f"/repos/{owner}/{name}/git/commits/{head_sha}"
+                )
+                base_tree = str(head_commit["tree"]["sha"])
+                tree = api(
+                    "POST",
+                    f"/repos/{owner}/{name}/git/trees",
+                    body={"base_tree": base_tree, "tree": tree_items},
+                )
+                commit = api(
+                    "POST",
+                    f"/repos/{owner}/{name}/git/commits",
+                    body={
+                        "message": message,
+                        "tree": tree["sha"],
+                        "parents": [head_sha],
+                    },
+                )
+                new_sha = str(commit["sha"])
+            api(
+                "PATCH",
+                f"/repos/{owner}/{name}/git/refs/heads/{branch}",
+                body={"sha": new_sha},
+            )
+            return new_sha
+        except GitHubError as exc:
+            last_err = exc
+            if "not a fast forward" not in str(exc).lower() and "422" not in str(exc):
+                raise
+            time.sleep(0.5 * (attempt + 1))
+    assert last_err is not None
+    raise last_err

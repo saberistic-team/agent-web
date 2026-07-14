@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Generator
 from unittest.mock import MagicMock, patch
 
@@ -21,6 +22,7 @@ TEST_USERNAME = "operator"
 TEST_PASSWORD = "correct-horse-battery-staple"
 TEST_HASH = PasswordHasher().hash(TEST_PASSWORD)
 TEST_SECRET = "test-session-secret-32chars-minimum"
+ADMIN_CSS = Path(__file__).resolve().parents[1] / "site/assets/admin.css"
 
 ADMIN_HREFS = tuple(link["href"] for link in ADMIN_NAV_LINKS)
 ADMIN_LABELS = tuple(link["label"] for link in ADMIN_NAV_LINKS)
@@ -92,8 +94,53 @@ def test_render_admin_nav_marks_active_page() -> None:
     nav = render_admin_nav("/admin/companies")
     assert 'href="/admin/companies"' in nav
     assert 'aria-current="page"' in nav
-    assert nav.count('aria-current="page"') == 1
+    # Desktop + mobile lists both mark the current page; one is CSS-hidden.
+    assert nav.count('aria-current="page"') == 2
     assert 'aria-label="Admin"' in nav
+    assert 'class="admin-nav-list admin-nav-desktop"' in nav
+    assert 'class="admin-nav-list admin-nav-mobile-list"' in nav
+
+
+@pytest.mark.unit
+def test_render_admin_nav_collapsed_by_default() -> None:
+    nav = render_admin_nav("/admin/audit")
+    assert 'class="admin-nav-toggle"' in nav
+    assert 'admin-nav-toggle" open' not in nav
+    assert '<span class="admin-nav-current">Audit</span>' in nav
+    assert '<span class="admin-nav-expand-label">Menu</span>' in nav
+    assert 'aria-label="Admin sections. Current: Audit. Expand for all sections."' in nav
+
+
+@pytest.mark.unit
+def test_render_admin_nav_unknown_path_uses_admin_label() -> None:
+    nav = render_admin_nav("/admin/unknown-section")
+    assert '<span class="admin-nav-current">Admin</span>' in nav
+
+
+@pytest.mark.unit
+def test_admin_css_mobile_nav_and_table_scroll_guardrails() -> None:
+    css = ADMIN_CSS.read_text(encoding="utf-8")
+    assert "@media (min-width: 769px)" in css
+    assert "@media (max-width: 768px)" in css
+    assert ".admin-nav-desktop" in css
+    assert ".admin-nav-toggle:not([open]) .admin-nav-mobile-list" in css
+    assert ".admin-table-wrap" in css
+    assert ".admin-table-wrap::before" in css
+    assert "overflow-x: auto" in css
+    assert "Scroll horizontally for more columns" in css
+
+
+@pytest.mark.unit
+def test_admin_css_desktop_nav_list_visible_when_collapsed() -> None:
+    css = ADMIN_CSS.read_text(encoding="utf-8")
+    desktop_block = css.split("@media (min-width: 769px)")[1].split("@media")[0]
+    assert ".admin-nav-desktop" in desktop_block
+    assert "display: flex" in desktop_block
+    assert ".admin-nav-toggle" in desktop_block
+    assert "display: none" in desktop_block
+    # Desktop list must not live inside closed details (UA hide trap).
+    assert "display: flex !important" not in desktop_block
+    assert "details.admin-nav-toggle:not([open])" not in desktop_block
 
 
 @pytest.mark.unit
@@ -135,6 +182,8 @@ def test_admin_dashboard_renders_shell() -> None:
     assert 'meta name="robots" content="noindex, nofollow"' in body
     assert 'href="/assets/admin.css"' in body
     assert "Admin foundation" in body
+    assert 'admin-nav-toggle" open' not in body
+    assert '<span class="admin-nav-current">Dashboard</span>' in body
 
 
 @pytest.mark.parametrize("path", ADMIN_HREFS)
@@ -195,7 +244,7 @@ def test_admin_active_nav(path: str, label: str) -> None:
     assert response.status_code == 200
     body = response.text
     assert f'id="admin-empty-title">{label}</h1>' in body
-    assert body.count('aria-current="page"') == 1
+    assert body.count('aria-current="page"') == 2
     assert f'href="{path}"' in body
     assert 'aria-current="page"' in body
     assert f'class="admin-nav-link" aria-current="page">{label}</a>' in body
@@ -226,7 +275,7 @@ def test_admin_companies_page_renders_research_list() -> None:
     body = response.text
     assert 'class="admin-app"' in body
     assert 'id="companies-title">Companies</h1>' in body
-    assert body.count('aria-current="page"') == 1
+    assert body.count('aria-current="page"') == 2
     assert 'href="/admin/companies"' in body
     assert 'aria-current="page"' in body
     assert 'class="admin-nav-link" aria-current="page">Companies</a>' in body
