@@ -16,8 +16,9 @@ def _esc(value: Any) -> str:
 
 def render_companies_list_page(
     *,
+    admin_username: str,
     companies: list[dict[str, Any]],
-    csrf_token: str | None = None,
+    csrf_token: str = "",
 ) -> str:
     rows: list[str] = []
     for company in companies:
@@ -58,4 +59,10 @@ def render_companies_list_page(
             </table>
           </div>
         </section>"""
-    return render_admin_shell(title="Companies", main=main, active_path="/admin/companies", csrf_token=csrf_token)
+    return render_admin_shell(
+        title="Companies",
+        main=main,
+        active_path="/admin/companies",
+        admin_username=admin_username,
+        csrf_token=csrf_token,
+    )
