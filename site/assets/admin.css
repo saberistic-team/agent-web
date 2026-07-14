@@ -272,6 +272,88 @@ body.admin-app {
   outline: none;
 }
 
+.audit-pager-link:hover,
+.audit-pager-link:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.brief-filters {
+  margin: 0 0 1.25rem;
+}
+
+.brief-filters-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  align-items: flex-end;
+}
+
+.brief-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 10rem;
+}
+
+.brief-filter-label {
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.brief-filter input,
+.brief-filter select {
+  font-family: var(--mono), "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.8rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  color: var(--ink);
+  border-radius: 2px;
+}
+
+.brief-filter-submit {
+  font-family: inherit;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.5rem 0.85rem;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.brief-filter-submit:hover,
+.brief-filter-submit:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.brief-error {
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--ink);
+  font-size: 0.85rem;
+}
+
+.brief-row-link {
+  color: var(--accent-ink);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+
+.brief-row-link:hover,
+.brief-row-link:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
 @media (max-width: 768px) {
   .admin-title {
     font-family: var(--mono), "IBM Plex Mono", ui-monospace, monospace;
