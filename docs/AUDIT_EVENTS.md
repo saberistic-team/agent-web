@@ -45,14 +45,14 @@ Normal application code cannot mutate historical audit rows.
 | `auth.login.success` | Valid admin login creates a server-side session |
 | `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting |
 | `auth.logout` | Session revocation and cookie clear |
-| `import.batch` | Data import batches (future import routes) |
-| `entity.delete` | Hard deletes of CRM or configuration entities |
-| `pipeline.update` | Pipeline stage or activity changes |
-| `scoring_rule.update` | ICP scoring weight or rule edits |
-| `analytics.config.update` | Analytics configuration changes |
-| `export.request` | Spreadsheet or data export requests |
+| `import.batch` | Data import batches via `CrmService.import_batch` |
+| `entity.delete` | Hard deletes via `CrmService.delete_entity` |
+| `pipeline.update` | Pipeline stage changes via `CrmService.update_pipeline` |
+| `scoring_rule.update` | Scoring rule edits via `CrmService.update_scoring_rule` |
+| `analytics.config.update` | Analytics configuration via `CrmService.update_analytics_config` |
+| `export.request` | Export requests via `CrmService.request_export` |
 
-Call the helpers in `app/audit_service.py` from repository/service layers when those features land.
+Auth events are wired in `app/admin_routes.py`. Other mutations record audit events through `CrmService` methods that future admin UI routes will call.
 
 ## Admin UI
 
@@ -119,4 +119,4 @@ ORDER BY 1 DESC;
 |----------|---------|---------|
 | `AUDIT_PAGE_SIZE` | `50` | Admin audit list page size (max 100) |
 
-Requires `DATABASE_URL` and admin auth env vars documented in `docs/ADMIN_AUTH.md` when that doc is present.
+Requires `DATABASE_URL` and admin auth env vars documented in `docs/ADMIN_AUTH.md`.
