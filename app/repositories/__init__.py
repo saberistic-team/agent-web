@@ -1,6 +1,39 @@
-"""Repository package."""
+"""CRM repository package."""
 
-from app.repositories.postgres import PostgresRepositories, get_repositories
-from app.repositories.protocols import AuditEventRepository
+from app.repositories.postgres import (
+    PostgresActivityRepository,
+    PostgresAdminUserRepository,
+    PostgresAuditEventRepository,
+    PostgresCompanyRepository,
+    PostgresContactRepository,
+    PostgresRepositories,
+    PostgresSourceRecordRepository,
+    default_repositories,
+    get_repositories,
+)
+from app.repositories.protocols import (
+    ActivityRepository,
+    AdminUserRepository,
+    AuditEventRepository,
+    CompanyRepository,
+    ContactRepository,
+    SourceRecordRepository,
+)
 
-__all__ = ["AuditEventRepository", "PostgresRepositories", "get_repositories"]
+__all__ = [
+    "ActivityRepository",
+    "AdminUserRepository",
+    "AuditEventRepository",
+    "CompanyRepository",
+    "ContactRepository",
+    "SourceRecordRepository",
+    "PostgresActivityRepository",
+    "PostgresAdminUserRepository",
+    "PostgresAuditEventRepository",
+    "PostgresCompanyRepository",
+    "PostgresContactRepository",
+    "PostgresRepositories",
+    "PostgresSourceRecordRepository",
+    "default_repositories",
+    "get_repositories",
+]
