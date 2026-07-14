@@ -41,7 +41,6 @@ class PostgresCompanyRepository:
                 (name, website, status),
             )
             row = cur.fetchone()
-            conn.commit()
         return dict(row)
 
     def get_by_id(self, conn: psycopg.Connection, company_id: UUID) -> dict[str, Any] | None:
@@ -87,7 +86,6 @@ class PostgresCompanyRepository:
                 values,
             )
             row = cur.fetchone()
-            conn.commit()
         return dict(row) if row else None
 
     def list_all(
@@ -156,7 +154,6 @@ class PostgresContactRepository:
                 ),
             )
             row = cur.fetchone()
-            conn.commit()
         return dict(row)
 
     def get_by_id(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None:
@@ -242,7 +239,6 @@ class PostgresContactRepository:
                 values,
             )
             row = cur.fetchone()
-            conn.commit()
         return dict(row) if row else None
 
     def find_duplicates(
@@ -334,7 +330,7 @@ class PostgresContactRepository:
                     FROM contacts c
                     LEFT JOIN companies co ON co.id = c.company_id
                 """
-                params = []
+                params: list[Any] = []
                 if not include_archived:
                     sql += " WHERE c.is_archived = FALSE"
                 sql += " ORDER BY c.updated_at DESC LIMIT %s"
@@ -392,7 +388,6 @@ class PostgresContactRepository:
                 (contact_id,),
             )
             stored = [str(row["role"]) for row in cur.fetchall()]
-            conn.commit()
         return stored
 
     def get_buying_roles(
@@ -442,7 +437,6 @@ class PostgresSourceRecordRepository:
                 ),
             )
             row = cur.fetchone()
-            conn.commit()
         return dict(row)
 
     def get_by_source(
@@ -496,7 +490,6 @@ class PostgresActivityRepository:
                 ),
             )
             row = cur.fetchone()
-            conn.commit()
         return dict(row)
 
     def list_for_company(
@@ -540,7 +533,6 @@ class PostgresAdminUserRepository:
                 (email, display_name, role, is_active),
             )
             row = cur.fetchone()
-            conn.commit()
         return dict(row)
 
     def get_by_email(self, conn: psycopg.Connection, email: str) -> dict[str, Any] | None:
