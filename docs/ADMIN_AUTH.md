@@ -48,33 +48,9 @@ server-side; raw tokens appear in HTML forms only and are never logged.
 5. On success, the flow cookie is cleared and a new authenticated session is
    minted (session fixation resistance).
 
-### Login flow retention and cleanup
-
-Every `GET /admin/login` creates a new `admin_login_flows` row. Expired and
-consumed rows are pruned opportunistically when a new flow is minted — no Redis,
-cron, or separate worker is required.
-
-| Constant | Value | Meaning |
-|----------|-------|---------|
-| Flow TTL | 900 s (15 min) | `expires_at`; enforced at CSRF validation |
-| Retention allowance | 1800 s (30 min) | `2 ×` flow TTL; grace after expiry or consumption |
-| Cleanup batch size | 100 rows | Bounded delete per new flow issuance |
-
-**Deletion criteria** (both require the retention window to have elapsed):
-
-- **Expired** — `expires_at` is older than `now − retention`.
-- **Consumed** — `consumed_at` is set and older than `now − retention`.
-
-Active flows (`expires_at` in the future and `consumed_at` null) are never
-removed. Recently expired or consumed flows stay until the retention allowance
-passes so replay checks remain reliable.
-
-Cleanup uses indexed, bounded `DELETE … WHERE id IN (SELECT … LIMIT n)` so normal
-login traffic does not scan the full table. Indexes: `expires_at`, partial
-`consumed_at` (migration `009`).
-
-If cleanup fails (e.g. transient Postgres error), the failure is logged and the
-new login flow is still issued; no token values are exposed.
+Stale login-flow rows are removed opportunistically when a new flow is minted
+(see [Login flow retention](#login-flow-retention)). Only hashed tokens are
+stored; cleanup never logs or returns raw flow or CSRF values.
 
 A CSRF token copied from one browser cannot be submitted from another: the
 paired `admin_login_flow` cookie is `HttpOnly` and bound to the initiating
@@ -239,6 +215,46 @@ To prune stale limiter rows manually:
 DELETE FROM admin_login_rate_limits
 WHERE updated_at < NOW() - INTERVAL '30 minutes'
   AND (locked_until IS NULL OR locked_until < NOW());
+```
+
+## Login flow retention
+
+Every `GET /admin/login` inserts an `admin_login_flows` row. Without cleanup,
+expired and consumed flows would accumulate indefinitely.
+
+### Retention policy
+
+| State | Removed when | Rationale |
+|-------|--------------|-----------|
+| **Active** (unexpired, unconsumed) | Never | Required for in-flight sign-in |
+| **Expired** (past `expires_at`, never consumed) | `expires_at` + **30 minutes** | Allows clock skew; matches `2 ×` flow TTL (15 min) |
+| **Consumed** (one-time POST used) | `consumed_at` + **15 minutes** | Replay is already blocked at consume time; brief grace for concurrent requests |
+
+Constants: `LOGIN_FLOW_EXPIRED_RETENTION_SECONDS` (1800), `LOGIN_FLOW_CONSUMED_RETENTION_SECONDS` (900), aligned with `CSRF_MAX_AGE_SECONDS` (900).
+
+### Automatic cleanup
+
+When minting a new login flow, the app deletes up to **100** stale rows per
+request (`LOGIN_FLOW_CLEANUP_BATCH_SIZE`). Deletion uses partial indexes on
+`expires_at` (unconsumed) and `consumed_at` (consumed) so normal login traffic
+does not scan the full table. No Redis, cron, or external scheduler is required.
+
+If cleanup fails (database error), the failure is logged and the new flow is
+still created — cleanup errors never expose token values and do not block sign-in.
+
+### Manual cleanup
+
+To prune stale flows manually:
+
+```sql
+DELETE FROM admin_login_flows
+WHERE (
+    consumed_at IS NULL
+    AND expires_at < NOW() - INTERVAL '30 minutes'
+) OR (
+    consumed_at IS NOT NULL
+    AND consumed_at < NOW() - INTERVAL '15 minutes'
+);
 ```
 
 ## Security notes

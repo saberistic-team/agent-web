@@ -284,7 +284,8 @@ CREATE INDEX IF NOT EXISTS idx_research_records_observed_at
         name="admin_login_flows_cleanup_indexes",
         up_sql="""
 CREATE INDEX IF NOT EXISTS admin_login_flows_expires_at_idx
-    ON admin_login_flows (expires_at);
+    ON admin_login_flows (expires_at)
+    WHERE consumed_at IS NULL;
 CREATE INDEX IF NOT EXISTS admin_login_flows_consumed_at_idx
     ON admin_login_flows (consumed_at)
     WHERE consumed_at IS NOT NULL;

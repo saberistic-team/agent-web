@@ -147,7 +147,9 @@ Short-lived pre-authentication browser flows for login CSRF ([#139](https://gith
 | `created_at`, `expires_at` | `TIMESTAMPTZ` | 15-minute TTL enforced at read |
 | `consumed_at` | `TIMESTAMPTZ` | Set on each login POST (one-time use) |
 
-Indexes: `flow_token_hash`, `expires_at`, partial `consumed_at`. See [ADMIN_AUTH.md](ADMIN_AUTH.md).
+Indexes: `flow_token_hash`; partial indexes on `expires_at` (unconsumed) and
+`consumed_at` (consumed) for bounded cleanup (migration `009`). See
+[ADMIN_AUTH.md](ADMIN_AUTH.md).
 
 ### `admin_login_rate_limits`
 
@@ -177,7 +179,9 @@ Migrations live in `app/migrations/definitions.py` and are applied at startup vi
 | `004` | `admin_sessions` | Server-side admin session rows |
 | `005` | `admin_login_rate_limits` | Shared admin login rate-limit state |
 | `006` | `admin_csrf_binding` | Login-flow CSRF rows and session CSRF column |
-| `007` | `research_records` | Typed research records with provenance and expiry |
+| `007` | `audit_events` | Append-only audit trail |
+| `008` | `research_records` | Typed research records with provenance and expiry |
+| `009` | `admin_login_flows_cleanup_indexes` | Partial indexes for login-flow retention cleanup |
 
 Applied versions are recorded in `schema_migrations`. Steps are **idempotent**
 (`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`) so empty and existing Render Postgres

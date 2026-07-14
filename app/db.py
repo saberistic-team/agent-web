@@ -241,13 +241,15 @@ def cleanup_stale_admin_login_flows(
     conn: psycopg.Connection,
     *,
     now: datetime,
-    retention_seconds: int,
+    expired_retention_seconds: int,
+    consumed_retention_seconds: int,
     batch_size: int,
 ) -> int:
-    """Delete expired and consumed login flows past the retention allowance.
+    """Delete expired and consumed login flows in a bounded batch.
 
-    Uses a bounded batch so cleanup does not scan or lock the full table.
-    Active, unexpired, unconsumed flows are never selected.
+    Active flows (unexpired and unconsumed) are never selected. Uses partial
+    indexes on ``expires_at`` and ``consumed_at`` so normal login traffic does
+    not scan the full table.
     """
     with conn.cursor() as cur:
         cur.execute(
@@ -256,16 +258,24 @@ def cleanup_stale_admin_login_flows(
             WHERE id IN (
                 SELECT id
                 FROM admin_login_flows
-                WHERE expires_at < %s - make_interval(secs => %s)
-                   OR (
-                       consumed_at IS NOT NULL
-                       AND consumed_at < %s - make_interval(secs => %s)
-                   )
+                WHERE (
+                    consumed_at IS NULL
+                    AND expires_at < %s - make_interval(secs => %s)
+                ) OR (
+                    consumed_at IS NOT NULL
+                    AND consumed_at < %s - make_interval(secs => %s)
+                )
                 ORDER BY id
                 LIMIT %s
             )
             """,
-            (now, retention_seconds, now, retention_seconds, batch_size),
+            (
+                now,
+                expired_retention_seconds,
+                now,
+                consumed_retention_seconds,
+                batch_size,
+            ),
         )
         deleted = cur.rowcount
         conn.commit()

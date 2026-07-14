@@ -25,7 +25,10 @@ SESSION_COOKIE_NAME = "admin_session"
 LOGIN_FLOW_COOKIE_NAME = "admin_login_flow"
 CSRF_FORM_FIELD = "csrf_token"
 CSRF_MAX_AGE_SECONDS = 900
-LOGIN_FLOW_CLEANUP_RETENTION_SECONDS = CSRF_MAX_AGE_SECONDS * 2
+# Retention after ``expires_at`` before deleting never-consumed flows.
+LOGIN_FLOW_EXPIRED_RETENTION_SECONDS = CSRF_MAX_AGE_SECONDS * 2
+# Retention after ``consumed_at`` before deleting one-time-used flows.
+LOGIN_FLOW_CONSUMED_RETENTION_SECONDS = CSRF_MAX_AGE_SECONDS
 LOGIN_FLOW_CLEANUP_BATCH_SIZE = 100
 INVALID_CREDENTIALS_MESSAGE = "Invalid username or password."
 INVALID_REQUEST_MESSAGE = "Invalid request."
@@ -148,6 +151,12 @@ def set_login_flow_cookie(response: Response, raw_flow_token: str, settings: Set
 
 
 def clear_login_flow_cookie(response: Response, settings: Settings) -> None:
+    """Expire the pre-auth flow cookie after successful login only.
+
+    Failed login responses mint a replacement flow via ``set_login_flow_cookie``;
+    calling this on those responses would delete the cookie the form's CSRF token
+    depends on.
+    """
     response.delete_cookie(
         key=LOGIN_FLOW_COOKIE_NAME,
         path="/admin",

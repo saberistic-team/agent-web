@@ -116,6 +116,10 @@ def test_apply_migrations_runs_only_pending_steps() -> None:
         for call in cur.execute.call_args_list
     )
     assert any(
+        "INSERT INTO schema_migrations" in str(call.args[0]) and "008" in str(call.args[1])
+        for call in cur.execute.call_args_list
+    )
+    assert any(
         "INSERT INTO schema_migrations" in str(call.args[0]) and "009" in str(call.args[1])
         for call in cur.execute.call_args_list
     )
@@ -166,15 +170,6 @@ def test_admin_csrf_binding_migration_is_idempotent() -> None:
 
 
 @pytest.mark.unit
-def test_admin_login_flows_cleanup_indexes_migration_is_idempotent() -> None:
-    cleanup = next(m for m in MIGRATIONS if m.name == "admin_login_flows_cleanup_indexes")
-    assert cleanup.version == "009"
-    assert "CREATE INDEX IF NOT EXISTS admin_login_flows_expires_at_idx" in cleanup.up_sql
-    assert "CREATE INDEX IF NOT EXISTS admin_login_flows_consumed_at_idx" in cleanup.up_sql
-    assert "WHERE consumed_at IS NOT NULL" in cleanup.up_sql
-
-
-@pytest.mark.unit
 def test_research_records_migration_is_idempotent() -> None:
     research = next(m for m in MIGRATIONS if m.name == "research_records")
     assert research.version == "008"
@@ -185,6 +180,16 @@ def test_research_records_migration_is_idempotent() -> None:
     assert "source_url TEXT" in research.up_sql
     assert "expires_at TIMESTAMPTZ" in research.up_sql
     assert "idx_research_records_company_id" in research.up_sql
+
+
+@pytest.mark.unit
+def test_admin_login_flows_cleanup_indexes_migration_is_idempotent() -> None:
+    cleanup = next(m for m in MIGRATIONS if m.name == "admin_login_flows_cleanup_indexes")
+    assert cleanup.version == "009"
+    assert "admin_login_flows_expires_at_idx" in cleanup.up_sql
+    assert "admin_login_flows_consumed_at_idx" in cleanup.up_sql
+    assert "WHERE consumed_at IS NULL" in cleanup.up_sql
+    assert "WHERE consumed_at IS NOT NULL" in cleanup.up_sql
 
 
 @pytest.mark.unit

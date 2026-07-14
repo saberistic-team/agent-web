@@ -308,6 +308,28 @@ def _mock_create_admin_login_flow(conn: MagicMock, **kwargs: Any) -> int:
     return int(_login_flows[flow_hash]["id"])
 
 
+def _mock_cleanup_stale_admin_login_flows(conn: MagicMock, **kwargs: Any) -> int:
+    now = kwargs["now"]
+    expired_cutoff = now - timedelta(seconds=kwargs["expired_retention_seconds"])
+    consumed_cutoff = now - timedelta(seconds=kwargs["consumed_retention_seconds"])
+    batch_size = kwargs["batch_size"]
+    stale_hashes = sorted(
+        flow_hash
+        for flow_hash, row in _login_flows.items()
+        if (
+            row["consumed_at"] is None
+            and row["expires_at"] < expired_cutoff
+        )
+        or (
+            row["consumed_at"] is not None
+            and row["consumed_at"] < consumed_cutoff
+        )
+    )[:batch_size]
+    for flow_hash in stale_hashes:
+        del _login_flows[flow_hash]
+    return len(stale_hashes)
+
+
 def _mock_get_admin_login_flow_by_token_hash(
     conn: MagicMock,
     flow_token_hash: str,
@@ -323,32 +345,6 @@ def _mock_consume_admin_login_flow(
     row = _login_flows.get(flow_token_hash)
     if row is not None:
         row["consumed_at"] = datetime.now(timezone.utc)
-
-
-def _mock_cleanup_stale_admin_login_flows(
-    conn: MagicMock,
-    *,
-    now: datetime,
-    retention_seconds: int,
-    batch_size: int,
-) -> int:
-    cutoff = now - timedelta(seconds=retention_seconds)
-    stale_hashes: list[str] = []
-    for flow_hash, row in _login_flows.items():
-        expires_at = row["expires_at"]
-        if expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=timezone.utc)
-        expired = expires_at < cutoff
-        consumed_at = row.get("consumed_at")
-        consumed_stale = consumed_at is not None and consumed_at < cutoff
-        if expired or consumed_stale:
-            stale_hashes.append(flow_hash)
-    stale_hashes.sort()
-    deleted = 0
-    for flow_hash in stale_hashes[:batch_size]:
-        del _login_flows[flow_hash]
-        deleted += 1
-    return deleted
 
 
 def _mock_create_admin_session(conn: MagicMock, **kwargs: Any) -> int:
@@ -399,18 +395,18 @@ def mock_db_connection() -> Generator[MagicMock, None, None]:
         )
         stack.enter_context(
             patch(
+                "app.admin_routes.db.cleanup_stale_admin_login_flows",
+                _mock_cleanup_stale_admin_login_flows,
+            )
+        )
+        stack.enter_context(
+            patch(
                 "app.admin_routes.db.get_admin_login_flow_by_token_hash",
                 _mock_get_admin_login_flow_by_token_hash,
             )
         )
         stack.enter_context(
             patch("app.admin_routes.db.consume_admin_login_flow", _mock_consume_admin_login_flow)
-        )
-        stack.enter_context(
-            patch(
-                "app.admin_routes.db.cleanup_stale_admin_login_flows",
-                _mock_cleanup_stale_admin_login_flows,
-            )
         )
         stack.enter_context(
             patch("app.admin_routes.db.create_admin_session", _mock_create_admin_session)
@@ -439,13 +435,30 @@ def _extract_csrf_token(html: str) -> str:
 
 
 def _parse_login_form(response: Any) -> tuple[str, dict[str, str]]:
-    assert response.status_code == 200
     csrf_token = _extract_csrf_token(response.text)
     cookies: dict[str, str] = {}
     flow_cookie = response.cookies.get(LOGIN_FLOW_COOKIE_NAME)
     if flow_cookie:
         cookies[LOGIN_FLOW_COOKIE_NAME] = flow_cookie
     return csrf_token, cookies
+
+
+def _login_flow_set_cookie_headers(response: Any) -> list[str]:
+    """Return raw Set-Cookie header values for the pre-auth login-flow cookie."""
+    if hasattr(response.headers, "get_list"):
+        raw_headers = response.headers.get_list("set-cookie")
+    else:
+        combined = response.headers.get("set-cookie", "")
+        raw_headers = [combined] if combined else []
+    return [header for header in raw_headers if LOGIN_FLOW_COOKIE_NAME in header]
+
+
+def _assert_replacement_login_flow_cookie_retained(response: Any) -> None:
+    """Failed auth must retain exactly one non-expiring replacement flow cookie."""
+    headers = _login_flow_set_cookie_headers(response)
+    assert len(headers) == 1, headers
+    assert "Max-Age=0" not in headers[0]
+    assert response.cookies.get(LOGIN_FLOW_COOKIE_NAME)
 
 
 def _fetch_login_form() -> tuple[str, dict[str, str]]:
@@ -715,6 +728,84 @@ def test_login_invalid_credentials_use_generic_message(rate_limit_store: FakeRat
         response = _login(password="not-the-password")
     assert response.status_code == 401
     assert admin_auth.INVALID_CREDENTIALS_MESSAGE in response.text
+    _assert_replacement_login_flow_cookie_retained(response)
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_login_retry_after_wrong_password_without_refresh(
+    rate_limit_store: FakeRateLimitStore,
+) -> None:
+    """Wrong password then corrected password on the same client without refresh."""
+    with shared_rate_limiter(rate_limit_store):
+        with mock_db_connection():
+            form = client.get("/admin/login")
+            csrf_token, _ = _parse_login_form(form)
+
+            failed = client.post(
+                "/admin/login",
+                data={
+                    "username": TEST_USERNAME,
+                    "password": "wrong-password",
+                    "csrf_token": csrf_token,
+                },
+            )
+            assert failed.status_code == 401
+            assert admin_auth.INVALID_CREDENTIALS_MESSAGE in failed.text
+            _assert_replacement_login_flow_cookie_retained(failed)
+
+            retry_csrf = _extract_csrf_token(failed.text)
+            assert retry_csrf != csrf_token
+
+            success = client.post(
+                "/admin/login",
+                data={
+                    "username": TEST_USERNAME,
+                    "password": TEST_PASSWORD,
+                    "csrf_token": retry_csrf,
+                },
+            )
+            assert success.status_code == 303
+            assert success.headers["location"] == "/admin"
+            assert _extract_session_cookie(success)
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_login_invalid_csrf_retains_replacement_flow_cookie(
+    rate_limit_store: FakeRateLimitStore,
+) -> None:
+    csrf_token, cookies = _fetch_login_form()
+    with shared_rate_limiter(rate_limit_store):
+        with mock_db_connection():
+            response = client.post(
+                "/admin/login",
+                data={
+                    "username": TEST_USERNAME,
+                    "password": TEST_PASSWORD,
+                    "csrf_token": "not-a-valid-token",
+                },
+                cookies=cookies,
+            )
+    assert response.status_code == 400
+    assert admin_auth.INVALID_CREDENTIALS_MESSAGE in response.text
+    _assert_replacement_login_flow_cookie_retained(response)
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_login_rate_limit_retains_replacement_flow_cookie(
+    rate_limit_store: FakeRateLimitStore,
+) -> None:
+    with shared_rate_limiter(rate_limit_store):
+        for _ in range(5):
+            response = _login(password="wrong")
+            assert response.status_code == 401
+
+        blocked = _login(password="wrong")
+    assert blocked.status_code == 429
+    assert admin_auth.LOGIN_THROTTLED_MESSAGE in blocked.text
+    _assert_replacement_login_flow_cookie_retained(blocked)
 
 
 @pytest.mark.unit
@@ -839,144 +930,6 @@ def test_login_rejects_replayed_login_flow(rate_limit_store: FakeRateLimitStore)
             )
     assert replay.status_code == 400
     assert admin_auth.INVALID_CREDENTIALS_MESSAGE in replay.text
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_login_flow_cleanup_removes_stale_rows(rate_limit_store: FakeRateLimitStore) -> None:
-    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
-    retention = admin_auth.LOGIN_FLOW_CLEANUP_RETENTION_SECONDS
-    cutoff = now - timedelta(seconds=retention)
-
-    with shared_rate_limiter(rate_limit_store):
-        with mock_db_connection():
-            with patch(
-                "app.admin_routes.datetime",
-            ) as mock_datetime:
-                mock_datetime.now.return_value = now
-                mock_datetime.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
-
-                _login_flows["stale-expired"] = {
-                    "id": 99,
-                    "flow_token_hash": "stale-expired",
-                    "csrf_token_hash": "csrf-stale",
-                    "created_at": cutoff - timedelta(hours=1),
-                    "expires_at": cutoff - timedelta(seconds=1),
-                    "consumed_at": None,
-                }
-                _login_flows["stale-consumed"] = {
-                    "id": 100,
-                    "flow_token_hash": "stale-consumed",
-                    "csrf_token_hash": "csrf-consumed",
-                    "created_at": cutoff - timedelta(hours=1),
-                    "expires_at": now + timedelta(minutes=5),
-                    "consumed_at": cutoff - timedelta(seconds=1),
-                }
-
-                response = client.get("/admin/login")
-                assert response.status_code == 200
-                assert "stale-expired" not in _login_flows
-                assert "stale-consumed" not in _login_flows
-                assert len(_login_flows) == 1
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_login_flow_cleanup_preserves_active_rows(rate_limit_store: FakeRateLimitStore) -> None:
-    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
-    retention = admin_auth.LOGIN_FLOW_CLEANUP_RETENTION_SECONDS
-    cutoff = now - timedelta(seconds=retention)
-
-    with shared_rate_limiter(rate_limit_store):
-        with mock_db_connection():
-            with patch("app.admin_routes.datetime") as mock_datetime:
-                mock_datetime.now.return_value = now
-                mock_datetime.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
-
-                _login_flows["active"] = {
-                    "id": 50,
-                    "flow_token_hash": "active",
-                    "csrf_token_hash": "csrf-active",
-                    "created_at": now - timedelta(minutes=1),
-                    "expires_at": now + timedelta(minutes=10),
-                    "consumed_at": None,
-                }
-                _login_flows["recently-expired"] = {
-                    "id": 51,
-                    "flow_token_hash": "recently-expired",
-                    "csrf_token_hash": "csrf-recent",
-                    "created_at": now - timedelta(minutes=20),
-                    "expires_at": now - timedelta(minutes=5),
-                    "consumed_at": None,
-                }
-                _login_flows["recently-consumed"] = {
-                    "id": 52,
-                    "flow_token_hash": "recently-consumed",
-                    "csrf_token_hash": "csrf-recent-consumed",
-                    "created_at": now - timedelta(minutes=10),
-                    "expires_at": now + timedelta(minutes=5),
-                    "consumed_at": cutoff + timedelta(seconds=1),
-                }
-
-                response = client.get("/admin/login")
-                assert response.status_code == 200
-                assert "active" in _login_flows
-                assert "recently-expired" in _login_flows
-                assert "recently-consumed" in _login_flows
-                assert len(_login_flows) == 4
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_login_flow_cleanup_failure_still_issues_flow(
-    rate_limit_store: FakeRateLimitStore,
-) -> None:
-    with shared_rate_limiter(rate_limit_store):
-        with mock_db_connection():
-            with patch(
-                "app.admin_routes.db.cleanup_stale_admin_login_flows",
-                side_effect=RuntimeError("cleanup unavailable"),
-            ):
-                response = client.get("/admin/login")
-    assert response.status_code == 200
-    assert 'name="csrf_token"' in response.text
-    assert len(_login_flows) == 1
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_login_flow_cleanup_is_bounded_per_batch(rate_limit_store: FakeRateLimitStore) -> None:
-    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
-    retention = admin_auth.LOGIN_FLOW_CLEANUP_RETENTION_SECONDS
-    cutoff = now - timedelta(seconds=retention)
-    batch_size = admin_auth.LOGIN_FLOW_CLEANUP_BATCH_SIZE
-
-    with shared_rate_limiter(rate_limit_store):
-        with mock_db_connection():
-            with patch("app.admin_routes.datetime") as mock_datetime:
-                mock_datetime.now.return_value = now
-                mock_datetime.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
-
-                for index in range(batch_size + 3):
-                    key = f"stale-{index}"
-                    _login_flows[key] = {
-                        "id": 200 + index,
-                        "flow_token_hash": key,
-                        "csrf_token_hash": f"csrf-{index}",
-                        "created_at": cutoff - timedelta(hours=1),
-                        "expires_at": cutoff - timedelta(seconds=1),
-                        "consumed_at": None,
-                    }
-
-                response = client.get("/admin/login")
-                assert response.status_code == 200
-                remaining_stale = [
-                    key
-                    for key, row in _login_flows.items()
-                    if key.startswith("stale-")
-                ]
-                assert len(remaining_stale) == 3
-                assert len(_login_flows) == 4
 
 
 @pytest.mark.unit
@@ -1289,3 +1242,77 @@ def test_admin_unconfigured_returns_service_unavailable(
     monkeypatch.delenv("ADMIN_USERNAME", raising=False)
     response = client.get("/admin/login")
     assert response.status_code == 503
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_login_flow_cleanup_runs_when_minting_new_flow() -> None:
+    now = datetime.now(timezone.utc)
+    stale_hash = admin_auth.hash_session_token("stale-flow-token")
+    _login_flows[stale_hash] = {
+        "id": 99,
+        "flow_token_hash": stale_hash,
+        "csrf_token_hash": "stale-csrf",
+        "created_at": now - timedelta(hours=2),
+        "expires_at": now - timedelta(seconds=admin_auth.LOGIN_FLOW_EXPIRED_RETENTION_SECONDS + 1),
+        "consumed_at": None,
+    }
+    active_hash = admin_auth.hash_session_token("active-flow-token")
+    _login_flows[active_hash] = {
+        "id": 100,
+        "flow_token_hash": active_hash,
+        "csrf_token_hash": "active-csrf",
+        "created_at": now,
+        "expires_at": now + timedelta(minutes=10),
+        "consumed_at": None,
+    }
+
+    with mock_db_connection():
+        response = client.get("/admin/login")
+
+    assert response.status_code == 200
+    assert stale_hash not in _login_flows
+    assert active_hash in _login_flows
+    assert len(_login_flows) == 2
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_login_flow_cleanup_failure_still_mints_flow() -> None:
+    with mock_db_connection():
+        with patch(
+            "app.admin_routes.db.cleanup_stale_admin_login_flows",
+            side_effect=Exception("database unavailable"),
+        ):
+            response = client.get("/admin/login")
+
+    assert response.status_code == 200
+    assert "Admin sign in" in response.text
+    assert response.cookies.get(LOGIN_FLOW_COOKIE_NAME)
+    assert len(_login_flows) == 1
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_login_flow_cleanup_failure_retry_succeeds(rate_limit_store: FakeRateLimitStore) -> None:
+    cleanup_calls = {"count": 0}
+
+    def flaky_cleanup(conn: Any, **kwargs: Any) -> int:
+        cleanup_calls["count"] += 1
+        if cleanup_calls["count"] == 1:
+            raise Exception("transient database error")
+        return _mock_cleanup_stale_admin_login_flows(conn, **kwargs)
+
+    with shared_rate_limiter(rate_limit_store):
+        with mock_db_connection():
+            with patch(
+                "app.admin_routes.db.cleanup_stale_admin_login_flows",
+                side_effect=flaky_cleanup,
+            ):
+                first = client.get("/admin/login")
+                assert first.status_code == 200
+
+                second = client.get("/admin/login")
+                assert second.status_code == 200
+
+    assert cleanup_calls["count"] == 2
