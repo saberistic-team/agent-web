@@ -322,3 +322,22 @@ body.admin-app {
     display: none;
   }
 }
+
+/* mobile title readability — Archivo Black + uppercase overflows 390px viewport */
+@media (max-width: 768px) {
+  .admin-title {
+    font-family: var(--mono), "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 1.2rem;
+    line-height: 1.25;
+    text-transform: none;
+    letter-spacing: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    max-width: 100%;
+  }
+
+  .admin-main {
+    min-width: 0;
+  }
+}
+
