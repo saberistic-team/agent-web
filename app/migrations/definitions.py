@@ -236,5 +236,48 @@ CREATE TRIGGER audit_events_no_delete
     EXECUTE FUNCTION prevent_audit_events_mutation();
 """,
     ),
+    Migration(
+        version="008",
+        name="research_records",
+        up_sql="""
+CREATE TABLE IF NOT EXISTS research_records (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    record_type TEXT NOT NULL
+        CHECK (record_type IN (
+            'verified_fact',
+            'public_signal',
+            'relationship_context',
+            'hypothesis',
+            'outreach_angle',
+            'follow_up_note'
+        )),
+    company_id UUID NOT NULL REFERENCES companies (id) ON DELETE CASCADE,
+    contact_id UUID REFERENCES contacts (id) ON DELETE SET NULL,
+    body TEXT NOT NULL,
+    source_name TEXT,
+    source_url TEXT,
+    observed_value TEXT,
+    observed_at TIMESTAMPTZ,
+    confidence NUMERIC(4, 3)
+        CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
+    review_at TIMESTAMPTZ,
+    expires_at TIMESTAMPTZ,
+    metadata JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_research_records_company_id
+    ON research_records (company_id);
+CREATE INDEX IF NOT EXISTS idx_research_records_contact_id
+    ON research_records (contact_id);
+CREATE INDEX IF NOT EXISTS idx_research_records_record_type
+    ON research_records (record_type);
+CREATE INDEX IF NOT EXISTS idx_research_records_expires_at
+    ON research_records (expires_at);
+CREATE INDEX IF NOT EXISTS idx_research_records_observed_at
+    ON research_records (observed_at);
+""",
+    ),
 
 )

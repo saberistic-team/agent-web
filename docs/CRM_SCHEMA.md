@@ -11,7 +11,7 @@ unchanged; CRM tables are storage-only until later admin/import issues wire rout
 | Area | Owner module | Tables |
 |------|--------------|--------|
 | Public brief intake | `app/db.py` | `project_briefs` |
-| CRM entities | `app/repositories/postgres.py` | `companies`, `contacts`, `source_records`, `activities` |
+| CRM entities | `app/repositories/postgres.py` | `companies`, `contacts`, `source_records`, `activities`, `research_records` |
 | Admin auth (CRM users) | `app/repositories/postgres.py` | `admin_users` |
 | Admin auth (sessions) | `app/db.py` | `admin_sessions` (migration `004`) |
 | Admin auth (login rate limits) | `app/db.py` | `admin_login_rate_limits` (migration `005`) |
@@ -81,6 +81,31 @@ Unique: `(source_type, external_id)`. Indexes on FK columns and `source_type`.
 | `metadata` | `JSONB` | Optional structured fields |
 
 Indexes: `company_id`, `contact_id`, `source_record_id`, `created_at`.
+
+### `research_records`
+
+Typed research intelligence ([#106](https://github.com/saberistic-team/agent-web/issues/106)).
+Facts, signals, and hypotheses are stored separately so provenance stays auditable
+and expired evidence can be marked stale without overwriting history.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | `UUID` | PK |
+| `record_type` | `TEXT` | `verified_fact`, `public_signal`, `relationship_context`, `hypothesis`, `outreach_angle`, `follow_up_note` |
+| `company_id` | `UUID` | FK → `companies`, `ON DELETE CASCADE` |
+| `contact_id` | `UUID` | FK → `contacts`, `ON DELETE SET NULL` |
+| `body` | `TEXT` | Required summary |
+| `source_name` | `TEXT` | Required for public evidence types |
+| `source_url` | `TEXT` | Validated http(s) URL for public evidence |
+| `observed_value` | `TEXT` | Observed fact/signal value |
+| `observed_at` | `TIMESTAMPTZ` | Observation/retrieval time |
+| `confidence` | `NUMERIC(4,3)` | 0–1 for public evidence |
+| `review_at` | `TIMESTAMPTZ` | Review-by date |
+| `expires_at` | `TIMESTAMPTZ` | Expiration; stale when passed |
+| `metadata` | `JSONB` | Optional structured fields |
+
+Indexes: `company_id`, `contact_id`, `record_type`, `expires_at`, `observed_at`.
+Records are append-only (INSERT) so conflicting observations coexist.
 
 ### `admin_users`
 
@@ -152,6 +177,7 @@ Migrations live in `app/migrations/definitions.py` and are applied at startup vi
 | `004` | `admin_sessions` | Server-side admin session rows |
 | `005` | `admin_login_rate_limits` | Shared admin login rate-limit state |
 | `006` | `admin_csrf_binding` | Login-flow CSRF rows and session CSRF column |
+| `007` | `research_records` | Typed research records with provenance and expiry |
 
 Applied versions are recorded in `schema_migrations`. Steps are **idempotent**
 (`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`) so empty and existing Render Postgres

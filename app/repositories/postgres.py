@@ -15,7 +15,7 @@ from app.repositories.protocols import (
     AuditEventRepository,
     CompanyRepository,
     ContactRepository,
-    ProjectBriefRepository,
+    ResearchRecordRepository,
     SourceRecordRepository,
 )
 
@@ -50,6 +50,24 @@ class PostgresCompanyRepository:
             cur.execute("SELECT * FROM companies WHERE id = %s", (company_id,))
             row = cur.fetchone()
         return dict(row) if row else None
+
+    def list_all(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT * FROM companies
+                ORDER BY name ASC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
 
     def update(
         self,
@@ -123,6 +141,26 @@ class PostgresContactRepository:
             cur.execute("SELECT * FROM contacts WHERE email = %s", (email,))
             row = cur.fetchone()
         return dict(row) if row else None
+
+    def list_for_company(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT * FROM contacts
+                WHERE company_id = %s
+                ORDER BY email ASC
+                LIMIT %s
+                """,
+                (company_id, limit),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
 
 
 class PostgresSourceRecordRepository:
@@ -225,6 +263,94 @@ class PostgresActivityRepository:
                 LIMIT %s
                 """,
                 (company_id, limit),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+
+class PostgresResearchRecordRepository:
+    def create(
+        self,
+        conn: psycopg.Connection,
+        *,
+        record_type: str,
+        company_id: UUID,
+        body: str,
+        contact_id: UUID | None = None,
+        source_name: str | None = None,
+        source_url: str | None = None,
+        observed_value: str | None = None,
+        observed_at: datetime | None = None,
+        confidence: float | None = None,
+        review_at: datetime | None = None,
+        expires_at: datetime | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO research_records (
+                    record_type, company_id, contact_id, body,
+                    source_name, source_url, observed_value, observed_at,
+                    confidence, review_at, expires_at, metadata
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING *
+                """,
+                (
+                    record_type,
+                    company_id,
+                    contact_id,
+                    body,
+                    source_name,
+                    source_url,
+                    observed_value,
+                    observed_at,
+                    confidence,
+                    review_at,
+                    expires_at,
+                    json.dumps(metadata) if metadata is not None else None,
+                ),
+            )
+            row = cur.fetchone()
+        return dict(row)
+
+    def list_for_company(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT * FROM research_records
+                WHERE company_id = %s
+                ORDER BY observed_at DESC NULLS LAST, created_at DESC
+                LIMIT %s
+                """,
+                (company_id, limit),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def list_for_contact(
+        self,
+        conn: psycopg.Connection,
+        contact_id: UUID,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT * FROM research_records
+                WHERE contact_id = %s
+                ORDER BY observed_at DESC NULLS LAST, created_at DESC
+                LIMIT %s
+                """,
+                (contact_id, limit),
             )
             rows = cur.fetchall()
         return [dict(row) for row in rows]
@@ -443,6 +569,7 @@ class PostgresRepositories:
         self.contacts = PostgresContactRepository()
         self.source_records = PostgresSourceRecordRepository()
         self.activities = PostgresActivityRepository()
+        self.research_records = PostgresResearchRecordRepository()
         self.admin_users = PostgresAdminUserRepository()
         self.audit_events = PostgresAuditEventRepository()
         self.project_briefs = PostgresProjectBriefRepository()
@@ -462,6 +589,7 @@ def default_repositories() -> dict[str, Any]:
         "contacts": repos.contacts,
         "source_records": repos.source_records,
         "activities": repos.activities,
+        "research_records": repos.research_records,
         "admin_users": repos.admin_users,
         "audit_events": repos.audit_events,
         "project_briefs": repos.project_briefs,
@@ -473,4 +601,5 @@ CompanyRepo = PostgresCompanyRepository
 ContactRepo = PostgresContactRepository
 SourceRecordRepo = PostgresSourceRecordRepository
 ActivityRepo = PostgresActivityRepository
+ResearchRecordRepo = PostgresResearchRecordRepository
 AdminUserRepo = PostgresAdminUserRepository

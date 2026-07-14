@@ -86,8 +86,8 @@ def test_audit_migration_present_and_ordered() -> None:
 @pytest.mark.unit
 def test_pending_migrations_includes_audit_after_sessions() -> None:
     pending = pending_migrations(applied_versions={"001", "002", "003", "004", "005", "006"})
-    assert len(pending) == 1
-    assert pending[0].version == "007"
+    assert len(pending) == 2
+    assert [m.version for m in pending] == ["007", "008"]
 
 
 @pytest.mark.unit
@@ -210,6 +210,7 @@ def test_crm_service_audited_mutations_record_events() -> None:
             contacts=MagicMock(),
             source_records=source_repo,
             activities=MagicMock(),
+            research_records=MagicMock(),
             admin_users=MagicMock(),
         )
     )

@@ -4,20 +4,61 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from urllib.parse import quote
+from uuid import UUID
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from pydantic import ValidationError
 
-from app import admin, admin_auth, admin_pages, audit_service, brief_service, db
+from app import admin, admin_auth, admin_pages, admin_research_pages, audit_service, brief_service, db
 from app.actor_context import actor_context_from_request, anonymous_actor_context
-from app.admin_layout import ADMIN_NAV_LINKS
+from app.admin_layout import ADMIN_NAV_LINKS, render_admin_shell
 from app.config import Settings, get_settings
+from app.crm_service import CrmService
+from app.research_records import ResearchRecordCreate
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+_crm = CrmService()
 
 PREVIEW_SESSION_TOKEN = "preview-screenshot-session"
+
+
+def _verify_session_csrf(session: admin_auth.AdminSession, csrf_token: str) -> None:
+    if not admin_auth.verify_csrf_value(csrf_token, session.csrf_token_hash):
+        raise HTTPException(status_code=400, detail=admin_auth.INVALID_REQUEST_MESSAGE)
+
+
+def _parse_research_form(
+    *,
+    record_type: str,
+    body: str,
+    contact_id: str | None = None,
+    source_name: str | None = None,
+    source_url: str | None = None,
+    observed_value: str | None = None,
+    observed_at: str | None = None,
+    confidence: str | None = None,
+    review_at: str | None = None,
+    expires_at: str | None = None,
+) -> ResearchRecordCreate:
+    parsed_confidence: float | None = None
+    if confidence is not None and confidence.strip():
+        parsed_confidence = float(confidence)
+    return ResearchRecordCreate(
+        record_type=record_type,
+        body=body,
+        contact_id=contact_id,
+        source_name=source_name,
+        source_url=source_url,
+        observed_value=observed_value,
+        observed_at=observed_at,
+        confidence=parsed_confidence,
+        review_at=review_at,
+        expires_at=expires_at,
+    )
 
 
 def _require_admin_auth_configured(settings: Settings) -> None:
@@ -341,6 +382,231 @@ def admin_logout(
     return response
 
 
+@router.get("/companies", response_class=HTMLResponse)
+def admin_companies(request: Request) -> HTMLResponse:
+    session = require_admin_session(request)
+    settings = get_settings()
+    csrf_token = ""
+    if session.id:
+        csrf_token = _issue_session_csrf(settings, session.id)
+    if settings.admin_preview_enabled:
+        from app.admin_preview import render_preview_section_main
+
+        link = next(item for item in ADMIN_NAV_LINKS if item["href"] == "/admin/companies")
+        return HTMLResponse(
+            render_admin_shell(
+                title=link["label"],
+                main=render_preview_section_main(
+                    label=link["label"],
+                    summary=link["summary"],
+                    active_path="/admin/companies",
+                ),
+                active_path="/admin/companies",
+                admin_username=session.admin_username,
+                csrf_token=csrf_token,
+            )
+        )
+    with db.db_connection(settings.database_url) as conn:
+        companies = _crm.list_companies(conn)
+    return HTMLResponse(
+        admin_research_pages.render_admin_companies_page(
+            companies=companies,
+            csrf_token=csrf_token,
+            admin_username=session.admin_username,
+        )
+    )
+
+
+@router.get("/companies/{company_id}", response_class=HTMLResponse)
+def admin_company_research(
+    request: Request,
+    company_id: UUID,
+    error: str | None = None,
+) -> HTMLResponse:
+    session = require_admin_session(request)
+    settings = get_settings()
+    csrf_token = ""
+    if session.id:
+        csrf_token = _issue_session_csrf(settings, session.id)
+    with db.db_connection(settings.database_url) as conn:
+        company = _crm.get_company(conn, company_id)
+        if company is None:
+            raise HTTPException(status_code=404, detail="Company not found")
+        contacts = _crm.list_contacts_for_company(conn, company_id)
+        records = _crm.list_research_for_company(conn, company_id)
+    return HTMLResponse(
+        admin_research_pages.render_admin_company_research_page(
+            company=company,
+            contacts=contacts,
+            records=records,
+            csrf_token=csrf_token,
+            admin_username=session.admin_username,
+            error_message=error,
+        )
+    )
+
+
+@router.post("/companies/{company_id}/research", response_model=None)
+def admin_company_research_create(
+    request: Request,
+    company_id: UUID,
+    csrf_token: str = Form(..., alias="csrf_token"),
+    record_type: str = Form(...),
+    body: str = Form(...),
+    contact_id: str | None = Form(default=None),
+    source_name: str | None = Form(default=None),
+    source_url: str | None = Form(default=None),
+    observed_value: str | None = Form(default=None),
+    observed_at: str | None = Form(default=None),
+    confidence: str | None = Form(default=None),
+    review_at: str | None = Form(default=None),
+    expires_at: str | None = Form(default=None),
+) -> Response:
+    session = require_admin_session(request)
+    settings = get_settings()
+    _verify_session_csrf(session, csrf_token)
+    try:
+        payload = _parse_research_form(
+            record_type=record_type,
+            body=body,
+            contact_id=contact_id,
+            source_name=source_name,
+            source_url=source_url,
+            observed_value=observed_value,
+            observed_at=observed_at,
+            confidence=confidence,
+            review_at=review_at,
+            expires_at=expires_at,
+        )
+    except (ValueError, TypeError, ValidationError) as exc:
+        return RedirectResponse(
+            url=f"/admin/companies/{company_id}?error={quote(str(exc))}",
+            status_code=303,
+        )
+    contact_uuid: UUID | None = None
+    if payload.contact_id:
+        contact_uuid = UUID(payload.contact_id)
+    with db.db_connection(settings.database_url) as conn:
+        company = _crm.get_company(conn, company_id)
+        if company is None:
+            raise HTTPException(status_code=404, detail="Company not found")
+        if contact_uuid is not None:
+            contact = _crm.get_contact(conn, contact_uuid)
+            if contact is None or str(contact.get("company_id")) != str(company_id):
+                return RedirectResponse(
+                    url=f"/admin/companies/{company_id}?error=Invalid%20contact",
+                    status_code=303,
+                )
+        _crm.attach_research_record(
+            conn,
+            record_type=payload.record_type,
+            company_id=company_id,
+            body=payload.body,
+            contact_id=contact_uuid,
+            source_name=payload.source_name,
+            source_url=payload.source_url,
+            observed_value=payload.observed_value,
+            observed_at=payload.parsed_observed_at(),
+            confidence=payload.confidence,
+            review_at=payload.parsed_review_at(),
+            expires_at=payload.parsed_expires_at(),
+        )
+    return RedirectResponse(url=f"/admin/companies/{company_id}", status_code=303)
+
+
+@router.get("/contacts/{contact_id}", response_class=HTMLResponse)
+def admin_contact_research(
+    request: Request,
+    contact_id: UUID,
+    error: str | None = None,
+) -> HTMLResponse:
+    session = require_admin_session(request)
+    settings = get_settings()
+    csrf_token = ""
+    if session.id:
+        csrf_token = _issue_session_csrf(settings, session.id)
+    with db.db_connection(settings.database_url) as conn:
+        contact = _crm.get_contact(conn, contact_id)
+        if contact is None:
+            raise HTTPException(status_code=404, detail="Contact not found")
+        company = None
+        if contact.get("company_id") is not None:
+            company = _crm.get_company(conn, UUID(str(contact["company_id"])))
+        records = _crm.list_research_for_contact(conn, contact_id)
+    return HTMLResponse(
+        admin_research_pages.render_admin_contact_research_page(
+            contact=contact,
+            company=company,
+            records=records,
+            csrf_token=csrf_token,
+            admin_username=session.admin_username,
+            error_message=error,
+        )
+    )
+
+
+@router.post("/contacts/{contact_id}/research", response_model=None)
+def admin_contact_research_create(
+    request: Request,
+    contact_id: UUID,
+    csrf_token: str = Form(..., alias="csrf_token"),
+    record_type: str = Form(...),
+    body: str = Form(...),
+    source_name: str | None = Form(default=None),
+    source_url: str | None = Form(default=None),
+    observed_value: str | None = Form(default=None),
+    observed_at: str | None = Form(default=None),
+    confidence: str | None = Form(default=None),
+    review_at: str | None = Form(default=None),
+    expires_at: str | None = Form(default=None),
+) -> Response:
+    session = require_admin_session(request)
+    settings = get_settings()
+    _verify_session_csrf(session, csrf_token)
+    try:
+        payload = _parse_research_form(
+            record_type=record_type,
+            body=body,
+            source_name=source_name,
+            source_url=source_url,
+            observed_value=observed_value,
+            observed_at=observed_at,
+            confidence=confidence,
+            review_at=review_at,
+            expires_at=expires_at,
+        )
+    except (ValueError, TypeError, ValidationError) as exc:
+        return RedirectResponse(
+            url=f"/admin/contacts/{contact_id}?error={quote(str(exc))}",
+            status_code=303,
+        )
+    with db.db_connection(settings.database_url) as conn:
+        contact = _crm.get_contact(conn, contact_id)
+        if contact is None:
+            raise HTTPException(status_code=404, detail="Contact not found")
+        company_id = contact.get("company_id")
+        if company_id is None:
+            return RedirectResponse(
+                url=f"/admin/contacts/{contact_id}?error=Contact%20has%20no%20company",
+                status_code=303,
+            )
+        _crm.attach_research_record(
+            conn,
+            record_type=payload.record_type,
+            company_id=UUID(str(company_id)),
+            body=payload.body,
+            contact_id=contact_id,
+            source_name=payload.source_name,
+            source_url=payload.source_url,
+            observed_value=payload.observed_value,
+            observed_at=payload.parsed_observed_at(),
+            confidence=payload.confidence,
+            review_at=payload.parsed_review_at(),
+            expires_at=payload.parsed_expires_at(),
+        )
+    return RedirectResponse(url=f"/admin/contacts/{contact_id}", status_code=303)
+
+
 def _render_admin_shell_page(request: Request, active_path: str) -> HTMLResponse:
     """Authenticate and render the shared admin shell for a nav path."""
     session = require_admin_session(request)
@@ -545,7 +811,7 @@ def admin_audit_list(request: Request, page: int = 1) -> HTMLResponse:
 
 
 for _link in ADMIN_NAV_LINKS:
-    if _link["href"] in {"/admin", "/admin/audit", "/admin/briefs"}:
+    if _link["href"] in {"/admin", "/admin/audit", "/admin/briefs", "/admin/companies"}:
         continue
     _section = _link["href"].removeprefix("/admin/")
 

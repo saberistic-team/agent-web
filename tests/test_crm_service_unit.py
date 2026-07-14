@@ -13,6 +13,7 @@ from app.repositories.postgres import (
     PostgresAdminUserRepository,
     PostgresCompanyRepository,
     PostgresContactRepository,
+    PostgresResearchRecordRepository,
     PostgresSourceRecordRepository,
 )
 
@@ -27,6 +28,7 @@ def test_crm_service_records_company_contact_and_activity() -> None:
     contact_repo = MagicMock()
     activity_repo = MagicMock()
     source_repo = MagicMock()
+    research_repo = MagicMock()
     admin_repo = MagicMock()
 
     company_repo.create.return_value = {"id": COMPANY_ID, "name": "Acme"}
@@ -39,6 +41,7 @@ def test_crm_service_records_company_contact_and_activity() -> None:
             contacts=contact_repo,
             source_records=source_repo,
             activities=activity_repo,
+            research_records=research_repo,
             admin_users=admin_repo,
         )
     )
@@ -77,6 +80,7 @@ def test_crm_service_links_project_brief_source() -> None:
             contacts=MagicMock(),
             source_records=source_repo,
             activities=MagicMock(),
+            research_records=MagicMock(),
             admin_users=MagicMock(),
         )
     )
@@ -108,6 +112,7 @@ def test_default_crm_repositories_use_postgres_backends() -> None:
     assert isinstance(service._repos.contacts, PostgresContactRepository)
     assert isinstance(service._repos.source_records, PostgresSourceRecordRepository)
     assert isinstance(service._repos.activities, PostgresActivityRepository)
+    assert isinstance(service._repos.research_records, PostgresResearchRecordRepository)
     assert isinstance(service._repos.admin_users, PostgresAdminUserRepository)
 
 
@@ -124,6 +129,7 @@ def _service_with_mocks(
         "contacts": contact_repo or MagicMock(),
         "source_records": source_repo or MagicMock(),
         "activities": activity_repo or MagicMock(),
+        "research_records": MagicMock(),
         "admin_users": admin_repo or MagicMock(),
     }
     service = CrmService(repos=CrmRepositories(**repos))
@@ -249,3 +255,38 @@ def test_read_methods_do_not_change_transaction_state() -> None:
     assert user is not None
     conn.commit.assert_not_called()
     conn.rollback.assert_not_called()
+
+
+@pytest.mark.unit
+def test_crm_service_research_record_helpers() -> None:
+    company_repo = MagicMock()
+    contact_repo = MagicMock()
+    company_repo.list_all.return_value = [{"id": COMPANY_ID, "name": "Acme"}]
+    company_repo.get_by_id.return_value = {"id": COMPANY_ID, "name": "Acme"}
+    contact_repo.list_for_company.return_value = [{"id": CONTACT_ID, "email": "lead@example.com"}]
+    contact_repo.get_by_id.return_value = {"id": CONTACT_ID, "email": "lead@example.com"}
+
+    service, conn, repos = _service_with_mocks(
+        company_repo=company_repo,
+        contact_repo=contact_repo,
+    )
+    research_repo = repos["research_records"]
+    research_repo.list_for_company.return_value = [{"record_type": "hypothesis"}]
+    research_repo.list_for_contact.return_value = [{"record_type": "verified_fact"}]
+    research_repo.create.return_value = {"id": "rec-1", "body": "Series B"}
+
+    assert len(service.list_companies(conn)) == 1
+    assert service.get_company(conn, COMPANY_ID)["name"] == "Acme"
+    assert len(service.list_contacts_for_company(conn, COMPANY_ID)) == 1
+    assert service.get_contact(conn, CONTACT_ID)["email"] == "lead@example.com"
+    assert len(service.list_research_for_company(conn, COMPANY_ID)) == 1
+    assert len(service.list_research_for_contact(conn, CONTACT_ID)) == 1
+
+    record = service.attach_research_record(
+        conn,
+        record_type="hypothesis",
+        company_id=COMPANY_ID,
+        body="Likely buyer",
+    )
+    assert record["body"] == "Series B"
+    conn.commit.assert_called_once()
