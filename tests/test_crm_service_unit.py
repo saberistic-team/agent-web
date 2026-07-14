@@ -328,3 +328,35 @@ def test_list_company_contacts_attaches_roles() -> None:
     contact_repo.list_for_company.assert_called_once_with(
         conn, COMPANY_ID, include_archived=False
     )
+
+
+@pytest.mark.unit
+def test_update_contact_persists_roles_and_warnings() -> None:
+    contact_repo = MagicMock()
+    contact_repo.get_by_id.return_value = {
+        "id": CONTACT_ID,
+        "name": "Pat",
+        "company_id": COMPANY_ID,
+        "profile_url": None,
+        "email": None,
+    }
+    contact_repo.find_duplicates.return_value = {
+        "profile_url": [],
+        "email": [{"name": "Sam"}],
+        "name_company": [],
+    }
+    contact_repo.update.return_value = {"id": CONTACT_ID, "name": "Patricia"}
+    contact_repo.set_buying_roles.return_value = ["executive_buyer"]
+    service, conn, _ = _service_with_mocks(contact_repo=contact_repo)
+
+    result = service.update_contact(
+        conn,
+        CONTACT_ID,
+        name="Patricia",
+        buying_roles=["executive_buyer"],
+    )
+
+    assert result is not None
+    assert result["buying_roles"] == ["executive_buyer"]
+    assert any("Email" in warning for warning in result["duplicate_warnings"])
+    contact_repo.set_buying_roles.assert_called_once()
