@@ -117,6 +117,7 @@ def test_companies_route_lists_companies_when_authenticated() -> None:
         response = client.get("/admin/companies")
     assert response.status_code == 200
     assert "Acme Corp" in response.text
+    assert 'class="admin-app"' in response.text
 
 
 @pytest.mark.unit
