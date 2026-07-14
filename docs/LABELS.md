@@ -107,11 +107,33 @@ while the issue is in the orchestration pipeline.
 - Queued issues must carry `type:*` and `priority:*` (Planner sets both).
 - They must **not** carry `agent:builder` / `agent:docs` / `agent:reviewer`
   until the dispatcher (or a human emergency override) applies the agent label.
-- `.github/workflows/dispatch.yml` + `scripts/dispatch_queue.py` sort
-  `status:queued` work by priority, then issue number, and apply at most one
-  run per agent while that agent already has `status:in-progress` work.
-  The dispatch workflow also runs on a `*/10 * * * *` cron so queued work is
-  drained without waiting for a new label event.
+- `.github/workflows/dispatch.yml` + `scripts/dispatch_queue.py` keep only
+  issues on an **open** GitHub milestone (see Milestones below), then sort by
+  priority and issue number, and apply at most one run per agent while that
+  agent already has `status:in-progress` work. The dispatch workflow also runs
+  on a `*/10 * * * *` cron so queued work is drained without waiting for a new
+  label event.
+
+---
+
+## Milestones (product phase)
+
+GitHub **Milestones** sequence product phases. Labels still own lifecycle
+(`status:*`); the Project board still owns board columns. Do **not** invent a
+custom Project field that duplicates Milestone.
+
+| Role | Responsibility |
+|------|----------------|
+| Human | Open the current phase milestone; close it when the phase ships; open the next. |
+| Planner | Before `status:queued`, put the issue (and children) on an **open** milestone — prefer the parent’s open milestone, else the earliest-due open milestone (`scripts/milestones.py`). |
+| Dispatcher | Dequeue only open-milestone queued work, sorted by `priority:*`. |
+
+**Escape hatch:** `priority:critical` is always dispatch-eligible (hotfix /
+unblocker), even with no milestone or a closed milestone.
+
+**Empty open set:** If the repo has **no** open milestones, the dispatcher does
+not filter by milestone (avoids a stuck queue). Prefer keeping exactly one
+current open milestone in normal operation.
 
 ---
 
@@ -213,7 +235,7 @@ Gate workflows). Label mutations use the Issues Labels API
 
 | Role | PR label actions |
 |------|------------------|
-| **Planner** | None. Labels the **issue** only (`type:*`, `priority:*`, `status:queued`). No `pull_requests` scope; no PR exists yet for new work. |
+| **Planner** | None. Labels the **issue** only (`type:*`, `priority:*`, `status:queued`) and sets an open milestone. No `pull_requests` scope; no PR exists yet for new work. |
 | **Builder** | On create/reuse of a code PR: mirror `type:*` + `priority:*`, set `review:needs-review`. On handoff to Reviewer, workflows re-apply the same mirror. |
 | **Docs** | On create/reuse: mirror `type:*` + `priority:*` only (Docs usually skips Reviewer, so no `review:*`). |
 | **Reviewer** | After the PR review API decision, set the matching `review:*` on the PR (`approved` / `changes-requested`) while updating the issue. |

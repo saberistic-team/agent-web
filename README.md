@@ -8,7 +8,7 @@ the loop.
 
 - [Copilot (deferred)](docs/COPILOT.md) — rolled back; **Cursor is primary**, OpenAI optional backup
 - [Project brief (#41)](docs/PROJECT_BRIEF.md) — $200 intake flow; deferred scope noted
-- [Labels](docs/LABELS.md) — label taxonomy, priority queue, routing, and [project board](https://github.com/orgs/saberistic-team/projects/8)
+- [Labels](docs/LABELS.md) — label taxonomy, priority queue, open-milestone dispatch, routing, and [project board](https://github.com/orgs/saberistic-team/projects/8)
 - [Identities](docs/IDENTITIES.md) — agent identity definitions
 - [Trace](docs/TRACE.md) — `agent-trace.jsonl` schema and jq queries
 - [Hello API](docs/HELLO_API.md) — JSON API surface, local run, Render deploy

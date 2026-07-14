@@ -14,6 +14,7 @@ import subprocess
 import sys
 import textwrap
 from pathlib import Path
+from typing import Any
 
 from dispatch_queue import replace_priority_label
 from github_api import (
@@ -23,6 +24,13 @@ from github_api import (
     delete_label,
     post_issue_comment,
     split_repo,
+)
+from milestones import (
+    ensure_open_milestone,
+    issue_milestone_number,
+    list_open_milestones,
+    open_milestone_numbers,
+    pick_current_milestone,
 )
 from pr_labels import apply_pr_mirror
 from priority import (
@@ -338,24 +346,40 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
     max_children = 4
     agent_label = "agent:docs" if type_label == "type:docs" else "agent:builder"
 
+    open_milestones = list_open_milestones(repo)
+    open_numbers = open_milestone_numbers(open_milestones)
+    parent_milestone = issue_milestone_number(data)
+    if parent_milestone is not None and parent_milestone in open_numbers:
+        milestone_number = parent_milestone
+        milestone_title = (data.get("milestone") or {}).get("title") or str(
+            parent_milestone
+        )
+    else:
+        current = pick_current_milestone(open_milestones)
+        milestone_number = int(current["number"]) if current else None
+        milestone_title = (current or {}).get("title") or "(none)"
+
     if len(areas) > 1:
         areas = areas[:max_children]
         children: list[int] = []
         owner, name = split_repo(repo)
         for area in areas:
             # Queue only: dispatcher applies agent:* by priority order.
+            child_body: dict[str, Any] = {
+                "title": f"{title}: {area.strip()[:80]}",
+                "body": child_issue_body(issue, area, body),
+                "labels": [
+                    type_label,
+                    priority_label,
+                    "status:queued",
+                ],
+            }
+            if milestone_number is not None:
+                child_body["milestone"] = milestone_number
             child = api(
                 "POST",
                 f"/repos/{owner}/{name}/issues",
-                body={
-                    "title": f"{title}: {area.strip()[:80]}",
-                    "body": child_issue_body(issue, area, body),
-                    "labels": [
-                        type_label,
-                        priority_label,
-                        "status:queued",
-                    ],
-                },
+                body=child_body,
             )
             children.append(int(child["number"]))
             post_issue_comment(
@@ -366,6 +390,7 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
                     f"Queued as one-commit child of #{issue}.\n"
                     f"- type: `{type_label}`\n"
                     f"- priority: `{priority_label}`\n"
+                    f"- milestone: `{milestone_title}`\n"
                     f"- intended_agent: `{agent_label}`\n"
                     "- awaiting: dispatcher (priority queue)\n"
                 ),
@@ -378,6 +403,7 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
             f"- mode: children\n"
             f"- type: `{type_label}`\n"
             f"- priority: `{priority_label}`\n"
+            f"- milestone: `{milestone_title}`\n"
             f"- intended_agent: `{agent_label}`\n"
             f"- children: {', '.join(f'#{n}' for n in children)}\n"
             f"- granularity: one commit per child\n"
@@ -390,6 +416,18 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
         ensure_label(repo, issue, "agent:planner")
     else:
         # Do not apply agent:builder/docs yet — dispatcher starts runs by priority.
+        assigned = ensure_open_milestone(
+            repo,
+            issue,
+            data,
+            labels={*labels, priority_label},
+            open_milestones=open_milestones,
+        )
+        if assigned and assigned.get("title"):
+            milestone_title = str(assigned["title"])
+        elif priority_label == "priority:critical":
+            existing = (data.get("milestone") or {}).get("title")
+            milestone_title = existing or "(critical; milestone optional)"
         for label in list(labels):
             if label.startswith("agent:"):
                 remove_label(repo, issue, label)
@@ -399,6 +437,7 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
             f"- mode: single\n"
             f"- type: `{type_label}`\n"
             f"- priority: `{priority_label}`\n"
+            f"- milestone: `{milestone_title}`\n"
             f"- intended_agent: `{agent_label}`\n"
             f"- granularity: one commit on this issue\n"
             f"- awaiting: dispatcher after `status:queued`\n"

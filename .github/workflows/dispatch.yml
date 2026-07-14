@@ -1,7 +1,8 @@
 name: Agent — Dispatcher
 
-# Priority queue: pick status:queued work (no agent:builder/docs yet) and
-# apply the intended agent label highest-priority first.
+# Priority queue: pick status:queued work on an open milestone (or
+# priority:critical), with no agent:builder/docs yet, and apply the intended
+# agent label highest-priority first.
 
 on:
   issues:

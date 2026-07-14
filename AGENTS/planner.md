@@ -20,27 +20,35 @@ Before any issue enters `status:queued`, it must already carry:
 
 - exactly one `type:*` (`bug` | `feature` | `docs`)
 - exactly one `priority:*` (`critical` | `high` | `medium` | `normal` | `low`)
+- an **open** GitHub milestone for the current product phase (unless
+  `priority:critical` — hotfixes may skip milestones)
 - `status:queued`
 
 Do **not** apply `agent:builder` or `agent:docs` when queuing. The dispatcher
-reads `type:*` + `priority:*`, then applies the agent label when that agent is
-free (highest priority first: critical → high → medium → normal → low).
-Record `intended_agent` in `### planner_plan`.
+reads `type:*` + `priority:*`, filters to open-milestone work (plus critical),
+then applies the agent label when that agent is free (highest priority first:
+critical → high → medium → normal → low). Record `intended_agent` and
+`milestone` in `### planner_plan`.
+
+Humans open/close milestones to mark the current phase. You assign issues to an
+open milestone (prefer the parent’s open milestone, else the earliest-due open
+milestone). Do **not** invent or close milestones.
 
 Board columns follow `status:*` via project sync; you do not edit the project
-UI directly ([docs/LABELS.md](../docs/LABELS.md) — Project board).
+UI directly ([docs/LABELS.md](../docs/LABELS.md) — Project board + Milestones).
 
 If you spawn children, write their numbers (one per line) to
 `trace/planner-<parent>-children.txt`, and ensure each child already has
-`type:*`, `priority:*`, and `status:queued` (no run-agent label yet). Each
-child body must include the parent’s `## Acceptance criteria` (or a minimal
-checkbox linking back to the parent) so Reviewer can verify without re-planning.
-The parent is then marked done by the workflow.
+`type:*`, `priority:*`, an open milestone, and `status:queued` (no run-agent
+label yet). Each child body must include the parent’s `## Acceptance criteria`
+(or a minimal checkbox linking back to the parent) so Reviewer can verify
+without re-planning. The parent is then marked done by the workflow.
 
 ## Definition of done
 
-- Every queued unit of work is labeled (`type:*` + `priority:*` + `status:queued`).
-- `### planner_plan` records `intended_agent` and `priority`.
+- Every queued unit of work is labeled (`type:*` + `priority:*` + `status:queued`)
+  and on an open milestone (except `priority:critical`).
+- `### planner_plan` records `intended_agent`, `priority`, and `milestone`.
 - Decomposition matches the one-commit-per-child rule when children exist.
 - Acceptance criteria / scope notes are on the issue (or each child) so the
   owning agent can execute without re-planning.

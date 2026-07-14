@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from dispatch_queue import ensure_priority, replace_priority_label
+from dispatch_queue import (
+    ensure_priority,
+    list_awaiting_dispatch,
+    replace_priority_label,
+)
 
 
 @pytest.mark.unit
@@ -96,3 +100,52 @@ def test_ensure_priority_leaves_single_canonical_label(
 
     assert priority == "priority:medium"
     assert replaced == []
+
+
+@pytest.mark.unit
+def test_list_awaiting_dispatch_filters_closed_milestone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "dispatch_queue.search_issues",
+        lambda repo, query: [
+            {
+                "number": 101,
+                "labels": [
+                    {"name": "status:queued"},
+                    {"name": "type:feature"},
+                    {"name": "priority:normal"},
+                ],
+                "milestone": {"number": 1, "title": "Current", "state": "open"},
+            },
+            {
+                "number": 102,
+                "labels": [
+                    {"name": "status:queued"},
+                    {"name": "type:feature"},
+                    {"name": "priority:high"},
+                ],
+                "milestone": {"number": 9, "title": "Old", "state": "closed"},
+            },
+            {
+                "number": 103,
+                "labels": [
+                    {"name": "status:queued"},
+                    {"name": "type:bug"},
+                    {"name": "priority:critical"},
+                ],
+                "milestone": None,
+            },
+        ],
+    )
+    monkeypatch.setattr(
+        "dispatch_queue.list_open_milestones",
+        lambda repo: [{"number": 1, "title": "Current", "state": "open"}],
+    )
+
+    awaiting, skipped = list_awaiting_dispatch("o/r")
+
+    assert [i["number"] for i in awaiting] == [103, 101]
+    assert len(skipped) == 1
+    assert skipped[0]["issue"] == 102
+    assert skipped[0]["reason"] == "milestone_not_open"

@@ -2,9 +2,10 @@
 """Dispatch the highest-priority queued issue to its owning agent.
 
 Queued work carries ``status:queued`` + ``type:*`` + ``priority:*`` without
-``agent:builder`` / ``agent:docs``. This script lists those issues, sorts by
-priority (critical → high → medium → normal → low), then issue number, and
-applies the intended agent label when that agent is not already
+``agent:builder`` / ``agent:docs``. This script lists those issues, keeps only
+issues on an **open** GitHub milestone (or ``priority:critical`` hotfixes),
+sorts by priority (critical → high → medium → normal → low), then issue
+number, and applies the intended agent label when that agent is not already
 ``status:in-progress``.
 """
 
@@ -23,6 +24,11 @@ from github_api import (
     delete_label,
     post_issue_comment,
     split_repo,
+)
+from milestones import (
+    is_dispatch_eligible,
+    list_open_milestones,
+    open_milestone_numbers,
 )
 from priority import (
     DEFAULT_PRIORITY,
@@ -64,13 +70,34 @@ def search_issues(repo: str, query: str) -> list[dict[str, Any]]:
     return results
 
 
-def list_awaiting_dispatch(repo: str) -> list[dict[str, Any]]:
+def list_awaiting_dispatch(
+    repo: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Return (eligible queued issues, skipped for closed/missing milestone)."""
     issues = search_issues(repo, 'label:"status:queued"')
-    awaiting = [issue for issue in issues if is_awaiting_dispatch(_label_names(issue))]
+    open_numbers = open_milestone_numbers(list_open_milestones(repo))
+    awaiting: list[dict[str, Any]] = []
+    skipped_milestone: list[dict[str, Any]] = []
+    for issue in issues:
+        labels = _label_names(issue)
+        if not is_awaiting_dispatch(labels):
+            continue
+        if not is_dispatch_eligible(issue, labels, open_numbers):
+            milestone = issue.get("milestone") or {}
+            skipped_milestone.append(
+                {
+                    "issue": int(issue["number"]),
+                    "reason": "milestone_not_open",
+                    "milestone": milestone.get("title") or None,
+                    "milestone_number": milestone.get("number"),
+                }
+            )
+            continue
+        awaiting.append(issue)
     awaiting.sort(
         key=lambda issue: priority_sort_key(_label_names(issue), int(issue["number"]))
     )
-    return awaiting
+    return awaiting, skipped_milestone
 
 
 def agent_in_progress(repo: str, agent_label: str) -> bool:
@@ -118,7 +145,7 @@ def ensure_priority(repo: str, issue: dict[str, Any]) -> str:
 
 def dispatch_next(repo: str, *, dry_run: bool = False) -> dict[str, Any]:
     """Dispatch at most one builder and one docs issue per run."""
-    awaiting = list_awaiting_dispatch(repo)
+    awaiting, skipped_milestone = list_awaiting_dispatch(repo)
     dispatched: list[dict[str, Any]] = []
     skipped_busy: list[dict[str, Any]] = []
     busy_agents: set[str] = set()
@@ -144,6 +171,8 @@ def dispatch_next(repo: str, *, dry_run: bool = False) -> dict[str, Any]:
             if dry_run and not priority_from_labels(labels)
             else ensure_priority(repo, issue)
         )
+        milestone = issue.get("milestone") or {}
+        milestone_title = milestone.get("title") or "(none)"
         if not dry_run:
             for label in list(labels):
                 if label.startswith("agent:"):
@@ -156,12 +185,18 @@ def dispatch_next(repo: str, *, dry_run: bool = False) -> dict[str, Any]:
                     "### dispatcher_dispatch\n"
                     f"- issue: `#{number}`\n"
                     f"- priority: `{priority}`\n"
+                    f"- milestone: `{milestone_title}`\n"
                     f"- agent: `{agent}`\n"
-                    "- reason: highest-priority queued work for this agent\n"
+                    "- reason: highest-priority open-milestone work for this agent\n"
                 ),
             )
         dispatched.append(
-            {"issue": number, "agent": agent, "priority": priority}
+            {
+                "issue": number,
+                "agent": agent,
+                "priority": priority,
+                "milestone": milestone_title,
+            }
         )
         busy_agents.add(agent)
 
@@ -169,6 +204,7 @@ def dispatch_next(repo: str, *, dry_run: bool = False) -> dict[str, Any]:
         "awaiting": [int(i["number"]) for i in awaiting],
         "dispatched": dispatched,
         "skipped_busy": skipped_busy,
+        "skipped_milestone": skipped_milestone,
     }
 
 

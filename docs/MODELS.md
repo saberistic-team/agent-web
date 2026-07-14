@@ -6,7 +6,7 @@ is set. OpenAI and GitHub Models are backups (OpenAI quota is often exhausted).
 
 ## Builder flow
 
-1. Planner queues with `type:*` + `priority:*` + `status:queued`
+1. Planner queues with `type:*` + `priority:*` + open milestone + `status:queued`
 2. Dispatcher applies `agent:builder` (highest priority first when free)
 3. Special cases: verify/smoke via `scripts/smoke_deploy.py` (no model);
    missing landing scaffold → block
