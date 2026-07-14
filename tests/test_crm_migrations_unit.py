@@ -11,6 +11,7 @@ from app.migrations.runner import apply_migrations, pending_migrations
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_migrations_are_ordered_and_unique() -> None:
     versions = [migration.version for migration in MIGRATIONS]
     assert versions == sorted(versions)
@@ -18,6 +19,7 @@ def test_migrations_are_ordered_and_unique() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_crm_migration_uses_uuid_fks_indexes_and_timestamps() -> None:
     crm = next(m for m in MIGRATIONS if m.name == "crm_foundation")
     sql = crm.up_sql
@@ -32,58 +34,79 @@ def test_crm_migration_uses_uuid_fks_indexes_and_timestamps() -> None:
     assert "REFERENCES contacts (id)" in sql
     assert "REFERENCES source_records (id)" in sql
     assert "CREATE INDEX IF NOT EXISTS idx_contacts_email ON contacts (email)" in sql
-    assert "CONSTRAINT contacts_email_unique UNIQUE (email)" in sql
     assert "CONSTRAINT source_records_type_external_unique" in sql
     assert "CONSTRAINT admin_users_email_unique UNIQUE (email)" in sql
 
 
 @pytest.mark.unit
+@pytest.mark.integration
+def test_contacts_extended_migration_adds_roles_and_fields() -> None:
+    extended = next(m for m in MIGRATIONS if m.name == "contacts_extended")
+    sql = extended.up_sql
+
+    assert "contact_buying_roles" in sql
+    assert "normalized_profile_url" in sql
+    assert "normalized_email" in sql
+    assert "is_archived" in sql
+    assert "technical_buyer" in sql
+    assert "executive_buyer" in sql
+    assert "DROP CONSTRAINT IF EXISTS contacts_email_unique" in sql
+
+
+@pytest.mark.unit
+@pytest.mark.integration
 def test_brief_migrations_remain_idempotent() -> None:
     brief = next(m for m in MIGRATIONS if m.name == "project_briefs")
     utm = next(m for m in MIGRATIONS if m.name == "project_briefs_utm_columns")
 
     assert "CREATE TABLE IF NOT EXISTS project_briefs" in brief.up_sql
     assert "pending_payment" in brief.up_sql
-    assert all("ADD COLUMN IF NOT EXISTS" in utm.up_sql for col in (
-        "utm_source",
-        "utm_medium",
-        "utm_campaign",
-        "utm_content",
-        "utm_term",
-    ))
+    assert all(
+        "ADD COLUMN IF NOT EXISTS" in utm.up_sql
+        for col in (
+            "utm_source",
+            "utm_medium",
+            "utm_campaign",
+            "utm_content",
+            "utm_term",
+        )
+    )
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_pending_migrations_skips_applied_versions() -> None:
-    applied = {"001", "002"}
+    applied = {"001", "002", "003"}
     pending = pending_migrations(applied_versions=applied)
-    assert [m.version for m in pending] == ["003"]
+    assert [m.version for m in pending] == ["004"]
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_apply_migrations_runs_only_pending_steps() -> None:
     conn = MagicMock()
     cur = MagicMock()
     conn.cursor.return_value.__enter__.return_value = cur
     cur.fetchall.side_effect = [
-        [("001",), ("002",)],
+        [("001",), ("002",), ("003",)],
         [],
     ]
 
     applied = apply_migrations(conn, migrations=MIGRATIONS)
 
-    assert applied == ["003"]
+    assert applied == ["004"]
     execute_calls = [str(call.args[0]) for call in cur.execute.call_args_list]
     assert any("schema_migrations" in sql for sql in execute_calls)
-    assert any("crm_foundation" not in sql and "companies" in sql for sql in execute_calls)
+    assert any("contact_buying_roles" in sql for sql in execute_calls)
     assert any(
-        "INSERT INTO schema_migrations" in str(call.args[0]) and "003" in str(call.args[1])
+        "INSERT INTO schema_migrations" in str(call.args[0]) and "004" in str(call.args[1])
         for call in cur.execute.call_args_list
     )
     conn.commit.assert_called_once()
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_apply_migrations_on_empty_database_applies_all() -> None:
     conn = MagicMock()
     cur = MagicMock()
@@ -92,11 +115,12 @@ def test_apply_migrations_on_empty_database_applies_all() -> None:
 
     applied = apply_migrations(conn, migrations=MIGRATIONS)
 
-    assert applied == ["001", "002", "003"]
+    assert applied == ["001", "002", "003", "004"]
     conn.commit.assert_called_once()
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_migration_rollback_strategy_is_forward_only() -> None:
     for migration in MIGRATIONS:
         assert not hasattr(migration, "down_sql")
