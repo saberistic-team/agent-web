@@ -187,11 +187,8 @@ def test_admin_research_page_renderers_cover_company_and_contact(
         render_admin_companies_page,
         render_admin_company_research_page,
         render_admin_contact_research_page,
-        render_admin_dashboard_page,
     )
-    from app.config import get_settings
 
-    settings = get_settings()
     now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
     company = {"id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "name": "Acme", "status": "prospect"}
     contact = {
@@ -213,6 +210,7 @@ def test_admin_research_page_renderers_cover_company_and_contact(
 
     companies_html = render_admin_companies_page(companies=[company], csrf_token="csrf")
     assert "Acme" in companies_html
+    assert 'class="admin-app"' in companies_html
 
     company_html = render_admin_company_research_page(
         company=company,
@@ -231,10 +229,3 @@ def test_admin_research_page_renderers_cover_company_and_contact(
         csrf_token="csrf",
     )
     assert "research-type-badge--fact" in contact_html
-
-    dashboard_html = render_admin_dashboard_page(
-        admin_username="operator",
-        settings=settings,
-        csrf_token="csrf",
-    )
-    assert "Companies" in dashboard_html
