@@ -13,9 +13,10 @@ Workflow will move you through `status:in-progress`, then hand off with
 board Status / Priority / Review are synced automatically from those labels
 ([docs/LABELS.md](../docs/LABELS.md) — Project board).
 
-When you open or reuse a PR, apply **PR mirror labels** (not orchestration
-triggers): copy `type:*` and `priority:*` from the issue, and set
-`review:needs-review`. Never put `agent:*` or `status:*` on the PR — see
+When you open or reuse a PR, apply **PR mirrors** (not orchestration
+triggers): copy `type:*` and `priority:*` from the issue, set
+`review:needs-review`, and copy the issue’s **milestone** onto the PR
+(`scripts/pr_labels.py`). Never put `agent:*` or `status:*` on the PR — see
 [docs/LABELS.md](../docs/LABELS.md).
 
 ## Branch and PR reuse (mandatory)

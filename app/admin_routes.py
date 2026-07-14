@@ -24,9 +24,10 @@ def _require_admin_auth_configured(settings: Settings) -> None:
 def _preview_session(settings: Settings) -> admin_auth.AdminSession:
     return admin_auth.AdminSession(
         id=0,
-        admin_username=settings.admin_username,
+        admin_username=settings.admin_username or "preview",
         token_hash="preview",
         expires_at=datetime.max.replace(tzinfo=timezone.utc),
+        csrf_token_hash=None,
     )
 
 
@@ -59,6 +60,82 @@ def require_admin_session(request: Request) -> admin_auth.AdminSession:
     return session
 
 
+def _issue_login_flow_response(
+    *,
+    settings: Settings,
+    next_path: str | None = None,
+    error_message: str | None = None,
+    status_code: int = 200,
+) -> HTMLResponse:
+    """Mint a browser-bound pre-auth flow and render the login form."""
+    raw_flow_token = admin_auth.generate_session_token()
+    raw_csrf_token = admin_auth.generate_csrf_value()
+    flow_hash = admin_auth.hash_session_token(raw_flow_token)
+    csrf_hash = admin_auth.hash_csrf_token(raw_csrf_token)
+    expires_at = admin_auth.login_flow_expires_at()
+    with db.db_connection(settings.database_url) as conn:
+        db.create_admin_login_flow(
+            conn,
+            flow_token_hash=flow_hash,
+            csrf_token_hash=csrf_hash,
+            expires_at=expires_at,
+        )
+    response = HTMLResponse(
+        admin_pages.render_admin_login_page(
+            csrf_token=raw_csrf_token,
+            error_message=error_message,
+            next_path=next_path,
+        ),
+        status_code=status_code,
+    )
+    admin_auth.set_login_flow_cookie(response, raw_flow_token, settings)
+    return response
+
+
+def _verify_login_flow_csrf(
+    request: Request,
+    settings: Settings,
+    csrf_token: str,
+) -> bool:
+    """Validate a login CSRF token against the initiating browser flow."""
+    raw_flow_token = admin_auth.read_login_flow_token(request)
+    if raw_flow_token is None:
+        return False
+    flow_hash = admin_auth.hash_session_token(raw_flow_token)
+    with db.db_connection(settings.database_url) as conn:
+        row = db.get_admin_login_flow_by_token_hash(conn, flow_hash)
+    if row is None or row.get("consumed_at") is not None:
+        return False
+    expires_at = row["expires_at"]
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at <= datetime.now(timezone.utc):
+        return False
+    return admin_auth.verify_csrf_value(csrf_token, row.get("csrf_token_hash"))
+
+
+def _consume_login_flow(request: Request, settings: Settings) -> None:
+    raw_flow_token = admin_auth.read_login_flow_token(request)
+    if raw_flow_token is None:
+        return
+    flow_hash = admin_auth.hash_session_token(raw_flow_token)
+    with db.db_connection(settings.database_url) as conn:
+        db.consume_admin_login_flow(conn, flow_token_hash=flow_hash)
+
+
+def _issue_session_csrf(settings: Settings, session_id: int) -> str:
+    """Rotate the synchronizer token for an authenticated session."""
+    raw_csrf_token = admin_auth.generate_csrf_value()
+    csrf_hash = admin_auth.hash_csrf_token(raw_csrf_token)
+    with db.db_connection(settings.database_url) as conn:
+        db.update_admin_session_csrf(
+            conn,
+            session_id=session_id,
+            csrf_token_hash=csrf_hash,
+        )
+    return raw_csrf_token
+
+
 def _issue_session(
     *,
     response: RedirectResponse,
@@ -74,39 +151,17 @@ def _issue_session(
     raw_token = admin_auth.generate_session_token()
     token_hash = admin_auth.hash_session_token(raw_token)
     expires_at = admin_auth.session_expires_at(settings)
+    initial_csrf = admin_auth.generate_csrf_value()
+    csrf_hash = admin_auth.hash_csrf_token(initial_csrf)
     with db.db_connection(settings.database_url) as conn:
         db.create_admin_session(
             conn,
             token_hash=token_hash,
             admin_username=admin_username,
             expires_at=expires_at,
+            csrf_token_hash=csrf_hash,
         )
     admin_auth.set_session_cookie(response, raw_token, settings)
-
-
-def _render_admin_page(request: Request, active_path: str) -> HTMLResponse:
-    require_admin_session(request)
-    return HTMLResponse(admin.render_admin_page(active_path))
-
-
-for _link in ADMIN_NAV_LINKS:
-    if _link["href"] == "/admin":
-        continue
-    _section = _link["href"].removeprefix("/admin/")
-
-    def _section_handler(
-        request: Request,
-        *,
-        _active_path: str = _link["href"],
-    ) -> HTMLResponse:
-        return _render_admin_page(request, _active_path)
-
-    router.add_api_route(
-        f"/{_section}",
-        _section_handler,
-        methods=["GET"],
-        response_class=HTMLResponse,
-    )
 
 
 @router.get("/login", response_class=HTMLResponse, response_model=None)
@@ -118,13 +173,7 @@ def admin_login_form(request: Request, next: str | None = None) -> Response:
             url=admin_auth.safe_admin_next_path(next),
             status_code=303,
         )
-    csrf_token = admin_auth.generate_csrf_token(settings)
-    return HTMLResponse(
-        admin_pages.render_admin_login_page(
-            csrf_token=csrf_token,
-            next_path=next,
-        )
-    )
+    return _issue_login_flow_response(settings=settings, next_path=next)
 
 
 @router.post("/login", response_model=None)
@@ -137,80 +186,133 @@ def admin_login_submit(
 ) -> Response:
     settings = get_settings()
     _require_admin_auth_configured(settings)
+    normalized_username = username.strip()
 
-    if admin_auth.is_login_throttled(request, settings):
-        csrf = admin_auth.generate_csrf_token(settings)
-        return HTMLResponse(
-            admin_pages.render_admin_login_page(
-                csrf_token=csrf,
-                error_message=admin_auth.LOGIN_THROTTLED_MESSAGE,
-                next_path=next,
-            ),
+    if admin_auth.is_login_throttled(request, settings, username=normalized_username):
+        _consume_login_flow(request, settings)
+        response = _issue_login_flow_response(
+            settings=settings,
+            error_message=admin_auth.LOGIN_THROTTLED_MESSAGE,
+            next_path=next,
             status_code=429,
         )
+        admin_auth.clear_login_flow_cookie(response, settings)
+        return response
 
-    if not admin_auth.verify_csrf_token(csrf_token, settings):
-        admin_auth.record_failed_login(request, settings)
-        csrf = admin_auth.generate_csrf_token(settings)
-        return HTMLResponse(
-            admin_pages.render_admin_login_page(
-                csrf_token=csrf,
-                error_message=admin_auth.INVALID_CREDENTIALS_MESSAGE,
-                next_path=next,
-            ),
+    csrf_valid = _verify_login_flow_csrf(request, settings, csrf_token)
+    _consume_login_flow(request, settings)
+
+    if not csrf_valid:
+        admin_auth.record_failed_login(request, settings, username=normalized_username)
+        response = _issue_login_flow_response(
+            settings=settings,
+            error_message=admin_auth.INVALID_CREDENTIALS_MESSAGE,
+            next_path=next,
             status_code=400,
         )
+        admin_auth.clear_login_flow_cookie(response, settings)
+        return response
 
-    if not admin_auth.verify_admin_credentials(username.strip(), password, settings):
-        admin_auth.record_failed_login(request, settings)
-        csrf = admin_auth.generate_csrf_token(settings)
-        return HTMLResponse(
-            admin_pages.render_admin_login_page(
-                csrf_token=csrf,
-                error_message=admin_auth.INVALID_CREDENTIALS_MESSAGE,
-                next_path=next,
-            ),
+    if not admin_auth.verify_admin_credentials(normalized_username, password, settings):
+        admin_auth.record_failed_login(request, settings, username=normalized_username)
+        response = _issue_login_flow_response(
+            settings=settings,
+            error_message=admin_auth.INVALID_CREDENTIALS_MESSAGE,
+            next_path=next,
             status_code=401,
         )
+        admin_auth.clear_login_flow_cookie(response, settings)
+        return response
 
     destination = admin_auth.safe_admin_next_path(next)
     response = RedirectResponse(url=destination, status_code=303)
+    admin_auth.clear_login_rate_limit(request, settings, username=normalized_username)
     _issue_session(
         response=response,
         settings=settings,
         admin_username=settings.admin_username,
         prior_raw_token=admin_auth.read_session_token(request),
     )
+    admin_auth.clear_login_flow_cookie(response, settings)
     return response
 
 
 @router.post("/logout")
-def admin_logout(request: Request) -> RedirectResponse:
+def admin_logout(
+    request: Request,
+    csrf_token: str = Form(..., alias="csrf_token"),
+) -> Response:
     settings = get_settings()
     _require_admin_auth_configured(settings)
-    raw_token = admin_auth.read_session_token(request)
-    if raw_token is not None and not (
-        settings.admin_preview_mode and raw_token == PREVIEW_SESSION_TOKEN
-    ):
-        token_hash = admin_auth.hash_session_token(raw_token)
-        with db.db_connection(settings.database_url) as conn:
-            db.revoke_admin_session(conn, token_hash=token_hash)
+    session = _load_valid_session(request, settings)
+    if session is not None:
+        if not admin_auth.verify_csrf_value(csrf_token, session.csrf_token_hash):
+            raise HTTPException(status_code=400, detail=admin_auth.INVALID_REQUEST_MESSAGE)
+        raw_token = admin_auth.read_session_token(request)
+        if raw_token is not None:
+            token_hash = admin_auth.hash_session_token(raw_token)
+            with db.db_connection(settings.database_url) as conn:
+                db.revoke_admin_session(conn, token_hash=token_hash)
     response = RedirectResponse(url="/admin/login", status_code=303)
     admin_auth.clear_session_cookie(response, settings)
     return response
 
 
+def _render_admin_shell_page(request: Request, active_path: str) -> HTMLResponse:
+    """Authenticate and render the shared admin shell for a nav path."""
+    session = require_admin_session(request)
+    settings = get_settings()
+    csrf_token = ""
+    if session.id:
+        csrf_token = _issue_session_csrf(settings, session.id)
+    kwargs = dict(admin_username=session.admin_username, csrf_token=csrf_token)
+    if not admin.is_admin_path(active_path):
+        return HTMLResponse(admin.render_admin_not_found(active_path, **kwargs), status_code=404)
+    return HTMLResponse(admin.render_admin_page(active_path, **kwargs))
+
+
+for _link in ADMIN_NAV_LINKS:
+    if _link["href"] == "/admin":
+        continue
+    _section = _link["href"].removeprefix("/admin/")
+
+    def _section_handler(
+        request: Request,
+        *,
+        _active_path: str = _link["href"],
+    ) -> HTMLResponse:
+        return _render_admin_shell_page(request, _active_path)
+
+    router.add_api_route(
+        f"/{_section}",
+        _section_handler,
+        methods=["GET"],
+        response_class=HTMLResponse,
+    )
+
+
 @router.get("", response_class=HTMLResponse)
 @router.get("/", response_class=HTMLResponse)
 def admin_dashboard(request: Request) -> HTMLResponse:
-    return _render_admin_page(request, "/admin")
+    return _render_admin_shell_page(request, "/admin")
 
 
 @router.api_route("/{full_path:path}", methods=["GET", "HEAD"], response_model=None)
 def admin_protected_fallback(request: Request, full_path: str) -> Response:
-    """Redirect anonymous visitors for any other /admin path."""
+    """Auth gate + shell 404 for unknown /admin paths."""
     if full_path.rstrip("/") == "login":
         raise HTTPException(status_code=404, detail="Not found")
-    require_admin_session(request)
+    session = require_admin_session(request)
+    settings = get_settings()
+    csrf_token = ""
+    if session.id:
+        csrf_token = _issue_session_csrf(settings, session.id)
     path = f"/admin/{full_path.rstrip('/')}"
-    return HTMLResponse(admin.render_admin_not_found(path), status_code=404)
+    return HTMLResponse(
+        admin.render_admin_not_found(
+            path,
+            admin_username=session.admin_username,
+            csrf_token=csrf_token,
+        ),
+        status_code=404,
+    )

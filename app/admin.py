@@ -21,16 +21,36 @@ def _render_empty_state(link: dict[str, str]) -> str:
         </section>"""
 
 
-def render_admin_page(active_path: str) -> str:
+def render_admin_page(
+    active_path: str,
+    *,
+    admin_username: str = "",
+    csrf_token: str = "",
+) -> str:
     """Render an admin section page within the shared shell."""
     link = _LINK_BY_HREF.get(active_path)
     if link is None:
-        return render_admin_not_found(active_path)
+        return render_admin_not_found(
+            active_path,
+            admin_username=admin_username,
+            csrf_token=csrf_token,
+        )
     main = _render_empty_state(link)
-    return render_admin_shell(title=link["label"], main=main, active_path=active_path)
+    return render_admin_shell(
+        title=link["label"],
+        main=main,
+        active_path=active_path,
+        admin_username=admin_username,
+        csrf_token=csrf_token,
+    )
 
 
-def render_admin_not_found(path: str) -> str:
+def render_admin_not_found(
+    path: str,
+    *,
+    admin_username: str = "",
+    csrf_token: str = "",
+) -> str:
     """Render an admin 404 within the shared shell."""
     safe_path = html.escape(path)
     main = f"""        <section class="admin-empty" aria-labelledby="admin-not-found-title">
@@ -39,7 +59,13 @@ def render_admin_not_found(path: str) -> str:
           <p class="admin-lede">No section exists at <code>{safe_path}</code>.</p>
           <p class="admin-note"><a href="/admin">Return to the dashboard</a>.</p>
         </section>"""
-    return render_admin_shell(title="Not found", main=main, active_path="")
+    return render_admin_shell(
+        title="Not found",
+        main=main,
+        active_path="",
+        admin_username=admin_username,
+        csrf_token=csrf_token,
+    )
 
 
 def is_admin_path(path: str) -> bool:

@@ -14,6 +14,8 @@ unchanged; CRM tables are storage-only until later admin/import issues wire rout
 | CRM entities | `app/repositories/postgres.py` | `companies`, `contacts`, `source_records`, `activities` |
 | Admin auth (CRM users) | `app/repositories/postgres.py` | `admin_users` |
 | Admin auth (sessions) | `app/db.py` | `admin_sessions` (migration `004`) |
+| Admin auth (login rate limits) | `app/db.py` | `admin_login_rate_limits` (migration `005`) |
+| Admin auth (CSRF binding) | `app/db.py` | `admin_login_flows`, `admin_sessions.csrf_token_hash` (migration `006`) |
 | Schema versioning | `app/migrations/` | `schema_migrations` |
 
 Route handlers must not embed SQL. Use `app/db.py` for brief/payment flows and
@@ -104,8 +106,38 @@ Credentials stay in env vars; this table stores revocable session rows only.
 | `admin_username` | `TEXT` | Matches `ADMIN_USERNAME` |
 | `created_at`, `expires_at` | `TIMESTAMPTZ` | TTL enforced at read |
 | `revoked_at` | `TIMESTAMPTZ` | Set on logout |
+| `csrf_token_hash` | `TEXT` | Optional; synchronizer token hash for authenticated forms |
 
 Index: `token_hash`. See [ADMIN_AUTH.md](ADMIN_AUTH.md).
+
+### `admin_login_flows`
+
+Short-lived pre-authentication browser flows for login CSRF ([#139](https://github.com/saberistic-team/agent-web/issues/139)).
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | `SERIAL` | PK |
+| `flow_token_hash` | `TEXT` | Unique; login-flow cookie value is hashed before lookup |
+| `csrf_token_hash` | `TEXT` | Synchronizer token hash for the login form |
+| `created_at`, `expires_at` | `TIMESTAMPTZ` | 15-minute TTL enforced at read |
+| `consumed_at` | `TIMESTAMPTZ` | Set on each login POST (one-time use) |
+
+Index: `flow_token_hash`. See [ADMIN_AUTH.md](ADMIN_AUTH.md).
+
+### `admin_login_rate_limits`
+
+Shared login throttling state ([#138](https://github.com/saberistic-team/agent-web/issues/138)).
+Stores hashed limiter keys only — no raw usernames or client IPs.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `limiter_key` | `TEXT` | PK; SHA-256 of normalized username + client source |
+| `failure_count` | `INTEGER` | Failures in the current window |
+| `window_started_at` | `TIMESTAMPTZ` | Start of the counting window |
+| `locked_until` | `TIMESTAMPTZ` | Lockout expiry when limit exceeded |
+| `updated_at` | `TIMESTAMPTZ` | Last mutation; used for cleanup |
+
+Indexes: `locked_until`, `updated_at`. See [ADMIN_AUTH.md](ADMIN_AUTH.md).
 
 ## Migrations
 
@@ -118,10 +150,36 @@ Migrations live in `app/migrations/definitions.py` and are applied at startup vi
 | `002` | `project_briefs_utm_columns` | Idempotent UTM column adds |
 | `003` | `crm_foundation` | CRM tables, FKs, indexes |
 | `004` | `admin_sessions` | Server-side admin session rows |
+| `005` | `admin_login_rate_limits` | Shared admin login rate-limit state |
+| `006` | `admin_csrf_binding` | Login-flow CSRF rows and session CSRF column |
 
 Applied versions are recorded in `schema_migrations`. Steps are **idempotent**
 (`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`) so empty and existing Render Postgres
 databases both converge safely.
+
+### Concurrent startup
+
+When multiple app instances start together (for example during a rolling deploy),
+`apply_migrations()` serializes discovery and execution with a **transaction-scoped**
+Postgres advisory lock (`pg_try_advisory_xact_lock`):
+
+| Constant | Value | Meaning |
+|----------|-------|---------|
+| `MIGRATION_ADVISORY_LOCK_KEY1` | `0x41474557` (`"AGEW"`) | agent-web namespace |
+| `MIGRATION_ADVISORY_LOCK_KEY2` | `0x53434D47` (`"SCMG"`) | schema-migrations sub-key |
+
+Lock acquisition, pending-version discovery, migration SQL, and `schema_migrations`
+inserts run in **one transaction**. The lock is released automatically on commit,
+rollback, or connection loss.
+
+A second initializer **retries** lock acquisition every 250ms for up to **120 seconds**.
+If the lock is still held after that budget, startup fails with
+`MigrationLockTimeoutError` and an actionable log message — investigate a stuck peer
+or retry once the other instance finishes.
+
+If a migration statement fails, the transaction rolls back: no new `schema_migrations`
+row is committed and the lock is released. A later startup retries from the last
+applied version.
 
 ### Rollback strategy
 

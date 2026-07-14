@@ -2,12 +2,31 @@
 
 from __future__ import annotations
 
+import threading
+from collections import defaultdict
 from unittest.mock import MagicMock
 
+import psycopg
 import pytest
 
 from app.migrations.definitions import MIGRATIONS, Migration
-from app.migrations.runner import apply_migrations, pending_migrations
+from app.migrations.runner import (
+    ADVISORY_LOCK_SQL,
+    MIGRATION_ADVISORY_LOCK_KEY1,
+    MIGRATION_ADVISORY_LOCK_KEY2,
+    MigrationLockTimeoutError,
+    apply_migrations,
+    pending_migrations,
+)
+
+
+def _mock_migration_conn(*, applied_rows: list[tuple[str, ...]] | None = None) -> MagicMock:
+    conn = MagicMock()
+    cur = MagicMock()
+    conn.cursor.return_value.__enter__.return_value = cur
+    cur.fetchone.return_value = (True,)
+    cur.fetchall.return_value = applied_rows if applied_rows is not None else []
+    return conn
 
 
 @pytest.mark.unit
@@ -57,26 +76,28 @@ def test_brief_migrations_remain_idempotent() -> None:
 def test_pending_migrations_skips_applied_versions() -> None:
     applied = {"001", "002"}
     pending = pending_migrations(applied_versions=applied)
-    assert [m.version for m in pending] == ["003", "004"]
+    assert [m.version for m in pending] == ["003", "004", "005", "006"]
 
 
 @pytest.mark.unit
 def test_apply_migrations_runs_only_pending_steps() -> None:
-    conn = MagicMock()
-    cur = MagicMock()
-    conn.cursor.return_value.__enter__.return_value = cur
-    cur.fetchall.side_effect = [
-        [("001",), ("002",)],
-        [],
-    ]
+    conn = _mock_migration_conn(applied_rows=[("001",), ("002",)])
+    cur = conn.cursor.return_value.__enter__.return_value
 
     applied = apply_migrations(conn, migrations=MIGRATIONS)
 
-    assert applied == ["003", "004"]
+    assert applied == ["003", "004", "005", "006"]
     execute_calls = [str(call.args[0]) for call in cur.execute.call_args_list]
+    assert execute_calls[0] == ADVISORY_LOCK_SQL
+    assert cur.execute.call_args_list[0].args[1] == (
+        MIGRATION_ADVISORY_LOCK_KEY1,
+        MIGRATION_ADVISORY_LOCK_KEY2,
+    )
     assert any("schema_migrations" in sql for sql in execute_calls)
     assert any("crm_foundation" not in sql and "companies" in sql for sql in execute_calls)
     assert any("admin_sessions" in sql for sql in execute_calls)
+    assert any("admin_login_rate_limits" in sql for sql in execute_calls)
+    assert any("admin_login_flows" in sql for sql in execute_calls)
     assert any(
         "INSERT INTO schema_migrations" in str(call.args[0]) and "003" in str(call.args[1])
         for call in cur.execute.call_args_list
@@ -85,19 +106,24 @@ def test_apply_migrations_runs_only_pending_steps() -> None:
         "INSERT INTO schema_migrations" in str(call.args[0]) and "004" in str(call.args[1])
         for call in cur.execute.call_args_list
     )
+    assert any(
+        "INSERT INTO schema_migrations" in str(call.args[0]) and "005" in str(call.args[1])
+        for call in cur.execute.call_args_list
+    )
+    assert any(
+        "INSERT INTO schema_migrations" in str(call.args[0]) and "006" in str(call.args[1])
+        for call in cur.execute.call_args_list
+    )
     conn.commit.assert_called_once()
 
 
 @pytest.mark.unit
 def test_apply_migrations_on_empty_database_applies_all() -> None:
-    conn = MagicMock()
-    cur = MagicMock()
-    conn.cursor.return_value.__enter__.return_value = cur
-    cur.fetchall.return_value = []
+    conn = _mock_migration_conn()
 
     applied = apply_migrations(conn, migrations=MIGRATIONS)
 
-    assert applied == ["001", "002", "003", "004"]
+    assert applied == ["001", "002", "003", "004", "005", "006"]
     conn.commit.assert_called_once()
 
 
@@ -112,6 +138,29 @@ def test_admin_sessions_migration_is_idempotent() -> None:
 
 
 @pytest.mark.unit
+def test_admin_login_rate_limits_migration_is_idempotent() -> None:
+    rate_limits = next(m for m in MIGRATIONS if m.name == "admin_login_rate_limits")
+    assert rate_limits.version == "005"
+    assert "CREATE TABLE IF NOT EXISTS admin_login_rate_limits" in rate_limits.up_sql
+    assert "limiter_key TEXT PRIMARY KEY" in rate_limits.up_sql
+    assert "locked_until TIMESTAMPTZ" in rate_limits.up_sql
+    assert "CREATE INDEX IF NOT EXISTS admin_login_rate_limits_locked_until_idx" in rate_limits.up_sql
+
+
+@pytest.mark.unit
+def test_admin_csrf_binding_migration_is_idempotent() -> None:
+    csrf_binding = next(m for m in MIGRATIONS if m.name == "admin_csrf_binding")
+    assert csrf_binding.version == "006"
+    assert "CREATE TABLE IF NOT EXISTS admin_login_flows" in csrf_binding.up_sql
+    assert "flow_token_hash TEXT NOT NULL UNIQUE" in csrf_binding.up_sql
+    assert "csrf_token_hash TEXT NOT NULL" in csrf_binding.up_sql
+    assert "consumed_at TIMESTAMPTZ" in csrf_binding.up_sql
+    assert "ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS csrf_token_hash TEXT" in (
+        csrf_binding.up_sql
+    )
+
+
+@pytest.mark.unit
 def test_migration_rollback_strategy_is_forward_only() -> None:
     for migration in MIGRATIONS:
         assert not hasattr(migration, "down_sql")
@@ -120,3 +169,139 @@ def test_migration_rollback_strategy_is_forward_only() -> None:
     crm = next(m for m in MIGRATIONS if m.name == "crm_foundation")
     assert isinstance(crm, Migration)
     assert crm.version == "003"
+
+
+class _SharedMigrationDatabase:
+    """Simulates Postgres migration state for concurrent startup tests."""
+
+    def __init__(self) -> None:
+        self._advisory_lock = threading.Lock()
+        self._state_lock = threading.Lock()
+        self._applied_versions: set[str] = set()
+        self._up_sql_runs: dict[str, int] = defaultdict(int)
+
+    def try_advisory_xact_lock(self) -> bool:
+        return self._advisory_lock.acquire(blocking=False)
+
+    def release_advisory_xact_lock(self) -> None:
+        if self._advisory_lock.locked():
+            self._advisory_lock.release()
+
+    def fetch_applied_versions(self) -> list[tuple[str]]:
+        with self._state_lock:
+            return [(version,) for version in sorted(self._applied_versions)]
+
+    def run_up_sql(self, version: str, up_sql: str) -> None:
+        with self._state_lock:
+            self._up_sql_runs[up_sql] += 1
+        threading.Event().wait(0.02)
+
+    def record_version(self, version: str) -> None:
+        with self._state_lock:
+            self._applied_versions.add(version)
+
+
+def _make_shared_conn(shared_db: _SharedMigrationDatabase) -> MagicMock:
+    conn = MagicMock()
+    cur = MagicMock()
+    conn.cursor.return_value.__enter__.return_value = cur
+
+    def execute(sql: str, params: tuple[object, ...] | None = None) -> None:
+        if sql == ADVISORY_LOCK_SQL:
+            cur._lock_result = (shared_db.try_advisory_xact_lock(),)
+            return
+        if "SELECT version FROM schema_migrations" in sql:
+            cur._fetchall_result = shared_db.fetch_applied_versions()
+            return
+        if "INSERT INTO schema_migrations" in sql:
+            assert params is not None
+            shared_db.record_version(str(params[0]))
+            return
+        for migration in MIGRATIONS:
+            if sql == migration.up_sql:
+                shared_db.run_up_sql(migration.version, migration.up_sql)
+                return
+
+    cur.execute.side_effect = execute
+    cur.fetchone.side_effect = lambda: getattr(cur, "_lock_result", (True,))
+    cur.fetchall.side_effect = lambda: getattr(cur, "_fetchall_result", [])
+    conn.commit.side_effect = shared_db.release_advisory_xact_lock
+    conn.rollback.side_effect = shared_db.release_advisory_xact_lock
+    return conn
+
+
+@pytest.mark.unit
+def test_concurrent_initializers_apply_each_migration_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    shared_db = _SharedMigrationDatabase()
+    errors: list[BaseException] = []
+
+    def run_initializer() -> None:
+        try:
+            apply_migrations(_make_shared_conn(shared_db), migrations=MIGRATIONS)
+        except BaseException as exc:  # pragma: no cover - surfaced via errors list
+            errors.append(exc)
+
+    monkeypatch.setattr("app.migrations.runner.LOCK_RETRY_INTERVAL_SECONDS", 0.01)
+
+    threads = [threading.Thread(target=run_initializer) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert errors == []
+    assert shared_db._applied_versions == {"001", "002", "003", "004", "005", "006"}
+    assert all(count == 1 for count in shared_db._up_sql_runs.values())
+    assert len(shared_db._up_sql_runs) == len(MIGRATIONS)
+
+
+@pytest.mark.unit
+def test_apply_migrations_rolls_back_and_retries_after_failure() -> None:
+    sample_migrations = (
+        Migration(version="001", name="one", up_sql="MIGRATION_ONE_SQL"),
+        Migration(version="002", name="two", up_sql="MIGRATION_TWO_SQL"),
+    )
+    conn = _mock_migration_conn()
+    cur = conn.cursor.return_value.__enter__.return_value
+
+    def fail_on_second_migration(sql: str, params: tuple[object, ...] | None = None) -> None:
+        if sql == "MIGRATION_TWO_SQL":
+            raise psycopg.Error("migration failed")
+
+    cur.execute.side_effect = fail_on_second_migration
+
+    with pytest.raises(psycopg.Error, match="migration failed"):
+        apply_migrations(conn, migrations=sample_migrations)
+
+    conn.rollback.assert_called_once()
+    conn.commit.assert_not_called()
+
+    conn.reset_mock()
+    cur.reset_mock()
+    cur.fetchone.return_value = (True,)
+    cur.fetchall.return_value = []
+    cur.execute.side_effect = None
+
+    applied = apply_migrations(conn, migrations=sample_migrations)
+
+    assert applied == ["001", "002"]
+    conn.commit.assert_called_once()
+    conn.rollback.assert_not_called()
+
+
+@pytest.mark.unit
+def test_apply_migrations_raises_when_lock_times_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    conn = _mock_migration_conn()
+    cur = conn.cursor.return_value.__enter__.return_value
+    cur.fetchone.return_value = (False,)
+
+    monkeypatch.setattr("app.migrations.runner.LOCK_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr("app.migrations.runner.LOCK_RETRY_INTERVAL_SECONDS", 0.02)
+
+    with pytest.raises(MigrationLockTimeoutError, match="Timed out waiting"):
+        apply_migrations(conn, migrations=MIGRATIONS)
+
+    conn.rollback.assert_called_once()
+    conn.commit.assert_not_called()
