@@ -16,7 +16,6 @@ STATIC_INDEXABLE_PATHS: tuple[str, ...] = (
     "/brief",
     "/services",
     "/case-studies",
-    "/diagnostic",
     "/insights",
 )
 
@@ -29,6 +28,16 @@ LEGACY_REDIRECTS: dict[str, str] = {
     "/what-we-do.html": "/#services",
     "/what-we-did.html": "/#work",
     "/who-we-are.html": "/about",
+}
+
+# Marketing redirects — retired indexable pages (#83).
+MARKETING_REDIRECTS: dict[str, str] = {
+    "/diagnostic": "/brief",
+}
+
+PERMANENT_REDIRECTS: dict[str, str] = {
+    **LEGACY_REDIRECTS,
+    **MARKETING_REDIRECTS,
 }
 
 
