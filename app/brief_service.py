@@ -13,6 +13,8 @@ from app.repositories.protocols import ProjectBriefRepository
 
 VALID_STATUSES = frozenset({"pending_payment", "paid", "abandoned"})
 MAX_QUERY_LENGTH = 100
+# PostgreSQL SERIAL / INTEGER upper bound for project_briefs.id.
+MAX_BRIEF_ID = 2_147_483_647
 
 # Expected failures from brief DB connectivity or query execution — not programming bugs.
 BRIEF_DATABASE_ERRORS: tuple[type[BaseException], ...] = (
@@ -136,6 +138,26 @@ def normalize_list_back_params(
         date_from=date_from,
         date_to=date_to,
     )
+
+
+def parse_brief_id(raw: str) -> int | None:
+    """Parse a brief detail path segment after admin auth.
+
+    Returns None for malformed, zero, negative, or oversized identifiers so callers
+    can render a safe admin-shell 404 without touching the database.
+    """
+    if not raw:
+        return None
+    if raw[0] == "-":
+        if len(raw) == 1 or not raw[1:].isdigit():
+            return None
+        return None
+    if not raw.isdigit():
+        return None
+    value = int(raw)
+    if value < 1 or value > MAX_BRIEF_ID:
+        return None
+    return value
 
 
 def get_brief(

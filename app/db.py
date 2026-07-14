@@ -133,7 +133,6 @@ def create_admin_session(
             (token_hash, admin_username, expires_at, csrf_token_hash),
         )
         row = cur.fetchone()
-        conn.commit()
     return int(row["id"])
 
 
@@ -165,7 +164,6 @@ def revoke_admin_session(conn: psycopg.Connection, *, token_hash: str) -> None:
             """,
             (revoked_at, token_hash),
         )
-        conn.commit()
 
 
 def update_admin_session_csrf(

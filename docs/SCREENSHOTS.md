@@ -61,7 +61,11 @@ Playwright can open admin pages **without login**.
    “no … yet” / placeholder milestone copy and Reviewer **hard-fails** so
    Builder must extend `app/admin_preview.py` (see
    `format_empty_data_hard_fail`)
-7. AI review + approve gates as usual
+7. **Desktop admin-nav gate:** on desktop viewports, admin shells must show at
+   least one visible `.admin-nav-link`. This catches nav trapped inside closed
+   `<details>` (prefer a separate `.admin-nav-desktop` list outside details).
+   Hard-fail via `format_admin_nav_hard_fail` / `desktop_nav_invisible`
+8. AI review + approve gates as usual
 
 ## Post-deploy (after merge to `main`)
 

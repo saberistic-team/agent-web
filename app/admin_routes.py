@@ -63,6 +63,45 @@ def _parse_research_form(
     )
 
 
+def _company_form_payload(**values: object) -> dict[str, object]:
+    """Map blank optional form fields to null before domain-model validation."""
+    allowed = {
+        "name",
+        "website",
+        "domain",
+        "category",
+        "stage",
+        "headcount_estimate",
+        "funding_summary",
+        "target_status",
+        "last_verified_at",
+        "notes",
+    }
+    payload: dict[str, object] = {
+        key: value.strip() if isinstance(value, str) else value
+        for key, value in values.items()
+        if key in allowed
+    }
+    for field in (
+        "website",
+        "domain",
+        "category",
+        "stage",
+        "funding_summary",
+        "target_status",
+        "last_verified_at",
+        "notes",
+    ):
+        if not payload.get(field):
+            payload[field] = None
+    raw_headcount = payload.get("headcount_estimate")
+    if raw_headcount in (None, ""):
+        payload["headcount_estimate"] = None
+    else:
+        payload["headcount_estimate"] = int(str(raw_headcount))
+    return payload
+
+
 def _require_admin_auth_configured(settings: Settings) -> None:
     if not settings.admin_auth_configured:
         raise HTTPException(status_code=503, detail="Admin authentication not configured")
@@ -403,7 +442,15 @@ def admin_logout(
 
 
 @router.get("/companies", response_class=HTMLResponse)
-def admin_companies(request: Request) -> HTMLResponse:
+def admin_companies(
+    request: Request,
+    q: str | None = None,
+    category: str | None = None,
+    stage: str | None = None,
+    target_status: str | None = None,
+    freshness: str | None = None,
+    archived: bool = False,
+) -> HTMLResponse:
     session = require_admin_session(request)
     settings = get_settings()
     csrf_token = ""
@@ -426,14 +473,73 @@ def admin_companies(request: Request) -> HTMLResponse:
                 csrf_token=csrf_token,
             )
         )
+    filters = {
+        "q": q,
+        "category": category if category in COMPANY_CATEGORIES else None,
+        "stage": stage if stage in COMPANY_STAGES else None,
+        "target_status": target_status if target_status in TARGET_STATUSES else None,
+        "freshness": freshness if freshness in FRESHNESS_FILTERS else None,
+        "archived": "1" if archived else None,
+    }
     with db.db_connection(settings.database_url) as conn:
-        companies = _crm.list_companies(conn)
+        companies = _crm.list_companies(
+            conn,
+            query=filters["q"],
+            category=filters["category"],
+            stage=filters["stage"],
+            target_status=filters["target_status"],
+            freshness=filters["freshness"],
+            include_archived=archived,
+        )
     return HTMLResponse(
-        admin_research_pages.render_admin_companies_page(
+        company_pages.render_companies_list_page(
             companies=companies,
+            filters=filters,
             csrf_token=csrf_token,
             admin_username=session.admin_username,
         )
+    )
+
+
+@router.get("/companies/new", response_class=HTMLResponse)
+def admin_company_new(request: Request) -> HTMLResponse:
+    session = require_admin_session(request)
+    csrf_token = _issue_session_csrf(get_settings(), session.id) if session.id else ""
+    return HTMLResponse(
+        company_pages.render_company_form_page(
+            csrf_token=csrf_token, admin_username=session.admin_username
+        )
+    )
+
+
+@router.post("/companies", response_model=None)
+def admin_company_create(
+    request: Request,
+    csrf_token: str = Form(...),
+    name: str = Form(...),
+    website: str | None = Form(default=None),
+    domain: str | None = Form(default=None),
+    category: str | None = Form(default=None),
+    stage: str | None = Form(default=None),
+    headcount_estimate: str | None = Form(default=None),
+    funding_summary: str | None = Form(default=None),
+    target_status: str | None = Form(default=None),
+    last_verified_at: str | None = Form(default=None),
+    notes: str | None = Form(default=None),
+) -> Response:
+    session = require_admin_session(request)
+    _verify_session_csrf(session, csrf_token)
+    try:
+        company = CompanyCreate(**_company_form_payload(**locals()))
+    except (ValueError, TypeError, ValidationError) as exc:
+        return RedirectResponse(url=f"/admin/companies/new?error={quote(str(exc))}", status_code=303)
+    with db.db_connection(get_settings().database_url) as conn:
+        result = _crm.create_company(conn, company=company)
+    warnings = result["duplicate_warnings"]
+    warning = f"{len(warnings)} possible domain duplicate(s)" if warnings else ""
+    return RedirectResponse(
+        url=f"/admin/companies/{result['company']['id']}/edit?warning={quote(warning)}",
+        status_code=303,
     )
 
 
@@ -464,6 +570,79 @@ def admin_company_research(
             error_message=error,
         )
     )
+
+
+@router.get("/companies/{company_id}/edit", response_class=HTMLResponse)
+def admin_company_edit(
+    request: Request, company_id: UUID, error: str | None = None, warning: str | None = None
+) -> HTMLResponse:
+    session = require_admin_session(request)
+    csrf_token = _issue_session_csrf(get_settings(), session.id) if session.id else ""
+    with db.db_connection(get_settings().database_url) as conn:
+        company = _crm.get_company(conn, company_id)
+    if company is None:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return HTMLResponse(
+        company_pages.render_company_form_page(
+            csrf_token=csrf_token,
+            admin_username=session.admin_username,
+            company=company,
+            error_message=error or warning,
+        )
+    )
+
+
+@router.post("/companies/{company_id}/edit", response_model=None)
+def admin_company_update(
+    request: Request,
+    company_id: UUID,
+    csrf_token: str = Form(...),
+    name: str = Form(...),
+    website: str | None = Form(default=None),
+    domain: str | None = Form(default=None),
+    category: str | None = Form(default=None),
+    stage: str | None = Form(default=None),
+    headcount_estimate: str | None = Form(default=None),
+    funding_summary: str | None = Form(default=None),
+    target_status: str | None = Form(default=None),
+    last_verified_at: str | None = Form(default=None),
+    notes: str | None = Form(default=None),
+) -> Response:
+    session = require_admin_session(request)
+    _verify_session_csrf(session, csrf_token)
+    try:
+        company = CompanyUpdate(**_company_form_payload(**locals()))
+    except (ValueError, TypeError, ValidationError) as exc:
+        return RedirectResponse(
+            url=f"/admin/companies/{company_id}/edit?error={quote(str(exc))}", status_code=303
+        )
+    with db.db_connection(get_settings().database_url) as conn:
+        result = _crm.update_company(conn, company_id, company=company)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Company not found")
+    warnings = result["duplicate_warnings"]
+    suffix = f"?warning={quote(f'{len(warnings)} possible domain duplicate(s)')}" if warnings else ""
+    return RedirectResponse(url=f"/admin/companies/{company_id}/edit{suffix}", status_code=303)
+
+
+@router.post("/companies/{company_id}/archive", response_model=None)
+def admin_company_archive(request: Request, company_id: UUID, csrf_token: str = Form(...)) -> Response:
+    session = require_admin_session(request)
+    _verify_session_csrf(session, csrf_token)
+    with db.db_connection(get_settings().database_url) as conn:
+        if _crm.archive_company(conn, company_id) is None:
+            raise HTTPException(status_code=404, detail="Company not found")
+    return RedirectResponse(url="/admin/companies", status_code=303)
+
+
+@router.post("/companies/{company_id}/restore", response_model=None)
+def admin_company_restore(request: Request, company_id: UUID, csrf_token: str = Form(...)) -> Response:
+    session = require_admin_session(request)
+    _verify_session_csrf(session, csrf_token)
+    with db.db_connection(get_settings().database_url) as conn:
+        if _crm.restore_company(conn, company_id) is None:
+            raise HTTPException(status_code=404, detail="Company not found")
+    return RedirectResponse(url=f"/admin/companies/{company_id}", status_code=303)
 
 
 @router.post("/companies/{company_id}/research", response_model=None)
@@ -711,7 +890,7 @@ def admin_briefs_list(
 @router.get("/briefs/{brief_id}", response_class=HTMLResponse)
 def admin_brief_detail(
     request: Request,
-    brief_id: int,
+    brief_id: str,
     page: int = 1,
     q: str | None = None,
     status: str | None = None,
@@ -730,8 +909,19 @@ def admin_brief_detail(
         date_from=date_from,
         date_to=date_to,
     )
+    parsed_brief_id = brief_service.parse_brief_id(brief_id)
+    if parsed_brief_id is None:
+        return HTMLResponse(
+            admin_pages.render_admin_brief_not_found(
+                brief_id=brief_id,
+                admin_username=session.admin_username,
+                back_filters=back_filters,
+                csrf_token=csrf_token,
+            ),
+            status_code=404,
+        )
     if settings.admin_preview_enabled:
-        if brief_id == PREVIEW_BRIEF_DATABASE_ERROR_ID:
+        if parsed_brief_id == PREVIEW_BRIEF_DATABASE_ERROR_ID:
             correlation_id = correlation_id_from_request(request)
             retry_href = request.url.path
             if request.url.query:
@@ -746,11 +936,11 @@ def admin_brief_detail(
                 ),
                 status_code=503,
             )
-        brief = brief_service.preview_brief_detail(brief_id)
+        brief = brief_service.preview_brief_detail(parsed_brief_id)
         if brief is None:
             return HTMLResponse(
                 admin_pages.render_admin_brief_not_found(
-                    brief_id=brief_id,
+                    brief_id=parsed_brief_id,
                     admin_username=session.admin_username,
                     back_filters=back_filters,
                     csrf_token=csrf_token,
@@ -769,7 +959,7 @@ def admin_brief_detail(
     if not settings.database_url:
         return HTMLResponse(
             admin_pages.render_admin_brief_not_found(
-                brief_id=brief_id,
+                brief_id=parsed_brief_id,
                 admin_username=session.admin_username,
                 back_filters=back_filters,
                 csrf_token=csrf_token,
@@ -778,12 +968,12 @@ def admin_brief_detail(
         )
     try:
         with db.db_connection(settings.database_url) as conn:
-            brief = brief_service.get_brief(conn, brief_id)
+            brief = brief_service.get_brief(conn, parsed_brief_id)
     except brief_service.BRIEF_DATABASE_ERRORS:
         correlation_id = correlation_id_from_request(request)
         logger.exception(
             "Failed to load admin brief detail for id %s (correlation_id=%s)",
-            brief_id,
+            parsed_brief_id,
             correlation_id,
         )
         retry_href = request.url.path
@@ -802,7 +992,7 @@ def admin_brief_detail(
     if brief is None:
         return HTMLResponse(
             admin_pages.render_admin_brief_not_found(
-                brief_id=brief_id,
+                brief_id=parsed_brief_id,
                 admin_username=session.admin_username,
                 back_filters=back_filters,
                 csrf_token=csrf_token,

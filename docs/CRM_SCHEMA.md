@@ -21,6 +21,28 @@ unchanged; CRM tables are storage-only until later admin/import issues wire rout
 Route handlers must not embed SQL. Use `app/db.py` for brief/payment flows and
 `app/crm_service.py` + `app/repositories/` for CRM reads/writes.
 
+## Transaction ownership
+
+Repositories perform SQL only — they never call `conn.commit()` or
+`conn.rollback()`. The **service layer** (or route handler for auth-only flows)
+owns the single commit/rollback boundary via `crm_transaction()` in
+`app/crm_uow.py`.
+
+| Caller | Boundary | What commits atomically |
+|--------|----------|-------------------------|
+| `CrmService` mutations | `with crm_transaction(conn):` | Business writes + required audit event |
+| `CrmService.import_batch` | same | Source-record inserts + `import.batch` audit |
+| `CrmService.link_project_brief_source` | same | Brief-to-CRM source linkage (brief conversion) |
+| Admin login success | `crm_transaction` in `admin_routes._issue_session` | Prior-session revocation (if any) + new session row + `auth.login.success` audit |
+| Admin logout (authenticated) | `crm_transaction` in `admin_logout` | Session revocation + `auth.logout` audit |
+| Admin login failure | `crm_transaction` in `_record_login_failure` | `auth.login.failure` audit only (best-effort) |
+
+When auditing is **required** for an operation, a failed audit insert propagates
+and rolls back the related business mutation. Login-failure and anonymous-logout
+audits are best-effort (`required=False`) and do not block the operator flow.
+
+See [AUDIT_EVENTS.md](AUDIT_EVENTS.md) for append-only audit semantics.
+
 ## Identifiers
 
 - **Brief rows** keep `SERIAL` primary keys (`project_briefs.id`) for Stripe metadata
@@ -40,7 +62,16 @@ Route handlers must not embed SQL. Use `app/db.py` for brief/payment flows and
 | `id` | `UUID` | PK |
 | `created_at`, `updated_at` | `TIMESTAMPTZ` | Auto on insert; `updated_at` set on update |
 | `name` | `TEXT` | Required |
-| `website` | `TEXT` | Optional |
+| `website` | `TEXT` | Optional display/source URL retained for compatibility |
+| `domain` | `TEXT` | Optional normalized hostname for search and duplicate warnings |
+| `category` | `TEXT` | Optional: `fintech`, `ai_infrastructure`, `digital_assets`, `investor`, `other` |
+| `stage` | `TEXT` | Optional lifecycle/funding stage |
+| `headcount_estimate` | `INTEGER` | Optional non-negative estimate |
+| `funding_summary` | `TEXT` | Optional human-readable funding context |
+| `target_status` | `TEXT` | Optional target disposition |
+| `last_verified_at` | `DATE` | Optional source verification date |
+| `notes` | `TEXT` | Optional operator notes |
+| `archived_at` | `TIMESTAMPTZ` | Soft archive timestamp; related records remain untouched |
 | `status` | `TEXT` | `prospect`, `active`, `inactive` |
 | `pipeline_stage` | `TEXT` | Acquisition stage (default `researching`); see pipeline stages below |
 | `next_action` | `TEXT` | Operator next step |

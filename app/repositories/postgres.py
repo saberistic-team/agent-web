@@ -62,15 +62,67 @@ class PostgresCompanyRepository:
         conn: psycopg.Connection,
         *,
         limit: int = 100,
+        query: str | None = None,
+        category: str | None = None,
+        stage: str | None = None,
+        target_status: str | None = None,
+        freshness: str | None = None,
+        include_archived: bool = False,
     ) -> list[dict[str, Any]]:
+        conditions: list[str] = []
+        params: list[Any] = []
+        if not include_archived:
+            conditions.append("archived_at IS NULL")
+        if query:
+            pattern = f"%{query.strip()}%"
+            conditions.append("(name ILIKE %s OR domain ILIKE %s OR website ILIKE %s)")
+            params.extend((pattern, pattern, pattern))
+        for column, value in (
+            ("category", category),
+            ("stage", stage),
+            ("target_status", target_status),
+        ):
+            if value:
+                conditions.append(f"{column} = %s")
+                params.append(value)
+        if freshness == "fresh":
+            conditions.append("last_verified_at >= CURRENT_DATE - INTERVAL '30 days'")
+        elif freshness == "stale":
+            conditions.append(
+                "last_verified_at IS NOT NULL AND last_verified_at < CURRENT_DATE - INTERVAL '90 days'"
+            )
+        elif freshness == "unknown":
+            conditions.append("last_verified_at IS NULL")
+        where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         with conn.cursor() as cur:
             cur.execute(
-                """
+                f"""
                 SELECT * FROM companies
+                {where_sql}
                 ORDER BY name ASC
                 LIMIT %s
                 """,
-                (limit,),
+                [*params, limit],
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def find_by_domain(
+        self,
+        conn: psycopg.Connection,
+        domain: str,
+        *,
+        exclude_company_id: UUID | None = None,
+    ) -> list[dict[str, Any]]:
+        conditions = ["domain = %s", "archived_at IS NULL"]
+        params: list[Any] = [domain]
+        if exclude_company_id is not None:
+            conditions.append("id <> %s")
+            params.append(exclude_company_id)
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT * FROM companies WHERE {' AND '.join(conditions)} ORDER BY name ASC",
+                params,
             )
             rows = cur.fetchall()
         return [dict(row) for row in rows]

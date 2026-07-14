@@ -477,7 +477,7 @@ def render_admin_brief_database_unavailable(
 
 def render_admin_brief_not_found(
     *,
-    brief_id: int,
+    brief_id: int | str,
     admin_username: str,
     back_filters: BriefListFilters,
     csrf_token: str = "",

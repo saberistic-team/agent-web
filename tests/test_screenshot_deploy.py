@@ -247,6 +247,35 @@ def test_format_empty_data_hard_fail_dedupes_routes() -> None:
     assert "admin_preview.py" in msg
 
 
+def test_format_admin_nav_hard_fail_dedupes_routes() -> None:
+    from screenshot_deploy import format_admin_nav_hard_fail
+
+    assert format_admin_nav_hard_fail([]) is None
+    msg = format_admin_nav_hard_fail(
+        [
+            {
+                "viewport": "desktop",
+                "route": "/admin",
+                "reason": "desktop_nav_invisible",
+                "link_count": 12,
+                "visible_count": 0,
+            },
+            {
+                "viewport": "desktop",
+                "route": "/admin/audit",
+                "reason": "desktop_nav_invisible",
+                "link_count": 12,
+                "visible_count": 0,
+            },
+        ]
+    )
+    assert msg is not None
+    assert "admin desktop nav invisible" in msg
+    assert "`/admin`" in msg
+    assert "`/admin/audit`" in msg
+    assert "admin-nav-desktop" in msg
+    assert "details" in msg
+
 def test_page_empty_data_helper_flags_empty_table_phrases() -> None:
     """Pure helper parity: empty shell phrases used by Playwright checks."""
     from screenshot_deploy import ADMIN_EMPTY_SHELL_PHRASES

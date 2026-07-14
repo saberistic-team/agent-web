@@ -119,15 +119,16 @@ jobs:
           )"
               ;;
             waiting)
-              # Unresolved merge conflicts (or similar): stay in the priority queue
-              # so Builder runs again — do not send a dirty PR to Reviewer.
+              # Unresolved conflicts, retryable codegen (timeouts / soft file
+              # budget), or unfinished work: stay in the priority queue so
+              # Builder runs again — never status:blocked for those cases.
               gh issue edit "${ISSUE}" \
                 --repo "${{ github.repository }}" \
                 --add-label "status:queued"
               gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
           ### builder_handoff
           - status: \`status:queued\`
-          - next: dispatcher will re-apply \`agent:builder\` (merge conflicts / unfinished)
+          - next: dispatcher will re-apply \`agent:builder\` (retryable codegen / merge conflicts / unfinished)
           EOF
           )"
               ;;

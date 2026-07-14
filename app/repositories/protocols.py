@@ -29,6 +29,16 @@ class CompanyRepository(Protocol):
         conn: psycopg.Connection,
         *,
         limit: int = 100,
+        query: str | None = None,
+        category: str | None = None,
+        stage: str | None = None,
+        target_status: str | None = None,
+        freshness: str | None = None,
+        include_archived: bool = False,
+    ) -> list[dict[str, Any]]: ...
+
+    def find_by_domain(
+        self, conn: psycopg.Connection, domain: str, *, exclude_company_id: UUID | None = None
     ) -> list[dict[str, Any]]: ...
 
     def list_by_pipeline_stage(
@@ -73,6 +83,10 @@ class CompanyRepository(Protocol):
         stage_reason: str | None = None,
         clear_stage_reason: bool = False,
     ) -> dict[str, Any] | None: ...
+
+    def archive(self, conn: psycopg.Connection, company_id: UUID) -> dict[str, Any] | None: ...
+
+    def restore(self, conn: psycopg.Connection, company_id: UUID) -> dict[str, Any] | None: ...
 
 
 class ContactRepository(Protocol):
