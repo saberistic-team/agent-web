@@ -75,6 +75,7 @@ def render_contacts_list_page(
     query: str,
     include_archived: bool,
     warnings: list[str] | None = None,
+    csrf_token: str | None = None,
 ) -> str:
     archived_checked = " checked" if include_archived else ""
     rows: list[str] = []
@@ -135,7 +136,7 @@ def render_contacts_list_page(
             </table>
           </div>
         </section>"""
-    return render_admin_shell(title="Contacts", main=main, active_path="/admin/contacts")
+    return render_admin_shell(title="Contacts", main=main, active_path="/admin/contacts", csrf_token=csrf_token)
 
 
 def render_contact_form_page(
@@ -145,6 +146,7 @@ def render_contact_form_page(
     warnings: list[str] | None = None,
     error: str | None = None,
     is_new: bool = False,
+    csrf_token: str | None = None,
 ) -> str:
     contact = contact or {}
     contact_id = contact.get("id")
@@ -184,6 +186,9 @@ def render_contact_form_page(
     if error:
         error_html = f'          <p class="admin-error" role="alert">{_esc(error)}</p>'
     warning_html = _warnings_block(warnings or [])
+    csrf_field = ""
+    if csrf_token:
+        csrf_field = f'            <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}" />\n'
 
     archive_block = ""
     if not is_new and contact_id:
@@ -199,7 +204,7 @@ def render_contact_form_page(
 {error_html}
 {warning_html}
           <form class="admin-form" method="{method}" action="{form_action}">
-            <fieldset class="admin-fieldset">
+{csrf_field}            <fieldset class="admin-fieldset">
               <legend>Identity</legend>
               <label class="admin-field">
                 <span class="admin-label">Name</span>
@@ -268,13 +273,14 @@ def render_contact_form_page(
             </div>
           </form>
         </section>"""
-    return render_admin_shell(title=title_label, main=main, active_path="/admin/contacts")
+    return render_admin_shell(title=title_label, main=main, active_path="/admin/contacts", csrf_token=csrf_token)
 
 
 def render_company_detail_page(
     *,
     company: dict[str, Any],
     contacts: list[dict[str, Any]],
+    csrf_token: str | None = None,
 ) -> str:
     company_id = _esc(company["id"])
     company_name = _esc(company.get("name"))
@@ -333,7 +339,7 @@ def render_company_detail_page(
           </div>
           <p class="admin-note"><a href="/admin/companies">Back to companies</a></p>
         </section>"""
-    return render_admin_shell(title=company_name, main=main, active_path="/admin/companies")
+    return render_admin_shell(title=company_name, main=main, active_path="/admin/companies", csrf_token=csrf_token)
 
 
 def parse_contact_form(
