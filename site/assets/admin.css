@@ -35,6 +35,13 @@ body.admin-app {
   border-radius: 2px;
 }
 
+.admin-top-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem 1.25rem;
+}
+
 .admin-exit {
   font-size: 0.75rem;
   letter-spacing: 0.06em;
@@ -51,15 +58,12 @@ body.admin-app {
   outline: none;
 }
 
-.admin-logout-form {
-  margin: 0;
-}
-
-.admin-logout {
-  background: transparent;
-  border: 0;
+.admin-signout {
+  background: none;
+  border: none;
   cursor: pointer;
-  font: inherit;
+  font-family: inherit;
+  padding: 0;
 }
 
 .admin-layout {
@@ -150,13 +154,6 @@ body.admin-app {
   font-size: clamp(1.6rem, 4vw, 2.2rem);
   line-height: 1.1;
   font-weight: 400;
-  text-transform: uppercase;
-}
-
-.admin-subtitle {
-  margin: 0;
-  font-family: var(--display);
-  font-size: 1.1rem;
   text-transform: uppercase;
 }
 
@@ -354,6 +351,13 @@ body.admin-app {
   margin: 0 0 1rem;
   color: #f0a07a;
   font-size: 0.85rem;
+}
+
+.admin-subtitle {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 1.1rem;
+  text-transform: uppercase;
 }
 
 .admin-meta {
