@@ -190,4 +190,71 @@ CREATE INDEX IF NOT EXISTS admin_login_flows_flow_token_hash_idx
 ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS csrf_token_hash TEXT;
 """,
     ),
+    Migration(
+        version="007",
+        name="acquisition_pipeline",
+        up_sql="""
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS pipeline_stage TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS next_action TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS next_action_due_at TIMESTAMPTZ;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS owner TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS expected_value NUMERIC(12, 2);
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS stage_reason TEXT;
+
+UPDATE companies SET pipeline_stage = 'researching' WHERE pipeline_stage IS NULL;
+ALTER TABLE companies ALTER COLUMN pipeline_stage SET DEFAULT 'researching';
+ALTER TABLE companies ALTER COLUMN pipeline_stage SET NOT NULL;
+
+ALTER TABLE companies DROP CONSTRAINT IF EXISTS companies_pipeline_stage_check;
+ALTER TABLE companies ADD CONSTRAINT companies_pipeline_stage_check
+    CHECK (pipeline_stage IN (
+        'researching', 'qualified', 'ready_for_outreach', 'contacted', 'replied',
+        'discovery_scheduled', 'diagnostic_proposed', 'diagnostic_paid',
+        'larger_engagement', 'won', 'lost', 'nurture'
+    ));
+
+CREATE INDEX IF NOT EXISTS idx_companies_pipeline_stage ON companies (pipeline_stage);
+CREATE INDEX IF NOT EXISTS idx_companies_next_action_due_at ON companies (next_action_due_at);
+CREATE INDEX IF NOT EXISTS idx_companies_owner ON companies (owner);
+
+CREATE TABLE IF NOT EXISTS company_stage_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID NOT NULL REFERENCES companies (id) ON DELETE CASCADE,
+    from_stage TEXT NOT NULL,
+    to_stage TEXT NOT NULL,
+    changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    changed_by TEXT NOT NULL,
+    reason TEXT,
+    metadata JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_company_stage_history_company_id
+    ON company_stage_history (company_id);
+CREATE INDEX IF NOT EXISTS idx_company_stage_history_changed_at
+    ON company_stage_history (changed_at);
+
+CREATE TABLE IF NOT EXISTS crm_audit_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    entity_type TEXT NOT NULL
+        CHECK (entity_type IN ('company')),
+    entity_id UUID NOT NULL,
+    action TEXT NOT NULL,
+    actor TEXT NOT NULL,
+    metadata JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_crm_audit_events_entity
+    ON crm_audit_events (entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_crm_audit_events_created_at
+    ON crm_audit_events (created_at);
+
+ALTER TABLE activities DROP CONSTRAINT IF EXISTS activities_activity_type_check;
+ALTER TABLE activities ADD CONSTRAINT activities_activity_type_check
+    CHECK (activity_type IN (
+        'note', 'outreach', 'reply', 'meeting', 'proposal', 'payment',
+        'task_completion', 'email', 'call', 'status_change'
+    ));
+""",
+    ),
 )
