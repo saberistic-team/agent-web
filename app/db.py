@@ -1,4 +1,4 @@
-"""Render Postgres persistence for project briefs."""
+"""Render Postgres persistence for project briefs and CRM foundation."""
 
 from __future__ import annotations
 
@@ -9,58 +9,14 @@ from typing import Any, Generator, Literal
 import psycopg
 from psycopg.rows import dict_row
 
+from app.migrations.runner import apply_migrations
+
 BriefStatus = Literal["pending_payment", "paid", "abandoned"]
-
-SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS project_briefs (
-    id SERIAL PRIMARY KEY,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    website TEXT NOT NULL,
-    contact_method TEXT NOT NULL DEFAULT 'email'
-        CHECK (contact_method IN ('email')),
-    contact_value TEXT NOT NULL,
-    brief TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending_payment'
-        CHECK (status IN ('pending_payment', 'paid', 'abandoned')),
-    stripe_session_id TEXT,
-    stripe_payment_intent_id TEXT,
-    paid_at TIMESTAMPTZ,
-    utm_source TEXT,
-    utm_medium TEXT,
-    utm_campaign TEXT,
-    utm_content TEXT,
-    utm_term TEXT
-);
-"""
-
-MIGRATION_SQL = """
-ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS utm_source TEXT;
-ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS utm_medium TEXT;
-ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS utm_campaign TEXT;
-ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS utm_content TEXT;
-ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS utm_term TEXT;
-"""
-
-ADMIN_SESSIONS_SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS admin_sessions (
-    id SERIAL PRIMARY KEY,
-    token_hash TEXT NOT NULL UNIQUE,
-    admin_username TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    expires_at TIMESTAMPTZ NOT NULL,
-    revoked_at TIMESTAMPTZ
-);
-CREATE INDEX IF NOT EXISTS admin_sessions_token_hash_idx ON admin_sessions (token_hash);
-"""
 
 
 def init_db(database_url: str) -> None:
     with psycopg.connect(database_url) as conn:
-        with conn.cursor() as cur:
-            cur.execute(SCHEMA_SQL)
-            cur.execute(MIGRATION_SQL)
-            cur.execute(ADMIN_SESSIONS_SCHEMA_SQL)
-        conn.commit()
+        apply_migrations(conn)
 
 
 @contextmanager
