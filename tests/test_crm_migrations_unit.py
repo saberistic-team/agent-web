@@ -74,70 +74,13 @@ def test_brief_migrations_remain_idempotent() -> None:
 
 @pytest.mark.unit
 def test_pending_migrations_skips_applied_versions() -> None:
-    applied = {"001", "002", "003", "004", "005", "006"}
+    applied = {"001", "002"}
     pending = pending_migrations(applied_versions=applied)
-    assert [m.version for m in pending] == ["007"]
-
-
-@pytest.mark.unit
-def test_contacts_extended_migration_is_idempotent() -> None:
-    contacts_ext = next(m for m in MIGRATIONS if m.name == "contacts_extended")
-    assert contacts_ext.version == "007"
-    sql = contacts_ext.up_sql
-    assert "contact_buying_roles" in sql
-    assert "founder" in sql
-    assert "technical_buyer" in sql
-    assert "executive_buyer" in sql
-    assert "DROP CONSTRAINT IF EXISTS contacts_email_unique" in sql
+    assert [m.version for m in pending] == ["003", "004", "005", "006", "007"]
 
 
 @pytest.mark.unit
 def test_apply_migrations_runs_only_pending_steps() -> None:
-    conn = _mock_migration_conn(applied_rows=[("001",), ("002",), ("003",), ("004",), ("005",), ("006",)])
-    cur = conn.cursor.return_value.__enter__.return_value
-
-    applied = apply_migrations(conn, migrations=MIGRATIONS)
-
-    assert applied == ["007"]
-    execute_calls = [str(call.args[0]) for call in cur.execute.call_args_list]
-    assert execute_calls[0] == ADVISORY_LOCK_SQL
-    assert cur.execute.call_args_list[0].args[1] == (
-        MIGRATION_ADVISORY_LOCK_KEY1,
-        MIGRATION_ADVISORY_LOCK_KEY2,
-    )
-    assert any("schema_migrations" in sql for sql in execute_calls)
-    assert any("contact_buying_roles" in sql for sql in execute_calls)
-    assert any(
-        "INSERT INTO schema_migrations" in str(call.args[0]) and "007" in str(call.args[1])
-        for call in cur.execute.call_args_list
-    )
-    assert any(
-        "INSERT INTO schema_migrations" in str(call.args[0]) and "004" in str(call.args[1])
-        for call in cur.execute.call_args_list
-    )
-    assert any(
-        "INSERT INTO schema_migrations" in str(call.args[0]) and "005" in str(call.args[1])
-        for call in cur.execute.call_args_list
-    )
-    assert any(
-        "INSERT INTO schema_migrations" in str(call.args[0]) and "006" in str(call.args[1])
-        for call in cur.execute.call_args_list
-    )
-    conn.commit.assert_called_once()
-
-
-@pytest.mark.unit
-def test_apply_migrations_on_empty_database_applies_all() -> None:
-    conn = _mock_migration_conn()
-
-    applied = apply_migrations(conn, migrations=MIGRATIONS)
-
-    assert applied == ["001", "002", "003", "004", "005", "006", "007"]
-    conn.commit.assert_called_once()
-
-
-@pytest.mark.unit
-def test_apply_migrations_runs_crm_foundation_when_partially_applied() -> None:
     conn = _mock_migration_conn(applied_rows=[("001",), ("002",)])
     cur = conn.cursor.return_value.__enter__.return_value
 
@@ -171,6 +114,20 @@ def test_apply_migrations_runs_crm_foundation_when_partially_applied() -> None:
         "INSERT INTO schema_migrations" in str(call.args[0]) and "006" in str(call.args[1])
         for call in cur.execute.call_args_list
     )
+    assert any(
+        "INSERT INTO schema_migrations" in str(call.args[0]) and "007" in str(call.args[1])
+        for call in cur.execute.call_args_list
+    )
+    conn.commit.assert_called_once()
+
+
+@pytest.mark.unit
+def test_apply_migrations_on_empty_database_applies_all() -> None:
+    conn = _mock_migration_conn()
+
+    applied = apply_migrations(conn, migrations=MIGRATIONS)
+
+    assert applied == ["001", "002", "003", "004", "005", "006", "007"]
     conn.commit.assert_called_once()
 
 
@@ -205,6 +162,15 @@ def test_admin_csrf_binding_migration_is_idempotent() -> None:
     assert "ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS csrf_token_hash TEXT" in (
         csrf_binding.up_sql
     )
+
+
+@pytest.mark.unit
+def test_contacts_extended_migration_is_idempotent() -> None:
+    contacts_ext = next(m for m in MIGRATIONS if m.name == "contacts_extended")
+    assert contacts_ext.version == "007"
+    assert "ALTER TABLE contacts DROP CONSTRAINT IF EXISTS contacts_email_unique" in contacts_ext.up_sql
+    assert "CREATE TABLE IF NOT EXISTS contact_buying_roles" in contacts_ext.up_sql
+    assert "is_archived BOOLEAN NOT NULL DEFAULT FALSE" in contacts_ext.up_sql
 
 
 @pytest.mark.unit
