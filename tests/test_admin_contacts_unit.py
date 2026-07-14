@@ -14,9 +14,9 @@ CONTACT_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
 
 
 @pytest.mark.unit
-@pytest.mark.integration
 def test_render_contacts_list_page_includes_search_and_rows() -> None:
     html = admin_contacts.render_contacts_list_page(
+        admin_username="operator",
         contacts=[
             {
                 "id": CONTACT_ID,
@@ -39,10 +39,10 @@ def test_render_contacts_list_page_includes_search_and_rows() -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.integration
 def test_render_contact_form_page_new_and_edit() -> None:
     companies = [{"id": COMPANY_ID, "name": "Acme"}]
     new_html = admin_contacts.render_contact_form_page(
+        admin_username="operator",
         companies=companies,
         is_new=True,
     )
@@ -51,6 +51,7 @@ def test_render_contact_form_page_new_and_edit() -> None:
     assert "Founder" in new_html
 
     edit_html = admin_contacts.render_contact_form_page(
+        admin_username="operator",
         companies=companies,
         contact={
             "id": CONTACT_ID,
@@ -61,14 +62,14 @@ def test_render_contact_form_page_new_and_edit() -> None:
         },
     )
     assert "Edit contact" in edit_html
-    assert f'/admin/contacts/{CONTACT_ID}' in edit_html
+    assert f"/admin/contacts/{CONTACT_ID}" in edit_html
     assert "Archive" in edit_html
 
 
 @pytest.mark.unit
-@pytest.mark.integration
 def test_render_contact_form_page_shows_archived_state() -> None:
     html = admin_contacts.render_contact_form_page(
+        admin_username="operator",
         companies=[],
         contact={"id": CONTACT_ID, "name": "Pat", "is_archived": True},
     )
@@ -77,9 +78,9 @@ def test_render_contact_form_page_shows_archived_state() -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.integration
 def test_render_company_detail_page_lists_contacts() -> None:
     html = admin_contacts.render_company_detail_page(
+        admin_username="operator",
         company={"id": COMPANY_ID, "name": "Acme", "website": "https://acme.dev", "status": "prospect"},
         contacts=[
             {
@@ -97,7 +98,6 @@ def test_render_company_detail_page_lists_contacts() -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.integration
 def test_parse_contact_form_normalizes_fields() -> None:
     parsed = admin_contacts.parse_contact_form(
         name="  Pat  ",
