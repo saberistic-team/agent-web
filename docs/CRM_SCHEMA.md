@@ -144,6 +144,36 @@ steps on restart.
 4. Map new inbound channels via `source_records` with a distinct `source_type`.
 5. Add tests under `tests/` for migration SQL, constraints, and repository CRUD.
 
+## Transaction ownership
+
+CRM write paths use a caller-owned `psycopg.Connection`. Repositories execute SQL
+only; services own commit/rollback boundaries.
+
+| Layer | Module | Transaction rule |
+|-------|--------|------------------|
+| Repository | `app/repositories/postgres.py` | Run statements on the passed connection. **Never** call `commit()` or `rollback()`. |
+| Service | `app/crm_service.py` | Wrap mutating operations in `crm_transaction(conn)`. Commit once after every related repository write succeeds; roll back the full operation on any failure. |
+| Brief/payment | `app/db.py` | Unchanged — each mutating helper commits internally (see [PROJECT_BRIEF.md](PROJECT_BRIEF.md)). |
+
+### Service boundaries
+
+- **Single-record writes** (`record_activity_for_company`, `link_project_brief_source`):
+  one `crm_transaction` scope → one commit on success.
+- **Multi-record writes** (`record_company_with_contact`): one transaction spans
+  company + contact inserts; a contact failure rolls back the company insert.
+- **Reads** (`get_admin_user_by_email`, repository lookups): no transaction state
+  changes.
+
+Callers open a connection (e.g. via `app/db.db_connection`) and pass it to
+`CrmService` methods. Do not commit inside route handlers for CRM writes — the
+service method commits when the operation completes.
+
+### Retry
+
+After a rolled-back CRM operation, the connection is usable for a new
+`CrmService` call on the same connection scope (idempotent retries or corrected
+input).
+
 ## Deferred (not #100)
 
 - Admin UI routes beyond login/session auth ([#101](https://github.com/saberistic-team/agent-web/issues/101) covers auth/sessions)
