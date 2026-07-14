@@ -379,7 +379,16 @@ def admin_briefs_list(
         date_to=date_to,
     )
     db_error = False
-    if settings.admin_preview_enabled or not settings.database_url:
+    if settings.admin_preview_enabled:
+        briefs, total, filters = brief_service.preview_briefs_list(
+            page=page,
+            per_page=settings.brief_page_size,
+            query=q,
+            status=status,
+            date_from=date_from,
+            date_to=date_to,
+        )
+    elif not settings.database_url:
         pass
     else:
         try:
@@ -504,7 +513,17 @@ def admin_audit_list(request: Request, page: int = 1) -> HTMLResponse:
     csrf_token = ""
     if session.id:
         csrf_token = _issue_session_csrf(settings, session.id)
-    if settings.admin_preview_enabled or not settings.database_url:
+    if settings.admin_preview_enabled:
+        from app.admin_preview import build_preview_audit_events
+
+        all_events = build_preview_audit_events()
+        total = len(all_events)
+        safe_page = max(page, 1)
+        per_page = settings.audit_page_size
+        start = (safe_page - 1) * per_page
+        events = all_events[start : start + per_page]
+        page = safe_page
+    elif not settings.database_url:
         events, total = [], 0
     else:
         with db.db_connection(settings.database_url) as conn:

@@ -23,9 +23,11 @@ Playwright can open admin pages **without login**.
 - Hard-disabled when `BASE_URL` contains `saberistic.com` even if the env
   flag is set — never open admin without auth in production.
 - Admin shell pages fill with **mock intake/CRM data with randomization**
-  (dashboard stats, section tables) so screenshots look like a live operator
-  shell — never real production rows. Optional `ADMIN_PREVIEW_SEED` makes
-  mocks stable in tests.
+  (dashboard stats, section tables, **briefs list/detail**, etc.) so screenshots
+  look like a live operator shell — never real production rows and never an
+  empty “no records yet” shell for newly built admin surfaces. Optional
+  `ADMIN_PREVIEW_SEED` makes mocks stable in tests. Builder must extend
+  `app/admin_preview.py` whenever it adds a page (see `AGENTS/builder.md`).
 - See [ADMIN_AUTH.md](ADMIN_AUTH.md).
 
 | Route kind | Examples | Behavior |
@@ -55,7 +57,11 @@ Playwright can open admin pages **without login**.
 4. Uploads under `.agent/screenshots/pr-<n>/` and comments
    `### reviewer_screenshots_pre` on the **PR and issue** (titles above images)
 5. Does **not** hit saberistic.com
-6. AI review + approve gates as usual
+6. **Empty-shell gate:** Playwright inspects admin HTML for empty data tables /
+   “no … yet” / placeholder milestone copy and Reviewer **hard-fails** so
+   Builder must extend `app/admin_preview.py` (see
+   `format_empty_data_hard_fail`)
+7. AI review + approve gates as usual
 
 ## Post-deploy (after merge to `main`)
 

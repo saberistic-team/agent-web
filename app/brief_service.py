@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date
 from typing import Any
 
 import psycopg
@@ -144,48 +144,47 @@ def get_brief(
     return repo.get_by_id(conn, brief_id)
 
 
+def preview_briefs_list(
+    *,
+    page: int = 1,
+    per_page: int = 50,
+    query: str | None = None,
+    status: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> tuple[list[dict[str, Any]], int, BriefListFilters]:
+    """Paginated ADMIN_PREVIEW_MODE brief list (randomized mock rows)."""
+    from app.admin_preview import build_preview_brief_rows
+
+    filters = normalize_filters(
+        page=page,
+        per_page=per_page,
+        query=query,
+        status=status,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    rows = build_preview_brief_rows()
+    if filters.status:
+        rows = [r for r in rows if r.get("status") == filters.status]
+    if filters.query:
+        needle = filters.query.lower()
+        rows = [
+            r
+            for r in rows
+            if needle in str(r.get("id", "")).lower()
+            or needle in str(r.get("website", "")).lower()
+            or needle in str(r.get("contact_value", "")).lower()
+        ]
+    total = len(rows)
+    start = (filters.page - 1) * filters.per_page
+    page_rows = rows[start : start + filters.per_page]
+    return page_rows, total, filters
+
+
 def preview_brief_detail(brief_id: int) -> dict[str, Any] | None:
     """Synthetic brief rows for ADMIN_PREVIEW_MODE screenshots only."""
-    if brief_id == 1:
-        return {
-            "id": 1,
-            "created_at": datetime(2026, 7, 14, 10, 30, tzinfo=timezone.utc),
-            "website": "https://acme.example/products/platform",
-            "contact_method": "email",
-            "contact_value": "ops@acme.example",
-            "brief": (
-                "We need a technical architecture review for our payments platform. "
-                "Scope includes API boundaries, data retention, and rollout sequencing."
-            ),
-            "status": "paid",
-            "stripe_session_id": "cs_preview_session_abc123",
-            "stripe_payment_intent_id": "pi_preview_intent_xyz789",
-            "paid_at": datetime(2026, 7, 14, 10, 45, tzinfo=timezone.utc),
-            "utm_source": "linkedin",
-            "utm_medium": "social",
-            "utm_campaign": "spring-launch",
-            "utm_content": "cta-primary",
-            "utm_term": "architecture",
-        }
-    if brief_id == 2:
-        return {
-            "id": 2,
-            "created_at": datetime(2026, 7, 13, 8, 15, tzinfo=timezone.utc),
-            "website": "https://very-long-subdomain-name.example.co.uk/path/to/resource?query=value",
-            "contact_method": "email",
-            "contact_value": "founder@startup.example",
-            "brief": (
-                "A" * 400
-                + "\n\nSecond paragraph with <script>alert(1)</script> and more detail."
-            ),
-            "status": "pending_payment",
-            "stripe_session_id": None,
-            "stripe_payment_intent_id": None,
-            "paid_at": None,
-            "utm_source": None,
-            "utm_medium": None,
-            "utm_campaign": None,
-            "utm_content": None,
-            "utm_term": None,
-        }
-    return None
+    from app.admin_preview import build_preview_brief_detail
+
+    row = build_preview_brief_detail(brief_id)
+    return dict(row) if row is not None else None

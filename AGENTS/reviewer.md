@@ -22,10 +22,14 @@ Before approving you must:
    screenshot saberistic.com pre-merge — production shots are post-deploy:
    - **PR branch** — `branch-*.png` (public + all admin nav pages when affected)
    Post on the PR and issue — not Copilot / MCP browsers. Skip capture when
-   the PR touches no visual pages (tests/docs only).
+   the PR touches no visual pages (tests/docs only). Upload all PNGs in
+   **one** commit via `upload_to_branch` (never one Contents API commit per
+   image — that storms CI and can dirty the PR mid-review).
 3. Check **visual readability** on the **PR branch** screenshots / live
    capture: hero and primary copy must stay inside the viewport (no horizontal
-   overflow / text out of frame on mobile)
+   overflow / text out of frame on mobile). New admin/data tables under
+   ``ADMIN_PREVIEW_MODE`` must show **randomized mock rows** (not an empty
+   “no records yet” shell) unless the issue is explicitly about empty states.
 4. Run **Cursor / OpenAI / Models AI review** ([docs/MODELS.md](../docs/MODELS.md),
    [docs/DESIGN.md](../docs/DESIGN.md), [docs/TESTING.md](../docs/TESTING.md))
    — prefers Cursor when `CURSOR_API_KEY` is set. Do **not** request changes
@@ -54,6 +58,8 @@ than reviewing stale ghost commits.
   **No** saberistic.com screenshots on the PR pre-merge
 - Visual readability check passes on PR-branch shots when capture ran (no
   mobile out-of-frame overflow)
+- Admin preview data pages show **mock rows** when capture ran (no empty
+  “no records yet” / placeholder shells under `ADMIN_PREVIEW_MODE`)
 - AI review is recorded in the PR review body
 - `### acceptance_checklist` is posted with `all_done: true` and evidence links
 - Matching issue-body checkboxes are flipped to `[x]` when verified
@@ -87,12 +93,16 @@ Any of these is an automatic request-changes — do not approve:
 - **Visual readability fail:** text clipped or overflowing the mobile viewport
   (out of frame) on any **captured** PR-branch screenshot (`h1`, `.lede`,
   `.cta-row`, `.hero` — PR-affected public and admin preview routes)
+- **Admin preview empty data:** captured `/admin/*` data pages under
+  `ADMIN_PREVIEW_MODE` show empty shells (“no … yet”, empty tables, placeholder
+  milestone copy) instead of randomized mock rows — Builder must extend
+  `app/admin_preview.py` (`scripts/screenshot_deploy.format_empty_data_hard_fail`)
 - Acceptance checklist incomplete (`all_done: false` or missing)
 
-Coverage gaps, missing tests, CI assertion failures, visual overflow, and
-**merge conflicts** are **Builder work** — request changes so dispatcher
-requeues `agent:builder` (Builder resolves on the same PR head). Do **not**
-treat them as terminal `@human-review` / `status:blocked` (see
+Coverage gaps, missing tests, CI assertion failures, visual overflow, empty
+preview shells, and **merge conflicts** are **Builder work** — request changes
+so dispatcher requeues `agent:builder` (Builder resolves on the same PR head).
+Do **not** treat them as terminal `@human-review` / `status:blocked` (see
 `scripts/review_decision.py`). Do **not** resolve conflicts yourself.
 
 ## Judgment call
