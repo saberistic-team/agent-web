@@ -7,12 +7,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Migration:
-    """Forward-only migration step.
-
-    Rollback strategy: migrations are additive and idempotent. There is no
-    automatic down migration; reversing a change requires a new forward migration
-    or a manual DBA restore. See docs/CRM_SCHEMA.md.
-    """
+    """Forward-only migration step."""
 
     version: str
     name: str
@@ -58,86 +53,63 @@ ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS utm_term TEXT;
     ),
     Migration(
         version="003",
-        name="crm_foundation",
+        name="admin_sessions",
         up_sql="""
-CREATE TABLE IF NOT EXISTS companies (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE IF NOT EXISTS admin_sessions (
+    id SERIAL PRIMARY KEY,
+    token_hash TEXT NOT NULL UNIQUE,
+    admin_username TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    name TEXT NOT NULL,
-    website TEXT,
-    status TEXT NOT NULL DEFAULT 'prospect'
-        CHECK (status IN ('prospect', 'active', 'inactive'))
+    expires_at TIMESTAMPTZ NOT NULL,
+    revoked_at TIMESTAMPTZ
 );
+CREATE INDEX IF NOT EXISTS admin_sessions_token_hash_idx ON admin_sessions (token_hash);
+""",
+    ),
+    Migration(
+        version="004",
+        name="audit_events",
+        up_sql="""
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-CREATE INDEX IF NOT EXISTS idx_companies_status ON companies (status);
-CREATE INDEX IF NOT EXISTS idx_companies_website ON companies (website);
-
-CREATE TABLE IF NOT EXISTS contacts (
+CREATE TABLE IF NOT EXISTS audit_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    company_id UUID REFERENCES companies (id) ON DELETE SET NULL,
-    email TEXT NOT NULL,
-    full_name TEXT,
-    CONSTRAINT contacts_email_unique UNIQUE (email)
-);
-
-CREATE INDEX IF NOT EXISTS idx_contacts_company_id ON contacts (company_id);
-CREATE INDEX IF NOT EXISTS idx_contacts_email ON contacts (email);
-
-CREATE TABLE IF NOT EXISTS source_records (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    source_type TEXT NOT NULL
-        CHECK (source_type IN ('project_brief', 'manual', 'import', 'discovery')),
-    external_id TEXT,
-    company_id UUID REFERENCES companies (id) ON DELETE SET NULL,
-    contact_id UUID REFERENCES contacts (id) ON DELETE SET NULL,
-    payload JSONB,
-    CONSTRAINT source_records_type_external_unique
-        UNIQUE (source_type, external_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_source_records_company_id ON source_records (company_id);
-CREATE INDEX IF NOT EXISTS idx_source_records_contact_id ON source_records (contact_id);
-CREATE INDEX IF NOT EXISTS idx_source_records_source_type ON source_records (source_type);
-
-CREATE TABLE IF NOT EXISTS activities (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    activity_type TEXT NOT NULL
-        CHECK (activity_type IN (
-            'note', 'email', 'call', 'meeting', 'status_change', 'payment'
-        )),
-    company_id UUID REFERENCES companies (id) ON DELETE CASCADE,
-    contact_id UUID REFERENCES contacts (id) ON DELETE SET NULL,
-    source_record_id UUID REFERENCES source_records (id) ON DELETE SET NULL,
-    summary TEXT NOT NULL,
+    actor TEXT NOT NULL,
+    action TEXT NOT NULL,
+    entity_type TEXT,
+    entity_id TEXT,
+    correlation_id TEXT NOT NULL,
+    summary_before JSONB,
+    summary_after JSONB,
     metadata JSONB
 );
 
-CREATE INDEX IF NOT EXISTS idx_activities_company_id ON activities (company_id);
-CREATE INDEX IF NOT EXISTS idx_activities_contact_id ON activities (contact_id);
-CREATE INDEX IF NOT EXISTS idx_activities_source_record_id ON activities (source_record_id);
-CREATE INDEX IF NOT EXISTS idx_activities_created_at ON activities (created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_events_action ON audit_events (action);
+CREATE INDEX IF NOT EXISTS idx_audit_events_actor ON audit_events (actor);
+CREATE INDEX IF NOT EXISTS idx_audit_events_correlation_id ON audit_events (correlation_id);
 
-CREATE TABLE IF NOT EXISTS admin_users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    email TEXT NOT NULL,
-    display_name TEXT,
-    role TEXT NOT NULL DEFAULT 'viewer'
-        CHECK (role IN ('admin', 'editor', 'viewer')),
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    CONSTRAINT admin_users_email_unique UNIQUE (email)
-);
+CREATE OR REPLACE FUNCTION prevent_audit_events_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RAISE EXCEPTION 'audit_events records are append-only';
+END;
+$$;
 
-CREATE INDEX IF NOT EXISTS idx_admin_users_email ON admin_users (email);
-CREATE INDEX IF NOT EXISTS idx_admin_users_is_active ON admin_users (is_active);
+DROP TRIGGER IF EXISTS audit_events_no_update ON audit_events;
+CREATE TRIGGER audit_events_no_update
+    BEFORE UPDATE ON audit_events
+    FOR EACH ROW
+    EXECUTE FUNCTION prevent_audit_events_mutation();
+
+DROP TRIGGER IF EXISTS audit_events_no_delete ON audit_events;
+CREATE TRIGGER audit_events_no_delete
+    BEFORE DELETE ON audit_events
+    FOR EACH ROW
+    EXECUTE FUNCTION prevent_audit_events_mutation();
 """,
     ),
 )
