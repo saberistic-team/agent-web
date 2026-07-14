@@ -8,6 +8,7 @@ from uuid import UUID
 import pytest
 
 from app.crm_service import CrmRepositories, CrmService
+from app.companies import CompanyCreate, CompanyUpdate
 from app.repositories.postgres import (
     PostgresActivityRepository,
     PostgresAdminUserRepository,
@@ -290,3 +291,25 @@ def test_crm_service_research_record_helpers() -> None:
     )
     assert record["body"] == "Series B"
     conn.commit.assert_called_once()
+
+
+@pytest.mark.unit
+def test_company_crud_helpers_commit_and_return_nonblocking_domain_warnings() -> None:
+    company_repo = MagicMock()
+    company_repo.find_by_domain.return_value = [{"id": COMPANY_ID, "name": "Existing", "domain": "acme.dev"}]
+    company_repo.create.return_value = {"id": COMPANY_ID, "name": "Acme", "domain": "acme.dev"}
+    company_repo.update.return_value = {"id": COMPANY_ID, "name": "Acme Updated", "domain": "acme.dev"}
+    company_repo.archive.return_value = {"id": COMPANY_ID, "archived_at": "now"}
+    company_repo.restore.return_value = {"id": COMPANY_ID, "archived_at": None}
+    service, conn, _ = _service_with_mocks(company_repo=company_repo)
+
+    created = service.create_company(conn, company=CompanyCreate(name="Acme", domain="www.acme.dev"))
+    assert created["company"]["name"] == "Acme"
+    assert len(created["duplicate_warnings"]) == 1
+    updated = service.update_company(
+        conn, COMPANY_ID, company=CompanyUpdate(name="Acme Updated", domain="acme.dev")
+    )
+    assert updated is not None and updated["company"]["name"] == "Acme Updated"
+    assert service.archive_company(conn, COMPANY_ID)["archived_at"] == "now"
+    assert service.restore_company(conn, COMPANY_ID)["archived_at"] is None
+    assert conn.commit.call_count == 4

@@ -17,6 +17,14 @@ class CompanyRepository(Protocol):
         name: str,
         website: str | None = None,
         status: str = "prospect",
+        domain: str | None = None,
+        category: str | None = None,
+        stage: str | None = None,
+        headcount_estimate: int | None = None,
+        funding_summary: str | None = None,
+        target_status: str | None = None,
+        last_verified_at: date | None = None,
+        notes: str | None = None,
     ) -> dict[str, Any]: ...
 
     def get_by_id(self, conn: psycopg.Connection, company_id: UUID) -> dict[str, Any] | None: ...
@@ -26,6 +34,16 @@ class CompanyRepository(Protocol):
         conn: psycopg.Connection,
         *,
         limit: int = 100,
+        query: str | None = None,
+        category: str | None = None,
+        stage: str | None = None,
+        target_status: str | None = None,
+        freshness: str | None = None,
+        include_archived: bool = False,
+    ) -> list[dict[str, Any]]: ...
+
+    def find_by_domain(
+        self, conn: psycopg.Connection, domain: str, *, exclude_company_id: UUID | None = None
     ) -> list[dict[str, Any]]: ...
 
     def update(
@@ -36,7 +54,19 @@ class CompanyRepository(Protocol):
         name: str | None = None,
         website: str | None = None,
         status: str | None = None,
+        domain: str | None = None,
+        category: str | None = None,
+        stage: str | None = None,
+        headcount_estimate: int | None = None,
+        funding_summary: str | None = None,
+        target_status: str | None = None,
+        last_verified_at: date | None = None,
+        notes: str | None = None,
     ) -> dict[str, Any] | None: ...
+
+    def archive(self, conn: psycopg.Connection, company_id: UUID) -> dict[str, Any] | None: ...
+
+    def restore(self, conn: psycopg.Connection, company_id: UUID) -> dict[str, Any] | None: ...
 
 
 class ContactRepository(Protocol):

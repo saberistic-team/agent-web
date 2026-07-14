@@ -32,15 +32,31 @@ class PostgresCompanyRepository:
         name: str,
         website: str | None = None,
         status: str = "prospect",
+        domain: str | None = None,
+        category: str | None = None,
+        stage: str | None = None,
+        headcount_estimate: int | None = None,
+        funding_summary: str | None = None,
+        target_status: str | None = None,
+        last_verified_at: date | None = None,
+        notes: str | None = None,
     ) -> dict[str, Any]:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO companies (name, website, status)
-                VALUES (%s, %s, %s)
+                INSERT INTO companies (
+                    name, website, status, domain, category, stage,
+                    headcount_estimate, funding_summary, target_status,
+                    last_verified_at, notes
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING *
                 """,
-                (name, website, status),
+                (
+                    name, website, status, domain, category, stage,
+                    headcount_estimate, funding_summary, target_status,
+                    last_verified_at, notes,
+                ),
             )
             row = cur.fetchone()
         return dict(row)
@@ -56,15 +72,67 @@ class PostgresCompanyRepository:
         conn: psycopg.Connection,
         *,
         limit: int = 100,
+        query: str | None = None,
+        category: str | None = None,
+        stage: str | None = None,
+        target_status: str | None = None,
+        freshness: str | None = None,
+        include_archived: bool = False,
     ) -> list[dict[str, Any]]:
+        conditions: list[str] = []
+        params: list[Any] = []
+        if not include_archived:
+            conditions.append("archived_at IS NULL")
+        if query:
+            pattern = f"%{query.strip()}%"
+            conditions.append("(name ILIKE %s OR domain ILIKE %s OR website ILIKE %s)")
+            params.extend((pattern, pattern, pattern))
+        for column, value in (
+            ("category", category),
+            ("stage", stage),
+            ("target_status", target_status),
+        ):
+            if value:
+                conditions.append(f"{column} = %s")
+                params.append(value)
+        if freshness == "fresh":
+            conditions.append("last_verified_at >= CURRENT_DATE - INTERVAL '30 days'")
+        elif freshness == "stale":
+            conditions.append(
+                "last_verified_at IS NOT NULL AND last_verified_at < CURRENT_DATE - INTERVAL '90 days'"
+            )
+        elif freshness == "unknown":
+            conditions.append("last_verified_at IS NULL")
+        where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         with conn.cursor() as cur:
             cur.execute(
-                """
+                f"""
                 SELECT * FROM companies
+                {where_sql}
                 ORDER BY name ASC
                 LIMIT %s
                 """,
-                (limit,),
+                [*params, limit],
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def find_by_domain(
+        self,
+        conn: psycopg.Connection,
+        domain: str,
+        *,
+        exclude_company_id: UUID | None = None,
+    ) -> list[dict[str, Any]]:
+        conditions = ["domain = %s", "archived_at IS NULL"]
+        params: list[Any] = [domain]
+        if exclude_company_id is not None:
+            conditions.append("id <> %s")
+            params.append(exclude_company_id)
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT * FROM companies WHERE {' AND '.join(conditions)} ORDER BY name ASC",
+                params,
             )
             rows = cur.fetchall()
         return [dict(row) for row in rows]
@@ -77,6 +145,14 @@ class PostgresCompanyRepository:
         name: str | None = None,
         website: str | None = None,
         status: str | None = None,
+        domain: str | None = None,
+        category: str | None = None,
+        stage: str | None = None,
+        headcount_estimate: int | None = None,
+        funding_summary: str | None = None,
+        target_status: str | None = None,
+        last_verified_at: date | None = None,
+        notes: str | None = None,
     ) -> dict[str, Any] | None:
         fields: list[str] = []
         values: list[Any] = []
@@ -89,6 +165,19 @@ class PostgresCompanyRepository:
         if status is not None:
             fields.append("status = %s")
             values.append(status)
+        for column, value in (
+            ("domain", domain),
+            ("category", category),
+            ("stage", stage),
+            ("headcount_estimate", headcount_estimate),
+            ("funding_summary", funding_summary),
+            ("target_status", target_status),
+            ("last_verified_at", last_verified_at),
+            ("notes", notes),
+        ):
+            if value is not None:
+                fields.append(f"{column} = %s")
+                values.append(value)
         if not fields:
             return self.get_by_id(conn, company_id)
 
@@ -104,6 +193,32 @@ class PostgresCompanyRepository:
                 RETURNING *
                 """,
                 values,
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def archive(self, conn: psycopg.Connection, company_id: UUID) -> dict[str, Any] | None:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE companies SET archived_at = %s, updated_at = %s
+                WHERE id = %s AND archived_at IS NULL
+                RETURNING *
+                """,
+                (_now(), _now(), company_id),
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def restore(self, conn: psycopg.Connection, company_id: UUID) -> dict[str, Any] | None:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE companies SET archived_at = NULL, updated_at = %s
+                WHERE id = %s AND archived_at IS NOT NULL
+                RETURNING *
+                """,
+                (_now(), company_id),
             )
             row = cur.fetchone()
         return dict(row) if row else None
