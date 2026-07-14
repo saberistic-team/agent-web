@@ -258,81 +258,6 @@ def test_read_methods_do_not_change_transaction_state() -> None:
 
 
 @pytest.mark.unit
-def test_crm_service_contact_crud_and_roles() -> None:
-    contact_repo = MagicMock()
-    company_repo = MagicMock()
-    contact_repo.create.return_value = {
-        "id": CONTACT_ID,
-        "full_name": "Alex Ng",
-        "email": "alex@example.com",
-    }
-    contact_repo.get_by_id.return_value = {
-        "id": CONTACT_ID,
-        "full_name": "Alex Ng",
-        "email": "alex@example.com",
-    }
-    contact_repo.update.return_value = {
-        "id": CONTACT_ID,
-        "full_name": "Alex Ng",
-        "email": "alex@example.com",
-    }
-    contact_repo.archive.return_value = {
-        "id": CONTACT_ID,
-        "archived_at": "now",
-    }
-    contact_repo.find_possible_duplicates.return_value = []
-    contact_repo.set_buying_roles.return_value = ["founder", "technical_buyer"]
-    contact_repo.list_buying_roles.return_value = ["founder"]
-    contact_repo.list_buying_roles_for_contacts.return_value = {
-        CONTACT_ID: ["founder"],
-    }
-    contact_repo.list_page.return_value = (
-        [{"id": CONTACT_ID, "full_name": "Alex Ng"}],
-        1,
-    )
-    service, conn, _ = _service_with_mocks(
-        contact_repo=contact_repo,
-        company_repo=company_repo,
-    )
-
-    from app.contacts import ContactFormData
-
-    payload = ContactFormData(
-        full_name="Alex Ng",
-        email="alex@example.com",
-        buying_roles=["founder", "technical_buyer"],
-    )
-    created = service.create_contact(conn, payload=payload)
-    assert created["buying_roles"] == ["founder", "technical_buyer"]
-    contact_repo.set_buying_roles.assert_called_once()
-
-    updated = service.update_contact(conn, contact_id=CONTACT_ID, payload=payload)
-    assert updated["buying_roles"] == ["founder", "technical_buyer"]
-
-    archived = service.archive_contact(conn, CONTACT_ID)
-    assert archived is not None
-
-    rows, total, filters = service.list_contacts(conn, query="alex")
-    assert total == 1
-    assert filters.query == "alex"
-
-
-@pytest.mark.unit
-def test_crm_service_blocks_unconfirmed_duplicates() -> None:
-    contact_repo = MagicMock()
-    contact_repo.find_possible_duplicates.return_value = [
-        {"id": CONTACT_ID, "duplicate_reason": "email"},
-    ]
-    service, conn, _ = _service_with_mocks(contact_repo=contact_repo)
-
-    from app.contacts import ContactFormData
-
-    payload = ContactFormData(full_name="Alex Ng", email="alex@example.com", buying_roles=["other"])
-    with pytest.raises(ValueError, match="duplicate"):
-        service.create_contact(conn, payload=payload)
-
-
-@pytest.mark.unit
 def test_crm_service_research_record_helpers() -> None:
     company_repo = MagicMock()
     contact_repo = MagicMock()
@@ -365,3 +290,56 @@ def test_crm_service_research_record_helpers() -> None:
     )
     assert record["body"] == "Series B"
     conn.commit.assert_called_once()
+
+
+@pytest.mark.unit
+def test_crm_service_contact_crud_and_duplicates() -> None:
+    contact_repo = MagicMock()
+    contact_repo.list_page.return_value = (
+        [{"id": CONTACT_ID, "full_name": "Ada", "buying_roles": []}],
+        1,
+    )
+    contact_repo.get_buying_roles.return_value = ["founder"]
+    contact_repo.list_all_active.return_value = [
+        {"id": CONTACT_ID, "full_name": "Ada", "email": "ada@example.com", "status": "active"}
+    ]
+    contact_repo.create.return_value = {"id": CONTACT_ID, "full_name": "Ada"}
+    contact_repo.get_by_id.return_value = {"id": CONTACT_ID, "full_name": "Ada", "status": "active"}
+    contact_repo.update.return_value = {"id": CONTACT_ID, "full_name": "Ada", "status": "archived"}
+    contact_repo.set_buying_roles.return_value = ["founder", "investor"]
+    contact_repo.list_for_company.return_value = [{"id": CONTACT_ID, "full_name": "Ada"}]
+
+    service, conn, _ = _service_with_mocks(contact_repo=contact_repo)
+
+    rows, total = service.list_contacts(conn, query="ada")
+    assert total == 1
+    assert rows[0]["buying_roles"] == ["founder"]
+
+    from app.contacts import ContactCreate, ContactUpdate
+
+    created = service.create_contact(
+        conn,
+        ContactCreate(full_name="Ada", buying_roles=["founder", "investor"]),
+    )
+    assert created["buying_roles"] == ["founder", "investor"]
+    contact_repo.set_buying_roles.assert_called()
+
+    updated = service.update_contact(
+        conn,
+        CONTACT_ID,
+        ContactUpdate(full_name="Ada Lovelace", buying_roles=["technical_buyer"]),
+    )
+    assert updated is not None
+
+    archived = service.archive_contact(conn, CONTACT_ID)
+    assert archived is not None
+    assert archived["status"] == "archived"
+
+    duplicates = service.find_contact_duplicates(
+        conn,
+        profile_url=None,
+        email="ada@example.com",
+        full_name="Ada",
+        company_id=COMPANY_ID,
+    )
+    assert duplicates

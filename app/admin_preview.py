@@ -53,27 +53,6 @@ SIGNAL_TYPES = ("hiring", "funding", "tech-stack", "intent", "news")
 PIPELINE_STAGES = ("qualified", "discovery", "proposal", "negotiation", "won")
 IMPORT_STATUSES = ("queued", "running", "complete", "failed")
 CONTENT_KINDS = ("insight", "case-study", "landing", "brief copy")
-BUYING_ROLE_PREVIEW = (
-    "founder",
-    "technical_buyer",
-    "executive_buyer",
-    "influencer",
-    "investor",
-    "introducer",
-    "other",
-)
-
-BUYING_ROLE_PREVIEW_LABELS = {
-    "founder": "Founder",
-    "technical_buyer": "Technical buyer",
-    "executive_buyer": "Executive buyer",
-    "influencer": "Influencer",
-    "investor": "Investor",
-    "introducer": "Introducer",
-    "other": "Other",
-}
-
-RELATIONSHIP_PREVIEW = ("unknown", "weak", "moderate", "strong", "champion")
 BRIEF_PAYMENT_STATUSES = ("pending_payment", "paid", "abandoned")
 BRIEF_TEXTS = (
     "Need a technical architecture review of our payments platform — "
@@ -89,10 +68,25 @@ UTM_SOURCES = ("linkedin", "referral", "google", "newsletter", "partner")
 UTM_MEDIUMS = ("social", "cpc", "email", "organic", None)
 UTM_CAMPAIGNS = ("spring-launch", "architecture-diagnostic", "inbound-q3", None)
 
+PREVIEW_CONTACT_IDS = (
+    "11111111-1111-1111-1111-111111111111",
+    "22222222-2222-2222-2222-222222222222",
+)
+
+BUYING_ROLE_PREVIEW = (
+    "founder",
+    "technical_buyer",
+    "executive_buyer",
+    "influencer",
+    "investor",
+    "introducer",
+    "other",
+)
+
 # Section path → short column labels for preview tables.
 _SECTION_COLUMNS: dict[str, tuple[str, ...]] = {
     "/admin/companies": ("Company", "Industry", "Employees", "Owner", "Updated"),
-    "/admin/contacts": ("Name", "Title", "Company", "Roles", "Strength", "Last touch"),
+    "/admin/contacts": ("Name", "Title", "Company", "Email", "Buying roles", "Last touch"),
     "/admin/signals": ("Signal", "Company", "Score", "Source", "Seen"),
     "/admin/pipeline": ("Deal", "Company", "Stage", "Value", "Next step"),
     "/admin/imports": ("Job", "Rows", "Status", "Source", "Started"),
@@ -301,19 +295,19 @@ def build_preview_section_rows(
                 )
             )
         elif active_path == "/admin/contacts":
-            roles = rng.sample(
-                BUYING_ROLE_PREVIEW,
-                k=rng.randint(1, min(3, len(BUYING_ROLE_PREVIEW))),
+            roles = ", ".join(
+                rng.sample(
+                    BUYING_ROLE_PREVIEW,
+                    k=rng.randint(1, min(3, len(BUYING_ROLE_PREVIEW))),
+                )
             )
-            role_text = ", ".join(BUYING_ROLE_PREVIEW_LABELS[r] for r in sorted(roles))
-            strength = rng.choice(RELATIONSHIP_PREVIEW)
             rows.append(
                 (
                     person,
                     rng.choice(("CTO", "VP Eng", "Founder", "Ops lead")),
                     company,
-                    role_text,
-                    strength.title(),
+                    _slug_email(first, last, company, rng),
+                    roles,
                     stamp,
                 )
             )
@@ -406,85 +400,6 @@ def _brief_email(company: str, rng: random.Random) -> str:
     first = rng.choice(CONTACT_FIRST)
     last = rng.choice(CONTACT_LAST)
     return _slug_email(first, last, company, rng)
-
-
-def build_preview_contact_rows(
-    *,
-    rng: random.Random | None = None,
-    now: datetime | None = None,
-) -> list[tuple[str, ...]]:
-    """Randomized contact list rows for ADMIN_PREVIEW_MODE screenshots."""
-    rng = rng or _preview_rng()
-    now = now or datetime.now(timezone.utc)
-    companies = list(COMPANY_NAMES)
-    rng.shuffle(companies)
-    count = rng.randint(5, 8)
-    rows: list[tuple[str, ...]] = []
-    for i in range(count):
-        company = companies[i % len(companies)]
-        person = _person(rng)
-        roles = rng.sample(
-            BUYING_ROLE_PREVIEW,
-            k=rng.randint(1, min(3, len(BUYING_ROLE_PREVIEW))),
-        )
-        role_text = ", ".join(BUYING_ROLE_PREVIEW_LABELS[r] for r in sorted(roles))
-        archived = " (archived)" if i == count - 1 else ""
-        rows.append(
-            (
-                f"{person}{archived}",
-                rng.choice(("CTO", "VP Eng", "Founder", "Ops lead")),
-                company,
-                role_text,
-                rng.choice(RELATIONSHIP_PREVIEW).title(),
-                _relative_stamp(rng, now),
-            )
-        )
-    return rows
-
-
-def render_preview_contacts_main(
-    *,
-    label: str,
-    summary: str,
-    rng: random.Random | None = None,
-    now: datetime | None = None,
-) -> str:
-    """HTML main fragment for the contacts admin page in preview mode."""
-    rng = rng or _preview_rng()
-    now = now or datetime.now(timezone.utc)
-    columns = _SECTION_COLUMNS["/admin/contacts"]
-    data_rows = build_preview_contact_rows(rng=rng, now=now)
-    head = "".join(f'<th scope="col">{html.escape(col)}</th>' for col in columns)
-    body = "\n".join(
-        "<tr>"
-        + "".join(f"<td>{html.escape(cell)}</td>" for cell in row)
-        + "</tr>"
-        for row in data_rows
-    )
-    generated = now.strftime("%Y-%m-%d %H:%M:%S UTC")
-    safe_label = html.escape(label)
-    return f"""        <section class="admin-contacts" aria-labelledby="admin-section-title">
-          <p class="admin-preview-banner" role="status">Preview data — not production</p>
-          <p class="admin-eyebrow">Preview</p>
-          <h1 class="admin-title" id="admin-section-title">{safe_label}</h1>
-          <p class="admin-lede">
-            {html.escape(summary)} Mock contacts with buying roles for screenshots
-            (<time datetime="{html.escape(generated)}">{html.escape(generated)}</time>).
-          </p>
-          <p class="admin-actions"><a class="cta" href="/admin/contacts/new">New contact</a></p>
-          <div class="admin-table-wrap">
-            <table class="admin-table">
-              <thead>
-                <tr>
-                  {head}
-                </tr>
-              </thead>
-              <tbody>
-                {body}
-              </tbody>
-            </table>
-          </div>
-        </section>"""
 
 
 def build_preview_brief_rows(
@@ -658,3 +573,176 @@ def render_preview_section_main(
           </div>
         </section>"""
 
+
+def build_preview_contact_detail(
+    contact_key: int | str,
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> dict[str, object] | None:
+    """Preview contact rows: key 1 / first UUID full profile; key 2 sparse/nullables."""
+    if isinstance(contact_key, str):
+        try:
+            contact_index = PREVIEW_CONTACT_IDS.index(contact_key) + 1
+        except ValueError:
+            return None
+    else:
+        contact_index = contact_key
+    if contact_index < 1 or contact_index > len(PREVIEW_CONTACT_IDS):
+        return None
+    preview_id = PREVIEW_CONTACT_IDS[contact_index - 1]
+    rng = rng or _preview_rng()
+    now = now or datetime.now(timezone.utc)
+    company = COMPANY_NAMES[(contact_index - 1) % len(COMPANY_NAMES)]
+    first = CONTACT_FIRST[contact_index % len(CONTACT_FIRST)]
+    last = CONTACT_LAST[contact_index % len(CONTACT_LAST)]
+    full_name = f"{first} {last}"
+    if contact_index == 1:
+        return {
+            "id": preview_id,
+            "full_name": full_name,
+            "title": "CTO",
+            "company_id": contact_index,
+            "company_name": company,
+            "email": _slug_email(first, last, company, rng),
+            "profile_url": f"https://linkedin.com/in/{first.lower()}-{last.lower()}",
+            "email_provenance": "conference badge scan",
+            "email_permission": "explicit opt-in",
+            "relationship_strength": 4,
+            "last_interaction_at": now - timedelta(days=3),
+            "notes": "Warm intro path via portfolio founder.",
+            "status": "active",
+            "buying_roles": ["founder", "technical_buyer"],
+        }
+    return {
+        "id": preview_id,
+        "full_name": full_name,
+        "title": None,
+        "company_id": None,
+        "company_name": None,
+        "email": None,
+        "profile_url": f"https://www.linkedin.com/in/{first.lower()}{last.lower()}/",
+        "email_provenance": None,
+        "email_permission": None,
+        "relationship_strength": None,
+        "last_interaction_at": None,
+        "notes": None,
+        "status": "active",
+        "buying_roles": ["influencer"],
+    }
+
+
+def render_preview_contacts_main(
+    *,
+    admin_username: str = "",
+    csrf_token: str = "",
+    query: str | None = None,
+    include_archived: bool = False,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> str:
+    from app.admin_contacts_pages import render_admin_contacts_page
+
+    rng = rng or _preview_rng()
+    now = now or datetime.now(timezone.utc)
+    rows: list[dict[str, object]] = []
+    for index in range(rng.randint(5, 8)):
+        company = COMPANY_NAMES[index % len(COMPANY_NAMES)]
+        first = rng.choice(CONTACT_FIRST)
+        last = rng.choice(CONTACT_LAST)
+        rows.append(
+            {
+                "id": PREVIEW_CONTACT_IDS[index % len(PREVIEW_CONTACT_IDS)],
+                "full_name": f"{first} {last}",
+                "title": rng.choice(("CTO", "VP Eng", "Founder", "Ops lead")),
+                "company_name": company,
+                "email": _slug_email(first, last, company, rng),
+                "buying_roles": rng.sample(
+                    BUYING_ROLE_PREVIEW,
+                    k=rng.randint(1, 3),
+                ),
+                "last_interaction_at": now - timedelta(hours=rng.randint(2, 120)),
+                "status": "archived" if include_archived and index == 0 else "active",
+            }
+        )
+    return render_admin_contacts_page(
+        contacts=rows,  # type: ignore[arg-type]
+        total=len(rows),
+        query=query,
+        include_archived=include_archived,
+        csrf_token=csrf_token,
+        admin_username=admin_username,
+    )
+
+
+def render_preview_contact_form(
+    *,
+    admin_username: str = "",
+    csrf_token: str = "",
+    is_edit: bool = False,
+    contact_id: object | None = None,
+    rng: random.Random | None = None,
+) -> str:
+    from app.admin_contacts_pages import render_admin_contact_form_page
+
+    rng = rng or _preview_rng()
+    companies = [{"id": index + 1, "name": name} for index, name in enumerate(COMPANY_NAMES[:6])]
+    contact: dict[str, object] | None = None
+    buying_roles: list[str] = []
+    if is_edit:
+        detail = build_preview_contact_detail(1, rng=rng)
+        if detail is not None:
+            contact = detail
+            buying_roles = list(detail.get("buying_roles") or [])  # type: ignore[arg-type]
+    return render_admin_contact_form_page(
+        companies=companies,  # type: ignore[arg-type]
+        contact=contact,
+        buying_roles=buying_roles,
+        csrf_token=csrf_token,
+        admin_username=admin_username,
+        is_edit=is_edit,
+    )
+
+
+def render_preview_contact_detail(
+    *,
+    contact_id: object,
+    admin_username: str = "",
+    csrf_token: str = "",
+    error_message: str | None = None,
+    rng: random.Random | None = None,
+) -> str:
+    from app.admin_research_pages import render_admin_contact_research_page
+
+    try:
+        numeric_id = PREVIEW_CONTACT_IDS.index(str(contact_id)) + 1
+    except ValueError:
+        try:
+            numeric_id = int(str(contact_id))
+        except ValueError:
+            numeric_id = 1
+    detail = build_preview_contact_detail(numeric_id, rng=rng)
+    if detail is None:
+        detail = build_preview_contact_detail(1, rng=rng) or {}
+    company = None
+    if detail.get("company_name"):
+        company = {
+            "id": detail.get("company_id", 1),
+            "name": detail["company_name"],
+        }
+    records: list[dict[str, object]] = []
+    if numeric_id == 1:
+        records = [
+            {
+                "record_type": "relationship_context",
+                "body": "Met at SaaStr — interested in architecture diagnostic.",
+            }
+        ]
+    return render_admin_contact_research_page(
+        contact=detail,  # type: ignore[arg-type]
+        company=company,  # type: ignore[arg-type]
+        records=records,  # type: ignore[arg-type]
+        csrf_token=csrf_token,
+        admin_username=admin_username,
+        error_message=error_message,
+    )

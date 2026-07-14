@@ -85,6 +85,10 @@ ADMIN_PATHS: frozenset[str] = frozenset(link["href"] for link in ADMIN_NAV_LINKS
 ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     *(link["href"] for link in ADMIN_NAV_LINKS),
     "/admin/login",
+    "/admin/briefs/1",
+    "/admin/briefs/2",
+    "/admin/contacts/11111111-1111-1111-1111-111111111111",
+    "/admin/contacts/22222222-2222-2222-2222-222222222222",
 )
 
 
@@ -114,20 +118,24 @@ def render_admin_shell(
     title: str,
     main: str,
     active_path: str,
-    csrf_token: str | None = None,
+    admin_username: str = "",
+    csrf_token: str = "",
 ) -> str:
     """Return a complete admin HTML document."""
     page_title = html.escape(title)
     nav = render_admin_nav(active_path)
-    logout_html = ""
+    user_chip = ""
+    if admin_username:
+        user_chip = (
+            f'<span class="admin-user">Signed in as '
+            f"<strong>{html.escape(admin_username)}</strong></span>"
+        )
+    csrf_input = ""
     if csrf_token:
-        safe_csrf = html.escape(csrf_token, quote=True)
-        logout_html = f"""      <form method="post" action="/admin/logout" class="admin-logout-form">
-        <input type="hidden" name="csrf_token" value="{safe_csrf}" />
-        <button class="admin-exit admin-logout" type="submit">Sign out</button>
-      </form>"""
-    else:
-        logout_html = '      <a class="admin-exit" href="/">Public site</a>'
+        csrf_input = (
+            '<input type="hidden" name="csrf_token" '
+            f'value="{html.escape(csrf_token, quote=True)}" />'
+        )
     return f"""<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -135,6 +143,7 @@ def render_admin_shell(
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
     <title>{page_title} · saberistic admin</title>
+    <link rel="icon" href="/assets/logo.png" type="image/png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -156,7 +165,14 @@ def render_admin_shell(
         />
         <span class="admin-badge">Admin</span>
       </a>
-{logout_html}
+      <div class="admin-top-actions">
+        {user_chip}
+        <a class="admin-exit" href="/">Public site</a>
+        <form method="post" action="/admin/logout">
+          {csrf_input}
+          <button class="admin-exit admin-signout" type="submit">Sign out</button>
+        </form>
+      </div>
     </header>
     <div class="admin-layout">
 {nav}

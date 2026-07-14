@@ -1,16 +1,15 @@
-"""Contact buying roles, validation, and duplicate detection helpers."""
+"""Contact domain types, buying roles, normalization, and duplicate detection."""
 
 from __future__ import annotations
 
-import html
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator
 
 BUYING_ROLES: frozenset[str] = frozenset(
     {
@@ -34,217 +33,264 @@ BUYING_ROLE_LABELS: dict[str, str] = {
     "other": "Other",
 }
 
-RELATIONSHIP_STRENGTHS: frozenset[str] = frozenset(
-    {"unknown", "weak", "moderate", "strong", "champion"}
-)
+CONTACT_STATUSES: frozenset[str] = frozenset({"active", "archived"})
 
-RELATIONSHIP_STRENGTH_LABELS: dict[str, str] = {
-    "unknown": "Unknown",
-    "weak": "Weak",
-    "moderate": "Moderate",
-    "strong": "Strong",
-    "champion": "Champion",
-}
+RELATIONSHIP_STRENGTH_MIN = 1
+RELATIONSHIP_STRENGTH_MAX = 5
 
-EMAIL_PERMISSIONS: frozenset[str] = frozenset(
-    {"unknown", "implied", "explicit", "do_not_contact"}
-)
-
-EMAIL_PERMISSION_LABELS: dict[str, str] = {
-    "unknown": "Unknown",
-    "implied": "Implied",
-    "explicit": "Explicit",
-    "do_not_contact": "Do not contact",
-}
-
-_UNSAFE_URL_SCHEMES = frozenset({"javascript", "data", "vbscript", "file"})
+_WHITESPACE_RE = re.compile(r"\s+")
 
 
-def normalize_email(value: str | None) -> str | None:
-    if value is None:
+def normalize_email(email: str | None) -> str | None:
+    if email is None:
         return None
-    stripped = value.strip().lower()
-    return stripped or None
-
-
-def normalize_name(value: str | None) -> str | None:
-    if value is None:
-        return None
-    collapsed = re.sub(r"\s+", " ", value.strip().lower())
-    return collapsed or None
-
-
-def normalize_profile_url(value: str | None) -> str | None:
-    if value is None:
-        return None
-    stripped = value.strip()
+    stripped = email.strip()
     if not stripped:
         return None
-    parsed = urlparse(stripped)
-    scheme = (parsed.scheme or "").lower()
+    return stripped.lower()
+
+
+def normalize_name(name: str | None) -> str | None:
+    if name is None:
+        return None
+    collapsed = _WHITESPACE_RE.sub(" ", name.strip())
+    if not collapsed:
+        return None
+    return collapsed.casefold()
+
+
+def normalize_profile_url(url: str | None) -> str | None:
+    """Normalize profile URLs for duplicate comparison."""
+    if url is None:
+        return None
+    stripped = url.strip()
+    if not stripped:
+        return None
+    parsed = urlparse(stripped if "://" in stripped else f"https://{stripped}")
+    scheme = (parsed.scheme or "https").lower()
     if scheme not in {"http", "https"}:
-        raise ValueError("profile URL must use http or https")
-    if scheme in _UNSAFE_URL_SCHEMES:
-        raise ValueError("profile URL scheme is not allowed")
-    if not parsed.netloc:
-        raise ValueError("profile URL must include a host")
-    host = parsed.netloc.lower().removeprefix("www.")
-    path = parsed.path.rstrip("/") or "/"
-    query = f"?{parsed.query}" if parsed.query else ""
-    return f"{scheme}://{host}{path}{query}".lower()
+        return stripped.rstrip("/").lower()
+    host = (parsed.hostname or "").lower()
+    if host.startswith("www."):
+        host = host[4:]
+    path = parsed.path.rstrip("/") or ""
+    # LinkedIn: drop locale prefix (/en, /in) for person/company paths.
+    if host in {"linkedin.com", "www.linkedin.com"}:
+        parts = [part for part in path.split("/") if part]
+        if len(parts) >= 2 and parts[0] in {"in", "pub"}:
+            path = "/" + "/".join(parts)
+        elif len(parts) >= 2:
+            path = "/" + "/".join(parts[:2])
+    netloc = host
+    if parsed.port and parsed.port not in {80, 443}:
+        netloc = f"{host}:{parsed.port}"
+    normalized = urlunparse((scheme, netloc, path, "", "", ""))
+    return normalized.rstrip("/").lower()
 
 
-def validate_buying_roles(roles: list[str]) -> list[str]:
-    normalized: list[str] = []
-    for role in roles:
-        stripped = role.strip()
-        if not stripped:
-            continue
-        if stripped not in BUYING_ROLES:
-            allowed = ", ".join(sorted(BUYING_ROLES))
-            raise ValueError(f"buying role must be one of: {allowed}")
-        if stripped not in normalized:
-            normalized.append(stripped)
-    return normalized
-
-
-def format_buying_roles(roles: list[str]) -> str:
-    if not roles:
-        return ""
-    labels = [BUYING_ROLE_LABELS.get(role, role) for role in sorted(roles)]
-    return ", ".join(labels)
-
-
-def render_buying_role_badges(roles: list[str]) -> str:
-    if not roles:
-        return '<span class="admin-note">No roles</span>'
-    badges = []
-    for role in sorted(roles):
-        label = BUYING_ROLE_LABELS.get(role, role)
-        badges.append(
-            f'<span class="contact-role-badge contact-role-badge--{html.escape(role, quote=True)}">'
-            f"{html.escape(label)}</span>"
-        )
-    return " ".join(badges)
-
-
-def contact_display_name(contact: dict[str, Any]) -> str:
-    full_name = str(contact.get("full_name") or "").strip()
-    if full_name:
-        return full_name
-    email = str(contact.get("email") or "").strip()
-    if email:
-        return email
-    profile_url = str(contact.get("profile_url") or "").strip()
-    if profile_url:
-        return profile_url
-    return str(contact.get("id", "Contact"))
-
-
-def parse_optional_datetime(value: str | None) -> datetime | None:
-    if value is None:
-        return None
-    stripped = value.strip()
-    if not stripped:
-        return None
-    normalized = stripped.replace("Z", "+00:00")
-    parsed = datetime.fromisoformat(normalized)
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed
-
-
-def format_contact_timestamp(value: datetime | str | None) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, str):
-        parsed = parse_optional_datetime(value)
-        if parsed is None:
-            return html.escape(value)
-        value = parsed
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    return html.escape(value.strftime("%Y-%m-%d %H:%M UTC"))
-
-
-@dataclass(frozen=True)
-class ContactDuplicateMatch:
-    contact_id: UUID
-    reason: str
-    contact: dict[str, Any]
-
-
-class ContactFormData(BaseModel):
-    full_name: str = Field(..., min_length=1, max_length=500)
+class ContactCreate(BaseModel):
+    full_name: str = Field(min_length=1, max_length=500)
+    company_id: UUID | None = None
+    email: str | None = Field(default=None, max_length=500)
     title: str | None = Field(default=None, max_length=500)
     profile_url: str | None = Field(default=None, max_length=2000)
-    email: str | None = Field(default=None, max_length=500)
-    email_provenance: str | None = Field(default=None, max_length=1000)
-    email_permission: str | None = Field(default=None, max_length=64)
-    company_id: str | None = Field(default=None, max_length=64)
-    last_interaction_at: str | None = Field(default=None, max_length=64)
-    relationship_strength: str | None = Field(default=None, max_length=64)
-    notes: str | None = Field(default=None, max_length=10_000)
+    email_provenance: str | None = Field(default=None, max_length=500)
+    email_permission: str | None = Field(default=None, max_length=500)
+    last_interaction_at: datetime | None = None
+    relationship_strength: int | None = None
+    notes: str | None = Field(default=None, max_length=10000)
     buying_roles: list[str] = Field(default_factory=list)
-    confirm_duplicates: bool = False
-
-    @field_validator("full_name", "title", "email_provenance", "notes")
-    @classmethod
-    def strip_text(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        stripped = value.strip()
-        return stripped or None
 
     @field_validator("email")
     @classmethod
-    def normalize_email_field(cls, value: str | None) -> str | None:
-        return normalize_email(value)
+    def validate_email(cls, value: str | None) -> str | None:
+        normalized = normalize_email(value)
+        if normalized and "@" not in normalized:
+            raise ValueError("email must contain @")
+        return normalized
 
-    @field_validator("profile_url")
+    @field_validator("buying_roles")
     @classmethod
-    def validate_profile_url_field(cls, value: str | None) -> str | None:
+    def validate_buying_roles(cls, roles: list[str]) -> list[str]:
+        unique: list[str] = []
+        seen: set[str] = set()
+        for role in roles:
+            if role not in BUYING_ROLES:
+                raise ValueError(f"invalid buying role: {role}")
+            if role not in seen:
+                seen.add(role)
+                unique.append(role)
+        return unique
+
+    @field_validator("relationship_strength")
+    @classmethod
+    def validate_relationship_strength(cls, value: int | None) -> int | None:
         if value is None:
             return None
-        stripped = value.strip()
-        if not stripped:
-            return None
-        return normalize_profile_url(stripped)
+        if value < RELATIONSHIP_STRENGTH_MIN or value > RELATIONSHIP_STRENGTH_MAX:
+            raise ValueError(
+                f"relationship strength must be between {RELATIONSHIP_STRENGTH_MIN} "
+                f"and {RELATIONSHIP_STRENGTH_MAX}"
+            )
+        return value
 
-    @field_validator("email_permission", "relationship_strength")
+
+class ContactUpdate(BaseModel):
+    full_name: str | None = Field(default=None, min_length=1, max_length=500)
+    company_id: UUID | None = None
+    clear_company: bool = False
+    email: str | None = Field(default=None, max_length=500)
+    clear_email: bool = False
+    title: str | None = Field(default=None, max_length=500)
+    clear_title: bool = False
+    profile_url: str | None = Field(default=None, max_length=2000)
+    clear_profile_url: bool = False
+    email_provenance: str | None = Field(default=None, max_length=500)
+    clear_email_provenance: bool = False
+    email_permission: str | None = Field(default=None, max_length=500)
+    clear_email_permission: bool = False
+    last_interaction_at: datetime | None = None
+    clear_last_interaction: bool = False
+    relationship_strength: int | None = None
+    clear_relationship_strength: bool = False
+    notes: str | None = Field(default=None, max_length=10000)
+    clear_notes: bool = False
+    buying_roles: list[str] | None = None
+
+    @field_validator("email")
     @classmethod
-    def validate_optional_enums(cls, value: str | None) -> str | None:
+    def validate_email(cls, value: str | None) -> str | None:
+        normalized = normalize_email(value)
+        if normalized and "@" not in normalized:
+            raise ValueError("email must contain @")
+        return normalized
+
+    @field_validator("buying_roles")
+    @classmethod
+    def validate_buying_roles(cls, roles: list[str] | None) -> list[str] | None:
+        if roles is None:
+            return None
+        unique: list[str] = []
+        seen: set[str] = set()
+        for role in roles:
+            if role not in BUYING_ROLES:
+                raise ValueError(f"invalid buying role: {role}")
+            if role not in seen:
+                seen.add(role)
+                unique.append(role)
+        return unique
+
+    @field_validator("relationship_strength")
+    @classmethod
+    def validate_relationship_strength(cls, value: int | None) -> int | None:
         if value is None:
             return None
-        stripped = value.strip()
-        return stripped or None
+        if value < RELATIONSHIP_STRENGTH_MIN or value > RELATIONSHIP_STRENGTH_MAX:
+            raise ValueError(
+                f"relationship strength must be between {RELATIONSHIP_STRENGTH_MIN} "
+                f"and {RELATIONSHIP_STRENGTH_MAX}"
+            )
+        return value
 
-    @field_validator("buying_roles", mode="before")
-    @classmethod
-    def coerce_roles(cls, value: object) -> list[str]:
-        if value is None:
-            return []
-        if isinstance(value, str):
-            return [value] if value.strip() else []
-        if isinstance(value, (list, tuple)):
-            return [str(item) for item in value]
-        return []
 
-    @model_validator(mode="after")
-    def validate_roles_and_enums(self) -> ContactFormData:
-        self.buying_roles = validate_buying_roles(self.buying_roles)
-        if self.email_permission and self.email_permission not in EMAIL_PERMISSIONS:
-            allowed = ", ".join(sorted(EMAIL_PERMISSIONS))
-            raise ValueError(f"email_permission must be one of: {allowed}")
-        if self.relationship_strength and self.relationship_strength not in RELATIONSHIP_STRENGTHS:
-            allowed = ", ".join(sorted(RELATIONSHIP_STRENGTHS))
-            raise ValueError(f"relationship_strength must be one of: {allowed}")
-        return self
+@dataclass
+class DuplicateWarning:
+    reason: str
+    contact_id: str
+    label: str
 
-    def parsed_company_id(self) -> UUID | None:
-        if not self.company_id or not self.company_id.strip():
-            return None
-        return UUID(self.company_id.strip())
 
-    def parsed_last_interaction_at(self) -> datetime | None:
-        return parse_optional_datetime(self.last_interaction_at)
+def find_duplicate_warnings(
+    contacts: list[dict[str, Any]],
+    *,
+    profile_url: str | None,
+    email: str | None,
+    full_name: str | None,
+    company_id: UUID | None,
+    exclude_contact_id: UUID | None = None,
+) -> list[DuplicateWarning]:
+    """Return non-blocking duplicate warnings for normalized identifiers."""
+    norm_profile = normalize_profile_url(profile_url)
+    norm_email = normalize_email(email)
+    norm_name = normalize_name(full_name)
+    company_key = str(company_id) if company_id is not None else None
+    warnings: list[DuplicateWarning] = []
+    seen: set[tuple[str, str]] = set()
+
+    for contact in contacts:
+        contact_id = str(contact["id"])
+        if exclude_contact_id is not None and contact_id == str(exclude_contact_id):
+            continue
+        if str(contact.get("status", "active")) == "archived":
+            continue
+        label = _contact_label(contact)
+
+        if norm_profile:
+            other_profile = normalize_profile_url(contact.get("profile_url"))
+            if other_profile and other_profile == norm_profile:
+                key = ("profile_url", contact_id)
+                if key not in seen:
+                    seen.add(key)
+                    warnings.append(
+                        DuplicateWarning(
+                            reason="profile_url",
+                            contact_id=contact_id,
+                            label=label,
+                        )
+                    )
+
+        if norm_email:
+            other_email = normalize_email(contact.get("email"))
+            if other_email and other_email == norm_email:
+                key = ("email", contact_id)
+                if key not in seen:
+                    seen.add(key)
+                    warnings.append(
+                        DuplicateWarning(
+                            reason="email",
+                            contact_id=contact_id,
+                            label=label,
+                        )
+                    )
+
+        if norm_name and company_key:
+            other_name = normalize_name(contact.get("full_name"))
+            other_company = (
+                str(contact["company_id"])
+                if contact.get("company_id") is not None
+                else None
+            )
+            if other_name and other_company == company_key and other_name == norm_name:
+                key = ("name_company", contact_id)
+                if key not in seen:
+                    seen.add(key)
+                    warnings.append(
+                        DuplicateWarning(
+                            reason="name_company",
+                            contact_id=contact_id,
+                            label=label,
+                        )
+                    )
+
+    return warnings
+
+
+def _contact_label(contact: dict[str, Any]) -> str:
+    name = str(contact.get("full_name") or "").strip()
+    email = str(contact.get("email") or "").strip()
+    if name and email:
+        return f"{name} ({email})"
+    return name or email or str(contact.get("id", ""))
+
+
+def format_buying_roles(roles: list[str]) -> str:
+    return ", ".join(BUYING_ROLE_LABELS.get(role, role) for role in roles)
+
+
+def parse_last_interaction(value: str | None) -> datetime | None:
+    if value is None or not value.strip():
+        return None
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    return datetime.fromisoformat(text)

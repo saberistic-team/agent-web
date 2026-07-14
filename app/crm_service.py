@@ -10,7 +10,13 @@ import psycopg
 
 from app import audit_service
 from app.actor_context import ActorContext
-from app.contacts import ContactDuplicateMatch, ContactFormData, contact_display_name
+from app.contacts import (
+    ContactCreate,
+    ContactUpdate,
+    DuplicateWarning,
+    find_duplicate_warnings,
+    normalize_email,
+)
 from app.crm_uow import crm_transaction
 from app.repositories import (
     ActivityRepository,
@@ -49,38 +55,6 @@ def default_crm_repositories() -> CrmRepositories:
     )
 
 
-@dataclass(frozen=True)
-class ContactListFilters:
-    page: int = 1
-    per_page: int = 50
-    query: str | None = None
-    company_id: UUID | None = None
-    include_archived: bool = False
-
-
-def normalize_contact_filters(
-    *,
-    page: int = 1,
-    per_page: int = 50,
-    query: str | None = None,
-    company_id: str | None = None,
-    include_archived: bool = False,
-) -> ContactListFilters:
-    safe_page = max(page, 1)
-    safe_per_page = max(1, min(per_page, 100))
-    normalized_query = query.strip() if query and query.strip() else None
-    parsed_company_id: UUID | None = None
-    if company_id and company_id.strip():
-        parsed_company_id = UUID(company_id.strip())
-    return ContactListFilters(
-        page=safe_page,
-        per_page=safe_per_page,
-        query=normalized_query,
-        company_id=parsed_company_id,
-        include_archived=include_archived,
-    )
-
-
 class CrmService:
     """Thin service layer for admin/import/discovery callers."""
 
@@ -104,8 +78,8 @@ class CrmService:
             )
             contact = self._repos.contacts.create(
                 conn,
-                email=contact_email,
-                full_name=contact_name,
+                full_name=contact_name or contact_email,
+                email=normalize_email(contact_email),
                 company_id=UUID(str(company["id"])),
             )
         return {"company": company, "contact": contact}
@@ -179,6 +153,56 @@ class CrmService:
         company_id: UUID,
         *,
         limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        return self._repos.contacts.list_for_company(conn, company_id, limit=limit)
+
+    def get_contact(
+        self,
+        conn: psycopg.Connection,
+        contact_id: UUID,
+    ) -> dict[str, Any] | None:
+        return self._repos.contacts.get_by_id(conn, contact_id)
+
+    def get_contact_with_roles(
+        self,
+        conn: psycopg.Connection,
+        contact_id: UUID,
+    ) -> dict[str, Any] | None:
+        contact = self._repos.contacts.get_by_id(conn, contact_id)
+        if contact is None:
+            return None
+        roles = self._repos.contacts.get_buying_roles(conn, contact_id)
+        return {**contact, "buying_roles": roles}
+
+    def list_contacts(
+        self,
+        conn: psycopg.Connection,
+        *,
+        query: str | None = None,
+        include_archived: bool = False,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        rows, total = self._repos.contacts.list_page(
+            conn,
+            query=query,
+            include_archived=include_archived,
+            limit=limit,
+            offset=offset,
+        )
+        enriched: list[dict[str, Any]] = []
+        for row in rows:
+            contact_id = UUID(str(row["id"]))
+            roles = self._repos.contacts.get_buying_roles(conn, contact_id)
+            enriched.append({**row, "buying_roles": roles})
+        return enriched, total
+
+    def list_contacts_for_company_with_roles(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        limit: int = 100,
         include_archived: bool = False,
     ) -> list[dict[str, Any]]:
         contacts = self._repos.contacts.list_for_company(
@@ -187,168 +211,99 @@ class CrmService:
             limit=limit,
             include_archived=include_archived,
         )
-        return self._attach_buying_roles(conn, contacts)
-
-    def get_contact(
-        self,
-        conn: psycopg.Connection,
-        contact_id: UUID,
-    ) -> dict[str, Any] | None:
-        contact = self._repos.contacts.get_by_id(conn, contact_id)
-        if contact is None:
-            return None
-        roles = self._repos.contacts.list_buying_roles(conn, contact_id)
-        enriched = dict(contact)
-        enriched["buying_roles"] = roles
+        enriched: list[dict[str, Any]] = []
+        for contact in contacts:
+            contact_id = UUID(str(contact["id"]))
+            roles = self._repos.contacts.get_buying_roles(conn, contact_id)
+            enriched.append({**contact, "buying_roles": roles})
         return enriched
-
-    def list_contacts(
-        self,
-        conn: psycopg.Connection,
-        *,
-        page: int = 1,
-        per_page: int = 50,
-        query: str | None = None,
-        company_id: UUID | None = None,
-        include_archived: bool = False,
-    ) -> tuple[list[dict[str, Any]], int, ContactListFilters]:
-        filters = normalize_contact_filters(
-            page=page,
-            per_page=per_page,
-            query=query,
-            company_id=str(company_id) if company_id else None,
-            include_archived=include_archived,
-        )
-        rows, total = self._repos.contacts.list_page(
-            conn,
-            page=filters.page,
-            per_page=filters.per_page,
-            query=filters.query,
-            company_id=filters.company_id,
-            include_archived=filters.include_archived,
-        )
-        return self._attach_buying_roles(conn, rows), total, filters
 
     def find_contact_duplicates(
         self,
         conn: psycopg.Connection,
         *,
-        email: str | None = None,
-        profile_url: str | None = None,
-        full_name: str | None = None,
-        company_id: UUID | None = None,
+        profile_url: str | None,
+        email: str | None,
+        full_name: str | None,
+        company_id: UUID | None,
         exclude_contact_id: UUID | None = None,
-    ) -> list[ContactDuplicateMatch]:
-        rows = self._repos.contacts.find_possible_duplicates(
-            conn,
-            email=email,
+    ) -> list[DuplicateWarning]:
+        candidates = self._repos.contacts.list_all_active(conn)
+        return find_duplicate_warnings(
+            candidates,
             profile_url=profile_url,
+            email=email,
             full_name=full_name,
             company_id=company_id,
             exclude_contact_id=exclude_contact_id,
         )
-        reason_labels = {
-            "email": "matching email",
-            "profile_url": "matching profile URL",
-            "name_company": "matching name and company",
-        }
-        matches: list[ContactDuplicateMatch] = []
-        for row in rows:
-            reason_key = str(row.get("duplicate_reason", "unknown"))
-            matches.append(
-                ContactDuplicateMatch(
-                    contact_id=UUID(str(row["id"])),
-                    reason=reason_labels.get(reason_key, reason_key),
-                    contact=row,
-                )
-            )
-        return matches
 
     def create_contact(
         self,
         conn: psycopg.Connection,
-        *,
-        payload: ContactFormData,
+        payload: ContactCreate,
     ) -> dict[str, Any]:
-        duplicates = self.find_contact_duplicates(
-            conn,
-            email=payload.email,
-            profile_url=payload.profile_url,
-            full_name=payload.full_name,
-            company_id=payload.parsed_company_id(),
-        )
-        if duplicates and not payload.confirm_duplicates:
-            raise ValueError("possible duplicate contacts detected")
         with crm_transaction(conn):
             contact = self._repos.contacts.create(
                 conn,
-                email=payload.email,
                 full_name=payload.full_name,
-                company_id=payload.parsed_company_id(),
+                company_id=payload.company_id,
+                email=payload.email,
                 title=payload.title,
                 profile_url=payload.profile_url,
                 email_provenance=payload.email_provenance,
                 email_permission=payload.email_permission,
-                last_interaction_at=payload.parsed_last_interaction_at(),
+                last_interaction_at=payload.last_interaction_at,
                 relationship_strength=payload.relationship_strength,
                 notes=payload.notes,
             )
-            contact_id = UUID(str(contact["id"]))
             roles = self._repos.contacts.set_buying_roles(
                 conn,
-                contact_id,
+                UUID(str(contact["id"])),
                 payload.buying_roles,
             )
-        enriched = dict(contact)
-        enriched["buying_roles"] = roles
-        return enriched
+        return {**contact, "buying_roles": roles}
 
     def update_contact(
         self,
         conn: psycopg.Connection,
-        *,
         contact_id: UUID,
-        payload: ContactFormData,
-    ) -> dict[str, Any]:
-        existing = self._repos.contacts.get_by_id(conn, contact_id)
-        if existing is None:
-            raise ValueError("contact not found")
-        duplicates = self.find_contact_duplicates(
-            conn,
-            email=payload.email,
-            profile_url=payload.profile_url,
-            full_name=payload.full_name,
-            company_id=payload.parsed_company_id(),
-            exclude_contact_id=contact_id,
-        )
-        if duplicates and not payload.confirm_duplicates:
-            raise ValueError("possible duplicate contacts detected")
+        payload: ContactUpdate,
+    ) -> dict[str, Any] | None:
         with crm_transaction(conn):
-            updated = self._repos.contacts.update(
+            contact = self._repos.contacts.update(
                 conn,
                 contact_id,
-                email=payload.email,
                 full_name=payload.full_name,
-                company_id=payload.parsed_company_id(),
+                company_id=payload.company_id,
+                clear_company=payload.clear_company,
+                email=payload.email,
+                clear_email=payload.clear_email,
                 title=payload.title,
+                clear_title=payload.clear_title,
                 profile_url=payload.profile_url,
+                clear_profile_url=payload.clear_profile_url,
                 email_provenance=payload.email_provenance,
+                clear_email_provenance=payload.clear_email_provenance,
                 email_permission=payload.email_permission,
-                last_interaction_at=payload.parsed_last_interaction_at(),
+                clear_email_permission=payload.clear_email_permission,
+                last_interaction_at=payload.last_interaction_at,
+                clear_last_interaction=payload.clear_last_interaction,
                 relationship_strength=payload.relationship_strength,
+                clear_relationship_strength=payload.clear_relationship_strength,
                 notes=payload.notes,
-                clear_company=not (payload.company_id and payload.company_id.strip()),
+                clear_notes=payload.clear_notes,
             )
-            if updated is None:
-                raise ValueError("contact not found")
-            roles = self._repos.contacts.set_buying_roles(
-                conn,
-                contact_id,
-                payload.buying_roles,
-            )
-        enriched = dict(updated)
-        enriched["buying_roles"] = roles
-        return enriched
+            roles = self._repos.contacts.get_buying_roles(conn, contact_id)
+            if payload.buying_roles is not None:
+                roles = self._repos.contacts.set_buying_roles(
+                    conn,
+                    contact_id,
+                    payload.buying_roles,
+                )
+        if contact is None:
+            return None
+        return {**contact, "buying_roles": roles}
 
     def archive_contact(
         self,
@@ -356,26 +311,15 @@ class CrmService:
         contact_id: UUID,
     ) -> dict[str, Any] | None:
         with crm_transaction(conn):
-            archived = self._repos.contacts.archive(conn, contact_id)
-        return archived
-
-    def _attach_buying_roles(
-        self,
-        conn: psycopg.Connection,
-        contacts: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        if not contacts:
-            return []
-        contact_ids = [UUID(str(contact["id"])) for contact in contacts]
-        role_map = self._repos.contacts.list_buying_roles_for_contacts(conn, contact_ids)
-        enriched: list[dict[str, Any]] = []
-        for contact in contacts:
-            contact_id = UUID(str(contact["id"]))
-            item = dict(contact)
-            item["buying_roles"] = role_map.get(contact_id, [])
-            item["display_name"] = contact_display_name(item)
-            enriched.append(item)
-        return enriched
+            contact = self._repos.contacts.update(
+                conn,
+                contact_id,
+                status="archived",
+            )
+        if contact is None:
+            return None
+        roles = self._repos.contacts.get_buying_roles(conn, contact_id)
+        return {**contact, "buying_roles": roles}
 
     def list_research_for_company(
         self,

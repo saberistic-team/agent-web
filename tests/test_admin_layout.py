@@ -202,32 +202,6 @@ def test_admin_active_nav(path: str, label: str) -> None:
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_admin_contacts_active_nav() -> None:
-    from app import admin_auth
-
-    raw_token = admin_auth.generate_session_token()
-    token_hash = admin_auth.hash_session_token(raw_token)
-    row = _session_row(token_hash=token_hash)
-    with mock_db_connection():
-        with (
-            patch(
-                "app.admin_routes.db.get_admin_session_by_token_hash",
-                return_value=row,
-            ),
-            patch("app.admin_routes._crm.list_contacts", return_value=([], 0, MagicMock())),
-            patch("app.admin_routes._crm.list_companies", return_value=[]),
-        ):
-            response = client.get("/admin/contacts", cookies={SESSION_COOKIE_NAME: raw_token})
-    assert response.status_code == 200
-    body = response.text
-    assert 'id="contacts-title">Contacts</h1>' in body
-    assert body.count('aria-current="page"') == 1
-    assert 'href="/admin/contacts"' in body
-    assert 'class="admin-nav-link" aria-current="page">Contacts</a>' in body
-
-
-@pytest.mark.unit
-@pytest.mark.integration
 def test_admin_companies_page_renders_research_list() -> None:
     from app import admin_auth
 
@@ -255,6 +229,37 @@ def test_admin_companies_page_renders_research_list() -> None:
     assert 'href="/admin/companies"' in body
     assert 'aria-current="page"' in body
     assert 'class="admin-nav-link" aria-current="page">Companies</a>' in body
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_admin_contacts_page_renders_contact_list() -> None:
+    from app import admin_auth
+
+    raw_token = admin_auth.generate_session_token()
+    token_hash = admin_auth.hash_session_token(raw_token)
+    row = _session_row(token_hash=token_hash)
+    with mock_db_connection():
+        with (
+            patch(
+                "app.admin_routes.db.get_admin_session_by_token_hash",
+                return_value=row,
+            ),
+            patch("app.admin_routes._crm") as crm,
+        ):
+            crm.list_contacts.return_value = ([], 0)
+            response = client.get(
+                "/admin/contacts",
+                cookies={SESSION_COOKIE_NAME: raw_token},
+            )
+    assert response.status_code == 200
+    body = response.text
+    assert 'class="admin-app"' in body
+    assert 'id="contacts-title">Contacts</h1>' in body
+    assert body.count('aria-current="page"') == 1
+    assert 'href="/admin/contacts"' in body
+    assert 'aria-current="page"' in body
+    assert 'class="admin-nav-link" aria-current="page">Contacts</a>' in body
 
 
 @pytest.mark.parametrize(

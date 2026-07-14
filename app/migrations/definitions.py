@@ -284,43 +284,44 @@ CREATE INDEX IF NOT EXISTS idx_research_records_observed_at
         name="contact_buying_roles",
         up_sql="""
 ALTER TABLE contacts ALTER COLUMN email DROP NOT NULL;
+
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS title TEXT;
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS profile_url TEXT;
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS email_provenance TEXT;
-ALTER TABLE contacts ADD COLUMN IF NOT EXISTS email_permission TEXT
-    CHECK (email_permission IS NULL OR email_permission IN (
-        'unknown', 'implied', 'explicit', 'do_not_contact'
-    ));
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS email_permission TEXT;
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS last_interaction_at TIMESTAMPTZ;
-ALTER TABLE contacts ADD COLUMN IF NOT EXISTS relationship_strength TEXT
-    CHECK (relationship_strength IS NULL OR relationship_strength IN (
-        'unknown', 'weak', 'moderate', 'strong', 'champion'
-    ));
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS relationship_strength INTEGER
+    CHECK (
+        relationship_strength IS NULL
+        OR (relationship_strength >= 1 AND relationship_strength <= 5)
+    );
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS notes TEXT;
-ALTER TABLE contacts ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active'
+    CHECK (status IN ('active', 'archived'));
 
-ALTER TABLE contacts DROP CONSTRAINT IF EXISTS contacts_email_unique;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_email_unique_nonempty
-    ON contacts (LOWER(TRIM(email)))
-    WHERE email IS NOT NULL AND TRIM(email) <> '';
-
-CREATE INDEX IF NOT EXISTS idx_contacts_profile_url
-    ON contacts (LOWER(profile_url))
-    WHERE profile_url IS NOT NULL AND TRIM(profile_url) <> '';
-CREATE INDEX IF NOT EXISTS idx_contacts_archived_at ON contacts (archived_at);
-CREATE INDEX IF NOT EXISTS idx_contacts_full_name ON contacts (LOWER(full_name));
+CREATE INDEX IF NOT EXISTS idx_contacts_profile_url ON contacts (profile_url);
+CREATE INDEX IF NOT EXISTS idx_contacts_status ON contacts (status);
+CREATE INDEX IF NOT EXISTS idx_contacts_full_name ON contacts (full_name);
 
 CREATE TABLE IF NOT EXISTS contact_buying_roles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     contact_id UUID NOT NULL REFERENCES contacts (id) ON DELETE CASCADE,
-    role TEXT NOT NULL CHECK (role IN (
-        'founder', 'technical_buyer', 'executive_buyer',
-        'influencer', 'investor', 'introducer', 'other'
-    )),
-    PRIMARY KEY (contact_id, role)
+    role TEXT NOT NULL
+        CHECK (role IN (
+            'founder',
+            'technical_buyer',
+            'executive_buyer',
+            'influencer',
+            'investor',
+            'introducer',
+            'other'
+        )),
+    CONSTRAINT contact_buying_roles_unique UNIQUE (contact_id, role)
 );
 
-CREATE INDEX IF NOT EXISTS idx_contact_buying_roles_role
-    ON contact_buying_roles (role);
+CREATE INDEX IF NOT EXISTS idx_contact_buying_roles_contact_id
+    ON contact_buying_roles (contact_id);
 """,
     ),
 

@@ -47,32 +47,34 @@ Indexes: `status`, `website`.
 
 ### `contacts`
 
-Acquisition contacts ([#105](https://github.com/saberistic-team/agent-web/issues/105)).
-Linked to companies with buying roles, relationship context, and optional email.
-
 | Column | Type | Notes |
 |--------|------|-------|
 | `id` | `UUID` | PK |
 | `company_id` | `UUID` | FK → `companies`, `ON DELETE SET NULL` |
-| `email` | `TEXT` | Optional; unique when non-empty |
-| `full_name` | `TEXT` | Required in admin UI |
+| `email` | `TEXT` | Optional; unique when set |
+| `full_name` | `TEXT` | Required for admin create |
 | `title` | `TEXT` | Optional job title |
 | `profile_url` | `TEXT` | LinkedIn or other profile URL |
-| `email_provenance` | `TEXT` | How the address was obtained |
-| `email_permission` | `TEXT` | `unknown`, `implied`, `explicit`, `do_not_contact` |
-| `last_interaction_at` | `TIMESTAMPTZ` | Last touch timestamp |
-| `relationship_strength` | `TEXT` | `unknown`, `weak`, `moderate`, `strong`, `champion` |
+| `email_provenance` | `TEXT` | How the email was obtained |
+| `email_permission` | `TEXT` | Permission basis for using the email |
+| `last_interaction_at` | `TIMESTAMPTZ` | Last touchpoint |
+| `relationship_strength` | `INTEGER` | 1–5 scale |
 | `notes` | `TEXT` | Free-form context |
-| `archived_at` | `TIMESTAMPTZ` | Set when archived; hidden from default lists |
+| `status` | `TEXT` | `active`, `archived` |
 
-Indexes: `company_id`, `email` (partial unique), `profile_url`, `archived_at`, `full_name`.
+Indexes: `company_id`, `email`, `profile_url`, `status`, `full_name`.
 
-Buying roles are stored in `contact_buying_roles` (many-to-many):
-`founder`, `technical_buyer`, `executive_buyer`, `influencer`, `investor`,
-`introducer`, `other`.
+### `contact_buying_roles`
 
-Duplicate warnings (soft) match normalized email, profile URL, or name+company
-before create/update; exact email collisions remain unique at the database layer.
+Junction table for multiple buying-role tags per contact ([#105](https://github.com/saberistic-team/agent-web/issues/105)).
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | `UUID` | PK |
+| `contact_id` | `UUID` | FK → `contacts`, `ON DELETE CASCADE` |
+| `role` | `TEXT` | `founder`, `technical_buyer`, `executive_buyer`, `influencer`, `investor`, `introducer`, `other` |
+
+Unique: `(contact_id, role)`. Index on `contact_id`.
 
 ### `source_records`
 
@@ -195,9 +197,9 @@ Migrations live in `app/migrations/definitions.py` and are applied at startup vi
 | `004` | `admin_sessions` | Server-side admin session rows |
 | `005` | `admin_login_rate_limits` | Shared admin login rate-limit state |
 | `006` | `admin_csrf_binding` | Login-flow CSRF rows and session CSRF column |
-| `007` | `audit_events` | Append-only operator audit trail |
+| `007` | `audit_events` | Append-only audit trail |
 | `008` | `research_records` | Typed research records with provenance and expiry |
-| `009` | `contact_buying_roles` | Contact fields, archive, buying-role junction |
+| `009` | `contact_buying_roles` | Contact profile fields, archive status, buying roles |
 
 Applied versions are recorded in `schema_migrations`. Steps are **idempotent**
 (`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`) so empty and existing Render Postgres

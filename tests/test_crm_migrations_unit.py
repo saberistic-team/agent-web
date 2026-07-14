@@ -116,6 +116,10 @@ def test_apply_migrations_runs_only_pending_steps() -> None:
         for call in cur.execute.call_args_list
     )
     assert any(
+        "INSERT INTO schema_migrations" in str(call.args[0]) and "008" in str(call.args[1])
+        for call in cur.execute.call_args_list
+    )
+    assert any(
         "INSERT INTO schema_migrations" in str(call.args[0]) and "009" in str(call.args[1])
         for call in cur.execute.call_args_list
     )
@@ -326,12 +330,12 @@ def test_apply_migrations_raises_when_lock_times_out(monkeypatch: pytest.MonkeyP
 
 @pytest.mark.unit
 def test_contact_buying_roles_migration_is_idempotent() -> None:
-    contacts = next(m for m in MIGRATIONS if m.name == "contact_buying_roles")
-    assert contacts.version == "009"
-    assert "CREATE TABLE IF NOT EXISTS contact_buying_roles" in contacts.up_sql
-    assert "technical_buyer" in contacts.up_sql
-    assert "archived_at TIMESTAMPTZ" in contacts.up_sql
-    assert "idx_contacts_email_unique_nonempty" in contacts.up_sql
+    migration = next(m for m in MIGRATIONS if m.name == "contact_buying_roles")
+    assert migration.version == "009"
+    assert "ALTER TABLE contacts ALTER COLUMN email DROP NOT NULL" in migration.up_sql
+    assert "contact_buying_roles" in migration.up_sql
+    assert "technical_buyer" in migration.up_sql
+    assert "status IN ('active', 'archived')" in migration.up_sql
 
 
 @pytest.mark.unit

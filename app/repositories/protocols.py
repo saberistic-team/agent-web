@@ -44,16 +44,17 @@ class ContactRepository(Protocol):
         self,
         conn: psycopg.Connection,
         *,
-        email: str | None = None,
-        full_name: str | None = None,
+        full_name: str,
         company_id: UUID | None = None,
+        email: str | None = None,
         title: str | None = None,
         profile_url: str | None = None,
         email_provenance: str | None = None,
         email_permission: str | None = None,
         last_interaction_at: datetime | None = None,
-        relationship_strength: str | None = None,
+        relationship_strength: int | None = None,
         notes: str | None = None,
+        status: str = "active",
     ) -> dict[str, Any]: ...
 
     def get_by_id(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None: ...
@@ -73,49 +74,45 @@ class ContactRepository(Protocol):
         self,
         conn: psycopg.Connection,
         *,
-        page: int = 1,
-        per_page: int = 50,
         query: str | None = None,
-        company_id: UUID | None = None,
         include_archived: bool = False,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]: ...
+
+    def list_all_active(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int = 5000,
+    ) -> list[dict[str, Any]]: ...
 
     def update(
         self,
         conn: psycopg.Connection,
         contact_id: UUID,
         *,
-        email: str | None = None,
         full_name: str | None = None,
         company_id: UUID | None = None,
-        title: str | None = None,
-        profile_url: str | None = None,
-        email_provenance: str | None = None,
-        email_permission: str | None = None,
-        last_interaction_at: datetime | None = None,
-        relationship_strength: str | None = None,
-        notes: str | None = None,
         clear_company: bool = False,
-    ) -> dict[str, Any] | None: ...
-
-    def archive(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None: ...
-
-    def find_possible_duplicates(
-        self,
-        conn: psycopg.Connection,
-        *,
         email: str | None = None,
+        clear_email: bool = False,
+        title: str | None = None,
+        clear_title: bool = False,
         profile_url: str | None = None,
-        full_name: str | None = None,
-        company_id: UUID | None = None,
-        exclude_contact_id: UUID | None = None,
-    ) -> list[dict[str, Any]]: ...
-
-    def list_buying_roles(
-        self,
-        conn: psycopg.Connection,
-        contact_id: UUID,
-    ) -> list[str]: ...
+        clear_profile_url: bool = False,
+        email_provenance: str | None = None,
+        clear_email_provenance: bool = False,
+        email_permission: str | None = None,
+        clear_email_permission: bool = False,
+        last_interaction_at: datetime | None = None,
+        clear_last_interaction: bool = False,
+        relationship_strength: int | None = None,
+        clear_relationship_strength: bool = False,
+        notes: str | None = None,
+        clear_notes: bool = False,
+        status: str | None = None,
+    ) -> dict[str, Any] | None: ...
 
     def set_buying_roles(
         self,
@@ -124,11 +121,11 @@ class ContactRepository(Protocol):
         roles: list[str],
     ) -> list[str]: ...
 
-    def list_buying_roles_for_contacts(
+    def get_buying_roles(
         self,
         conn: psycopg.Connection,
-        contact_ids: list[UUID],
-    ) -> dict[UUID, list[str]]: ...
+        contact_id: UUID,
+    ) -> list[str]: ...
 
 
 class SourceRecordRepository(Protocol):
