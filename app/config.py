@@ -26,6 +26,8 @@ class Settings:
     admin_session_ttl_seconds: int = 86_400
     admin_login_rate_limit: int = 5
     admin_login_rate_window_seconds: int = 900
+    admin_login_lockout_seconds: int = 900
+    admin_trust_proxy_headers: bool = False
 
     @property
     def database_configured(self) -> bool:
@@ -79,4 +81,11 @@ def get_settings() -> Settings:
         admin_login_rate_window_seconds=int(
             os.environ.get("ADMIN_LOGIN_RATE_WINDOW_SECONDS", "900")
         ),
+        admin_login_lockout_seconds=int(
+            os.environ.get("ADMIN_LOGIN_LOCKOUT_SECONDS", "900")
+        ),
+        admin_trust_proxy_headers=os.environ.get(
+            "ADMIN_TRUST_PROXY_HEADERS", ""
+        ).lower()
+        in ("1", "true", "yes"),
     )
