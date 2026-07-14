@@ -350,13 +350,14 @@ def test_insight_article_injects_server_page_event(
 
 
 @pytest.mark.unit
-def test_diagnostic_redirect_omits_page_event_meta(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_unknown_route_omits_page_event_meta(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ANALYTICS_ENABLED", "true")
     monkeypatch.setenv("PLAUSIBLE_DOMAIN", "saberistic.com")
 
-    response = client.get("/diagnostic", follow_redirects=False)
-    assert response.status_code == 301
-    assert response.headers["location"] == "/brief"
+    response = client.get("/brief/success")
+    assert response.status_code == 200
+    assert 'name="saberistic-analytics-domain"' in response.text
+    assert 'name="saberistic-analytics-page-event"' not in response.text
 
 
 @pytest.mark.unit
