@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS contacts (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     company_id UUID REFERENCES companies (id) ON DELETE SET NULL,
-    email TEXT NOT NULL,
+    email TEXT,
     full_name TEXT,
     CONSTRAINT contacts_email_unique UNIQUE (email)
 );
@@ -138,6 +138,51 @@ CREATE TABLE IF NOT EXISTS admin_users (
 
 CREATE INDEX IF NOT EXISTS idx_admin_users_email ON admin_users (email);
 CREATE INDEX IF NOT EXISTS idx_admin_users_is_active ON admin_users (is_active);
+""",
+    ),
+    Migration(
+        version="004",
+        name="contacts_extended",
+        up_sql="""
+ALTER TABLE contacts DROP CONSTRAINT IF EXISTS contacts_email_unique;
+ALTER TABLE contacts ALTER COLUMN email DROP NOT NULL;
+
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS title TEXT;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS profile_url TEXT;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS normalized_profile_url TEXT;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS normalized_email TEXT;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS email_permission TEXT
+    CHECK (email_permission IS NULL OR email_permission IN ('permitted', 'do_not_contact', 'unknown'));
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS email_provenance TEXT;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS last_interaction_at TIMESTAMPTZ;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS relationship_strength TEXT
+    CHECK (relationship_strength IS NULL OR relationship_strength IN ('weak', 'fair', 'good', 'strong'));
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS is_archived BOOLEAN NOT NULL DEFAULT FALSE;
+
+UPDATE contacts SET name = full_name WHERE name IS NULL AND full_name IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_contacts_normalized_profile_url
+    ON contacts (normalized_profile_url) WHERE normalized_profile_url IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_contacts_normalized_email
+    ON contacts (normalized_email) WHERE normalized_email IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_contacts_is_archived ON contacts (is_archived);
+CREATE INDEX IF NOT EXISTS idx_contacts_name ON contacts (name);
+
+CREATE TABLE IF NOT EXISTS contact_buying_roles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    contact_id UUID NOT NULL REFERENCES contacts (id) ON DELETE CASCADE,
+    role TEXT NOT NULL CHECK (role IN (
+        'founder', 'technical_buyer', 'executive_buyer',
+        'influencer', 'investor', 'introducer', 'other'
+    )),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT contact_buying_roles_unique UNIQUE (contact_id, role)
+);
+
+CREATE INDEX IF NOT EXISTS idx_contact_buying_roles_contact_id
+    ON contact_buying_roles (contact_id);
 """,
     ),
 )
