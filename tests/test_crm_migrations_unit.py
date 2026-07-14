@@ -76,7 +76,7 @@ def test_brief_migrations_remain_idempotent() -> None:
 def test_pending_migrations_skips_applied_versions() -> None:
     applied = {"001", "002"}
     pending = pending_migrations(applied_versions=applied)
-    assert [m.version for m in pending] == ["003", "004", "005", "006"]
+    assert [m.version for m in pending] == ["003", "004", "005", "006", "007"]
 
 
 @pytest.mark.unit
@@ -86,7 +86,7 @@ def test_apply_migrations_runs_only_pending_steps() -> None:
 
     applied = apply_migrations(conn, migrations=MIGRATIONS)
 
-    assert applied == ["003", "004", "005", "006"]
+    assert applied == ["003", "004", "005", "006", "007"]
     execute_calls = [str(call.args[0]) for call in cur.execute.call_args_list]
     assert execute_calls[0] == ADVISORY_LOCK_SQL
     assert cur.execute.call_args_list[0].args[1] == (
@@ -114,6 +114,10 @@ def test_apply_migrations_runs_only_pending_steps() -> None:
         "INSERT INTO schema_migrations" in str(call.args[0]) and "006" in str(call.args[1])
         for call in cur.execute.call_args_list
     )
+    assert any(
+        "INSERT INTO schema_migrations" in str(call.args[0]) and "007" in str(call.args[1])
+        for call in cur.execute.call_args_list
+    )
     conn.commit.assert_called_once()
 
 
@@ -123,7 +127,7 @@ def test_apply_migrations_on_empty_database_applies_all() -> None:
 
     applied = apply_migrations(conn, migrations=MIGRATIONS)
 
-    assert applied == ["001", "002", "003", "004", "005", "006"]
+    assert applied == ["001", "002", "003", "004", "005", "006", "007"]
     conn.commit.assert_called_once()
 
 
@@ -158,6 +162,19 @@ def test_admin_csrf_binding_migration_is_idempotent() -> None:
     assert "ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS csrf_token_hash TEXT" in (
         csrf_binding.up_sql
     )
+
+
+@pytest.mark.unit
+def test_acquisition_pipeline_migration_is_idempotent() -> None:
+    pipeline = next(m for m in MIGRATIONS if m.name == "acquisition_pipeline")
+    assert pipeline.version == "007"
+    sql = pipeline.up_sql
+    assert "pipeline_stage" in sql
+    assert "company_stage_history" in sql
+    assert "crm_audit_events" in sql
+    assert "ready_for_outreach" in sql
+    assert "task_completion" in sql
+    assert "ADD COLUMN IF NOT EXISTS" in sql
 
 
 @pytest.mark.unit
@@ -252,7 +269,7 @@ def test_concurrent_initializers_apply_each_migration_once(
         thread.join()
 
     assert errors == []
-    assert shared_db._applied_versions == {"001", "002", "003", "004", "005", "006"}
+    assert shared_db._applied_versions == {"001", "002", "003", "004", "005", "006", "007"}
     assert all(count == 1 for count in shared_db._up_sql_runs.values())
     assert len(shared_db._up_sql_runs) == len(MIGRATIONS)
 
