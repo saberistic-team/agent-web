@@ -462,11 +462,16 @@ def test_stripe_webhook_email_failure_still_ok() -> None:
     assert response.status_code == 200
 
 
+FOOTER_POSITIONING = "saberistic · technical architecture &amp; engineering leadership"
+
+
 @pytest.mark.unit
 def test_brief_form_page() -> None:
     response = client.get("/brief")
     assert response.status_code == 200
     body = response.text
+    assert FOOTER_POSITIONING in body
+    assert "software development" not in body.lower()
     assert "Architecture Diagnostic" in body
     assert "What's included" in body
     assert "How payment works" in body
@@ -491,5 +496,7 @@ def test_brief_success_page() -> None:
     response = client.get("/brief/success")
     assert response.status_code == 200
     body = response.text
+    assert FOOTER_POSITIONING in body
+    assert "software development" not in body.lower()
     assert "Payment completed" in body
     assert "follow up by email" in body
