@@ -64,7 +64,8 @@ def test_discover_screenshot_routes_includes_pages_excludes_apis() -> None:
     assert "/brief" in routes
     assert "/brief/success" in routes
     assert "/case-studies" in routes
-    assert "/diagnostic" in routes
+    assert "/brief" in routes
+    assert "/diagnostic" not in routes
     assert "/health" not in routes
     assert "/hello" not in routes
     assert not any(r.startswith("/api/") for r in routes)
