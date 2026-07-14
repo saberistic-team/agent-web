@@ -98,6 +98,10 @@ def test_render_case_study_page_structure() -> None:
     html = case_studies.render_case_study_page(study)
     assert "<title>Brave — Infrastructure for privacy-aligned payments · saberistic</title>" in html
     assert 'name="description"' in html
+    assert 'property="og:type" content="website"' in html
+    assert 'rel="canonical" href="https://saberistic.com/work/brave"' in html
+    assert '"@type": "WebPage"' in html
+    assert 'name="twitter:card" content="summary_large_image"' in html
     assert 'id="problem-title"' in html
     assert 'id="intervention-title"' in html
     assert 'id="result-title"' in html
@@ -131,7 +135,7 @@ def test_render_escapes_html_in_content(tmp_path: Path) -> None:
     study = case_studies.get_case_study("xss", path=path)
     assert study is not None
     rendered = case_studies.render_case_study_page(study)
-    assert "<script>" not in rendered
+    assert "<script>" not in rendered.replace('type="application/ld+json"', "")
     assert "&lt;script&gt;" in rendered
 
 

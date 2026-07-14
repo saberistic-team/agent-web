@@ -588,6 +588,8 @@ main {
 
 .case-title {
   margin-bottom: 1.25rem;
+  font-size: clamp(1.65rem, 6vw, 4rem);
+  overflow-wrap: break-word;
 }
 
 .case-disclaimer {
