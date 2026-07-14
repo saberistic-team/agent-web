@@ -38,11 +38,7 @@ def admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
 @contextmanager
 def mock_db_connection() -> Generator[MagicMock, None, None]:
     conn = MagicMock()
-    with (
-        patch("app.admin_routes.db.db_connection") as db_conn,
-        patch("app.admin_deps.db.db_connection", db_conn),
-        patch("app.admin_crm_routes.db.db_connection", db_conn),
-    ):
+    with patch("app.admin_routes.db.db_connection") as db_conn:
         db_conn.return_value.__enter__.return_value = conn
         db_conn.return_value.__exit__.return_value = None
         yield conn
@@ -63,6 +59,7 @@ def _session_row(*, token_hash: str) -> dict[str, Any]:
 def test_admin_nav_links_include_required_destinations() -> None:
     assert ADMIN_HREFS == (
         "/admin",
+        "/admin/audit",
         "/admin/companies",
         "/admin/contacts",
         "/admin/signals",
@@ -75,6 +72,7 @@ def test_admin_nav_links_include_required_destinations() -> None:
     )
     assert ADMIN_LABELS == (
         "Dashboard",
+        "Audit",
         "Companies",
         "Contacts",
         "Signals",
@@ -134,7 +132,7 @@ def test_admin_dashboard_renders_shell() -> None:
     assert 'id="main-content"' in body
     assert 'meta name="robots" content="noindex, nofollow"' in body
     assert 'href="/assets/admin.css"' in body
-    assert "Operations" in body
+    assert "Admin foundation" in body
 
 
 @pytest.mark.parametrize("path", ADMIN_HREFS)
@@ -142,32 +140,14 @@ def test_admin_dashboard_renders_shell() -> None:
 @pytest.mark.integration
 def test_admin_nav_links_present(path: str) -> None:
     from app import admin_auth
-    from app.crm_service import CrmService, CrmRepositories
 
     raw_token = admin_auth.generate_session_token()
     token_hash = admin_auth.hash_session_token(raw_token)
     row = _session_row(token_hash=token_hash)
-    company_repo = MagicMock()
-    company_repo.list_all.return_value = []
-    contact_repo = MagicMock()
-    contact_repo.search.return_value = []
-    service = CrmService(
-        repos=CrmRepositories(
-            companies=company_repo,
-            contacts=contact_repo,
-            source_records=MagicMock(),
-            activities=MagicMock(),
-            admin_users=MagicMock(),
-        )
-    )
     with mock_db_connection():
-        with (
-            patch(
-                "app.admin_routes.db.get_admin_session_by_token_hash",
-                return_value=row,
-            ),
-            patch("app.admin_deps.db.get_admin_session_by_token_hash", return_value=row),
-            patch("app.admin_crm_routes._crm_service", return_value=service),
+        with patch(
+            "app.admin_routes.db.get_admin_session_by_token_hash",
+            return_value=row,
         ):
             response = client.get(path, cookies={SESSION_COOKIE_NAME: raw_token})
     assert response.status_code == 200
@@ -180,58 +160,73 @@ def test_admin_nav_links_present(path: str) -> None:
 
 
 @pytest.mark.parametrize(
-    ("path", "label", "title_marker"),
+    ("path", "label"),
     [
-        ("/admin", "Dashboard", "admin-dashboard-title"),
-        ("/admin/companies", "Companies", "companies-title"),
-        ("/admin/contacts", "Contacts", "contacts-title"),
-        ("/admin/signals", "Signals", "admin-empty-title"),
-        ("/admin/pipeline", "Pipeline", "admin-empty-title"),
-        ("/admin/imports", "Imports", "admin-empty-title"),
-        ("/admin/discovery", "Discovery", "admin-empty-title"),
-        ("/admin/analytics", "Analytics", "admin-empty-title"),
-        ("/admin/content", "Content", "admin-empty-title"),
-        ("/admin/settings", "Settings", "admin-empty-title"),
+        ("/admin", "Dashboard"),
+        ("/admin/signals", "Signals"),
+        ("/admin/pipeline", "Pipeline"),
+        ("/admin/imports", "Imports"),
+        ("/admin/discovery", "Discovery"),
+        ("/admin/analytics", "Analytics"),
+        ("/admin/content", "Content"),
+        ("/admin/settings", "Settings"),
     ],
 )
 @pytest.mark.unit
 @pytest.mark.integration
-def test_admin_active_nav(path: str, label: str, title_marker: str) -> None:
+def test_admin_active_nav(path: str, label: str) -> None:
     from app import admin_auth
-    from app.crm_service import CrmService, CrmRepositories
 
     raw_token = admin_auth.generate_session_token()
     token_hash = admin_auth.hash_session_token(raw_token)
     row = _session_row(token_hash=token_hash)
-    company_repo = MagicMock()
-    company_repo.list_all.return_value = []
-    contact_repo = MagicMock()
-    contact_repo.search.return_value = []
-    service = CrmService(
-        repos=CrmRepositories(
-            companies=company_repo,
-            contacts=contact_repo,
-            source_records=MagicMock(),
-            activities=MagicMock(),
-            admin_users=MagicMock(),
-        )
-    )
+    with mock_db_connection():
+        with patch(
+            "app.admin_routes.db.get_admin_session_by_token_hash",
+            return_value=row,
+        ):
+            response = client.get(path, cookies={SESSION_COOKIE_NAME: raw_token})
+    assert response.status_code == 200
+    body = response.text
+    assert f'id="admin-empty-title">{label}</h1>' in body
+    assert body.count('aria-current="page"') == 1
+    assert f'href="{path}"' in body
+    assert 'aria-current="page"' in body
+    assert f'class="admin-nav-link" aria-current="page">{label}</a>' in body
+
+
+@pytest.mark.parametrize(
+    ("path", "title_id", "label"),
+    [
+        ("/admin/companies", "companies-title", "Companies"),
+        ("/admin/contacts", "contacts-title", "Contacts"),
+    ],
+)
+@pytest.mark.unit
+@pytest.mark.integration
+def test_admin_active_nav_crm_pages(path: str, title_id: str, label: str) -> None:
+    from app import admin_auth
+
+    raw_token = admin_auth.generate_session_token()
+    token_hash = admin_auth.hash_session_token(raw_token)
+    row = _session_row(token_hash=token_hash)
     with mock_db_connection():
         with (
             patch(
                 "app.admin_routes.db.get_admin_session_by_token_hash",
                 return_value=row,
             ),
-            patch("app.admin_deps.db.get_admin_session_by_token_hash", return_value=row),
-            patch("app.admin_crm_routes._crm_service", return_value=service),
+            patch("app.admin_crm_routes._crm_service") as crm_service,
         ):
+            service = crm_service.return_value
+            service._repos.companies.list_all.return_value = []
+            service.search_contacts.return_value = []
             response = client.get(path, cookies={SESSION_COOKIE_NAME: raw_token})
     assert response.status_code == 200
     body = response.text
-    assert f'id="{title_marker}"' in body
+    assert f'id="{title_id}">{label}</h1>' in body
     assert body.count('aria-current="page"') == 1
     assert f'href="{path}"' in body
-    assert 'aria-current="page"' in body
     assert f'class="admin-nav-link" aria-current="page">{label}</a>' in body
 
 
@@ -251,12 +246,9 @@ def test_admin_empty_state_names_milestone(path: str, milestone: str) -> None:
     token_hash = admin_auth.hash_session_token(raw_token)
     row = _session_row(token_hash=token_hash)
     with mock_db_connection():
-        with (
-            patch(
-                "app.admin_routes.db.get_admin_session_by_token_hash",
-                return_value=row,
-            ),
-            patch("app.admin_deps.db.get_admin_session_by_token_hash", return_value=row),
+        with patch(
+            "app.admin_routes.db.get_admin_session_by_token_hash",
+            return_value=row,
         ):
             response = client.get(path, cookies={SESSION_COOKIE_NAME: raw_token})
     assert response.status_code == 200
@@ -275,12 +267,9 @@ def test_admin_unknown_section_uses_admin_shell() -> None:
     token_hash = admin_auth.hash_session_token(raw_token)
     row = _session_row(token_hash=token_hash)
     with mock_db_connection():
-        with (
-            patch(
-                "app.admin_routes.db.get_admin_session_by_token_hash",
-                return_value=row,
-            ),
-            patch("app.admin_deps.db.get_admin_session_by_token_hash", return_value=row),
+        with patch(
+            "app.admin_routes.db.get_admin_session_by_token_hash",
+            return_value=row,
         ):
             response = client.get(
                 "/admin/unknown-section",
@@ -341,8 +330,8 @@ def test_admin_preview_mode_renders_section_mock_data(
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    response = client.get("/admin/companies")
+    response = client.get("/admin/signals")
     assert response.status_code == 200
     assert "Preview data — not production" in response.text
     assert "admin-table" in response.text
-    assert "Companies" in response.text
+    assert "Signals" in response.text
