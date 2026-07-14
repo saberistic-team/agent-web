@@ -14,6 +14,7 @@ from app.repositories.postgres import (
     PostgresAdminUserRepository,
     PostgresCompanyRepository,
     PostgresContactRepository,
+    PostgresResearchRecordRepository,
     PostgresSourceRecordRepository,
 )
 
@@ -63,6 +64,14 @@ def _mock_conn(row: dict | list | None = None) -> MagicMock:
         (
             PostgresAdminUserRepository,
             {"email": "admin@saberistic.com", "role": "admin"},
+        ),
+        (
+            PostgresResearchRecordRepository,
+            {
+                "record_type": "hypothesis",
+                "company_id": COMPANY_ID,
+                "body": "Maybe expanding",
+            },
         ),
     ],
 )
