@@ -107,6 +107,7 @@ def render_admin_shell(
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
     <title>{page_title} · saberistic admin</title>
+    <link rel="icon" href="/assets/logo.png" type="image/png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -128,7 +129,12 @@ def render_admin_shell(
         />
         <span class="admin-badge">Admin</span>
       </a>
-      <a class="admin-exit" href="/">Public site</a>
+      <div class="admin-top-actions">
+        <a class="admin-exit" href="/">Public site</a>
+        <form method="post" action="/admin/logout">
+          <button class="admin-exit admin-signout" type="submit">Sign out</button>
+        </form>
+      </div>
     </header>
     <div class="admin-layout">
 {nav}
