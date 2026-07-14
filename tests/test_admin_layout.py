@@ -60,6 +60,7 @@ def test_admin_nav_links_include_required_destinations() -> None:
     assert ADMIN_HREFS == (
         "/admin",
         "/admin/audit",
+        "/admin/briefs",
         "/admin/companies",
         "/admin/contacts",
         "/admin/signals",
@@ -73,6 +74,7 @@ def test_admin_nav_links_include_required_destinations() -> None:
     assert ADMIN_LABELS == (
         "Dashboard",
         "Audit",
+        "Briefs",
         "Companies",
         "Contacts",
         "Signals",
