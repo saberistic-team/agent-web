@@ -545,4 +545,9 @@ body.admin-app {
   .admin-nav-toggle:not([open]) .admin-nav-list {
     display: none;
   }
+
+  .brief-detail-row {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
 }

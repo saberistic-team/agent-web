@@ -29,6 +29,7 @@ class Settings:
     admin_login_lockout_seconds: int = 900
     admin_trust_proxy_headers: bool = False
     audit_page_size: int = 50
+    brief_page_size: int = 50
 
     @property
     def database_configured(self) -> bool:
@@ -107,6 +108,7 @@ def get_settings() -> Settings:
             os.environ.get("ADMIN_LOGIN_LOCKOUT_SECONDS", "900")
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
+        brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
         admin_trust_proxy_headers=os.environ.get(
             "ADMIN_TRUST_PROXY_HEADERS", ""
         ).lower()

@@ -7,9 +7,11 @@ from app.admin_layout import render_admin_shell
 import html
 from datetime import datetime
 from typing import Any
+from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 import json
 
+from app.brief_service import BriefListFilters
 from app.config import Settings
 
 
@@ -175,6 +177,407 @@ def _format_json_blob(data: Any) -> str:
     except (TypeError, ValueError):
         text = str(data)
     return f'<code class="audit-json">{html.escape(text)}</code>'
+
+
+def _format_brief_status(status: str) -> str:
+    labels = {
+        "pending_payment": "Pending",
+        "paid": "Paid",
+        "abandoned": "Abandoned",
+    }
+    return labels.get(status, status)
+
+
+def _format_amount(cents: int) -> str:
+    return f"${cents / 100:.0f}"
+
+
+def _format_utm(source: str | None, campaign: str | None) -> str:
+    parts: list[str] = []
+    if source:
+        parts.append(source)
+    if campaign:
+        parts.append(campaign)
+    if not parts:
+        return '<span class="audit-muted">—</span>'
+    return html.escape(" / ".join(parts))
+
+
+def _briefs_query_params(
+    filters: BriefListFilters,
+    *,
+    page: int | None = None,
+) -> dict[str, str]:
+    params: dict[str, str] = {}
+    target_page = page if page is not None else filters.page
+    if target_page > 1:
+        params["page"] = str(target_page)
+    if filters.query:
+        params["q"] = filters.query
+    if filters.status:
+        params["status"] = filters.status
+    if filters.date_from_raw:
+        params["date_from"] = filters.date_from_raw
+    if filters.date_to_raw:
+        params["date_to"] = filters.date_to_raw
+    return params
+
+
+def _briefs_href(filters: BriefListFilters, *, page: int | None = None) -> str:
+    params = _briefs_query_params(filters, page=page)
+    if not params:
+        return "/admin/briefs"
+    return f"/admin/briefs?{urlencode(params)}"
+
+
+def render_admin_briefs_page(
+    *,
+    admin_username: str,
+    briefs: list[dict[str, Any]],
+    filters: BriefListFilters,
+    total: int,
+    price_cents: int,
+    csrf_token: str = "",
+    db_error: bool = False,
+) -> str:
+    rows: list[str] = []
+    for brief in briefs:
+        brief_id = brief.get("id", "")
+        status = str(brief.get("status", ""))
+        status_label = _format_brief_status(status)
+        status_class = html.escape(status, quote=True)
+        payment_cell = f'<span class="admin-status admin-status-{status_class}">{html.escape(status_label)}</span>'
+        paid_at = brief.get("paid_at")
+        if status == "paid":
+            paid_parts = [_format_amount(price_cents)]
+            if paid_at:
+                paid_parts.append(_format_timestamp(paid_at))
+            payment_cell = "<br>".join(paid_parts)
+        website = html.escape(str(brief.get("website", "")))
+        email = html.escape(str(brief.get("contact_value", "")))
+        back_params = _briefs_query_params(filters)
+        detail_suffix = f"?{urlencode(back_params)}" if back_params else ""
+        detail_href = (
+            f"/admin/briefs/{html.escape(str(brief_id), quote=True)}{detail_suffix}"
+        )
+        rows.append(
+            "<tr>"
+            f'<td><a class="brief-row-link" href="{detail_href}">#{html.escape(str(brief_id))}</a></td>'
+            f"<td>{_format_timestamp(brief.get('created_at', ''))}</td>"
+            f"<td>{website}</td>"
+            f"<td>{email}</td>"
+            f"<td>{payment_cell}</td>"
+            f"<td>{_format_utm(brief.get('utm_source'), brief.get('utm_campaign'))}</td>"
+            "</tr>"
+        )
+
+    has_filters = bool(
+        filters.query or filters.status or filters.date_from_raw or filters.date_to_raw
+    )
+    if db_error:
+        table_body = (
+            '<tr><td colspan="6" class="audit-empty">'
+            "Briefs are temporarily unavailable. Try again shortly."
+            "</td></tr>"
+        )
+    elif not rows:
+        if has_filters:
+            empty_message = "No briefs match your filters."
+        else:
+            empty_message = "No project briefs submitted yet."
+        table_body = f'<tr><td colspan="6" class="audit-empty">{empty_message}</td></tr>'
+    else:
+        table_body = "\n".join(rows)
+
+    total_pages = max((total + filters.per_page - 1) // filters.per_page, 1)
+    prev_link = ""
+    if filters.page > 1:
+        prev_href = html.escape(_briefs_href(filters, page=filters.page - 1), quote=True)
+        prev_link = f'<a class="audit-pager-link" href="{prev_href}">Previous</a>'
+    next_link = ""
+    if filters.page < total_pages:
+        next_href = html.escape(_briefs_href(filters, page=filters.page + 1), quote=True)
+        next_link = f'<a class="audit-pager-link" href="{next_href}">Next</a>'
+
+    q_value = html.escape(filters.query or "", quote=True)
+    date_from_value = html.escape(filters.date_from_raw or "", quote=True)
+    date_to_value = html.escape(filters.date_to_raw or "", quote=True)
+    status_options = [
+        ("", "All statuses"),
+        ("pending_payment", "Pending payment"),
+        ("paid", "Paid"),
+        ("abandoned", "Abandoned"),
+    ]
+    status_select = "\n".join(
+        (
+            f'<option value="{html.escape(value, quote=True)}"'
+            f'{" selected" if filters.status == value else ""}>'
+            f"{html.escape(label)}</option>"
+        )
+        for value, label in status_options
+    )
+
+    error_banner = ""
+    if db_error:
+        error_banner = (
+            '<p class="brief-error" role="alert">'
+            "Could not load briefs from the database."
+            "</p>"
+        )
+
+    main = f"""        <section class="admin-panel" aria-labelledby="admin-briefs-title">
+          <p class="admin-eyebrow">Brief intake</p>
+          <h1 class="admin-title" id="admin-briefs-title">Submitted briefs</h1>
+          <p class="admin-lede">
+            Read-only list of project brief leads. Brief text and payment identifiers
+            are not shown here.
+          </p>
+          {error_banner}
+          <form class="brief-filters" method="get" action="/admin/briefs">
+            <div class="brief-filters-row">
+              <label class="brief-filter">
+                <span class="brief-filter-label">Search</span>
+                <input
+                  type="search"
+                  name="q"
+                  value="{q_value}"
+                  maxlength="100"
+                  placeholder="ID, website, or email"
+                  autocomplete="off"
+                />
+              </label>
+              <label class="brief-filter">
+                <span class="brief-filter-label">Status</span>
+                <select name="status">
+                  {status_select}
+                </select>
+              </label>
+              <label class="brief-filter">
+                <span class="brief-filter-label">From</span>
+                <input type="date" name="date_from" value="{date_from_value}" />
+              </label>
+              <label class="brief-filter">
+                <span class="brief-filter-label">To</span>
+                <input type="date" name="date_to" value="{date_to_value}" />
+              </label>
+              <button class="brief-filter-submit" type="submit">Apply</button>
+            </div>
+          </form>
+          <div class="audit-meta">
+            <span>{total} briefs</span>
+            <span>Page {filters.page} of {total_pages}</span>
+          </div>
+          <div class="audit-table-wrap">
+            <table class="audit-table brief-table">
+              <thead>
+                <tr>
+                  <th scope="col">ID</th>
+                  <th scope="col">Submitted (UTC)</th>
+                  <th scope="col">Website</th>
+                  <th scope="col">Email</th>
+                  <th scope="col">Payment</th>
+                  <th scope="col">UTM</th>
+                </tr>
+              </thead>
+              <tbody>
+{table_body}
+              </tbody>
+            </table>
+          </div>
+          <nav class="audit-pager" aria-label="Briefs pagination">
+            {prev_link}
+            {next_link}
+          </nav>
+        </section>"""
+    return render_admin_shell(
+        title="Briefs",
+        main=main,
+        active_path="/admin/briefs",
+        admin_username=admin_username,
+        csrf_token=csrf_token,
+    )
+
+
+def _format_optional_text(value: Any) -> str:
+    if value is None or str(value).strip() == "":
+        return '<span class="audit-muted">—</span>'
+    return html.escape(str(value))
+
+
+def _format_stripe_reference(value: str | None) -> str:
+    """Render a Stripe identifier in body text only — never in titles or metadata."""
+    if not value or not str(value).strip():
+        return '<span class="audit-muted">—</span>'
+    return f'<code class="brief-stripe-ref">{html.escape(str(value))}</code>'
+
+
+def _brief_stripe_references(brief: dict[str, Any]) -> tuple[str, str] | None:
+    """Return Stripe reference rows when they help operators reconcile payment state."""
+    status = str(brief.get("status", ""))
+    session_id = brief.get("stripe_session_id")
+    intent_id = brief.get("stripe_payment_intent_id")
+    if status == "paid" and (session_id or intent_id):
+        return (
+            _format_stripe_reference(session_id),
+            _format_stripe_reference(intent_id),
+        )
+    if status == "pending_payment" and session_id:
+        return (
+            _format_stripe_reference(session_id),
+            '<span class="audit-muted">—</span>',
+        )
+    if status == "abandoned" and session_id:
+        return (
+            _format_stripe_reference(session_id),
+            '<span class="audit-muted">—</span>',
+        )
+    return None
+
+
+def render_admin_brief_not_found(
+    *,
+    brief_id: int,
+    admin_username: str,
+    back_filters: BriefListFilters,
+    csrf_token: str = "",
+) -> str:
+    back_href = html.escape(_briefs_href(back_filters), quote=True)
+    main = f"""        <section class="admin-panel" aria-labelledby="admin-brief-missing-title">
+          <p class="brief-detail-back">
+            <a class="audit-pager-link" href="{back_href}">← Back to briefs</a>
+          </p>
+          <p class="admin-eyebrow">Brief intake</p>
+          <h1 class="admin-title" id="admin-brief-missing-title">Brief not found</h1>
+          <p class="admin-lede">
+            No project brief exists with ID #{html.escape(str(brief_id))}.
+          </p>
+          <p class="admin-note">
+            <a href="{back_href}">Return to the briefs list</a>.
+          </p>
+        </section>"""
+    return render_admin_shell(
+        title="Brief not found",
+        main=main,
+        active_path="/admin/briefs",
+        admin_username=admin_username,
+        csrf_token=csrf_token,
+    )
+
+
+def render_admin_brief_detail_page(
+    *,
+    admin_username: str,
+    brief: dict[str, Any],
+    back_filters: BriefListFilters,
+    price_cents: int,
+    csrf_token: str = "",
+) -> str:
+    brief_id = brief.get("id", "")
+    status = str(brief.get("status", ""))
+    status_label = _format_brief_status(status)
+    status_class = html.escape(status, quote=True)
+    status_html = (
+        f'<span class="admin-status admin-status-{status_class}">'
+        f"{html.escape(status_label)}</span>"
+    )
+    payment_lines = [status_html]
+    if status == "paid":
+        payment_lines.append(html.escape(_format_amount(price_cents)))
+        paid_at = brief.get("paid_at")
+        if paid_at:
+            payment_lines.append(_format_timestamp(paid_at))
+    payment_html = "<br>".join(payment_lines)
+
+    stripe_refs = _brief_stripe_references(brief)
+    stripe_section = ""
+    if stripe_refs is not None:
+        session_cell, intent_cell = stripe_refs
+        stripe_section = f"""
+          <section class="brief-detail-section" aria-labelledby="brief-stripe-title">
+            <h2 class="brief-detail-heading" id="brief-stripe-title">Stripe references</h2>
+            <p class="admin-note">For operator reconciliation only. Not indexed or logged.</p>
+            <dl class="brief-detail-dl">
+              <div class="brief-detail-row">
+                <dt>Checkout session</dt>
+                <dd>{session_cell}</dd>
+              </div>
+              <div class="brief-detail-row">
+                <dt>Payment intent</dt>
+                <dd>{intent_cell}</dd>
+              </div>
+            </dl>
+          </section>"""
+
+    back_href = html.escape(_briefs_href(back_filters), quote=True)
+    website = html.escape(str(brief.get("website", "")))
+    email = html.escape(str(brief.get("contact_value", "")))
+    brief_text = html.escape(str(brief.get("brief", "")))
+
+    main = f"""        <section class="admin-panel" aria-labelledby="admin-brief-detail-title">
+          <p class="brief-detail-back">
+            <a class="audit-pager-link" href="{back_href}">← Back to briefs</a>
+          </p>
+          <p class="admin-eyebrow">Brief intake</p>
+          <h1 class="admin-title" id="admin-brief-detail-title">Project brief #{html.escape(str(brief_id))}</h1>
+          <p class="admin-lede">
+            Read-only intake record. Payment state is derived from Stripe — not editable here.
+          </p>
+          <dl class="brief-detail-dl">
+            <div class="brief-detail-row">
+              <dt>Submitted (UTC)</dt>
+              <dd>{_format_timestamp(brief.get("created_at", ""))}</dd>
+            </div>
+            <div class="brief-detail-row">
+              <dt>Website</dt>
+              <dd class="brief-detail-url">{website}</dd>
+            </div>
+            <div class="brief-detail-row">
+              <dt>Email</dt>
+              <dd>{email}</dd>
+            </div>
+            <div class="brief-detail-row">
+              <dt>Payment</dt>
+              <dd>{payment_html}</dd>
+            </div>
+          </dl>
+          <section class="brief-detail-section" aria-labelledby="brief-text-title">
+            <h2 class="brief-detail-heading" id="brief-text-title">Project brief</h2>
+            <div class="brief-detail-text">{brief_text}</div>
+          </section>
+          {stripe_section}
+          <section class="brief-detail-section" aria-labelledby="brief-utm-title">
+            <h2 class="brief-detail-heading" id="brief-utm-title">Attribution</h2>
+            <dl class="brief-detail-dl">
+              <div class="brief-detail-row">
+                <dt>Source</dt>
+                <dd>{_format_optional_text(brief.get("utm_source"))}</dd>
+              </div>
+              <div class="brief-detail-row">
+                <dt>Medium</dt>
+                <dd>{_format_optional_text(brief.get("utm_medium"))}</dd>
+              </div>
+              <div class="brief-detail-row">
+                <dt>Campaign</dt>
+                <dd>{_format_optional_text(brief.get("utm_campaign"))}</dd>
+              </div>
+              <div class="brief-detail-row">
+                <dt>Content</dt>
+                <dd>{_format_optional_text(brief.get("utm_content"))}</dd>
+              </div>
+              <div class="brief-detail-row">
+                <dt>Term</dt>
+                <dd>{_format_optional_text(brief.get("utm_term"))}</dd>
+              </div>
+            </dl>
+          </section>
+        </section>"""
+    return render_admin_shell(
+        title=f"Brief #{brief_id}",
+        main=main,
+        active_path="/admin/briefs",
+        admin_username=admin_username,
+        csrf_token=csrf_token,
+    )
 
 
 def render_admin_audit_page(

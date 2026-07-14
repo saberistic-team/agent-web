@@ -20,6 +20,10 @@ is set. OpenAI and GitHub Models are backups (OpenAI quota is often exhausted).
    **Pitfall:** the conflict clone uses `--single-branch`; fetching the base
    must use an explicit refspec (`+refs/heads/main:refs/remotes/origin/main`)
    or `git merge origin/main` fails and loops Builder↔Reviewer.
+   **Pitfall:** a “resolved” merge that drops imports / router wiring / Protocol
+   exports breaks CI (`NameError` / `ImportError`) and also loops — resolution
+   must smoke `from app.main import app` before push (`broken_after_resolve`
+   → `waiting`, never Reviewer).
 7. Reviewer (acceptance checklist + screenshots). If the PR is dirty again
    (e.g. another merge landed), Reviewer requests changes and requeues Builder.
 
