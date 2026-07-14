@@ -1,4 +1,4 @@
-"""Render Postgres persistence for project briefs and CRM foundation."""
+"""Render Postgres persistence for project briefs."""
 
 from __future__ import annotations
 
@@ -113,3 +113,4 @@ def mark_brief_paid(
         row = cur.fetchone()
         conn.commit()
     return row
+
