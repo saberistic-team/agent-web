@@ -45,6 +45,27 @@ def test_sitemap_contains_only_indexable_paths() -> None:
     assert "https://saberistic.com/brief/success" not in locs
     assert any(loc.startswith("https://saberistic.com/work/") for loc in locs)
     assert any(loc.startswith("https://saberistic.com/insights/") for loc in locs)
+    assert "https://saberistic.com/diagnostic" not in locs
+
+
+@pytest.mark.unit
+def test_sitemap_excludes_diagnostic_redirect() -> None:
+    xml = sitemap_xml(lastmod=date(2026, 7, 13))
+    assert "https://saberistic.com/diagnostic" not in xml
+    assert canonical_url("/services") in xml
+    assert canonical_url("/case-studies") in xml
+
+
+@pytest.mark.unit
+def test_diagnostic_redirects_to_brief() -> None:
+    response = client.get("/diagnostic", follow_redirects=False)
+    assert response.status_code == 301
+    assert response.headers["location"] == "/brief"
+
+    followed = client.get("/diagnostic", follow_redirects=True)
+    assert followed.status_code == 200
+    assert followed.url.path == "/brief"
+    assert 'rel="canonical" href="https://saberistic.com/brief"' in followed.text
 
 
 @pytest.mark.unit
@@ -151,26 +172,6 @@ def test_json_accept_on_unknown_path_returns_json_404() -> None:
 def test_health_and_hello_remain_json() -> None:
     assert client.get("/health").json() == {"status": "ok"}
     assert client.get("/hello").json() == {"message": "hello world"}
-
-
-@pytest.mark.unit
-def test_diagnostic_redirects_to_brief() -> None:
-    response = client.get("/diagnostic", follow_redirects=False)
-    assert response.status_code == 301
-    assert response.headers["location"] == "/brief"
-
-    followed = client.get("/diagnostic", follow_redirects=True)
-    assert followed.status_code == 200
-    assert 'id="brief-form"' in followed.text
-
-
-@pytest.mark.unit
-def test_sitemap_excludes_diagnostic() -> None:
-    response = client.get("/sitemap.xml")
-    assert response.status_code == 200
-    assert "https://saberistic.com/diagnostic" not in response.text
-    assert "https://saberistic.com/services" in response.text
-    assert "https://saberistic.com/case-studies" in response.text
 
 
 @pytest.mark.unit
