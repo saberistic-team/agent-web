@@ -123,8 +123,9 @@ at intake; otherwise the Planner infers or defaults to `priority:normal`.
 |-------|---------|----------------|
 | `priority:critical` | Drop everything else; ship or unblock now (P0 / urgent / blocker). | 1st |
 | `priority:high` | Important; ahead of normal backlog (P1). | 2nd |
-| `priority:normal` | Default planned work. | 3rd |
-| `priority:low` | Opportunistic / nice-to-have (P3). | 4th |
+| `priority:medium` | Planned work between high and normal backlog (P2). | 3rd |
+| `priority:normal` | Default planned work. | 4th |
+| `priority:low` | Opportunistic / nice-to-have (P3). | 5th |
 
 ### Priority rules
 
@@ -235,5 +236,6 @@ Suggested GitHub label colors:
 |-------|-------|
 | `priority:critical` | `#B60205` |
 | `priority:high` | `#D93F0B` |
+| `priority:medium` | `#FBCA04` |
 | `priority:normal` | `#FBCA04` |
 | `priority:low` | `#C5DEF5` |
