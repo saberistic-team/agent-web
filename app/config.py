@@ -19,7 +19,13 @@ class Settings:
     plausible_domain: str
     plausible_api_key: str
     analytics_environment: str
+    admin_username: str
+    admin_password: str
     brief_price_cents: int = 20_000
+
+    @property
+    def admin_configured(self) -> bool:
+        return bool(self.admin_username and self.admin_password)
 
     @property
     def database_configured(self) -> bool:
@@ -56,4 +62,6 @@ def get_settings() -> Settings:
         plausible_api_key=os.environ.get("PLAUSIBLE_API_KEY", "").strip(),
         analytics_environment=os.environ.get("ANALYTICS_ENV", "development").strip()
         or "development",
+        admin_username=os.environ.get("ADMIN_USERNAME", "").strip(),
+        admin_password=os.environ.get("ADMIN_PASSWORD", "").strip(),
     )
