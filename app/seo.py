@@ -30,6 +30,16 @@ LEGACY_REDIRECTS: dict[str, str] = {
     "/who-we-are.html": "/about",
 }
 
+# Marketing redirects — retired indexable pages (#83).
+MARKETING_REDIRECTS: dict[str, str] = {
+    "/diagnostic": "/brief",
+}
+
+PERMANENT_REDIRECTS: dict[str, str] = {
+    **LEGACY_REDIRECTS,
+    **MARKETING_REDIRECTS,
+}
+
 
 def indexable_paths() -> tuple[str, ...]:
     """Return all indexable paths including case studies (#65) and insights (#69)."""
