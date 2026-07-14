@@ -20,12 +20,12 @@ class Settings:
     plausible_api_key: str
     analytics_environment: str
     admin_username: str
-    admin_password: str
+    admin_password_hash: str
+    admin_session_secret: str
     brief_price_cents: int = 20_000
-
-    @property
-    def admin_configured(self) -> bool:
-        return bool(self.admin_username and self.admin_password)
+    admin_session_ttl_seconds: int = 86_400
+    admin_login_rate_limit: int = 5
+    admin_login_rate_window_seconds: int = 900
 
     @property
     def database_configured(self) -> bool:
@@ -38,6 +38,22 @@ class Settings:
     @property
     def email_configured(self) -> bool:
         return bool(self.resend_api_key)
+
+    @property
+    def admin_preview_mode(self) -> bool:
+        flag = os.environ.get("ADMIN_PREVIEW_MODE", "").lower()
+        return flag in ("1", "true", "yes")
+
+    @property
+    def admin_auth_configured(self) -> bool:
+        creds = bool(
+            self.admin_username
+            and self.admin_password_hash
+            and self.admin_session_secret
+        )
+        if self.admin_preview_mode:
+            return creds
+        return bool(self.database_url and creds)
 
     @property
     def analytics_enabled(self) -> bool:
@@ -63,5 +79,11 @@ def get_settings() -> Settings:
         analytics_environment=os.environ.get("ANALYTICS_ENV", "development").strip()
         or "development",
         admin_username=os.environ.get("ADMIN_USERNAME", "").strip(),
-        admin_password=os.environ.get("ADMIN_PASSWORD", "").strip(),
+        admin_password_hash=os.environ.get("ADMIN_PASSWORD_HASH", "").strip(),
+        admin_session_secret=os.environ.get("ADMIN_SESSION_SECRET", "").strip(),
+        admin_session_ttl_seconds=int(os.environ.get("ADMIN_SESSION_TTL_SECONDS", "86400")),
+        admin_login_rate_limit=int(os.environ.get("ADMIN_LOGIN_RATE_LIMIT", "5")),
+        admin_login_rate_window_seconds=int(
+            os.environ.get("ADMIN_LOGIN_RATE_WINDOW_SECONDS", "900")
+        ),
     )
