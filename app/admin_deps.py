@@ -61,6 +61,8 @@ def require_admin_session(request: Request) -> admin_auth.AdminSession:
 def issue_session_csrf(settings: Settings, session_id: int) -> str:
     """Rotate the synchronizer token for an authenticated session."""
     raw_csrf_token = admin_auth.generate_csrf_value()
+    if not session_id:
+        return raw_csrf_token
     csrf_hash = admin_auth.hash_csrf_token(raw_csrf_token)
     with db.db_connection(settings.database_url) as conn:
         db.update_admin_session_csrf(
