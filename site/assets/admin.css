@@ -354,40 +354,77 @@ body.admin-app {
   outline: none;
 }
 
-.admin-breadcrumb {
-  margin: 0 0 1rem;
-  color: var(--muted);
-  font-size: 0.85rem;
+.brief-detail-back {
+  margin: 0 0 1.25rem;
 }
 
-.admin-breadcrumb a {
-  color: var(--accent);
+.brief-detail-section {
+  margin: 1.5rem 0 0;
 }
 
-.admin-section-heading {
-  margin: 2rem 0 0.75rem;
-  font-family: var(--display);
-  font-size: 0.85rem;
+.brief-detail-heading {
+  margin: 0 0 0.75rem;
+  font-family: var(--mono), "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.75rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 500;
 }
 
-.admin-form textarea,
-.admin-form select {
-  width: 100%;
-  padding: 0.85rem 1rem;
-  background: var(--surface);
-  color: var(--ink);
+.brief-detail-dl {
+  margin: 0;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.brief-detail-row {
+  display: grid;
+  grid-template-columns: minmax(7rem, 10rem) minmax(0, 1fr);
+  gap: 0.75rem 1rem;
+  padding: 0.65rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.brief-detail-row dt {
+  margin: 0;
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.brief-detail-row dd {
+  margin: 0;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.brief-detail-url {
+  font-family: var(--mono), "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.8rem;
+}
+
+.brief-detail-text {
+  margin: 0;
+  padding: 0.85rem 0.95rem;
   border: 1px solid var(--line);
-  font-family: var(--mono);
-  font-size: 0.95rem;
-  line-height: 1.5;
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  font-size: 0.85rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
 }
 
-.admin-form textarea:focus-visible,
-.admin-form select:focus-visible {
-  outline: none;
-  border-color: var(--accent);
+.brief-stripe-ref {
+  display: inline-block;
+  max-width: 100%;
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+  word-break: break-all;
 }
 
 .research-form {
