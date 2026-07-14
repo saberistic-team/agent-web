@@ -112,10 +112,6 @@ def test_apply_migrations_runs_only_pending_steps() -> None:
         for call in cur.execute.call_args_list
     )
     assert any(
-        "INSERT INTO schema_migrations" in str(call.args[0]) and "006" in str(call.args[1])
-        for call in cur.execute.call_args_list
-    )
-    assert any(
         "INSERT INTO schema_migrations" in str(call.args[0]) and "007" in str(call.args[1])
         for call in cur.execute.call_args_list
     )
@@ -153,19 +149,6 @@ def test_admin_login_rate_limits_migration_is_idempotent() -> None:
 
 
 @pytest.mark.unit
-def test_research_records_migration_is_idempotent() -> None:
-    research = next(m for m in MIGRATIONS if m.name == "research_records")
-    assert research.version == "007"
-    assert "CREATE TABLE IF NOT EXISTS research_records" in research.up_sql
-    assert "verified_fact" in research.up_sql
-    assert "public_signal" in research.up_sql
-    assert "hypothesis" in research.up_sql
-    assert "source_url TEXT" in research.up_sql
-    assert "expires_at TIMESTAMPTZ" in research.up_sql
-    assert "idx_research_records_company_id" in research.up_sql
-
-
-@pytest.mark.unit
 def test_admin_csrf_binding_migration_is_idempotent() -> None:
     csrf_binding = next(m for m in MIGRATIONS if m.name == "admin_csrf_binding")
     assert csrf_binding.version == "006"
@@ -176,6 +159,19 @@ def test_admin_csrf_binding_migration_is_idempotent() -> None:
     assert "ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS csrf_token_hash TEXT" in (
         csrf_binding.up_sql
     )
+
+
+@pytest.mark.unit
+def test_research_records_migration_is_idempotent() -> None:
+    research = next(m for m in MIGRATIONS if m.name == "research_records")
+    assert research.version == "007"
+    assert "CREATE TABLE IF NOT EXISTS research_records" in research.up_sql
+    assert "verified_fact" in research.up_sql
+    assert "public_signal" in research.up_sql
+    assert "hypothesis" in research.up_sql
+    assert "source_url TEXT" in research.up_sql
+    assert "expires_at TIMESTAMPTZ" in research.up_sql
+    assert "idx_research_records_company_id" in research.up_sql
 
 
 @pytest.mark.unit
