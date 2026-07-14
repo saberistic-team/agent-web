@@ -708,7 +708,7 @@ def admin_briefs_list(
 @router.get("/briefs/{brief_id}", response_class=HTMLResponse)
 def admin_brief_detail(
     request: Request,
-    brief_id: int,
+    brief_id: str,
     page: int = 1,
     q: str | None = None,
     status: str | None = None,
@@ -727,8 +727,19 @@ def admin_brief_detail(
         date_from=date_from,
         date_to=date_to,
     )
+    parsed_brief_id = brief_service.parse_brief_id(brief_id)
+    if parsed_brief_id is None:
+        return HTMLResponse(
+            admin_pages.render_admin_brief_not_found(
+                brief_id=brief_id,
+                admin_username=session.admin_username,
+                back_filters=back_filters,
+                csrf_token=csrf_token,
+            ),
+            status_code=404,
+        )
     if settings.admin_preview_enabled:
-        if brief_id == PREVIEW_BRIEF_DATABASE_ERROR_ID:
+        if parsed_brief_id == PREVIEW_BRIEF_DATABASE_ERROR_ID:
             correlation_id = correlation_id_from_request(request)
             retry_href = request.url.path
             if request.url.query:
@@ -743,11 +754,11 @@ def admin_brief_detail(
                 ),
                 status_code=503,
             )
-        brief = brief_service.preview_brief_detail(brief_id)
+        brief = brief_service.preview_brief_detail(parsed_brief_id)
         if brief is None:
             return HTMLResponse(
                 admin_pages.render_admin_brief_not_found(
-                    brief_id=brief_id,
+                    brief_id=parsed_brief_id,
                     admin_username=session.admin_username,
                     back_filters=back_filters,
                     csrf_token=csrf_token,
@@ -766,7 +777,7 @@ def admin_brief_detail(
     if not settings.database_url:
         return HTMLResponse(
             admin_pages.render_admin_brief_not_found(
-                brief_id=brief_id,
+                brief_id=parsed_brief_id,
                 admin_username=session.admin_username,
                 back_filters=back_filters,
                 csrf_token=csrf_token,
@@ -775,12 +786,12 @@ def admin_brief_detail(
         )
     try:
         with db.db_connection(settings.database_url) as conn:
-            brief = brief_service.get_brief(conn, brief_id)
+            brief = brief_service.get_brief(conn, parsed_brief_id)
     except brief_service.BRIEF_DATABASE_ERRORS:
         correlation_id = correlation_id_from_request(request)
         logger.exception(
             "Failed to load admin brief detail for id %s (correlation_id=%s)",
-            brief_id,
+            parsed_brief_id,
             correlation_id,
         )
         retry_href = request.url.path
@@ -799,7 +810,7 @@ def admin_brief_detail(
     if brief is None:
         return HTMLResponse(
             admin_pages.render_admin_brief_not_found(
-                brief_id=brief_id,
+                brief_id=parsed_brief_id,
                 admin_username=session.admin_username,
                 back_filters=back_filters,
                 csrf_token=csrf_token,
