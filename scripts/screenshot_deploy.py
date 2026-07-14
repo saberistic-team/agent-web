@@ -42,9 +42,14 @@ SKIP_SCREENSHOT_EXACT = frozenset(
 )
 SKIP_SCREENSHOT_PREFIXES = ("/api/", "/webhooks/", "/assets")
 
-# Preview-only admin credentials for branch screenshot capture (#102).
+# Preview-only admin session for branch screenshot capture (#102).
 PREVIEW_ADMIN_USERNAME = "preview-admin"
-PREVIEW_ADMIN_PASSWORD = "preview-admin-pass"
+PREVIEW_ADMIN_PASSWORD_HASH = (
+    "$argon2id$v=19$m=65536,t=3,p=4$preview-screenshot-salt$preview-screenshot-hash"
+)
+PREVIEW_ADMIN_SESSION_SECRET = "preview-session-secret-32chars-minimum"
+PREVIEW_SESSION_TOKEN = "preview-screenshot-session"
+ADMIN_SESSION_COOKIE = "admin_session"
 
 # Desktop + mobile evidence for landing/product acceptance criteria.
 VIEWPORTS: tuple[tuple[str, int, int], ...] = (
@@ -126,22 +131,20 @@ def is_skipped_api_or_meta_route(path: str) -> bool:
 
 
 def route_requires_admin_auth(path: str) -> bool:
-    """True when a screenshot target needs HTTP Basic auth."""
+    """True when a screenshot target needs an authenticated admin session."""
     route = path if path.startswith("/") else f"/{path}"
     return route == "/admin" or route.startswith("/admin/")
 
 
-def admin_screenshot_credentials() -> tuple[str, str] | None:
-    """Return admin basic-auth credentials when configured for capture."""
-    username = (
-        os.environ.get("ADMIN_USERNAME") or PREVIEW_ADMIN_USERNAME
-    ).strip()
-    password = (
-        os.environ.get("ADMIN_PASSWORD") or PREVIEW_ADMIN_PASSWORD
-    ).strip()
-    if username and password:
-        return username, password
-    return None
+def admin_screenshot_session_cookie() -> dict[str, str]:
+    """Return the preview admin session cookie for branch screenshot capture."""
+    return {
+        "name": ADMIN_SESSION_COOKIE,
+        "value": PREVIEW_SESSION_TOKEN,
+        "path": "/admin",
+        "httpOnly": True,
+        "sameSite": "Strict",
+    }
 
 
 def _normalize_route_path(path: str) -> str:
@@ -235,6 +238,8 @@ def discover_screenshot_routes(app_root: Path | None = None) -> list[str]:
     if not any(p.startswith("/insights/") for p in found):
         found.update(_expand_param_route("/insights/{slug}", root))
 
+    found.add("/admin")
+
     # Stable order: home first, then lexical.
     ordered = sorted(found, key=lambda p: (p != "/", p))
     return ordered or list(HTML_PATHS)
@@ -283,8 +288,12 @@ def local_preview_server(
         "BASE_URL": base,
         # HTML pages must render without requiring production secrets.
         "DATABASE_URL": os.environ.get("DATABASE_URL") or "",
+        "ADMIN_PREVIEW_MODE": "1",
         "ADMIN_USERNAME": os.environ.get("ADMIN_USERNAME") or PREVIEW_ADMIN_USERNAME,
-        "ADMIN_PASSWORD": os.environ.get("ADMIN_PASSWORD") or PREVIEW_ADMIN_PASSWORD,
+        "ADMIN_PASSWORD_HASH": os.environ.get("ADMIN_PASSWORD_HASH")
+        or PREVIEW_ADMIN_PASSWORD_HASH,
+        "ADMIN_SESSION_SECRET": os.environ.get("ADMIN_SESSION_SECRET")
+        or PREVIEW_ADMIN_SESSION_SECRET,
     }
     proc = subprocess.Popen(
         [
@@ -396,10 +405,8 @@ def _is_html_response(url: str, *, route: str | None = None) -> bool:
     """
     headers = {"User-Agent": "agent-web-screenshots"}
     if route and route_requires_admin_auth(route):
-        creds = admin_screenshot_credentials()
-        if creds:
-            token = base64.b64encode(f"{creds[0]}:{creds[1]}".encode()).decode("ascii")
-            headers["Authorization"] = f"Basic {token}"
+        cookie = admin_screenshot_session_cookie()
+        headers["Cookie"] = f"{cookie['name']}={cookie['value']}"
     try:
         req = urllib.request.Request(url, method="GET", headers=headers)
         with urllib.request.urlopen(req, timeout=30) as resp:
@@ -517,6 +524,18 @@ def capture(
         browser = p.chromium.launch()
         for viewport_name, width, height in VIEWPORTS:
             page = browser.new_page(viewport={"width": width, "height": height})
+            admin_cookie = admin_screenshot_session_cookie()
+            page.context.add_cookies(
+                [
+                    {
+                        "name": admin_cookie["name"],
+                        "value": admin_cookie["value"],
+                        "url": base + "/admin",
+                        "httpOnly": admin_cookie["httpOnly"],
+                        "sameSite": admin_cookie["sameSite"],
+                    }
+                ]
+            )
             for route in html_routes:
                 url = _route_url(base, route)
                 if not _is_html_response(url, route=route):
@@ -524,25 +543,9 @@ def capture(
                     # PR route not yet on production).
                     continue
                 last_err: Exception | None = None
-                auth_creds = (
-                    admin_screenshot_credentials()
-                    if route_requires_admin_auth(route)
-                    else None
-                )
                 for _ in range(6):
                     try:
-                        if auth_creds:
-                            page.goto(
-                                url,
-                                wait_until="networkidle",
-                                timeout=60_000,
-                                http_credentials={
-                                    "username": auth_creds[0],
-                                    "password": auth_creds[1],
-                                },
-                            )
-                        else:
-                            page.goto(url, wait_until="networkidle", timeout=60_000)
+                        page.goto(url, wait_until="networkidle", timeout=60_000)
                         # Double-check we did not land on JSON.
                         body_prefix = page.content()[:200].lstrip().lower()
                         if body_prefix.startswith("{") or body_prefix.startswith("["):
