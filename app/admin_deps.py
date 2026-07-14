@@ -46,6 +46,8 @@ def load_valid_session(request: Request, settings: Settings) -> admin_auth.Admin
 
 def require_admin_session(request: Request) -> admin_auth.AdminSession:
     settings = get_settings()
+    if settings.admin_preview_enabled:
+        return admin_auth.preview_admin_session(settings)
     require_admin_auth_configured(settings)
     session = load_valid_session(request, settings)
     if session is None:
