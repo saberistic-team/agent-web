@@ -22,6 +22,11 @@ class Settings:
     admin_username: str
     admin_password: str
     brief_price_cents: int = 20_000
+    admin_session_ttl_seconds: int = 86_400
+    admin_login_rate_limit: int = 5
+    admin_login_rate_window_seconds: int = 900
+    admin_login_lockout_seconds: int = 900
+    admin_trust_proxy_headers: bool = False
 
     @property
     def admin_configured(self) -> bool:
@@ -38,6 +43,15 @@ class Settings:
     @property
     def email_configured(self) -> bool:
         return bool(self.resend_api_key)
+
+    @property
+    def admin_auth_configured(self) -> bool:
+        return bool(
+            self.database_url
+            and self.admin_username
+            and self.admin_password_hash
+            and self.admin_session_secret
+        )
 
     @property
     def analytics_enabled(self) -> bool:

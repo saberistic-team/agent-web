@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
-"""Mirror selected issue labels onto linked pull requests.
+"""Mirror selected issue labels (and milestone) onto linked pull requests.
 
 Issue labels remain the orchestration source of truth. PRs only carry
 ``type:*``, ``priority:*``, and ``review:*`` for human filtering — never
-``agent:*`` or ``status:*``. See docs/LABELS.md.
+``agent:*`` or ``status:*``. When the linked issue has a milestone, copy it
+onto the PR as well. See docs/LABELS.md.
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
-from typing import Iterable
+from typing import Any, Iterable
 
 from github_api import add_labels, api, delete_label, split_repo
+from milestones import assign_milestone, issue_milestone_number
 
 # Axes that may appear on PRs (mirrors of the linked issue).
 PR_MIRROR_PREFIXES = ("type:", "priority:", "review:")
@@ -25,10 +27,27 @@ REVIEW_LABELS = frozenset(
 )
 
 
-def get_labels(repo: str, number: int) -> set[str]:
+def get_issue(repo: str, number: int) -> dict[str, Any]:
     owner, name = split_repo(repo)
-    data = api("GET", f"/repos/{owner}/{name}/issues/{number}") or {}
+    return api("GET", f"/repos/{owner}/{name}/issues/{number}") or {}
+
+
+def get_labels(repo: str, number: int) -> set[str]:
+    data = get_issue(repo, number)
     return {label["name"] for label in data.get("labels") or []}
+
+
+def mirror_pr_milestone(repo: str, issue: int, pr: int) -> int | None:
+    """Copy the issue milestone onto ``pr`` when the issue has one.
+
+    Uses the Issues API (works for PR numbers). Returns the milestone number
+    applied, or None when the issue has no milestone (critical/optional).
+    """
+    number = issue_milestone_number(get_issue(repo, issue))
+    if number is None:
+        return None
+    assign_milestone(repo, pr, number)
+    return number
 
 
 def linked_open_prs(repo: str, issue: int) -> list[dict]:
@@ -86,9 +105,11 @@ def apply_pr_mirror(
 ) -> list[str]:
     """Replace type/priority/review on ``pr`` from the linked ``issue``.
 
-    Returns the labels applied.
+    Also copies the issue milestone onto the PR when set. Returns the labels
+    applied.
     """
-    issue_labels = get_labels(repo, issue)
+    issue_data = get_issue(repo, issue)
+    issue_labels = {label["name"] for label in issue_data.get("labels") or []}
     desired = desired_pr_labels(
         issue_labels,
         review=review,
@@ -97,6 +118,9 @@ def apply_pr_mirror(
     clear_pr_mirror_labels(repo, pr)
     if desired:
         add_labels(repo, pr, desired)
+    milestone_number = issue_milestone_number(issue_data)
+    if milestone_number is not None:
+        assign_milestone(repo, pr, milestone_number)
     return desired
 
 

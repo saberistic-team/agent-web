@@ -111,6 +111,18 @@ def test_apply_migrations_runs_only_pending_steps() -> None:
         "INSERT INTO schema_migrations" in str(call.args[0]) and "007" in str(call.args[1])
         for call in cur.execute.call_args_list
     )
+    assert any(
+        "INSERT INTO schema_migrations" in str(call.args[0]) and "004" in str(call.args[1])
+        for call in cur.execute.call_args_list
+    )
+    assert any(
+        "INSERT INTO schema_migrations" in str(call.args[0]) and "005" in str(call.args[1])
+        for call in cur.execute.call_args_list
+    )
+    assert any(
+        "INSERT INTO schema_migrations" in str(call.args[0]) and "006" in str(call.args[1])
+        for call in cur.execute.call_args_list
+    )
     conn.commit.assert_called_once()
 
 
