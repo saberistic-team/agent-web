@@ -9,12 +9,6 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from app import admin, admin_auth, admin_pages, db
 from app.admin_crm_routes import router as admin_crm_router
-from app.admin_deps import (
-    issue_session_csrf,
-    load_valid_session,
-    require_admin_auth_configured,
-    require_admin_session,
-)
 from app.config import Settings, get_settings
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -23,7 +17,8 @@ PREVIEW_SESSION_TOKEN = "preview-screenshot-session"
 
 
 def _require_admin_auth_configured(settings: Settings) -> None:
-    require_admin_auth_configured(settings)
+    if not settings.admin_auth_configured:
+        raise HTTPException(status_code=503, detail="Admin authentication not configured")
 
 
 def _preview_session(settings: Settings) -> admin_auth.AdminSession:
@@ -37,11 +32,34 @@ def _preview_session(settings: Settings) -> admin_auth.AdminSession:
 
 
 def _load_valid_session(request: Request, settings: Settings) -> admin_auth.AdminSession | None:
-    return load_valid_session(request, settings)
+    raw_token = admin_auth.read_session_token(request)
+    if raw_token is None:
+        return None
+    if settings.admin_preview_mode and raw_token == PREVIEW_SESSION_TOKEN:
+        return _preview_session(settings)
+    token_hash = admin_auth.hash_session_token(raw_token)
+    with db.db_connection(settings.database_url) as conn:
+        row = db.get_admin_session_by_token_hash(conn, token_hash)
+    if row is None or row.get("revoked_at") is not None:
+        return None
+    session = admin_auth.session_from_row(row)
+    if session.expires_at <= datetime.now(timezone.utc):
+        return None
+    return session
 
 
-def _issue_session_csrf(settings: Settings, session_id: int) -> str:
-    return issue_session_csrf(settings, session_id)
+def require_admin_session(request: Request) -> admin_auth.AdminSession:
+    settings = get_settings()
+    if settings.admin_preview_enabled:
+        return admin_auth.preview_admin_session(settings)
+    _require_admin_auth_configured(settings)
+    session = _load_valid_session(request, settings)
+    if session is None:
+        next_path = request.url.path
+        if request.url.query:
+            next_path = f"{next_path}?{request.url.query}"
+        raise admin_auth.AdminLoginRequired(next_path)
+    return session
 
 
 def _issue_login_flow_response(
@@ -107,6 +125,19 @@ def _consume_login_flow(request: Request, settings: Settings) -> None:
         db.consume_admin_login_flow(conn, flow_token_hash=flow_hash)
 
 
+def _issue_session_csrf(settings: Settings, session_id: int) -> str:
+    """Rotate the synchronizer token for an authenticated session."""
+    raw_csrf_token = admin_auth.generate_csrf_value()
+    csrf_hash = admin_auth.hash_csrf_token(raw_csrf_token)
+    with db.db_connection(settings.database_url) as conn:
+        db.update_admin_session_csrf(
+            conn,
+            session_id=session_id,
+            csrf_token_hash=csrf_hash,
+        )
+    return raw_csrf_token
+
+
 def _issue_session(
     *,
     response: RedirectResponse,
@@ -138,6 +169,19 @@ def _issue_session(
 @router.get("/login", response_class=HTMLResponse, response_model=None)
 def admin_login_form(request: Request, next: str | None = None) -> Response:
     settings = get_settings()
+    if settings.admin_preview_enabled:
+        # Preview mode: render login UI without requiring live auth secrets/DB.
+        csrf_token = (
+            admin_auth.generate_csrf_value()
+            if settings.admin_session_secret
+            else "preview-csrf"
+        )
+        return HTMLResponse(
+            admin_pages.render_admin_login_page(
+                csrf_token=csrf_token,
+                next_path=next,
+            )
+        )
     _require_admin_auth_configured(settings)
     if _load_valid_session(request, settings) is not None:
         return RedirectResponse(
@@ -242,40 +286,10 @@ def _render_admin_shell_page(request: Request, active_path: str) -> HTMLResponse
     return HTMLResponse(admin.render_admin_page(active_path, **kwargs))
 
 
-for _link in ADMIN_NAV_LINKS:
-    if _link["href"] == "/admin":
-        continue
-    _section = _link["href"].removeprefix("/admin/")
-
-    def _section_handler(
-        request: Request,
-        *,
-        _active_path: str = _link["href"],
-    ) -> HTMLResponse:
-        return _render_admin_shell_page(request, _active_path)
-
-    router.add_api_route(
-        f"/{_section}",
-        _section_handler,
-        methods=["GET"],
-        response_class=HTMLResponse,
-    )
-
-
 @router.get("", response_class=HTMLResponse)
 @router.get("/", response_class=HTMLResponse)
 def admin_dashboard(request: Request) -> HTMLResponse:
-    session = require_admin_session(request)
-    settings = get_settings()
-    csrf_token = ""
-    if session.id:
-        csrf_token = _issue_session_csrf(settings, session.id)
-    return HTMLResponse(
-        admin.render_admin_dashboard_page(
-            admin_username=session.admin_username,
-            csrf_token=csrf_token,
-        )
-    )
+    return _render_admin_shell_page(request, "/admin")
 
 
 router.include_router(admin_crm_router)
