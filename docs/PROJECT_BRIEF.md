@@ -22,12 +22,12 @@ Parent issue: [#41](https://github.com/saberistic-team/agent-web/issues/41).
 The following are **out of scope** for the initial #41 flow unless trivial to
 include alongside the main implementation ([#44](https://github.com/saberistic-team/agent-web/issues/44)):
 
-- **Admin UI** — no dashboard or browse/search UI for submitted briefs
 - **Variable pricing / coupons** — single fixed price only; no discount codes
 - **Full CRM integration** — no HubSpot, Salesforce, or pipeline sync
 
-Leads live in Postgres and are delivered via email only. Revisit deferred items
-as separate issues when needed.
+Leads live in Postgres and are delivered via email. Operators can browse submitted
+briefs at `/admin/briefs` (authenticated; read-only list). Revisit other deferred
+items as separate issues when needed.
 
 ## Routes
 
@@ -37,6 +37,7 @@ as separate issues when needed.
 | `/brief/success` | Post-checkout confirmation page |
 | `POST /api/briefs` | Create DB row, send lead emails, Stripe Checkout Session |
 | `POST /webhooks/stripe` | Stripe webhook (marks brief paid, sends payment emails) |
+| `/admin/briefs` | Authenticated read-only list of submitted briefs (search, filters, pagination) |
 
 ## Environment variables
 
@@ -172,7 +173,7 @@ Events: `checkout.session.completed`.
 ## Tests
 
 ```bash
-pytest tests/test_brief.py tests/test_brief_unit.py -q
+pytest tests/test_brief.py tests/test_brief_unit.py tests/test_admin_briefs.py -q
 ```
 
 Mocks Stripe and email; no live Postgres or Stripe required in CI.
