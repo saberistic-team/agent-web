@@ -16,6 +16,7 @@ COMPANY_ID = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 @pytest.mark.integration
 def test_render_companies_list_page() -> None:
     html = admin_companies.render_companies_list_page(
+        admin_username="operator",
         companies=[
             {
                 "id": COMPANY_ID,
@@ -23,7 +24,7 @@ def test_render_companies_list_page() -> None:
                 "website": "https://acme.dev",
                 "status": "prospect",
             }
-        ]
+        ],
     )
     assert "Companies" in html
     assert "Acme" in html
@@ -33,5 +34,5 @@ def test_render_companies_list_page() -> None:
 @pytest.mark.unit
 @pytest.mark.integration
 def test_render_companies_list_page_empty() -> None:
-    html = admin_companies.render_companies_list_page(companies=[])
+    html = admin_companies.render_companies_list_page(admin_username="operator", companies=[])
     assert "No companies yet" in html
