@@ -15,6 +15,7 @@ import sys
 import textwrap
 from pathlib import Path
 
+from dispatch_queue import replace_priority_label
 from github_api import (
     GitHubError,
     add_labels,
@@ -24,7 +25,10 @@ from github_api import (
     split_repo,
 )
 from pr_labels import apply_pr_mirror
-from priority import all_priority_labels, infer_priority_label, resolve_priority_label
+from priority import (
+    priority_labels_on_issue,
+    resolve_priority_label,
+)
 
 HANDOFF_DIR = Path("trace")
 BUILDER_HANDOFF = HANDOFF_DIR / "builder-handoff.txt"
@@ -49,14 +53,6 @@ def replace_status(repo: str, issue: int, new_status: str) -> None:
         if label.startswith("status:"):
             delete_label(repo, issue, label)
     add_labels(repo, issue, [new_status])
-
-
-def replace_priority(repo: str, issue: int, new_priority: str) -> None:
-    labels = issue_labels(repo, issue)
-    for label in list(labels):
-        if label.startswith("priority:"):
-            delete_label(repo, issue, label)
-    add_labels(repo, issue, [new_priority])
 
 
 def ensure_label(repo: str, issue: int, label: str) -> None:
@@ -331,19 +327,12 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
             type_label = "type:feature"
         ensure_label(repo, issue, type_label)
 
-    priority_label = infer_priority_label(title, body, labels)
-    existing_priority = all_priority_labels(labels)
+    priority_label = resolve_priority_label(title, body, labels)
+    existing_priority = priority_labels_on_issue(labels)
     if not existing_priority:
-        replace_priority(repo, issue, priority_label)
-    elif len(existing_priority) == 1:
-        priority_label = existing_priority[0]
-    else:
-        resolved = resolve_priority_label(existing_priority)
-        if resolved is None:
-            priority_label = existing_priority[0]
-        else:
-            replace_priority(repo, issue, resolved)
-            priority_label = resolved
+        ensure_label(repo, issue, priority_label)
+    elif len(existing_priority) != 1 or existing_priority[0] != priority_label:
+        replace_priority_label(repo, issue, priority_label)
 
     areas = plan_change_areas(body)
     max_children = 4
