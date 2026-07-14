@@ -84,8 +84,6 @@ def authenticated_admin() -> dict[str, Any]:
         patch.object(db, "get_admin_session_by_token_hash", side_effect=_get_session),
         patch.object(db, "update_admin_session_csrf", side_effect=_update_csrf),
         patch("app.db.db_connection") as db_conn,
-        patch("app.admin_deps.db.db_connection", db_conn),
-        patch("app.admin_crm_routes.db.db_connection", db_conn),
         patch("app.admin_routes.db.db_connection", db_conn),
     ):
         db_conn.return_value.__enter__.return_value = mock_conn
@@ -140,7 +138,7 @@ def test_create_contact_assigns_roles_and_shows_duplicate_warnings(
     )
 
     with (
-        patch("app.admin_crm_routes._crm_service", return_value=service),
+        patch("app.admin_routes._crm_service", return_value=service),
         patch.object(service, "create_contact", return_value=created),
     ):
         response = client.post(
@@ -164,7 +162,7 @@ def test_create_contact_assigns_roles_and_shows_duplicate_warnings(
 @pytest.mark.integration
 def test_archive_contact_redirects(authenticated_admin: dict[str, Any]) -> None:
     with patch.object(CrmService, "archive_contact", return_value={"id": CONTACT_ID}) as archive:
-        with patch("app.admin_crm_routes._crm_service", return_value=CrmService()):
+        with patch("app.admin_routes._crm_service", return_value=CrmService()):
             response = client.post(
                 f"/admin/contacts/{CONTACT_ID}/archive",
                 cookies=authenticated_admin["cookies"],
@@ -204,7 +202,7 @@ def test_company_page_shows_associated_contacts(authenticated_admin: dict[str, A
     )
 
     with (
-        patch("app.admin_crm_routes._crm_service", return_value=service),
+        patch("app.admin_routes._crm_service", return_value=service),
         patch.object(service, "list_company_contacts", return_value=contacts),
     ):
         response = client.get(f"/admin/companies/{COMPANY_ID}", cookies=authenticated_admin["cookies"])
@@ -240,7 +238,7 @@ def test_contacts_new_form_renders(authenticated_admin: dict[str, Any]) -> None:
             admin_users=MagicMock(),
         )
     )
-    with patch("app.admin_crm_routes._crm_service", return_value=service):
+    with patch("app.admin_routes._crm_service", return_value=service):
         response = client.get(
             f"/admin/contacts/new?company_id={COMPANY_ID}",
             cookies=authenticated_admin["cookies"],
