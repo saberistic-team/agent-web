@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
@@ -15,6 +15,7 @@ from app.repositories.protocols import (
     AuditEventRepository,
     CompanyRepository,
     ContactRepository,
+    ResearchRecordRepository,
     SourceRecordRepository,
 )
 
@@ -391,6 +392,87 @@ class PostgresAdminUserRepository:
 
 
 
+class PostgresProjectBriefRepository:
+    _LIST_COLUMNS = """
+        id, created_at, website, contact_value, status, paid_at,
+        utm_source, utm_campaign
+    """
+
+    def _build_filters(
+        self,
+        *,
+        query: str | None,
+        status: str | None,
+        date_from: date | None,
+        date_to: date | None,
+    ) -> tuple[str, list[Any]]:
+        conditions: list[str] = []
+        params: list[Any] = []
+        if query:
+            if query.isdigit():
+                conditions.append("id = %s")
+                params.append(int(query))
+            else:
+                pattern = f"%{query}%"
+                conditions.append("(website ILIKE %s OR contact_value ILIKE %s)")
+                params.extend([pattern, pattern])
+        if status:
+            conditions.append("status = %s")
+            params.append(status)
+        if date_from is not None:
+            start = datetime.combine(date_from, time.min, tzinfo=timezone.utc)
+            conditions.append("created_at >= %s")
+            params.append(start)
+        if date_to is not None:
+            end = datetime.combine(
+                date_to + timedelta(days=1), time.min, tzinfo=timezone.utc
+            )
+            conditions.append("created_at < %s")
+            params.append(end)
+        if not conditions:
+            return "", params
+        return " WHERE " + " AND ".join(conditions), params
+
+    def list_page(
+        self,
+        conn: psycopg.Connection,
+        *,
+        page: int = 1,
+        per_page: int = 50,
+        query: str | None = None,
+        status: str | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+    ) -> tuple[list[dict[str, Any]], int]:
+        offset = (page - 1) * per_page
+        where_sql, filter_params = self._build_filters(
+            query=query,
+            status=status,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT COUNT(*) AS total FROM project_briefs{where_sql}",
+                filter_params,
+            )
+            total_row = cur.fetchone()
+            total = int(total_row["total"]) if total_row else 0
+            list_params = [*filter_params, per_page, offset]
+            cur.execute(
+                f"""
+                SELECT {self._LIST_COLUMNS}
+                FROM project_briefs
+                {where_sql}
+                ORDER BY created_at DESC, id DESC
+                LIMIT %s OFFSET %s
+                """,
+                list_params,
+            )
+            rows = [dict(row) for row in cur.fetchall()]
+        return rows, total
+
+
 class PostgresAuditEventRepository:
     def list_page(
         self,
@@ -465,8 +547,10 @@ class PostgresRepositories:
         self.contacts = PostgresContactRepository()
         self.source_records = PostgresSourceRecordRepository()
         self.activities = PostgresActivityRepository()
+        self.research_records = PostgresResearchRecordRepository()
         self.admin_users = PostgresAdminUserRepository()
         self.audit_events = PostgresAuditEventRepository()
+        self.project_briefs = PostgresProjectBriefRepository()
 
 
 _default_repositories = PostgresRepositories()
@@ -479,12 +563,14 @@ def get_repositories() -> PostgresRepositories:
 def default_repositories() -> dict[str, Any]:
     repos = get_repositories()
     return {
-        "companies": PostgresCompanyRepository(),
-        "contacts": PostgresContactRepository(),
-        "source_records": PostgresSourceRecordRepository(),
-        "activities": PostgresActivityRepository(),
-        "research_records": PostgresResearchRecordRepository(),
-        "admin_users": PostgresAdminUserRepository(),
+        "companies": repos.companies,
+        "contacts": repos.contacts,
+        "source_records": repos.source_records,
+        "activities": repos.activities,
+        "research_records": repos.research_records,
+        "admin_users": repos.admin_users,
+        "audit_events": repos.audit_events,
+        "project_briefs": repos.project_briefs,
     }
 
 
