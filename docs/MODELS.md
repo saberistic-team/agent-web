@@ -95,7 +95,16 @@ commit per file, which storms CI and races merges).
 
 Docs: [Cursor Python SDK](https://cursor.com/docs/sdk/python)
 
-## Limits (OpenAI / Models JSON path only)
+## Limits
 
-- Max 12 files per issue
-- Prefer plain JSON `content` strings (not brittle `content_b64`)
+| Path | Limit | Notes |
+|------|-------|--------|
+| Cursor local (`CURSOR_MAX_FILES`) | **60** (was 30) | Override via env; soft overruns requeue Builder (`waiting`), do not `status:blocked` |
+| Cursor local attempts (`CURSOR_LOCAL_ATTEMPTS`) | **3** | Retries `is_retryable` Bridge / read timeouts before failing |
+| OpenAI / Models JSON | 12 files | Prefer plain JSON `content` strings (not brittle `content_b64`) |
+
+Transient Cursor timeouts and soft file-budget hits must **re-enter
+`status:queued`** (`### builder_codegen_retry`), not `@human-review` /
+`status:blocked` — see [AGENTS/builder.md](../AGENTS/builder.md) Escalation
+(learned from [#104](https://github.com/saberistic-team/agent-web/issues/104) /
+[#105](https://github.com/saberistic-team/agent-web/issues/105)).
