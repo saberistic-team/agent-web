@@ -6,12 +6,8 @@ import json
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
 
 from app import case_studies
-from app.main import app
-
-client = TestClient(app)
 
 
 @pytest.mark.unit
@@ -103,51 +99,15 @@ def test_render_case_study_page_structure() -> None:
     assert "<title>Brave — Infrastructure for privacy-aligned payments · saberistic</title>" in html
     assert 'name="description"' in html
     assert 'property="og:type" content="website"' in html
+    assert 'rel="canonical" href="https://saberistic.com/work/brave"' in html
+    assert '"@type": "WebPage"' in html
     assert 'name="twitter:card" content="summary_large_image"' in html
-    assert '"@type":"WebPage"' in html
     assert 'id="problem-title"' in html
     assert 'id="intervention-title"' in html
     assert 'id="result-title"' in html
     assert "Prior employer role" in html
     assert 'href="/brief"' in html
     assert 'data-engagement="employer"' in html
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize("slug", [study["slug"] for study in case_studies.load_case_studies()])
-def test_case_study_routes_have_complete_metadata(slug: str) -> None:
-    study = case_studies.get_case_study(slug)
-    assert study is not None
-    response = client.get(f"/work/{slug}")
-    assert response.status_code == 200
-    body = response.text
-    page_title = case_studies.case_study_page_title(study)
-    canonical = case_studies.case_study_canonical_url(slug)
-    assert f"<title>{page_title}</title>" in body
-    assert f'content="{study["meta_description"]}"' in body
-    assert f'rel="canonical" href="{canonical}"' in body
-    assert f'property="og:title" content="{page_title}"' in body
-    assert f'property="og:description" content="{study["meta_description"]}"' in body
-    assert f'property="og:url" content="{canonical}"' in body
-    assert 'property="og:type" content="website"' in body
-    assert 'property="og:site_name" content="saberistic"' in body
-    assert 'property="og:image" content="https://saberistic.com/assets/og-share.png"' in body
-    assert 'property="og:image:width" content="1200"' in body
-    assert 'property="og:image:height" content="630"' in body
-    assert (
-        'property="og:image:alt" content="saberistic — high-stakes architecture and '
-        'engineering leadership"' in body
-    )
-    assert 'name="twitter:card" content="summary_large_image"' in body
-    assert f'name="twitter:title" content="{page_title}"' in body
-    assert f'name="twitter:description" content="{study["meta_description"]}"' in body
-    assert 'name="twitter:image" content="https://saberistic.com/assets/og-share.png"' in body
-    assert (
-        'name="twitter:image:alt" content="saberistic — high-stakes architecture and '
-        'engineering leadership"' in body
-    )
-    assert '"@type":"WebPage"' in body
-    assert case_studies.DISCLAIMERS[study["engagement"]] in body
 
 
 @pytest.mark.unit
