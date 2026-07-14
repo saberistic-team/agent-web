@@ -51,6 +51,17 @@ body.admin-app {
   outline: none;
 }
 
+.admin-logout-form {
+  margin: 0;
+}
+
+.admin-logout {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
 .admin-layout {
   display: grid;
   grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
