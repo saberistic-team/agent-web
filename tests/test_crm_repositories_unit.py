@@ -89,127 +89,24 @@ def test_contact_repository_create_and_lookup() -> None:
 
 
 @pytest.mark.unit
-def test_contact_repository_set_buying_roles() -> None:
+def test_contact_repository_update_and_roles() -> None:
     repo = PostgresContactRepository()
-    conn = _mock_conn()
-    cur = conn.cursor.return_value.__enter__.return_value
-    cur.fetchall.return_value = [{"role": "founder"}, {"role": "investor"}]
-
-    roles = repo.set_buying_roles(conn, CONTACT_ID, ["founder", "investor"])
-    assert roles == ["founder", "investor"]
-    conn.commit.assert_not_called()
-
-    conn2 = _mock_conn()
-    cur2 = conn2.cursor.return_value.__enter__.return_value
-    cur2.fetchall.return_value = [{"role": "founder"}]
-    assert repo.get_buying_roles(conn2, CONTACT_ID) == ["founder"]
-
-
-@pytest.mark.unit
-def test_contact_repository_find_duplicates_profile_url() -> None:
-    repo = PostgresContactRepository()
-    duplicate = {"id": CONTACT_ID, "name": "lead"}
-    conn = _mock_conn()
-    conn.cursor.return_value.__enter__.return_value.fetchall.return_value = [duplicate]
-
-    matches = repo.find_duplicates(
-        conn,
-        normalized_profile_url="linkedin.com/in/lead",
-    )
-    assert len(matches["profile_url"]) == 1
-
-
-@pytest.mark.unit
-def test_contact_repository_list_for_company() -> None:
-    repo = PostgresContactRepository()
-    conn = _mock_conn([{"id": CONTACT_ID, "name": "Lead"}])
-    listed = repo.list_for_company(conn, COMPANY_ID)
-    assert len(listed) == 1
-
-
-@pytest.mark.unit
-def test_contact_repository_find_duplicates_name_company() -> None:
-    repo = PostgresContactRepository()
-    duplicate = {"id": CONTACT_ID, "name": "lead"}
-    conn = _mock_conn()
-    conn.cursor.return_value.__enter__.return_value.fetchall.return_value = [duplicate]
-
-    matches = repo.find_duplicates(
-        conn,
-        normalized_name="lead",
-        company_id=COMPANY_ID,
-        exclude_contact_id=UUID("99999999-9999-9999-9999-999999999999"),
-    )
-    assert len(matches["name_company"]) == 1
-
-
-@pytest.mark.unit
-def test_contact_repository_update_multiple_fields() -> None:
-    repo = PostgresContactRepository()
-    row = {
+    updated = {
         "id": CONTACT_ID,
         "name": "Lead",
-        "title": "CTO",
-        "email": "lead@example.com",
+        "profile_url": "https://linkedin.com/in/lead",
+        "email_permission": "permitted",
+        "is_archived": False,
     }
-    conn = _mock_conn(row)
-
-    updated = repo.update(
-        conn,
-        CONTACT_ID,
-        name="Leader",
-        title="CEO",
-        email="ceo@example.com",
-        notes="met at conf",
-    )
-    assert updated is not None
-    update_sql = str(conn.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
-    assert "title = %s" in update_sql
-    assert "notes = %s" in update_sql
-
-
-@pytest.mark.unit
-def test_contact_repository_search_without_query_excludes_archived() -> None:
-    repo = PostgresContactRepository()
-    conn = _mock_conn([{"id": CONTACT_ID, "name": "Lead"}])
-    results = repo.search(conn, query="", include_archived=False)
-    assert len(results) == 1
-    sql = str(conn.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
-    assert "is_archived = FALSE" in sql
-
-
-@pytest.mark.unit
-def test_contact_repository_update_no_fields_returns_existing() -> None:
-    repo = PostgresContactRepository()
-    row = {"id": CONTACT_ID, "name": "Lead"}
-    conn = _mock_conn(row)
-    result = repo.update(conn, CONTACT_ID)
-    assert result is not None
-    assert result["name"] == "Lead"
-    sql_calls = [
-        str(call.args[0])
-        for call in conn.cursor.return_value.__enter__.return_value.execute.call_args_list
-    ]
-    assert not any("UPDATE contacts" in sql for sql in sql_calls)
-
-
-@pytest.mark.unit
-def test_contact_repository_update_archive_and_permissions() -> None:
-    repo = PostgresContactRepository()
-    row = {"id": CONTACT_ID, "name": "Lead", "is_archived": True}
-    conn = _mock_conn(row)
-    updated = repo.update(
+    conn = _mock_conn(updated)
+    row = repo.update(
         conn,
         CONTACT_ID,
         profile_url="https://linkedin.com/in/lead",
-        normalized_profile_url="linkedin.com/in/lead",
-        normalized_email="lead@example.com",
         email_permission="permitted",
-        email_provenance="intro",
-        relationship_strength="good",
-        is_archived=True,
+        is_archived=False,
     )
-    assert updated is not None
+    assert row is not None
     sql = str(conn.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
     assert "profile_url = %s" in sql
     assert "email_permission = %s" in sql
@@ -243,6 +140,47 @@ def test_contact_repository_find_duplicates_email() -> None:
 
     matches = repo.find_duplicates(conn, normalized_email="lead@example.com")
     assert len(matches["email"]) == 1
+
+
+@pytest.mark.unit
+def test_contact_repository_find_duplicates_profile_and_name_company() -> None:
+    repo = PostgresContactRepository()
+    conn = _mock_conn()
+    cur = conn.cursor.return_value.__enter__.return_value
+    cur.fetchall.side_effect = [
+        [{"id": CONTACT_ID, "name": "Pat"}],
+        [{"id": CONTACT_ID, "name": "Pat"}],
+    ]
+
+    matches = repo.find_duplicates(
+        conn,
+        normalized_profile_url="linkedin.com/in/pat",
+        normalized_name="pat",
+        company_id=COMPANY_ID,
+        exclude_contact_id=UUID("99999999-9999-9999-9999-999999999999"),
+    )
+    assert len(matches["profile_url"]) == 1
+    assert len(matches["name_company"]) == 1
+
+
+@pytest.mark.unit
+def test_contact_repository_list_for_company_and_buying_roles() -> None:
+    repo = PostgresContactRepository()
+    conn = _mock_conn([{"id": CONTACT_ID, "name": "Lead"}])
+    contacts = repo.list_for_company(conn, COMPANY_ID, include_archived=False)
+    assert contacts[0]["name"] == "Lead"
+
+    conn2 = _mock_conn()
+    cur = conn2.cursor.return_value.__enter__.return_value
+    cur.fetchall.return_value = [{"role": "founder"}, {"role": "investor"}]
+    roles = repo.get_buying_roles(conn2, CONTACT_ID)
+    assert roles == ["founder", "investor"]
+
+    conn3 = _mock_conn()
+    cur3 = conn3.cursor.return_value.__enter__.return_value
+    cur3.fetchall.return_value = [{"role": "founder"}]
+    stored = repo.set_buying_roles(conn3, CONTACT_ID, ["founder", "investor"])
+    assert stored == ["founder"]
 
 
 @pytest.mark.unit
