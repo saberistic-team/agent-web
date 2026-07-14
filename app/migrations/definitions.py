@@ -155,4 +155,22 @@ CREATE TABLE IF NOT EXISTS admin_sessions (
 CREATE INDEX IF NOT EXISTS admin_sessions_token_hash_idx ON admin_sessions (token_hash);
 """,
     ),
+    Migration(
+        version="005",
+        name="admin_csrf_binding",
+        up_sql="""
+CREATE TABLE IF NOT EXISTS admin_login_flows (
+    id SERIAL PRIMARY KEY,
+    flow_token_hash TEXT NOT NULL UNIQUE,
+    csrf_token_hash TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL,
+    consumed_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS admin_login_flows_flow_token_hash_idx
+    ON admin_login_flows (flow_token_hash);
+
+ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS csrf_token_hash TEXT;
+""",
+    ),
 )
