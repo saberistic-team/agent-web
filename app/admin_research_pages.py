@@ -5,7 +5,7 @@ from __future__ import annotations
 import html
 from typing import Any
 
-from app.config import Settings
+from app.admin_layout import render_admin_shell
 from app.research_records import (
     RECORD_TYPE_LABELS,
     RESEARCH_RECORD_TYPES,
@@ -15,56 +15,6 @@ from app.research_records import (
     record_ui_category,
     safe_source_link,
 )
-
-
-def _admin_head(title: str) -> str:
-    return f"""<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{html.escape(title)} — saberistic</title>
-    <meta name="robots" content="noindex, nofollow" />
-    <link rel="icon" href="/assets/logo.png" type="image/png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Mono:wght@400;500&display=swap"
-      rel="stylesheet"
-    />
-    <link rel="stylesheet" href="/assets/site.css" />
-  </head>"""
-
-
-def _admin_header(*, csrf_token: str) -> str:
-    return f"""  <body>
-    <header class="top">
-      <a class="brand" href="/" aria-label="saberistic home">
-        <img
-          class="brand-word"
-          src="/assets/logo-text.png"
-          width="160"
-          height="41"
-          alt="saberistic"
-        />
-      </a>
-      <nav class="admin-nav" aria-label="Admin">
-        <a class="top-link" href="/admin">Dashboard</a>
-        <a class="top-link" href="/admin/companies">Companies</a>
-      </nav>
-      <form method="post" action="/admin/logout">
-        <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}" />
-        <button class="top-link admin-logout" type="submit">Sign out</button>
-      </form>
-    </header>"""
-
-
-def _admin_footer() -> str:
-    return """    <footer class="foot">
-      <p>saberistic · technical architecture &amp; engineering leadership</p>
-    </footer>
-  </body>
-</html>"""
 
 
 def _render_research_record_card(record: dict[str, Any]) -> str:
@@ -184,6 +134,7 @@ def render_admin_companies_page(
     *,
     companies: list[dict[str, Any]],
     csrf_token: str,
+    admin_username: str = "",
 ) -> str:
     rows = ""
     if companies:
@@ -201,28 +152,29 @@ def render_admin_companies_page(
             <tr>
               <td colspan="2">No companies yet.</td>
             </tr>"""
-    return (
-        _admin_head("Companies")
-        + _admin_header(csrf_token=csrf_token)
-        + f"""
-    <main>
-      <section class="block admin-page" aria-labelledby="companies-title">
-        <h1 class="page-title" id="companies-title">Companies</h1>
-        <p class="admin-lede">Attach research records to companies and contacts.</p>
-        <table class="admin-table">
-          <thead>
-            <tr>
-              <th scope="col">Name</th>
-              <th scope="col">Status</th>
-            </tr>
-          </thead>
-          <tbody>{rows}
-          </tbody>
-        </table>
-      </section>
-    </main>
-"""
-        + _admin_footer()
+    main = f"""        <section class="admin-research" aria-labelledby="companies-title">
+          <p class="admin-eyebrow">Research</p>
+          <h1 class="admin-title" id="companies-title">Companies</h1>
+          <p class="admin-lede">Attach research records to companies and contacts.</p>
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th scope="col">Name</th>
+                  <th scope="col">Status</th>
+                </tr>
+              </thead>
+              <tbody>{rows}
+              </tbody>
+            </table>
+          </div>
+        </section>"""
+    return render_admin_shell(
+        title="Companies",
+        main=main,
+        active_path="/admin/companies",
+        admin_username=admin_username,
+        csrf_token=csrf_token,
     )
 
 
@@ -232,6 +184,7 @@ def render_admin_company_research_page(
     contacts: list[dict[str, Any]],
     records: list[dict[str, Any]],
     csrf_token: str,
+    admin_username: str = "",
     error_message: str | None = None,
 ) -> str:
     company_name = html.escape(str(company.get("name", "")))
@@ -264,31 +217,29 @@ def render_admin_company_research_page(
         csrf_token=csrf_token,
         contact_options=contact_options,
     )
-    return (
-        _admin_head(f"Research — {company_name}")
-        + _admin_header(csrf_token=csrf_token)
-        + f"""
-    <main>
-      <section class="block admin-page" aria-labelledby="company-research-title">
-        <p class="admin-breadcrumb"><a href="/admin/companies">Companies</a> / {company_name}</p>
-        <h1 class="page-title" id="company-research-title">{company_name}</h1>
-        <p class="admin-lede">Research records for company <code>{company_id}</code>.</p>
-        <h2 class="offer-heading">Contacts</h2>
-        <ul class="admin-list">{contact_links}
-        </ul>
-        <h2 class="offer-heading">Attach record</h2>
-        {error_html}
-        <form class="admin-form research-form" method="post" action="/admin/companies/{company_id}/research">
-          {form_body}
-        </form>
-        <h2 class="offer-heading">Records</h2>
-        <div class="research-record-list">
-          {records_html}
-        </div>
-      </section>
-    </main>
-"""
-        + _admin_footer()
+    main = f"""        <section class="admin-research" aria-labelledby="company-research-title">
+          <p class="admin-breadcrumb"><a href="/admin/companies">Companies</a> / {company_name}</p>
+          <h1 class="admin-title" id="company-research-title">{company_name}</h1>
+          <p class="admin-lede">Research records for company <code>{company_id}</code>.</p>
+          <h2 class="admin-section-heading">Contacts</h2>
+          <ul class="admin-list">{contact_links}
+          </ul>
+          <h2 class="admin-section-heading">Attach record</h2>
+          {error_html}
+          <form class="admin-form research-form" method="post" action="/admin/companies/{company_id}/research">
+            {form_body}
+          </form>
+          <h2 class="admin-section-heading">Records</h2>
+          <div class="research-record-list">
+            {records_html}
+          </div>
+        </section>"""
+    return render_admin_shell(
+        title=f"Research — {company_name}",
+        main=main,
+        active_path="/admin/companies",
+        admin_username=admin_username,
+        csrf_token=csrf_token,
     )
 
 
@@ -298,6 +249,7 @@ def render_admin_contact_research_page(
     company: dict[str, Any] | None,
     records: list[dict[str, Any]],
     csrf_token: str,
+    admin_username: str = "",
     error_message: str | None = None,
 ) -> str:
     email = html.escape(str(contact.get("email", "")))
@@ -321,55 +273,24 @@ def render_admin_contact_research_page(
     else:
         records_html = '<p class="admin-note">No research records yet.</p>'
     form_body = _research_form_body(csrf_token=csrf_token)
-    return (
-        _admin_head(f"Research — {email}")
-        + _admin_header(csrf_token=csrf_token)
-        + f"""
-    <main>
-      <section class="block admin-page" aria-labelledby="contact-research-title">
-        <h1 class="page-title" id="contact-research-title">{email}</h1>
-        {company_link}
-        <p class="admin-lede">Research records for contact <code>{contact_id}</code>.</p>
-        <h2 class="offer-heading">Attach record</h2>
-        {error_html}
-        <form class="admin-form research-form" method="post" action="/admin/contacts/{contact_id}/research">
-          {form_body}
-        </form>
-        <h2 class="offer-heading">Records</h2>
-        <div class="research-record-list">
-          {records_html}
-        </div>
-      </section>
-    </main>
-"""
-        + _admin_footer()
-    )
-
-
-def render_admin_dashboard_page(
-    *,
-    admin_username: str,
-    settings: Settings,
-    csrf_token: str,
-) -> str:
-    username = html.escape(admin_username)
-    base_url = html.escape(settings.base_url, quote=True)
-    return (
-        _admin_head("Admin")
-        + _admin_header(csrf_token=csrf_token)
-        + f"""
-    <main>
-      <section class="block admin-page" aria-labelledby="admin-home-title">
-        <h1 class="page-title" id="admin-home-title">Admin</h1>
-        <p class="admin-lede">Signed in as <strong>{username}</strong>.</p>
-        <p class="admin-note">
-          Operator tools at <code>{base_url}/admin</code>.
-        </p>
-        <ul class="admin-list">
-          <li><a href="/admin/companies">Companies &amp; research records</a></li>
-        </ul>
-      </section>
-    </main>
-"""
-        + _admin_footer()
+    main = f"""        <section class="admin-research" aria-labelledby="contact-research-title">
+          <h1 class="admin-title" id="contact-research-title">{email}</h1>
+          {company_link}
+          <p class="admin-lede">Research records for contact <code>{contact_id}</code>.</p>
+          <h2 class="admin-section-heading">Attach record</h2>
+          {error_html}
+          <form class="admin-form research-form" method="post" action="/admin/contacts/{contact_id}/research">
+            {form_body}
+          </form>
+          <h2 class="admin-section-heading">Records</h2>
+          <div class="research-record-list">
+            {records_html}
+          </div>
+        </section>"""
+    return render_admin_shell(
+        title=f"Research — {email}",
+        main=main,
+        active_path="/admin/contacts",
+        admin_username=admin_username,
+        csrf_token=csrf_token,
     )
