@@ -263,3 +263,32 @@ WHERE (
 - Login always mints a fresh session ID and revokes any prior session cookie
   presented during sign-in (session fixation resistance).
 - Submitted briefs are listed at `/admin/briefs` (read-only; requires admin session).
+- Brief detail routes authenticate before parsing the `{brief_id}` path segment so
+  malformed, zero, negative, and oversized identifiers never return FastAPI's public
+  `422` JSON validation payload to anonymous callers.
+
+### Brief detail path verification (production-safe)
+
+These read-only `curl` checks confirm admin auth runs before identifier parsing.
+Replace `https://saberistic.com` with your deployment origin. Anonymous requests must
+`303` redirect to `/admin/login` with HTML — never `422 application/json`.
+
+```bash
+ORIGIN="https://saberistic.com"
+
+for path in \
+  "/admin/briefs/42" \
+  "/admin/briefs/999999999" \
+  "/admin/briefs/not-an-id" \
+  "/admin/briefs/0" \
+  "/admin/briefs/-1" \
+  "/admin/briefs/2147483648"
+do
+  curl -sS -o /dev/null -D - "${ORIGIN}${path}" \
+    | awk 'BEGIN{code="";type=""} /^HTTP/{code=$2} /^content-type:/{type=tolower($0)} END{exit !(code==303 && type !~ /json/)}'
+done && echo "anonymous brief detail paths redirect safely"
+```
+
+Authenticated operators with a valid session cookie should see the admin HTML shell
+(`200` detail, `404` not found, or `503` database unavailable) — still never
+`application/json` validation errors for malformed IDs.
