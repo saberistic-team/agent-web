@@ -171,8 +171,9 @@ def admin_login_submit(
 ) -> Response:
     settings = get_settings()
     _require_admin_auth_configured(settings)
+    normalized_username = username.strip()
 
-    if admin_auth.is_login_throttled(request, settings):
+    if admin_auth.is_login_throttled(request, settings, username=normalized_username):
         _consume_login_flow(request, settings)
         response = _issue_login_flow_response(
             settings=settings,
@@ -187,7 +188,7 @@ def admin_login_submit(
     _consume_login_flow(request, settings)
 
     if not csrf_valid:
-        admin_auth.record_failed_login(request, settings)
+        admin_auth.record_failed_login(request, settings, username=normalized_username)
         response = _issue_login_flow_response(
             settings=settings,
             error_message=admin_auth.INVALID_CREDENTIALS_MESSAGE,
@@ -197,8 +198,8 @@ def admin_login_submit(
         admin_auth.clear_login_flow_cookie(response, settings)
         return response
 
-    if not admin_auth.verify_admin_credentials(username.strip(), password, settings):
-        admin_auth.record_failed_login(request, settings)
+    if not admin_auth.verify_admin_credentials(normalized_username, password, settings):
+        admin_auth.record_failed_login(request, settings, username=normalized_username)
         response = _issue_login_flow_response(
             settings=settings,
             error_message=admin_auth.INVALID_CREDENTIALS_MESSAGE,
@@ -210,6 +211,7 @@ def admin_login_submit(
 
     destination = admin_auth.safe_admin_next_path(next)
     response = RedirectResponse(url=destination, status_code=303)
+    admin_auth.clear_login_rate_limit(request, settings, username=normalized_username)
     _issue_session(
         response=response,
         settings=settings,
