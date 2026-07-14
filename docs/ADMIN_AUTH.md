@@ -15,7 +15,8 @@ Parent issue: [#101](https://github.com/saberistic-team/agent-web/issues/101).
   pre-authentication browser flow stored server-side.
 - Authenticated state-changing requests (e.g. logout) require a CSRF token bound
   to the active server-side session.
-- Login POST requests are rate limited per IP.
+- Login POST requests are rate limited per username-and-source key in shared
+  Postgres storage (consistent across instances).
 - Logout revokes the active session server-side and clears the cookie.
 - Anonymous requests to protected `/admin` routes receive a safe redirect to
   `/admin/login`.
@@ -83,8 +84,10 @@ checks are likewise not relied upon for CSRF protection.
 | `ADMIN_PASSWORD_HASH` | Yes | Argon2id hash of the operator password |
 | `ADMIN_SESSION_SECRET` | Yes | Retained for configuration parity (≥ 32 random bytes); CSRF is session-bound, not HMAC-signed with this secret |
 | `ADMIN_SESSION_TTL_SECONDS` | Optional | Session lifetime in seconds (default `86400`) |
-| `ADMIN_LOGIN_RATE_LIMIT` | Optional | Failed login attempts allowed per IP window (default `5`) |
-| `ADMIN_LOGIN_RATE_WINDOW_SECONDS` | Optional | Rate-limit window in seconds (default `900`) |
+| `ADMIN_LOGIN_RATE_LIMIT` | Optional | Failed login attempts allowed per window (default `5`) |
+| `ADMIN_LOGIN_RATE_WINDOW_SECONDS` | Optional | Rate-limit counting window in seconds (default `900`) |
+| `ADMIN_LOGIN_LOCKOUT_SECONDS` | Optional | Lockout duration after limit exceeded (default `900`) |
+| `ADMIN_TRUST_PROXY_HEADERS` | Optional | Trust `X-Forwarded-For` for client source (default off; set `true` on Render) |
 | `BASE_URL` | Yes | Public site URL; `https://…` enables `Secure` session cookies |
 
 Set secrets in the Render dashboard (or locally via `.env` — never commit).
@@ -160,6 +163,53 @@ uvicorn app.main:app --reload --port 8000
 ```
 
 Visit `http://localhost:8000/admin/login`.
+
+## Login rate limiting
+
+Failed login attempts are tracked in the `admin_login_rate_limits` Postgres table so
+limits apply consistently across web processes, instances, and deployments.
+
+### Limiter key strategy
+
+Each attempt is keyed by a SHA-256 hash of `normalized_username:client_source`:
+
+- **Username** — submitted value lowercased and stripped (not stored in the table).
+- **Client source** — resolved IP from :func:`client_ip` (not stored in the table).
+
+Only the hash (`limiter_key`) is persisted.
+
+### Trusted proxy handling
+
+Set `ADMIN_TRUST_PROXY_HEADERS=true` when the app runs behind a trusted reverse
+proxy (e.g. Render) so `X-Forwarded-For` is used for the client source. Leave it
+unset or `false` for local development and direct connections; spoofed forwarding
+headers are ignored and the direct peer address is used instead.
+
+### Lockout and recovery
+
+- After `ADMIN_LOGIN_RATE_LIMIT` failures within `ADMIN_LOGIN_RATE_WINDOW_SECONDS`,
+  further attempts are blocked until `ADMIN_LOGIN_LOCKOUT_SECONDS` elapse.
+- A successful login deletes the limiter row for that key (and clears any in-memory
+  fallback state).
+- Expired rows are removed opportunistically on failed-login writes (retention is
+  `2 × max(window, lockout)`).
+
+### When Postgres is unavailable
+
+If the shared limiter cannot be reached, the app logs a warning and applies a
+conservative in-memory fallback (2 failures per 60 seconds per key). This fails
+closed without creating a permanent lockout — the fallback window is short and
+resets automatically. Restore database connectivity to resume shared enforcement.
+
+### Manual cleanup
+
+To prune stale limiter rows manually:
+
+```sql
+DELETE FROM admin_login_rate_limits
+WHERE updated_at < NOW() - INTERVAL '30 minutes'
+  AND (locked_until IS NULL OR locked_until < NOW());
+```
 
 ## Security notes
 
