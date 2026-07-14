@@ -118,8 +118,14 @@ def record_event(
     summary_after: dict[str, Any] | None = None,
     metadata: dict[str, Any] | None = None,
     repository: AuditEventRepository | None = None,
+    required: bool = True,
 ) -> dict[str, Any] | None:
-    """Persist one append-only audit event. Never raises."""
+    """Persist one append-only audit event.
+
+    When ``required`` is True (default), persistence failures propagate so the
+    caller's unit-of-work can roll back the related business mutation. When False,
+    failures are logged and ``None`` is returned (best-effort logging only).
+    """
     repo = repository or get_repositories().audit_events
     try:
         return repo.append(
@@ -134,6 +140,8 @@ def record_event(
             metadata=redact_summary(metadata),
         )
     except Exception:
+        if required:
+            raise
         logger.exception("Failed to record audit event: %s", action)
         return None
 
@@ -189,6 +197,7 @@ def record_login_failure(
         summary_after=metadata,
         metadata=metadata,
         repository=repository,
+        required=False,
     )
 
 
@@ -207,6 +216,7 @@ def record_logout(
         entity_id=str(session_id) if session_id is not None else None,
         summary_before={"session_id": session_id} if session_id is not None else None,
         repository=repository,
+        required=session_id is not None,
     )
 
 
