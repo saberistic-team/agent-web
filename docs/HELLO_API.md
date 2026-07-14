@@ -1,13 +1,23 @@
-# Hello API
+# Hello API + service surface
 
-Minimal FastAPI service in `app/main.py`.
+FastAPI service in `app/main.py`: JSON health/hello endpoints, the
+saberistic.com marketing site (`site/`), project-brief intake, and Stripe
+webhooks.
 
-## Endpoints
+## JSON endpoints
 
 | Method | Path | Response |
 |--------|------|----------|
 | `GET` | `/hello` | `{"message":"hello world"}` |
 | `GET` | `/health` | `{"status":"ok"}` |
+| `POST` | `/api/briefs` | Create lead + Stripe Checkout URL ([PROJECT_BRIEF.md](PROJECT_BRIEF.md)) |
+| `POST` | `/webhooks/stripe` | Stripe `checkout.session.completed` |
+
+## HTML / SEO (summary)
+
+Marketing pages and SEO routes are documented in [LANDING.md](LANDING.md)
+(`/`, `/about`, `/services`, `/case-studies`, `/brief`, `/insights`,
+`/work/{slug}`, `/robots.txt`, `/sitemap.xml`, legacy redirects).
 
 ## Production
 
@@ -22,6 +32,7 @@ Minimal FastAPI service in `app/main.py`.
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 pytest -q
+python scripts/check_coverage.py
 ```
 
 ## Deploy (Render)
@@ -42,7 +53,13 @@ pytest -q
 
 On every push/merge to `main`, [`.github/workflows/ci.yml`](../.github/workflows/ci.yml):
 
-1. Runs pytest
-2. If tests pass, `POST`s the Render deploy hook
+1. Runs `pytest -q`
+2. Runs `python scripts/check_coverage.py` (unit ≥90% / integration ≥70% on `app/`)
+3. If both pass, `POST`s the Render deploy hook
+4. `post-deploy-visual` polls `/health` (JSON) and captures production screenshots
+   ([SCREENSHOTS.md](SCREENSHOTS.md))
+
+CI skips push jobs whose commit message starts with `review: record` or
+`deploy: record` (screenshot/health recorder commits).
 
 Never commit the deploy hook URL; keep it in GitHub Actions secrets only.

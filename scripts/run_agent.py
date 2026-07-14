@@ -558,7 +558,7 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
         handoff_builder_when_mergeable(repo, issue)
         return
 
-    # Product work: OpenAI primary; GitHub Models optional backup.
+    # Product work: Cursor SDK preferred; OpenAI / GitHub Models optional backups.
     try:
         from codegen_models import build_with_models
 
@@ -583,8 +583,8 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
             (
                 "Codegen failed (Cursor SDK / OpenAI / GitHub Models).\n\n"
                 f"`{exc}`\n\n"
-                "Preferred: Cursor cloud agent via `CURSOR_API_KEY` "
-                "(`CODEGEN_PROVIDER=cursor`). "
+                "Preferred: Cursor Agent SDK via `CURSOR_API_KEY` "
+                "(`CODEGEN_PROVIDER=cursor`, `CURSOR_RUNTIME=local` by default). "
                 "Optional: OpenAI (`OPENAI_API_KEY`) or GitHub Models (`MODELS_TOKEN`). "
                 "See docs/MODELS.md. "
                 "If `git/refs` returns 403 for the Builder App, grant the App "

@@ -123,9 +123,16 @@ Table `project_briefs`:
 | `stripe_session_id` | text | Nullable |
 | `stripe_payment_intent_id` | text | Nullable |
 | `paid_at` | timestamptz | Nullable |
+| `utm_source` | text | Nullable (from brief request / session) |
+| `utm_medium` | text | Nullable |
+| `utm_campaign` | text | Nullable |
+| `utm_content` | text | Nullable |
+| `utm_term` | text | Nullable |
 
 Rows are inserted with `pending_payment` **before** redirecting to Stripe, so
 abandoned checkouts still retain the lead and trigger inbox notification.
+UTM columns are created via `ALTER TABLE … IF NOT EXISTS` for older databases
+([ANALYTICS_FUNNEL.md](ANALYTICS_FUNNEL.md)).
 
 Existing databases created before email-only contact may have `phone` values in
 `contact_method`; no migration is required — new rows always store `email`.

@@ -79,7 +79,8 @@ Any of these is an automatic request-changes — do not approve:
 - AI reviewer says acceptance criteria are unmet
 - Required deploy screenshots failed (when `SCREENSHOTS_REQUIRED=true`)
 - **Visual readability fail:** text clipped or overflowing the mobile viewport
-  (out of frame) on homepage/about screenshots
+  (out of frame) on any PR-branch HTML page screenshot (`h1`, `.lede`,
+  `.cta-row`, `.hero` selectors — not only `/` and `/about`)
 - Acceptance checklist incomplete (`all_done: false` or missing)
 
 Coverage gaps, missing tests, CI assertion failures, visual overflow, and

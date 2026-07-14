@@ -8,7 +8,8 @@ is set. OpenAI and GitHub Models are backups (OpenAI quota is often exhausted).
 
 1. Planner queues with `type:*` + `priority:*` + `status:queued`
 2. Dispatcher applies `agent:builder` (highest priority first when free)
-3. Special cases: verify/smoke (no model); missing landing scaffold → block
+3. Special cases: verify/smoke via `scripts/smoke_deploy.py` (no model);
+   missing landing scaffold → block
 4. **Cursor agent** implements the change (`CURSOR_RUNTIME=local` by default)
 5. Thin child issues that say `Parent: #N` also pull the parent issue body into
    the prompt
@@ -70,8 +71,8 @@ images are not UTF-8-corrupted.
 | `REVIEW_PROVIDER` | unset → Cursor if key present, else OpenAI, else Models |
 | `VISUAL_PROVIDER` | unset → Cursor if key present, else OpenAI |
 | `CURSOR_MODEL` | `composer-2.5` |
-| `CURSOR_RUNTIME` | `local` in Actions (Builder) |
-| `OPENAI_MODEL` | `gpt-4o-mini` |
+| `CURSOR_RUNTIME` | `local` in Actions (Builder); set `cloud` only when needed |
+| `OPENAI_MODEL` | Path-specific defaults when unset: codegen / post-deploy visual → `gpt-4.1-mini`; Reviewer / acceptance / conflict helpers → `gpt-4o-mini` |
 | `GITHUB_MODELS_MODEL` | `openai/gpt-4o-mini` |
 
 ## Cursor setup

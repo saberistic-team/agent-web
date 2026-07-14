@@ -3,8 +3,9 @@
 
 Queued work carries ``status:queued`` + ``type:*`` + ``priority:*`` without
 ``agent:builder`` / ``agent:docs``. This script lists those issues, sorts by
-priority (critical → high → normal → low), then issue number, and applies the
-intended agent label when that agent is not already ``status:in-progress``.
+priority (critical → high → medium → normal → low), then issue number, and
+applies the intended agent label when that agent is not already
+``status:in-progress``.
 """
 
 from __future__ import annotations

@@ -85,7 +85,7 @@ gets the before/after pair.
 | `CURSOR_MODEL` | variable | default `composer-2.5` |
 | `VISUAL_PROVIDER` | variable | unset → Cursor then OpenAI; force `cursor` / `openai` |
 | `OPENAI_API_KEY` | secret | Optional backup for visual / review / codegen |
-| `OPENAI_MODEL` | variable | default `gpt-4.1-mini` |
+| `OPENAI_MODEL` | variable | visual/codegen default `gpt-4.1-mini` when unset (see [MODELS.md](MODELS.md)) |
 | `RENDER_DEPLOY_HOOK_URL` | secret | deploy trigger |
 
 ## Scripts / workflows

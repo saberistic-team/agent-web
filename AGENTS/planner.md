@@ -19,12 +19,13 @@ or Acceptance criteria (learned from [#55](https://github.com/saberistic-team/ag
 Before any issue enters `status:queued`, it must already carry:
 
 - exactly one `type:*` (`bug` | `feature` | `docs`)
-- exactly one `priority:*` (`critical` | `high` | `normal` | `low`)
+- exactly one `priority:*` (`critical` | `high` | `medium` | `normal` | `low`)
 - `status:queued`
 
 Do **not** apply `agent:builder` or `agent:docs` when queuing. The dispatcher
 reads `type:*` + `priority:*`, then applies the agent label when that agent is
-free (highest priority first). Record `intended_agent` in `### planner_plan`.
+free (highest priority first: critical → high → medium → normal → low).
+Record `intended_agent` in `### planner_plan`.
 
 Board columns follow `status:*` via project sync; you do not edit the project
 UI directly ([docs/LABELS.md](../docs/LABELS.md) — Project board).
@@ -63,9 +64,11 @@ The parent is then marked done by the workflow.
   still planning).
 - Do not apply `status:queued` until the gate (`release-plan`) has passed
   (single-issue path). Children may be created already queued.
-- Prefer an existing human-set `priority:*`; otherwise infer from issue text
-  (`urgent`/`P0` → critical, `P1`/`important` → high, `nice-to-have` → low,
-  else `priority:normal`).
+- Prefer an existing human-set `priority:*` (including `priority:medium`);
+  otherwise inference (`scripts/priority.py`) maps `urgent`/`P0` → critical,
+  `P1`/`important` → high, `nice-to-have` → low, else `priority:normal`.
+  Text inference does not emit `priority:medium` — set that label explicitly
+  when P2 / mid-urgency is intended.
 
 ## Escalation
 

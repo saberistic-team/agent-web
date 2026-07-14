@@ -19,28 +19,30 @@ dispatcher `add_labels` on dequeue.
 
 Two minimal changes (no full labeling redesign):
 
-1. **Replace on mutation** — `ensure_priority` and the Planner now remove all
-   existing `priority:*` labels before applying the resolved value, mirroring
-   `replace_status` for the status axis.
-2. **Detect and report ambiguity** — when multiple `priority:*` labels cannot be
-   resolved deterministically, the dispatcher posts
-   `### dispatcher_priority_ambiguous` and skips that issue for the run.
+1. **Canonicalize `priority:medium`** — added to `PRIORITY_LABELS` between
+   `high` and `normal` so dispatch sorting and project sync stay deterministic.
+2. **Replace on mutation** — `ensure_priority` and the Planner remove all
+   existing `priority:*` labels before applying the resolved value
+   (`replace_priority_label`), mirroring `replace_status` for the status axis.
+   When duplicates were present, the dispatcher posts
+   `### dispatcher_priority_normalize` (removed set → kept value) and continues
+   the run — it does **not** skip the issue.
 
-Duplicate normalization policy (`resolve_priority_label`):
+Duplicate normalization policy (`resolve_priority_label` /
+`priority_from_labels`):
 
-- One non-default label among duplicates wins over `priority:normal` (fixes
-  #86/#87: keep `priority:medium`, drop `priority:normal`).
-- Multiple non-default labels resolve to the highest-urgency canonical rank.
-- Equal-rank ties return `None` (report, do not guess).
-
-`priority:medium` is now canonical (between `high` and `normal`) so dispatch
-sorting and project sync stay deterministic.
+- Among canonical labels, the **highest-urgency** rank always wins
+  (`critical` < `high` < `medium` < `normal` < `low` by sort index).
+- That keeps `priority:medium` over `priority:normal` for #86/#87.
+- There is **no** “equal-rank → `None` / skip” path; unknown non-canonical
+  `priority:*` labels fall through to text inference (default
+  `priority:normal`).
 
 ## Audit
 
 `scripts/audit_priority_labels.py` lists every open/closed issue carrying more
-than one `priority:*` label. Pass `--fix` to normalize resolvable duplicates;
-ambiguous sets are reported only.
+than one `priority:*` label. Pass `--fix` to normalize all listed duplicates
+to the resolved canonical value (always a concrete label).
 
 ## Regression coverage
 

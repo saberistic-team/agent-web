@@ -21,7 +21,8 @@ Workflow moves you `status:in-progress` → `status:done` after you finish.
 ## Definition of done
 
 - Docs reflect current behavior/labels/identities/workflows as required by
-  the issue.
+  the issue (edit the real files under `docs/`, `README.md`, `AGENTS/` — not
+  only a stub).
 - Changes are on a **non-default branch** via PR when Contents writes are
   needed: `docs/<issue-number>-<short-slug>`  
   Example: `docs/7-label-taxonomy`
@@ -31,6 +32,15 @@ Workflow moves you `status:in-progress` → `status:done` after you finish.
 - Links and role/label names match `docs/LABELS.md` and
   `docs/IDENTITIES.md` when those are in scope.
 - No open questions left in the doc that the issue already answered.
+
+### Automated App behavior (current)
+
+`scripts/run_agent.py` `role_docs` opens/reuses that branch and PR, then writes
+a stub at `docs/agent-updates/<issue>.md` so a visible PR exists. That stub is
+**not** the finished documentation — expand or replace it with authoritative
+updates for the issue scope before treating the work as done. Opening the PR
+requires `pull_requests: write` on the Docs App (see
+[docs/IDENTITIES.md](../docs/IDENTITIES.md)).
 
 ## Constraints
 

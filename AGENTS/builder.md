@@ -90,10 +90,12 @@ GitHub still says clean).
 ## Definition of done
 
 - Implementation matches the issue scope (bug fix or feature as labeled).
-- For product code, Builder uses the **Cursor Agent SDK** cloud agent
-  (`CURSOR_API_KEY`; `CODEGEN_PROVIDER=cursor`). Optional OpenAI / GitHub Models
+- For product code, Builder uses the **Cursor Agent SDK**
+  (`CURSOR_API_KEY`; `CODEGEN_PROVIDER=cursor`; `CURSOR_RUNTIME=local` by
+  default in Actions, `cloud` optional). Optional OpenAI / GitHub Models
   backup — [docs/MODELS.md](../docs/MODELS.md), [docs/DESIGN.md](../docs/DESIGN.md).
-- Verify/smoke and landing scaffolds may complete without a model call.
+- Verify/smoke issues may complete via `scripts/smoke_deploy.py` without a
+  model call; landing scaffolds may also skip codegen.
 - Branch / PR must reference `#issue` (`Closes #N`); follow-ups stay on that
   same PR head (see **Branch and PR reuse**).
 - Tests relevant to the change are added or updated when behavior changes.
@@ -148,7 +150,7 @@ CI assertions, visual readability / mobile overflow, or merge conflicts with
 
 ## Special case: landing / UI design
 
-- Primary: Cursor cloud agent (`CURSOR_API_KEY`)
+- Primary: Cursor Agent SDK (`CURSOR_API_KEY`; local runtime by default)
 - Edit `site/`; keep brutal-minimalist brand rules in `.github/copilot-instructions.md`
   (shared agent brief) and [docs/DESIGN.md](../docs/DESIGN.md)
 - **Mobile readability:** hero display type must fit a ~390px viewport. Long

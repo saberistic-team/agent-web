@@ -48,8 +48,21 @@ Supplementary client events (non-authoritative):
 
 | Event | Trigger | Properties |
 |-------|---------|------------|
-| `Checkout Cancelled` | `/brief?cancelled=1` after Stripe cancel redirect | `page`, `funnel_step` |
-| `Brief Success Viewed` | Page load on `/brief/success` (UX only; payment truth is webhook) | `page`, `funnel_step` |
+| `Checkout Cancelled` | `/brief?cancelled=1` after Stripe cancel redirect | `page`, `funnel_step: 6` |
+| `Brief Success Viewed` | Page load on `/brief/success` (UX only; payment truth is webhook) | `page`, `funnel_step: 7` |
+
+These reuse steps **6** and **7** for UX context only. Authoritative conversion
+counts for those steps come from the **server** events `Checkout Opened` and
+`Payment Completed`. Step **2** is intentionally unused (reserved gap).
+
+Nav click events (no `funnel_step`; engagement only):
+
+| Event | Trigger |
+|-------|---------|
+| `Nav Services` | Header/nav click to `/services` |
+| `Nav Case Studies` | Header/nav click to `/case-studies` |
+| `Nav Insights` | Header/nav click to `/insights` |
+| `Nav Diagnostic` | Header/nav click to `/brief` |
 
 ## Event properties (allowlist)
 

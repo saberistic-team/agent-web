@@ -1,6 +1,6 @@
 # Agent identities
 
-**Last audited:** 2026-07-11 (live org installations via GitHub API)
+**Last audited:** 2026-07-14 (App installs 2026-07-11; Actions permissions synced to workflows)
 
 Each orchestration role is a distinct **GitHub App** installed on
 org `saberistic-team` with **selected repositories** (not all repos). Workflows
@@ -8,10 +8,10 @@ mint an installation token (`actions/create-github-app-token`) and perform
 GitHub mutations **only** with that token so events attribute to the role bot —
 not `github-actions[bot]`.
 
-**Codegen:** Builder uses the **Cursor Agent SDK** (cloud) when
-`CURSOR_API_KEY` is set; OpenAI / GitHub Models are optional backups —
-[DESIGN.md](DESIGN.md), [MODELS.md](MODELS.md). Copilot coding agent is deferred
-([COPILOT.md](COPILOT.md)).
+**Codegen:** Builder uses the **Cursor Agent SDK** (`CURSOR_RUNTIME=local` by
+default in Actions; `cloud` optional) when `CURSOR_API_KEY` is set; OpenAI /
+GitHub Models are optional backups — [DESIGN.md](DESIGN.md),
+[MODELS.md](MODELS.md). Copilot coding agent is deferred ([COPILOT.md](COPILOT.md)).
 
 ## Confirmed role → identity → scope
 
@@ -63,7 +63,12 @@ Builder also uses:
 | Planner | `write` | — | — |
 | Builder | `write` | `write` | `write` |
 | Reviewer | `write` | `write` | `write` |
-| Docs | `write` | `write` | — |
+| Docs | `write` | `write` | `write` |
+
+Docs workflow job permissions include `pull-requests: write` (see
+`.github/workflows/docs.yml`). The **Docs App installation** still lacks
+`pull_requests` scope (table above under “Confirmed role → identity → scope”),
+so `POST /pulls` can 403 until that App permission is granted.
 
 ## Audit trail rules
 

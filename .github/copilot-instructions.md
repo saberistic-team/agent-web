@@ -1,7 +1,9 @@
 # Agent instructions (agent-web)
 
-Shared brief for Builder/Reviewer AI (OpenAI / Models) and any future coding
-agents. Live site: **https://saberistic.com** (`/`, `/about`, `/health`, `/hello`).
+Shared brief for Builder/Reviewer AI (Cursor preferred; OpenAI / Models backup)
+and any future coding agents. Live site: **https://saberistic.com**
+(`/`, `/about`, `/services`, `/case-studies`, `/brief`, `/insights`, `/work/*`,
+`/health`, `/hello`).
 
 ## Product rules
 

@@ -130,7 +130,7 @@ jobs:
                 --review review:approved || true
               gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
           ### reviewer_labels
-          - decision: \`approved\` (from GitHub PR review API + Models AI)
+          - decision: \`approved\` (from GitHub PR review API + Cursor/OpenAI/Models)
           - pr_labels: mirrored \`review:approved\`
           EOF
           )"
@@ -172,7 +172,7 @@ jobs:
                 --review review:changes-requested || true
               gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
           ### reviewer_labels
-          - decision: \`changes-requested\` (from GitHub PR review API + Models AI)
+          - decision: \`changes-requested\` (from GitHub PR review API + Cursor/OpenAI/Models)
           - next: \`status:queued\` (dispatcher will apply \`agent:builder\` by priority)
           - pr_labels: mirrored \`review:changes-requested\`
           EOF

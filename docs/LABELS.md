@@ -110,6 +110,8 @@ while the issue is in the orchestration pipeline.
 - `.github/workflows/dispatch.yml` + `scripts/dispatch_queue.py` sort
   `status:queued` work by priority, then issue number, and apply at most one
   run per agent while that agent already has `status:in-progress` work.
+  The dispatch workflow also runs on a `*/10 * * * *` cron so queued work is
+  drained without waiting for a new label event.
 
 ---
 

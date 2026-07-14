@@ -1,8 +1,8 @@
 # Editorial checklist (insights)
 
-Canonical checklist: [`docs/INSIGHTS_EDITORIAL_CHECKLIST.md`](./INSIGHTS_EDITORIAL_CHECKLIST.md).
+Canonical checklist (field names + sign-off): [`docs/INSIGHTS_EDITORIAL_CHECKLIST.md`](./INSIGHTS_EDITORIAL_CHECKLIST.md).
 
-Publishing workflow: [`docs/INSIGHTS_EDITORIAL.md`](./INSIGHTS_EDITORIAL.md).
+Publishing workflow (schema summary + steps): [`docs/INSIGHTS_EDITORIAL.md`](./INSIGHTS_EDITORIAL.md).
 
 Launch sign-off: [`LAUNCH_REVIEW.md`](../LAUNCH_REVIEW.md).
 

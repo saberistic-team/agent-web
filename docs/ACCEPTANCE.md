@@ -8,7 +8,8 @@ and posted evidence.
 1. **Reviewer** (`agent:reviewer`) before approve:
    - Parses `## Acceptance criteria` from the issue body
    - Enforces service coverage gates on `app/` (unit ≥90%, integration ≥70%)
-   - Verifies each item (heuristics + OpenAI/Models)
+   - Verifies each item (heuristics + Cursor → OpenAI → GitHub Models via
+     `scripts/review_models.chat` / `scripts/acceptance.py`)
    - Posts `### acceptance_checklist` with status + evidence links
      (PR, commits, files, screenshot comments, deploy URL)
    - Checks off matching `- [ ]` boxes in the issue body when done
