@@ -557,7 +557,6 @@ class PostgresAuditEventRepository:
                 ),
             )
             row = cur.fetchone()
-            conn.commit()
         return dict(row)
 
 

@@ -19,6 +19,7 @@ from app.actor_context import ActorContext
 from app.admin_auth import SESSION_COOKIE_NAME
 from app.audit_service import REDACTED_VALUE
 from app.crm_service import CrmRepositories, CrmService
+from app.crm_uow import crm_transaction
 from app.main import app
 from app.migrations.definitions import MIGRATIONS
 from app.migrations.runner import pending_migrations
@@ -274,6 +275,8 @@ def test_crm_service_audited_mutations_record_events() -> None:
     analytics_audit.assert_called_once()
     export_audit.assert_called_once()
     assert source_repo.create.call_count == 1
+    assert conn.commit.call_count == 6
+    conn.rollback.assert_not_called()
 
 
 @pytest.mark.unit
@@ -296,6 +299,8 @@ def test_postgres_audit_repository_append_serializes_json() -> None:
     sql_args = cursor.execute.call_args[0]
     assert "INSERT INTO audit_events" in sql_args[0]
     assert json.loads(sql_args[1][6]) == {"status": "deleted"}
+    conn.commit.assert_not_called()
+    conn.rollback.assert_not_called()
 
 
 @pytest.mark.unit
@@ -305,6 +310,61 @@ def test_audit_repository_has_no_update_or_delete_methods() -> None:
     assert not hasattr(repo, "delete")
     assert hasattr(repo, "append")
     assert hasattr(repo, "list_page")
+
+
+@pytest.mark.unit
+def test_authenticated_logout_audit_is_required() -> None:
+    conn = MagicMock()
+    repo = MagicMock()
+    repo.append.side_effect = RuntimeError("audit down")
+    with pytest.raises(RuntimeError, match="audit down"):
+        audit_service.record_logout(
+            conn,
+            actor_context=_actor(),
+            session_id=42,
+            repository=repo,
+        )
+
+
+@pytest.mark.unit
+def test_anonymous_logout_audit_is_best_effort() -> None:
+    conn = MagicMock()
+    repo = MagicMock()
+    repo.append.side_effect = RuntimeError("audit down")
+    result = audit_service.record_logout(
+        conn,
+        actor_context=_actor(),
+        session_id=None,
+        repository=repo,
+    )
+    assert result is None
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_login_success_uses_single_transaction_for_session_and_audit() -> None:
+    with mock_db_connection() as conn:
+        with patch("app.admin_routes._verify_login_flow_csrf", return_value=True):
+            with patch("app.admin_routes._consume_login_flow"):
+                with patch("app.admin_routes.crm_transaction", wraps=crm_transaction) as tx:
+                    with patch(
+                        "app.admin_routes.db.create_admin_session", return_value=42
+                    ) as create_session:
+                        with patch(
+                            "app.admin_routes.audit_service.record_login_success"
+                        ) as success_audit:
+                            login = client.post(
+                                "/admin/login",
+                                data={
+                                    "username": TEST_USERNAME,
+                                    "password": TEST_PASSWORD,
+                                    "csrf_token": "flow-csrf",
+                                },
+                            )
+                            assert login.status_code == 303
+                            tx.assert_called()
+                            create_session.assert_called_once()
+                            success_audit.assert_called_once()
 
 
 @pytest.mark.unit
@@ -466,7 +526,22 @@ def test_audit_login_and_logout_helpers() -> None:
 
 
 @pytest.mark.unit
-def test_record_event_swallows_repository_errors() -> None:
+def test_record_event_raises_when_required_and_repository_fails() -> None:
+    conn = MagicMock()
+    repo = MagicMock()
+    repo.append.side_effect = RuntimeError("db down")
+    with pytest.raises(RuntimeError, match="db down"):
+        audit_service.record_event(
+            conn,
+            actor_context=_actor(),
+            action="entity.delete",
+            repository=repo,
+            required=True,
+        )
+
+
+@pytest.mark.unit
+def test_record_event_swallows_repository_errors_when_not_required() -> None:
     conn = MagicMock()
     repo = MagicMock()
     repo.append.side_effect = RuntimeError("db down")
@@ -475,6 +550,7 @@ def test_record_event_swallows_repository_errors() -> None:
         actor_context=_actor(),
         action="entity.delete",
         repository=repo,
+        required=False,
     )
     assert result is None
 
@@ -519,7 +595,8 @@ def test_db_session_helpers() -> None:
     assert row["id"] == 7
 
     db.revoke_admin_session(conn, token_hash="hash")
-    assert conn.commit.call_count == 2
+    conn.commit.assert_not_called()
+    conn.rollback.assert_not_called()
 
 
 @pytest.mark.unit

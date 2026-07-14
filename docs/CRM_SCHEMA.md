@@ -21,6 +21,28 @@ unchanged; CRM tables are storage-only until later admin/import issues wire rout
 Route handlers must not embed SQL. Use `app/db.py` for brief/payment flows and
 `app/crm_service.py` + `app/repositories/` for CRM reads/writes.
 
+## Transaction ownership
+
+Repositories perform SQL only — they never call `conn.commit()` or
+`conn.rollback()`. The **service layer** (or route handler for auth-only flows)
+owns the single commit/rollback boundary via `crm_transaction()` in
+`app/crm_uow.py`.
+
+| Caller | Boundary | What commits atomically |
+|--------|----------|-------------------------|
+| `CrmService` mutations | `with crm_transaction(conn):` | Business writes + required audit event |
+| `CrmService.import_batch` | same | Source-record inserts + `import.batch` audit |
+| `CrmService.link_project_brief_source` | same | Brief-to-CRM source linkage (brief conversion) |
+| Admin login success | `crm_transaction` in `admin_routes._issue_session` | Session row + `auth.login.success` audit |
+| Admin logout (authenticated) | `crm_transaction` in `admin_logout` | Session revocation + `auth.logout` audit |
+| Admin login failure | `crm_transaction` in `_record_login_failure` | `auth.login.failure` audit only (best-effort) |
+
+When auditing is **required** for an operation, a failed audit insert propagates
+and rolls back the related business mutation. Login-failure and anonymous-logout
+audits are best-effort (`required=False`) and do not block the operator flow.
+
+See [AUDIT_EVENTS.md](AUDIT_EVENTS.md) for append-only audit semantics.
+
 ## Identifiers
 
 - **Brief rows** keep `SERIAL` primary keys (`project_briefs.id`) for Stripe metadata

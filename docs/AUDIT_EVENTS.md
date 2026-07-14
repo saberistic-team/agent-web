@@ -38,6 +38,24 @@ Fields matching sensitive names or patterns are stored as `[REDACTED]`.
 
 Normal application code cannot mutate historical audit rows.
 
+## Transaction ownership
+
+`PostgresAuditEventRepository.append()` inserts into `audit_events` on the
+**caller's connection** without committing or rolling back. Callers wrap business
+mutations and required audit events in `crm_transaction()` (`app/crm_uow.py`) so
+both commit or roll back together.
+
+| Flow | Owner | Policy |
+|------|-------|--------|
+| CRM import, delete, pipeline, scoring, analytics, export | `CrmService` | Required audit; failure rolls back mutation |
+| Brief-to-CRM linkage | `CrmService.link_project_brief_source` | Transactional write; audit ships with future routes |
+| Login success | `admin_routes._issue_session` | Session + required audit atomically |
+| Logout (authenticated) | `admin_routes.admin_logout` | Revocation + required audit atomically |
+| Login failure / anonymous logout | `admin_routes` | Best-effort audit (`required=False`) |
+
+`record_event(..., required=True)` propagates persistence errors. Security-sensitive
+mutations must not return success when a required audit event could not be stored.
+
 ## Audited actions
 
 | Action | When recorded |
