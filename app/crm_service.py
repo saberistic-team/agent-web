@@ -10,6 +10,7 @@ import psycopg
 
 from app import audit_service
 from app.actor_context import ActorContext
+from app.crm_uow import crm_transaction
 from app.repositories import (
     ActivityRepository,
     AdminUserRepository,
@@ -58,17 +59,18 @@ class CrmService:
         contact_email: str,
         contact_name: str | None = None,
     ) -> dict[str, Any]:
-        company = self._repos.companies.create(
-            conn,
-            name=company_name,
-            website=website,
-        )
-        contact = self._repos.contacts.create(
-            conn,
-            email=contact_email,
-            full_name=contact_name,
-            company_id=UUID(str(company["id"])),
-        )
+        with crm_transaction(conn):
+            company = self._repos.companies.create(
+                conn,
+                name=company_name,
+                website=website,
+            )
+            contact = self._repos.contacts.create(
+                conn,
+                email=contact_email,
+                full_name=contact_name,
+                company_id=UUID(str(company["id"])),
+            )
         return {"company": company, "contact": contact}
 
     def record_activity_for_company(
@@ -81,14 +83,16 @@ class CrmService:
         contact_id: UUID | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        return self._repos.activities.create(
-            conn,
-            activity_type=activity_type,
-            summary=summary,
-            company_id=company_id,
-            contact_id=contact_id,
-            metadata=metadata,
-        )
+        with crm_transaction(conn):
+            activity = self._repos.activities.create(
+                conn,
+                activity_type=activity_type,
+                summary=summary,
+                company_id=company_id,
+                contact_id=contact_id,
+                metadata=metadata,
+            )
+        return activity
 
     def link_project_brief_source(
         self,
@@ -99,14 +103,16 @@ class CrmService:
         contact_id: UUID,
         payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        return self._repos.source_records.create(
-            conn,
-            source_type="project_brief",
-            external_id=str(brief_id),
-            company_id=company_id,
-            contact_id=contact_id,
-            payload=payload,
-        )
+        with crm_transaction(conn):
+            record = self._repos.source_records.create(
+                conn,
+                source_type="project_brief",
+                external_id=str(brief_id),
+                company_id=company_id,
+                contact_id=contact_id,
+                payload=payload,
+            )
+        return record
 
     def get_admin_user_by_email(
         self,
@@ -232,3 +238,4 @@ class CrmService:
             filters=filters,
         )
         return {"export_type": export_type, "filters": filters or {}}
+

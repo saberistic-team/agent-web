@@ -70,8 +70,8 @@ export DATABASE_URL="postgresql://user:pass@localhost:5432/agent_web"
 ```
 
 The app applies versioned Postgres migrations on startup (`project_briefs` plus CRM
-foundation tables). See [CRM_SCHEMA.md](CRM_SCHEMA.md) for CRM ownership and extension
-conventions.
+foundation tables). Concurrent instances serialize via a Postgres advisory lock;
+see [CRM_SCHEMA.md](CRM_SCHEMA.md) for lock keys, wait behavior, and rollback.
 
 ### 3. Stripe
 

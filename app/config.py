@@ -26,6 +26,8 @@ class Settings:
     admin_session_ttl_seconds: int = 86_400
     admin_login_rate_limit: int = 5
     admin_login_rate_window_seconds: int = 900
+    admin_login_lockout_seconds: int = 900
+    admin_trust_proxy_headers: bool = False
     audit_page_size: int = 50
 
     @property
@@ -41,13 +43,34 @@ class Settings:
         return bool(self.resend_api_key)
 
     @property
+    def admin_preview_mode(self) -> bool:
+        flag = os.environ.get("ADMIN_PREVIEW_MODE", "").lower()
+        return flag in ("1", "true", "yes")
+
+    @property
     def admin_auth_configured(self) -> bool:
-        return bool(
-            self.database_url
-            and self.admin_username
+        creds = bool(
+            self.admin_username
             and self.admin_password_hash
             and self.admin_session_secret
         )
+        if self.admin_preview_mode:
+            return creds
+        return bool(self.database_url and creds)
+
+    @property
+    def admin_preview_enabled(self) -> bool:
+        """True when ADMIN_PREVIEW_MODE is on and BASE_URL is not production.
+
+        Hard-refuses saberistic.com so a mis-set env cannot open /admin without
+        login in production.
+        """
+        if not self.admin_preview_mode:
+            return False
+        base = (self.base_url or "").lower()
+        if "saberistic.com" in base:
+            return False
+        return True
 
     @property
     def analytics_enabled(self) -> bool:
@@ -80,5 +103,12 @@ def get_settings() -> Settings:
         admin_login_rate_window_seconds=int(
             os.environ.get("ADMIN_LOGIN_RATE_WINDOW_SECONDS", "900")
         ),
+        admin_login_lockout_seconds=int(
+            os.environ.get("ADMIN_LOGIN_LOCKOUT_SECONDS", "900")
+        ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
+        admin_trust_proxy_headers=os.environ.get(
+            "ADMIN_TRUST_PROXY_HEADERS", ""
+        ).lower()
+        in ("1", "true", "yes"),
     )

@@ -1,4 +1,4 @@
-"""Render Postgres persistence for project briefs."""
+"""Render Postgres persistence for project briefs and CRM foundation."""
 
 from __future__ import annotations
 
@@ -114,3 +114,244 @@ def mark_brief_paid(
         conn.commit()
     return row
 
+
+def create_admin_session(
+    conn: psycopg.Connection,
+    *,
+    token_hash: str,
+    admin_username: str,
+    expires_at: datetime,
+    csrf_token_hash: str | None = None,
+) -> int:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO admin_sessions (token_hash, admin_username, expires_at, csrf_token_hash)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id
+            """,
+            (token_hash, admin_username, expires_at, csrf_token_hash),
+        )
+        row = cur.fetchone()
+        conn.commit()
+    return int(row["id"])
+
+
+def get_admin_session_by_token_hash(
+    conn: psycopg.Connection,
+    token_hash: str,
+) -> dict[str, Any] | None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, token_hash, admin_username, created_at, expires_at, revoked_at,
+                   csrf_token_hash
+            FROM admin_sessions
+            WHERE token_hash = %s
+            """,
+            (token_hash,),
+        )
+        return cur.fetchone()
+
+
+def revoke_admin_session(conn: psycopg.Connection, *, token_hash: str) -> None:
+    revoked_at = datetime.now(timezone.utc)
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE admin_sessions
+            SET revoked_at = %s
+            WHERE token_hash = %s AND revoked_at IS NULL
+            """,
+            (revoked_at, token_hash),
+        )
+        conn.commit()
+
+
+def update_admin_session_csrf(
+    conn: psycopg.Connection,
+    *,
+    session_id: int,
+    csrf_token_hash: str,
+) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE admin_sessions
+            SET csrf_token_hash = %s
+            WHERE id = %s AND revoked_at IS NULL
+            """,
+            (csrf_token_hash, session_id),
+        )
+        conn.commit()
+
+
+def create_admin_login_flow(
+    conn: psycopg.Connection,
+    *,
+    flow_token_hash: str,
+    csrf_token_hash: str,
+    expires_at: datetime,
+) -> int:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO admin_login_flows (flow_token_hash, csrf_token_hash, expires_at)
+            VALUES (%s, %s, %s)
+            RETURNING id
+            """,
+            (flow_token_hash, csrf_token_hash, expires_at),
+        )
+        row = cur.fetchone()
+        conn.commit()
+    return int(row["id"])
+
+
+def get_admin_login_flow_by_token_hash(
+    conn: psycopg.Connection,
+    flow_token_hash: str,
+) -> dict[str, Any] | None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, flow_token_hash, csrf_token_hash, created_at, expires_at, consumed_at
+            FROM admin_login_flows
+            WHERE flow_token_hash = %s
+            """,
+            (flow_token_hash,),
+        )
+        return cur.fetchone()
+
+
+def consume_admin_login_flow(conn: psycopg.Connection, *, flow_token_hash: str) -> None:
+    consumed_at = datetime.now(timezone.utc)
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE admin_login_flows
+            SET consumed_at = %s
+            WHERE flow_token_hash = %s AND consumed_at IS NULL
+            """,
+            (consumed_at, flow_token_hash),
+        )
+        conn.commit()
+
+
+def is_admin_login_throttled(
+    conn: psycopg.Connection,
+    *,
+    limiter_key: str,
+    now: datetime,
+) -> bool:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT locked_until
+            FROM admin_login_rate_limits
+            WHERE limiter_key = %s
+            """,
+            (limiter_key,),
+        )
+        row = cur.fetchone()
+    if row is None:
+        return False
+    locked_until = row["locked_until"]
+    if locked_until is None:
+        return False
+    if locked_until.tzinfo is None:
+        locked_until = locked_until.replace(tzinfo=timezone.utc)
+    return locked_until > now
+
+
+def record_admin_login_failure(
+    conn: psycopg.Connection,
+    *,
+    limiter_key: str,
+    now: datetime,
+    rate_limit: int,
+    window_seconds: int,
+    lockout_seconds: int,
+) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO admin_login_rate_limits (
+                limiter_key, failure_count, window_started_at, locked_until, updated_at
+            )
+            VALUES (%s, 1, %s, NULL, %s)
+            ON CONFLICT (limiter_key) DO UPDATE SET
+                failure_count = CASE
+                    WHEN admin_login_rate_limits.window_started_at
+                        < %s - make_interval(secs => %s)
+                    THEN 1
+                    ELSE admin_login_rate_limits.failure_count + 1
+                END,
+                window_started_at = CASE
+                    WHEN admin_login_rate_limits.window_started_at
+                        < %s - make_interval(secs => %s)
+                    THEN %s
+                    ELSE admin_login_rate_limits.window_started_at
+                END,
+                locked_until = CASE
+                    WHEN (
+                        CASE
+                            WHEN admin_login_rate_limits.window_started_at
+                                < %s - make_interval(secs => %s)
+                            THEN 1
+                            ELSE admin_login_rate_limits.failure_count + 1
+                        END
+                    ) >= %s
+                    THEN %s + make_interval(secs => %s)
+                    ELSE admin_login_rate_limits.locked_until
+                END,
+                updated_at = %s
+            """,
+            (
+                limiter_key,
+                now,
+                now,
+                now,
+                window_seconds,
+                now,
+                window_seconds,
+                now,
+                now,
+                window_seconds,
+                rate_limit,
+                now,
+                lockout_seconds,
+                now,
+            ),
+        )
+        conn.commit()
+
+
+def clear_admin_login_rate_limit(conn: psycopg.Connection, *, limiter_key: str) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            "DELETE FROM admin_login_rate_limits WHERE limiter_key = %s",
+            (limiter_key,),
+        )
+        conn.commit()
+
+
+def cleanup_expired_admin_login_rate_limits(
+    conn: psycopg.Connection,
+    *,
+    now: datetime,
+    window_seconds: int,
+    lockout_seconds: int,
+) -> int:
+    retention_seconds = max(window_seconds, lockout_seconds) * 2
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            DELETE FROM admin_login_rate_limits
+            WHERE updated_at < %s - make_interval(secs => %s)
+              AND (locked_until IS NULL OR locked_until < %s)
+            """,
+            (now, retention_seconds, now),
+        )
+        deleted = cur.rowcount
+        conn.commit()
+    return deleted

@@ -10,6 +10,7 @@ from pr_labels import (
     apply_pr_mirror,
     apply_to_linked_prs,
     desired_pr_labels,
+    mirror_pr_milestone,
 )
 
 
@@ -62,15 +63,29 @@ def test_desired_pr_labels_rejects_invalid_review() -> None:
 def test_apply_pr_mirror_clears_and_sets(monkeypatch: pytest.MonkeyPatch) -> None:
     deleted: list[str] = []
     added: list[list[str]] = []
+    milestones: list[tuple[int, int]] = []
 
-    monkeypatch.setattr(
-        "pr_labels.get_labels",
-        lambda repo, number: (
-            {"type:feature", "priority:high", "status:needs-review"}
-            if number == 10
-            else {"type:old", "priority:low", "review:approved", "agent:builder"}
-        ),
-    )
+    def fake_get_issue(repo: str, number: int) -> dict:
+        if number == 10:
+            return {
+                "labels": [
+                    {"name": "type:feature"},
+                    {"name": "priority:high"},
+                    {"name": "status:needs-review"},
+                ],
+                "milestone": {"number": 3, "title": "Phase"},
+            }
+        return {
+            "labels": [
+                {"name": "type:old"},
+                {"name": "priority:low"},
+                {"name": "review:approved"},
+                {"name": "agent:builder"},
+            ],
+            "milestone": None,
+        }
+
+    monkeypatch.setattr("pr_labels.get_issue", fake_get_issue)
     monkeypatch.setattr(
         "pr_labels.delete_label",
         lambda repo, number, label: deleted.append(label),
@@ -78,6 +93,10 @@ def test_apply_pr_mirror_clears_and_sets(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr(
         "pr_labels.add_labels",
         lambda repo, number, labels: added.append(list(labels)),
+    )
+    monkeypatch.setattr(
+        "pr_labels.assign_milestone",
+        lambda repo, number, milestone: milestones.append((number, milestone)),
     )
 
     result = apply_pr_mirror(
@@ -90,6 +109,48 @@ def test_apply_pr_mirror_clears_and_sets(monkeypatch: pytest.MonkeyPatch) -> Non
     assert set(deleted) == {"type:old", "priority:low", "review:approved"}
     assert "agent:builder" not in deleted  # left alone (should not be on PR anyway)
     assert added == [["type:feature", "priority:high", "review:needs-review"]]
+    assert milestones == [(55, 3)]
+
+
+@pytest.mark.unit
+def test_apply_pr_mirror_skips_milestone_when_issue_has_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    milestones: list[tuple[int, int]] = []
+
+    monkeypatch.setattr(
+        "pr_labels.get_issue",
+        lambda repo, number: {
+            "labels": [{"name": "type:bug"}, {"name": "priority:critical"}],
+            "milestone": None,
+        },
+    )
+    monkeypatch.setattr("pr_labels.clear_pr_mirror_labels", lambda *a, **k: None)
+    monkeypatch.setattr("pr_labels.add_labels", lambda *a, **k: None)
+    monkeypatch.setattr(
+        "pr_labels.assign_milestone",
+        lambda repo, number, milestone: milestones.append((number, milestone)),
+    )
+
+    apply_pr_mirror("o/r", 11, 56, default_review="review:needs-review")
+    assert milestones == []
+
+
+@pytest.mark.unit
+def test_mirror_pr_milestone_copies_from_issue(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    milestones: list[tuple[int, int]] = []
+    monkeypatch.setattr(
+        "pr_labels.get_issue",
+        lambda repo, number: {"milestone": {"number": 7, "title": "Ship"}},
+    )
+    monkeypatch.setattr(
+        "pr_labels.assign_milestone",
+        lambda repo, number, milestone: milestones.append((number, milestone)),
+    )
+    assert mirror_pr_milestone("o/r", 12, 90) == 7
+    assert milestones == [(90, 7)]
 
 
 @pytest.mark.unit

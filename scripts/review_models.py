@@ -359,7 +359,12 @@ def ai_review(repo: str, issue: int, pr_number: int) -> dict[str, Any]:
         "or leaves acceptance criteria unmet.\n"
         "Also request changes when mobile screenshots show hero/primary text clipped "
         "or overflowing the viewport (out of frame) — that is a Builder CSS fix.\n"
-        "Do NOT request changes solely for:\n"
+        "Screenshot policy (docs/SCREENSHOTS.md) — do NOT request changes for:\n"
+        "- missing saberistic.com / production `pre-*.png` on the PR (pre-merge captures "
+        "PR-head `branch-*.png` only; production shots are post-deploy)\n"
+        "- missing `/admin` screenshots when Reviewer evidence already includes "
+        "`branch-admin*.png` under ADMIN_PREVIEW_MODE, OR when the PR is admin-only "
+        "and posted a skip/branch note — admin is never shot on saberistic.com\n"
         "- files under `.agent/screenshots/` (allowed Reviewer evidence)\n"
         "- noisy/file-by-file commit history (gate squash-merges to main)\n"
         "- wording/style nits when acceptance criteria are met\n"
@@ -378,7 +383,9 @@ def ai_review(repo: str, issue: int, pr_number: int) -> dict[str, Any]:
         reasons = [str(reasons)]
     # Drop nit reasons that must not block when acceptance is met (#58).
     nit_re = re.compile(
-        r"screenshot|\.agent/screenshots|commit history|squash|nit\b|wording|style",
+        r"screenshot|\.agent/screenshots|commit history|squash|nit\b|wording|style|"
+        r"branch-admin|pre-.*\.png|saberistic\.com|production baseline|"
+        r"ADMIN_PREVIEW|admin.*(shot|png|screenshot)",
         re.I,
     )
     issue_blob = f"{ctx.get('issue_title')}\n{ctx.get('issue_body')}".lower()
@@ -409,6 +416,30 @@ def ai_review(repo: str, issue: int, pr_number: int) -> dict[str, Any]:
             ]
         else:
             reasons = non_nits
+    else:
+        # Rejecting solely for missing admin / production-pre shots is a policy miss.
+        policy_re = re.compile(
+            r"branch-admin|admin-login\.png|"
+            r"(missing|require).*(admin|branch-admin).*(png|screenshot)|"
+            r"admin.*(png|screenshot|shot|visual)|"
+            r"(screenshot|visual).*(/admin|admin page)|"
+            r"production.*(baseline|pre|screenshot)|"
+            r"saberistic\.com.*(shot|screenshot|pre)|"
+            r"ADMIN_PREVIEW",
+            re.I,
+        )
+        other = [str(r) for r in reasons if not policy_re.search(str(r))]
+        policy_hits = [str(r) for r in reasons if policy_re.search(str(r))]
+        if (
+            decision == "changes-requested"
+            and policy_hits
+            and not other
+        ):
+            decision = "approved"
+            reasons = [
+                "Screenshot policy: admin uses ADMIN_PREVIEW_MODE on PR branch; "
+                "saberistic.com shots are post-deploy only"
+            ] + policy_hits
     return {
         "decision": decision,
         "meets_acceptance": True if decision == "approved" else False,

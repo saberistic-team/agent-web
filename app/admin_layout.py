@@ -9,10 +9,10 @@ ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
         "label": "Dashboard",
         "href": "/admin",
         "milestone": "Admin foundation",
-        "summary": "Operational overview",
+        "summary": "Operational overview and brief summaries",
     },
     {
-        "label": "Audit log",
+        "label": "Audit",
         "href": "/admin/audit",
         "milestone": "Audit trail",
         "summary": "Immutable security and mutation history",
@@ -30,6 +30,12 @@ ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
         "summary": "People, roles, and outreach history",
     },
     {
+        "label": "Signals",
+        "href": "/admin/signals",
+        "milestone": "Signal intelligence",
+        "summary": "Inbound triggers and intent scoring",
+    },
+    {
         "label": "Pipeline",
         "href": "/admin/pipeline",
         "milestone": "Pipeline operations",
@@ -42,10 +48,22 @@ ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
         "summary": "CSV and enrichment ingest",
     },
     {
+        "label": "Discovery",
+        "href": "/admin/discovery",
+        "milestone": "Lead discovery",
+        "summary": "Prospect search and list building",
+    },
+    {
         "label": "Analytics",
         "href": "/admin/analytics",
         "milestone": "Admin analytics",
         "summary": "Funnel metrics and attribution",
+    },
+    {
+        "label": "Content",
+        "href": "/admin/content",
+        "milestone": "Content management",
+        "summary": "Insights, case studies, and landing copy",
     },
     {
         "label": "Settings",
@@ -84,12 +102,24 @@ def render_admin_shell(
     title: str,
     main: str,
     active_path: str,
-    admin_username: str,
+    admin_username: str = "",
+    csrf_token: str = "",
 ) -> str:
     """Return a complete admin HTML document."""
     page_title = html.escape(title)
-    username = html.escape(admin_username)
     nav = render_admin_nav(active_path)
+    user_chip = ""
+    if admin_username:
+        user_chip = (
+            f'<span class="admin-user">Signed in as '
+            f"<strong>{html.escape(admin_username)}</strong></span>"
+        )
+    csrf_input = ""
+    if csrf_token:
+        csrf_input = (
+            '<input type="hidden" name="csrf_token" '
+            f'value="{html.escape(csrf_token, quote=True)}" />'
+        )
     return f"""<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -97,6 +127,7 @@ def render_admin_shell(
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
     <title>{page_title} · saberistic admin</title>
+    <link rel="icon" href="/assets/logo.png" type="image/png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -119,11 +150,12 @@ def render_admin_shell(
         <span class="admin-badge">Admin</span>
       </a>
       <div class="admin-top-actions">
-        <span class="admin-user">Signed in as <strong>{username}</strong></span>
-        <form method="post" action="/admin/logout">
-          <button class="admin-exit admin-logout" type="submit">Sign out</button>
-        </form>
+        {user_chip}
         <a class="admin-exit" href="/">Public site</a>
+        <form method="post" action="/admin/logout">
+          {csrf_input}
+          <button class="admin-exit admin-signout" type="submit">Sign out</button>
+        </form>
       </div>
     </header>
     <div class="admin-layout">

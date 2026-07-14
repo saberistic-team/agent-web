@@ -38,9 +38,50 @@ SKIP_SCREENSHOT_EXACT = frozenset(
         "/openapi.json",
         "/redoc",
         "/favicon.ico",
+        "/insights/feed.xml",
     }
 )
+# Admin is never screenshotted on production; pre-merge uses ADMIN_PREVIEW_MODE.
 SKIP_SCREENSHOT_PREFIXES = ("/api/", "/webhooks/", "/assets")
+
+# Preview-only admin credentials/session for branch screenshot capture.
+PREVIEW_ADMIN_USERNAME = "preview-admin"
+PREVIEW_ADMIN_PASSWORD_HASH = (
+    "$argon2id$v=19$m=65536,t=3,p=4$preview-screenshot-salt$preview-screenshot-hash"
+)
+PREVIEW_ADMIN_SESSION_SECRET = "preview-session-secret-32chars-minimum"
+PREVIEW_SESSION_TOKEN = "preview-screenshot-session"
+ADMIN_SESSION_COOKIE = "admin_session"
+
+# Static HTML files under site/ → public page routes.
+SITE_HTML_TO_ROUTE: dict[str, str] = {
+    "site/index.html": "/",
+    "site/about.html": "/about",
+    "site/services.html": "/services",
+    "site/case-studies.html": "/case-studies",
+    "site/brief.html": "/brief",
+    "site/brief-success.html": "/brief/success",
+}
+
+# Admin HTML surfaces captured only on the PR-head preview server.
+ADMIN_SCREENSHOT_ROUTES: tuple[str, ...] = ("/admin", "/admin/login")
+
+# Shared presentation — any change here affects all public pages.
+SITE_WIDE_PATH_PREFIXES = ("site/assets/",)
+SITE_WIDE_FILES = frozenset(
+    {
+        "app/page_service.py",
+        "app/metadata.py",
+        "app/seo.py",
+        "app/analytics_service.py",
+        "app/main.py",
+        "app/config.py",
+        "app/admin.py",
+        "app/admin_layout.py",
+        "site/assets/admin.css",
+    }
+)
+ADMIN_PATH_PREFIXES = ("app/admin",)
 
 # Desktop + mobile evidence for landing/product acceptance criteria.
 VIEWPORTS: tuple[tuple[str, int, int], ...] = (
@@ -51,7 +92,7 @@ VIEWPORTS: tuple[tuple[str, int, int], ...] = (
 # Elements that must stay readable inside the viewport (esp. mobile).
 OVERFLOW_SELECTORS = ("h1", ".lede", ".cta-row", ".hero")
 
-# Pre-merge production baseline filenames (compared to post-deploy).
+# Legacy production-pre basename helper (post-deploy compare now uses branch-*).
 PRE_PROD_PHASE = "pre"
 # Pre-merge shots of the PR head served locally (not production).
 PRE_BRANCH_PHASE = "branch"
@@ -64,7 +105,7 @@ class CaptureResult(NamedTuple):
 
 
 class PreCaptureResult(NamedTuple):
-    """Dual pre-merge capture: PR branch preview + production baseline."""
+    """Pre-merge capture: PR branch preview only (prod_* kept empty for compat)."""
 
     branch_paths: list[Path]
     prod_paths: list[Path]
@@ -114,11 +155,43 @@ def is_skipped_api_or_meta_route(path: str) -> bool:
     """True for JSON APIs / meta routes that must not be screenshot targets.
 
     ``/health`` is always skipped here (JSON evidence via ``wait_healthy`` only).
+    Admin routes are *not* skipped here — callers choose public vs admin via
+    ``include_admin`` / phase (pre-merge branch may capture them under
+    ``ADMIN_PREVIEW_MODE``; production post-deploy never does).
     """
     route = path if path.startswith("/") else f"/{path}"
     if route in SKIP_SCREENSHOT_EXACT:
         return True
     return any(route.startswith(prefix) for prefix in SKIP_SCREENSHOT_PREFIXES)
+
+
+def is_admin_screenshot_route(path: str) -> bool:
+    route = _normalize_route_path(path)
+    return route == "/admin" or route.startswith("/admin/")
+
+
+def route_requires_admin_auth(path: str) -> bool:
+    """True when a screenshot target needs an authenticated admin session."""
+    return is_admin_screenshot_route(path)
+
+
+def admin_screenshot_session_cookie() -> dict[str, str]:
+    """Return the preview admin session cookie for branch screenshot capture."""
+    return {
+        "name": ADMIN_SESSION_COOKIE,
+        "value": PREVIEW_SESSION_TOKEN,
+        "path": "/admin",
+        "httpOnly": True,
+        "sameSite": "Strict",
+    }
+
+
+def is_public_screenshot_route(path: str) -> bool:
+    """True for public marketing HTML pages (not admin, not APIs)."""
+    route = _normalize_route_path(path)
+    if is_admin_screenshot_route(route):
+        return False
+    return not is_skipped_api_or_meta_route(route)
 
 
 def _normalize_route_path(path: str) -> str:
@@ -153,14 +226,19 @@ def _expand_param_route(path: str, app_root: Path) -> list[str]:
     return []
 
 
-def discover_screenshot_routes(app_root: Path | None = None) -> list[str]:
-    """Return GET page routes to screenshot (all HTML pages; skip JSON APIs).
+def discover_screenshot_routes(
+    app_root: Path | None = None,
+    *,
+    include_admin: bool = False,
+) -> list[str]:
+    """Return GET HTML page routes to screenshot.
 
     Discovers FastAPI GET routes under ``app_root`` (PR head / cwd). Skips
-    ``/health`` (JSON evidence only), other JSON APIs (``/hello``, ``/api/*``,
-    webhooks), OpenAPI docs, static mounts, and legacy redirects. Parameterized
-    work pages are expanded from case-study data. Capture still probes each URL
-    and skips non-HTML responses.
+    ``/health`` (JSON evidence only), other JSON APIs, OpenAPI docs, static
+    mounts, and legacy redirects. When ``include_admin`` is True (pre-merge
+    branch only), also includes ``/admin`` and ``/admin/login`` for capture
+    under ``ADMIN_PREVIEW_MODE``. Production post-deploy must pass
+    ``include_admin=False``.
     """
     root = resolve_preview_root(app_root)
     found: set[str] = set()
@@ -186,6 +264,8 @@ def discover_screenshot_routes(app_root: Path | None = None) -> list[str]:
             route_path = _normalize_route_path(path)
             if route_path in legacy or is_skipped_api_or_meta_route(route_path):
                 continue
+            if is_admin_screenshot_route(route_path):
+                continue  # added explicitly via include_admin
             if "{" in route_path:
                 found.update(_expand_param_route(route_path, root))
                 continue
@@ -212,9 +292,161 @@ def discover_screenshot_routes(app_root: Path | None = None) -> list[str]:
     if not any(p.startswith("/insights/") for p in found):
         found.update(_expand_param_route("/insights/{slug}", root))
 
-    # Stable order: home first, then lexical.
-    ordered = sorted(found, key=lambda p: (p != "/", p))
+    found = {p for p in found if is_public_screenshot_route(p)}
+    if include_admin:
+        found.update(ADMIN_SCREENSHOT_ROUTES)
+
+    # Stable order: home first, then lexical (admin after public).
+    ordered = sorted(found, key=lambda p: (p != "/", is_admin_screenshot_route(p), p))
     return ordered or list(HTML_PATHS)
+
+
+def _normalize_repo_path(path: str) -> str:
+    return path.replace("\\", "/").lstrip("./")
+
+
+def routes_affected_by_changed_files(
+    changed_paths: list[str],
+    *,
+    candidate_routes: list[str] | None = None,
+    app_root: Path | None = None,
+    include_admin: bool = False,
+) -> list[str]:
+    """Return screenshot routes affected by PR file changes.
+
+    Public marketing pages map from ``site/`` / shared layout. Admin routes
+    map only when ``include_admin`` (pre-merge branch + ``ADMIN_PREVIEW_MODE``).
+    Production post-deploy must use ``include_admin=False``.
+    """
+    candidates = list(
+        candidate_routes
+        or discover_screenshot_routes(app_root, include_admin=include_admin)
+    )
+    if not changed_paths:
+        return []
+
+    affected: set[str] = set()
+    site_wide = False
+    saw_visual = False
+    saw_admin = False
+    work_routes = [r for r in candidates if r.startswith("/work/")]
+    insight_routes = [r for r in candidates if r.startswith("/insights/")]
+    public_candidates = [r for r in candidates if is_public_screenshot_route(r)]
+    admin_candidates = [r for r in candidates if is_admin_screenshot_route(r)]
+
+    for raw in changed_paths:
+        path = _normalize_repo_path(raw)
+        if (
+            path.startswith("tests/")
+            or path.startswith("docs/")
+            or path.startswith("scripts/")
+            or path.startswith(".agent/")
+            or path.startswith("AGENTS/")
+            or path.startswith(".github/")
+        ):
+            continue
+
+        if path.startswith(ADMIN_PATH_PREFIXES) or path.startswith("app/admin"):
+            if include_admin:
+                saw_admin = True
+                saw_visual = True
+            continue
+
+        if path in SITE_HTML_TO_ROUTE:
+            saw_visual = True
+            affected.add(SITE_HTML_TO_ROUTE[path])
+            continue
+
+        if path.startswith(SITE_WIDE_PATH_PREFIXES) or path in SITE_WIDE_FILES:
+            site_wide = True
+            saw_visual = True
+            continue
+
+        if path.endswith("case-studies.json") or path == "app/case_studies.py":
+            saw_visual = True
+            affected.add("/case-studies")
+            affected.update(work_routes)
+            continue
+
+        if path.endswith("insights.json") or path == "app/insights.py":
+            saw_visual = True
+            affected.add("/insights")
+            affected.update(insight_routes)
+            continue
+
+        if path.startswith("site/") and path.endswith(".html"):
+            site_wide = True
+            saw_visual = True
+            continue
+
+        if path.startswith("site/"):
+            saw_visual = True
+            site_wide = True
+            continue
+
+    if not saw_visual:
+        return []
+
+    result: list[str] = []
+    if site_wide:
+        result.extend(public_candidates)
+        if include_admin and (saw_admin or site_wide):
+            # Shared CSS/assets also style admin login / shell.
+            result.extend(admin_candidates or list(ADMIN_SCREENSHOT_ROUTES))
+    else:
+        result.extend(r for r in public_candidates if r in affected)
+        if include_admin and saw_admin:
+            result.extend(admin_candidates or list(ADMIN_SCREENSHOT_ROUTES))
+
+    # Dedupe preserving order.
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for r in result:
+        if r not in seen:
+            seen.add(r)
+            ordered.append(r)
+    return ordered
+
+
+def resolve_screenshot_routes(
+    app_root: Path | None = None,
+    *,
+    changed_files: list[str] | None = None,
+    include_admin: bool = False,
+) -> list[str]:
+    """Routes to capture; optionally narrowed to PR-affected pages.
+
+    ``include_admin`` must be True only for pre-merge PR-head preview (with
+    ``ADMIN_PREVIEW_MODE``). Post-deploy production capture keeps it False.
+    """
+    all_routes = discover_screenshot_routes(app_root, include_admin=include_admin)
+    if changed_files is None:
+        return all_routes
+    return routes_affected_by_changed_files(
+        changed_files,
+        candidate_routes=all_routes,
+        app_root=app_root,
+        include_admin=include_admin,
+    )
+
+
+def changed_paths_from_pr_files(files: list[dict[str, Any]]) -> list[str]:
+    """Extract repo-relative paths from GitHub PR files API objects."""
+    paths: list[str] = []
+    for item in files:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("filename") or item.get("previous_filename")
+        if name:
+            paths.append(str(name))
+    return paths
+
+
+def fetch_pr_changed_paths(repo: str, pr_number: int) -> list[str]:
+    """Paginate PR files and return changed path strings."""
+    from github_api import list_pr_files
+
+    return changed_paths_from_pr_files(list_pr_files(repo, pr_number))
 
 
 def resolve_base_url(value: str | None = None) -> str:
@@ -260,6 +492,13 @@ def local_preview_server(
         "BASE_URL": base,
         # HTML pages must render without requiring production secrets.
         "DATABASE_URL": os.environ.get("DATABASE_URL") or "",
+        # Open /admin without login for branch screenshot evidence only.
+        "ADMIN_PREVIEW_MODE": "1",
+        "ADMIN_USERNAME": os.environ.get("ADMIN_USERNAME") or PREVIEW_ADMIN_USERNAME,
+        "ADMIN_PASSWORD_HASH": os.environ.get("ADMIN_PASSWORD_HASH")
+        or PREVIEW_ADMIN_PASSWORD_HASH,
+        "ADMIN_SESSION_SECRET": os.environ.get("ADMIN_SESSION_SECRET")
+        or PREVIEW_ADMIN_SESSION_SECRET,
     }
     proc = subprocess.Popen(
         [
@@ -303,11 +542,22 @@ def capture_pre_dual(
     prod_base_url: str | None = None,
     preview_root: Path | None = None,
     preview_port: int = DEFAULT_PREVIEW_PORT,
+    routes: list[str] | None = None,
+    changed_files: list[str] | None = None,
 ) -> PreCaptureResult:
-    """Pre-merge: screenshot PR branch (local) + production (saberistic.com)."""
-    prod_url = resolve_base_url(prod_base_url)
+    """Pre-merge: screenshot PR branch only (local uvicorn + ADMIN_PREVIEW_MODE).
+
+    Does **not** capture saberistic.com — production shots are post-deploy only.
+    ``prod_*`` fields stay empty for API compatibility with older callers.
+    When ``changed_files`` is provided, only affected public + admin routes
+    are captured. Admin pages require the preview server's ADMIN_PREVIEW_MODE.
+    """
+    del prod_base_url  # production baseline intentionally omitted pre-merge
     out_dir.mkdir(parents=True, exist_ok=True)
-    routes = discover_screenshot_routes(preview_root)
+    if routes is None:
+        routes = resolve_screenshot_routes(
+            preview_root, changed_files=changed_files, include_admin=True
+        )
     with local_preview_server(preview_root, port=preview_port) as branch_url:
         branch = capture(
             branch_url,
@@ -315,21 +565,15 @@ def capture_pre_dual(
             phase=PRE_BRANCH_PHASE,
             routes=routes,
             preview_root=preview_root,
-        )
-        prod = capture(
-            prod_url,
-            out_dir,
-            phase=PRE_PROD_PHASE,
-            routes=routes,
-            preview_root=preview_root,
+            allow_admin=True,
         )
     return PreCaptureResult(
         branch_paths=branch.paths,
-        prod_paths=prod.paths,
+        prod_paths=[],
         branch_overflows=branch.overflows,
-        prod_overflows=prod.overflows,
+        prod_overflows=[],
         branch_url=branch_url,
-        prod_url=prod_url,
+        prod_url="",
     )
 
 
@@ -364,15 +608,17 @@ def wait_healthy(base_url: str | None = None, attempts: int = 12) -> dict[str, A
     raise GitHubError(f"deploy not healthy at {health_url}: {last}")
 
 
-def _is_html_response(url: str) -> bool:
+def _is_html_response(url: str, *, route: str | None = None) -> bool:
     """Return True if the URL serves HTML (skip JSON API routes).
 
     ``/health`` and other JSON endpoints are never screenshot targets.
     """
     try:
-        req = urllib.request.Request(
-            url, method="GET", headers={"User-Agent": "agent-web-screenshots"}
-        )
+        headers = {"User-Agent": "agent-web-screenshots"}
+        if route and route_requires_admin_auth(route):
+            cookie = admin_screenshot_session_cookie()
+            headers["Cookie"] = f"{cookie['name']}={cookie['value']}"
+        req = urllib.request.Request(url, method="GET", headers=headers)
         with urllib.request.urlopen(req, timeout=30) as resp:
             if not (200 <= resp.status < 300):
                 return False
@@ -464,6 +710,8 @@ def capture(
     phase: str = "pre",
     routes: list[str] | None = None,
     preview_root: Path | None = None,
+    changed_files: list[str] | None = None,
+    allow_admin: bool = False,
 ) -> CaptureResult:
     try:
         from playwright.sync_api import sync_playwright
@@ -476,21 +724,49 @@ def capture(
     paths: list[Path] = []
     overflows: list[dict[str, Any]] = []
     base = resolve_base_url(base_url)
-    html_routes = [
-        r
-        for r in (routes or discover_screenshot_routes(preview_root))
-        if not is_skipped_api_or_meta_route(r)
-    ]
+    if routes is None:
+        source = resolve_screenshot_routes(
+            preview_root,
+            changed_files=changed_files,
+            include_admin=allow_admin,
+        )
+    else:
+        source = routes
+    html_routes = []
+    for r in source:
+        if is_skipped_api_or_meta_route(r):
+            continue
+        if is_admin_screenshot_route(r) and not allow_admin:
+            continue
+        html_routes.append(r)
     if not html_routes:
+        # Explicit empty set (e.g. docs-only PR) — nothing to capture.
+        if routes is not None or changed_files is not None:
+            report = out_dir / f"{phase}-overflow.json"
+            report.write_text("[]\n", encoding="utf-8")
+            return CaptureResult(paths=[], overflows=[])
         html_routes = list(HTML_PATHS)
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
         for viewport_name, width, height in VIEWPORTS:
             page = browser.new_page(viewport={"width": width, "height": height})
+            if allow_admin:
+                admin_cookie = admin_screenshot_session_cookie()
+                page.context.add_cookies(
+                    [
+                        {
+                            "name": admin_cookie["name"],
+                            "value": admin_cookie["value"],
+                            "url": base + "/admin",
+                            "httpOnly": admin_cookie["httpOnly"],
+                            "sameSite": admin_cookie["sameSite"],
+                        }
+                    ]
+                )
             for route in html_routes:
                 url = _route_url(base, route)
-                if not _is_html_response(url):
+                if not _is_html_response(url, route=route):
                     # JSON API, redirect miss, or non-HTML — skip (e.g. /hello, new
                     # PR route not yet on production).
                     continue
@@ -555,6 +831,21 @@ def upload_to_branch(
     return urls
 
 
+def _screenshot_list_lines(urls: list[str], *, indent: str = "  ") -> list[str]:
+    """Markdown list items with the title **above** each image.
+
+    GitHub renders ``- name: ![…](url)`` so the next bullet's title sits under
+    the previous full-width PNG — looking like the title came after the shot.
+    Put the filename on its own line, then the image on the following line.
+    """
+    lines: list[str] = []
+    for url in urls:
+        name = url.rsplit("/", 1)[-1]
+        lines.append(f"{indent}- **{name}**")
+        lines.append(f"{indent}  ![{name}]({url})")
+    return lines
+
+
 def comment_markdown(
     heading: str, base_url: str, urls: list[str], extra: list[str] | None = None
 ) -> str:
@@ -562,10 +853,8 @@ def comment_markdown(
         heading,
         f"- deploy: `{base_url}`",
         "- evidence (headless Chromium):",
+        *_screenshot_list_lines(urls, indent="  "),
     ]
-    for url in urls:
-        name = url.rsplit("/", 1)[-1]
-        lines.append(f"  - {name}: ![{name}]({url})")
     if extra:
         lines.extend(extra)
     return "\n".join(lines) + "\n"
@@ -574,26 +863,29 @@ def comment_markdown(
 def comment_markdown_pre_dual(
     *,
     branch_url: str,
-    prod_url: str,
+    prod_url: str = "",
     branch_urls: list[str],
-    prod_urls: list[str],
+    prod_urls: list[str] | None = None,
     extra: list[str] | None = None,
+    routes: list[str] | None = None,
 ) -> str:
-    """PR review comment: branch preview shots + production baseline."""
+    """PR review comment: branch preview shots only (no saberistic.com pre)."""
+    del prod_url, prod_urls  # production screenshots are post-deploy only
     lines = [
         "### reviewer_screenshots_pre",
-        f"- branch (PR head local): `{branch_url}`",
-        f"- production: `{prod_url}`",
-        "- evidence (headless Chromium):",
-        "  - **PR branch** (code under review):",
+        f"- branch (PR head local, ADMIN_PREVIEW_MODE): `{branch_url}`",
+        "- production: skipped pre-merge (saberistic.com shots are post-deploy only)",
     ]
-    for url in branch_urls:
-        name = url.rsplit("/", 1)[-1]
-        lines.append(f"    - {name}: ![{name}]({url})")
-    lines.append("  - **Production baseline** (saberistic.com before merge):")
-    for url in prod_urls:
-        name = url.rsplit("/", 1)[-1]
-        lines.append(f"    - {name}: ![{name}]({url})")
+    if routes is not None:
+        route_list = ", ".join(f"`{r}`" for r in routes) or "(none)"
+        lines.append(f"- routes (PR-affected): {route_list}")
+    lines.extend(
+        [
+            "- evidence (headless Chromium):",
+            "  - **PR branch** (code under review):",
+            *_screenshot_list_lines(branch_urls, indent="    "),
+        ]
+    )
     if extra:
         lines.extend(extra)
     return "\n".join(lines) + "\n"
@@ -622,7 +914,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--prod-only",
         action="store_true",
-        help="Pre-merge: capture production only (legacy single-source)",
+        help="Legacy: capture production URL only (skips PR-head preview)",
     )
     args = parser.parse_args(argv)
 
@@ -649,43 +941,89 @@ def main(argv: list[str] | None = None) -> int:
             if args.pr
             else f".agent/screenshots/issue-{args.issue}"
         )
+        changed: list[str] | None = None
+        if args.pr:
+            changed = fetch_pr_changed_paths(args.repo, args.pr)
+        include_admin = args.phase == "pre" and not args.prod_only
+        routes = resolve_screenshot_routes(
+            Path(args.preview_root) if args.preview_root else None,
+            changed_files=changed,
+            include_admin=include_admin,
+        )
         dual_pre = args.phase == "pre" and not args.prod_only
         if dual_pre:
             preview = Path(args.preview_root) if args.preview_root else None
-            dual = capture_pre_dual(
-                args.out_dir,
-                prod_base_url=base_url,
-                preview_root=preview,
-            )
-            branch_urls = upload_to_branch(
-                args.repo, branch, dual.branch_paths, prefix
-            )
-            prod_urls = upload_to_branch(args.repo, branch, dual.prod_paths, prefix)
-            body = comment_markdown_pre_dual(
-                branch_url=dual.branch_url,
-                prod_url=dual.prod_url,
-                branch_urls=branch_urls,
-                prod_urls=prod_urls,
-            )
-            urls = [*branch_urls, *prod_urls]
+            if not routes:
+                body = (
+                    "### reviewer_screenshots_pre\n"
+                    "- production: skipped pre-merge "
+                    "(saberistic.com shots are post-deploy only)\n"
+                    "- routes (PR-affected): (none)\n"
+                    "- note: no pages affected by this PR "
+                    "(tests/docs/scripts only); screenshots skipped\n"
+                )
+                urls = []
+            else:
+                dual = capture_pre_dual(
+                    args.out_dir,
+                    preview_root=preview,
+                    routes=routes,
+                )
+                branch_urls = upload_to_branch(
+                    args.repo, branch, dual.branch_paths, prefix
+                )
+                body = comment_markdown_pre_dual(
+                    branch_url=dual.branch_url,
+                    branch_urls=branch_urls,
+                    routes=routes,
+                )
+                urls = branch_urls
         else:
-            files = capture(base_url, args.out_dir, phase=args.phase).paths
-            urls = upload_to_branch(args.repo, branch, files, prefix)
-            heading = (
-                "### reviewer_screenshots_pre"
-                if args.phase == "pre"
-                else "### deploy_screenshots_post"
+            # Post-deploy (or legacy --prod-only): production public pages only.
+            post_routes = resolve_screenshot_routes(
+                changed_files=changed,
+                include_admin=False,
             )
-            extra = None
-            if health is not None:
-                slim = {k: v for k, v in health.items() if not str(k).startswith("_")}
-                extra = [f"- health: `{json.dumps(slim, separators=(',', ':'))}`"]
-            body = comment_markdown(heading, base_url, urls, extra=extra)
+            if not post_routes and changed is not None:
+                body = (
+                    f"### deploy_screenshots_post\n"
+                    f"- deploy: `{base_url}`\n"
+                    "- routes (public, PR-affected): (none)\n"
+                    "- note: no public pages affected; screenshots skipped\n"
+                )
+                if health is not None:
+                    slim = {k: v for k, v in health.items() if not str(k).startswith("_")}
+                    body += f"- health: `{json.dumps(slim, separators=(',', ':'))}`\n"
+                urls = []
+            else:
+                files = capture(
+                    base_url,
+                    args.out_dir,
+                    phase=args.phase,
+                    routes=post_routes if changed is not None else None,
+                    allow_admin=False,
+                ).paths
+                urls = upload_to_branch(args.repo, branch, files, prefix)
+                heading = (
+                    "### reviewer_screenshots_pre"
+                    if args.phase == "pre"
+                    else "### deploy_screenshots_post"
+                )
+                extra = None
+                if health is not None:
+                    slim = {k: v for k, v in health.items() if not str(k).startswith("_")}
+                    extra = [f"- health: `{json.dumps(slim, separators=(',', ':'))}`"]
+                if post_routes and changed is not None:
+                    extra = (extra or []) + [
+                        "- routes (public, PR-affected): "
+                        + ", ".join(f"`{r}`" for r in post_routes)
+                    ]
+                body = comment_markdown(heading, base_url, urls, extra=extra)
 
         comment_on_issue_or_pr(args.repo, target, body)
         if args.issue and args.pr and args.issue != args.pr:
             comment_on_issue_or_pr(args.repo, args.issue, body)
-        print("\n".join(urls))
+        print("\n".join(urls) if urls else "(no screenshots)")
         return 0
     except Exception as exc:
         print(f"FAIL: {exc}", file=sys.stderr)

@@ -35,6 +35,13 @@ body.admin-app {
   border-radius: 2px;
 }
 
+.admin-top-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem 1.25rem;
+}
+
 .admin-exit {
   font-size: 0.75rem;
   letter-spacing: 0.06em;
@@ -49,6 +56,14 @@ body.admin-app {
   color: var(--ink);
   border-color: var(--accent);
   outline: none;
+}
+
+.admin-signout {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
 }
 
 .admin-layout {
@@ -165,20 +180,28 @@ body.admin-app {
   border-radius: 2px;
 }
 
-.admin-top-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem 1.25rem;
-}
+@media (max-width: 768px) {
+  .admin-layout {
+    grid-template-columns: 1fr;
+  }
 
-.admin-user {
-  font-size: 0.75rem;
-  color: var(--muted);
-}
+  .admin-nav {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    padding: 0.75rem clamp(1rem, 4vw, 1.5rem);
+  }
 
-.admin-user strong {
-  color: var(--ink);
+  .admin-nav-summary {
+    display: block;
+  }
+
+  .admin-nav-list {
+    margin-top: 0.75rem;
+  }
+
+  .admin-nav-toggle:not([open]) .admin-nav-list {
+    display: none;
+  }
 }
 
 .audit-meta {

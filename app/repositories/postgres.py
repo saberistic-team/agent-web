@@ -42,7 +42,6 @@ class PostgresCompanyRepository:
                 (name, website, status),
             )
             row = cur.fetchone()
-            conn.commit()
         return dict(row)
 
     def get_by_id(self, conn: psycopg.Connection, company_id: UUID) -> dict[str, Any] | None:
@@ -88,7 +87,6 @@ class PostgresCompanyRepository:
                 values,
             )
             row = cur.fetchone()
-            conn.commit()
         return dict(row) if row else None
 
 
@@ -111,7 +109,6 @@ class PostgresContactRepository:
                 (email, full_name, company_id),
             )
             row = cur.fetchone()
-            conn.commit()
         return dict(row)
 
     def get_by_id(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None:
@@ -156,7 +153,6 @@ class PostgresSourceRecordRepository:
                 ),
             )
             row = cur.fetchone()
-            conn.commit()
         return dict(row)
 
     def get_by_source(
@@ -210,7 +206,6 @@ class PostgresActivityRepository:
                 ),
             )
             row = cur.fetchone()
-            conn.commit()
         return dict(row)
 
     def list_for_company(
@@ -254,7 +249,6 @@ class PostgresAdminUserRepository:
                 (email, display_name, role, is_active),
             )
             row = cur.fetchone()
-            conn.commit()
         return dict(row)
 
     def get_by_email(self, conn: psycopg.Connection, email: str) -> dict[str, Any] | None:
@@ -268,6 +262,7 @@ class PostgresAdminUserRepository:
             cur.execute("SELECT * FROM admin_users WHERE id = %s", (user_id,))
             row = cur.fetchone()
         return dict(row) if row else None
+
 
 
 class PostgresAuditEventRepository:
@@ -337,28 +332,33 @@ class PostgresAuditEventRepository:
 
 
 class PostgresRepositories:
-    """Bundle of Postgres repository implementations for audit events."""
-
-    audit_events: AuditEventRepository
+    """Bundle of Postgres repository implementations including CRM + audit."""
 
     def __init__(self) -> None:
+        self.companies = PostgresCompanyRepository()
+        self.contacts = PostgresContactRepository()
+        self.source_records = PostgresSourceRecordRepository()
+        self.activities = PostgresActivityRepository()
+        self.admin_users = PostgresAdminUserRepository()
         self.audit_events = PostgresAuditEventRepository()
 
 
-_default_audit_repositories = PostgresRepositories()
+_default_repositories = PostgresRepositories()
 
 
 def get_repositories() -> PostgresRepositories:
-    return _default_audit_repositories
+    return _default_repositories
 
 
 def default_repositories() -> dict[str, Any]:
+    repos = get_repositories()
     return {
-        "companies": PostgresCompanyRepository(),
-        "contacts": PostgresContactRepository(),
-        "source_records": PostgresSourceRecordRepository(),
-        "activities": PostgresActivityRepository(),
-        "admin_users": PostgresAdminUserRepository(),
+        "companies": repos.companies,
+        "contacts": repos.contacts,
+        "source_records": repos.source_records,
+        "activities": repos.activities,
+        "admin_users": repos.admin_users,
+        "audit_events": repos.audit_events,
     }
 
 
@@ -368,4 +368,3 @@ ContactRepo = PostgresContactRepository
 SourceRecordRepo = PostgresSourceRecordRepository
 ActivityRepo = PostgresActivityRepository
 AdminUserRepo = PostgresAdminUserRepository
-AuditEventRepo = PostgresAuditEventRepository

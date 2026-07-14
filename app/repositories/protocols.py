@@ -104,7 +104,6 @@ class AdminUserRepository(Protocol):
 
     def get_by_id(self, conn: psycopg.Connection, user_id: UUID) -> dict[str, Any] | None: ...
 
-
 class AuditEventRepository(Protocol):
     def append(
         self,

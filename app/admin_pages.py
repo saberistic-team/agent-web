@@ -1,32 +1,16 @@
-"""HTML for admin authentication and audit pages."""
+"""HTML for admin authentication pages."""
 
 from __future__ import annotations
 
+from app.admin_layout import render_admin_shell
+
 import html
-import json
 from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
+import json
 
-from app.admin_layout import render_admin_shell
-
-
-def _format_timestamp(value: datetime | str) -> str:
-    if isinstance(value, str):
-        return html.escape(value)
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=ZoneInfo("UTC"))
-    return html.escape(value.astimezone(ZoneInfo("UTC")).strftime("%Y-%m-%d %H:%M:%S UTC"))
-
-
-def _format_json_blob(data: Any) -> str:
-    if data is None:
-        return '<span class="audit-muted">—</span>'
-    try:
-        text = json.dumps(data, sort_keys=True, separators=(",", ":"))
-    except (TypeError, ValueError):
-        text = str(data)
-    return f'<code class="audit-json">{html.escape(text)}</code>'
+from app.config import Settings
 
 
 def render_admin_login_page(
@@ -115,22 +99,82 @@ def render_admin_login_page(
 """
 
 
-def render_admin_dashboard_page(*, admin_username: str) -> str:
-    main = """        <section class="admin-panel" aria-labelledby="admin-home-title">
-          <p class="admin-eyebrow">Dashboard</p>
-          <h1 class="admin-title" id="admin-home-title">Operator console</h1>
-          <p class="admin-lede">
-            Acquisition tools ship in later milestones. Use the audit log to review
-            security-sensitive admin activity.
-          </p>
-          <p class="admin-note"><a href="/admin/audit">View audit log</a></p>
-        </section>"""
-    return render_admin_shell(
-        title="Dashboard",
-        main=main,
-        active_path="/admin",
-        admin_username=admin_username,
-    )
+def render_admin_dashboard_page(
+    *,
+    admin_username: str,
+    settings: Settings,
+    csrf_token: str,
+) -> str:
+    username = html.escape(admin_username)
+    base_url = html.escape(settings.base_url, quote=True)
+    return f"""<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Admin — saberistic</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" href="/assets/logo.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/assets/site.css" />
+  </head>
+  <body>
+    <header class="top">
+      <a class="brand" href="/" aria-label="saberistic home">
+        <img
+          class="brand-word"
+          src="/assets/logo-text.png"
+          width="160"
+          height="41"
+          alt="saberistic"
+        />
+      </a>
+      <form method="post" action="/admin/logout">
+        <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}" />
+        <button class="top-link admin-logout" type="submit">Sign out</button>
+      </form>
+    </header>
+
+    <main>
+      <section class="block admin-page" aria-labelledby="admin-home-title">
+        <h1 class="page-title" id="admin-home-title">Admin</h1>
+        <p class="admin-lede">Signed in as <strong>{username}</strong>.</p>
+        <p class="admin-note">
+          Intake browse and management tools are intentionally deferred.
+          This area is reserved for authenticated operator routes at
+          <code>{base_url}/admin</code>.
+        </p>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <p>saberistic · technical architecture &amp; engineering leadership</p>
+    </footer>
+  </body>
+</html>
+"""
+
+def _format_timestamp(value: datetime | str) -> str:
+    if isinstance(value, str):
+        return html.escape(value)
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=ZoneInfo("UTC"))
+    return html.escape(value.astimezone(ZoneInfo("UTC")).strftime("%Y-%m-%d %H:%M:%S UTC"))
+
+
+def _format_json_blob(data: Any) -> str:
+    if data is None:
+        return '<span class="audit-muted">—</span>'
+    try:
+        text = json.dumps(data, sort_keys=True, separators=(",", ":"))
+    except (TypeError, ValueError):
+        text = str(data)
+    return f'<code class="audit-json">{html.escape(text)}</code>'
 
 
 def render_admin_audit_page(
@@ -140,6 +184,7 @@ def render_admin_audit_page(
     page: int,
     per_page: int,
     total: int,
+    csrf_token: str = "",
 ) -> str:
     rows: list[str] = []
     for event in events:
@@ -214,20 +259,5 @@ def render_admin_audit_page(
         main=main,
         active_path="/admin/audit",
         admin_username=admin_username,
-    )
-
-
-def render_admin_placeholder_page(*, admin_username: str, active_path: str, label: str) -> str:
-    safe_label = html.escape(label)
-    main = f"""        <section class="admin-empty" aria-labelledby="admin-empty-title">
-          <p class="admin-eyebrow">Placeholder</p>
-          <h1 class="admin-title" id="admin-empty-title">{safe_label}</h1>
-          <p class="admin-lede">This section ships in a later milestone.</p>
-          <p class="admin-note">Navigation shell is live; functionality arrives in a future issue.</p>
-        </section>"""
-    return render_admin_shell(
-        title=label,
-        main=main,
-        active_path=active_path,
-        admin_username=admin_username,
+        csrf_token=csrf_token,
     )

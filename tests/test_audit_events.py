@@ -18,7 +18,6 @@ from app import admin_auth, audit_service, db
 from app.actor_context import ActorContext
 from app.admin_auth import SESSION_COOKIE_NAME
 from app.audit_service import REDACTED_VALUE
-from app.config import get_settings
 from app.crm_service import CrmRepositories, CrmService
 from app.main import app
 from app.migrations.definitions import MIGRATIONS
@@ -56,15 +55,12 @@ def _actor(correlation_id: str = "corr-test-1") -> ActorContext:
     return ActorContext(actor=TEST_USERNAME, correlation_id=correlation_id)
 
 
-def _csrf_token() -> str:
-    return admin_auth.generate_csrf_token(get_settings())
-
-
 def _session_row(
     *,
     token_hash: str,
     expires_at: datetime | None = None,
     revoked_at: datetime | None = None,
+    csrf_token_hash: str | None = None,
 ) -> dict[str, Any]:
     return {
         "id": 42,
@@ -73,24 +69,25 @@ def _session_row(
         "created_at": datetime.now(timezone.utc),
         "expires_at": expires_at or (datetime.now(timezone.utc) + timedelta(hours=1)),
         "revoked_at": revoked_at,
+        "csrf_token_hash": csrf_token_hash,
     }
 
 
 @pytest.mark.unit
 def test_audit_migration_present_and_ordered() -> None:
     versions = [migration.version for migration in MIGRATIONS]
-    assert "005" in versions
-    audit = next(m for m in MIGRATIONS if m.version == "005")
+    assert "007" in versions
+    audit = next(m for m in MIGRATIONS if m.version == "007")
     assert "audit_events" in audit.up_sql
     assert "prevent_audit_events_mutation" in audit.up_sql
-    assert versions.index("005") > versions.index("004")
+    assert versions.index("007") > versions.index("006")
 
 
 @pytest.mark.unit
 def test_pending_migrations_includes_audit_after_sessions() -> None:
-    pending = pending_migrations(applied_versions={"001", "002", "003", "004"})
+    pending = pending_migrations(applied_versions={"001", "002", "003", "004", "005", "006"})
     assert len(pending) == 1
-    assert pending[0].version == "005"
+    assert pending[0].version == "007"
 
 
 @pytest.mark.unit
@@ -313,46 +310,62 @@ def test_audit_repository_has_no_update_or_delete_methods() -> None:
 @pytest.mark.integration
 def test_login_success_and_failure_create_audit_events() -> None:
     with mock_db_connection() as conn:
-        with patch("app.admin_routes.db.create_admin_session", return_value=42) as create_session:
-            with patch("app.admin_routes.audit_service.record_login_success") as success_audit:
-                with patch("app.admin_routes.audit_service.record_login_failure") as failure_audit:
-                    login = client.post(
-                        "/admin/login",
-                        data={
-                            "username": TEST_USERNAME,
-                            "password": TEST_PASSWORD,
-                            "csrf_token": _csrf_token(),
-                        },
-                    )
-                    assert login.status_code == 303
-                    create_session.assert_called_once()
-                    success_audit.assert_called_once()
-                    assert success_audit.call_args.kwargs["session_id"] == 42
+        with patch("app.admin_routes._verify_login_flow_csrf", return_value=True):
+            with patch("app.admin_routes._consume_login_flow"):
+                with patch(
+                    "app.admin_routes.db.create_admin_session", return_value=42
+                ) as create_session:
+                    with patch(
+                        "app.admin_routes.audit_service.record_login_success"
+                    ) as success_audit:
+                        with patch(
+                            "app.admin_routes.audit_service.record_login_failure"
+                        ) as failure_audit:
+                            login = client.post(
+                                "/admin/login",
+                                data={
+                                    "username": TEST_USERNAME,
+                                    "password": TEST_PASSWORD,
+                                    "csrf_token": "flow-csrf",
+                                },
+                            )
+                            assert login.status_code == 303
+                            create_session.assert_called_once()
+                            success_audit.assert_called_once()
+                            assert success_audit.call_args.kwargs["session_id"] == 42
 
-                    bad_login = client.post(
-                        "/admin/login",
-                        data={
-                            "username": TEST_USERNAME,
-                            "password": "wrong-password",
-                            "csrf_token": _csrf_token(),
-                        },
-                    )
-                    assert bad_login.status_code == 401
-                    failure_audit.assert_called_once()
-                    assert failure_audit.call_args.kwargs["reason"] == "invalid_credentials"
+                            bad_login = client.post(
+                                "/admin/login",
+                                data={
+                                    "username": TEST_USERNAME,
+                                    "password": "wrong-password",
+                                    "csrf_token": "flow-csrf",
+                                },
+                            )
+                            assert bad_login.status_code == 401
+                            failure_audit.assert_called_once()
+                            assert (
+                                failure_audit.call_args.kwargs["reason"]
+                                == "invalid_credentials"
+                            )
 
 
 @pytest.mark.unit
 @pytest.mark.integration
 def test_logout_records_audit_event() -> None:
+    raw_csrf = "logout-csrf"
     token_hash = admin_auth.hash_session_token("session-token")
-    row = _session_row(token_hash=token_hash)
+    row = _session_row(
+        token_hash=token_hash,
+        csrf_token_hash=admin_auth.hash_csrf_token(raw_csrf),
+    )
     with mock_db_connection() as conn:
         with patch("app.admin_routes.db.get_admin_session_by_token_hash", return_value=row):
             with patch("app.admin_routes.db.revoke_admin_session") as revoke_session:
                 with patch("app.admin_routes.audit_service.record_logout") as logout_audit:
                     response = client.post(
                         "/admin/logout",
+                        data={"csrf_token": raw_csrf},
                         cookies={SESSION_COOKIE_NAME: "session-token"},
                     )
                     assert response.status_code == 303
@@ -524,16 +537,15 @@ def test_render_admin_audit_page_empty_state() -> None:
 
 
 @pytest.mark.unit
-def test_render_admin_placeholder_page() -> None:
-    from app.admin_pages import render_admin_placeholder_page
+def test_render_admin_section_empty_state() -> None:
+    from app import admin
 
-    html_out = render_admin_placeholder_page(
+    html_out = admin.render_admin_page(
+        "/admin/companies",
         admin_username=TEST_USERNAME,
-        active_path="/admin/companies",
-        label="Companies",
     )
     assert "Companies" in html_out
-    assert "later milestone" in html_out
+    assert "CRM data model" in html_out
 
 
 @pytest.mark.unit

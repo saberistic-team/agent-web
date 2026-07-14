@@ -18,12 +18,14 @@ from pathlib import Path
 
 from github_api import GitHubError, api, post_issue_comment, split_repo
 from screenshot_deploy import (
+    PRE_BRANCH_PHASE,
     capture,
-    comment_markdown,
-    is_production_pre_shot,
+    fetch_pr_changed_paths,
     resolve_base_url,
+    resolve_screenshot_routes,
     upload_to_branch,
     wait_healthy,
+    comment_markdown,
 )
 
 DEFAULT_CURSOR_MODEL = "composer-2.5"
@@ -116,8 +118,8 @@ def find_issue_from_commit(repo: str, sha: str) -> int | None:
     return None
 
 
-def list_pre_urls(repo: str, ref: str, pr: int | None) -> list[str]:
-    """Return production pre baseline URLs (exclude ``branch-*.png`` PR previews)."""
+def list_branch_pre_urls(repo: str, ref: str, pr: int | None) -> list[str]:
+    """Return PR-branch pre-merge preview shot URLs (``branch-*.png``)."""
     owner, name = split_repo(repo)
     if not pr:
         return []
@@ -132,7 +134,10 @@ def list_pre_urls(repo: str, ref: str, pr: int | None) -> list[str]:
     for node in nodes:
         path = node.get("path") or ""
         name_part = path.rsplit("/", 1)[-1]
-        if is_production_pre_shot(name_part):
+        if name_part.startswith(f"{PRE_BRANCH_PHASE}-") and name_part.endswith(".png"):
+            # Prefer desktop public shots for visual compare; skip admin on prod compare.
+            if "-admin" in name_part:
+                continue
             urls.append(
                 f"https://raw.githubusercontent.com/{owner}/{name}/{ref}/{path}"
             )
@@ -407,14 +412,46 @@ def main(argv: list[str] | None = None) -> int:
         )
 
         out = Path("trace/screenshots-post")
-        post_files = capture(base_url, out, phase="post").paths
         short = (args.sha or "local")[:12]
-        prefix = (
-            f".agent/screenshots/issue-{issue_num}/post"
-            if issue_num
-            else f".agent/screenshots/deploy-{short}/post"
+        changed: list[str] | None = None
+        if args.pr:
+            changed = fetch_pr_changed_paths(args.repo, args.pr)
+        elif args.sha:
+            # Resolve merged PR(s) for this deploy SHA and union their files.
+            try:
+                prs = api("GET", f"/repos/{owner}/{name}/commits/{args.sha}/pulls") or []
+            except GitHubError:
+                prs = []
+            paths: list[str] = []
+            for pr in prs if isinstance(prs, list) else []:
+                num = pr.get("number")
+                if num:
+                    paths.extend(fetch_pr_changed_paths(args.repo, int(num)))
+            changed = paths or None
+        routes = resolve_screenshot_routes(
+            changed_files=changed, include_admin=False
         )
-        post_urls = upload_to_branch(args.repo, default, post_files, prefix)
+        if not routes and changed is not None:
+            post_files: list = []
+            post_urls: list[str] = []
+        else:
+            post_files = capture(
+                base_url,
+                out,
+                phase="post",
+                routes=routes if changed is not None else None,
+                allow_admin=False,
+            ).paths
+            prefix = (
+                f".agent/screenshots/issue-{issue_num}/post"
+                if issue_num
+                else f".agent/screenshots/deploy-{short}/post"
+            )
+            post_urls = (
+                upload_to_branch(args.repo, default, post_files, prefix)
+                if post_files
+                else []
+            )
 
         health_line = (
             f"- health: `{json.dumps(health_slim, separators=(',', ':'))}`"
@@ -434,12 +471,15 @@ def main(argv: list[str] | None = None) -> int:
 
         issue = api("GET", f"/repos/{owner}/{name}/issues/{issue_num}")
 
+        # Before shots are PR-branch previews (no saberistic.com pre-merge).
         pre_files = sorted(
             p
-            for p in Path("trace/screenshots").glob("pre-*.png")
-            if is_production_pre_shot(p.name)
+            for p in Path("trace/screenshots").glob("branch-*.png")
+            if "-admin" not in p.name
         )
-        pre_urls = list_pre_urls(args.repo, default, args.pr) if not pre_files else []
+        pre_urls = (
+            list_branch_pre_urls(args.repo, default, args.pr) if not pre_files else []
+        )
         if pre_files:
             pre_urls = upload_to_branch(
                 args.repo,
@@ -448,18 +488,35 @@ def main(argv: list[str] | None = None) -> int:
                 f".agent/screenshots/issue-{issue_num}/pre",
             )
 
-        visual = visual_ai_check(
-            issue_title=issue.get("title") or "",
-            issue_body=issue.get("body") or "",
-            pre_paths=pre_files,
-            post_paths=post_files,
-        )
+        if not post_files and changed is not None:
+            visual = {
+                "visible": None,
+                "summary": "No public pages affected by merge; visual check skipped",
+                "decision": "skip",
+                "model": "",
+                "provider": "none",
+            }
+            body = (
+                "### deploy_visual_check\n"
+                f"- deploy: `{base_url}`\n"
+                "- phase: `post-deploy`\n"
+                f"- issue: #{issue_num}\n"
+                f"{health_line}\n"
+                "- routes (public, PR-affected): (none)\n"
+                "- note: no public pages affected; screenshots skipped\n"
+                f"- visual_decision: `{visual['decision']}`\n"
+                f"- visual_summary: {visual['summary']}\n"
+            )
+            post_issue_comment(args.repo, issue_num, body)
+        else:
+            visual = visual_ai_check(
+                issue_title=issue.get("title") or "",
+                issue_body=issue.get("body") or "",
+                pre_paths=pre_files,
+                post_paths=post_files,
+            )
 
-        body = comment_markdown(
-            "### deploy_visual_check",
-            base_url,
-            post_urls,
-            extra=[
+            extra = [
                 "- phase: `post-deploy`",
                 f"- issue: #{issue_num}",
                 health_line,
@@ -468,13 +525,27 @@ def main(argv: list[str] | None = None) -> int:
                 f"- visual_visible: `{visual.get('visible')}`",
                 f"- visual_model: `{visual.get('model')}`",
                 f"- visual_summary: {visual.get('summary')}",
-            ],
-        )
-        if pre_urls:
-            body += "\n#### Pre-merge screenshots\n" + "\n".join(
-                f"- {u.rsplit('/', 1)[-1]}: ![]({u})" for u in pre_urls
-            ) + "\n"
-        post_issue_comment(args.repo, issue_num, body)
+            ]
+            if routes and changed is not None:
+                extra.insert(
+                    2,
+                    "- routes (public, PR-affected): "
+                    + ", ".join(f"`{r}`" for r in routes),
+                )
+            body = comment_markdown(
+                "### deploy_visual_check",
+                base_url,
+                post_urls,
+                extra=extra,
+            )
+            if pre_urls:
+                pre_lines = ["\n#### Pre-merge branch screenshots"]
+                for u in pre_urls:
+                    name = u.rsplit("/", 1)[-1]
+                    pre_lines.append(f"- **{name}**")
+                    pre_lines.append(f"  ![]({u})")
+                body += "\n".join(pre_lines) + "\n"
+            post_issue_comment(args.repo, issue_num, body)
 
         try:
             from acceptance import (

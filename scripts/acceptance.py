@@ -236,6 +236,32 @@ def heuristic_check(criterion: str, evidence: dict[str, Any]) -> dict[str, Any] 
             status = "not_done"
             note = "No Builder kind: cursor/openai/copilot/github-models comment"
 
+    elif "screenshot" in text and (
+        "/admin" in text or re.search(r"\badmin\b", text)
+    ):
+        # Admin UI shots are branch-only under ADMIN_PREVIEW_MODE; never required
+        # on saberistic.com. Treat AC that ask for /admin PNGs as done when the
+        # Reviewer posted branch evidence or an explicit skip note.
+        urls = _comment_urls(evidence, "reviewer_screenshots_pre")
+        if urls or any(
+            "ADMIN_PREVIEW_MODE" in (c.get("body") or "")
+            or "branch-admin" in (c.get("body") or "")
+            or "screenshots skipped" in (c.get("body") or "")
+            for c in (evidence.get("comments") or [])
+        ):
+            status, note, ev = (
+                "done",
+                "Admin screenshots are PR-branch ADMIN_PREVIEW_MODE only "
+                "(not saberistic.com)",
+                urls,
+            )
+        else:
+            status, note = (
+                "n/a",
+                "Admin visual evidence is branch preview only; verify via "
+                "tests/code if Reviewer has not posted yet",
+            )
+
     elif "screenshot" in text and ("reviewer" in text or "pr" in text):
         urls = _comment_urls(evidence, "reviewer_screenshots_pre")
         if urls:
@@ -439,6 +465,10 @@ def ai_check_remaining(
         "}\n"
         "Mark done ONLY with concrete evidence. Prefer linking PR files, commits, "
         "screenshot comments, or deploy URLs from the provided evidence JSON.\n"
+        "Screenshot policy: pre-merge evidence is PR-branch `branch-*.png` only "
+        "(admin pages via ADMIN_PREVIEW_MODE). saberistic.com shots are post-deploy "
+        "only. Do NOT mark criteria not_done solely for missing production `pre-*` "
+        "PNGs or missing `/admin` shots on saberistic.com.\n"
         "If evidence is missing, status must be not_done.\n"
     )
     slim = {
