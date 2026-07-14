@@ -9,7 +9,6 @@ from uuid import UUID
 
 from app import contacts as contacts_module
 from app.admin_layout import render_admin_shell
-from app.crm_service import CrmService
 
 
 def _esc(value: Any) -> str:
@@ -71,11 +70,12 @@ def _warnings_block(warnings: list[str]) -> str:
 
 def render_contacts_list_page(
     *,
+    admin_username: str,
     contacts: list[dict[str, Any]],
     query: str,
     include_archived: bool,
     warnings: list[str] | None = None,
-    csrf_token: str | None = None,
+    csrf_token: str = "",
 ) -> str:
     archived_checked = " checked" if include_archived else ""
     rows: list[str] = []
@@ -136,23 +136,29 @@ def render_contacts_list_page(
             </table>
           </div>
         </section>"""
-    return render_admin_shell(title="Contacts", main=main, active_path="/admin/contacts", csrf_token=csrf_token)
+    return render_admin_shell(
+        title="Contacts",
+        main=main,
+        active_path="/admin/contacts",
+        admin_username=admin_username,
+        csrf_token=csrf_token,
+    )
 
 
 def render_contact_form_page(
     *,
+    admin_username: str,
     companies: list[dict[str, Any]],
     contact: dict[str, Any] | None = None,
     warnings: list[str] | None = None,
     error: str | None = None,
     is_new: bool = False,
-    csrf_token: str | None = None,
+    csrf_token: str = "",
 ) -> str:
     contact = contact or {}
     contact_id = contact.get("id")
     title_label = "New contact" if is_new else "Edit contact"
     form_action = "/admin/contacts/new" if is_new else f"/admin/contacts/{_esc(contact_id)}"
-    method = "post"
     name = _esc(contact.get("name"))
     job_title = _esc(contact.get("title"))
     profile_url = _esc(contact.get("profile_url"))
@@ -188,7 +194,10 @@ def render_contact_form_page(
     warning_html = _warnings_block(warnings or [])
     csrf_field = ""
     if csrf_token:
-        csrf_field = f'            <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}" />\n'
+        csrf_field = (
+            f'            <input type="hidden" name="csrf_token" '
+            f'value="{html.escape(csrf_token, quote=True)}" />\n'
+        )
 
     archive_block = ""
     if not is_new and contact_id:
@@ -203,7 +212,7 @@ def render_contact_form_page(
           <h1 class="admin-title" id="contact-form-title">{html.escape(title_label)}</h1>
 {error_html}
 {warning_html}
-          <form class="admin-form" method="{method}" action="{form_action}">
+          <form class="admin-form" method="post" action="{form_action}">
 {csrf_field}            <fieldset class="admin-fieldset">
               <legend>Identity</legend>
               <label class="admin-field">
@@ -273,14 +282,21 @@ def render_contact_form_page(
             </div>
           </form>
         </section>"""
-    return render_admin_shell(title=title_label, main=main, active_path="/admin/contacts", csrf_token=csrf_token)
+    return render_admin_shell(
+        title=title_label,
+        main=main,
+        active_path="/admin/contacts",
+        admin_username=admin_username,
+        csrf_token=csrf_token,
+    )
 
 
 def render_company_detail_page(
     *,
+    admin_username: str,
     company: dict[str, Any],
     contacts: list[dict[str, Any]],
-    csrf_token: str | None = None,
+    csrf_token: str = "",
 ) -> str:
     company_id = _esc(company["id"])
     company_name = _esc(company.get("name"))
@@ -339,7 +355,13 @@ def render_company_detail_page(
           </div>
           <p class="admin-note"><a href="/admin/companies">Back to companies</a></p>
         </section>"""
-    return render_admin_shell(title=company_name, main=main, active_path="/admin/companies", csrf_token=csrf_token)
+    return render_admin_shell(
+        title=company_name,
+        main=main,
+        active_path="/admin/companies",
+        admin_username=admin_username,
+        csrf_token=csrf_token,
+    )
 
 
 def parse_contact_form(
@@ -385,10 +407,3 @@ def parse_contact_form(
         "notes": notes.strip() or None,
         "buying_roles": contacts_module.parse_buying_roles(buying_roles or []),
     }
-
-
-def load_contacts_context(
-    crm: CrmService,
-    conn: Any,
-) -> list[dict[str, Any]]:
-    return crm._repos.companies.list_all(conn)  # type: ignore[attr-defined]
