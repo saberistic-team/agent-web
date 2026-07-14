@@ -603,7 +603,9 @@ body.admin-app {
     display: none;
   }
 
-  .admin-nav-toggle .admin-nav-list {
+  /* Override UA details:not([open]) hiding so desktop sidebar stays visible. */
+  .admin-nav-toggle .admin-nav-list,
+  .admin-nav-toggle:not([open]) .admin-nav-list {
     display: flex;
   }
 }

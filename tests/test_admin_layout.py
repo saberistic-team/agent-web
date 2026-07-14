@@ -125,6 +125,14 @@ def test_admin_css_mobile_nav_and_table_scroll_guardrails() -> None:
 
 
 @pytest.mark.unit
+def test_admin_css_desktop_nav_list_visible_when_collapsed() -> None:
+    css = ADMIN_CSS.read_text(encoding="utf-8")
+    desktop_block = css.split("@media (min-width: 769px)")[1].split("@media")[0]
+    assert ".admin-nav-toggle:not([open]) .admin-nav-list" in desktop_block
+    assert "display: flex" in desktop_block
+
+
+@pytest.mark.unit
 @pytest.mark.integration
 def test_anonymous_admin_dashboard_redirects_to_login() -> None:
     response = client.get("/admin")

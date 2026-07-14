@@ -87,6 +87,7 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/login",
     "/admin/briefs/1",
     "/admin/briefs/2",
+    "/admin/briefs/503",
 )
 
 
