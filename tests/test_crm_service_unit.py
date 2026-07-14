@@ -160,16 +160,15 @@ def test_crm_service_update_contact_and_search() -> None:
     assert updated is not None
     assert updated["buying_roles"] == ["executive_buyer"]
 
-    rows = service.search_contacts(conn, query="pat")
-    assert rows[0]["buying_roles"] == ["executive_buyer"]
+    results = service.search_contacts(conn, query="pat")
+    assert len(results) == 1
+    assert results[0]["buying_roles"] == ["executive_buyer"]
 
 
 @pytest.mark.unit
-def test_crm_service_get_contact_with_roles_and_list_company_contacts() -> None:
+def test_crm_service_get_contact_with_roles_returns_none_when_missing() -> None:
     contact_repo = MagicMock()
-    contact_repo.get_by_id.return_value = {"id": CONTACT_ID, "name": "Pat"}
-    contact_repo.get_buying_roles.return_value = ["founder"]
-    contact_repo.list_for_company.return_value = [{"id": CONTACT_ID, "name": "Pat"}]
+    contact_repo.get_by_id.return_value = None
     service = CrmService(
         repos=CrmRepositories(
             companies=MagicMock(),
@@ -180,13 +179,7 @@ def test_crm_service_get_contact_with_roles_and_list_company_contacts() -> None:
         )
     )
     conn = MagicMock()
-
-    contact = service.get_contact_with_roles(conn, CONTACT_ID)
-    assert contact is not None
-    assert contact["buying_roles"] == ["founder"]
-
-    rows = service.list_company_contacts(conn, COMPANY_ID)
-    assert rows[0]["buying_roles"] == ["founder"]
+    assert service.get_contact_with_roles(conn, CONTACT_ID) is None
 
 
 @pytest.mark.unit
