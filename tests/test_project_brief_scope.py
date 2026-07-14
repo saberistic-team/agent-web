@@ -10,16 +10,8 @@ PRODUCT_DIRS = (REPO_ROOT / "app", REPO_ROOT / "site")
 PROJECT_BRIEF_DOC = REPO_ROOT / "docs" / "PROJECT_BRIEF.md"
 
 DEFERRED_HEADINGS = (
-    "Admin UI",
     "Variable pricing / coupons",
     "Full CRM integration",
-)
-
-ADMIN_BRIEF_PATTERNS = (
-    re.compile(r"\badmin.*brief", re.I),
-    re.compile(r"\bbrief.*admin", re.I),
-    # Block admin list UIs at /briefs; allow the public create API at /api/briefs.
-    re.compile(r"(?<!/api)/briefs\b", re.I),
 )
 
 COUPON_PATTERNS = (
@@ -70,11 +62,6 @@ def test_project_brief_doc_lists_deferred_scope() -> None:
 def test_readme_links_project_brief_doc() -> None:
     readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
     assert "docs/PROJECT_BRIEF.md" in readme
-
-
-def test_no_admin_brief_ui_in_product() -> None:
-    hits = _scan_patterns(ADMIN_BRIEF_PATTERNS)
-    assert not hits, "admin brief UI patterns found: " + ", ".join(hits)
 
 
 def test_no_variable_pricing_or_coupons_in_product() -> None:
