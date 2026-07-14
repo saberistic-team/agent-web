@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 
 from app.admin_layout import ADMIN_NAV_LINKS, ADMIN_PATHS, render_admin_shell
+from app.config import get_settings
 
 _LINK_BY_HREF = {link["href"]: link for link in ADMIN_NAV_LINKS}
 
@@ -35,7 +36,15 @@ def render_admin_page(
             admin_username=admin_username,
             csrf_token=csrf_token,
         )
-    main = _render_empty_state(link)
+    if active_path == "/admin" and get_settings().admin_preview_enabled:
+        from app.admin_preview import (
+            build_preview_dashboard_data,
+            render_preview_dashboard_main,
+        )
+
+        main = render_preview_dashboard_main(build_preview_dashboard_data())
+    else:
+        main = _render_empty_state(link)
     return render_admin_shell(
         title=link["label"],
         main=main,

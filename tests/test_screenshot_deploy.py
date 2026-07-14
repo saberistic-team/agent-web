@@ -3,10 +3,14 @@ from screenshot_deploy import (
     admin_screenshot_session_cookie,
     discover_screenshot_routes,
     format_overflow_hard_fail,
+    is_admin_screenshot_route,
     is_production_pre_shot,
+    is_public_screenshot_route,
     is_skipped_api_or_meta_route,
     resolve_base_url,
+    resolve_screenshot_routes,
     route_requires_admin_auth,
+    routes_affected_by_changed_files,
     screenshot_basename,
     wait_healthy,
 )
@@ -27,6 +31,10 @@ def test_screenshot_basename_desktop_keeps_legacy_names() -> None:
     assert screenshot_basename("branch", "/", "desktop") == "branch-home.png"
     assert screenshot_basename("pre", "/brief/success", "desktop") == "pre-brief-success.png"
     assert screenshot_basename("pre", "/work/foo", "mobile") == "pre-work-foo-mobile.png"
+    assert screenshot_basename("branch", "/admin", "desktop") == "branch-admin.png"
+    assert screenshot_basename("branch", "/admin/login", "mobile") == (
+        "branch-admin-login-mobile.png"
+    )
 
 
 def test_screenshot_basename_mobile_suffix() -> None:
@@ -52,30 +60,14 @@ def test_skip_health_and_json_api_routes() -> None:
     assert is_skipped_api_or_meta_route("/assets/style.css")
     assert is_skipped_api_or_meta_route("/robots.txt")
     assert is_skipped_api_or_meta_route("/sitemap.xml")
+    assert not is_skipped_api_or_meta_route("/admin")
+    assert not is_skipped_api_or_meta_route("/admin/login")
     assert not is_skipped_api_or_meta_route("/")
     assert not is_skipped_api_or_meta_route("/about")
-    assert not is_skipped_api_or_meta_route("/brief")
-    assert not is_skipped_api_or_meta_route("/work/example")
-
-
-def test_discover_screenshot_routes_includes_pages_excludes_apis() -> None:
-    routes = discover_screenshot_routes()
-    assert "/" in routes
-    assert "/about" in routes
-    assert "/services" in routes
-    assert "/brief" in routes
-    assert "/brief/success" in routes
-    assert "/case-studies" in routes
-    assert "/diagnostic" not in routes
-    assert "/health" not in routes
-    assert "/hello" not in routes
-    assert not any(r.startswith("/api/") for r in routes)
-    assert not any(r.startswith("/webhooks/") for r in routes)
-    assert any(r.startswith("/work/") for r in routes)
-    assert "/insights" in routes
-    assert any(r.startswith("/insights/") for r in routes)
-    # Home first for stable evidence ordering.
-    assert routes[0] == "/"
+    assert is_public_screenshot_route("/")
+    assert not is_public_screenshot_route("/admin/login")
+    assert is_admin_screenshot_route("/admin")
+    assert is_admin_screenshot_route("/admin/login")
 
 
 def test_route_requires_admin_auth() -> None:
@@ -90,9 +82,82 @@ def test_admin_screenshot_session_cookie() -> None:
     assert cookie["value"] == "preview-screenshot-session"
 
 
-def test_discover_screenshot_routes_includes_admin_dashboard() -> None:
+def test_discover_screenshot_routes_public_by_default() -> None:
     routes = discover_screenshot_routes()
+    assert "/" in routes
+    assert "/about" in routes
+    assert "/services" in routes
+    assert "/brief" in routes
+    assert "/brief/success" in routes
+    assert "/case-studies" in routes
+    assert "/diagnostic" not in routes
+    assert "/health" not in routes
+    assert "/hello" not in routes
+    assert not any(r.startswith("/api/") for r in routes)
+    assert not any(r.startswith("/webhooks/") for r in routes)
+    assert "/admin" not in routes
+    assert "/admin/login" not in routes
+    assert any(r.startswith("/work/") for r in routes)
+    assert "/insights" in routes
+    assert any(r.startswith("/insights/") for r in routes)
+    assert routes[0] == "/"
+
+
+def test_discover_screenshot_routes_include_admin() -> None:
+    routes = discover_screenshot_routes(include_admin=True)
     assert "/admin" in routes
+    assert "/admin/login" in routes
+    assert "/" in routes
+
+
+def test_routes_affected_by_single_html_file() -> None:
+    candidates = ["/", "/about", "/services", "/brief"]
+    got = routes_affected_by_changed_files(
+        ["site/about.html"], candidate_routes=candidates
+    )
+    assert got == ["/about"]
+
+
+def test_routes_affected_by_site_css_is_all_public() -> None:
+    candidates = ["/", "/about", "/services"]
+    got = routes_affected_by_changed_files(
+        ["site/assets/site.css"], candidate_routes=candidates
+    )
+    assert got == candidates
+
+
+def test_routes_affected_admin_only_with_include_admin() -> None:
+    candidates = ["/", "/about", "/admin", "/admin/login"]
+    got = routes_affected_by_changed_files(
+        ["app/admin_routes.py", "app/admin_pages.py"],
+        candidate_routes=candidates,
+        include_admin=True,
+    )
+    assert got == ["/admin", "/admin/login"]
+
+
+def test_routes_affected_admin_only_excluded_post_deploy() -> None:
+    candidates = ["/", "/about", "/admin", "/admin/login"]
+    got = routes_affected_by_changed_files(
+        ["app/admin_routes.py", "app/admin_auth.py"],
+        candidate_routes=candidates,
+        include_admin=False,
+    )
+    assert got == []
+
+
+def test_routes_affected_case_studies_data() -> None:
+    candidates = ["/", "/case-studies", "/work/brave", "/about"]
+    got = routes_affected_by_changed_files(
+        ["site/data/case-studies.json"], candidate_routes=candidates
+    )
+    assert got == ["/case-studies", "/work/brave"]
+
+
+def test_resolve_screenshot_routes_post_excludes_admin() -> None:
+    all_public = resolve_screenshot_routes(changed_files=None, include_admin=False)
+    assert "/" in all_public
+    assert not any(r.startswith("/admin") for r in all_public)
 
 
 def test_format_overflow_hard_fail_mobile_only() -> None:
@@ -171,19 +236,33 @@ def test_wait_healthy_builds_absolute_url(monkeypatch) -> None:
     assert data.get("status") == "ok"
 
 
-def test_comment_markdown_pre_dual_lists_both_sources() -> None:
+def test_comment_markdown_pre_branch_only() -> None:
     from screenshot_deploy import comment_markdown_pre_dual
 
     body = comment_markdown_pre_dual(
         branch_url="http://127.0.0.1:8765",
-        prod_url="https://saberistic.com",
         branch_urls=["https://raw.example/branch-home.png"],
-        prod_urls=["https://raw.example/pre-home.png"],
+        routes=["/", "/admin"],
     )
     assert "### reviewer_screenshots_pre" in body
     assert "http://127.0.0.1:8765" in body
-    assert "https://saberistic.com" in body
+    assert "ADMIN_PREVIEW_MODE" in body
+    assert "post-deploy only" in body
     assert "branch-home.png" in body
-    assert "pre-home.png" in body
-    assert "PR branch" in body
-    assert "Production baseline" in body
+    assert "Production baseline" not in body
+    assert "pre-home.png" not in body
+    assert "routes (PR-affected): `/`, `/admin`" in body
+    assert "- **branch-home.png**\n      ![branch-home.png](" in body
+    assert "branch-home.png: ![" not in body
+
+
+def test_comment_markdown_title_before_image() -> None:
+    from screenshot_deploy import comment_markdown
+
+    body = comment_markdown(
+        "### deploy_screenshots_post",
+        "https://saberistic.com",
+        ["https://raw.example/post-about.png"],
+    )
+    assert "- **post-about.png**\n    ![post-about.png](" in body
+    assert "post-about.png: ![" not in body

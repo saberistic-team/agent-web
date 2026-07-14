@@ -483,6 +483,37 @@ def _request_with_client(host: str) -> Request:
 
 
 @pytest.mark.unit
+def test_admin_preview_mode_allows_dashboard_without_login(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    monkeypatch.delenv("ADMIN_USERNAME", raising=False)
+    monkeypatch.delenv("ADMIN_PASSWORD_HASH", raising=False)
+    monkeypatch.delenv("ADMIN_SESSION_SECRET", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    dash = client.get("/admin")
+    assert dash.status_code == 200
+    assert "Preview data — not production" in dash.text
+    assert "Recent briefs" in dash.text
+    assert "admin-stat-row" in dash.text
+    login = client.get("/admin/login")
+    assert login.status_code == 200
+    assert "Admin sign in" in login.text
+
+
+@pytest.mark.unit
+def test_admin_preview_mode_disabled_on_production_base_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("BASE_URL", "https://saberistic.com")
+    settings = get_settings()
+    assert settings.admin_preview_mode is True
+    assert settings.admin_preview_enabled is False
+
+
+@pytest.mark.unit
 def test_admin_auth_settings_flags(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ADMIN_USERNAME", raising=False)
     monkeypatch.delenv("ADMIN_PASSWORD_HASH", raising=False)

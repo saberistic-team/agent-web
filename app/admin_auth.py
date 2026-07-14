@@ -57,6 +57,17 @@ class AdminSession:
     expires_at: datetime
 
 
+def preview_admin_session(settings: Settings) -> AdminSession:
+    """Synthetic session for ADMIN_PREVIEW_MODE (local/CI screenshots only)."""
+    return AdminSession(
+        id=0,
+        admin_username=settings.admin_username or "preview-operator",
+        token_hash="preview",
+        csrf_token_hash=None,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+    )
+
+
 def reset_login_rate_limiter() -> None:
     """Clear fallback login attempt counters (tests only)."""
     with _fallback_lock:
