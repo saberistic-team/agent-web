@@ -7,6 +7,9 @@ import json
 from pathlib import Path
 from typing import Any, Literal
 
+from app.metadata import OG_IMAGE, OG_IMAGE_ALT
+from app.seo import CANONICAL_BASE
+
 Engagement = Literal["employer", "founder", "saberistic"]
 
 DATA_PATH = Path(__file__).resolve().parent.parent / "site" / "data" / "case-studies.json"
@@ -23,6 +26,12 @@ DISCLAIMERS: dict[Engagement, str] = {
     "employer": "Prior employer role — not a Saberistic client engagement.",
     "founder": "Independent venture — not a Saberistic client engagement.",
     "saberistic": "Saberistic engagement — sanitized composite; no client identified.",
+}
+
+PROOF_META_LABELS: dict[Engagement, str] = {
+    "employer": "prior employer role",
+    "founder": "founder venture",
+    "saberistic": "sanitized diagnostic",
 }
 
 
@@ -80,6 +89,128 @@ def get_case_study(slug: str, path: Path | None = None) -> dict[str, Any] | None
 def list_featured_slugs(path: Path | None = None) -> list[str]:
     """Slugs promoted on the homepage (first three studies)."""
     return [study["slug"] for study in load_case_studies(path)[:3]]
+
+
+def _proof_meta(study: dict[str, Any]) -> str:
+    engagement = study["engagement"]
+    label = PROOF_META_LABELS[engagement]  # type: ignore[index]
+    org = "Saberistic" if engagement == "saberistic" else study["org"]
+    return f"{org} · {label}"
+
+
+def render_case_studies_index(path: Path | None = None) -> str:
+    """Render the /case-studies listing page."""
+    studies = load_case_studies(path)
+    title = "Case studies — saberistic"
+    description = (
+        "Outcome-oriented architecture case studies — employer roles, founder "
+        "ventures, and Saberistic engagements."
+    )
+    json_ld = {
+        "@context": "https://schema.org",
+        "@type": "CollectionPage",
+        "name": title,
+        "description": description,
+        "url": f"{CANONICAL_BASE}/case-studies",
+        "isPartOf": {
+            "@type": "ProfessionalService",
+            "name": "saberistic",
+            "url": f"{CANONICAL_BASE}/",
+        },
+    }
+    title_esc = html.escape(title)
+    desc_esc = html.escape(description)
+    canonical = f"{CANONICAL_BASE}/case-studies"
+    canonical_esc = html.escape(canonical, quote=True)
+    ld_json = json.dumps(json_ld, ensure_ascii=False)
+
+    items = "\n".join(
+        f"""          <li class="proof-item">
+            <a class="proof-link" href="/work/{html.escape(study['slug'])}">
+              <span class="proof-headline">{html.escape(study['headline'])}</span>
+              <span class="proof-meta">{html.escape(_proof_meta(study))}</span>
+            </a>
+            <p class="proof-summary">{html.escape(study['problem'])}</p>
+          </li>"""
+        for study in studies
+    )
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title_esc}</title>
+    <meta name="description" content="{desc_esc}" />
+    <link rel="canonical" href="{canonical_esc}" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="saberistic" />
+    <meta property="og:title" content="{title_esc}" />
+    <meta property="og:description" content="{desc_esc}" />
+    <meta property="og:url" content="{canonical_esc}" />
+    <meta property="og:image" content="{OG_IMAGE}" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="{html.escape(OG_IMAGE_ALT)}" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="{title_esc}" />
+    <meta name="twitter:description" content="{desc_esc}" />
+    <meta name="twitter:image" content="{OG_IMAGE}" />
+    <meta name="twitter:image:alt" content="{html.escape(OG_IMAGE_ALT)}" />
+    <script type="application/ld+json">
+{ld_json}
+    </script>
+    <link rel="icon" href="/assets/logo.png" type="image/png" />
+    <link rel="alternate" type="application/atom+xml" title="saberistic insights" href="/insights/feed.xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/assets/site.css" />
+  </head>
+  <body>
+    <header class="top">
+      <a class="brand" href="/" aria-label="saberistic home">
+        <img
+          class="brand-word"
+          src="/assets/logo-text.png"
+          width="160"
+          height="41"
+          alt="saberistic"
+        />
+      </a>
+      <a class="top-link" href="/insights">Insights</a>
+    </header>
+
+    <main>
+      <section class="block" aria-labelledby="case-studies-title">
+        <h1 class="page-title" id="case-studies-title">Case studies</h1>
+        <p class="proof-lede">
+          Outcome-oriented case studies — problems addressed, interventions
+          applied, and results delivered. Employer roles are distinguished from
+          Saberistic engagements.
+        </p>
+        <ul class="proof-list">
+{items}
+        </ul>
+        <p class="case-studies-cta">
+          Facing a similar architecture, reliability, security, or
+          technical-leadership problem?
+        </p>
+        <p class="cta-row">
+          <a class="cta" href="/brief">Request an Architecture Diagnostic</a>
+        </p>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <p>saberistic · technical architecture &amp; engineering leadership</p>
+    </footer>
+  </body>
+</html>
+"""
 
 
 def render_case_study_page(study: dict[str, Any]) -> str:
