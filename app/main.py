@@ -41,7 +41,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     if settings.database_configured:
         db.init_db(settings.database_url)
-        logger.info("project_briefs table ready")
+        logger.info("database schema ready")
     else:
         logger.warning("DATABASE_URL not set — brief persistence disabled")
     yield
