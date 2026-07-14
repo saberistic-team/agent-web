@@ -61,6 +61,20 @@ class Settings:
         return bool(self.database_url and creds)
 
     @property
+    def admin_preview_enabled(self) -> bool:
+        """True when ADMIN_PREVIEW_MODE is on and BASE_URL is not production.
+
+        Hard-refuses saberistic.com so a mis-set env cannot open /admin without
+        login in production.
+        """
+        if not self.admin_preview_mode:
+            return False
+        base = (self.base_url or "").lower()
+        if "saberistic.com" in base:
+            return False
+        return True
+
+    @property
     def analytics_enabled(self) -> bool:
         """True only when explicitly enabled and a Plausible domain is set."""
         flag = os.environ.get("ANALYTICS_ENABLED", "").lower()

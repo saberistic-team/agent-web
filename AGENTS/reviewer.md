@@ -16,17 +16,21 @@ Before approving you must:
    budget on a conflicted PR. Merge conflicts are always Builder work on the
    same PR head.
 2. Capture **headless Chromium screenshots** via Actions Playwright
-   (`scripts/screenshot_deploy.py`) at **desktop and mobile** viewports:
-   - **PR branch** — local uvicorn on the PR head checkout (`branch-*.png`)
-   - **Production** — [saberistic.com](https://saberistic.com) (`pre-*.png`
-     baseline)
-   Post both on the PR and issue — not Copilot / MCP browsers
+   (`scripts/screenshot_deploy.py`) at **desktop and mobile** viewports for
+   **PR-affected pages on the PR head only** (local uvicorn with
+   `ADMIN_PREVIEW_MODE` so `/admin` can be captured without login). Do **not**
+   screenshot saberistic.com pre-merge — production shots are post-deploy:
+   - **PR branch** — `branch-*.png` (public + admin when affected)
+   Post on the PR and issue — not Copilot / MCP browsers. Skip capture when
+   the PR touches no visual pages (tests/docs only).
 3. Check **visual readability** on the **PR branch** screenshots / live
    capture: hero and primary copy must stay inside the viewport (no horizontal
    overflow / text out of frame on mobile)
 4. Run **Cursor / OpenAI / Models AI review** ([docs/MODELS.md](../docs/MODELS.md),
    [docs/DESIGN.md](../docs/DESIGN.md), [docs/TESTING.md](../docs/TESTING.md))
-   — prefers Cursor when `CURSOR_API_KEY` is set
+   — prefers Cursor when `CURSOR_API_KEY` is set. Do **not** request changes
+   for missing saberistic.com pre shots or for `/admin` evidence that was
+   already captured (or correctly skipped) under `ADMIN_PREVIEW_MODE`.
 5. Enforce **service coverage** on `app/`: unit ≥90%, integration ≥70%
 6. Post an **`### acceptance_checklist`** that marks each acceptance criterion
    done/not_done with links to evidence (PR, commits, files, screenshots).
@@ -43,11 +47,12 @@ than reviewing stale ghost commits.
 
 ## Definition of done
 
-- Desktop + mobile screenshots of the **PR branch** and **production** for
-  **all HTML page routes** (not just `/` / `/about`; JSON APIs skipped;
-  `/health` is JSON evidence only) appear on the PR + issue
-- Visual readability check passes on PR-branch shots (no mobile out-of-frame
-  overflow)
+- Desktop + mobile **PR-branch** screenshots for **PR-affected** pages
+  (public + `/admin` under `ADMIN_PREVIEW_MODE` when admin files change) appear
+  on the PR + issue — or a skip note when no visual pages were affected.
+  **No** saberistic.com screenshots on the PR pre-merge
+- Visual readability check passes on PR-branch shots when capture ran (no
+  mobile out-of-frame overflow)
 - AI review is recorded in the PR review body
 - `### acceptance_checklist` is posted with `all_done: true` and evidence links
 - Matching issue-body checkboxes are flipped to `[x]` when verified
@@ -79,8 +84,8 @@ Any of these is an automatic request-changes — do not approve:
 - AI reviewer says acceptance criteria are unmet
 - Required deploy screenshots failed (when `SCREENSHOTS_REQUIRED=true`)
 - **Visual readability fail:** text clipped or overflowing the mobile viewport
-  (out of frame) on any PR-branch HTML page screenshot (`h1`, `.lede`,
-  `.cta-row`, `.hero` selectors — not only `/` and `/about`)
+  (out of frame) on any **captured** PR-branch screenshot (`h1`, `.lede`,
+  `.cta-row`, `.hero` — PR-affected public and admin preview routes)
 - Acceptance checklist incomplete (`all_done: false` or missing)
 
 Coverage gaps, missing tests, CI assertion failures, visual overflow, and

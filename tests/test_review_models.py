@@ -27,6 +27,29 @@ def test_extract_json_full_object() -> None:
     assert data["meets_acceptance"] is False
 
 
+def test_ai_review_approves_when_only_admin_screenshot_reasons() -> None:
+    """Do not block on missing /admin PNGs or saberistic.com pre shots."""
+    fake_ctx = {
+        "issue_title": "Admin shell layout",
+        "issue_body": "## Acceptance criteria\n\n- [ ] Desktop and mobile /admin screenshots\n",
+        "pr_title": "builder: admin shell",
+        "pr_body": "Closes #132",
+        "commit_messages": ["builder(#132): implement admin shell"],
+        "files": [{"path": "app/admin_pages.py", "patch": "+layout"}],
+    }
+    raw = (
+        '{"decision":"changes-requested","meets_acceptance":false,'
+        '"reasons":["Missing branch-admin.png and branch-admin-mobile.png",'
+        '"acceptance requires desktop and mobile /admin review screenshots"],'
+        '"summary":"need admin shots"}'
+    )
+    with patch("review_models.collect_pr_context", return_value=fake_ctx):
+        with patch("review_models.chat", return_value=(raw, "test-model")):
+            verdict = ai_review("o/r", 132, 140)
+    assert verdict["decision"] == "approved"
+    assert verdict["meets_acceptance"] is True
+
+
 def test_ai_review_approves_when_acceptance_met_despite_screenshot_nits() -> None:
     """#58: AI requested changes for .agent/screenshots + history while AC met."""
     fake_ctx = {

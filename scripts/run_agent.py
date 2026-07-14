@@ -871,48 +871,67 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
     else:
         coverage_note = "- coverage: skipped (PR does not touch app/*.py)\n"
 
-    # Pre-merge screenshots: PR branch (local server) + production baseline
+    # Pre-merge screenshots: PR-head only (incl. admin via ADMIN_PREVIEW_MODE).
+    # saberistic.com shots are post-deploy only.
     screenshot_note = ""
     try:
         from screenshot_deploy import (
             comment_markdown_pre_dual,
             comment_on_issue_or_pr,
             capture_pre_dual,
+            fetch_pr_changed_paths,
             format_overflow_hard_fail,
-            resolve_base_url,
+            resolve_screenshot_routes,
             upload_to_branch,
         )
 
-        prod_url = resolve_base_url(os.environ.get("DEPLOY_BASE_URL"))
         out_dir = Path("trace/screenshots")
-        dual = capture_pre_dual(out_dir, prod_base_url=prod_url)
+        changed = fetch_pr_changed_paths(repo, pr_number)
+        routes = resolve_screenshot_routes(
+            changed_files=changed, include_admin=True
+        )
         branch = pr["head"]["ref"]
         prefix = f".agent/screenshots/pr-{pr_number}"
-        branch_urls = upload_to_branch(repo, branch, dual.branch_paths, prefix)
-        prod_urls = upload_to_branch(repo, branch, dual.prod_paths, prefix)
-        body_shots = comment_markdown_pre_dual(
-            branch_url=dual.branch_url,
-            prod_url=dual.prod_url,
-            branch_urls=branch_urls,
-            prod_urls=prod_urls,
-        )
-        comment_on_issue_or_pr(repo, pr_number, body_shots)
-        comment_on_issue_or_pr(repo, issue, body_shots)
-        screenshot_note = (
-            f"- screenshots_pre: {len(branch_urls)} branch + {len(prod_urls)} "
-            f"production posted on PR + issue\n"
-            f"- screenshots_branch: `{dual.branch_url}`\n"
-            f"- screenshots_production: `{dual.prod_url}`\n"
-        )
-        overflow_fail = format_overflow_hard_fail(dual.overflows)
-        if overflow_fail:
-            hard_fail_reasons.append(overflow_fail)
-            screenshot_note += (
-                f"- visual_readability: `fail` ({len(dual.overflows)} overflow(s) "
-                "on PR branch)\n"
+        if not routes:
+            body_shots = (
+                "### reviewer_screenshots_pre\n"
+                "- production: skipped pre-merge "
+                "(saberistic.com shots are post-deploy only)\n"
+                "- routes (PR-affected): (none)\n"
+                "- note: no pages affected by this PR "
+                "(tests/docs/scripts only); screenshots skipped\n"
+            )
+            comment_on_issue_or_pr(repo, pr_number, body_shots)
+            comment_on_issue_or_pr(repo, issue, body_shots)
+            screenshot_note = (
+                "- screenshots_pre: skipped (no pages affected)\n"
+                "- visual_readability: `n/a`\n"
             )
         else:
-            screenshot_note += "- visual_readability: `ok` (PR branch)\n"
+            dual = capture_pre_dual(out_dir, routes=routes)
+            branch_urls = upload_to_branch(repo, branch, dual.branch_paths, prefix)
+            body_shots = comment_markdown_pre_dual(
+                branch_url=dual.branch_url,
+                branch_urls=branch_urls,
+                routes=routes,
+            )
+            comment_on_issue_or_pr(repo, pr_number, body_shots)
+            comment_on_issue_or_pr(repo, issue, body_shots)
+            screenshot_note = (
+                f"- screenshots_pre: {len(branch_urls)} branch posted on PR + issue "
+                "(no saberistic.com pre-merge shots)\n"
+                f"- screenshots_routes: {', '.join(f'`{r}`' for r in routes)}\n"
+                f"- screenshots_branch: `{dual.branch_url}`\n"
+            )
+            overflow_fail = format_overflow_hard_fail(dual.overflows)
+            if overflow_fail:
+                hard_fail_reasons.append(overflow_fail)
+                screenshot_note += (
+                    f"- visual_readability: `fail` ({len(dual.overflows)} overflow(s) "
+                    "on PR branch)\n"
+                )
+            else:
+                screenshot_note += "- visual_readability: `ok` (PR branch)\n"
         pr = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}")
         sha = pr["head"]["sha"]
     except Exception as exc:
