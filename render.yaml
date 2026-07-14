@@ -39,3 +39,11 @@ services:
         sync: false
       - key: ANALYTICS_ENV
         value: production
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD_HASH
+        sync: false
+      - key: ADMIN_SESSION_SECRET
+        sync: false
+      - key: ADMIN_SESSION_TTL_SECONDS
+        value: "86400"

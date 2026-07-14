@@ -140,4 +140,19 @@ CREATE INDEX IF NOT EXISTS idx_admin_users_email ON admin_users (email);
 CREATE INDEX IF NOT EXISTS idx_admin_users_is_active ON admin_users (is_active);
 """,
     ),
+    Migration(
+        version="004",
+        name="admin_sessions",
+        up_sql="""
+CREATE TABLE IF NOT EXISTS admin_sessions (
+    id SERIAL PRIMARY KEY,
+    token_hash TEXT NOT NULL UNIQUE,
+    admin_username TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL,
+    revoked_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS admin_sessions_token_hash_idx ON admin_sessions (token_hash);
+""",
+    ),
 )

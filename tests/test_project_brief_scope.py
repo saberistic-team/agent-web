@@ -16,7 +16,6 @@ DEFERRED_HEADINGS = (
 )
 
 ADMIN_PATTERNS = (
-    re.compile(r"/admin\b", re.I),
     re.compile(r"\badmin.*brief", re.I),
     re.compile(r"\bbrief.*admin", re.I),
     # Block admin list UIs at /briefs; allow the public create API at /api/briefs.

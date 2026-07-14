@@ -12,7 +12,8 @@ unchanged; CRM tables are storage-only until later admin/import issues wire rout
 |------|--------------|--------|
 | Public brief intake | `app/db.py` | `project_briefs` |
 | CRM entities | `app/repositories/postgres.py` | `companies`, `contacts`, `source_records`, `activities` |
-| Admin auth (storage) | `app/repositories/postgres.py` | `admin_users` |
+| Admin auth (CRM users) | `app/repositories/postgres.py` | `admin_users` |
+| Admin auth (sessions) | `app/db.py` | `admin_sessions` (migration `004`) |
 | Schema versioning | `app/migrations/` | `schema_migrations` |
 
 Route handlers must not embed SQL. Use `app/db.py` for brief/payment flows and
@@ -91,6 +92,21 @@ Indexes: `company_id`, `contact_id`, `source_record_id`, `created_at`.
 
 Indexes: `email`, `is_active`.
 
+### `admin_sessions`
+
+Server-side sessions for operator login ([#101](https://github.com/saberistic-team/agent-web/issues/101)).
+Credentials stay in env vars; this table stores revocable session rows only.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | `SERIAL` | PK |
+| `token_hash` | `TEXT` | Unique; cookie value is hashed before lookup |
+| `admin_username` | `TEXT` | Matches `ADMIN_USERNAME` |
+| `created_at`, `expires_at` | `TIMESTAMPTZ` | TTL enforced at read |
+| `revoked_at` | `TIMESTAMPTZ` | Set on logout |
+
+Index: `token_hash`. See [ADMIN_AUTH.md](ADMIN_AUTH.md).
+
 ## Migrations
 
 Migrations live in `app/migrations/definitions.py` and are applied at startup via
@@ -101,6 +117,7 @@ Migrations live in `app/migrations/definitions.py` and are applied at startup vi
 | `001` | `project_briefs` | Brief/payment table (existing behavior) |
 | `002` | `project_briefs_utm_columns` | Idempotent UTM column adds |
 | `003` | `crm_foundation` | CRM tables, FKs, indexes |
+| `004` | `admin_sessions` | Server-side admin session rows |
 
 Applied versions are recorded in `schema_migrations`. Steps are **idempotent**
 (`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`) so empty and existing Render Postgres
@@ -129,7 +146,7 @@ steps on restart.
 
 ## Deferred (not #100)
 
-- Admin UI routes and authentication flows
+- Admin UI routes beyond login/session auth ([#101](https://github.com/saberistic-team/agent-web/issues/101) covers auth/sessions)
 - HubSpot/Salesforce/Pipedrive sync
 - Automatic backfill from `project_briefs` into CRM entities
 

@@ -57,7 +57,7 @@ def test_brief_migrations_remain_idempotent() -> None:
 def test_pending_migrations_skips_applied_versions() -> None:
     applied = {"001", "002"}
     pending = pending_migrations(applied_versions=applied)
-    assert [m.version for m in pending] == ["003"]
+    assert [m.version for m in pending] == ["003", "004"]
 
 
 @pytest.mark.unit
@@ -72,12 +72,17 @@ def test_apply_migrations_runs_only_pending_steps() -> None:
 
     applied = apply_migrations(conn, migrations=MIGRATIONS)
 
-    assert applied == ["003"]
+    assert applied == ["003", "004"]
     execute_calls = [str(call.args[0]) for call in cur.execute.call_args_list]
     assert any("schema_migrations" in sql for sql in execute_calls)
     assert any("crm_foundation" not in sql and "companies" in sql for sql in execute_calls)
+    assert any("admin_sessions" in sql for sql in execute_calls)
     assert any(
         "INSERT INTO schema_migrations" in str(call.args[0]) and "003" in str(call.args[1])
+        for call in cur.execute.call_args_list
+    )
+    assert any(
+        "INSERT INTO schema_migrations" in str(call.args[0]) and "004" in str(call.args[1])
         for call in cur.execute.call_args_list
     )
     conn.commit.assert_called_once()
@@ -92,8 +97,18 @@ def test_apply_migrations_on_empty_database_applies_all() -> None:
 
     applied = apply_migrations(conn, migrations=MIGRATIONS)
 
-    assert applied == ["001", "002", "003"]
+    assert applied == ["001", "002", "003", "004"]
     conn.commit.assert_called_once()
+
+
+@pytest.mark.unit
+def test_admin_sessions_migration_is_idempotent() -> None:
+    sessions = next(m for m in MIGRATIONS if m.name == "admin_sessions")
+    assert sessions.version == "004"
+    assert "CREATE TABLE IF NOT EXISTS admin_sessions" in sessions.up_sql
+    assert "token_hash TEXT NOT NULL UNIQUE" in sessions.up_sql
+    assert "revoked_at TIMESTAMPTZ" in sessions.up_sql
+    assert "CREATE INDEX IF NOT EXISTS admin_sessions_token_hash_idx" in sessions.up_sql
 
 
 @pytest.mark.unit
