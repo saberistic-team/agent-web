@@ -190,15 +190,26 @@ Hide one with CSS at each breakpoint. Reviewer hard-fails when desktop
 
 Stop, comment `@human-review` with the blocker, add `status:blocked`.
 
-Escalate when Cursor/OpenAI/Models codegen fails **after** shared GitHub API
-retries are exhausted (`scripts/github_api.py` retries 408/429/5xx and network
-timeouts with exponential backoff), or when acceptance criteria cannot be met
-from the issue text. Do **not** escalate on a single transient Contents API
-`500` / timeout — retries absorb those before `@human-review`.
+Escalate only for **non-retryable** failures: acceptance criteria cannot be met
+from the issue text, missing landing scaffold, production smoke failure on a
+verify issue, or Cursor/OpenAI/Models codegen failures that are **not**
+transient (after in-script retries). Shared GitHub API retries cover 408/429/5xx
+and network timeouts (`scripts/github_api.py`). Cursor local SDK retries
+`is_retryable` Bridge/timeouts (`CURSOR_LOCAL_ATTEMPTS`, default 3).
 
-Do **not** escalate for service coverage below threshold, missing tests, failing
-CI assertions, visual readability / mobile overflow, or merge conflicts with
-`main` — fix those (same PR head) and re-run.
+Do **not** escalate / `status:blocked` for:
+
+- Cursor Bridge `ReadTimeout` / `retryable=True` (re-enter `status:queued` via
+  `waiting` handoff — learned from [#104](https://github.com/saberistic-team/agent-web/issues/104))
+- Soft “too many files” budgets after a raise of `CURSOR_MAX_FILES` (requeue;
+  learned from [#105](https://github.com/saberistic-team/agent-web/issues/105))
+- Single transient Contents API `500` / timeout
+- Service coverage below threshold, missing tests, failing CI assertions, visual
+  readability / mobile overflow, or merge conflicts with `main` — fix those
+  (same PR head) and re-run
+
+`scripts/run_agent.py` classifies retryable codegen errors with
+`is_retryable_codegen_failure()` → `waiting` handoff, not `@human-review`.
 
 ## Special case: landing / UI design
 
