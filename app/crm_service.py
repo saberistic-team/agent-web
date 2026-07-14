@@ -10,6 +10,7 @@ from uuid import UUID
 import psycopg
 
 from app import contacts as contacts_module
+from app.crm_uow import crm_transaction
 from app.repositories import (
     ActivityRepository,
     AdminUserRepository,
@@ -75,24 +76,25 @@ class CrmService:
             normalized_name=normalized_name,
             company_id=company_id,
         )
-        contact = self._repos.contacts.create(
-            conn,
-            name=name.strip(),
-            company_id=company_id,
-            title=title.strip() if title else None,
-            profile_url=profile_url.strip() if profile_url else None,
-            normalized_profile_url=normalized_profile,
-            email=email.strip() if email else None,
-            normalized_email=normalized_email,
-            email_permission=email_permission,
-            email_provenance=email_provenance.strip() if email_provenance else None,
-            last_interaction_at=last_interaction_at,
-            relationship_strength=relationship_strength,
-            notes=notes.strip() if notes else None,
-        )
         roles = contacts_module.parse_buying_roles(buying_roles or [])
-        if roles:
-            self._repos.contacts.set_buying_roles(conn, UUID(str(contact["id"])), roles)
+        with crm_transaction(conn):
+            contact = self._repos.contacts.create(
+                conn,
+                name=name.strip(),
+                company_id=company_id,
+                title=title.strip() if title else None,
+                profile_url=profile_url.strip() if profile_url else None,
+                normalized_profile_url=normalized_profile,
+                email=email.strip() if email else None,
+                normalized_email=normalized_email,
+                email_permission=email_permission,
+                email_provenance=email_provenance.strip() if email_provenance else None,
+                last_interaction_at=last_interaction_at,
+                relationship_strength=relationship_strength,
+                notes=notes.strip() if notes else None,
+            )
+            if roles:
+                self._repos.contacts.set_buying_roles(conn, UUID(str(contact["id"])), roles)
         contact["buying_roles"] = roles
         contact["duplicate_warnings"] = contacts_module.duplicate_warnings(matches=duplicates)
         return contact
@@ -145,42 +147,44 @@ class CrmService:
             exclude_contact_id=contact_id,
         )
 
-        updated = self._repos.contacts.update(
-            conn,
-            contact_id,
-            name=resolved_name.strip() if resolved_name else None,
-            company_id=company_id,
-            title=title.strip() if title is not None else None,
-            profile_url=profile_url.strip() if profile_url is not None else None,
-            normalized_profile_url=normalized_profile,
-            email=email.strip() if email is not None else None,
-            normalized_email=normalized_email,
-            email_permission=email_permission,
-            email_provenance=email_provenance.strip() if email_provenance is not None else None,
-            last_interaction_at=last_interaction_at,
-            relationship_strength=relationship_strength,
-            notes=notes.strip() if notes is not None else None,
-            is_archived=is_archived,
-        )
-        if updated is None:
-            return None
-
         roles = (
             contacts_module.parse_buying_roles(buying_roles)
             if buying_roles is not None
             else self._repos.contacts.get_buying_roles(conn, contact_id)
         )
-        if buying_roles is not None:
-            roles = self._repos.contacts.set_buying_roles(conn, contact_id, roles)
+        with crm_transaction(conn):
+            updated = self._repos.contacts.update(
+                conn,
+                contact_id,
+                name=resolved_name.strip() if resolved_name else None,
+                company_id=company_id,
+                title=title.strip() if title is not None else None,
+                profile_url=profile_url.strip() if profile_url is not None else None,
+                normalized_profile_url=normalized_profile,
+                email=email.strip() if email is not None else None,
+                normalized_email=normalized_email,
+                email_permission=email_permission,
+                email_provenance=email_provenance.strip() if email_provenance is not None else None,
+                last_interaction_at=last_interaction_at,
+                relationship_strength=relationship_strength,
+                notes=notes.strip() if notes is not None else None,
+                is_archived=is_archived,
+            )
+            if updated is None:
+                return None
+            if buying_roles is not None:
+                roles = self._repos.contacts.set_buying_roles(conn, contact_id, roles)
         updated["buying_roles"] = roles
         updated["duplicate_warnings"] = contacts_module.duplicate_warnings(matches=duplicates)
         return updated
 
     def archive_contact(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None:
-        return self._repos.contacts.update(conn, contact_id, is_archived=True)
+        with crm_transaction(conn):
+            return self._repos.contacts.update(conn, contact_id, is_archived=True)
 
     def restore_contact(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None:
-        return self._repos.contacts.update(conn, contact_id, is_archived=False)
+        with crm_transaction(conn):
+            return self._repos.contacts.update(conn, contact_id, is_archived=False)
 
     def get_contact_with_roles(
         self,
@@ -238,18 +242,19 @@ class CrmService:
         contact_email: str,
         contact_name: str | None = None,
     ) -> dict[str, Any]:
-        company = self._repos.companies.create(
-            conn,
-            name=company_name,
-            website=website,
-        )
-        contact = self._repos.contacts.create(
-            conn,
-            name=contact_name or contact_email,
-            email=contact_email,
-            normalized_email=contacts_module.normalize_email(contact_email),
-            company_id=UUID(str(company["id"])),
-        )
+        with crm_transaction(conn):
+            company = self._repos.companies.create(
+                conn,
+                name=company_name,
+                website=website,
+            )
+            contact = self._repos.contacts.create(
+                conn,
+                name=contact_name or contact_email,
+                email=contact_email,
+                normalized_email=contacts_module.normalize_email(contact_email),
+                company_id=UUID(str(company["id"])),
+            )
         return {"company": company, "contact": contact}
 
     def record_activity_for_company(
@@ -262,14 +267,16 @@ class CrmService:
         contact_id: UUID | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        return self._repos.activities.create(
-            conn,
-            activity_type=activity_type,
-            summary=summary,
-            company_id=company_id,
-            contact_id=contact_id,
-            metadata=metadata,
-        )
+        with crm_transaction(conn):
+            activity = self._repos.activities.create(
+                conn,
+                activity_type=activity_type,
+                summary=summary,
+                company_id=company_id,
+                contact_id=contact_id,
+                metadata=metadata,
+            )
+        return activity
 
     def link_project_brief_source(
         self,
@@ -280,14 +287,16 @@ class CrmService:
         contact_id: UUID,
         payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        return self._repos.source_records.create(
-            conn,
-            source_type="project_brief",
-            external_id=str(brief_id),
-            company_id=company_id,
-            contact_id=contact_id,
-            payload=payload,
-        )
+        with crm_transaction(conn):
+            record = self._repos.source_records.create(
+                conn,
+                source_type="project_brief",
+                external_id=str(brief_id),
+                company_id=company_id,
+                contact_id=contact_id,
+                payload=payload,
+            )
+        return record
 
     def get_admin_user_by_email(
         self,
