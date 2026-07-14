@@ -13,6 +13,7 @@ from app.repositories.postgres import (
     PostgresAdminUserRepository,
     PostgresCompanyRepository,
     PostgresContactRepository,
+    PostgresResearchRecordRepository,
     PostgresSourceRecordRepository,
 )
 
@@ -27,6 +28,7 @@ def test_crm_service_records_company_contact_and_activity() -> None:
     contact_repo = MagicMock()
     activity_repo = MagicMock()
     source_repo = MagicMock()
+    research_repo = MagicMock()
     admin_repo = MagicMock()
 
     company_repo.create.return_value = {"id": COMPANY_ID, "name": "Acme"}
@@ -39,6 +41,7 @@ def test_crm_service_records_company_contact_and_activity() -> None:
             contacts=contact_repo,
             source_records=source_repo,
             activities=activity_repo,
+            research_records=research_repo,
             admin_users=admin_repo,
         )
     )
@@ -77,6 +80,7 @@ def test_crm_service_links_project_brief_source() -> None:
             contacts=MagicMock(),
             source_records=source_repo,
             activities=MagicMock(),
+            research_records=MagicMock(),
             admin_users=MagicMock(),
         )
     )
@@ -108,6 +112,7 @@ def test_default_crm_repositories_use_postgres_backends() -> None:
     assert isinstance(service._repos.contacts, PostgresContactRepository)
     assert isinstance(service._repos.source_records, PostgresSourceRecordRepository)
     assert isinstance(service._repos.activities, PostgresActivityRepository)
+    assert isinstance(service._repos.research_records, PostgresResearchRecordRepository)
     assert isinstance(service._repos.admin_users, PostgresAdminUserRepository)
 
 
@@ -124,6 +129,7 @@ def _service_with_mocks(
         "contacts": contact_repo or MagicMock(),
         "source_records": source_repo or MagicMock(),
         "activities": activity_repo or MagicMock(),
+        "research_records": MagicMock(),
         "admin_users": admin_repo or MagicMock(),
     }
     service = CrmService(repos=CrmRepositories(**repos))
@@ -252,111 +258,110 @@ def test_read_methods_do_not_change_transaction_state() -> None:
 
 
 @pytest.mark.unit
-def test_create_contact_assigns_roles_and_duplicate_warnings() -> None:
+def test_crm_service_contact_crud_and_roles() -> None:
     contact_repo = MagicMock()
-    contact_repo.find_duplicates.return_value = {
-        "profile_url": [{"name": "Existing"}],
-        "email": [],
-        "name_company": [],
+    company_repo = MagicMock()
+    contact_repo.create.return_value = {
+        "id": CONTACT_ID,
+        "full_name": "Alex Ng",
+        "email": "alex@example.com",
     }
-    contact_repo.create.return_value = {"id": CONTACT_ID, "name": "Pat"}
-    contact_repo.set_buying_roles.return_value = ["founder", "investor"]
-    service, conn, _ = _service_with_mocks(contact_repo=contact_repo)
-
-    result = service.create_contact(
-        conn,
-        name="Pat",
-        profile_url="https://linkedin.com/in/pat/",
-        email="pat@example.com",
-        buying_roles=["founder", "investor"],
-    )
-
-    assert result["buying_roles"] == ["founder", "investor"]
-    assert result["duplicate_warnings"]
-    contact_repo.set_buying_roles.assert_called_once()
-    conn.commit.assert_called_once()
-
-
-@pytest.mark.unit
-def test_update_contact_returns_none_when_missing() -> None:
-    contact_repo = MagicMock()
-    contact_repo.get_by_id.return_value = None
-    service, conn, _ = _service_with_mocks(contact_repo=contact_repo)
-
-    assert service.update_contact(conn, CONTACT_ID, name="Pat") is None
-
-
-@pytest.mark.unit
-def test_archive_and_restore_contact() -> None:
-    contact_repo = MagicMock()
-    contact_repo.update.return_value = {"id": CONTACT_ID, "is_archived": True}
-    service, conn, _ = _service_with_mocks(contact_repo=contact_repo)
-
-    service.archive_contact(conn, CONTACT_ID)
-    service.restore_contact(conn, CONTACT_ID)
-
-    assert contact_repo.update.call_args_list[0].kwargs["is_archived"] is True
-    assert contact_repo.update.call_args_list[1].kwargs["is_archived"] is False
-
-
-@pytest.mark.unit
-def test_get_contact_with_roles_and_search() -> None:
-    contact_repo = MagicMock()
-    contact_repo.get_by_id.return_value = {"id": CONTACT_ID, "name": "Pat"}
-    contact_repo.get_buying_roles.return_value = ["founder"]
-    contact_repo.search.return_value = [{"id": CONTACT_ID, "name": "Pat"}]
-    service, conn, _ = _service_with_mocks(contact_repo=contact_repo)
-
-    contact = service.get_contact_with_roles(conn, CONTACT_ID)
-    results = service.search_contacts(conn, query="pat")
-
-    assert contact is not None
-    assert contact["buying_roles"] == ["founder"]
-    assert results[0]["buying_roles"] == ["founder"]
-
-
-@pytest.mark.unit
-def test_list_company_contacts_attaches_roles() -> None:
-    contact_repo = MagicMock()
-    contact_repo.list_for_company.return_value = [{"id": CONTACT_ID, "name": "Pat"}]
-    contact_repo.get_buying_roles.return_value = ["technical_buyer"]
-    service, conn, _ = _service_with_mocks(contact_repo=contact_repo)
-
-    contacts = service.list_company_contacts(conn, COMPANY_ID)
-
-    assert contacts[0]["buying_roles"] == ["technical_buyer"]
-    contact_repo.list_for_company.assert_called_once_with(
-        conn, COMPANY_ID, include_archived=False
-    )
-
-
-@pytest.mark.unit
-def test_update_contact_persists_roles_and_warnings() -> None:
-    contact_repo = MagicMock()
     contact_repo.get_by_id.return_value = {
         "id": CONTACT_ID,
-        "name": "Pat",
-        "company_id": COMPANY_ID,
-        "profile_url": None,
-        "email": None,
+        "full_name": "Alex Ng",
+        "email": "alex@example.com",
     }
-    contact_repo.find_duplicates.return_value = {
-        "profile_url": [],
-        "email": [{"name": "Sam"}],
-        "name_company": [],
+    contact_repo.update.return_value = {
+        "id": CONTACT_ID,
+        "full_name": "Alex Ng",
+        "email": "alex@example.com",
     }
-    contact_repo.update.return_value = {"id": CONTACT_ID, "name": "Patricia"}
-    contact_repo.set_buying_roles.return_value = ["executive_buyer"]
-    service, conn, _ = _service_with_mocks(contact_repo=contact_repo)
-
-    result = service.update_contact(
-        conn,
-        CONTACT_ID,
-        name="Patricia",
-        buying_roles=["executive_buyer"],
+    contact_repo.archive.return_value = {
+        "id": CONTACT_ID,
+        "archived_at": "now",
+    }
+    contact_repo.find_possible_duplicates.return_value = []
+    contact_repo.set_buying_roles.return_value = ["founder", "technical_buyer"]
+    contact_repo.list_buying_roles.return_value = ["founder"]
+    contact_repo.list_buying_roles_for_contacts.return_value = {
+        CONTACT_ID: ["founder"],
+    }
+    contact_repo.list_page.return_value = (
+        [{"id": CONTACT_ID, "full_name": "Alex Ng"}],
+        1,
+    )
+    service, conn, _ = _service_with_mocks(
+        contact_repo=contact_repo,
+        company_repo=company_repo,
     )
 
-    assert result is not None
-    assert result["buying_roles"] == ["executive_buyer"]
-    assert any("Email" in warning for warning in result["duplicate_warnings"])
+    from app.contacts import ContactFormData
+
+    payload = ContactFormData(
+        full_name="Alex Ng",
+        email="alex@example.com",
+        buying_roles=["founder", "technical_buyer"],
+    )
+    created = service.create_contact(conn, payload=payload)
+    assert created["buying_roles"] == ["founder", "technical_buyer"]
     contact_repo.set_buying_roles.assert_called_once()
+
+    updated = service.update_contact(conn, contact_id=CONTACT_ID, payload=payload)
+    assert updated["buying_roles"] == ["founder", "technical_buyer"]
+
+    archived = service.archive_contact(conn, CONTACT_ID)
+    assert archived is not None
+
+    rows, total, filters = service.list_contacts(conn, query="alex")
+    assert total == 1
+    assert filters.query == "alex"
+
+
+@pytest.mark.unit
+def test_crm_service_blocks_unconfirmed_duplicates() -> None:
+    contact_repo = MagicMock()
+    contact_repo.find_possible_duplicates.return_value = [
+        {"id": CONTACT_ID, "duplicate_reason": "email"},
+    ]
+    service, conn, _ = _service_with_mocks(contact_repo=contact_repo)
+
+    from app.contacts import ContactFormData
+
+    payload = ContactFormData(full_name="Alex Ng", email="alex@example.com", buying_roles=["other"])
+    with pytest.raises(ValueError, match="duplicate"):
+        service.create_contact(conn, payload=payload)
+
+
+@pytest.mark.unit
+def test_crm_service_research_record_helpers() -> None:
+    company_repo = MagicMock()
+    contact_repo = MagicMock()
+    company_repo.list_all.return_value = [{"id": COMPANY_ID, "name": "Acme"}]
+    company_repo.get_by_id.return_value = {"id": COMPANY_ID, "name": "Acme"}
+    contact_repo.list_for_company.return_value = [{"id": CONTACT_ID, "email": "lead@example.com"}]
+    contact_repo.get_by_id.return_value = {"id": CONTACT_ID, "email": "lead@example.com"}
+
+    service, conn, repos = _service_with_mocks(
+        company_repo=company_repo,
+        contact_repo=contact_repo,
+    )
+    research_repo = repos["research_records"]
+    research_repo.list_for_company.return_value = [{"record_type": "hypothesis"}]
+    research_repo.list_for_contact.return_value = [{"record_type": "verified_fact"}]
+    research_repo.create.return_value = {"id": "rec-1", "body": "Series B"}
+
+    assert len(service.list_companies(conn)) == 1
+    assert service.get_company(conn, COMPANY_ID)["name"] == "Acme"
+    assert len(service.list_contacts_for_company(conn, COMPANY_ID)) == 1
+    assert service.get_contact(conn, CONTACT_ID)["email"] == "lead@example.com"
+    assert len(service.list_research_for_company(conn, COMPANY_ID)) == 1
+    assert len(service.list_research_for_contact(conn, CONTACT_ID)) == 1
+
+    record = service.attach_research_record(
+        conn,
+        record_type="hypothesis",
+        company_id=COMPANY_ID,
+        body="Likely buyer",
+    )
+    assert record["body"] == "Series B"
+    conn.commit.assert_called_once()

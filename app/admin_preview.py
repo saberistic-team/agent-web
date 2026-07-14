@@ -53,11 +53,46 @@ SIGNAL_TYPES = ("hiring", "funding", "tech-stack", "intent", "news")
 PIPELINE_STAGES = ("qualified", "discovery", "proposal", "negotiation", "won")
 IMPORT_STATUSES = ("queued", "running", "complete", "failed")
 CONTENT_KINDS = ("insight", "case-study", "landing", "brief copy")
+BUYING_ROLE_PREVIEW = (
+    "founder",
+    "technical_buyer",
+    "executive_buyer",
+    "influencer",
+    "investor",
+    "introducer",
+    "other",
+)
+
+BUYING_ROLE_PREVIEW_LABELS = {
+    "founder": "Founder",
+    "technical_buyer": "Technical buyer",
+    "executive_buyer": "Executive buyer",
+    "influencer": "Influencer",
+    "investor": "Investor",
+    "introducer": "Introducer",
+    "other": "Other",
+}
+
+RELATIONSHIP_PREVIEW = ("unknown", "weak", "moderate", "strong", "champion")
+BRIEF_PAYMENT_STATUSES = ("pending_payment", "paid", "abandoned")
+BRIEF_TEXTS = (
+    "Need a technical architecture review of our payments platform — "
+    "API boundaries, retention, and rollout sequencing.",
+    "Evaluating whether to rebuild the billing monolith or carve services. "
+    "Want an outside view before Series B.",
+    "Multi-tenant CRM sync is leaking PII across accounts. Diagnose root cause "
+    "and propose a containment plan.",
+    "Edge deploy latency spiked after the last k8s migration. Looking for a "
+    "concrete diagnosis and go/no-go on rollback.",
+)
+UTM_SOURCES = ("linkedin", "referral", "google", "newsletter", "partner")
+UTM_MEDIUMS = ("social", "cpc", "email", "organic", None)
+UTM_CAMPAIGNS = ("spring-launch", "architecture-diagnostic", "inbound-q3", None)
 
 # Section path → short column labels for preview tables.
 _SECTION_COLUMNS: dict[str, tuple[str, ...]] = {
     "/admin/companies": ("Company", "Industry", "Employees", "Owner", "Updated"),
-    "/admin/contacts": ("Name", "Title", "Company", "Email", "Last touch"),
+    "/admin/contacts": ("Name", "Title", "Company", "Roles", "Strength", "Last touch"),
     "/admin/signals": ("Signal", "Company", "Score", "Source", "Seen"),
     "/admin/pipeline": ("Deal", "Company", "Stage", "Value", "Next step"),
     "/admin/imports": ("Job", "Rows", "Status", "Source", "Started"),
@@ -266,12 +301,19 @@ def build_preview_section_rows(
                 )
             )
         elif active_path == "/admin/contacts":
+            roles = rng.sample(
+                BUYING_ROLE_PREVIEW,
+                k=rng.randint(1, min(3, len(BUYING_ROLE_PREVIEW))),
+            )
+            role_text = ", ".join(BUYING_ROLE_PREVIEW_LABELS[r] for r in sorted(roles))
+            strength = rng.choice(RELATIONSHIP_PREVIEW)
             rows.append(
                 (
                     person,
                     rng.choice(("CTO", "VP Eng", "Founder", "Ops lead")),
                     company,
-                    _slug_email(first, last, company, rng),
+                    role_text,
+                    strength.title(),
                     stamp,
                 )
             )
@@ -351,6 +393,223 @@ def build_preview_section_rows(
             rows.append((company, person, stamp, rng.choice(STATUSES), "preview"))
 
     return tuple(rows)
+
+
+def _brief_website(company: str, rng: random.Random) -> str:
+    slug = company.lower().replace(" ", "-")
+    tld = rng.choice((".io", ".com", ".co", ".dev"))
+    path = rng.choice(("", "/platform", "/engineering", "/products"))
+    return f"https://{slug}{tld}{path}"
+
+
+def _brief_email(company: str, rng: random.Random) -> str:
+    first = rng.choice(CONTACT_FIRST)
+    last = rng.choice(CONTACT_LAST)
+    return _slug_email(first, last, company, rng)
+
+
+def build_preview_contact_rows(
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> list[tuple[str, ...]]:
+    """Randomized contact list rows for ADMIN_PREVIEW_MODE screenshots."""
+    rng = rng or _preview_rng()
+    now = now or datetime.now(timezone.utc)
+    companies = list(COMPANY_NAMES)
+    rng.shuffle(companies)
+    count = rng.randint(5, 8)
+    rows: list[tuple[str, ...]] = []
+    for i in range(count):
+        company = companies[i % len(companies)]
+        person = _person(rng)
+        roles = rng.sample(
+            BUYING_ROLE_PREVIEW,
+            k=rng.randint(1, min(3, len(BUYING_ROLE_PREVIEW))),
+        )
+        role_text = ", ".join(BUYING_ROLE_PREVIEW_LABELS[r] for r in sorted(roles))
+        archived = " (archived)" if i == count - 1 else ""
+        rows.append(
+            (
+                f"{person}{archived}",
+                rng.choice(("CTO", "VP Eng", "Founder", "Ops lead")),
+                company,
+                role_text,
+                rng.choice(RELATIONSHIP_PREVIEW).title(),
+                _relative_stamp(rng, now),
+            )
+        )
+    return rows
+
+
+def render_preview_contacts_main(
+    *,
+    label: str,
+    summary: str,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> str:
+    """HTML main fragment for the contacts admin page in preview mode."""
+    rng = rng or _preview_rng()
+    now = now or datetime.now(timezone.utc)
+    columns = _SECTION_COLUMNS["/admin/contacts"]
+    data_rows = build_preview_contact_rows(rng=rng, now=now)
+    head = "".join(f'<th scope="col">{html.escape(col)}</th>' for col in columns)
+    body = "\n".join(
+        "<tr>"
+        + "".join(f"<td>{html.escape(cell)}</td>" for cell in row)
+        + "</tr>"
+        for row in data_rows
+    )
+    generated = now.strftime("%Y-%m-%d %H:%M:%S UTC")
+    safe_label = html.escape(label)
+    return f"""        <section class="admin-contacts" aria-labelledby="admin-section-title">
+          <p class="admin-preview-banner" role="status">Preview data — not production</p>
+          <p class="admin-eyebrow">Preview</p>
+          <h1 class="admin-title" id="admin-section-title">{safe_label}</h1>
+          <p class="admin-lede">
+            {html.escape(summary)} Mock contacts with buying roles for screenshots
+            (<time datetime="{html.escape(generated)}">{html.escape(generated)}</time>).
+          </p>
+          <p class="admin-actions"><a class="cta" href="/admin/contacts/new">New contact</a></p>
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  {head}
+                </tr>
+              </thead>
+              <tbody>
+                {body}
+              </tbody>
+            </table>
+          </div>
+        </section>"""
+
+
+def build_preview_brief_rows(
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> list[dict[str, object]]:
+    """Randomized project-brief list rows for ADMIN_PREVIEW_MODE screenshots."""
+    rng = rng or _preview_rng()
+    now = now or datetime.now(timezone.utc)
+    companies = list(COMPANY_NAMES)
+    rng.shuffle(companies)
+    count = rng.randint(5, 9)
+    rows: list[dict[str, object]] = []
+    for i in range(count):
+        company = companies[i % len(companies)]
+        brief_id = i + 1
+        status = BRIEF_PAYMENT_STATUSES[0] if brief_id == 2 else rng.choice(BRIEF_PAYMENT_STATUSES)
+        # Keep id=1 rich/paid and id=2 unpaid+nullable so Reviewer shots cover both AC states.
+        if brief_id == 1:
+            status = "paid"
+        created = now - timedelta(hours=rng.randint(2, 120), minutes=rng.randint(0, 50))
+        paid_at: datetime | None = None
+        session_id: str | None = None
+        intent_id: str | None = None
+        if status == "paid":
+            paid_at = created + timedelta(minutes=rng.randint(5, 90))
+            session_id = f"cs_preview_{rng.randint(100000, 999999)}"
+            intent_id = f"pi_preview_{rng.randint(100000, 999999)}"
+        utm_source = None if brief_id == 2 else rng.choice(UTM_SOURCES)
+        utm_medium = None if brief_id == 2 else rng.choice(UTM_MEDIUMS)
+        utm_campaign = None if brief_id == 2 else rng.choice(UTM_CAMPAIGNS)
+        utm_content = None if brief_id == 2 else rng.choice(("cta-primary", "hero", None))
+        utm_term = None if brief_id == 2 else rng.choice(("architecture", "cto", None))
+        website = (
+            "https://very-long-subdomain-name.example.co.uk/path/to/resource?query=value"
+            if brief_id == 2
+            else _brief_website(company, rng)
+        )
+        brief_text = (
+            ("A" * 220)
+            + "\n\nSecond paragraph with <script>alert(1)</script> for escape checks."
+            if brief_id == 2
+            else rng.choice(BRIEF_TEXTS)
+        )
+        rows.append(
+            {
+                "id": brief_id,
+                "created_at": created,
+                "website": website,
+                "contact_method": "email",
+                "contact_value": _brief_email(company, rng),
+                "brief": brief_text,
+                "status": status,
+                "stripe_session_id": session_id,
+                "stripe_payment_intent_id": intent_id,
+                "paid_at": paid_at,
+                "utm_source": utm_source,
+                "utm_medium": utm_medium,
+                "utm_campaign": utm_campaign,
+                "utm_content": utm_content,
+                "utm_term": utm_term,
+            }
+        )
+    return rows
+
+
+def build_preview_brief_detail(
+    brief_id: int,
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> dict[str, object] | None:
+    """Return one preview brief by id (from the seeded list), or None if unknown."""
+    if brief_id < 1:
+        return None
+    # Fresh rng from the same seed so list and detail stay consistent.
+    list_rng = rng if rng is not None else _preview_rng()
+    rows = build_preview_brief_rows(rng=list_rng, now=now)
+    for row in rows:
+        if int(row["id"]) == brief_id:  # type: ignore[arg-type]
+            return row
+    return None
+
+
+AUDIT_ACTIONS = (
+    "admin.login.success",
+    "admin.logout",
+    "import.batch",
+    "entity.delete",
+    "pipeline.update",
+)
+
+
+def build_preview_audit_events(
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> list[dict[str, object]]:
+    """Randomized audit rows for ADMIN_PREVIEW_MODE screenshots."""
+    rng = rng or _preview_rng()
+    now = now or datetime.now(timezone.utc)
+    count = rng.randint(4, 8)
+    events: list[dict[str, object]] = []
+    for i in range(count):
+        created = now - timedelta(hours=rng.randint(1, 72), minutes=rng.randint(0, 50))
+        action = rng.choice(AUDIT_ACTIONS)
+        company = rng.choice(COMPANY_NAMES)
+        actor = f"{rng.choice(CONTACT_FIRST).lower()}@saberistic.com"
+        events.append(
+            {
+                "id": i + 1,
+                "created_at": created,
+                "actor": actor,
+                "action": action,
+                "entity_type": "company" if "pipeline" in action or "delete" in action else None,
+                "entity_id": str(rng.randint(10, 99)) if "pipeline" in action else None,
+                "correlation_id": f"corr-preview-{rng.randint(1000, 9999)}",
+                "summary_before": {"name": company} if "update" in action else None,
+                "summary_after": {"status": rng.choice(PIPELINE_STAGES)}
+                if "update" in action
+                else {"ok": True},
+            }
+        )
+    return events
 
 
 def render_preview_section_main(

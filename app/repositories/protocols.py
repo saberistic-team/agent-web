@@ -21,6 +21,13 @@ class CompanyRepository(Protocol):
 
     def get_by_id(self, conn: psycopg.Connection, company_id: UUID) -> dict[str, Any] | None: ...
 
+    def list_all(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]: ...
+
     def update(
         self,
         conn: psycopg.Connection,
@@ -31,28 +38,19 @@ class CompanyRepository(Protocol):
         status: str | None = None,
     ) -> dict[str, Any] | None: ...
 
-    def list_all(
-        self,
-        conn: psycopg.Connection,
-        *,
-        limit: int = 200,
-    ) -> list[dict[str, Any]]: ...
-
 
 class ContactRepository(Protocol):
     def create(
         self,
         conn: psycopg.Connection,
         *,
-        name: str,
+        email: str | None = None,
+        full_name: str | None = None,
         company_id: UUID | None = None,
         title: str | None = None,
         profile_url: str | None = None,
-        normalized_profile_url: str | None = None,
-        email: str | None = None,
-        normalized_email: str | None = None,
-        email_permission: str | None = None,
         email_provenance: str | None = None,
+        email_permission: str | None = None,
         last_interaction_at: datetime | None = None,
         relationship_strength: str | None = None,
         notes: str | None = None,
@@ -60,53 +58,64 @@ class ContactRepository(Protocol):
 
     def get_by_id(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None: ...
 
-    def update(
-        self,
-        conn: psycopg.Connection,
-        contact_id: UUID,
-        *,
-        name: str | None = None,
-        company_id: UUID | None = None,
-        title: str | None = None,
-        profile_url: str | None = None,
-        normalized_profile_url: str | None = None,
-        email: str | None = None,
-        normalized_email: str | None = None,
-        email_permission: str | None = None,
-        email_provenance: str | None = None,
-        last_interaction_at: datetime | None = None,
-        relationship_strength: str | None = None,
-        notes: str | None = None,
-        is_archived: bool | None = None,
-    ) -> dict[str, Any] | None: ...
-
-    def find_duplicates(
-        self,
-        conn: psycopg.Connection,
-        *,
-        normalized_profile_url: str | None = None,
-        normalized_email: str | None = None,
-        normalized_name: str | None = None,
-        company_id: UUID | None = None,
-        exclude_contact_id: UUID | None = None,
-    ) -> dict[str, list[dict[str, Any]]]: ...
-
-    def search(
-        self,
-        conn: psycopg.Connection,
-        *,
-        query: str = "",
-        include_archived: bool = False,
-        limit: int = 100,
-    ) -> list[dict[str, Any]]: ...
+    def get_by_email(self, conn: psycopg.Connection, email: str) -> dict[str, Any] | None: ...
 
     def list_for_company(
         self,
         conn: psycopg.Connection,
         company_id: UUID,
         *,
+        limit: int = 100,
         include_archived: bool = False,
     ) -> list[dict[str, Any]]: ...
+
+    def list_page(
+        self,
+        conn: psycopg.Connection,
+        *,
+        page: int = 1,
+        per_page: int = 50,
+        query: str | None = None,
+        company_id: UUID | None = None,
+        include_archived: bool = False,
+    ) -> tuple[list[dict[str, Any]], int]: ...
+
+    def update(
+        self,
+        conn: psycopg.Connection,
+        contact_id: UUID,
+        *,
+        email: str | None = None,
+        full_name: str | None = None,
+        company_id: UUID | None = None,
+        title: str | None = None,
+        profile_url: str | None = None,
+        email_provenance: str | None = None,
+        email_permission: str | None = None,
+        last_interaction_at: datetime | None = None,
+        relationship_strength: str | None = None,
+        notes: str | None = None,
+        clear_company: bool = False,
+    ) -> dict[str, Any] | None: ...
+
+    def archive(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None: ...
+
+    def find_possible_duplicates(
+        self,
+        conn: psycopg.Connection,
+        *,
+        email: str | None = None,
+        profile_url: str | None = None,
+        full_name: str | None = None,
+        company_id: UUID | None = None,
+        exclude_contact_id: UUID | None = None,
+    ) -> list[dict[str, Any]]: ...
+
+    def list_buying_roles(
+        self,
+        conn: psycopg.Connection,
+        contact_id: UUID,
+    ) -> list[str]: ...
 
     def set_buying_roles(
         self,
@@ -115,11 +124,11 @@ class ContactRepository(Protocol):
         roles: list[str],
     ) -> list[str]: ...
 
-    def get_buying_roles(
+    def list_buying_roles_for_contacts(
         self,
         conn: psycopg.Connection,
-        contact_id: UUID,
-    ) -> list[str]: ...
+        contact_ids: list[UUID],
+    ) -> dict[UUID, list[str]]: ...
 
 
 class SourceRecordRepository(Protocol):
@@ -179,6 +188,43 @@ class AdminUserRepository(Protocol):
     def get_by_email(self, conn: psycopg.Connection, email: str) -> dict[str, Any] | None: ...
 
     def get_by_id(self, conn: psycopg.Connection, user_id: UUID) -> dict[str, Any] | None: ...
+
+
+class ResearchRecordRepository(Protocol):
+    def create(
+        self,
+        conn: psycopg.Connection,
+        *,
+        record_type: str,
+        company_id: UUID,
+        body: str,
+        contact_id: UUID | None = None,
+        source_name: str | None = None,
+        source_url: str | None = None,
+        observed_value: str | None = None,
+        observed_at: datetime | None = None,
+        confidence: float | None = None,
+        review_at: datetime | None = None,
+        expires_at: datetime | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]: ...
+
+    def list_for_company(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]: ...
+
+    def list_for_contact(
+        self,
+        conn: psycopg.Connection,
+        contact_id: UUID,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]: ...
+
 
 class ProjectBriefRepository(Protocol):
     def list_page(

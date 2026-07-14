@@ -238,47 +238,89 @@ CREATE TRIGGER audit_events_no_delete
     ),
     Migration(
         version="008",
-        name="contacts_extended",
+        name="research_records",
         up_sql="""
-ALTER TABLE contacts DROP CONSTRAINT IF EXISTS contacts_email_unique;
-ALTER TABLE contacts ALTER COLUMN email DROP NOT NULL;
+CREATE TABLE IF NOT EXISTS research_records (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    record_type TEXT NOT NULL
+        CHECK (record_type IN (
+            'verified_fact',
+            'public_signal',
+            'relationship_context',
+            'hypothesis',
+            'outreach_angle',
+            'follow_up_note'
+        )),
+    company_id UUID NOT NULL REFERENCES companies (id) ON DELETE CASCADE,
+    contact_id UUID REFERENCES contacts (id) ON DELETE SET NULL,
+    body TEXT NOT NULL,
+    source_name TEXT,
+    source_url TEXT,
+    observed_value TEXT,
+    observed_at TIMESTAMPTZ,
+    confidence NUMERIC(4, 3)
+        CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
+    review_at TIMESTAMPTZ,
+    expires_at TIMESTAMPTZ,
+    metadata JSONB
+);
 
-ALTER TABLE contacts ADD COLUMN IF NOT EXISTS name TEXT;
+CREATE INDEX IF NOT EXISTS idx_research_records_company_id
+    ON research_records (company_id);
+CREATE INDEX IF NOT EXISTS idx_research_records_contact_id
+    ON research_records (contact_id);
+CREATE INDEX IF NOT EXISTS idx_research_records_record_type
+    ON research_records (record_type);
+CREATE INDEX IF NOT EXISTS idx_research_records_expires_at
+    ON research_records (expires_at);
+CREATE INDEX IF NOT EXISTS idx_research_records_observed_at
+    ON research_records (observed_at);
+""",
+    ),
+    Migration(
+        version="009",
+        name="contact_buying_roles",
+        up_sql="""
+ALTER TABLE contacts ALTER COLUMN email DROP NOT NULL;
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS title TEXT;
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS profile_url TEXT;
-ALTER TABLE contacts ADD COLUMN IF NOT EXISTS normalized_profile_url TEXT;
-ALTER TABLE contacts ADD COLUMN IF NOT EXISTS normalized_email TEXT;
-ALTER TABLE contacts ADD COLUMN IF NOT EXISTS email_permission TEXT
-    CHECK (email_permission IS NULL OR email_permission IN ('permitted', 'do_not_contact', 'unknown'));
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS email_provenance TEXT;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS email_permission TEXT
+    CHECK (email_permission IS NULL OR email_permission IN (
+        'unknown', 'implied', 'explicit', 'do_not_contact'
+    ));
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS last_interaction_at TIMESTAMPTZ;
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS relationship_strength TEXT
-    CHECK (relationship_strength IS NULL OR relationship_strength IN ('weak', 'fair', 'good', 'strong'));
+    CHECK (relationship_strength IS NULL OR relationship_strength IN (
+        'unknown', 'weak', 'moderate', 'strong', 'champion'
+    ));
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS notes TEXT;
-ALTER TABLE contacts ADD COLUMN IF NOT EXISTS is_archived BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
 
-UPDATE contacts SET name = full_name WHERE name IS NULL AND full_name IS NOT NULL;
+ALTER TABLE contacts DROP CONSTRAINT IF EXISTS contacts_email_unique;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_email_unique_nonempty
+    ON contacts (LOWER(TRIM(email)))
+    WHERE email IS NOT NULL AND TRIM(email) <> '';
 
-CREATE INDEX IF NOT EXISTS idx_contacts_normalized_profile_url
-    ON contacts (normalized_profile_url) WHERE normalized_profile_url IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_contacts_normalized_email
-    ON contacts (normalized_email) WHERE normalized_email IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_contacts_is_archived ON contacts (is_archived);
-CREATE INDEX IF NOT EXISTS idx_contacts_name ON contacts (name);
+CREATE INDEX IF NOT EXISTS idx_contacts_profile_url
+    ON contacts (LOWER(profile_url))
+    WHERE profile_url IS NOT NULL AND TRIM(profile_url) <> '';
+CREATE INDEX IF NOT EXISTS idx_contacts_archived_at ON contacts (archived_at);
+CREATE INDEX IF NOT EXISTS idx_contacts_full_name ON contacts (LOWER(full_name));
 
 CREATE TABLE IF NOT EXISTS contact_buying_roles (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     contact_id UUID NOT NULL REFERENCES contacts (id) ON DELETE CASCADE,
     role TEXT NOT NULL CHECK (role IN (
         'founder', 'technical_buyer', 'executive_buyer',
         'influencer', 'investor', 'introducer', 'other'
     )),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT contact_buying_roles_unique UNIQUE (contact_id, role)
+    PRIMARY KEY (contact_id, role)
 );
 
-CREATE INDEX IF NOT EXISTS idx_contact_buying_roles_contact_id
-    ON contact_buying_roles (contact_id);
+CREATE INDEX IF NOT EXISTS idx_contact_buying_roles_role
+    ON contact_buying_roles (role);
 """,
     ),
 

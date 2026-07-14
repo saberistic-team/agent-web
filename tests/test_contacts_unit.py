@@ -1,62 +1,102 @@
-"""Unit tests for contact normalization and duplicate helpers."""
+"""Unit tests for contact validation and duplicate helpers."""
 
 from __future__ import annotations
 
+from uuid import UUID
+
 import pytest
 
-from app import contacts
+from app.contacts import (
+    BUYING_ROLES,
+    ContactFormData,
+    normalize_email,
+    normalize_name,
+    normalize_profile_url,
+    validate_buying_roles,
+)
 
 
 @pytest.mark.unit
-def test_normalize_profile_url_linkedin() -> None:
+def test_normalize_email_lowercases_and_trims() -> None:
+    assert normalize_email("  Lead@Example.COM ") == "lead@example.com"
+    assert normalize_email("") is None
+    assert normalize_email(None) is None
+
+
+@pytest.mark.unit
+def test_normalize_name_collapses_whitespace() -> None:
+    assert normalize_name("  Alex   Ng  ") == "alex ng"
+    assert normalize_name(None) is None
+
+
+@pytest.mark.unit
+def test_normalize_profile_url_strips_tracking_and_host() -> None:
     assert (
-        contacts.normalize_profile_url("https://www.LinkedIn.com/in/Jane-Doe/")
-        == "linkedin.com/in/jane-doe"
+        normalize_profile_url("HTTPS://WWW.LinkedIn.com/in/alex/")
+        == "https://linkedin.com/in/alex"
     )
 
 
 @pytest.mark.unit
-def test_normalize_profile_url_generic() -> None:
-    assert contacts.normalize_profile_url("example.com/team/alice") == "example.com/team/alice"
+def test_normalize_profile_url_rejects_unsafe_scheme() -> None:
+    with pytest.raises(ValueError, match="http or https"):
+        normalize_profile_url("javascript:alert(1)")
 
 
 @pytest.mark.unit
-def test_normalize_email_and_name() -> None:
-    assert contacts.normalize_email("  Lead@Example.COM ") == "lead@example.com"
-    assert contacts.normalize_name("  Jane   Doe ") == "jane doe"
-
-
-@pytest.mark.unit
-def test_parse_buying_roles_dedupes_and_filters() -> None:
-    roles = contacts.parse_buying_roles(
-        ["founder", "founder", "technical_buyer", "invalid", "investor"]
+def test_validate_buying_roles_accepts_multiple_unique_roles() -> None:
+    roles = validate_buying_roles(
+        ["founder", "technical_buyer", "founder", "investor"]
     )
     assert roles == ["founder", "technical_buyer", "investor"]
 
 
 @pytest.mark.unit
-def test_normalize_profile_url_empty_and_generic_host() -> None:
-    assert contacts.normalize_profile_url(None) is None
-    assert contacts.normalize_profile_url("   ") is None
-    assert contacts.normalize_profile_url("twitter.com/alice") == "twitter.com/alice"
+def test_validate_buying_roles_rejects_unknown_role() -> None:
+    with pytest.raises(ValueError, match="buying role"):
+        validate_buying_roles(["founder", "procurement"])
 
 
 @pytest.mark.unit
-def test_contact_display_name_fallbacks() -> None:
-    assert contacts.contact_display_name({"email": "a@b.com"}) == "a@b.com"
-    assert contacts.contact_display_name({}) == "Contact"
-
-
-@pytest.mark.unit
-def test_duplicate_warnings_messages() -> None:
-    warnings = contacts.duplicate_warnings(
-        matches={
-            "profile_url": [{"name": "Pat"}],
-            "email": [{"name": "Sam"}],
-            "name_company": [{"full_name": "Alex"}],
-        }
+def test_contact_form_allows_optional_email() -> None:
+    payload = ContactFormData(
+        full_name="Alex Ng",
+        email=None,
+        buying_roles=["founder"],
     )
-    assert len(warnings) == 3
-    assert "Profile URL" in warnings[0]
-    assert "Email" in warnings[1]
-    assert "Name and company" in warnings[2]
+    assert payload.email is None
+    assert payload.buying_roles == ["founder"]
+
+
+@pytest.mark.unit
+def test_contact_form_records_email_provenance_and_permission() -> None:
+    payload = ContactFormData(
+        full_name="Alex Ng",
+        email="alex@example.com",
+        email_provenance="Conference badge scan",
+        email_permission="explicit",
+        buying_roles=["executive_buyer"],
+    )
+    assert payload.email_provenance == "Conference badge scan"
+    assert payload.email_permission == "explicit"
+
+
+@pytest.mark.unit
+def test_contact_form_parses_company_id() -> None:
+    company_id = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+    payload = ContactFormData(
+        full_name="Alex Ng",
+        company_id=str(company_id),
+        buying_roles=list(BUYING_ROLES)[:1],
+    )
+    assert payload.parsed_company_id() == company_id
+
+
+@pytest.mark.unit
+def test_contact_form_confirm_duplicates_flag() -> None:
+    payload = ContactFormData(
+        full_name="Alex Ng",
+        confirm_duplicates=True,
+        buying_roles=["other"],
+    )
+    assert payload.confirm_duplicates is True
