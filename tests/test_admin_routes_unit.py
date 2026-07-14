@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -65,15 +66,11 @@ def authenticated_admin() -> dict[str, Any]:
         patch.object(db, "get_admin_session_by_token_hash", side_effect=_get_session),
         patch.object(db, "update_admin_session_csrf", side_effect=_update_csrf),
         patch("app.db.db_connection") as db_conn,
-        patch("app.admin_deps.db.db_connection", db_conn),
-        patch("app.admin_crm_routes.db.db_connection", db_conn),
         patch("app.admin_routes.db.db_connection", db_conn),
     ):
         db_conn.return_value.__enter__.return_value = mock_conn
         cookies = {SESSION_COOKIE_NAME: raw_token}
         response = client.get("/admin/contacts/new", cookies=cookies)
-        import re
-
         match = re.search(r'name="csrf_token" value="([^"]+)"', response.text)
         assert match is not None
         yield {"cookies": cookies, "csrf_token": match.group(1)}
@@ -92,7 +89,7 @@ def test_create_contact_rejects_empty_name(authenticated_admin: dict[str, Any]) 
             admin_users=MagicMock(),
         )
     )
-    with patch("app.admin_crm_routes._crm_service", return_value=service):
+    with patch("app.admin_routes._crm_service", return_value=service):
         response = client.post(
             "/admin/contacts/new",
             cookies=authenticated_admin["cookies"],
@@ -118,7 +115,7 @@ def test_update_contact_rejects_empty_name(authenticated_admin: dict[str, Any]) 
     )
     contact_repo.get_by_id.return_value = {"id": CONTACT_ID, "name": "Pat"}
     with (
-        patch("app.admin_crm_routes._crm_service", return_value=service),
+        patch("app.admin_routes._crm_service", return_value=service),
         patch.object(service, "get_contact_with_roles", return_value={"id": CONTACT_ID, "name": "Pat"}),
     ):
         response = client.post(
@@ -133,7 +130,7 @@ def test_update_contact_rejects_empty_name(authenticated_admin: dict[str, Any]) 
 @pytest.mark.unit
 def test_restore_contact_redirects_to_edit(authenticated_admin: dict[str, Any]) -> None:
     with patch.object(CrmService, "restore_contact", return_value={"id": CONTACT_ID}) as restore:
-        with patch("app.admin_crm_routes._crm_service", return_value=CrmService()):
+        with patch("app.admin_routes._crm_service", return_value=CrmService()):
             response = client.post(
                 f"/admin/contacts/{CONTACT_ID}/restore",
                 cookies=authenticated_admin["cookies"],
@@ -158,7 +155,7 @@ def test_companies_list_renders(authenticated_admin: dict[str, Any]) -> None:
             admin_users=MagicMock(),
         )
     )
-    with patch("app.admin_crm_routes._crm_service", return_value=service):
+    with patch("app.admin_routes._crm_service", return_value=service):
         response = client.get("/admin/companies", cookies=authenticated_admin["cookies"])
     assert response.status_code == 200
     assert "Companies" in response.text
@@ -178,7 +175,7 @@ def test_company_detail_returns_404_when_missing(authenticated_admin: dict[str, 
             admin_users=MagicMock(),
         )
     )
-    with patch("app.admin_crm_routes._crm_service", return_value=service):
+    with patch("app.admin_routes._crm_service", return_value=service):
         response = client.get(f"/admin/companies/{COMPANY_ID}", cookies=authenticated_admin["cookies"])
     assert response.status_code == 404
 
@@ -186,7 +183,7 @@ def test_company_detail_returns_404_when_missing(authenticated_admin: dict[str, 
 @pytest.mark.unit
 def test_contact_edit_returns_404_when_missing(authenticated_admin: dict[str, Any]) -> None:
     with patch.object(CrmService, "get_contact_with_roles", return_value=None):
-        with patch("app.admin_crm_routes._crm_service", return_value=CrmService()):
+        with patch("app.admin_routes._crm_service", return_value=CrmService()):
             response = client.get(
                 f"/admin/contacts/{CONTACT_ID}",
                 cookies=authenticated_admin["cookies"],
@@ -197,7 +194,7 @@ def test_contact_edit_returns_404_when_missing(authenticated_admin: dict[str, An
 @pytest.mark.unit
 def test_update_contact_returns_404_when_missing(authenticated_admin: dict[str, Any]) -> None:
     with patch.object(CrmService, "update_contact", return_value=None):
-        with patch("app.admin_crm_routes._crm_service", return_value=CrmService()):
+        with patch("app.admin_routes._crm_service", return_value=CrmService()):
             response = client.post(
                 f"/admin/contacts/{CONTACT_ID}",
                 cookies=authenticated_admin["cookies"],
