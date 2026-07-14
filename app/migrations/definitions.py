@@ -192,6 +192,52 @@ ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS csrf_token_hash TEXT;
     ),
     Migration(
         version="007",
+        name="audit_events",
+        up_sql="""
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+CREATE TABLE IF NOT EXISTS audit_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    actor TEXT NOT NULL,
+    action TEXT NOT NULL,
+    entity_type TEXT,
+    entity_id TEXT,
+    correlation_id TEXT NOT NULL,
+    summary_before JSONB,
+    summary_after JSONB,
+    metadata JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_events_action ON audit_events (action);
+CREATE INDEX IF NOT EXISTS idx_audit_events_actor ON audit_events (actor);
+CREATE INDEX IF NOT EXISTS idx_audit_events_correlation_id ON audit_events (correlation_id);
+
+CREATE OR REPLACE FUNCTION prevent_audit_events_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RAISE EXCEPTION 'audit_events records are append-only';
+END;
+$$;
+
+DROP TRIGGER IF EXISTS audit_events_no_update ON audit_events;
+CREATE TRIGGER audit_events_no_update
+    BEFORE UPDATE ON audit_events
+    FOR EACH ROW
+    EXECUTE FUNCTION prevent_audit_events_mutation();
+
+DROP TRIGGER IF EXISTS audit_events_no_delete ON audit_events;
+CREATE TRIGGER audit_events_no_delete
+    BEFORE DELETE ON audit_events
+    FOR EACH ROW
+    EXECUTE FUNCTION prevent_audit_events_mutation();
+""",
+    ),
+    Migration(
+        version="008",
         name="research_records",
         up_sql="""
 CREATE TABLE IF NOT EXISTS research_records (
@@ -233,4 +279,5 @@ CREATE INDEX IF NOT EXISTS idx_research_records_observed_at
     ON research_records (observed_at);
 """,
     ),
+
 )
