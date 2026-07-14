@@ -54,6 +54,19 @@ def test_brief_pages_flow() -> None:
 
 
 @pytest.mark.integration
+def test_case_studies_index_flow() -> None:
+    index = client.get("/case-studies")
+    assert index.status_code == 200
+    assert "/work/brave" in index.text
+    assert "/work/architecture-diagnostic" in index.text
+    assert "Request an Architecture Diagnostic" in index.text
+
+    diagnostic = client.get("/diagnostic", follow_redirects=False)
+    assert diagnostic.status_code == 301
+    assert diagnostic.headers["location"] == "/brief"
+
+
+@pytest.mark.integration
 def test_case_studies_flow() -> None:
     home = client.get("/")
     assert home.status_code == 200
@@ -92,29 +105,6 @@ def test_about_page_cta_flow() -> None:
     assert about.status_code == 200
     assert 'href="/brief"' in about.text
     assert 'href="/#proof"' in about.text
-
-
-@pytest.mark.integration
-def test_placeholder_routes_replaced() -> None:
-    services = client.get("/services")
-    assert services.status_code == 200
-    assert "being finalized" not in services.text
-    assert 'href="/brief"' in services.text
-
-    case_studies = client.get("/case-studies")
-    assert case_studies.status_code == 200
-    assert "in progress" not in case_studies.text
-    assert "/work/spiral-safe" in case_studies.text
-
-    diagnostic = client.get("/diagnostic", follow_redirects=False)
-    assert diagnostic.status_code == 301
-    assert diagnostic.headers["location"] == "/brief"
-
-    sitemap = client.get("/sitemap.xml")
-    assert sitemap.status_code == 200
-    assert "https://saberistic.com/diagnostic" not in sitemap.text
-    assert "https://saberistic.com/services" in sitemap.text
-    assert "https://saberistic.com/case-studies" in sitemap.text
 
 
 @pytest.mark.integration
