@@ -12,6 +12,7 @@ from app.repositories.postgres import (
     PostgresAdminUserRepository,
     PostgresCompanyRepository,
     PostgresContactRepository,
+    PostgresResearchRecordRepository,
     PostgresSourceRecordRepository,
 )
 
@@ -62,6 +63,10 @@ def test_company_repository_crud() -> None:
     assert "UPDATE companies" in update_sql
     assert "updated_at" in update_sql
 
+    conn4 = _mock_conn([created])
+    companies = repo.list_all(conn4, limit=10)
+    assert len(companies) == 1
+
 
 @pytest.mark.unit
 def test_contact_repository_create_and_lookup() -> None:
@@ -85,6 +90,10 @@ def test_contact_repository_create_and_lookup() -> None:
 
     conn2 = _mock_conn(row)
     assert repo.get_by_email(conn2, "lead@example.com")["id"] == CONTACT_ID
+
+    conn3 = _mock_conn([row])
+    contacts = repo.list_for_company(conn3, COMPANY_ID, limit=10)
+    assert len(contacts) == 1
 
 
 @pytest.mark.unit
@@ -171,3 +180,50 @@ def test_admin_user_repository_create_and_lookup() -> None:
 
     conn3 = _mock_conn(row)
     assert repo.get_by_id(conn3, ADMIN_ID)["email"] == "admin@saberistic.com"
+
+
+@pytest.mark.unit
+def test_research_record_repository_create_and_list() -> None:
+    repo = PostgresResearchRecordRepository()
+    record_id = UUID("66666666-6666-6666-6666-666666666666")
+    row = {
+        "id": record_id,
+        "record_type": "verified_fact",
+        "company_id": COMPANY_ID,
+        "contact_id": CONTACT_ID,
+        "body": "Raised Series B",
+        "source_name": "Press",
+        "source_url": "https://press.example.com/a",
+        "observed_value": "$40M",
+        "observed_at": None,
+        "confidence": 0.9,
+        "review_at": None,
+        "expires_at": None,
+    }
+    conn = _mock_conn(row)
+
+    created = repo.create(
+        conn,
+        record_type="verified_fact",
+        company_id=COMPANY_ID,
+        body="Raised Series B",
+        contact_id=CONTACT_ID,
+        source_name="Press",
+        source_url="https://press.example.com/a",
+        observed_value="$40M",
+        confidence=0.9,
+    )
+    assert created["record_type"] == "verified_fact"
+    insert_sql = str(conn.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    assert "INSERT INTO research_records" in insert_sql
+    conn.commit.assert_not_called()
+
+    conn2 = _mock_conn([row])
+    company_records = repo.list_for_company(conn2, COMPANY_ID, limit=10)
+    assert len(company_records) == 1
+    list_sql = str(conn2.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    assert "ORDER BY observed_at DESC" in list_sql
+
+    conn3 = _mock_conn([row])
+    contact_records = repo.list_for_contact(conn3, CONTACT_ID, limit=10)
+    assert len(contact_records) == 1
