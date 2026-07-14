@@ -107,7 +107,12 @@ def services() -> HTMLResponse:
 
 @app.get("/case-studies")
 def case_studies_index() -> HTMLResponse:
-    return page_service.serve_page("case-studies.html", get_settings())
+    return page_service.serve_html(case_studies.render_case_studies_index(), get_settings())
+
+
+@app.get("/diagnostic")
+def diagnostic() -> RedirectResponse:
+    return RedirectResponse(url="/brief", status_code=301)
 
 
 @app.get("/brief")
