@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncIterator
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import (
     HTMLResponse,
     JSONResponse,
@@ -18,8 +18,10 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app import analytics_service, case_studies, db, email_service, insights, page_service, stripe_service
+from app import admin, admin_companies, admin_contacts, analytics_service, case_studies, db, email_service, insights, page_service, stripe_service
+from app.admin_auth import require_admin
 from app.config import get_settings
+from app.crm_service import CrmService
 from app.models import BriefCreateRequest, BriefCreateResponse
 from app.seo import (
     PERMANENT_REDIRECTS,
@@ -41,7 +43,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     if settings.database_configured:
         db.init_db(settings.database_url)
-        logger.info("database schema ready")
+        logger.info("database migrations applied")
     else:
         logger.warning("DATABASE_URL not set — brief persistence disabled")
     yield
@@ -166,6 +168,270 @@ for redirect_path, target in PERMANENT_REDIRECTS.items():
     app.add_api_route(
         redirect_path, _permanent_redirect, methods=["GET"], include_in_schema=False
     )
+
+
+def _crm_service() -> CrmService:
+    return CrmService()
+
+
+def _require_crm_db() -> None:
+    settings = get_settings()
+    if not settings.database_configured:
+        raise HTTPException(status_code=503, detail="Database not configured")
+
+
+@app.get("/admin")
+def admin_dashboard(_user: str = Depends(require_admin)) -> HTMLResponse:
+    return HTMLResponse(admin.render_admin_dashboard_page())
+
+
+@app.get("/admin/contacts")
+def admin_contacts_list(
+    request: Request,
+    _user: str = Depends(require_admin),
+) -> HTMLResponse:
+    _require_crm_db()
+    settings = get_settings()
+    query = request.query_params.get("q", "")
+    include_archived = request.query_params.get("include_archived") == "1"
+    with db.db_connection(settings.database_url) as conn:
+        contacts = _crm_service().search_contacts(
+            conn,
+            query=query,
+            include_archived=include_archived,
+        )
+    return HTMLResponse(
+        admin_contacts.render_contacts_list_page(
+            contacts=contacts,
+            query=query,
+            include_archived=include_archived,
+        )
+    )
+
+
+@app.get("/admin/contacts/new")
+def admin_contacts_new_form(
+    request: Request,
+    _user: str = Depends(require_admin),
+) -> HTMLResponse:
+    _require_crm_db()
+    settings = get_settings()
+    company_id = request.query_params.get("company_id")
+    with db.db_connection(settings.database_url) as conn:
+        companies = _crm_service()._repos.companies.list_all(conn)
+    contact: dict[str, object] = {}
+    if company_id:
+        contact["company_id"] = company_id
+    return HTMLResponse(
+        admin_contacts.render_contact_form_page(
+            companies=companies,
+            contact=contact,
+            is_new=True,
+        )
+    )
+
+
+@app.post("/admin/contacts/new")
+def admin_contacts_create(
+    _user: str = Depends(require_admin),
+    name: str = Form(...),
+    title: str = Form(""),
+    profile_url: str = Form(""),
+    company_id: str = Form(""),
+    email: str = Form(""),
+    email_permission: str = Form(""),
+    email_provenance: str = Form(""),
+    last_interaction_at: str = Form(""),
+    relationship_strength: str = Form(""),
+    notes: str = Form(""),
+    buying_roles: list[str] = Form(default=[]),
+) -> HTMLResponse:
+    _require_crm_db()
+    settings = get_settings()
+    if not name.strip():
+        with db.db_connection(settings.database_url) as conn:
+            companies = _crm_service()._repos.companies.list_all(conn)
+        return HTMLResponse(
+            admin_contacts.render_contact_form_page(
+                companies=companies,
+                is_new=True,
+                error="Name is required.",
+            ),
+            status_code=400,
+        )
+    payload = admin_contacts.parse_contact_form(
+        name=name,
+        title=title,
+        profile_url=profile_url,
+        company_id=company_id,
+        email=email,
+        email_permission=email_permission,
+        email_provenance=email_provenance,
+        last_interaction_at=last_interaction_at,
+        relationship_strength=relationship_strength,
+        notes=notes,
+        buying_roles=buying_roles,
+    )
+    with db.db_connection(settings.database_url) as conn:
+        contact = _crm_service().create_contact(conn, **payload)
+        companies = _crm_service()._repos.companies.list_all(conn)
+    return HTMLResponse(
+        admin_contacts.render_contact_form_page(
+            companies=companies,
+            contact=contact,
+            warnings=contact.get("duplicate_warnings"),
+        )
+    )
+
+
+@app.get("/admin/contacts/{contact_id}")
+def admin_contacts_edit_form(
+    contact_id: str,
+    _user: str = Depends(require_admin),
+) -> HTMLResponse:
+    _require_crm_db()
+    settings = get_settings()
+    from uuid import UUID
+
+    with db.db_connection(settings.database_url) as conn:
+        contact = _crm_service().get_contact_with_roles(conn, UUID(contact_id))
+        companies = _crm_service()._repos.companies.list_all(conn)
+    if contact is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    return HTMLResponse(
+        admin_contacts.render_contact_form_page(
+            companies=companies,
+            contact=contact,
+        )
+    )
+
+
+@app.post("/admin/contacts/{contact_id}")
+def admin_contacts_update(
+    contact_id: str,
+    _user: str = Depends(require_admin),
+    name: str = Form(...),
+    title: str = Form(""),
+    profile_url: str = Form(""),
+    company_id: str = Form(""),
+    email: str = Form(""),
+    email_permission: str = Form(""),
+    email_provenance: str = Form(""),
+    last_interaction_at: str = Form(""),
+    relationship_strength: str = Form(""),
+    notes: str = Form(""),
+    buying_roles: list[str] = Form(default=[]),
+) -> HTMLResponse:
+    _require_crm_db()
+    settings = get_settings()
+    from uuid import UUID
+
+    if not name.strip():
+        with db.db_connection(settings.database_url) as conn:
+            companies = _crm_service()._repos.companies.list_all(conn)
+            contact = _crm_service().get_contact_with_roles(conn, UUID(contact_id))
+        return HTMLResponse(
+            admin_contacts.render_contact_form_page(
+                companies=companies,
+                contact=contact,
+                error="Name is required.",
+            ),
+            status_code=400,
+        )
+    payload = admin_contacts.parse_contact_form(
+        name=name,
+        title=title,
+        profile_url=profile_url,
+        company_id=company_id,
+        email=email,
+        email_permission=email_permission,
+        email_provenance=email_provenance,
+        last_interaction_at=last_interaction_at,
+        relationship_strength=relationship_strength,
+        notes=notes,
+        buying_roles=buying_roles,
+    )
+    with db.db_connection(settings.database_url) as conn:
+        contact = _crm_service().update_contact(conn, UUID(contact_id), **payload)
+        companies = _crm_service()._repos.companies.list_all(conn)
+    if contact is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    return HTMLResponse(
+        admin_contacts.render_contact_form_page(
+            companies=companies,
+            contact=contact,
+            warnings=contact.get("duplicate_warnings"),
+        )
+    )
+
+
+@app.post("/admin/contacts/{contact_id}/archive")
+def admin_contacts_archive(
+    contact_id: str,
+    _user: str = Depends(require_admin),
+) -> RedirectResponse:
+    _require_crm_db()
+    settings = get_settings()
+    from uuid import UUID
+
+    with db.db_connection(settings.database_url) as conn:
+        contact = _crm_service().archive_contact(conn, UUID(contact_id))
+    if contact is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    return RedirectResponse(url="/admin/contacts", status_code=303)
+
+
+@app.post("/admin/contacts/{contact_id}/restore")
+def admin_contacts_restore(
+    contact_id: str,
+    _user: str = Depends(require_admin),
+) -> RedirectResponse:
+    _require_crm_db()
+    settings = get_settings()
+    from uuid import UUID
+
+    with db.db_connection(settings.database_url) as conn:
+        contact = _crm_service().restore_contact(conn, UUID(contact_id))
+    if contact is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    return RedirectResponse(url=f"/admin/contacts/{contact_id}", status_code=303)
+
+
+@app.get("/admin/companies")
+def admin_companies_list(_user: str = Depends(require_admin)) -> HTMLResponse:
+    _require_crm_db()
+    settings = get_settings()
+    with db.db_connection(settings.database_url) as conn:
+        companies = _crm_service()._repos.companies.list_all(conn)
+    return HTMLResponse(admin_companies.render_companies_list_page(companies=companies))
+
+
+@app.get("/admin/companies/{company_id}")
+def admin_company_detail(
+    company_id: str,
+    _user: str = Depends(require_admin),
+) -> HTMLResponse:
+    _require_crm_db()
+    settings = get_settings()
+    from uuid import UUID
+
+    with db.db_connection(settings.database_url) as conn:
+        company = _crm_service()._repos.companies.get_by_id(conn, UUID(company_id))
+        if company is None:
+            raise HTTPException(status_code=404, detail="Company not found")
+        contacts = _crm_service().list_company_contacts(conn, UUID(company_id))
+    return HTMLResponse(
+        admin_contacts.render_company_detail_page(company=company, contacts=contacts)
+    )
+
+
+@app.get("/admin/{section}")
+def admin_section(section: str, _user: str = Depends(require_admin)) -> HTMLResponse:
+    path = f"/admin/{section}"
+    if not admin.is_admin_path(path):
+        response = HTMLResponse(admin.render_admin_not_found(path), status_code=404)
+        return response
+    return HTMLResponse(admin.render_admin_page(path))
 
 
 @app.post("/api/briefs", response_model=BriefCreateResponse)
