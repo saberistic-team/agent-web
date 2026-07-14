@@ -47,40 +47,37 @@ Indexes: `status`, `website`.
 
 ### `contacts`
 
-Parent issue: [#105](https://github.com/saberistic-team/agent-web/issues/105) extends the foundation contact row.
-
 | Column | Type | Notes |
 |--------|------|-------|
 | `id` | `UUID` | PK |
 | `company_id` | `UUID` | FK → `companies`, `ON DELETE SET NULL` |
-| `name` | `TEXT` | Display name (mirrors `full_name` on write) |
-| `full_name` | `TEXT` | Legacy alias kept for compatibility |
+| `name` | `TEXT` | Display name (migration `008`) |
+| `full_name` | `TEXT` | Legacy alias; kept in sync with `name` on write |
 | `title` | `TEXT` | Job title |
 | `profile_url` | `TEXT` | LinkedIn or other profile URL |
-| `normalized_profile_url` | `TEXT` | Lowercased host/path for duplicate detection |
+| `normalized_profile_url` | `TEXT` | Normalized for duplicate detection |
 | `email` | `TEXT` | Optional |
-| `normalized_email` | `TEXT` | Lowercased email for duplicate detection |
+| `normalized_email` | `TEXT` | Lowercased for duplicate detection |
 | `email_permission` | `TEXT` | `permitted`, `do_not_contact`, `unknown` |
 | `email_provenance` | `TEXT` | How the email was obtained |
 | `last_interaction_at` | `TIMESTAMPTZ` | Last touchpoint |
 | `relationship_strength` | `TEXT` | `weak`, `fair`, `good`, `strong` |
 | `notes` | `TEXT` | Free-form context |
-| `is_archived` | `BOOLEAN` | Soft archive flag (default `FALSE`) |
+| `is_archived` | `BOOLEAN` | Soft archive flag |
 
-Indexes: `company_id`, `email`, `normalized_profile_url`, `normalized_email`, `is_archived`, `name`.
+Indexes: `company_id`, `normalized_profile_url`, `normalized_email`, `is_archived`, `name`.
 
 ### `contact_buying_roles`
 
-Junction table for multiple buying-role classifications per contact ([#105](https://github.com/saberistic-team/agent-web/issues/105)).
+Junction table for multiple buying roles per contact (migration `008`).
 
 | Column | Type | Notes |
 |--------|------|-------|
 | `id` | `UUID` | PK |
 | `contact_id` | `UUID` | FK → `contacts`, `ON DELETE CASCADE` |
 | `role` | `TEXT` | `founder`, `technical_buyer`, `executive_buyer`, `influencer`, `investor`, `introducer`, `other` |
-| `created_at` | `TIMESTAMPTZ` | Auto on insert |
 
-Unique: `(contact_id, role)`. Index: `contact_id`.
+Unique: `(contact_id, role)`.
 
 ### `source_records`
 
@@ -178,6 +175,8 @@ Migrations live in `app/migrations/definitions.py` and are applied at startup vi
 | `004` | `admin_sessions` | Server-side admin session rows |
 | `005` | `admin_login_rate_limits` | Shared admin login rate-limit state |
 | `006` | `admin_csrf_binding` | Login-flow CSRF rows and session CSRF column |
+| `007` | `audit_events` | Append-only audit log with mutation triggers |
+| `008` | `contacts_extended` | Contact fields, buying roles, archive support |
 
 Applied versions are recorded in `schema_migrations`. Steps are **idempotent**
 (`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`) so empty and existing Render Postgres
