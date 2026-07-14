@@ -212,6 +212,9 @@ def discover_screenshot_routes(app_root: Path | None = None) -> list[str]:
     if not any(p.startswith("/insights/") for p in found):
         found.update(_expand_param_route("/insights/{slug}", root))
 
+    # Redirect-only marketing URLs are not screenshot targets.
+    found.discard("/diagnostic")
+
     # Stable order: home first, then lexical.
     ordered = sorted(found, key=lambda p: (p != "/", p))
     return ordered or list(HTML_PATHS)
