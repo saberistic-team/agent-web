@@ -99,7 +99,7 @@ def admin_login_submit(
     settings = get_settings()
     _require_admin_auth_configured(settings)
 
-    if admin_auth.is_login_throttled(request, settings):
+    if admin_auth.is_login_throttled(request, settings, username=username.strip()):
         csrf = admin_auth.generate_csrf_token(settings)
         return HTMLResponse(
             admin_pages.render_admin_login_page(
@@ -111,7 +111,7 @@ def admin_login_submit(
         )
 
     if not admin_auth.verify_csrf_token(csrf_token, settings):
-        admin_auth.record_failed_login(request, settings)
+        admin_auth.record_failed_login(request, settings, username=username.strip())
         csrf = admin_auth.generate_csrf_token(settings)
         return HTMLResponse(
             admin_pages.render_admin_login_page(
@@ -123,7 +123,7 @@ def admin_login_submit(
         )
 
     if not admin_auth.verify_admin_credentials(username.strip(), password, settings):
-        admin_auth.record_failed_login(request, settings)
+        admin_auth.record_failed_login(request, settings, username=username.strip())
         csrf = admin_auth.generate_csrf_token(settings)
         return HTMLResponse(
             admin_pages.render_admin_login_page(
@@ -136,6 +136,7 @@ def admin_login_submit(
 
     destination = admin_auth.safe_admin_next_path(next)
     response = RedirectResponse(url=destination, status_code=303)
+    admin_auth.clear_login_rate_limit(request, settings, username=username.strip())
     _issue_session(
         response=response,
         settings=settings,
