@@ -199,7 +199,6 @@ def discover_screenshot_routes(app_root: Path | None = None) -> list[str]:
         "/about",
         "/services",
         "/case-studies",
-        "/diagnostic",
         "/brief",
         "/brief/success",
         "/insights",
