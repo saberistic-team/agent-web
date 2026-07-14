@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any
 
 import psycopg
@@ -110,3 +110,82 @@ def list_briefs(
         date_to=filters.date_to,
     )
     return rows, total, filters
+
+
+def normalize_list_back_params(
+    *,
+    page: int = 1,
+    q: str | None = None,
+    status: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> BriefListFilters:
+    """Validate optional list query params carried on a detail-page back link."""
+    return normalize_filters(
+        page=page,
+        per_page=50,
+        query=q,
+        status=status,
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+
+def get_brief(
+    conn: psycopg.Connection,
+    brief_id: int,
+    *,
+    repository: ProjectBriefRepository | None = None,
+) -> dict[str, Any] | None:
+    """Return one project brief by ID, or None when the ID is invalid or missing."""
+    if brief_id < 1:
+        return None
+    repo = repository or get_repositories().project_briefs
+    return repo.get_by_id(conn, brief_id)
+
+
+def preview_brief_detail(brief_id: int) -> dict[str, Any] | None:
+    """Synthetic brief rows for ADMIN_PREVIEW_MODE screenshots only."""
+    if brief_id == 1:
+        return {
+            "id": 1,
+            "created_at": datetime(2026, 7, 14, 10, 30, tzinfo=timezone.utc),
+            "website": "https://acme.example/products/platform",
+            "contact_method": "email",
+            "contact_value": "ops@acme.example",
+            "brief": (
+                "We need a technical architecture review for our payments platform. "
+                "Scope includes API boundaries, data retention, and rollout sequencing."
+            ),
+            "status": "paid",
+            "stripe_session_id": "cs_preview_session_abc123",
+            "stripe_payment_intent_id": "pi_preview_intent_xyz789",
+            "paid_at": datetime(2026, 7, 14, 10, 45, tzinfo=timezone.utc),
+            "utm_source": "linkedin",
+            "utm_medium": "social",
+            "utm_campaign": "spring-launch",
+            "utm_content": "cta-primary",
+            "utm_term": "architecture",
+        }
+    if brief_id == 2:
+        return {
+            "id": 2,
+            "created_at": datetime(2026, 7, 13, 8, 15, tzinfo=timezone.utc),
+            "website": "https://very-long-subdomain-name.example.co.uk/path/to/resource?query=value",
+            "contact_method": "email",
+            "contact_value": "founder@startup.example",
+            "brief": (
+                "A" * 400
+                + "\n\nSecond paragraph with <script>alert(1)</script> and more detail."
+            ),
+            "status": "pending_payment",
+            "stripe_session_id": None,
+            "stripe_payment_intent_id": None,
+            "paid_at": None,
+            "utm_source": None,
+            "utm_medium": None,
+            "utm_campaign": None,
+            "utm_content": None,
+            "utm_term": None,
+        }
+    return None
