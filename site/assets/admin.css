@@ -603,10 +603,12 @@ body.admin-app {
     display: none;
   }
 
-  /* Override UA details:not([open]) hiding so desktop sidebar stays visible. */
-  .admin-nav-toggle .admin-nav-list,
-  .admin-nav-toggle:not([open]) .admin-nav-list {
-    display: flex;
+  /* Beat UA `details:not([open]) > *:not(summary) { display: none }`.
+     Collapsed-by-default markup must still show the full sidebar on desktop. */
+  details.admin-nav-toggle:not([open]) > .admin-nav-list,
+  details.admin-nav-toggle > .admin-nav-list {
+    display: flex !important;
+    flex-direction: column;
   }
 }
 

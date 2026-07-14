@@ -159,6 +159,28 @@ When coverage is below gate **or** Reviewer requeues with coverage hard_fails:
 Re-queued `review:changes-requested` runs that cite coverage or missing tests
 must ship test updates on the same PR before re-requesting review.
 
+## Responsive `<details>` navigation (mandatory when touched)
+
+Admin mobile nav uses `<details class="admin-nav-toggle">` **without** a default
+`open` attribute so mobile starts collapsed. User-agent styles hide non-summary
+children of closed details (`details:not([open]) > *:not(summary)`).
+
+If you remove or omit `open`, desktop CSS **must** override that UA rule, e.g.:
+
+```css
+@media (min-width: 769px) {
+  details.admin-nav-toggle:not([open]) > .admin-nav-list {
+    display: flex !important;
+  }
+}
+```
+
+A bare `.admin-nav-list { display: flex }` is **not** enough — screenshots will
+show an empty sidebar while HTML tests still pass. Add CSS guardrail tests for
+the override selector. Reviewer hard-fails when desktop `.admin-nav-link`
+elements exist in the DOM but none are visible
+(`format_admin_nav_hard_fail` / `desktop_nav_invisible`).
+
 ## Constraints
 
 - **Never push to the default branch** (`main` / `master`).

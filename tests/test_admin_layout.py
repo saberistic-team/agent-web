@@ -104,7 +104,8 @@ def test_render_admin_nav_collapsed_by_default() -> None:
     assert 'class="admin-nav-toggle"' in nav
     assert 'admin-nav-toggle" open' not in nav
     assert '<span class="admin-nav-current">Audit</span>' in nav
-    assert '<span class="admin-nav-expand-label">All sections</span>' in nav
+    assert '<span class="admin-nav-expand-label">Menu</span>' in nav
+    assert 'aria-label="Admin sections. Current: Audit. Expand for all sections."' in nav
 
 
 @pytest.mark.unit
@@ -118,6 +119,9 @@ def test_admin_css_mobile_nav_and_table_scroll_guardrails() -> None:
     css = ADMIN_CSS.read_text(encoding="utf-8")
     assert "@media (min-width: 769px)" in css
     assert ".admin-nav-toggle:not([open]) .admin-nav-list" in css
+    # Desktop must override UA closed-details hiding (specificity + !important).
+    assert "details.admin-nav-toggle:not([open]) > .admin-nav-list" in css
+    assert "display: flex !important" in css
     assert ".admin-table-wrap" in css
     assert ".admin-table-wrap::before" in css
     assert "overflow-x: auto" in css
@@ -128,8 +132,8 @@ def test_admin_css_mobile_nav_and_table_scroll_guardrails() -> None:
 def test_admin_css_desktop_nav_list_visible_when_collapsed() -> None:
     css = ADMIN_CSS.read_text(encoding="utf-8")
     desktop_block = css.split("@media (min-width: 769px)")[1].split("@media")[0]
-    assert ".admin-nav-toggle:not([open]) .admin-nav-list" in desktop_block
-    assert "display: flex" in desktop_block
+    assert "details.admin-nav-toggle:not([open]) > .admin-nav-list" in desktop_block
+    assert "display: flex !important" in desktop_block
 
 
 @pytest.mark.unit

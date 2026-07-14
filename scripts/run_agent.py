@@ -880,6 +880,7 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
             comment_on_issue_or_pr,
             capture_pre_dual,
             fetch_pr_changed_paths,
+            format_admin_nav_hard_fail,
             format_empty_data_hard_fail,
             format_overflow_hard_fail,
             resolve_screenshot_routes,
@@ -942,6 +943,15 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
                 )
             else:
                 screenshot_note += "- preview_mock_data: `ok` (PR branch)\n"
+            nav_fail = format_admin_nav_hard_fail(dual.nav_failures)
+            if nav_fail:
+                hard_fail_reasons.append(nav_fail)
+                screenshot_note += (
+                    f"- admin_nav_visible: `fail` ({len(dual.nav_failures)} "
+                    "desktop finding(s) on PR branch)\n"
+                )
+            else:
+                screenshot_note += "- admin_nav_visible: `ok` (PR branch)\n"
         pr = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}")
         sha = pr["head"]["sha"]
     except Exception as exc:

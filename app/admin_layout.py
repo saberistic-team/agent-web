@@ -113,9 +113,12 @@ def render_admin_nav(active_path: str) -> str:
     items_html = "\n".join(items)
     return f"""        <nav class="admin-nav" aria-label="Admin">
           <details class="admin-nav-toggle">
-            <summary class="admin-nav-summary">
+            <summary
+              class="admin-nav-summary"
+              aria-label="Admin sections. Current: {current_label}. Expand for all sections."
+            >
               <span class="admin-nav-current">{current_label}</span>
-              <span class="admin-nav-expand-label">All sections</span>
+              <span class="admin-nav-expand-label">Menu</span>
             </summary>
             <ul class="admin-nav-list">
 {items_html}
