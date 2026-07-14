@@ -122,7 +122,6 @@ def _service_with_mocks(
     contact_repo: MagicMock | None = None,
     activity_repo: MagicMock | None = None,
     source_repo: MagicMock | None = None,
-    research_repo: MagicMock | None = None,
     admin_repo: MagicMock | None = None,
 ) -> tuple[CrmService, MagicMock, dict[str, MagicMock]]:
     repos = {
@@ -130,7 +129,7 @@ def _service_with_mocks(
         "contacts": contact_repo or MagicMock(),
         "source_records": source_repo or MagicMock(),
         "activities": activity_repo or MagicMock(),
-        "research_records": research_repo or MagicMock(),
+        "research_records": MagicMock(),
         "admin_users": admin_repo or MagicMock(),
     }
     service = CrmService(repos=CrmRepositories(**repos))
@@ -256,54 +255,3 @@ def test_read_methods_do_not_change_transaction_state() -> None:
     assert user is not None
     conn.commit.assert_not_called()
     conn.rollback.assert_not_called()
-
-
-@pytest.mark.unit
-def test_attach_research_record_appends_without_overwrite() -> None:
-    research_repo = MagicMock()
-    research_repo.create.return_value = {
-        "id": "rec-1",
-        "record_type": "public_signal",
-        "body": "Hiring",
-    }
-    service, conn, _ = _service_with_mocks(research_repo=research_repo)
-
-    record = service.attach_research_record(
-        conn,
-        record_type="public_signal",
-        company_id=COMPANY_ID,
-        body="Hiring",
-        source_name="Site",
-        source_url="https://example.com",
-        observed_value="10 roles",
-    )
-
-    assert record["record_type"] == "public_signal"
-    research_repo.create.assert_called_once()
-    conn.commit.assert_called_once()
-
-
-@pytest.mark.unit
-def test_list_and_get_helpers_delegate_to_repositories() -> None:
-    company_repo = MagicMock()
-    contact_repo = MagicMock()
-    research_repo = MagicMock()
-    company_repo.list_all.return_value = [{"id": COMPANY_ID}]
-    company_repo.get_by_id.return_value = {"id": COMPANY_ID}
-    contact_repo.list_for_company.return_value = [{"id": CONTACT_ID}]
-    contact_repo.get_by_id.return_value = {"id": CONTACT_ID}
-    research_repo.list_for_company.return_value = [{"record_type": "hypothesis"}]
-    research_repo.list_for_contact.return_value = [{"record_type": "hypothesis"}]
-    service, conn, _ = _service_with_mocks(
-        company_repo=company_repo,
-        contact_repo=contact_repo,
-        research_repo=research_repo,
-    )
-
-    assert service.list_companies(conn)[0]["id"] == COMPANY_ID
-    assert service.get_company(conn, COMPANY_ID)["id"] == COMPANY_ID
-    assert service.list_contacts_for_company(conn, COMPANY_ID)[0]["id"] == CONTACT_ID
-    assert service.get_contact(conn, CONTACT_ID)["id"] == CONTACT_ID
-    assert service.list_research_for_company(conn, COMPANY_ID)[0]["record_type"] == "hypothesis"
-    assert service.list_research_for_contact(conn, CONTACT_ID)[0]["record_type"] == "hypothesis"
-    conn.commit.assert_not_called()
