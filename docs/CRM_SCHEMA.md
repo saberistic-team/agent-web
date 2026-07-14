@@ -11,7 +11,7 @@ unchanged; CRM tables are storage-only until later admin/import issues wire rout
 | Area | Owner module | Tables |
 |------|--------------|--------|
 | Public brief intake | `app/db.py` | `project_briefs` |
-| CRM entities | `app/repositories/postgres.py` | `companies`, `contacts`, `contact_buying_roles`, `source_records`, `activities` |
+| CRM entities | `app/repositories/postgres.py` | `companies`, `contacts`, `source_records`, `activities` |
 | Admin auth (CRM users) | `app/repositories/postgres.py` | `admin_users` |
 | Admin auth (sessions) | `app/db.py` | `admin_sessions` (migration `004`) |
 | Admin auth (login rate limits) | `app/db.py` | `admin_login_rate_limits` (migration `005`) |
@@ -178,7 +178,6 @@ Migrations live in `app/migrations/definitions.py` and are applied at startup vi
 | `004` | `admin_sessions` | Server-side admin session rows |
 | `005` | `admin_login_rate_limits` | Shared admin login rate-limit state |
 | `006` | `admin_csrf_binding` | Login-flow CSRF rows and session CSRF column |
-| `007` | `contacts_extended` | Contact fields, buying roles, optional email |
 
 Applied versions are recorded in `schema_migrations`. Steps are **idempotent**
 (`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`) so empty and existing Render Postgres
@@ -221,7 +220,7 @@ steps on restart.
 ## Extension conventions
 
 1. Add a new `Migration` entry in `app/migrations/definitions.py` with the next
-   sequential version (`008`, `009`, …).
+   sequential version (`004`, `005`, …).
 2. Keep migrations additive and idempotent where possible.
 3. Add repository methods in `app/repositories/protocols.py` and
    `app/repositories/postgres.py`; route handlers call `CrmService` or repositories,
@@ -229,13 +228,9 @@ steps on restart.
 4. Map new inbound channels via `source_records` with a distinct `source_type`.
 5. Add tests under `tests/` for migration SQL, constraints, and repository CRUD.
 
-## Admin UI ([#105](https://github.com/saberistic-team/agent-web/issues/105))
+## Deferred (not #100)
 
-Authenticated operators manage contacts at `/admin/contacts` and companies at
-`/admin/companies`. Company detail pages list associated contacts. Duplicate warnings
-use normalized profile URL, email, and name+company combinations.
-
-## Deferred
+- Admin UI routes beyond login/session auth ([#101](https://github.com/saberistic-team/agent-web/issues/101) covers auth/sessions)
 - HubSpot/Salesforce/Pipedrive sync
 - Automatic backfill from `project_briefs` into CRM entities
 
