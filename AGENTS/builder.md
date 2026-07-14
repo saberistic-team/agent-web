@@ -72,6 +72,11 @@ a dirty PR as unfinished Builder work.
    `git merge origin/main` fails with “not something we can merge” and loops
    Builder↔Reviewer. `builder_conflicts.py` must fetch with an explicit refspec:
    `+refs/heads/{base}:refs/remotes/origin/{base}`.
+   **Post-merge smoke (mandatory):** after conflict resolution, `builder_conflicts`
+   must run `from app.main import app` and refuse to push / claim `resolved`
+   when markers remain or import fails (typical breaks: dropped `admin_router`,
+   missing Protocol exports, obsolete Basic-auth imports). Status
+   `broken_after_resolve` → `waiting` handoff — never Reviewer.
 4. Comment `### builder_conflict_context` and `### builder_conflict_result` on
    the issue.
 5. **Re-check** `mergeable` / `mergeable_state`. Only when clean → hand off
