@@ -118,6 +118,12 @@ class ProjectBriefRepository(Protocol):
         date_to: date | None = None,
     ) -> tuple[list[dict[str, Any]], int]: ...
 
+    def get_by_id(
+        self,
+        conn: psycopg.Connection,
+        brief_id: int,
+    ) -> dict[str, Any] | None: ...
+
 
 class AuditEventRepository(Protocol):
     def append(

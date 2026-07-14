@@ -170,10 +170,16 @@ https://saberistic.com/webhooks/stripe
 
 Events: `checkout.session.completed`.
 
+## Admin brief review
+
+Authenticated operators can browse submitted briefs at `/admin/briefs` (list) and
+review a single immutable intake record at `/admin/briefs/{id}` (detail). Both
+routes require an admin session and are marked `noindex`.
+
 ## Tests
 
 ```bash
-pytest tests/test_brief.py tests/test_brief_unit.py tests/test_admin_briefs.py -q
+pytest tests/test_brief.py tests/test_brief_unit.py tests/test_admin_briefs.py tests/test_admin_brief_detail.py -q
 ```
 
 Mocks Stripe and email; no live Postgres or Stripe required in CI.

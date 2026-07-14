@@ -85,6 +85,8 @@ ADMIN_PATHS: frozenset[str] = frozenset(link["href"] for link in ADMIN_NAV_LINKS
 ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     *(link["href"] for link in ADMIN_NAV_LINKS),
     "/admin/login",
+    "/admin/briefs/1",
+    "/admin/briefs/2",
 )
 
 
