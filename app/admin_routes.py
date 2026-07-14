@@ -11,8 +11,9 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import ValidationError
 
-from app import admin, admin_auth, admin_pages, admin_research_pages, db
-from app.admin_layout import ADMIN_NAV_LINKS
+from app import admin, admin_auth, admin_pages, admin_research_pages, audit_service, brief_service, db
+from app.actor_context import actor_context_from_request, anonymous_actor_context
+from app.admin_layout import ADMIN_NAV_LINKS, render_admin_shell
 from app.config import Settings, get_settings
 from app.crm_service import CrmService
 from app.research_records import ResearchRecordCreate
@@ -388,6 +389,23 @@ def admin_companies(request: Request) -> HTMLResponse:
     csrf_token = ""
     if session.id:
         csrf_token = _issue_session_csrf(settings, session.id)
+    if settings.admin_preview_enabled:
+        from app.admin_preview import render_preview_section_main
+
+        link = next(item for item in ADMIN_NAV_LINKS if item["href"] == "/admin/companies")
+        return HTMLResponse(
+            render_admin_shell(
+                title=link["label"],
+                main=render_preview_section_main(
+                    label=link["label"],
+                    summary=link["summary"],
+                    active_path="/admin/companies",
+                ),
+                active_path="/admin/companies",
+                admin_username=session.admin_username,
+                csrf_token=csrf_token,
+            )
+        )
     with db.db_connection(settings.database_url) as conn:
         companies = _crm.list_companies(conn)
     return HTMLResponse(
@@ -602,6 +620,61 @@ def _render_admin_shell_page(request: Request, active_path: str) -> HTMLResponse
     return HTMLResponse(admin.render_admin_page(active_path, **kwargs))
 
 
+@router.get("/briefs", response_class=HTMLResponse)
+def admin_briefs_list(
+    request: Request,
+    page: int = 1,
+    q: str | None = None,
+    status: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> HTMLResponse:
+    session = require_admin_session(request)
+    settings = get_settings()
+    csrf_token = ""
+    if session.id:
+        csrf_token = _issue_session_csrf(settings, session.id)
+    briefs: list[dict] = []
+    total = 0
+    filters = brief_service.normalize_filters(
+        page=page,
+        per_page=settings.brief_page_size,
+        query=q,
+        status=status,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    db_error = False
+    if settings.admin_preview_enabled or not settings.database_url:
+        pass
+    else:
+        try:
+            with db.db_connection(settings.database_url) as conn:
+                briefs, total, filters = brief_service.list_briefs(
+                    conn,
+                    page=page,
+                    per_page=settings.brief_page_size,
+                    query=q,
+                    status=status,
+                    date_from=date_from,
+                    date_to=date_to,
+                )
+        except Exception:
+            logger.exception("Failed to load admin briefs list")
+            db_error = True
+    return HTMLResponse(
+        admin_pages.render_admin_briefs_page(
+            admin_username=session.admin_username,
+            briefs=briefs,
+            filters=filters,
+            total=total,
+            price_cents=settings.brief_price_cents,
+            csrf_token=csrf_token,
+            db_error=db_error,
+        )
+    )
+
+
 @router.get("/audit", response_class=HTMLResponse)
 def admin_audit_list(request: Request, page: int = 1) -> HTMLResponse:
     session = require_admin_session(request)
@@ -631,7 +704,7 @@ def admin_audit_list(request: Request, page: int = 1) -> HTMLResponse:
 
 
 for _link in ADMIN_NAV_LINKS:
-    if _link["href"] in {"/admin", "/admin/companies"}:
+    if _link["href"] in {"/admin", "/admin/audit", "/admin/briefs", "/admin/companies"}:
         continue
     _section = _link["href"].removeprefix("/admin/")
 
