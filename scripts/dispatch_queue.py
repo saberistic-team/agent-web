@@ -3,7 +3,7 @@
 
 Queued work carries ``status:queued`` + ``type:*`` + ``priority:*`` without
 ``agent:builder`` / ``agent:docs``. This script lists those issues, sorts by
-priority (critical → high → medium → normal → low), then issue number, and applies the
+priority (critical → high → normal → low), then issue number, and applies the
 intended agent label when that agent is not already ``status:in-progress``.
 """
 
@@ -25,11 +25,11 @@ from github_api import (
 )
 from priority import (
     DEFAULT_PRIORITY,
-    all_priority_labels,
-    infer_priority_label,
+    has_duplicate_priority_labels,
     intended_agent_label,
     is_awaiting_dispatch,
     priority_from_labels,
+    priority_labels_on_issue,
     priority_sort_key,
     resolve_priority_label,
 )
@@ -77,59 +77,41 @@ def agent_in_progress(repo: str, agent_label: str) -> bool:
     return bool(issues)
 
 
-def replace_priority_labels(
-    repo: str, issue_number: int, labels: set[str], new_priority: str
-) -> None:
-    """Replace every priority:* label with exactly one canonical value."""
-    for label in labels:
+def replace_priority_label(repo: str, issue_number: int, priority_label: str) -> None:
+    """Replace all priority:* labels with exactly one canonical label."""
+    owner, name = split_repo(repo)
+    data = api("GET", f"/repos/{owner}/{name}/issues/{issue_number}") or {}
+    labels = {label["name"] for label in data.get("labels") or []}
+    for label in list(labels):
         if label.startswith("priority:"):
             delete_label(repo, issue_number, label)
-    add_labels(repo, issue_number, [new_priority])
+    add_labels(repo, issue_number, [priority_label])
 
 
-def ensure_priority(repo: str, issue: dict[str, Any]) -> str | None:
-    """Ensure exactly one priority label; normalize duplicates or report ambiguity."""
-    number = int(issue["number"])
+def ensure_priority(repo: str, issue: dict[str, Any]) -> str:
     labels = _label_names(issue)
-    existing = all_priority_labels(labels)
-
-    if len(existing) > 1:
-        resolved = resolve_priority_label(existing)
-        if resolved is None:
-            post_issue_comment(
-                repo,
-                number,
-                (
-                    "### dispatcher_priority_ambiguous\n"
-                    f"- issue: `#{number}`\n"
-                    f"- labels: `{', '.join(existing)}`\n"
-                    "- action: skipped dispatch; remove duplicate priority labels manually\n"
-                ),
-            )
-            return None
-        replace_priority_labels(repo, number, labels, resolved)
-        post_issue_comment(
-            repo,
-            number,
-            (
-                "### dispatcher_priority_normalized\n"
-                f"- issue: `#{number}`\n"
-                f"- removed: `{', '.join(l for l in existing if l != resolved)}`\n"
-                f"- kept: `{resolved}`\n"
-            ),
-        )
-        return resolved
-
-    priority = priority_from_labels(labels)
-    if priority:
-        return priority
-
-    priority = infer_priority_label(
+    number = int(issue["number"])
+    priority = resolve_priority_label(
         issue.get("title") or "",
         issue.get("body") or "",
         labels,
     )
-    replace_priority_labels(repo, number, labels, priority)
+    existing = priority_labels_on_issue(labels)
+    if len(existing) == 1 and existing[0] == priority:
+        return priority
+    replace_priority_label(repo, number, priority)
+    if has_duplicate_priority_labels(labels):
+        post_issue_comment(
+            repo,
+            number,
+            (
+                "### dispatcher_priority_normalize\n"
+                f"- issue: `#{number}`\n"
+                f"- removed: {', '.join(f'`{label}`' for label in existing)}\n"
+                f"- kept: `{priority}`\n"
+                "- reason: multiple priority:* labels replaced with one canonical value\n"
+            ),
+        )
     return priority
 
 
@@ -161,11 +143,6 @@ def dispatch_next(repo: str, *, dry_run: bool = False) -> dict[str, Any]:
             if dry_run and not priority_from_labels(labels)
             else ensure_priority(repo, issue)
         )
-        if priority is None:
-            skipped_busy.append(
-                {"issue": number, "agent": agent, "reason": "ambiguous_priority"}
-            )
-            continue
         if not dry_run:
             for label in list(labels):
                 if label.startswith("agent:"):
