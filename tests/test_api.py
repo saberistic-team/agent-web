@@ -34,19 +34,26 @@ def test_about_handler_returns_about(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.unit
 def test_site_page_handlers_return_pages(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.main import case_studies_index, services
+    from fastapi.responses import RedirectResponse
+
+    from app.main import case_studies_index, diagnostic, services
 
     monkeypatch.delenv("ANALYTICS_ENABLED", raising=False)
     services_body = services().body.decode()
-    assert "Architecture Diagnostic" in services_body
+    assert "Architecture Diagnostic — $200" in services_body
     assert "Fractional Principal Architect" in services_body
     assert "Technical Due Diligence" in services_body
     assert "being finalized" not in services_body
 
     case_studies_body = case_studies_index().body.decode()
-    assert "Case studies" in case_studies_body
+    assert "Infrastructure for privacy-aligned payments" in case_studies_body
     assert "/work/brave" in case_studies_body
     assert "in progress" not in case_studies_body.lower()
+
+    redirect = diagnostic()
+    assert isinstance(redirect, RedirectResponse)
+    assert redirect.status_code == 301
+    assert redirect.headers["location"] == "/brief"
 
 
 @pytest.mark.unit
@@ -224,20 +231,22 @@ def test_services_page_lists_finalized_offers() -> None:
     response = client.get("/services")
     assert response.status_code == 200
     body = response.text
+    assert "being finalized" not in body
+    assert "software development" not in body
     assert "Architecture Diagnostic — $200" in body
     assert "Fractional Principal Architect" in body
     assert "Technical Due Diligence" in body
-    assert "Seed–Series B fintech, AI, digital-asset" in body
+    assert "Seed–Series B fintech" in body
     assert 'class="cta" href="/brief"' in body
-    assert "being finalized" not in body
-    assert "software development" not in body.lower()
+    assert "Start Architecture Diagnostic" in body
 
 
 @pytest.mark.unit
-def test_case_studies_page_links_all_proof_pages() -> None:
+def test_case_studies_page_links_all_proof() -> None:
     response = client.get("/case-studies")
     assert response.status_code == 200
     body = response.text
+    assert "in progress" not in body.lower()
     for slug in (
         "brave",
         "baxus",
@@ -246,9 +255,8 @@ def test_case_studies_page_links_all_proof_pages() -> None:
         "architecture-diagnostic",
     ):
         assert f'href="/work/{slug}"' in body
-    assert "in progress" not in body.lower()
-    assert "Facing a similar architecture, reliability, security" in body
-    assert 'class="cta" href="/brief">Request an Architecture Diagnostic' in body
+    assert "Facing a similar architecture, reliability, security, or" in body
+    assert 'class="cta" href="/brief">Request an Architecture Diagnostic</a>' in body
 
 
 @pytest.mark.unit
