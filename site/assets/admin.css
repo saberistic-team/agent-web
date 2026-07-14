@@ -274,8 +274,18 @@ body.admin-app {
 
 @media (max-width: 768px) {
   .admin-title {
-    font-size: clamp(1rem, 6vw, 1.45rem);
-    letter-spacing: -0.02em;
+    font-family: var(--mono), "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 1.2rem;
+    line-height: 1.25;
+    text-transform: none;
+    letter-spacing: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    max-width: 100%;
+  }
+
+  .admin-main {
+    min-width: 0;
   }
 
   .admin-layout {
