@@ -1,136 +1,63 @@
 # CRM database schema
 
-Parent issue: [#100](https://github.com/saberistic-team/agent-web/issues/100).
+Parent issues: [#100](https://github.com/saberistic-team/agent-web/issues/100),
+[#105](https://github.com/saberistic-team/agent-web/issues/105).
 
-This document describes the Postgres schema and repository boundaries introduced for
-internal CRM work. Public site behavior (`/brief`, `/api/briefs`, Stripe webhooks) is
-unchanged; CRM tables are storage-only until later admin/import issues wire routes.
+This document describes the Postgres schema and repository boundaries for internal
+CRM work. Public site behavior (`/brief`, `/api/briefs`, Stripe webhooks) is
+unchanged.
 
 ## Ownership
 
 | Area | Owner module | Tables |
 |------|--------------|--------|
 | Public brief intake | `app/db.py` | `project_briefs` |
-| CRM entities | `app/repositories/postgres.py` | `companies`, `contacts`, `source_records`, `activities` |
+| CRM entities | `app/repositories/postgres.py` | `companies`, `contacts`, `contact_buying_roles`, `source_records`, `activities` |
 | Admin auth (storage) | `app/repositories/postgres.py` | `admin_users` |
 | Schema versioning | `app/migrations/` | `schema_migrations` |
 
 Route handlers must not embed SQL. Use `app/db.py` for brief/payment flows and
 `app/crm_service.py` + `app/repositories/` for CRM reads/writes.
 
-## Identifiers
-
-- **Brief rows** keep `SERIAL` primary keys (`project_briefs.id`) for Stripe metadata
-  compatibility.
-- **CRM entities** use `UUID` primary keys (`gen_random_uuid()`), stable across imports
-  and admin tooling.
-- **Source linkage** uses `source_records (source_type, external_id)` — e.g.
-  `('project_brief', '42')` points at `project_briefs.id = 42` without a hard FK so
-  brief history stays decoupled.
-
-## Tables
-
-### `companies`
+## Contacts (#105)
 
 | Column | Type | Notes |
 |--------|------|-------|
-| `id` | `UUID` | PK |
-| `created_at`, `updated_at` | `TIMESTAMPTZ` | Auto on insert; `updated_at` set on update |
-| `name` | `TEXT` | Required |
-| `website` | `TEXT` | Optional |
-| `status` | `TEXT` | `prospect`, `active`, `inactive` |
+| `name` | `TEXT` | Required display name |
+| `title` | `TEXT` | Job title |
+| `profile_url` | `TEXT` | LinkedIn or profile URL |
+| `normalized_profile_url` | `TEXT` | Lowercased canonical URL for duplicate warnings |
+| `email` | `TEXT` | Optional |
+| `normalized_email` | `TEXT` | Lowercased email for duplicate warnings |
+| `email_permission` | `TEXT` | `permitted`, `do_not_contact`, `unknown` |
+| `email_provenance` | `TEXT` | How the email was obtained |
+| `last_interaction_at` | `TIMESTAMPTZ` | Last touchpoint |
+| `relationship_strength` | `TEXT` | `weak`, `fair`, `good`, `strong` |
+| `notes` | `TEXT` | Free-form context |
+| `is_archived` | `BOOLEAN` | Soft archive; reversible |
+| `company_id` | `UUID` | FK → `companies` |
 
-Indexes: `status`, `website`.
+Buying roles live in `contact_buying_roles` (`founder`, `technical_buyer`,
+`executive_buyer`, `influencer`, `investor`, `introducer`, `other`). One contact
+may have multiple roles.
 
-### `contacts`
-
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | `UUID` | PK |
-| `company_id` | `UUID` | FK → `companies`, `ON DELETE SET NULL` |
-| `email` | `TEXT` | Unique |
-| `full_name` | `TEXT` | Optional |
-
-Indexes: `company_id`, `email`.
-
-### `source_records`
-
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | `UUID` | PK |
-| `source_type` | `TEXT` | `project_brief`, `manual`, `import`, `discovery` |
-| `external_id` | `TEXT` | External key (e.g. brief id) |
-| `company_id`, `contact_id` | `UUID` | Optional FKs |
-| `payload` | `JSONB` | Raw import/discovery metadata |
-
-Unique: `(source_type, external_id)`. Indexes on FK columns and `source_type`.
-
-### `activities`
-
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | `UUID` | PK |
-| `activity_type` | `TEXT` | `note`, `email`, `call`, `meeting`, `status_change`, `payment` |
-| `company_id` | `UUID` | FK → `companies`, `ON DELETE CASCADE` |
-| `contact_id` | `UUID` | FK → `contacts`, `ON DELETE SET NULL` |
-| `source_record_id` | `UUID` | FK → `source_records`, `ON DELETE SET NULL` |
-| `summary` | `TEXT` | Required |
-| `metadata` | `JSONB` | Optional structured fields |
-
-Indexes: `company_id`, `contact_id`, `source_record_id`, `created_at`.
-
-### `admin_users`
-
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | `UUID` | PK |
-| `email` | `TEXT` | Unique |
-| `display_name` | `TEXT` | Optional |
-| `role` | `TEXT` | `admin`, `editor`, `viewer` |
-| `is_active` | `BOOLEAN` | Default `TRUE` |
-
-Indexes: `email`, `is_active`.
+Duplicate warnings (non-blocking) compare normalized profile URL, normalized email,
+and name + company combinations.
 
 ## Migrations
 
-Migrations live in `app/migrations/definitions.py` and are applied at startup via
-`db.init_db()` → `apply_migrations()`.
-
 | Version | Name | Purpose |
 |---------|------|---------|
-| `001` | `project_briefs` | Brief/payment table (existing behavior) |
+| `001` | `project_briefs` | Brief/payment table |
 | `002` | `project_briefs_utm_columns` | Idempotent UTM column adds |
 | `003` | `crm_foundation` | CRM tables, FKs, indexes |
+| `004` | `contacts_extended` | Contact fields, buying roles, optional email |
 
-Applied versions are recorded in `schema_migrations`. Steps are **idempotent**
-(`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`) so empty and existing Render Postgres
-databases both converge safely.
-
-### Rollback strategy
-
-Migrations are **forward-only**. There is no automatic down migration:
-
-1. **Preferred:** ship a new forward migration that reverses or replaces schema/data.
-2. **Emergency:** restore from Render Postgres backup or run manual SQL with DBA review.
-
-Never delete rows from `schema_migrations` in production; that would re-run guarded
-steps on restart.
+Migrations are forward-only and idempotent. See `app/migrations/definitions.py`.
 
 ## Extension conventions
 
-1. Add a new `Migration` entry in `app/migrations/definitions.py` with the next
-   sequential version (`004`, `005`, …).
-2. Keep migrations additive and idempotent where possible.
-3. Add repository methods in `app/repositories/protocols.py` and
-   `app/repositories/postgres.py`; route handlers call `CrmService` or repositories,
-   not raw SQL.
-4. Map new inbound channels via `source_records` with a distinct `source_type`.
-5. Add tests under `tests/` for migration SQL, constraints, and repository CRUD.
-
-## Deferred (not #100)
-
-- Admin UI routes and authentication flows
-- HubSpot/Salesforce/Pipedrive sync
-- Automatic backfill from `project_briefs` into CRM entities
-
-See [PROJECT_BRIEF.md](PROJECT_BRIEF.md) for public brief scope boundaries.
+1. Add the next sequential migration (`005`, …) in `definitions.py`.
+2. Add repository methods in `protocols.py` and `postgres.py`.
+3. Expose orchestration via `CrmService` or dedicated admin modules.
+4. Add tests under `tests/` for migrations, repositories, and admin routes.
