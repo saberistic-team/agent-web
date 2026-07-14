@@ -34,7 +34,7 @@ def test_about_handler_returns_about(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.unit
 def test_site_page_handlers_return_pages(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.main import case_studies_index, diagnostic, services
+    from app.main import case_studies_index, services
 
     monkeypatch.delenv("ANALYTICS_ENABLED", raising=False)
     services_body = services().body.decode()
@@ -47,10 +47,6 @@ def test_site_page_handlers_return_pages(monkeypatch: pytest.MonkeyPatch) -> Non
     assert "Case studies" in case_studies_body
     assert "/work/brave" in case_studies_body
     assert "in progress" not in case_studies_body.lower()
-
-    diagnostic_response = diagnostic()
-    assert diagnostic_response.status_code == 301
-    assert diagnostic_response.headers["location"] == "/brief"
 
 
 @pytest.mark.unit

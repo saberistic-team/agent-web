@@ -136,8 +136,11 @@ must ship test updates on the same PR before re-requesting review.
 
 Stop, comment `@human-review` with the blocker, add `status:blocked`.
 
-Escalate when Cursor/OpenAI/Models codegen fails, or when acceptance criteria
-cannot be met from the issue text.
+Escalate when Cursor/OpenAI/Models codegen fails **after** shared GitHub API
+retries are exhausted (`scripts/github_api.py` retries 408/429/5xx and network
+timeouts with exponential backoff), or when acceptance criteria cannot be met
+from the issue text. Do **not** escalate on a single transient Contents API
+`500` / timeout — retries absorb those before `@human-review`.
 
 Do **not** escalate for service coverage below threshold, missing tests, failing
 CI assertions, visual readability / mobile overflow, or merge conflicts with

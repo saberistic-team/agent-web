@@ -17,7 +17,14 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from github_api import GitHubError, api, list_issue_comments, post_issue_comment, split_repo
+from github_api import (
+    GitHubError,
+    api,
+    list_issue_comments,
+    list_pr_files,
+    post_issue_comment,
+    split_repo,
+)
 
 CHECKLIST_MARKER = "### acceptance_checklist"
 CRITERIA_SECTION = re.compile(
@@ -124,7 +131,9 @@ def gather_evidence(repo: str, issue: int, pr_number: int | None) -> dict[str, A
             }
             for c in commits
         ]
-        files = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}/files") or []
+        # Paginate: screenshot-heavy PRs exceed the default 30-file page and
+        # would otherwise hide tests/* from acceptance heuristics (#83).
+        files = list_pr_files(repo, pr_number)
         evidence["files"] = [
             {
                 "filename": f.get("filename"),

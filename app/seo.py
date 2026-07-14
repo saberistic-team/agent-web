@@ -28,6 +28,8 @@ LEGACY_REDIRECTS: dict[str, str] = {
     "/what-we-do.html": "/#services",
     "/what-we-did.html": "/#work",
     "/who-we-are.html": "/about",
+    # Prefer one diagnostic sales page: /brief (#83).
+    "/diagnostic": "/brief",
 }
 
 
