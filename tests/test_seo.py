@@ -97,6 +97,21 @@ def test_brief_success_is_noindex_without_canonical() -> None:
 
 
 @pytest.mark.unit
+def test_diagnostic_redirects_to_brief() -> None:
+    response = client.get("/diagnostic", follow_redirects=False)
+    assert response.status_code == 301
+    assert response.headers["location"] == "/brief"
+
+
+@pytest.mark.unit
+def test_diagnostic_redirect_does_not_chain() -> None:
+    response = client.get("/diagnostic", follow_redirects=True)
+    assert response.status_code == 200
+    assert 'id="brief-form"' in response.text
+    assert response.url.path == "/brief"
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     "legacy_path,target",
     list(LEGACY_REDIRECTS.items()),
@@ -105,14 +120,6 @@ def test_legacy_marketing_redirects(legacy_path: str, target: str) -> None:
     response = client.get(legacy_path, follow_redirects=False)
     assert response.status_code == 301
     assert response.headers["location"] == target
-
-
-@pytest.mark.unit
-def test_diagnostic_redirect_is_direct_not_chained() -> None:
-    response = client.get("/diagnostic", follow_redirects=True)
-    assert response.status_code == 200
-    assert response.url.path == "/brief"
-    assert 'id="brief-form"' in response.text
 
 
 @pytest.mark.unit
