@@ -65,141 +65,6 @@ def test_crm_service_records_company_contact_and_activity() -> None:
 
 
 @pytest.mark.unit
-def test_crm_service_create_contact_assigns_roles_and_warnings() -> None:
-    contact_repo = MagicMock()
-    contact_repo.find_duplicates.return_value = {
-        "profile_url": [{"name": "Existing"}],
-        "email": [],
-        "name_company": [],
-    }
-    contact_repo.create.return_value = {"id": CONTACT_ID, "name": "Pat"}
-    contact_repo.set_buying_roles.return_value = ["founder"]
-
-    service = CrmService(
-        repos=CrmRepositories(
-            companies=MagicMock(),
-            contacts=contact_repo,
-            source_records=MagicMock(),
-            activities=MagicMock(),
-            admin_users=MagicMock(),
-        )
-    )
-    conn = MagicMock()
-
-    contact = service.create_contact(
-        conn,
-        name="Pat",
-        profile_url="https://www.linkedin.com/in/pat/",
-        buying_roles=["founder", "founder"],
-    )
-    assert contact["buying_roles"] == ["founder"]
-    assert contact["duplicate_warnings"]
-    contact_repo.set_buying_roles.assert_called_once()
-    conn.commit.assert_called_once()
-
-
-@pytest.mark.unit
-def test_crm_service_archive_and_restore_contact() -> None:
-    contact_repo = MagicMock()
-    contact_repo.update.return_value = {"id": CONTACT_ID, "is_archived": True}
-    service = CrmService(
-        repos=CrmRepositories(
-            companies=MagicMock(),
-            contacts=contact_repo,
-            source_records=MagicMock(),
-            activities=MagicMock(),
-            admin_users=MagicMock(),
-        )
-    )
-    conn = MagicMock()
-
-    archived = service.archive_contact(conn, CONTACT_ID)
-    assert archived is not None
-    contact_repo.update.assert_called_with(conn, CONTACT_ID, is_archived=True)
-
-    contact_repo.update.return_value = {"id": CONTACT_ID, "is_archived": False}
-    restored = service.restore_contact(conn, CONTACT_ID)
-    assert restored is not None
-    contact_repo.update.assert_called_with(conn, CONTACT_ID, is_archived=False)
-
-
-@pytest.mark.unit
-def test_crm_service_update_contact_and_search() -> None:
-    contact_repo = MagicMock()
-    existing = {
-        "id": CONTACT_ID,
-        "name": "Pat",
-        "company_id": COMPANY_ID,
-        "profile_url": None,
-        "email": None,
-    }
-    contact_repo.get_by_id.return_value = existing
-    contact_repo.find_duplicates.return_value = {"profile_url": [], "email": [], "name_company": []}
-    contact_repo.update.return_value = {**existing, "name": "Patricia"}
-    contact_repo.set_buying_roles.return_value = ["executive_buyer"]
-    contact_repo.get_buying_roles.return_value = ["executive_buyer"]
-    contact_repo.search.return_value = [{"id": CONTACT_ID, "name": "Patricia"}]
-
-    service = CrmService(
-        repos=CrmRepositories(
-            companies=MagicMock(),
-            contacts=contact_repo,
-            source_records=MagicMock(),
-            activities=MagicMock(),
-            admin_users=MagicMock(),
-        )
-    )
-    conn = MagicMock()
-
-    updated = service.update_contact(
-        conn,
-        CONTACT_ID,
-        name="Patricia",
-        buying_roles=["executive_buyer"],
-    )
-    assert updated is not None
-    assert updated["buying_roles"] == ["executive_buyer"]
-
-    results = service.search_contacts(conn, query="pat")
-    assert len(results) == 1
-    assert results[0]["buying_roles"] == ["executive_buyer"]
-
-
-@pytest.mark.unit
-def test_crm_service_get_contact_with_roles_returns_none_when_missing() -> None:
-    contact_repo = MagicMock()
-    contact_repo.get_by_id.return_value = None
-    service = CrmService(
-        repos=CrmRepositories(
-            companies=MagicMock(),
-            contacts=contact_repo,
-            source_records=MagicMock(),
-            activities=MagicMock(),
-            admin_users=MagicMock(),
-        )
-    )
-    conn = MagicMock()
-    assert service.get_contact_with_roles(conn, CONTACT_ID) is None
-
-
-@pytest.mark.unit
-def test_crm_service_update_contact_returns_none_when_missing() -> None:
-    contact_repo = MagicMock()
-    contact_repo.get_by_id.return_value = None
-    service = CrmService(
-        repos=CrmRepositories(
-            companies=MagicMock(),
-            contacts=contact_repo,
-            source_records=MagicMock(),
-            activities=MagicMock(),
-            admin_users=MagicMock(),
-        )
-    )
-    conn = MagicMock()
-    assert service.update_contact(conn, CONTACT_ID, name="Pat") is None
-
-
-@pytest.mark.unit
 def test_crm_service_links_project_brief_source() -> None:
     source_repo = MagicMock()
     source_repo.create.return_value = {
@@ -234,70 +99,6 @@ def test_crm_service_links_project_brief_source() -> None:
         contact_id=CONTACT_ID,
         payload={"status": "paid"},
     )
-
-
-@pytest.mark.unit
-def test_crm_service_get_contact_with_roles_returns_contact() -> None:
-    contact_repo = MagicMock()
-    contact_repo.get_by_id.return_value = {"id": CONTACT_ID, "name": "Pat"}
-    contact_repo.get_buying_roles.return_value = ["founder"]
-    service = CrmService(
-        repos=CrmRepositories(
-            companies=MagicMock(),
-            contacts=contact_repo,
-            source_records=MagicMock(),
-            activities=MagicMock(),
-            admin_users=MagicMock(),
-        )
-    )
-    conn = MagicMock()
-    contact = service.get_contact_with_roles(conn, CONTACT_ID)
-    assert contact is not None
-    assert contact["buying_roles"] == ["founder"]
-
-
-@pytest.mark.unit
-def test_crm_service_list_company_contacts_attaches_roles() -> None:
-    contact_repo = MagicMock()
-    contact_repo.list_for_company.return_value = [{"id": CONTACT_ID, "name": "Pat"}]
-    contact_repo.get_buying_roles.return_value = ["investor"]
-    service = CrmService(
-        repos=CrmRepositories(
-            companies=MagicMock(),
-            contacts=contact_repo,
-            source_records=MagicMock(),
-            activities=MagicMock(),
-            admin_users=MagicMock(),
-        )
-    )
-    conn = MagicMock()
-    contacts = service.list_company_contacts(conn, COMPANY_ID)
-    assert len(contacts) == 1
-    assert contacts[0]["buying_roles"] == ["investor"]
-
-
-@pytest.mark.unit
-def test_crm_service_create_contact_without_roles_skips_set_buying_roles() -> None:
-    contact_repo = MagicMock()
-    contact_repo.find_duplicates.return_value = {
-        "profile_url": [],
-        "email": [],
-        "name_company": [],
-    }
-    contact_repo.create.return_value = {"id": CONTACT_ID, "name": "Pat"}
-    service = CrmService(
-        repos=CrmRepositories(
-            companies=MagicMock(),
-            contacts=contact_repo,
-            source_records=MagicMock(),
-            activities=MagicMock(),
-            admin_users=MagicMock(),
-        )
-    )
-    conn = MagicMock()
-    contact = service.create_contact(conn, name="Pat", buying_roles=[])
-    assert contact["buying_roles"] == []
-    contact_repo.set_buying_roles.assert_not_called()
 
 
 @pytest.mark.unit
@@ -448,3 +249,82 @@ def test_read_methods_do_not_change_transaction_state() -> None:
     assert user is not None
     conn.commit.assert_not_called()
     conn.rollback.assert_not_called()
+
+
+@pytest.mark.unit
+def test_create_contact_assigns_roles_and_duplicate_warnings() -> None:
+    contact_repo = MagicMock()
+    contact_repo.find_duplicates.return_value = {
+        "profile_url": [{"name": "Existing"}],
+        "email": [],
+        "name_company": [],
+    }
+    contact_repo.create.return_value = {"id": CONTACT_ID, "name": "Pat"}
+    contact_repo.set_buying_roles.return_value = ["founder", "investor"]
+    service, conn, _ = _service_with_mocks(contact_repo=contact_repo)
+
+    result = service.create_contact(
+        conn,
+        name="Pat",
+        profile_url="https://linkedin.com/in/pat/",
+        email="pat@example.com",
+        buying_roles=["founder", "investor"],
+    )
+
+    assert result["buying_roles"] == ["founder", "investor"]
+    assert result["duplicate_warnings"]
+    contact_repo.set_buying_roles.assert_called_once()
+    conn.commit.assert_called_once()
+
+
+@pytest.mark.unit
+def test_update_contact_returns_none_when_missing() -> None:
+    contact_repo = MagicMock()
+    contact_repo.get_by_id.return_value = None
+    service, conn, _ = _service_with_mocks(contact_repo=contact_repo)
+
+    assert service.update_contact(conn, CONTACT_ID, name="Pat") is None
+
+
+@pytest.mark.unit
+def test_archive_and_restore_contact() -> None:
+    contact_repo = MagicMock()
+    contact_repo.update.return_value = {"id": CONTACT_ID, "is_archived": True}
+    service, conn, _ = _service_with_mocks(contact_repo=contact_repo)
+
+    service.archive_contact(conn, CONTACT_ID)
+    service.restore_contact(conn, CONTACT_ID)
+
+    assert contact_repo.update.call_args_list[0].kwargs["is_archived"] is True
+    assert contact_repo.update.call_args_list[1].kwargs["is_archived"] is False
+
+
+@pytest.mark.unit
+def test_get_contact_with_roles_and_search() -> None:
+    contact_repo = MagicMock()
+    contact_repo.get_by_id.return_value = {"id": CONTACT_ID, "name": "Pat"}
+    contact_repo.get_buying_roles.return_value = ["founder"]
+    contact_repo.search.return_value = [{"id": CONTACT_ID, "name": "Pat"}]
+    service, conn, _ = _service_with_mocks(contact_repo=contact_repo)
+
+    contact = service.get_contact_with_roles(conn, CONTACT_ID)
+    results = service.search_contacts(conn, query="pat")
+
+    assert contact is not None
+    assert contact["buying_roles"] == ["founder"]
+    assert results[0]["buying_roles"] == ["founder"]
+
+
+@pytest.mark.unit
+def test_list_company_contacts_attaches_roles() -> None:
+    contact_repo = MagicMock()
+    contact_repo.list_for_company.return_value = [{"id": CONTACT_ID, "name": "Pat"}]
+    contact_repo.get_buying_roles.return_value = ["technical_buyer"]
+    service, conn, _ = _service_with_mocks(contact_repo=contact_repo)
+
+    contacts = service.list_company_contacts(conn, COMPANY_ID)
+
+    assert contacts[0]["buying_roles"] == ["technical_buyer"]
+    contact_repo.list_for_company.assert_called_once_with(
+        conn, COMPANY_ID, include_archived=False
+    )
