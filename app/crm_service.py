@@ -10,6 +10,7 @@ import psycopg
 
 from app import audit_service
 from app.actor_context import ActorContext
+from app.companies import CompanyCreate, CompanyUpdate, find_domain_duplicate_warnings
 from app.crm_uow import crm_transaction
 from app.repositories import (
     ActivityRepository,
@@ -130,8 +131,23 @@ class CrmService:
         conn: psycopg.Connection,
         *,
         limit: int = 100,
+        query: str | None = None,
+        category: str | None = None,
+        stage: str | None = None,
+        target_status: str | None = None,
+        freshness: str | None = None,
+        include_archived: bool = False,
     ) -> list[dict[str, Any]]:
-        return self._repos.companies.list_all(conn, limit=limit)
+        return self._repos.companies.list_all(
+            conn,
+            limit=limit,
+            query=query,
+            category=category,
+            stage=stage,
+            target_status=target_status,
+            freshness=freshness,
+            include_archived=include_archived,
+        )
 
     def get_company(
         self,
@@ -139,6 +155,61 @@ class CrmService:
         company_id: UUID,
     ) -> dict[str, Any] | None:
         return self._repos.companies.get_by_id(conn, company_id)
+
+    def create_company(
+        self,
+        conn: psycopg.Connection,
+        *,
+        company: CompanyCreate,
+    ) -> dict[str, Any]:
+        with crm_transaction(conn):
+            duplicates = self._repos.companies.find_by_domain(conn, company.domain) if company.domain else []
+            created = self._repos.companies.create(conn, **company.model_dump())
+        return {
+            "company": created,
+            "duplicate_warnings": find_domain_duplicate_warnings(
+                duplicates, domain=company.domain
+            ),
+        }
+
+    def update_company(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        company: CompanyUpdate,
+    ) -> dict[str, Any] | None:
+        with crm_transaction(conn):
+            duplicates = (
+                self._repos.companies.find_by_domain(
+                    conn, company.domain, exclude_company_id=company_id
+                )
+                if company.domain
+                else []
+            )
+            updated = self._repos.companies.update(
+                conn, company_id, **company.model_dump(exclude_none=True)
+            )
+        if updated is None:
+            return None
+        return {
+            "company": updated,
+            "duplicate_warnings": find_domain_duplicate_warnings(
+                duplicates, domain=company.domain, exclude_company_id=company_id
+            ),
+        }
+
+    def archive_company(
+        self, conn: psycopg.Connection, company_id: UUID
+    ) -> dict[str, Any] | None:
+        with crm_transaction(conn):
+            return self._repos.companies.archive(conn, company_id)
+
+    def restore_company(
+        self, conn: psycopg.Connection, company_id: UUID
+    ) -> dict[str, Any] | None:
+        with crm_transaction(conn):
+            return self._repos.companies.restore(conn, company_id)
 
     def list_contacts_for_company(
         self,

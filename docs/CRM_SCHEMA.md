@@ -62,10 +62,25 @@ See [AUDIT_EVENTS.md](AUDIT_EVENTS.md) for append-only audit semantics.
 | `id` | `UUID` | PK |
 | `created_at`, `updated_at` | `TIMESTAMPTZ` | Auto on insert; `updated_at` set on update |
 | `name` | `TEXT` | Required |
-| `website` | `TEXT` | Optional |
+| `website` | `TEXT` | Optional display/source URL retained for compatibility |
+| `domain` | `TEXT` | Optional normalized hostname for search and duplicate warnings |
+| `category` | `TEXT` | Optional: `fintech`, `ai_infrastructure`, `digital_assets`, `investor`, `other` |
+| `stage` | `TEXT` | Optional lifecycle/funding stage |
+| `headcount_estimate` | `INTEGER` | Optional non-negative estimate |
+| `funding_summary` | `TEXT` | Optional human-readable funding context |
+| `target_status` | `TEXT` | Optional target disposition |
+| `last_verified_at` | `DATE` | Optional source verification date |
+| `notes` | `TEXT` | Optional operator notes |
+| `archived_at` | `TIMESTAMPTZ` | Soft archive timestamp; related records remain untouched |
 | `status` | `TEXT` | `prospect`, `active`, `inactive` |
 
-Indexes: `status`, `website`.
+Indexes: `status`, `website`, `domain`, `category`, `stage`, `target_status`,
+`archived_at`, `last_verified_at`.
+
+`app/companies.py` owns the category/stage/target registries and normalizes domains
+before storage. Unknown registry values are validation errors; blank optional values
+remain unset. A matching active normalized domain produces a non-blocking duplicate
+warning rather than preventing a save.
 
 ### `contacts`
 
@@ -202,6 +217,7 @@ Migrations live in `app/migrations/definitions.py` and are applied at startup vi
 | `005` | `admin_login_rate_limits` | Shared admin login rate-limit state |
 | `006` | `admin_csrf_binding` | Login-flow CSRF rows and session CSRF column |
 | `007` | `research_records` | Typed research records with provenance and expiry |
+| `010` | `company_records` | Company firmographics, normalized domain, and soft archival |
 
 Applied versions are recorded in `schema_migrations`. Steps are **idempotent**
 (`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`) so empty and existing Render Postgres
