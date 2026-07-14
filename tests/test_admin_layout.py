@@ -143,9 +143,12 @@ def test_admin_nav_links_present(path: str) -> None:
     token_hash = admin_auth.hash_session_token(raw_token)
     row = _session_row(token_hash=token_hash)
     with mock_db_connection():
-        with patch(
-            "app.admin_routes.db.get_admin_session_by_token_hash",
-            return_value=row,
+        with (
+            patch(
+                "app.admin_routes.db.get_admin_session_by_token_hash",
+                return_value=row,
+            ),
+            patch("app.admin_routes._crm.list_companies", return_value=[]),
         ):
             response = client.get(path, cookies={SESSION_COOKIE_NAME: raw_token})
     assert response.status_code == 200
@@ -161,7 +164,6 @@ def test_admin_nav_links_present(path: str) -> None:
     ("path", "label"),
     [
         ("/admin", "Dashboard"),
-        ("/admin/companies", "Companies"),
         ("/admin/contacts", "Contacts"),
         ("/admin/signals", "Signals"),
         ("/admin/pipeline", "Pipeline"),
@@ -195,10 +197,40 @@ def test_admin_active_nav(path: str, label: str) -> None:
     assert f'class="admin-nav-link" aria-current="page">{label}</a>' in body
 
 
+@pytest.mark.unit
+@pytest.mark.integration
+def test_admin_companies_page_renders_research_list() -> None:
+    from app import admin_auth
+
+    raw_token = admin_auth.generate_session_token()
+    token_hash = admin_auth.hash_session_token(raw_token)
+    row = _session_row(token_hash=token_hash)
+    with mock_db_connection():
+        with (
+            patch(
+                "app.admin_routes.db.get_admin_session_by_token_hash",
+                return_value=row,
+            ),
+            patch("app.admin_routes._crm") as crm,
+        ):
+            crm.list_companies.return_value = []
+            response = client.get(
+                "/admin/companies",
+                cookies={SESSION_COOKIE_NAME: raw_token},
+            )
+    assert response.status_code == 200
+    body = response.text
+    assert 'class="admin-app"' in body
+    assert 'id="companies-title">Companies</h1>' in body
+    assert body.count('aria-current="page"') == 1
+    assert 'href="/admin/companies"' in body
+    assert 'aria-current="page"' in body
+    assert 'class="admin-nav-link" aria-current="page">Companies</a>' in body
+
+
 @pytest.mark.parametrize(
     ("path", "milestone"),
     [
-        ("/admin/companies", "CRM data model"),
         ("/admin/signals", "Signal intelligence"),
         ("/admin/content", "Content management"),
     ],
