@@ -12,6 +12,7 @@ import psycopg
 from app.repositories.protocols import (
     ActivityRepository,
     AdminUserRepository,
+    AuditEventRepository,
     CompanyRepository,
     ContactRepository,
     SourceRecordRepository,

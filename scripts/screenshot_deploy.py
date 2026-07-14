@@ -67,6 +67,7 @@ SITE_HTML_TO_ROUTE: dict[str, str] = {
 # Keep in sync with app.admin_layout.ADMIN_SCREENSHOT_PATHS (nav shell + login).
 ADMIN_SCREENSHOT_ROUTES: tuple[str, ...] = (
     "/admin",
+    "/admin/audit",
     "/admin/companies",
     "/admin/contacts",
     "/admin/signals",

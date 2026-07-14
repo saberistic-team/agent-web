@@ -12,6 +12,12 @@ ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
         "summary": "Operational overview and brief summaries",
     },
     {
+        "label": "Audit",
+        "href": "/admin/audit",
+        "milestone": "Audit trail",
+        "summary": "Immutable security and mutation history",
+    },
+    {
         "label": "Companies",
         "href": "/admin/companies",
         "milestone": "CRM data model",

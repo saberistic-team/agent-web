@@ -27,6 +27,7 @@ class Settings:
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
     admin_trust_proxy_headers: bool = False
+    audit_page_size: int = 50
 
     @property
     def admin_configured(self) -> bool:

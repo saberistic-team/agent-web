@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncIterator
@@ -60,6 +61,17 @@ async def redirect_unauthenticated_admin(
     exc: AdminLoginRequired,
 ) -> RedirectResponse:
     return RedirectResponse(url=login_redirect_url(exc.next_path), status_code=303)
+
+
+@app.middleware("http")
+async def attach_correlation_id(request: Request, call_next):
+    correlation_id = request.headers.get(CORRELATION_HEADER, "").strip()
+    if not correlation_id:
+        correlation_id = str(uuid.uuid4())
+    request.state.correlation_id = correlation_id
+    response = await call_next(request)
+    response.headers[CORRELATION_HEADER] = correlation_id
+    return response
 
 
 @app.middleware("http")
