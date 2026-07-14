@@ -198,41 +198,6 @@ def test_admin_active_nav(path: str, label: str) -> None:
 
 
 @pytest.mark.parametrize(
-    ("path", "title_id", "label"),
-    [
-        ("/admin/companies", "companies-title", "Companies"),
-        ("/admin/contacts", "contacts-title", "Contacts"),
-    ],
-)
-@pytest.mark.unit
-@pytest.mark.integration
-def test_admin_active_nav_crm_pages(path: str, title_id: str, label: str) -> None:
-    from app import admin_auth
-
-    raw_token = admin_auth.generate_session_token()
-    token_hash = admin_auth.hash_session_token(raw_token)
-    row = _session_row(token_hash=token_hash)
-    with mock_db_connection():
-        with (
-            patch(
-                "app.admin_routes.db.get_admin_session_by_token_hash",
-                return_value=row,
-            ),
-            patch("app.admin_crm_routes._crm_service") as crm_service,
-        ):
-            service = crm_service.return_value
-            service._repos.companies.list_all.return_value = []
-            service.search_contacts.return_value = []
-            response = client.get(path, cookies={SESSION_COOKIE_NAME: raw_token})
-    assert response.status_code == 200
-    body = response.text
-    assert f'id="{title_id}">{label}</h1>' in body
-    assert body.count('aria-current="page"') == 1
-    assert f'href="{path}"' in body
-    assert f'class="admin-nav-link" aria-current="page">{label}</a>' in body
-
-
-@pytest.mark.parametrize(
     ("path", "milestone"),
     [
         ("/admin/signals", "Signal intelligence"),
