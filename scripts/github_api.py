@@ -143,5 +143,20 @@ def delete_label(repo: str, issue: int, label: str) -> None:
 
 
 def list_issue_comments(repo: str, issue: int) -> list[dict[str, Any]]:
+    """Paginate issue comments (default page is 30; busy issues exceed one page)."""
     owner, name = split_repo(repo)
-    return api("GET", f"/repos/{owner}/{name}/issues/{issue}/comments?per_page=100") or []
+    comments: list[dict[str, Any]] = []
+    page = 1
+    while page <= 50:
+        batch = (
+            api(
+                "GET",
+                f"/repos/{owner}/{name}/issues/{issue}/comments?per_page=100&page={page}",
+            )
+            or []
+        )
+        comments.extend(batch)
+        if len(batch) < 100:
+            break
+        page += 1
+    return comments
