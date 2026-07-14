@@ -180,6 +180,10 @@ body.admin-app {
   border-radius: 2px;
 }
 
+.admin-section {
+  max-width: 960px;
+}
+
 .admin-section-head {
   display: flex;
   flex-wrap: wrap;
