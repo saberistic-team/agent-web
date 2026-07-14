@@ -69,7 +69,9 @@ Use any local Postgres instance or a Render dev database. Export:
 export DATABASE_URL="postgresql://user:pass@localhost:5432/agent_web"
 ```
 
-The app creates the `project_briefs` table on startup.
+The app applies versioned Postgres migrations on startup (`project_briefs` plus CRM
+foundation tables). See [CRM_SCHEMA.md](CRM_SCHEMA.md) for CRM ownership and extension
+conventions.
 
 ### 3. Stripe
 

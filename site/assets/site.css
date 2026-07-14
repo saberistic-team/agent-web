@@ -448,6 +448,69 @@ main {
   font-size: 0.85rem;
 }
 
+.admin-page {
+  padding-top: 3rem;
+}
+
+.admin-lede {
+  margin: 0 0 2rem;
+  max-width: 52ch;
+  color: var(--muted);
+}
+
+.admin-lede strong {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.admin-note {
+  margin: 0;
+  max-width: 52ch;
+  color: var(--muted);
+}
+
+.admin-note code {
+  color: var(--ink);
+}
+
+.admin-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  max-width: 36ch;
+}
+
+.admin-form input[type="password"],
+.admin-form input[type="text"] {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  transition: border-color 0.2s ease;
+}
+
+.admin-form input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.admin-submit {
+  align-self: flex-start;
+  cursor: pointer;
+}
+
+.admin-logout {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
+}
+
 .offer-block {
   margin: 0 0 2rem;
   max-width: 52ch;
