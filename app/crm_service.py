@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Generator
+from typing import Any
 from uuid import UUID
 
 import psycopg
 
+from app.crm_uow import crm_transaction
 from app.repositories import (
     ActivityRepository,
     AdminUserRepository,
@@ -42,17 +42,6 @@ def default_crm_repositories() -> CrmRepositories:
     )
 
 
-@contextmanager
-def crm_transaction(conn: psycopg.Connection) -> Generator[None, None, None]:
-    """Commit once after all repository mutations succeed; rollback on any failure."""
-    try:
-        yield
-        conn.commit()
-    except BaseException:
-        conn.rollback()
-        raise
-
-
 class CrmService:
     """Thin service layer for admin/import/discovery callers."""
 
@@ -80,7 +69,7 @@ class CrmService:
                 full_name=contact_name,
                 company_id=UUID(str(company["id"])),
             )
-            return {"company": company, "contact": contact}
+        return {"company": company, "contact": contact}
 
     def record_activity_for_company(
         self,
@@ -93,7 +82,7 @@ class CrmService:
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         with crm_transaction(conn):
-            return self._repos.activities.create(
+            activity = self._repos.activities.create(
                 conn,
                 activity_type=activity_type,
                 summary=summary,
@@ -101,6 +90,7 @@ class CrmService:
                 contact_id=contact_id,
                 metadata=metadata,
             )
+        return activity
 
     def link_project_brief_source(
         self,
@@ -112,7 +102,7 @@ class CrmService:
         payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         with crm_transaction(conn):
-            return self._repos.source_records.create(
+            record = self._repos.source_records.create(
                 conn,
                 source_type="project_brief",
                 external_id=str(brief_id),
@@ -120,6 +110,7 @@ class CrmService:
                 contact_id=contact_id,
                 payload=payload,
             )
+        return record
 
     def get_admin_user_by_email(
         self,
