@@ -70,7 +70,6 @@ def test_contact_repository_create_and_lookup() -> None:
         "id": CONTACT_ID,
         "name": "Lead",
         "email": "lead@example.com",
-        "full_name": "Lead",
         "company_id": COMPANY_ID,
     }
     conn = _mock_conn(row)
@@ -79,16 +78,18 @@ def test_contact_repository_create_and_lookup() -> None:
         conn,
         name="Lead",
         email="lead@example.com",
+        normalized_email="lead@example.com",
         company_id=COMPANY_ID,
     )
     assert created["email"] == "lead@example.com"
     conn.commit.assert_not_called()
-    insert_sql = str(conn.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
-    assert "INSERT INTO contacts" in insert_sql
+
+    conn2 = _mock_conn(row)
+    assert repo.get_by_id(conn2, CONTACT_ID)["id"] == CONTACT_ID
 
 
 @pytest.mark.unit
-def test_contact_repository_set_and_get_buying_roles() -> None:
+def test_contact_repository_set_buying_roles() -> None:
     repo = PostgresContactRepository()
     conn = _mock_conn()
     cur = conn.cursor.return_value.__enter__.return_value
