@@ -59,6 +59,7 @@ def _session_row(*, token_hash: str) -> dict[str, Any]:
 def test_admin_nav_links_include_required_destinations() -> None:
     assert ADMIN_HREFS == (
         "/admin",
+        "/admin/audit",
         "/admin/companies",
         "/admin/contacts",
         "/admin/signals",
@@ -71,6 +72,7 @@ def test_admin_nav_links_include_required_destinations() -> None:
     )
     assert ADMIN_LABELS == (
         "Dashboard",
+        "Audit",
         "Companies",
         "Contacts",
         "Signals",
@@ -318,3 +320,18 @@ def test_admin_preview_mode_accepts_preview_session(
     )
     assert response.status_code == 200
     assert 'class="admin-app"' in response.text
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_admin_preview_mode_renders_section_mock_data(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    response = client.get("/admin/companies")
+    assert response.status_code == 200
+    assert "Preview data — not production" in response.text
+    assert "admin-table" in response.text
+    assert "Companies" in response.text

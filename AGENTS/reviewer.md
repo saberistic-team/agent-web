@@ -18,9 +18,9 @@ Before approving you must:
 2. Capture **headless Chromium screenshots** via Actions Playwright
    (`scripts/screenshot_deploy.py`) at **desktop and mobile** viewports for
    **PR-affected pages on the PR head only** (local uvicorn with
-   `ADMIN_PREVIEW_MODE` so `/admin` can be captured without login). Do **not**
+   `ADMIN_PREVIEW_MODE` so admin pages can be captured without login). Do **not**
    screenshot saberistic.com pre-merge — production shots are post-deploy:
-   - **PR branch** — `branch-*.png` (public + admin when affected)
+   - **PR branch** — `branch-*.png` (public + all admin nav pages when affected)
    Post on the PR and issue — not Copilot / MCP browsers. Skip capture when
    the PR touches no visual pages (tests/docs only).
 3. Check **visual readability** on the **PR branch** screenshots / live
@@ -48,8 +48,9 @@ than reviewing stale ghost commits.
 ## Definition of done
 
 - Desktop + mobile **PR-branch** screenshots for **PR-affected** pages
-  (public + `/admin` under `ADMIN_PREVIEW_MODE` when admin files change) appear
-  on the PR + issue — or a skip note when no visual pages were affected.
+  (public + all admin nav pages under `ADMIN_PREVIEW_MODE` when admin files
+  change) appear on the PR + issue — or a skip note when no visual pages were
+  affected.
   **No** saberistic.com screenshots on the PR pre-merge
 - Visual readability check passes on PR-branch shots when capture ran (no
   mobile out-of-frame overflow)

@@ -115,6 +115,10 @@ def test_apply_migrations_runs_only_pending_steps() -> None:
         "INSERT INTO schema_migrations" in str(call.args[0]) and "007" in str(call.args[1])
         for call in cur.execute.call_args_list
     )
+    assert any(
+        "INSERT INTO schema_migrations" in str(call.args[0]) and "007" in str(call.args[1])
+        for call in cur.execute.call_args_list
+    )
     conn.commit.assert_called_once()
 
 
@@ -319,3 +323,13 @@ def test_apply_migrations_raises_when_lock_times_out(monkeypatch: pytest.MonkeyP
 
     conn.rollback.assert_called_once()
     conn.commit.assert_not_called()
+
+@pytest.mark.unit
+def test_audit_events_migration_is_append_only() -> None:
+    audit = next(m for m in MIGRATIONS if m.name == "audit_events")
+    assert audit.version == "007"
+    assert "CREATE TABLE IF NOT EXISTS audit_events" in audit.up_sql
+    assert "prevent_audit_events_mutation" in audit.up_sql
+    assert "BEFORE UPDATE ON audit_events" in audit.up_sql
+    assert "BEFORE DELETE ON audit_events" in audit.up_sql
+

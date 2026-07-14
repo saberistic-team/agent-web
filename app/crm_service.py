@@ -8,6 +8,8 @@ from uuid import UUID
 
 import psycopg
 
+from app import audit_service
+from app.actor_context import ActorContext
 from app.crm_uow import crm_transaction
 from app.repositories import (
     ActivityRepository,

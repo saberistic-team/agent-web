@@ -1,0 +1,122 @@
+# Audit events
+
+Append-only audit trail for security-sensitive and business-critical admin mutations.
+
+## Record schema
+
+Each row in `audit_events` includes:
+
+| Field | Description |
+|-------|-------------|
+| `actor` | Authenticated admin username, `anonymous` for unauthenticated attempts, or a service identity |
+| `action` | Stable action code (for example `auth.login.success`, `entity.delete`) |
+| `entity_type` | Logical entity category (`admin_session`, `company`, `pipeline`, …) |
+| `entity_id` | Entity identifier as text |
+| `created_at` | UTC timestamp when the event was recorded |
+| `correlation_id` | Request correlation id from `X-Request-ID` or generated per request |
+| `summary_before` | Redacted JSON snapshot before the mutation |
+| `summary_after` | Redacted JSON snapshot after the mutation |
+| `metadata` | Optional redacted JSON context |
+
+## Redaction
+
+The audit service never persists:
+
+- Secrets, API keys, password hashes, or session tokens
+- Raw passwords or payment credentials
+- Raw message bodies, brief text, or email addresses
+- Stripe session or payment-intent identifiers
+
+Fields matching sensitive names or patterns are stored as `[REDACTED]`.
+
+## Immutability
+
+`audit_events` is append-only:
+
+- Application repositories expose `append` and `list_page` only — no update or delete helpers
+- Postgres triggers reject `UPDATE` and `DELETE` on `audit_events`
+
+Normal application code cannot mutate historical audit rows.
+
+## Audited actions
+
+| Action | When recorded |
+|--------|----------------|
+| `auth.login.success` | Valid admin login creates a server-side session |
+| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting |
+| `auth.logout` | Session revocation and cookie clear |
+| `import.batch` | Data import batches via `CrmService.import_batch` |
+| `entity.delete` | Hard deletes via `CrmService.delete_entity` |
+| `pipeline.update` | Pipeline stage changes via `CrmService.update_pipeline` |
+| `scoring_rule.update` | Scoring rule edits via `CrmService.update_scoring_rule` |
+| `analytics.config.update` | Analytics configuration via `CrmService.update_analytics_config` |
+| `export.request` | Export requests via `CrmService.request_export` |
+
+Auth events are wired in `app/admin_routes.py`. Other mutations record audit events through `CrmService` methods that future admin UI routes will call.
+
+## Admin UI
+
+Authenticated operators can review events at `/admin/audit`:
+
+- Newest-first, paginated (default 50 per page; override with `AUDIT_PAGE_SIZE`)
+- Read-only table of actor, action, entity, correlation id, and safe summaries
+
+## Retention
+
+Operational expectations:
+
+- **Hot window:** keep all events online for **90 days** for day-to-day investigations
+- **Archive:** monthly export of rows older than 90 days to object storage (manual or scheduled job)
+- **Long-term:** retain archives for **7 years** to support security and business reviews
+- **Purge:** delete archived objects only after the retention window; never delete hot rows through app code
+
+Adjust windows per compliance needs; document changes in this file.
+
+## Operational queries
+
+Recent auth failures (last 24 hours):
+
+```sql
+SELECT created_at, actor, action, correlation_id, summary_after
+FROM audit_events
+WHERE action = 'auth.login.failure'
+  AND created_at >= NOW() - INTERVAL '24 hours'
+ORDER BY created_at DESC;
+```
+
+Trace all events for one request:
+
+```sql
+SELECT created_at, actor, action, entity_type, entity_id, summary_before, summary_after
+FROM audit_events
+WHERE correlation_id = $1
+ORDER BY created_at ASC;
+```
+
+Review destructive changes in a period:
+
+```sql
+SELECT created_at, actor, action, entity_type, entity_id, summary_before
+FROM audit_events
+WHERE action IN ('entity.delete', 'pipeline.update', 'scoring_rule.update')
+  AND created_at BETWEEN $1 AND $2
+ORDER BY created_at DESC;
+```
+
+Export volume monitoring:
+
+```sql
+SELECT date_trunc('day', created_at) AS day, COUNT(*) AS exports
+FROM audit_events
+WHERE action = 'export.request'
+GROUP BY 1
+ORDER BY 1 DESC;
+```
+
+## Environment
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `AUDIT_PAGE_SIZE` | `50` | Admin audit list page size (max 100) |
+
+Requires `DATABASE_URL` and admin auth env vars documented in `docs/ADMIN_AUTH.md`.
