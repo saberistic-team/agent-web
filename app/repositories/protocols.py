@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -30,20 +31,95 @@ class CompanyRepository(Protocol):
         status: str | None = None,
     ) -> dict[str, Any] | None: ...
 
+    def list_all(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int = 200,
+    ) -> list[dict[str, Any]]: ...
+
 
 class ContactRepository(Protocol):
     def create(
         self,
         conn: psycopg.Connection,
         *,
-        email: str,
-        full_name: str | None = None,
+        name: str,
         company_id: UUID | None = None,
+        title: str | None = None,
+        profile_url: str | None = None,
+        normalized_profile_url: str | None = None,
+        email: str | None = None,
+        normalized_email: str | None = None,
+        email_permission: str | None = None,
+        email_provenance: str | None = None,
+        last_interaction_at: datetime | None = None,
+        relationship_strength: str | None = None,
+        notes: str | None = None,
     ) -> dict[str, Any]: ...
 
     def get_by_id(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None: ...
 
-    def get_by_email(self, conn: psycopg.Connection, email: str) -> dict[str, Any] | None: ...
+    def update(
+        self,
+        conn: psycopg.Connection,
+        contact_id: UUID,
+        *,
+        name: str | None = None,
+        company_id: UUID | None = None,
+        title: str | None = None,
+        profile_url: str | None = None,
+        normalized_profile_url: str | None = None,
+        email: str | None = None,
+        normalized_email: str | None = None,
+        email_permission: str | None = None,
+        email_provenance: str | None = None,
+        last_interaction_at: datetime | None = None,
+        relationship_strength: str | None = None,
+        notes: str | None = None,
+        is_archived: bool | None = None,
+    ) -> dict[str, Any] | None: ...
+
+    def find_duplicates(
+        self,
+        conn: psycopg.Connection,
+        *,
+        normalized_profile_url: str | None = None,
+        normalized_email: str | None = None,
+        normalized_name: str | None = None,
+        company_id: UUID | None = None,
+        exclude_contact_id: UUID | None = None,
+    ) -> dict[str, list[dict[str, Any]]]: ...
+
+    def search(
+        self,
+        conn: psycopg.Connection,
+        *,
+        query: str = "",
+        include_archived: bool = False,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]: ...
+
+    def list_for_company(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        include_archived: bool = False,
+    ) -> list[dict[str, Any]]: ...
+
+    def set_buying_roles(
+        self,
+        conn: psycopg.Connection,
+        contact_id: UUID,
+        roles: list[str],
+    ) -> list[str]: ...
+
+    def get_buying_roles(
+        self,
+        conn: psycopg.Connection,
+        contact_id: UUID,
+    ) -> list[str]: ...
 
 
 class SourceRecordRepository(Protocol):
