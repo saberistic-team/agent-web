@@ -1,6 +1,6 @@
 from screenshot_deploy import (
     VIEWPORTS,
-    admin_screenshot_credentials,
+    admin_screenshot_session_cookie,
     discover_screenshot_routes,
     format_overflow_hard_fail,
     is_production_pre_shot,
@@ -84,11 +84,10 @@ def test_route_requires_admin_auth() -> None:
     assert not route_requires_admin_auth("/")
 
 
-def test_admin_screenshot_credentials_default_preview() -> None:
-    creds = admin_screenshot_credentials()
-    assert creds is not None
-    assert creds[0]
-    assert creds[1]
+def test_admin_screenshot_session_cookie() -> None:
+    cookie = admin_screenshot_session_cookie()
+    assert cookie["name"] == "admin_session"
+    assert cookie["value"] == "preview-screenshot-session"
 
 
 def test_discover_screenshot_routes_includes_admin_dashboard() -> None:
