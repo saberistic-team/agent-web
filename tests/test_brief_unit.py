@@ -173,6 +173,7 @@ def test_db_helpers_use_connection() -> None:
     conn = MagicMock()
     cur = MagicMock()
     conn.cursor.return_value.__enter__.return_value = cur
+    cur.fetchall.return_value = []
     cur.fetchone.side_effect = [{"id": 42}, {"id": 42, "status": "pending_payment"}, {"id": 42, "status": "paid"}]
 
     with patch("app.db.psycopg.connect") as connect:
