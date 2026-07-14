@@ -34,7 +34,6 @@ def _mock_conn(row: dict | list | None = None) -> MagicMock:
 
 
 @pytest.mark.unit
-@pytest.mark.integration
 def test_company_repository_crud() -> None:
     repo = PostgresCompanyRepository()
     created = {
@@ -47,6 +46,7 @@ def test_company_repository_crud() -> None:
 
     result = repo.create(conn, name="Acme", website="https://acme.dev")
     assert result["name"] == "Acme"
+    conn.commit.assert_not_called()
     insert_sql = str(conn.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
     assert "INSERT INTO companies" in insert_sql
 
@@ -57,19 +57,20 @@ def test_company_repository_crud() -> None:
     conn3 = _mock_conn(updated)
     row = repo.update(conn3, COMPANY_ID, status="active")
     assert row is not None
+    conn3.commit.assert_not_called()
     update_sql = str(conn3.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
     assert "UPDATE companies" in update_sql
     assert "updated_at" in update_sql
 
 
 @pytest.mark.unit
-@pytest.mark.integration
-def test_contact_repository_create_search_and_roles() -> None:
+def test_contact_repository_create_and_lookup() -> None:
     repo = PostgresContactRepository()
     row = {
         "id": CONTACT_ID,
         "name": "Lead",
         "email": "lead@example.com",
+        "full_name": "Lead",
         "company_id": COMPANY_ID,
     }
     conn = _mock_conn(row)
@@ -78,68 +79,54 @@ def test_contact_repository_create_search_and_roles() -> None:
         conn,
         name="Lead",
         email="lead@example.com",
-        normalized_email="lead@example.com",
         company_id=COMPANY_ID,
     )
-    assert created["name"] == "Lead"
+    assert created["email"] == "lead@example.com"
+    conn.commit.assert_not_called()
     insert_sql = str(conn.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
     assert "INSERT INTO contacts" in insert_sql
 
-    conn2 = _mock_conn([row])
-    results = repo.search(conn2, query="lead")
-    assert len(results) == 1
 
-    conn3 = _mock_conn()
-    conn3.cursor.return_value.__enter__.return_value.fetchall.side_effect = [
-        [{"role": "founder"}, {"role": "investor"}],
-    ]
-    roles = repo.set_buying_roles(conn3, CONTACT_ID, ["founder", "investor"])
+@pytest.mark.unit
+def test_contact_repository_set_and_get_buying_roles() -> None:
+    repo = PostgresContactRepository()
+    conn = _mock_conn()
+    cur = conn.cursor.return_value.__enter__.return_value
+    cur.fetchall.return_value = [{"role": "founder"}, {"role": "investor"}]
+
+    roles = repo.set_buying_roles(conn, CONTACT_ID, ["founder", "investor"])
     assert roles == ["founder", "investor"]
+    conn.commit.assert_not_called()
+
+    conn2 = _mock_conn()
+    cur2 = conn2.cursor.return_value.__enter__.return_value
+    cur2.fetchall.return_value = [{"role": "founder"}]
+    assert repo.get_buying_roles(conn2, CONTACT_ID) == ["founder"]
 
 
 @pytest.mark.unit
-@pytest.mark.integration
-def test_contact_repository_find_duplicates() -> None:
+def test_contact_repository_find_duplicates_profile_url() -> None:
     repo = PostgresContactRepository()
-    duplicate = {"id": CONTACT_ID, "name": "Lead"}
+    duplicate = {"id": CONTACT_ID, "name": "lead"}
     conn = _mock_conn()
-    conn.cursor.return_value.__enter__.return_value.fetchall.side_effect = [
-        [duplicate],
-        [],
-        [],
-    ]
+    conn.cursor.return_value.__enter__.return_value.fetchall.return_value = [duplicate]
 
     matches = repo.find_duplicates(
         conn,
         normalized_profile_url="linkedin.com/in/lead",
-        normalized_email="lead@example.com",
-        normalized_name="lead",
-        company_id=COMPANY_ID,
     )
     assert len(matches["profile_url"]) == 1
-    assert matches["email"] == []
-    assert matches["name_company"] == []
 
 
 @pytest.mark.unit
-@pytest.mark.integration
-def test_contact_repository_update_archive_and_list_for_company() -> None:
+def test_contact_repository_list_for_company() -> None:
     repo = PostgresContactRepository()
-    row = {"id": CONTACT_ID, "name": "Lead", "is_archived": True}
-    conn = _mock_conn(row)
-
-    updated = repo.update(conn, CONTACT_ID, is_archived=True)
-    assert updated is not None
-    update_sql = str(conn.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
-    assert "is_archived" in update_sql
-
-    conn2 = _mock_conn([row])
-    listed = repo.list_for_company(conn2, COMPANY_ID, include_archived=True)
+    conn = _mock_conn([{"id": CONTACT_ID, "name": "Lead"}])
+    listed = repo.list_for_company(conn, COMPANY_ID)
     assert len(listed) == 1
 
 
 @pytest.mark.unit
-@pytest.mark.integration
 def test_contact_repository_find_duplicates_name_company() -> None:
     repo = PostgresContactRepository()
     duplicate = {"id": CONTACT_ID, "name": "lead"}
@@ -156,7 +143,6 @@ def test_contact_repository_find_duplicates_name_company() -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.integration
 def test_contact_repository_update_multiple_fields() -> None:
     repo = PostgresContactRepository()
     row = {
@@ -182,7 +168,6 @@ def test_contact_repository_update_multiple_fields() -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.integration
 def test_contact_repository_search_without_query_excludes_archived() -> None:
     repo = PostgresContactRepository()
     conn = _mock_conn([{"id": CONTACT_ID, "name": "Lead"}])
@@ -193,7 +178,6 @@ def test_contact_repository_search_without_query_excludes_archived() -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.integration
 def test_company_repository_list_all() -> None:
     repo = PostgresCompanyRepository()
     conn = _mock_conn([{"id": COMPANY_ID, "name": "Acme"}])
@@ -202,7 +186,27 @@ def test_company_repository_list_all() -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.integration
+def test_contact_repository_search_with_query() -> None:
+    repo = PostgresContactRepository()
+    conn = _mock_conn([{"id": CONTACT_ID, "name": "Lead"}])
+    results = repo.search(conn, query="lead", include_archived=True)
+    assert len(results) == 1
+    sql = str(conn.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    assert "ILIKE" in sql
+
+
+@pytest.mark.unit
+def test_contact_repository_find_duplicates_email() -> None:
+    repo = PostgresContactRepository()
+    duplicate = {"id": CONTACT_ID, "email": "lead@example.com"}
+    conn = _mock_conn()
+    conn.cursor.return_value.__enter__.return_value.fetchall.return_value = [duplicate]
+
+    matches = repo.find_duplicates(conn, normalized_email="lead@example.com")
+    assert len(matches["email"]) == 1
+
+
+@pytest.mark.unit
 def test_source_record_repository_links_external_id() -> None:
     repo = PostgresSourceRecordRepository()
     row = {
@@ -224,6 +228,7 @@ def test_source_record_repository_links_external_id() -> None:
         payload={"brief": "hello"},
     )
     assert created["external_id"] == "42"
+    conn.commit.assert_not_called()
 
     conn2 = _mock_conn(row)
     found = repo.get_by_source(conn2, source_type="project_brief", external_id="42")
@@ -233,7 +238,6 @@ def test_source_record_repository_links_external_id() -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.integration
 def test_activity_repository_create_and_list() -> None:
     repo = PostgresActivityRepository()
     row = {
@@ -251,6 +255,7 @@ def test_activity_repository_create_and_list() -> None:
         company_id=COMPANY_ID,
     )
     assert created["summary"] == "Initial outreach"
+    conn.commit.assert_not_called()
 
     conn2 = _mock_conn([row])
     activities = repo.list_for_company(conn2, COMPANY_ID, limit=10)
@@ -260,7 +265,6 @@ def test_activity_repository_create_and_list() -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.integration
 def test_admin_user_repository_create_and_lookup() -> None:
     repo = PostgresAdminUserRepository()
     row = {
@@ -279,6 +283,7 @@ def test_admin_user_repository_create_and_lookup() -> None:
         role="admin",
     )
     assert created["role"] == "admin"
+    conn.commit.assert_not_called()
 
     conn2 = _mock_conn(row)
     assert repo.get_by_email(conn2, "admin@saberistic.com")["id"] == ADMIN_ID
