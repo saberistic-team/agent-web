@@ -54,16 +54,17 @@ INDEXABLE_PAGES: dict[str, dict[str, str]] = {
     "/services": {
         "title": "Services — saberistic",
         "description": (
-            "Architecture Diagnostic ($200), Fractional Principal Architect, and "
-            "Technical Due Diligence for Seed–Series B fintech, AI, and digital-asset companies."
+            "Architecture diagnostic, fractional principal architect, and technical "
+            "due diligence for Seed–Series B fintech, AI, and digital-asset companies."
         ),
         "canonical": f"{SITE_BASE}/services",
     },
     "/case-studies": {
         "title": "Case studies — saberistic",
         "description": (
-            "Architecture and engineering leadership case studies — Brave, BAXUS, "
-            "Eternis, Spiral Safe, and Saberistic diagnostic engagements."
+            "Outcome-oriented case studies — architecture, reliability, security, and "
+            "engineering leadership at Brave, BAXUS, Eternis, Spiral Safe, and "
+            "Saberistic engagements."
         ),
         "canonical": f"{SITE_BASE}/case-studies",
     },
