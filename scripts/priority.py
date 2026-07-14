@@ -8,6 +8,7 @@ import re
 PRIORITY_LABELS = (
     "priority:critical",
     "priority:high",
+    "priority:medium",
     "priority:normal",
     "priority:low",
 )
@@ -16,12 +17,36 @@ PRIORITY_RANK = {label: index for index, label in enumerate(PRIORITY_LABELS)}
 DEFAULT_PRIORITY = "priority:normal"
 
 
+def priority_labels_on_issue(labels: set[str] | list[str] | None) -> list[str]:
+    """Return all priority:* labels on an issue (may be empty)."""
+    return sorted(label for label in labels or [] if label.startswith("priority:"))
+
+
+def has_duplicate_priority_labels(labels: set[str] | list[str] | None) -> bool:
+    """True when more than one priority:* label is present."""
+    return len(priority_labels_on_issue(labels)) > 1
+
+
 def priority_from_labels(labels: set[str] | list[str] | None) -> str | None:
-    """Return the issue's priority:* label if present."""
-    for label in labels or []:
-        if label in PRIORITY_RANK:
-            return label
-    return None
+    """Return the highest-urgency canonical priority:* label if present."""
+    canonical = [label for label in labels or [] if label in PRIORITY_RANK]
+    if not canonical:
+        return None
+    return min(canonical, key=lambda label: PRIORITY_RANK[label])
+
+
+def resolve_priority_label(
+    title: str,
+    body: str = "",
+    labels: set[str] | list[str] | None = None,
+) -> str:
+    """Resolve one canonical priority label (dedupes by highest urgency)."""
+    canonical = [label for label in labels or [] if label in PRIORITY_RANK]
+    if canonical:
+        return min(canonical, key=lambda label: PRIORITY_RANK[label])
+    if priority_labels_on_issue(labels):
+        return infer_priority_label(title, body, labels=None)
+    return infer_priority_label(title, body, labels)
 
 
 def infer_priority_label(
@@ -29,7 +54,7 @@ def infer_priority_label(
     body: str = "",
     labels: set[str] | list[str] | None = None,
 ) -> str:
-    """Resolve priority from an existing label, else infer from issue text."""
+    """Infer priority from issue text when no canonical label is present."""
     existing = priority_from_labels(labels)
     if existing:
         return existing

@@ -15,6 +15,7 @@ import sys
 import textwrap
 from pathlib import Path
 
+from dispatch_queue import replace_priority_label
 from github_api import (
     GitHubError,
     add_labels,
@@ -24,7 +25,10 @@ from github_api import (
     split_repo,
 )
 from pr_labels import apply_pr_mirror
-from priority import infer_priority_label
+from priority import (
+    priority_labels_on_issue,
+    resolve_priority_label,
+)
 
 HANDOFF_DIR = Path("trace")
 BUILDER_HANDOFF = HANDOFF_DIR / "builder-handoff.txt"
@@ -323,11 +327,12 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
             type_label = "type:feature"
         ensure_label(repo, issue, type_label)
 
-    priority_label = infer_priority_label(title, body, labels)
-    if not any(l.startswith("priority:") for l in labels):
+    priority_label = resolve_priority_label(title, body, labels)
+    existing_priority = priority_labels_on_issue(labels)
+    if not existing_priority:
         ensure_label(repo, issue, priority_label)
-    else:
-        priority_label = next(l for l in labels if l.startswith("priority:"))
+    elif len(existing_priority) != 1 or existing_priority[0] != priority_label:
+        replace_priority_label(repo, issue, priority_label)
 
     areas = plan_change_areas(body)
     max_children = 4

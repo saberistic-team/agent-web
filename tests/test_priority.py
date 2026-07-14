@@ -9,10 +9,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from priority import (
     DEFAULT_PRIORITY,
+    has_duplicate_priority_labels,
     infer_priority_label,
     intended_agent_label,
     is_awaiting_dispatch,
+    priority_from_labels,
+    priority_labels_on_issue,
     priority_sort_key,
+    resolve_priority_label,
 )
 
 
@@ -73,3 +77,33 @@ def test_is_awaiting_dispatch() -> None:
         {"status:queued", "type:bug", "agent:builder"}
     )
     assert not is_awaiting_dispatch({"status:in-progress", "agent:builder"})
+
+
+def test_priority_from_labels_prefers_highest_urgency_when_duplicates() -> None:
+    labels = {"priority:normal", "priority:medium", "status:done"}
+    assert priority_from_labels(labels) == "priority:medium"
+
+
+def test_resolve_priority_label_keeps_medium_over_normal() -> None:
+    labels = {"priority:normal", "priority:medium"}
+    assert (
+        resolve_priority_label("Issue title", "", labels) == "priority:medium"
+    )
+
+
+def test_has_duplicate_priority_labels() -> None:
+    assert has_duplicate_priority_labels({"priority:medium", "priority:normal"})
+    assert not has_duplicate_priority_labels({"priority:medium", "status:done"})
+
+
+def test_priority_labels_on_issue_sorted() -> None:
+    assert priority_labels_on_issue(
+        {"priority:normal", "priority:medium", "status:queued"}
+    ) == ["priority:medium", "priority:normal"]
+
+
+def test_priority_sort_key_orders_medium_between_high_and_normal() -> None:
+    high = priority_sort_key({"priority:high"}, 1)
+    medium = priority_sort_key({"priority:medium"}, 1)
+    normal = priority_sort_key({"priority:normal"}, 1)
+    assert high < medium < normal

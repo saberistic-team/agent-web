@@ -40,6 +40,7 @@ STATUS_BY_LABEL = {
 PRIORITY_BY_LABEL = {
     "priority:critical": "critical",
     "priority:high": "high",
+    "priority:medium": "medium",
     "priority:normal": "normal",
     "priority:low": "low",
 }
