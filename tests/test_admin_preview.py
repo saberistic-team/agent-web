@@ -10,7 +10,9 @@ import pytest
 from app.admin_preview import (
     COMPANY_NAMES,
     build_preview_dashboard_data,
+    build_preview_section_rows,
     render_preview_dashboard_main,
+    render_preview_section_main,
 )
 
 
@@ -55,3 +57,26 @@ def test_preview_dashboard_main_html_includes_mock_table() -> None:
     assert "admin-stat-row" in html
     assert "Recent submissions" in html
     assert data.recent_briefs[0].company in html
+
+
+@pytest.mark.unit
+def test_preview_section_rows_stable_with_seed() -> None:
+    a = build_preview_section_rows("/admin/companies", rng=random.Random(11))
+    b = build_preview_section_rows("/admin/companies", rng=random.Random(11))
+    assert a == b
+    assert 4 <= len(a) <= 8
+    assert all(len(row) == 5 for row in a)
+
+
+@pytest.mark.unit
+def test_preview_section_main_html_includes_mock_table() -> None:
+    html = render_preview_section_main(
+        label="Companies",
+        summary="Company records and firmographics",
+        active_path="/admin/companies",
+        rng=random.Random(3),
+    )
+    assert "Preview data — not production" in html
+    assert "Companies" in html
+    assert "admin-table" in html
+    assert "Industry" in html

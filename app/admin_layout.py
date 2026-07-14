@@ -75,6 +75,12 @@ ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
 
 ADMIN_PATHS: frozenset[str] = frozenset(link["href"] for link in ADMIN_NAV_LINKS)
 
+# Pre-merge Playwright capture targets (shell pages + login). Never production.
+ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
+    *(link["href"] for link in ADMIN_NAV_LINKS),
+    "/admin/login",
+)
+
 
 def render_admin_nav(active_path: str) -> str:
     """Return the admin sidebar navigation list."""

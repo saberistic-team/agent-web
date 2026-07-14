@@ -8,7 +8,7 @@ Copilot, Playwright MCP, or any IDE browser agent for gate evidence.
 
 | Phase | Host | Routes |
 |-------|------|--------|
-| **Pre-merge (Reviewer)** | PR-head local uvicorn | PR-affected **public** pages **and** `/admin` + `/admin/login` when admin files change |
+| **Pre-merge (Reviewer)** | PR-head local uvicorn | PR-affected **public** pages **and** all admin nav pages + `/admin/login` when admin files change |
 | **Post-deploy** | [saberistic.com](https://saberistic.com) | PR-affected **public** pages only — **never** `/admin/*` |
 
 Pre-merge does **not** screenshot saberistic.com. Production shots are
@@ -17,20 +17,20 @@ post-deploy only.
 ### `ADMIN_PREVIEW_MODE`
 
 Pre-merge starts the PR preview server with `ADMIN_PREVIEW_MODE=1` so
-Playwright can open `/admin` and `/admin/login` **without login**.
+Playwright can open admin pages **without login**.
 
 - Enabled only for local/`127.0.0.1` preview (CI screenshot job).
 - Hard-disabled when `BASE_URL` contains `saberistic.com` even if the env
   flag is set — never open admin without auth in production.
-- Dashboard content is **mock intake/CRM data with randomization** (counts,
-  recent brief rows) so screenshots look like a live operator shell — never
-  real production rows. Optional `ADMIN_PREVIEW_SEED` makes mocks stable in
-  tests.
+- Admin shell pages fill with **mock intake/CRM data with randomization**
+  (dashboard stats, section tables) so screenshots look like a live operator
+  shell — never real production rows. Optional `ADMIN_PREVIEW_SEED` makes
+  mocks stable in tests.
 - See [ADMIN_AUTH.md](ADMIN_AUTH.md).
 
 | Route kind | Examples | Behavior |
 |------------|----------|----------|
-| **Admin (pre-merge)** | `/admin`, `/admin/login` | Captured on PR head under `ADMIN_PREVIEW_MODE` when affected |
+| **Admin (pre-merge)** | `/admin`, `/admin/companies`, …, `/admin/login` | Captured on PR head under `ADMIN_PREVIEW_MODE` when affected |
 | **Admin (post-deploy)** | `/admin/*` | **Never** screenshotted on saberistic.com |
 | **Health** | `/health` | Polled as **JSON evidence only** (never a PNG) |
 | **JSON APIs** | `/hello`, `/api/*`, `/webhooks/*` | Skipped |
@@ -43,8 +43,8 @@ Playwright can open `/admin` and `/admin/login` **without login**.
 | Changed paths | Pre-merge routes | Post-deploy routes |
 |---------------|------------------|--------------------|
 | `site/about.html`, … | That public page | Same |
-| `site/assets/*`, shared layout | All public (+ admin pre-merge) | All public |
-| `app/admin_*` | `/admin`, `/admin/login` | None (skip) |
+| `site/assets/*`, shared layout | All public (+ all admin pre-merge) | All public |
+| `app/admin_*` | All admin nav pages + `/admin/login` | None (skip) |
 | `tests/` / `docs/` / `scripts/` only | None | None |
 
 ## Pre-merge (Reviewer)
@@ -68,7 +68,7 @@ Playwright can open `/admin` and `/admin/login` **without login**.
 
 | Phase | Source | Filenames |
 |-------|--------|-----------|
-| Pre-merge | PR head (local uvicorn + `ADMIN_PREVIEW_MODE`) | `branch-home.png`, `branch-admin.png`, … |
+| Pre-merge | PR head (local uvicorn + `ADMIN_PREVIEW_MODE`) | `branch-home.png`, `branch-admin.png`, `branch-admin-companies.png`, … |
 | Post-deploy | Production (`saberistic.com`) | `post-*.png` (public only) |
 
 ## Config
