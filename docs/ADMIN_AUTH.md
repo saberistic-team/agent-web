@@ -218,4 +218,4 @@ WHERE updated_at < NOW() - INTERVAL '30 minutes'
 - Authentication failures return a generic *Invalid username or password* message.
 - Login always mints a fresh session ID and revokes any prior session cookie
   presented during sign-in (session fixation resistance).
-- Brief browse/search admin UI remains intentionally deferred ([#44](https://github.com/saberistic-team/agent-web/issues/44)).
+- Submitted briefs are listed at `/admin/briefs` (read-only; requires admin session).

@@ -68,6 +68,7 @@ SITE_HTML_TO_ROUTE: dict[str, str] = {
 ADMIN_SCREENSHOT_ROUTES: tuple[str, ...] = (
     "/admin",
     "/admin/audit",
+    "/admin/briefs",
     "/admin/companies",
     "/admin/contacts",
     "/admin/signals",

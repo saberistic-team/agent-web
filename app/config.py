@@ -20,7 +20,8 @@ class Settings:
     plausible_api_key: str
     analytics_environment: str
     admin_username: str
-    admin_password: str
+    admin_password_hash: str
+    admin_session_secret: str
     brief_price_cents: int = 20_000
     admin_session_ttl_seconds: int = 86_400
     admin_login_rate_limit: int = 5
@@ -28,10 +29,7 @@ class Settings:
     admin_login_lockout_seconds: int = 900
     admin_trust_proxy_headers: bool = False
     audit_page_size: int = 50
-
-    @property
-    def admin_configured(self) -> bool:
-        return bool(self.admin_username and self.admin_password)
+    brief_page_size: int = 50
 
     @property
     def database_configured(self) -> bool:
@@ -99,5 +97,20 @@ def get_settings() -> Settings:
         analytics_environment=os.environ.get("ANALYTICS_ENV", "development").strip()
         or "development",
         admin_username=os.environ.get("ADMIN_USERNAME", "").strip(),
-        admin_password=os.environ.get("ADMIN_PASSWORD", "").strip(),
+        admin_password_hash=os.environ.get("ADMIN_PASSWORD_HASH", "").strip(),
+        admin_session_secret=os.environ.get("ADMIN_SESSION_SECRET", "").strip(),
+        admin_session_ttl_seconds=int(os.environ.get("ADMIN_SESSION_TTL_SECONDS", "86400")),
+        admin_login_rate_limit=int(os.environ.get("ADMIN_LOGIN_RATE_LIMIT", "5")),
+        admin_login_rate_window_seconds=int(
+            os.environ.get("ADMIN_LOGIN_RATE_WINDOW_SECONDS", "900")
+        ),
+        admin_login_lockout_seconds=int(
+            os.environ.get("ADMIN_LOGIN_LOCKOUT_SECONDS", "900")
+        ),
+        audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
+        brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
+        admin_trust_proxy_headers=os.environ.get(
+            "ADMIN_TRUST_PROXY_HEADERS", ""
+        ).lower()
+        in ("1", "true", "yes"),
     )
