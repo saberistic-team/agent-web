@@ -37,10 +37,53 @@ def test_site_page_handlers_return_pages(monkeypatch: pytest.MonkeyPatch) -> Non
     from app.main import case_studies_index, services
 
     monkeypatch.delenv("ANALYTICS_ENABLED", raising=False)
-    assert "Architecture Diagnostic" in services().body.decode()
-    assert "Fractional Principal Architect" in services().body.decode()
-    assert "Technical Due Diligence" in services().body.decode()
-    assert "Case studies" in case_studies_index().body.decode()
+    services_body = services().body.decode()
+    assert "Services" in services_body
+    assert "being finalized" not in services_body
+    case_studies_body = case_studies_index().body.decode()
+    assert "Case studies" in case_studies_body
+    assert "in progress" not in case_studies_body
+
+
+@pytest.mark.unit
+def test_services_page_lists_offers() -> None:
+    response = client.get("/services")
+    assert response.status_code == 200
+    body = response.text
+    assert "Architecture Diagnostic" in body
+    assert "Fractional Principal Architect" in body
+    assert "Technical Due Diligence" in body
+    assert "being finalized" not in body
+    assert "software development" not in body.lower()
+    assert 'class="cta" href="/brief"' in body
+    assert "Start Architecture Diagnostic" in body
+    assert "Seed–Series B fintech" in body
+
+
+@pytest.mark.unit
+def test_case_studies_index_links_all_proof_pages() -> None:
+    response = client.get("/case-studies")
+    assert response.status_code == 200
+    body = response.text
+    assert "in progress" not in body
+    for slug in (
+        "brave",
+        "baxus",
+        "eternis",
+        "spiral-safe",
+        "architecture-diagnostic",
+    ):
+        assert f'href="/work/{slug}"' in body
+    assert "Infrastructure for privacy-aligned payments" in body
+    assert "Request an Architecture Diagnostic" in body
+    assert 'class="cta" href="/brief"' in body
+
+
+@pytest.mark.unit
+def test_diagnostic_redirects_to_brief() -> None:
+    response = client.get("/diagnostic", follow_redirects=False)
+    assert response.status_code == 301
+    assert response.headers["location"] == "/brief"
 
 
 @pytest.mark.unit
