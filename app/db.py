@@ -235,3 +235,123 @@ def consume_admin_login_flow(conn: psycopg.Connection, *, flow_token_hash: str) 
             (consumed_at, flow_token_hash),
         )
         conn.commit()
+
+
+def is_admin_login_throttled(
+    conn: psycopg.Connection,
+    *,
+    limiter_key: str,
+    now: datetime,
+) -> bool:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT locked_until
+            FROM admin_login_rate_limits
+            WHERE limiter_key = %s
+            """,
+            (limiter_key,),
+        )
+        row = cur.fetchone()
+    if row is None:
+        return False
+    locked_until = row["locked_until"]
+    if locked_until is None:
+        return False
+    if locked_until.tzinfo is None:
+        locked_until = locked_until.replace(tzinfo=timezone.utc)
+    return locked_until > now
+
+
+def record_admin_login_failure(
+    conn: psycopg.Connection,
+    *,
+    limiter_key: str,
+    now: datetime,
+    rate_limit: int,
+    window_seconds: int,
+    lockout_seconds: int,
+) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO admin_login_rate_limits (
+                limiter_key, failure_count, window_started_at, locked_until, updated_at
+            )
+            VALUES (%s, 1, %s, NULL, %s)
+            ON CONFLICT (limiter_key) DO UPDATE SET
+                failure_count = CASE
+                    WHEN admin_login_rate_limits.window_started_at
+                        < %s - make_interval(secs => %s)
+                    THEN 1
+                    ELSE admin_login_rate_limits.failure_count + 1
+                END,
+                window_started_at = CASE
+                    WHEN admin_login_rate_limits.window_started_at
+                        < %s - make_interval(secs => %s)
+                    THEN %s
+                    ELSE admin_login_rate_limits.window_started_at
+                END,
+                locked_until = CASE
+                    WHEN (
+                        CASE
+                            WHEN admin_login_rate_limits.window_started_at
+                                < %s - make_interval(secs => %s)
+                            THEN 1
+                            ELSE admin_login_rate_limits.failure_count + 1
+                        END
+                    ) >= %s
+                    THEN %s + make_interval(secs => %s)
+                    ELSE admin_login_rate_limits.locked_until
+                END,
+                updated_at = %s
+            """,
+            (
+                limiter_key,
+                now,
+                now,
+                now,
+                window_seconds,
+                now,
+                window_seconds,
+                now,
+                now,
+                window_seconds,
+                rate_limit,
+                now,
+                lockout_seconds,
+                now,
+            ),
+        )
+        conn.commit()
+
+
+def clear_admin_login_rate_limit(conn: psycopg.Connection, *, limiter_key: str) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            "DELETE FROM admin_login_rate_limits WHERE limiter_key = %s",
+            (limiter_key,),
+        )
+        conn.commit()
+
+
+def cleanup_expired_admin_login_rate_limits(
+    conn: psycopg.Connection,
+    *,
+    now: datetime,
+    window_seconds: int,
+    lockout_seconds: int,
+) -> int:
+    retention_seconds = max(window_seconds, lockout_seconds) * 2
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            DELETE FROM admin_login_rate_limits
+            WHERE updated_at < %s - make_interval(secs => %s)
+              AND (locked_until IS NULL OR locked_until < %s)
+            """,
+            (now, retention_seconds, now),
+        )
+        deleted = cur.rowcount
+        conn.commit()
+    return deleted
