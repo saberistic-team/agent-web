@@ -22,7 +22,9 @@ Before approving you must:
    screenshot saberistic.com pre-merge — production shots are post-deploy:
    - **PR branch** — `branch-*.png` (public + all admin nav pages when affected)
    Post on the PR and issue — not Copilot / MCP browsers. Skip capture when
-   the PR touches no visual pages (tests/docs only).
+   the PR touches no visual pages (tests/docs only). Upload all PNGs in
+   **one** commit via `upload_to_branch` (never one Contents API commit per
+   image — that storms CI and can dirty the PR mid-review).
 3. Check **visual readability** on the **PR branch** screenshots / live
    capture: hero and primary copy must stay inside the viewport (no horizontal
    overflow / text out of frame on mobile)

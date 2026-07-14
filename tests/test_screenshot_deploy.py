@@ -285,3 +285,28 @@ def test_comment_markdown_title_before_image() -> None:
     )
     assert "- **post-about.png**\n    ![post-about.png](" in body
     assert "post-about.png: ![" not in body
+
+
+def test_upload_to_branch_batches_one_commit(tmp_path, monkeypatch) -> None:
+    from screenshot_deploy import upload_to_branch
+
+    a = tmp_path / "branch-home.png"
+    b = tmp_path / "branch-about.png"
+    a.write_bytes(b"\x89PNG1")
+    b.write_bytes(b"\x89PNG2")
+    seen: dict[str, object] = {}
+
+    def fake_put_files(repo, branch, files, message):  # noqa: ANN001
+        seen["repo"] = repo
+        seen["branch"] = branch
+        seen["files"] = files
+        seen["message"] = message
+        return "sha"
+
+    monkeypatch.setattr("screenshot_deploy.put_files", fake_put_files)
+    urls = upload_to_branch("o/n", "builder/x", [a, b], ".agent/screenshots/pr-1")
+    assert len(seen["files"]) == 2
+    assert seen["files"][0][0].endswith("branch-home.png")
+    assert "2 screenshot" in str(seen["message"])
+    assert urls[0].endswith(".agent/screenshots/pr-1/branch-home.png")
+    assert urls[1].endswith(".agent/screenshots/pr-1/branch-about.png")

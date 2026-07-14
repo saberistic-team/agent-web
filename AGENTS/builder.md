@@ -49,8 +49,16 @@ correct in those scripts — see [docs/MODELS.md](../docs/MODELS.md).
 
 PNG/JPEG/WebP/GIF/ICO (and similar) must be committed as **raw bytes**. Never
 rewrite them through UTF-8 text (`errors=replace` turns `0x89` into `U+FFFD`
-and corrupts Open Graph / share images). Codegen `put_file` accepts `bytes` for
-binary paths.
+and corrupts Open Graph / share images). Codegen `put_file` / `put_files`
+accept `bytes` for binary paths (Git Data API base64 blobs).
+
+## Batched commits (mandatory)
+
+Builder codegen and Reviewer screenshot uploads must land as **one Git
+commit per agent step**, not one Contents API commit per file. Per-file
+pushes storm CI and race other merges into dirty heads (Builder↔Reviewer
+loop). Use `github_api.put_files` / `codegen_models.put_file_batch` /
+`screenshot_deploy.upload_to_branch` (already batched).
 
 ## Merge conflicts (mandatory)
 

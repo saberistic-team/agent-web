@@ -280,13 +280,12 @@ def _build_local(
     default = api("GET", f"/repos/{owner}/{name}").get("default_branch") or "main"
     ref = api("GET", f"/repos/{owner}/{name}/git/ref/heads/{default}")
     base_sha = ref["object"]["sha"]
-    from codegen_models import ensure_branch, put_file, resolve_builder_branch
+    from codegen_models import ensure_branch, put_file_batch, resolve_builder_branch
 
     branch, existing_pr = resolve_builder_branch(repo, issue, title)
     ensure_branch(repo, branch, base_sha)
     commit_message = f"builder(#{issue}): implement via Cursor SDK"
-    for path, content in files:
-        put_file(repo, branch, path, content, f"{commit_message} ({path})")
+    put_file_batch(repo, branch, files, commit_message)
 
     if existing_pr:
         pr_number = int(existing_pr["number"])

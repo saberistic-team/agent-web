@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import base64
 import json
 import os
 import subprocess
@@ -17,7 +16,7 @@ from pathlib import Path
 from typing import Any, Iterator, NamedTuple
 from urllib.parse import urljoin
 
-from github_api import GitHubError, api, post_issue_comment, split_repo, token
+from github_api import GitHubError, api, post_issue_comment, put_files, split_repo, token
 
 DEFAULT_BASE = "https://saberistic.com"
 # Minimum HTML set if app discovery fails (kept for tests / emergency fallback).
@@ -844,25 +843,24 @@ def capture(
 def upload_to_branch(
     repo: str, branch: str, files: list[Path], prefix: str, *, message: str | None = None
 ) -> list[str]:
+    """Upload screenshot PNGs in **one** commit (avoids CI storms / race loops)."""
     owner, name = split_repo(repo)
     token()
-    urls: list[str] = []
-    for path in files:
-        rel = f"{prefix}/{path.name}"
-        content_b64 = base64.b64encode(path.read_bytes()).decode("ascii")
-        put_body = {
-            "message": message or f"review: record {path.name}",
-            "content": content_b64,
-            "branch": branch,
-        }
-        try:
-            existing = api("GET", f"/repos/{owner}/{name}/contents/{rel}?ref={branch}")
-            put_body["sha"] = existing["sha"]
-        except GitHubError:
-            pass
-        api("PUT", f"/repos/{owner}/{name}/contents/{rel}", body=put_body)
-        urls.append(f"https://raw.githubusercontent.com/{owner}/{name}/{branch}/{rel}")
-    return urls
+    if not files:
+        return []
+    batch: list[tuple[str, bytes]] = [
+        (f"{prefix}/{path.name}", path.read_bytes()) for path in files
+    ]
+    put_files(
+        repo,
+        branch,
+        batch,
+        message or f"review: record {len(batch)} screenshot(s)",
+    )
+    return [
+        f"https://raw.githubusercontent.com/{owner}/{name}/{branch}/{rel}"
+        for rel, _ in batch
+    ]
 
 
 def _screenshot_list_lines(urls: list[str], *, indent: str = "  ") -> list[str]:
