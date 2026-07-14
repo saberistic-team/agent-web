@@ -100,3 +100,23 @@ def test_list_pr_files_paginates(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_retry_delay_honors_retry_after() -> None:
     assert github_api._retry_delay_s(0, retry_after="3") == 3.0
     assert github_api._retry_delay_s(0, retry_after="999") == github_api.API_BACKOFF_CAP_S
+
+
+def test_list_issue_comments_paginates(monkeypatch: pytest.MonkeyPatch) -> None:
+    pages = {
+        1: [{"id": i, "body": f"c{i}"} for i in range(100)],
+        2: [{"id": 100, "body": "### acceptance_checklist\n- all_done: `true`"}],
+    }
+
+    def fake_api(method: str, path: str, **_kwargs: Any) -> Any:
+        assert method == "GET"
+        assert "per_page=100" in path
+        page = 1
+        if "page=" in path:
+            page = int(path.rsplit("page=", 1)[-1])
+        return pages.get(page, [])
+
+    monkeypatch.setattr(github_api, "api", fake_api)
+    comments = github_api.list_issue_comments("o/n", 83)
+    assert len(comments) == 101
+    assert "all_done" in comments[-1]["body"]
