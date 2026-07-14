@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS contacts (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     company_id UUID REFERENCES companies (id) ON DELETE SET NULL,
-    email TEXT,
+    email TEXT NOT NULL,
     full_name TEXT,
     CONSTRAINT contacts_email_unique UNIQUE (email)
 );
@@ -142,6 +142,56 @@ CREATE INDEX IF NOT EXISTS idx_admin_users_is_active ON admin_users (is_active);
     ),
     Migration(
         version="004",
+        name="admin_sessions",
+        up_sql="""
+CREATE TABLE IF NOT EXISTS admin_sessions (
+    id SERIAL PRIMARY KEY,
+    token_hash TEXT NOT NULL UNIQUE,
+    admin_username TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL,
+    revoked_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS admin_sessions_token_hash_idx ON admin_sessions (token_hash);
+""",
+    ),
+    Migration(
+        version="005",
+        name="admin_login_rate_limits",
+        up_sql="""
+CREATE TABLE IF NOT EXISTS admin_login_rate_limits (
+    limiter_key TEXT PRIMARY KEY,
+    failure_count INTEGER NOT NULL DEFAULT 0,
+    window_started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    locked_until TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS admin_login_rate_limits_locked_until_idx
+    ON admin_login_rate_limits (locked_until);
+CREATE INDEX IF NOT EXISTS admin_login_rate_limits_updated_at_idx
+    ON admin_login_rate_limits (updated_at);
+""",
+    ),
+    Migration(
+        version="006",
+        name="admin_csrf_binding",
+        up_sql="""
+CREATE TABLE IF NOT EXISTS admin_login_flows (
+    id SERIAL PRIMARY KEY,
+    flow_token_hash TEXT NOT NULL UNIQUE,
+    csrf_token_hash TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL,
+    consumed_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS admin_login_flows_flow_token_hash_idx
+    ON admin_login_flows (flow_token_hash);
+
+ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS csrf_token_hash TEXT;
+""",
+    ),
+    Migration(
+        version="007",
         name="contacts_extended",
         up_sql="""
 ALTER TABLE contacts DROP CONSTRAINT IF EXISTS contacts_email_unique;
