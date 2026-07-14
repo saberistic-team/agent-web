@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncIterator
@@ -19,6 +20,9 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import analytics_service, case_studies, db, email_service, insights, page_service, stripe_service
+from app.admin_auth import AdminLoginRequired, login_redirect_url
+from app.admin_routes import router as admin_router
+from app.actor_context import CORRELATION_HEADER
 from app.config import get_settings
 from app.models import BriefCreateRequest, BriefCreateResponse
 from app.seo import (
@@ -49,6 +53,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="agent-web", version="0.3.0", lifespan=lifespan)
 app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
+app.include_router(admin_router)
+
+
+@app.exception_handler(AdminLoginRequired)
+async def redirect_unauthenticated_admin(
+    request: Request,
+    exc: AdminLoginRequired,
+) -> RedirectResponse:
+    return RedirectResponse(url=login_redirect_url(exc.next_path), status_code=303)
+
+
+@app.middleware("http")
+async def attach_correlation_id(request: Request, call_next):
+    correlation_id = request.headers.get(CORRELATION_HEADER, "").strip()
+    if not correlation_id:
+        correlation_id = str(uuid.uuid4())
+    request.state.correlation_id = correlation_id
+    response = await call_next(request)
+    response.headers[CORRELATION_HEADER] = correlation_id
+    return response
 
 
 @app.middleware("http")
