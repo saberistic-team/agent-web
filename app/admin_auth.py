@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import secrets
 import time
-from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from threading import Lock
@@ -18,6 +18,7 @@ from argon2.exceptions import InvalidHash, VerifyMismatchError
 from fastapi import Request
 from fastapi.responses import Response
 
+from app import db
 from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
@@ -28,9 +29,14 @@ INVALID_CREDENTIALS_MESSAGE = "Invalid username or password."
 INVALID_REQUEST_MESSAGE = "Invalid request."
 LOGIN_THROTTLED_MESSAGE = "Too many login attempts. Try again later."
 
+# Conservative in-memory fallback when shared Postgres limiter storage is unavailable.
+_FALLBACK_RATE_LIMIT = 2
+_FALLBACK_WINDOW_SECONDS = 60
+
 _password_hasher = PasswordHasher()
-_rate_lock = Lock()
-_login_attempts: dict[str, list[float]] = defaultdict(list)
+_fallback_lock = Lock()
+_fallback_attempts: dict[str, tuple[int, float]] = {}
+_logger = logging.getLogger(__name__)
 
 
 class AdminLoginRequired(Exception):
@@ -52,9 +58,9 @@ class AdminSession:
 
 
 def reset_login_rate_limiter() -> None:
-    """Clear in-memory login attempt counters (tests only)."""
-    with _rate_lock:
-        _login_attempts.clear()
+    """Clear fallback login attempt counters (tests only)."""
+    with _fallback_lock:
+        _fallback_attempts.clear()
 
 
 def hash_session_token(raw_token: str) -> str:
@@ -145,33 +151,114 @@ def read_login_flow_token(request: Request) -> str | None:
     return token.strip() or None
 
 
-def client_ip(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+def client_ip(request: Request, settings: Settings) -> str:
+    """Resolve the client source IP for rate limiting.
+
+    Forwarding headers are honored only when ``ADMIN_TRUST_PROXY_HEADERS`` is
+    enabled (e.g. behind Render's load balancer). Otherwise the direct peer
+    address is used so clients cannot spoof ``X-Forwarded-For``.
+    """
+    if settings.admin_trust_proxy_headers:
+        forwarded = request.headers.get("x-forwarded-for", "")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
     if request.client is not None:
         return request.client.host
     return "unknown"
 
 
-def is_login_throttled(request: Request, settings: Settings) -> bool:
-    ip = client_ip(request)
-    now = time.time()
-    window_start = now - settings.admin_login_rate_window_seconds
-    with _rate_lock:
-        attempts = [ts for ts in _login_attempts[ip] if ts >= window_start]
-        _login_attempts[ip] = attempts
-        return len(attempts) >= settings.admin_login_rate_limit
+def build_rate_limit_key(username: str, client_source: str) -> str:
+    """Derive a durable limiter key without storing raw username or IP.
+
+    Key strategy: SHA-256 of ``normalized_username:client_source`` where the
+    username is lowercased/stripped and the client source is the resolved IP
+    from :func:`client_ip`.
+    """
+    normalized_username = username.strip().lower()
+    material = f"{normalized_username}:{client_source}"
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
-def record_failed_login(request: Request, settings: Settings) -> None:
-    ip = client_ip(request)
+def _is_fallback_throttled(limiter_key: str) -> bool:
     now = time.time()
-    window_start = now - settings.admin_login_rate_window_seconds
-    with _rate_lock:
-        attempts = [ts for ts in _login_attempts[ip] if ts >= window_start]
-        attempts.append(now)
-        _login_attempts[ip] = attempts
+    with _fallback_lock:
+        entry = _fallback_attempts.get(limiter_key)
+        if entry is None:
+            return False
+        count, window_start = entry
+        if now - window_start >= _FALLBACK_WINDOW_SECONDS:
+            del _fallback_attempts[limiter_key]
+            return False
+        return count >= _FALLBACK_RATE_LIMIT
+
+
+def _record_fallback_failure(limiter_key: str) -> None:
+    now = time.time()
+    with _fallback_lock:
+        count, window_start = _fallback_attempts.get(limiter_key, (0, now))
+        if now - window_start >= _FALLBACK_WINDOW_SECONDS:
+            count = 0
+            window_start = now
+        _fallback_attempts[limiter_key] = (count + 1, window_start)
+
+
+def _clear_fallback_failure(limiter_key: str) -> None:
+    with _fallback_lock:
+        _fallback_attempts.pop(limiter_key, None)
+
+
+def is_login_throttled(request: Request, settings: Settings, *, username: str = "") -> bool:
+    limiter_key = build_rate_limit_key(username, client_ip(request, settings))
+    now = datetime.now(timezone.utc)
+    try:
+        with db.db_connection(settings.database_url) as conn:
+            return db.is_admin_login_throttled(conn, limiter_key=limiter_key, now=now)
+    except Exception:
+        _logger.warning(
+            "Admin login rate limiter unavailable; using conservative fallback",
+            exc_info=True,
+        )
+        return _is_fallback_throttled(limiter_key)
+
+
+def record_failed_login(request: Request, settings: Settings, *, username: str = "") -> None:
+    limiter_key = build_rate_limit_key(username, client_ip(request, settings))
+    now = datetime.now(timezone.utc)
+    try:
+        with db.db_connection(settings.database_url) as conn:
+            db.record_admin_login_failure(
+                conn,
+                limiter_key=limiter_key,
+                now=now,
+                rate_limit=settings.admin_login_rate_limit,
+                window_seconds=settings.admin_login_rate_window_seconds,
+                lockout_seconds=settings.admin_login_lockout_seconds,
+            )
+            db.cleanup_expired_admin_login_rate_limits(
+                conn,
+                now=now,
+                window_seconds=settings.admin_login_rate_window_seconds,
+                lockout_seconds=settings.admin_login_lockout_seconds,
+            )
+    except Exception:
+        _logger.warning(
+            "Admin login rate limiter unavailable; recording fallback failure",
+            exc_info=True,
+        )
+        _record_fallback_failure(limiter_key)
+
+
+def clear_login_rate_limit(request: Request, settings: Settings, *, username: str = "") -> None:
+    limiter_key = build_rate_limit_key(username, client_ip(request, settings))
+    _clear_fallback_failure(limiter_key)
+    try:
+        with db.db_connection(settings.database_url) as conn:
+            db.clear_admin_login_rate_limit(conn, limiter_key=limiter_key)
+    except Exception:
+        _logger.warning(
+            "Admin login rate limiter unavailable; cleared fallback only",
+            exc_info=True,
+        )
 
 
 def verify_admin_credentials(username: str, password: str, settings: Settings) -> bool:
