@@ -1,4 +1,4 @@
-"""Case study data and HTML rendering for /work/{slug} pages."""
+"""Case study data and HTML rendering for /work/{slug} and /case-studies pages."""
 
 from __future__ import annotations
 
@@ -6,6 +6,9 @@ import html
 import json
 from pathlib import Path
 from typing import Any, Literal
+
+from app.insights import _render_head, _render_page_shell
+from app.seo import CANONICAL_BASE
 
 Engagement = Literal["employer", "founder", "saberistic"]
 
@@ -23,6 +26,12 @@ DISCLAIMERS: dict[Engagement, str] = {
     "employer": "Prior employer role — not a Saberistic client engagement.",
     "founder": "Independent venture — not a Saberistic client engagement.",
     "saberistic": "Saberistic engagement — sanitized composite; no client identified.",
+}
+
+INDEX_META_LABELS: dict[Engagement, str] = {
+    "employer": "prior employer role",
+    "founder": "founder venture",
+    "saberistic": "sanitized diagnostic",
 }
 
 
@@ -80,6 +89,73 @@ def get_case_study(slug: str, path: Path | None = None) -> dict[str, Any] | None
 def list_featured_slugs(path: Path | None = None) -> list[str]:
     """Slugs promoted on the homepage (first three studies)."""
     return [study["slug"] for study in load_case_studies(path)[:3]]
+
+
+def render_case_studies_index(path: Path | None = None) -> str:
+    """Render the /case-studies listing page."""
+    studies = load_case_studies(path)
+    title = "Case studies — saberistic"
+    description = (
+        "Five outcome-oriented case studies — infrastructure, security, "
+        "engineering leadership, and architecture diagnostics."
+    )
+    json_ld = {
+        "@context": "https://schema.org",
+        "@type": "CollectionPage",
+        "name": title,
+        "description": description,
+        "url": f"{CANONICAL_BASE}/case-studies",
+        "isPartOf": {"@type": "WebSite", "name": "saberistic", "url": f"{CANONICAL_BASE}/"},
+    }
+
+    head = _render_head(
+        title=title,
+        description=description,
+        canonical_path="/case-studies",
+        og_type="website",
+        json_ld=json_ld,
+        feed_link=True,
+    )
+
+    items: list[str] = []
+    for study in studies:
+        engagement = study["engagement"]
+        meta_label = INDEX_META_LABELS[engagement]  # type: ignore[index]
+        org_display = "Saberistic" if engagement == "saberistic" else study["org"]
+        org = html.escape(org_display)
+        slug = html.escape(study["slug"])
+        headline = html.escape(study["headline"])
+        summary = html.escape(study["result"])
+        items.append(
+            f"""          <li class="proof-item">
+            <a class="proof-link" href="/work/{slug}">
+              <span class="proof-headline">{headline}</span>
+              <span class="proof-meta">{org} · {html.escape(meta_label)}</span>
+            </a>
+            <p class="proof-summary">{summary}</p>
+          </li>"""
+        )
+
+    items_html = "\n".join(items)
+
+    main = f"""      <section class="block case-studies-index" aria-labelledby="case-studies-title">
+        <h1 class="page-title" id="case-studies-title">Case studies</h1>
+        <p class="proof-lede">
+          Outcome-oriented case studies — problems addressed, interventions
+          applied, and results delivered. Employer roles are distinguished from
+          Saberistic engagements.
+        </p>
+        <ul class="proof-list">
+{items_html}
+        </ul>
+        <p class="case-cta-row">
+          Facing a similar architecture, reliability, security, or
+          technical-leadership problem?
+          <a class="cta" href="/brief">Request an Architecture Diagnostic</a>
+        </p>
+      </section>"""
+
+    return _render_page_shell(head=head, main=main, top_link="Insights")
 
 
 def render_case_study_page(study: dict[str, Any]) -> str:
