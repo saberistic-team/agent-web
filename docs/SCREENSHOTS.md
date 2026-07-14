@@ -57,7 +57,11 @@ Playwright can open admin pages **without login**.
 4. Uploads under `.agent/screenshots/pr-<n>/` and comments
    `### reviewer_screenshots_pre` on the **PR and issue** (titles above images)
 5. Does **not** hit saberistic.com
-6. AI review + approve gates as usual
+6. **Empty-shell gate:** Playwright inspects admin HTML for empty data tables /
+   “no … yet” / placeholder milestone copy and Reviewer **hard-fails** so
+   Builder must extend `app/admin_preview.py` (see
+   `format_empty_data_hard_fail`)
+7. AI review + approve gates as usual
 
 ## Post-deploy (after merge to `main`)
 

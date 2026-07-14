@@ -14,6 +14,25 @@ def test_fixable_includes_coverage_and_visual() -> None:
     assert is_fixable_changes_requested(body)
 
 
+def test_fixable_includes_empty_preview_data() -> None:
+    body = (
+        "### reviewer_decision\n"
+        "- decision: `changes-requested`\n"
+        "- hard_fails:\n"
+        "  - admin preview empty data: screenshot page(s) rendered without mock rows — "
+        "`/admin/briefs` reason=`empty_table`\n"
+    )
+    assert is_fixable_changes_requested(body)
+    assert (
+        resolve_decision(
+            latest_state="CHANGES_REQUESTED",
+            latest_body=body,
+            prior_changes_requested=3,
+        )
+        == "changes-requested"
+    )
+
+
 def test_fixable_includes_merge_conflicts() -> None:
     body = (
         "### reviewer_decision\n"

@@ -463,6 +463,48 @@ def build_preview_brief_detail(
     return None
 
 
+AUDIT_ACTIONS = (
+    "admin.login.success",
+    "admin.logout",
+    "import.batch",
+    "entity.delete",
+    "pipeline.update",
+)
+
+
+def build_preview_audit_events(
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> list[dict[str, object]]:
+    """Randomized audit rows for ADMIN_PREVIEW_MODE screenshots."""
+    rng = rng or _preview_rng()
+    now = now or datetime.now(timezone.utc)
+    count = rng.randint(4, 8)
+    events: list[dict[str, object]] = []
+    for i in range(count):
+        created = now - timedelta(hours=rng.randint(1, 72), minutes=rng.randint(0, 50))
+        action = rng.choice(AUDIT_ACTIONS)
+        company = rng.choice(COMPANY_NAMES)
+        actor = f"{rng.choice(CONTACT_FIRST).lower()}@saberistic.com"
+        events.append(
+            {
+                "id": i + 1,
+                "created_at": created,
+                "actor": actor,
+                "action": action,
+                "entity_type": "company" if "pipeline" in action or "delete" in action else None,
+                "entity_id": str(rng.randint(10, 99)) if "pipeline" in action else None,
+                "correlation_id": f"corr-preview-{rng.randint(1000, 9999)}",
+                "summary_before": {"name": company} if "update" in action else None,
+                "summary_after": {"status": rng.choice(PIPELINE_STAGES)}
+                if "update" in action
+                else {"ok": True},
+            }
+        )
+    return events
+
+
 def render_preview_section_main(
     *,
     label: str,

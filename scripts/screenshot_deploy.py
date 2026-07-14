@@ -118,6 +118,7 @@ DEFAULT_PREVIEW_PORT = 8765
 class CaptureResult(NamedTuple):
     paths: list[Path]
     overflows: list[dict[str, Any]]
+    empty_pages: list[dict[str, Any]] = []
 
 
 class PreCaptureResult(NamedTuple):
@@ -129,6 +130,7 @@ class PreCaptureResult(NamedTuple):
     prod_overflows: list[dict[str, Any]]
     branch_url: str
     prod_url: str
+    branch_empty_pages: list[dict[str, Any]] = []
 
     @property
     def paths(self) -> list[Path]:
@@ -138,6 +140,10 @@ class PreCaptureResult(NamedTuple):
     def overflows(self) -> list[dict[str, Any]]:
         # Readability gate applies to the code under review (branch), not prod.
         return self.branch_overflows
+
+    @property
+    def empty_pages(self) -> list[dict[str, Any]]:
+        return self.branch_empty_pages
 
 
 def screenshot_basename(phase: str, route: str, viewport: str) -> str:
@@ -607,6 +613,7 @@ def capture_pre_dual(
         prod_overflows=[],
         branch_url=branch_url,
         prod_url="",
+        branch_empty_pages=list(branch.empty_pages),
     )
 
 
@@ -675,6 +682,18 @@ def _route_url(base: str, route: str) -> str:
     return urljoin(base + "/", route.lstrip("/"))
 
 
+# Phrases that mean an admin data page rendered an empty shell under
+# ADMIN_PREVIEW_MODE (Builder must ship randomized mock rows).
+ADMIN_EMPTY_SHELL_PHRASES = (
+    "no project briefs submitted yet",
+    "no audit events recorded yet",
+    "no briefs match your filters",
+    "this navigation shell is live; functionality arrives",
+    "will ship in the",
+)
+ADMIN_EMPTY_CHECK_SKIP = frozenset({"/admin/login"})
+
+
 def _page_overflows(page: Any, *, viewport: str, route: str) -> list[dict[str, Any]]:
     """Return horizontal overflow findings for key landing selectors."""
     try:
@@ -721,6 +740,70 @@ def _page_overflows(page: Any, *, viewport: str, route: str) -> list[dict[str, A
     return findings
 
 
+def _page_empty_data(page: Any, *, viewport: str, route: str) -> list[dict[str, Any]]:
+    """Detect admin data pages that rendered empty shells (no mock rows)."""
+    if not is_admin_screenshot_route(route):
+        return []
+    normalized = route if route == "/" else route.rstrip("/") or "/"
+    if normalized in ADMIN_EMPTY_CHECK_SKIP:
+        return []
+    try:
+        raw = page.evaluate(
+            """(phrases) => {
+              const body = (document.body && document.body.innerText || '')
+                .toLowerCase();
+              let phrase = null;
+              for (const p of phrases) {
+                if (body.includes(p)) { phrase = p; break; }
+              }
+              const tables = document.querySelectorAll(
+                'table.brief-table, table.audit-table, table.admin-table'
+              );
+              let emptyTable = false;
+              for (const t of tables) {
+                const rows = Array.from(t.querySelectorAll('tbody tr'));
+                if (rows.length === 0) { emptyTable = true; break; }
+                if (
+                  rows.length === 1 &&
+                  rows[0].querySelector('.audit-empty')
+                ) {
+                  emptyTable = true;
+                  break;
+                }
+              }
+              const eyebrow = document.querySelector('.admin-eyebrow');
+              const placeholder = !!(
+                eyebrow &&
+                (eyebrow.textContent || '').toLowerCase().includes('placeholder') &&
+                body.includes('will ship in the')
+              );
+              return { phrase, emptyTable, placeholder, tableCount: tables.length };
+            }""",
+            list(ADMIN_EMPTY_SHELL_PHRASES),
+        )
+    except Exception:  # noqa: BLE001
+        return []
+    if not isinstance(raw, dict):
+        return []
+    empty_table = bool(raw.get("emptyTable"))
+    placeholder = bool(raw.get("placeholder"))
+    phrase = raw.get("phrase")
+    # Phrase alone only fails when tied to a data table / placeholder shell —
+    # avoid false positives on unrelated copy.
+    if not empty_table and not placeholder:
+        return []
+    reason = "empty_table" if empty_table else "placeholder_shell"
+    return [
+        {
+            "viewport": viewport,
+            "route": route,
+            "reason": reason,
+            "phrase": phrase or "",
+            "table_count": raw.get("tableCount"),
+        }
+    ]
+
+
 def format_overflow_hard_fail(overflows: list[dict[str, Any]]) -> str | None:
     """Build a Reviewer hard-fail line for mobile/out-of-frame text."""
     mobile = [o for o in overflows if o.get("viewport") == "mobile"]
@@ -733,6 +816,27 @@ def format_overflow_hard_fail(overflows: list[dict[str, Any]]) -> str | None:
         f"{sample.get('route')} {sample.get('selector')} "
         f"right={sample.get('right')} vw={sample.get('viewport_width')} "
         f"text={text!r}; builder must fix CSS/typography so hero copy fits"
+    )
+
+
+def format_empty_data_hard_fail(empty_pages: list[dict[str, Any]]) -> str | None:
+    """Build a Reviewer hard-fail when admin preview shots show empty shells."""
+    if not empty_pages:
+        return None
+    # Dedupe by route (desktop+mobile both fire).
+    by_route: dict[str, dict[str, Any]] = {}
+    for item in empty_pages:
+        route = str(item.get("route") or "")
+        if route and route not in by_route:
+            by_route[route] = item
+    sample = next(iter(by_route.values()))
+    routes = ", ".join(f"`{r}`" for r in sorted(by_route))
+    phrase = (sample.get("phrase") or "").replace("\n", " ")[:80]
+    return (
+        "admin preview empty data: screenshot page(s) rendered without mock rows — "
+        f"{routes} reason=`{sample.get('reason')}` phrase={phrase!r}; "
+        "builder must extend app/admin_preview.py (ADMIN_PREVIEW_MODE) so Reviewer "
+        "shots are populated"
     )
 
 
@@ -756,6 +860,7 @@ def capture(
     out_dir.mkdir(parents=True, exist_ok=True)
     paths: list[Path] = []
     overflows: list[dict[str, Any]] = []
+    empty_pages: list[dict[str, Any]] = []
     base = resolve_base_url(base_url)
     if routes is None:
         source = resolve_screenshot_routes(
@@ -777,7 +882,9 @@ def capture(
         if routes is not None or changed_files is not None:
             report = out_dir / f"{phase}-overflow.json"
             report.write_text("[]\n", encoding="utf-8")
-            return CaptureResult(paths=[], overflows=[])
+            empty_report = out_dir / f"{phase}-empty-pages.json"
+            empty_report.write_text("[]\n", encoding="utf-8")
+            return CaptureResult(paths=[], overflows=[], empty_pages=[])
         html_routes = list(HTML_PATHS)
 
     with sync_playwright() as p:
@@ -824,6 +931,9 @@ def capture(
                 overflows.extend(
                     _page_overflows(page, viewport=viewport_name, route=route)
                 )
+                empty_pages.extend(
+                    _page_empty_data(page, viewport=viewport_name, route=route)
+                )
                 dest = out_dir / screenshot_basename(phase, route, viewport_name)
                 page.screenshot(path=str(dest), full_page=True)
                 paths.append(dest)
@@ -837,7 +947,9 @@ def capture(
         )
     report = out_dir / f"{phase}-overflow.json"
     report.write_text(json.dumps(overflows, indent=2) + "\n", encoding="utf-8")
-    return CaptureResult(paths=paths, overflows=overflows)
+    empty_report = out_dir / f"{phase}-empty-pages.json"
+    empty_report.write_text(json.dumps(empty_pages, indent=2) + "\n", encoding="utf-8")
+    return CaptureResult(paths=paths, overflows=overflows, empty_pages=empty_pages)
 
 
 def upload_to_branch(

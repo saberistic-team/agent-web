@@ -20,6 +20,7 @@ _FIXABLE_RE = re.compile(
     r"coverage|missing tests|without test file|check `|screenshots failed|"
     r"acceptance criteria incomplete|visual readability|out of frame|"
     r"overflow|clipped|pytest|test_|"
+    r"admin preview empty data|empty shell|mock rows|ADMIN_PREVIEW|"
     r"merge conflict|mergeable|mergeability|return to Builder",
     re.I,
 )

@@ -104,6 +104,19 @@ def test_preview_brief_rows_randomized_and_seed_stable() -> None:
 
 
 @pytest.mark.unit
+def test_preview_audit_events_seed_stable() -> None:
+    from app.admin_preview import build_preview_audit_events
+
+    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
+    a = build_preview_audit_events(rng=random.Random(9), now=now)
+    b = build_preview_audit_events(rng=random.Random(9), now=now)
+    assert a == b
+    assert 4 <= len(a) <= 8
+    assert a[0]["action"]
+    assert a[0]["actor"]
+
+
+@pytest.mark.unit
 @pytest.mark.integration
 def test_admin_preview_briefs_list_and_detail_have_mock_data(
     monkeypatch: pytest.MonkeyPatch,
@@ -139,3 +152,7 @@ def test_admin_preview_briefs_list_and_detail_have_mock_data(
     assert "Pending" in emptyish.text
     missing = client.get("/admin/briefs/999")
     assert missing.status_code == 404
+    audit = client.get("/admin/audit")
+    assert audit.status_code == 200
+    assert "No audit events recorded yet." not in audit.text
+    assert "audit-table" in audit.text

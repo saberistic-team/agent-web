@@ -214,6 +214,50 @@ def test_format_overflow_hard_fail_mobile_only() -> None:
     assert "mobile" in msg or "390" in msg
 
 
+def test_format_empty_data_hard_fail_dedupes_routes() -> None:
+    from screenshot_deploy import format_empty_data_hard_fail
+
+    assert format_empty_data_hard_fail([]) is None
+    msg = format_empty_data_hard_fail(
+        [
+            {
+                "viewport": "desktop",
+                "route": "/admin/briefs",
+                "reason": "empty_table",
+                "phrase": "no project briefs submitted yet",
+            },
+            {
+                "viewport": "mobile",
+                "route": "/admin/briefs",
+                "reason": "empty_table",
+                "phrase": "no project briefs submitted yet",
+            },
+            {
+                "viewport": "desktop",
+                "route": "/admin/audit",
+                "reason": "empty_table",
+                "phrase": "no audit events recorded yet",
+            },
+        ]
+    )
+    assert msg is not None
+    assert "admin preview empty data" in msg
+    assert "`/admin/briefs`" in msg
+    assert "`/admin/audit`" in msg
+    assert "admin_preview.py" in msg
+
+
+def test_page_empty_data_helper_flags_empty_table_phrases() -> None:
+    """Pure helper parity: empty shell phrases used by Playwright checks."""
+    from screenshot_deploy import ADMIN_EMPTY_SHELL_PHRASES
+
+    body = "Submitted briefs\n0 briefs\nNo project briefs submitted yet."
+    lowered = body.lower()
+    assert any(p in lowered for p in ADMIN_EMPTY_SHELL_PHRASES)
+    preview_ok = "Submitted briefs\n#1\nhttps://acme.example\nPaid"
+    assert not any(p in preview_ok.lower() for p in ADMIN_EMPTY_SHELL_PHRASES)
+
+
 def test_resolve_base_url_ignores_empty(monkeypatch) -> None:
     monkeypatch.setenv("DEPLOY_BASE_URL", "")
     assert resolve_base_url("") == "https://saberistic.com"
