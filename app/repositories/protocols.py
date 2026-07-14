@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -103,6 +104,20 @@ class AdminUserRepository(Protocol):
     def get_by_email(self, conn: psycopg.Connection, email: str) -> dict[str, Any] | None: ...
 
     def get_by_id(self, conn: psycopg.Connection, user_id: UUID) -> dict[str, Any] | None: ...
+
+class ProjectBriefRepository(Protocol):
+    def list_page(
+        self,
+        conn: psycopg.Connection,
+        *,
+        page: int = 1,
+        per_page: int = 50,
+        query: str | None = None,
+        status: str | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+    ) -> tuple[list[dict[str, Any]], int]: ...
+
 
 class AuditEventRepository(Protocol):
     def append(
