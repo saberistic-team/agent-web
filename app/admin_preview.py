@@ -54,6 +54,8 @@ PIPELINE_STAGES = ("qualified", "discovery", "proposal", "negotiation", "won")
 IMPORT_STATUSES = ("queued", "running", "complete", "failed")
 CONTENT_KINDS = ("insight", "case-study", "landing", "brief copy")
 BRIEF_PAYMENT_STATUSES = ("pending_payment", "paid", "abandoned")
+# Reserved preview detail id for ADMIN_PREVIEW_MODE database-unavailable screenshots.
+PREVIEW_BRIEF_DATABASE_ERROR_ID = 503
 BRIEF_TEXTS = (
     "Need a technical architecture review of our payments platform — "
     "API boundaries, retention, and rollout sequencing.",

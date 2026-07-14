@@ -12,8 +12,9 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import ValidationError
 
 from app import admin, admin_auth, admin_pages, admin_research_pages, audit_service, brief_service, db
-from app.actor_context import actor_context_from_request, anonymous_actor_context
+from app.actor_context import actor_context_from_request, anonymous_actor_context, correlation_id_from_request
 from app.admin_layout import ADMIN_NAV_LINKS, render_admin_shell
+from app.admin_preview import PREVIEW_BRIEF_DATABASE_ERROR_ID
 from app.config import Settings, get_settings
 from app.crm_service import CrmService
 from app.research_records import ResearchRecordCreate
@@ -674,8 +675,12 @@ def admin_briefs_list(
                     date_from=date_from,
                     date_to=date_to,
                 )
-        except Exception:
-            logger.exception("Failed to load admin briefs list")
+        except brief_service.BRIEF_DATABASE_ERRORS:
+            correlation_id = correlation_id_from_request(request)
+            logger.exception(
+                "Failed to load admin briefs list (correlation_id=%s)",
+                correlation_id,
+            )
             db_error = True
     return HTMLResponse(
         admin_pages.render_admin_briefs_page(
@@ -713,6 +718,21 @@ def admin_brief_detail(
         date_to=date_to,
     )
     if settings.admin_preview_enabled:
+        if brief_id == PREVIEW_BRIEF_DATABASE_ERROR_ID:
+            correlation_id = correlation_id_from_request(request)
+            retry_href = request.url.path
+            if request.url.query:
+                retry_href = f"{retry_href}?{request.url.query}"
+            return HTMLResponse(
+                admin_pages.render_admin_brief_database_unavailable(
+                    admin_username=session.admin_username,
+                    back_filters=back_filters,
+                    retry_href=retry_href,
+                    correlation_id=correlation_id,
+                    csrf_token=csrf_token,
+                ),
+                status_code=503,
+            )
         brief = brief_service.preview_brief_detail(brief_id)
         if brief is None:
             return HTMLResponse(
@@ -746,16 +766,25 @@ def admin_brief_detail(
     try:
         with db.db_connection(settings.database_url) as conn:
             brief = brief_service.get_brief(conn, brief_id)
-    except Exception:
-        logger.exception("Failed to load admin brief detail for id %s", brief_id)
+    except brief_service.BRIEF_DATABASE_ERRORS:
+        correlation_id = correlation_id_from_request(request)
+        logger.exception(
+            "Failed to load admin brief detail for id %s (correlation_id=%s)",
+            brief_id,
+            correlation_id,
+        )
+        retry_href = request.url.path
+        if request.url.query:
+            retry_href = f"{retry_href}?{request.url.query}"
         return HTMLResponse(
-            admin_pages.render_admin_brief_not_found(
-                brief_id=brief_id,
+            admin_pages.render_admin_brief_database_unavailable(
                 admin_username=session.admin_username,
                 back_filters=back_filters,
+                retry_href=retry_href,
+                correlation_id=correlation_id,
                 csrf_token=csrf_token,
             ),
-            status_code=404,
+            status_code=503,
         )
     if brief is None:
         return HTMLResponse(
