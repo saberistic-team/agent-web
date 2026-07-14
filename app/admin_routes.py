@@ -4,36 +4,23 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+
 from uuid import UUID
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from app import admin, admin_auth, admin_companies, admin_contacts, admin_pages, audit_service, brief_service, db
+from app.crm_service import CrmService
 from app.actor_context import actor_context_from_request, anonymous_actor_context
 from app.admin_layout import ADMIN_NAV_LINKS
 from app.config import Settings, get_settings
-from app.crm_service import CrmService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 PREVIEW_SESSION_TOKEN = "preview-screenshot-session"
-
-
-def _crm_service() -> CrmService:
-    return CrmService()
-
-
-def _require_crm_db(settings: Settings) -> None:
-    if not settings.database_configured:
-        raise HTTPException(status_code=503, detail="Database not configured")
-
-
-def _verify_session_csrf(csrf_token: str, session: admin_auth.AdminSession) -> None:
-    if not admin_auth.verify_csrf_value(csrf_token, session.csrf_token_hash):
-        raise HTTPException(status_code=400, detail=admin_auth.INVALID_REQUEST_MESSAGE)
 
 
 def _require_admin_auth_configured(settings: Settings) -> None:
@@ -179,6 +166,20 @@ def _issue_session_csrf(settings: Settings, session_id: int) -> str:
             csrf_token_hash=csrf_hash,
         )
     return raw_csrf_token
+
+
+def _verify_session_csrf(csrf_token: str, session: admin_auth.AdminSession) -> None:
+    if not admin_auth.verify_csrf_value(csrf_token, session.csrf_token_hash):
+        raise HTTPException(status_code=400, detail=admin_auth.INVALID_REQUEST_MESSAGE)
+
+
+def _crm_service() -> CrmService:
+    return CrmService()
+
+
+def _require_crm_db(settings: Settings) -> None:
+    if not settings.database_configured:
+        raise HTTPException(status_code=503, detail="Database not configured")
 
 
 def _issue_session(
@@ -613,7 +614,7 @@ def admin_contacts_create(
     _verify_session_csrf(csrf_token, session)
     settings = get_settings()
     _require_crm_db(settings)
-    csrf_token = _issue_session_csrf(settings, session.id)
+    csrf_token = _issue_session_csrf(settings, session.id) if session.id else ""
     if not name.strip():
         with db.db_connection(settings.database_url) as conn:
             companies = _crm_service()._repos.companies.list_all(conn)
@@ -698,7 +699,7 @@ def admin_contacts_update(
     _verify_session_csrf(csrf_token, session)
     settings = get_settings()
     _require_crm_db(settings)
-    csrf_token = _issue_session_csrf(settings, session.id)
+    csrf_token = _issue_session_csrf(settings, session.id) if session.id else ""
     if not name.strip():
         with db.db_connection(settings.database_url) as conn:
             companies = _crm_service()._repos.companies.list_all(conn)
@@ -815,13 +816,7 @@ def admin_company_detail(request: Request, company_id: str) -> HTMLResponse:
 
 
 for _link in ADMIN_NAV_LINKS:
-    if _link["href"] in {
-        "/admin",
-        "/admin/audit",
-        "/admin/briefs",
-        "/admin/contacts",
-        "/admin/companies",
-    }:
+    if _link["href"] in {"/admin", "/admin/audit", "/admin/briefs", "/admin/contacts", "/admin/companies"}:
         continue
     _section = _link["href"].removeprefix("/admin/")
 
