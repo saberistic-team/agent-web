@@ -567,11 +567,11 @@ main {
 }
 
 .proof-summary {
-  margin: -0.35rem 0 0;
-  padding: 0 0 1.25rem;
+  margin: 0 0 1.25rem;
+  padding: 0 0 0.25rem;
+  max-width: 52ch;
   color: var(--muted);
-  font-size: 0.85rem;
-  line-height: 1.5;
+  font-size: 0.9rem;
 }
 
 .case-study {
