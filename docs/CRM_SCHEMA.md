@@ -13,7 +13,7 @@ unchanged; CRM tables are storage-only until later admin/import issues wire rout
 | Public brief intake | `app/db.py` | `project_briefs` |
 | CRM entities | `app/repositories/postgres.py` | `companies`, `contacts`, `source_records`, `activities` |
 | Admin auth (CRM users) | `app/repositories/postgres.py` | `admin_users` |
-| Admin auth (sessions) | `app/db.py` | `admin_sessions` (migration `004`) |
+| Admin auth (sessions) | `app/db.py` | `admin_sessions` (migration `004`), `admin_login_flows` (`005`) |
 | Schema versioning | `app/migrations/` | `schema_migrations` |
 
 Route handlers must not embed SQL. Use `app/db.py` for brief/payment flows and
@@ -104,8 +104,23 @@ Credentials stay in env vars; this table stores revocable session rows only.
 | `admin_username` | `TEXT` | Matches `ADMIN_USERNAME` |
 | `created_at`, `expires_at` | `TIMESTAMPTZ` | TTL enforced at read |
 | `revoked_at` | `TIMESTAMPTZ` | Set on logout |
+| `csrf_token_hash` | `TEXT` | SHA-256 hash of active synchronizer token |
 
 Index: `token_hash`. See [ADMIN_AUTH.md](ADMIN_AUTH.md).
+
+### `admin_login_flows`
+
+Short-lived pre-authentication rows for login CSRF ([#139](https://github.com/saberistic-team/agent-web/issues/139)).
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | `SERIAL` | PK |
+| `flow_token_hash` | `TEXT` | Unique; paired `admin_login_flow` cookie is hashed before lookup |
+| `csrf_token_hash` | `TEXT` | SHA-256 hash of login form synchronizer token |
+| `created_at`, `expires_at` | `TIMESTAMPTZ` | 15-minute TTL enforced at read |
+| `consumed_at` | `TIMESTAMPTZ` | Set on login POST (one-time use) |
+
+Index: `flow_token_hash`. See [ADMIN_AUTH.md](ADMIN_AUTH.md).
 
 ## Migrations
 
@@ -118,6 +133,7 @@ Migrations live in `app/migrations/definitions.py` and are applied at startup vi
 | `002` | `project_briefs_utm_columns` | Idempotent UTM column adds |
 | `003` | `crm_foundation` | CRM tables, FKs, indexes |
 | `004` | `admin_sessions` | Server-side admin session rows |
+| `005` | `admin_csrf_binding` | Login flow CSRF + session CSRF hash column |
 
 Applied versions are recorded in `schema_migrations`. Steps are **idempotent**
 (`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`) so empty and existing Render Postgres
