@@ -19,9 +19,21 @@ from app.config import Settings, get_settings
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
+PREVIEW_SESSION_TOKEN = "preview-screenshot-session"
+
 
 def _require_admin_auth_configured(settings: Settings) -> None:
     require_admin_auth_configured(settings)
+
+
+def _preview_session(settings: Settings) -> admin_auth.AdminSession:
+    return admin_auth.AdminSession(
+        id=0,
+        admin_username=settings.admin_username or "preview",
+        token_hash="preview",
+        expires_at=datetime.max.replace(tzinfo=timezone.utc),
+        csrf_token_hash=None,
+    )
 
 
 def _load_valid_session(request: Request, settings: Settings) -> admin_auth.AdminSession | None:
@@ -217,6 +229,39 @@ def admin_logout(
     return response
 
 
+def _render_admin_shell_page(request: Request, active_path: str) -> HTMLResponse:
+    """Authenticate and render the shared admin shell for a nav path."""
+    session = require_admin_session(request)
+    settings = get_settings()
+    csrf_token = ""
+    if session.id:
+        csrf_token = _issue_session_csrf(settings, session.id)
+    kwargs = dict(admin_username=session.admin_username, csrf_token=csrf_token)
+    if not admin.is_admin_path(active_path):
+        return HTMLResponse(admin.render_admin_not_found(active_path, **kwargs), status_code=404)
+    return HTMLResponse(admin.render_admin_page(active_path, **kwargs))
+
+
+for _link in ADMIN_NAV_LINKS:
+    if _link["href"] == "/admin":
+        continue
+    _section = _link["href"].removeprefix("/admin/")
+
+    def _section_handler(
+        request: Request,
+        *,
+        _active_path: str = _link["href"],
+    ) -> HTMLResponse:
+        return _render_admin_shell_page(request, _active_path)
+
+    router.add_api_route(
+        f"/{_section}",
+        _section_handler,
+        methods=["GET"],
+        response_class=HTMLResponse,
+    )
+
+
 @router.get("", response_class=HTMLResponse)
 @router.get("/", response_class=HTMLResponse)
 def admin_dashboard(request: Request) -> HTMLResponse:
@@ -238,8 +283,20 @@ router.include_router(admin_crm_router)
 
 @router.api_route("/{full_path:path}", methods=["GET", "HEAD"], response_model=None)
 def admin_protected_fallback(request: Request, full_path: str) -> Response:
-    """Redirect anonymous visitors for any other /admin path."""
+    """Auth gate + shell 404 for unknown /admin paths."""
     if full_path.rstrip("/") == "login":
         raise HTTPException(status_code=404, detail="Not found")
-    require_admin_session(request)
-    raise HTTPException(status_code=404, detail="Not found")
+    session = require_admin_session(request)
+    settings = get_settings()
+    csrf_token = ""
+    if session.id:
+        csrf_token = _issue_session_csrf(settings, session.id)
+    path = f"/admin/{full_path.rstrip('/')}"
+    return HTMLResponse(
+        admin.render_admin_not_found(
+            path,
+            admin_username=session.admin_username,
+            csrf_token=csrf_token,
+        ),
+        status_code=404,
+    )

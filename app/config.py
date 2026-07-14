@@ -45,13 +45,20 @@ class Settings:
         return bool(self.resend_api_key)
 
     @property
+    def admin_preview_mode(self) -> bool:
+        flag = os.environ.get("ADMIN_PREVIEW_MODE", "").lower()
+        return flag in ("1", "true", "yes")
+
+    @property
     def admin_auth_configured(self) -> bool:
-        return bool(
-            self.database_url
-            and self.admin_username
+        creds = bool(
+            self.admin_username
             and self.admin_password_hash
             and self.admin_session_secret
         )
+        if self.admin_preview_mode:
+            return creds
+        return bool(self.database_url and creds)
 
     @property
     def analytics_enabled(self) -> bool:

@@ -42,6 +42,15 @@ SKIP_SCREENSHOT_EXACT = frozenset(
 )
 SKIP_SCREENSHOT_PREFIXES = ("/api/", "/webhooks/", "/assets")
 
+# Preview-only admin session for branch screenshot capture (#102).
+PREVIEW_ADMIN_USERNAME = "preview-admin"
+PREVIEW_ADMIN_PASSWORD_HASH = (
+    "$argon2id$v=19$m=65536,t=3,p=4$preview-screenshot-salt$preview-screenshot-hash"
+)
+PREVIEW_ADMIN_SESSION_SECRET = "preview-session-secret-32chars-minimum"
+PREVIEW_SESSION_TOKEN = "preview-screenshot-session"
+ADMIN_SESSION_COOKIE = "admin_session"
+
 # Desktop + mobile evidence for landing/product acceptance criteria.
 VIEWPORTS: tuple[tuple[str, int, int], ...] = (
     ("desktop", 1280, 800),
@@ -119,6 +128,23 @@ def is_skipped_api_or_meta_route(path: str) -> bool:
     if route in SKIP_SCREENSHOT_EXACT:
         return True
     return any(route.startswith(prefix) for prefix in SKIP_SCREENSHOT_PREFIXES)
+
+
+def route_requires_admin_auth(path: str) -> bool:
+    """True when a screenshot target needs an authenticated admin session."""
+    route = path if path.startswith("/") else f"/{path}"
+    return route == "/admin" or route.startswith("/admin/")
+
+
+def admin_screenshot_session_cookie() -> dict[str, str]:
+    """Return the preview admin session cookie for branch screenshot capture."""
+    return {
+        "name": ADMIN_SESSION_COOKIE,
+        "value": PREVIEW_SESSION_TOKEN,
+        "path": "/admin",
+        "httpOnly": True,
+        "sameSite": "Strict",
+    }
 
 
 def _normalize_route_path(path: str) -> str:
@@ -212,6 +238,8 @@ def discover_screenshot_routes(app_root: Path | None = None) -> list[str]:
     if not any(p.startswith("/insights/") for p in found):
         found.update(_expand_param_route("/insights/{slug}", root))
 
+    found.add("/admin")
+
     # Stable order: home first, then lexical.
     ordered = sorted(found, key=lambda p: (p != "/", p))
     return ordered or list(HTML_PATHS)
@@ -260,6 +288,12 @@ def local_preview_server(
         "BASE_URL": base,
         # HTML pages must render without requiring production secrets.
         "DATABASE_URL": os.environ.get("DATABASE_URL") or "",
+        "ADMIN_PREVIEW_MODE": "1",
+        "ADMIN_USERNAME": os.environ.get("ADMIN_USERNAME") or PREVIEW_ADMIN_USERNAME,
+        "ADMIN_PASSWORD_HASH": os.environ.get("ADMIN_PASSWORD_HASH")
+        or PREVIEW_ADMIN_PASSWORD_HASH,
+        "ADMIN_SESSION_SECRET": os.environ.get("ADMIN_SESSION_SECRET")
+        or PREVIEW_ADMIN_SESSION_SECRET,
     }
     proc = subprocess.Popen(
         [
@@ -364,15 +398,17 @@ def wait_healthy(base_url: str | None = None, attempts: int = 12) -> dict[str, A
     raise GitHubError(f"deploy not healthy at {health_url}: {last}")
 
 
-def _is_html_response(url: str) -> bool:
+def _is_html_response(url: str, *, route: str | None = None) -> bool:
     """Return True if the URL serves HTML (skip JSON API routes).
 
     ``/health`` and other JSON endpoints are never screenshot targets.
     """
+    headers = {"User-Agent": "agent-web-screenshots"}
+    if route and route_requires_admin_auth(route):
+        cookie = admin_screenshot_session_cookie()
+        headers["Cookie"] = f"{cookie['name']}={cookie['value']}"
     try:
-        req = urllib.request.Request(
-            url, method="GET", headers={"User-Agent": "agent-web-screenshots"}
-        )
+        req = urllib.request.Request(url, method="GET", headers=headers)
         with urllib.request.urlopen(req, timeout=30) as resp:
             if not (200 <= resp.status < 300):
                 return False
@@ -488,9 +524,21 @@ def capture(
         browser = p.chromium.launch()
         for viewport_name, width, height in VIEWPORTS:
             page = browser.new_page(viewport={"width": width, "height": height})
+            admin_cookie = admin_screenshot_session_cookie()
+            page.context.add_cookies(
+                [
+                    {
+                        "name": admin_cookie["name"],
+                        "value": admin_cookie["value"],
+                        "url": base + "/admin",
+                        "httpOnly": admin_cookie["httpOnly"],
+                        "sameSite": admin_cookie["sameSite"],
+                    }
+                ]
+            )
             for route in html_routes:
                 url = _route_url(base, route)
-                if not _is_html_response(url):
+                if not _is_html_response(url, route=route):
                     # JSON API, redirect miss, or non-HTML — skip (e.g. /hello, new
                     # PR route not yet on production).
                     continue
