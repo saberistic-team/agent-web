@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncIterator
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import (
     HTMLResponse,
     JSONResponse,
@@ -18,7 +18,8 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app import analytics_service, case_studies, db, email_service, insights, page_service, stripe_service
+from app import admin, analytics_service, case_studies, db, email_service, insights, page_service, stripe_service
+from app.admin_auth import require_admin
 from app.config import get_settings
 from app.models import BriefCreateRequest, BriefCreateResponse
 from app.seo import (
@@ -141,6 +142,20 @@ def insights_index() -> HTMLResponse:
 @app.get("/insights/feed.xml")
 def insights_feed() -> Response:
     return Response(content=insights.render_atom_feed(), media_type="application/atom+xml")
+
+
+@app.get("/admin")
+def admin_dashboard(_user: str = Depends(require_admin)) -> HTMLResponse:
+    return HTMLResponse(admin.render_admin_page("/admin"))
+
+
+@app.get("/admin/{section}")
+def admin_section(section: str, _user: str = Depends(require_admin)) -> HTMLResponse:
+    path = f"/admin/{section}"
+    if not admin.is_admin_path(path):
+        response = HTMLResponse(admin.render_admin_not_found(path), status_code=404)
+        return response
+    return HTMLResponse(admin.render_admin_page(path))
 
 
 @app.get("/insights/{slug}")
