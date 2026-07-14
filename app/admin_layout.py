@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+from dataclasses import dataclass
 
 ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
     {
@@ -81,13 +82,26 @@ ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
 
 ADMIN_PATHS: frozenset[str] = frozenset(link["href"] for link in ADMIN_NAV_LINKS)
 
+
+@dataclass(frozen=True, slots=True)
+class AdminScreenshotTarget:
+    """Pre-merge Playwright capture target with optional expected HTTP status."""
+
+    route: str
+    expected_status: int = 200
+
+
 # Pre-merge Playwright capture targets (shell pages + login). Never production.
-ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
-    *(link["href"] for link in ADMIN_NAV_LINKS),
-    "/admin/login",
-    "/admin/briefs/1",
-    "/admin/briefs/2",
-    "/admin/briefs/503",
+ADMIN_SCREENSHOT_TARGETS: tuple[AdminScreenshotTarget, ...] = (
+    *(AdminScreenshotTarget(link["href"]) for link in ADMIN_NAV_LINKS),
+    AdminScreenshotTarget("/admin/login"),
+    AdminScreenshotTarget("/admin/briefs/1"),
+    AdminScreenshotTarget("/admin/briefs/2"),
+    AdminScreenshotTarget("/admin/briefs/503", expected_status=503),
+)
+
+ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = tuple(
+    target.route for target in ADMIN_SCREENSHOT_TARGETS
 )
 
 

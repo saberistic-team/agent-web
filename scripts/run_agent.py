@@ -102,36 +102,6 @@ def escalate(repo: str, issue: int, reason: str, assignee_hint: str | None = Non
     replace_status(repo, issue, "status:blocked")
 
 
-def is_retryable_codegen_failure(exc: BaseException) -> bool:
-    """True when Builder should re-enter ``status:queued`` instead of blocking.
-
-    Learned from [#104](https://github.com/saberistic-team/agent-web/issues/104)
-    (Cursor Bridge ``ReadTimeout``, ``retryable=True`` escalated to
-    ``status:blocked``) and [#105](https://github.com/saberistic-team/agent-web/issues/105)
-    (file-budget overrun → false human-review). Transient SDK/network failures and
-    soft budget hits are operator-retriable by the dispatcher — not external
-    blockers.
-    """
-    text = str(exc).lower()
-    if "retryable=true" in text.replace(" ", ""):
-        return True
-    markers = (
-        "readtimeout",
-        "timed out",
-        "bridge request timed out",
-        "temporarily unavailable",
-        "connection reset",
-        "connection aborted",
-        "connection error",
-        "remoteprotocolerror",
-        "server disconnected",
-        "too many files",
-        "changed too many files",
-        "model proposed too many files",
-    )
-    return any(marker in text for marker in markers)
-
-
 def write_builder_handoff(mode: str) -> None:
     """Tell builder.yml how to advance labels: reviewer | done | blocked | waiting."""
     if mode not in {"reviewer", "done", "blocked", "waiting"}:
@@ -646,30 +616,20 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
         # After codegen, merge base if dirty; hand off only when mergeable.
         handoff_builder_when_mergeable(repo, issue)
     except Exception as exc:
-        detail = (
-            "Codegen failed (Cursor SDK / OpenAI / GitHub Models).\n\n"
-            f"`{exc}`\n\n"
-            "Preferred: Cursor Agent SDK via `CURSOR_API_KEY` "
-            "(`CODEGEN_PROVIDER=cursor`, `CURSOR_RUNTIME=local` by default). "
-            "Optional: OpenAI (`OPENAI_API_KEY`) or GitHub Models (`MODELS_TOKEN`). "
-            "See docs/MODELS.md. "
-            "If `git/refs` returns 403 for the Builder App, grant the App "
-            "`contents: write` on this repository."
+        escalate(
+            repo,
+            issue,
+            (
+                "Codegen failed (Cursor SDK / OpenAI / GitHub Models).\n\n"
+                f"`{exc}`\n\n"
+                "Preferred: Cursor Agent SDK via `CURSOR_API_KEY` "
+                "(`CODEGEN_PROVIDER=cursor`, `CURSOR_RUNTIME=local` by default). "
+                "Optional: OpenAI (`OPENAI_API_KEY`) or GitHub Models (`MODELS_TOKEN`). "
+                "See docs/MODELS.md. "
+                "If `git/refs` returns 403 for the Builder App, grant the App "
+                "`contents: write` on this repository."
+            ),
         )
-        if is_retryable_codegen_failure(exc):
-            post_issue_comment(
-                repo,
-                issue,
-                (
-                    "### builder_codegen_retry\n"
-                    "- result: `waiting`\n"
-                    "- reason: transient / soft codegen failure (do not `status:blocked`)\n\n"
-                    f"{detail}\n"
-                ),
-            )
-            write_builder_handoff("waiting")
-            return
-        escalate(repo, issue, detail)
         write_builder_handoff("blocked")
 
 
@@ -923,23 +883,25 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
             format_admin_nav_hard_fail,
             format_empty_data_hard_fail,
             format_overflow_hard_fail,
-            resolve_screenshot_routes,
+            format_probe_hard_fail,
+            format_screenshot_target_label,
+            resolve_screenshot_targets,
             upload_to_branch,
         )
 
         out_dir = Path("trace/screenshots")
         changed = fetch_pr_changed_paths(repo, pr_number)
-        routes = resolve_screenshot_routes(
+        targets = resolve_screenshot_targets(
             changed_files=changed, include_admin=True
         )
         branch = pr["head"]["ref"]
         prefix = f".agent/screenshots/pr-{pr_number}"
-        if not routes:
+        if not targets:
             body_shots = (
                 "### reviewer_screenshots_pre\n"
                 "- production: skipped pre-merge "
                 "(saberistic.com shots are post-deploy only)\n"
-                "- routes (PR-affected): (none)\n"
+                "- targets (PR-affected): (none)\n"
                 "- note: no pages affected by this PR "
                 "(tests/docs/scripts only); screenshots skipped\n"
             )
@@ -950,19 +912,20 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
                 "- visual_readability: `n/a`\n"
             )
         else:
-            dual = capture_pre_dual(out_dir, routes=routes)
+            dual = capture_pre_dual(out_dir, targets=targets)
             branch_urls = upload_to_branch(repo, branch, dual.branch_paths, prefix)
             body_shots = comment_markdown_pre_dual(
                 branch_url=dual.branch_url,
                 branch_urls=branch_urls,
-                routes=routes,
+                targets=targets,
             )
             comment_on_issue_or_pr(repo, pr_number, body_shots)
             comment_on_issue_or_pr(repo, issue, body_shots)
+            target_labels = ", ".join(format_screenshot_target_label(t) for t in targets)
             screenshot_note = (
                 f"- screenshots_pre: {len(branch_urls)} branch posted on PR + issue "
                 "(no saberistic.com pre-merge shots)\n"
-                f"- screenshots_routes: {', '.join(f'`{r}`' for r in routes)}\n"
+                f"- screenshots_targets: {target_labels}\n"
                 f"- screenshots_branch: `{dual.branch_url}`\n"
             )
             overflow_fail = format_overflow_hard_fail(dual.overflows)
@@ -992,6 +955,15 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
                 )
             else:
                 screenshot_note += "- admin_nav_visible: `ok` (PR branch)\n"
+            probe_fail = format_probe_hard_fail(dual.probe_failures)
+            if probe_fail:
+                hard_fail_reasons.append(probe_fail)
+                screenshot_note += (
+                    f"- screenshot_probe: `fail` ({len(dual.probe_failures)} "
+                    "finding(s) on PR branch)\n"
+                )
+            else:
+                screenshot_note += "- screenshot_probe: `ok` (PR branch)\n"
         pr = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}")
         sha = pr["head"]["sha"]
     except Exception as exc:

@@ -13,7 +13,7 @@ import urllib.error
 import urllib.request
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterator, NamedTuple
+from typing import Any, Iterator, NamedTuple, Union
 from urllib.parse import urljoin
 
 from github_api import GitHubError, api, post_issue_comment, put_files, split_repo
@@ -63,7 +63,7 @@ SITE_HTML_TO_ROUTE: dict[str, str] = {
 }
 
 # Admin HTML surfaces captured only on the PR-head preview server.
-# Keep in sync with app.admin_layout.ADMIN_SCREENSHOT_PATHS (nav shell + login).
+# Keep in sync with app.admin_layout.ADMIN_SCREENSHOT_TARGETS (nav shell + login).
 ADMIN_SCREENSHOT_ROUTES: tuple[str, ...] = (
     "/admin",
     "/admin/audit",
@@ -81,6 +81,12 @@ ADMIN_SCREENSHOT_ROUTES: tuple[str, ...] = (
     "/admin/briefs/1",
     "/admin/briefs/2",
     "/admin/briefs/503",
+)
+
+# Fallback when app.admin_layout is unavailable (tests / emergency).
+_ADMIN_SCREENSHOT_TARGETS_FALLBACK: tuple[Any, ...] = tuple(
+    {"route": route, "expected_status": 503 if route == "/admin/briefs/503" else 200}
+    for route in ADMIN_SCREENSHOT_ROUTES
 )
 
 # Shared presentation — any change here affects all public pages.
@@ -121,6 +127,17 @@ class CaptureResult(NamedTuple):
     overflows: list[dict[str, Any]]
     empty_pages: list[dict[str, Any]] = []
     nav_failures: list[dict[str, Any]] = []
+    probe_failures: list[dict[str, Any]] = []
+
+
+class ScreenshotTarget(NamedTuple):
+    """Route to capture plus the HTTP status Playwright must observe."""
+
+    route: str
+    expected_status: int = 200
+
+
+ScreenshotTargetInput = Union[str, ScreenshotTarget, Any]
 
 
 class PreCaptureResult(NamedTuple):
@@ -134,6 +151,7 @@ class PreCaptureResult(NamedTuple):
     prod_url: str
     branch_empty_pages: list[dict[str, Any]] = []
     branch_nav_failures: list[dict[str, Any]] = []
+    branch_probe_failures: list[dict[str, Any]] = []
 
     @property
     def paths(self) -> list[Path]:
@@ -151,6 +169,10 @@ class PreCaptureResult(NamedTuple):
     @property
     def nav_failures(self) -> list[dict[str, Any]]:
         return self.branch_nav_failures
+
+    @property
+    def probe_failures(self) -> list[dict[str, Any]]:
+        return self.branch_probe_failures
 
 
 def screenshot_basename(phase: str, route: str, viewport: str) -> str:
@@ -232,6 +254,60 @@ def _normalize_route_path(path: str) -> str:
     return route
 
 
+def normalize_screenshot_target(value: ScreenshotTargetInput) -> ScreenshotTarget:
+    """Coerce route strings or admin-layout targets into ``ScreenshotTarget``."""
+    if isinstance(value, ScreenshotTarget):
+        return value
+    if isinstance(value, str):
+        return ScreenshotTarget(_normalize_route_path(value), 200)
+    route = getattr(value, "route", None)
+    if route is not None:
+        status = int(getattr(value, "expected_status", 200) or 200)
+        return ScreenshotTarget(_normalize_route_path(str(route)), status)
+    if isinstance(value, dict):
+        route_raw = value.get("route")
+        if route_raw is None:
+            raise ValueError(f"invalid screenshot target: {value!r}")
+        status = int(value.get("expected_status", 200) or 200)
+        return ScreenshotTarget(_normalize_route_path(str(route_raw)), status)
+    raise TypeError(f"invalid screenshot target type: {type(value)!r}")
+
+
+def normalize_screenshot_targets(
+    values: list[ScreenshotTargetInput] | None,
+) -> list[ScreenshotTarget]:
+    if not values:
+        return []
+    return [normalize_screenshot_target(v) for v in values]
+
+
+def screenshot_target_route(value: ScreenshotTargetInput) -> str:
+    return normalize_screenshot_target(value).route
+
+
+def format_screenshot_target_label(target: ScreenshotTarget) -> str:
+    if target.expected_status == 200:
+        return f"`{target.route}`"
+    return f"`{target.route}` ({target.expected_status})"
+
+
+def _target_sort_key(target: ScreenshotTarget) -> tuple[Any, ...]:
+    route = target.route
+    return (route != "/", is_admin_screenshot_route(route), route, target.expected_status)
+
+
+def _dedupe_targets(targets: list[ScreenshotTarget]) -> list[ScreenshotTarget]:
+    seen: set[tuple[str, int]] = set()
+    ordered: list[ScreenshotTarget] = []
+    for target in targets:
+        key = (target.route, target.expected_status)
+        if key in seen:
+            continue
+        seen.add(key)
+        ordered.append(target)
+    return ordered
+
+
 def _expand_param_route(path: str, app_root: Path) -> list[str]:
     """Expand parameterized routes from JSON data when possible."""
     if "{slug}" not in path:
@@ -255,25 +331,30 @@ def _expand_param_route(path: str, app_root: Path) -> list[str]:
     return []
 
 
-def resolved_admin_screenshot_routes(app_root: Path | None = None) -> tuple[str, ...]:
-    """Prefer live ``ADMIN_SCREENSHOT_PATHS``; fall back to script constant."""
+def resolved_admin_screenshot_targets(app_root: Path | None = None) -> tuple[ScreenshotTarget, ...]:
+    """Prefer live ``ADMIN_SCREENSHOT_TARGETS``; fall back to script constant."""
     root = resolve_preview_root(app_root)
     try:
         if str(root) not in sys.path:
             sys.path.insert(0, str(root))
-        from app.admin_layout import ADMIN_SCREENSHOT_PATHS  # type: ignore
+        from app.admin_layout import ADMIN_SCREENSHOT_TARGETS  # type: ignore
 
-        return tuple(ADMIN_SCREENSHOT_PATHS)
+        return tuple(normalize_screenshot_target(t) for t in ADMIN_SCREENSHOT_TARGETS)
     except Exception:  # noqa: BLE001
-        return ADMIN_SCREENSHOT_ROUTES
+        return tuple(normalize_screenshot_target(t) for t in _ADMIN_SCREENSHOT_TARGETS_FALLBACK)
 
 
-def discover_screenshot_routes(
+def resolved_admin_screenshot_routes(app_root: Path | None = None) -> tuple[str, ...]:
+    """Prefer live ``ADMIN_SCREENSHOT_PATHS``; fall back to script constant."""
+    return tuple(t.route for t in resolved_admin_screenshot_targets(app_root))
+
+
+def discover_screenshot_targets(
     app_root: Path | None = None,
     *,
     include_admin: bool = False,
-) -> list[str]:
-    """Return GET HTML page routes to screenshot.
+) -> list[ScreenshotTarget]:
+    """Return GET HTML page targets to screenshot.
 
     Discovers FastAPI GET routes under ``app_root`` (PR head / cwd). Skips
     ``/health`` (JSON evidence only), other JSON APIs, OpenAPI docs, static
@@ -335,12 +416,22 @@ def discover_screenshot_routes(
         found.update(_expand_param_route("/insights/{slug}", root))
 
     found = {p for p in found if is_public_screenshot_route(p)}
+    targets = [ScreenshotTarget(route) for route in found]
     if include_admin:
-        found.update(resolved_admin_screenshot_routes(root))
+        targets.extend(resolved_admin_screenshot_targets(root))
 
-    # Stable order: home first, then lexical (admin after public).
-    ordered = sorted(found, key=lambda p: (p != "/", is_admin_screenshot_route(p), p))
-    return ordered or list(HTML_PATHS)
+    targets = _dedupe_targets(targets)
+    targets.sort(key=_target_sort_key)
+    return targets or [ScreenshotTarget(route) for route in HTML_PATHS]
+
+
+def discover_screenshot_routes(
+    app_root: Path | None = None,
+    *,
+    include_admin: bool = False,
+) -> list[str]:
+    """Return GET HTML page routes to screenshot (200 expected)."""
+    return [t.route for t in discover_screenshot_targets(app_root, include_admin=include_admin)]
 
 
 def _normalize_repo_path(path: str) -> str:
@@ -351,19 +442,43 @@ def routes_affected_by_changed_files(
     changed_paths: list[str],
     *,
     candidate_routes: list[str] | None = None,
+    candidate_targets: list[ScreenshotTargetInput] | None = None,
     app_root: Path | None = None,
     include_admin: bool = False,
 ) -> list[str]:
-    """Return screenshot routes affected by PR file changes.
+    """Return screenshot routes affected by PR file changes."""
+    return [
+        t.route
+        for t in targets_affected_by_changed_files(
+            changed_paths,
+            candidate_targets=candidate_targets,
+            candidate_routes=candidate_routes,
+            app_root=app_root,
+            include_admin=include_admin,
+        )
+    ]
+
+
+def targets_affected_by_changed_files(
+    changed_paths: list[str],
+    *,
+    candidate_targets: list[ScreenshotTargetInput] | None = None,
+    candidate_routes: list[str] | None = None,
+    app_root: Path | None = None,
+    include_admin: bool = False,
+) -> list[ScreenshotTarget]:
+    """Return screenshot targets affected by PR file changes.
 
     Public marketing pages map from ``site/`` / shared layout. Admin routes
     map only when ``include_admin`` (pre-merge branch + ``ADMIN_PREVIEW_MODE``).
     Production post-deploy must use ``include_admin=False``.
     """
-    candidates = list(
-        candidate_routes
-        or discover_screenshot_routes(app_root, include_admin=include_admin)
-    )
+    if candidate_targets is not None:
+        candidates = normalize_screenshot_targets(candidate_targets)
+    elif candidate_routes is not None:
+        candidates = normalize_screenshot_targets(candidate_routes)
+    else:
+        candidates = discover_screenshot_targets(app_root, include_admin=include_admin)
     if not changed_paths:
         return []
 
@@ -371,10 +486,10 @@ def routes_affected_by_changed_files(
     site_wide = False
     saw_visual = False
     saw_admin = False
-    work_routes = [r for r in candidates if r.startswith("/work/")]
-    insight_routes = [r for r in candidates if r.startswith("/insights/")]
-    public_candidates = [r for r in candidates if is_public_screenshot_route(r)]
-    admin_candidates = [r for r in candidates if is_admin_screenshot_route(r)]
+    work_routes = [t.route for t in candidates if t.route.startswith("/work/")]
+    insight_routes = [t.route for t in candidates if t.route.startswith("/insights/")]
+    public_candidates = [t for t in candidates if is_public_screenshot_route(t.route)]
+    admin_candidates = [t for t in candidates if is_admin_screenshot_route(t.route)]
 
     for raw in changed_paths:
         path = _normalize_repo_path(raw)
@@ -429,29 +544,44 @@ def routes_affected_by_changed_files(
     if not saw_visual:
         return []
 
-    result: list[str] = []
+    result: list[ScreenshotTarget] = []
     if site_wide:
         result.extend(public_candidates)
         if include_admin and (saw_admin or site_wide):
             # Shared CSS/assets also style admin login / shell.
             result.extend(
-                admin_candidates or list(resolved_admin_screenshot_routes(app_root))
+                admin_candidates or list(resolved_admin_screenshot_targets(app_root))
             )
     else:
-        result.extend(r for r in public_candidates if r in affected)
+        result.extend(t for t in public_candidates if t.route in affected)
         if include_admin and saw_admin:
             result.extend(
-                admin_candidates or list(resolved_admin_screenshot_routes(app_root))
+                admin_candidates or list(resolved_admin_screenshot_targets(app_root))
             )
 
-    # Dedupe preserving order.
-    seen: set[str] = set()
-    ordered: list[str] = []
-    for r in result:
-        if r not in seen:
-            seen.add(r)
-            ordered.append(r)
-    return ordered
+    return _dedupe_targets(result)
+
+
+def resolve_screenshot_targets(
+    app_root: Path | None = None,
+    *,
+    changed_files: list[str] | None = None,
+    include_admin: bool = False,
+) -> list[ScreenshotTarget]:
+    """Targets to capture; optionally narrowed to PR-affected pages.
+
+    ``include_admin`` must be True only for pre-merge PR-head preview (with
+    ``ADMIN_PREVIEW_MODE``). Post-deploy production capture keeps it False.
+    """
+    all_targets = discover_screenshot_targets(app_root, include_admin=include_admin)
+    if changed_files is None:
+        return all_targets
+    return targets_affected_by_changed_files(
+        changed_files,
+        candidate_targets=all_targets,
+        app_root=app_root,
+        include_admin=include_admin,
+    )
 
 
 def resolve_screenshot_routes(
@@ -460,20 +590,12 @@ def resolve_screenshot_routes(
     changed_files: list[str] | None = None,
     include_admin: bool = False,
 ) -> list[str]:
-    """Routes to capture; optionally narrowed to PR-affected pages.
-
-    ``include_admin`` must be True only for pre-merge PR-head preview (with
-    ``ADMIN_PREVIEW_MODE``). Post-deploy production capture keeps it False.
-    """
-    all_routes = discover_screenshot_routes(app_root, include_admin=include_admin)
-    if changed_files is None:
-        return all_routes
-    return routes_affected_by_changed_files(
-        changed_files,
-        candidate_routes=all_routes,
-        app_root=app_root,
+    """Routes to capture; optionally narrowed to PR-affected pages."""
+    return [t.route for t in resolve_screenshot_targets(
+        app_root,
+        changed_files=changed_files,
         include_admin=include_admin,
-    )
+    )]
 
 
 def changed_paths_from_pr_files(files: list[dict[str, Any]]) -> list[str]:
@@ -589,6 +711,7 @@ def capture_pre_dual(
     preview_root: Path | None = None,
     preview_port: int = DEFAULT_PREVIEW_PORT,
     routes: list[str] | None = None,
+    targets: list[ScreenshotTargetInput] | None = None,
     changed_files: list[str] | None = None,
 ) -> PreCaptureResult:
     """Pre-merge: screenshot PR branch only (local uvicorn + ADMIN_PREVIEW_MODE).
@@ -600,16 +723,19 @@ def capture_pre_dual(
     """
     del prod_base_url  # production baseline intentionally omitted pre-merge
     out_dir.mkdir(parents=True, exist_ok=True)
-    if routes is None:
-        routes = resolve_screenshot_routes(
+    if targets is None and routes is None:
+        resolved = resolve_screenshot_targets(
             preview_root, changed_files=changed_files, include_admin=True
         )
+    else:
+        resolved = None
     with local_preview_server(preview_root, port=preview_port) as branch_url:
         branch = capture(
             branch_url,
             out_dir,
             phase=PRE_BRANCH_PHASE,
             routes=routes,
+            targets=targets or resolved,
             preview_root=preview_root,
             allow_admin=True,
         )
@@ -622,6 +748,7 @@ def capture_pre_dual(
         prod_url="",
         branch_empty_pages=list(branch.empty_pages),
         branch_nav_failures=list(branch.nav_failures),
+        branch_probe_failures=list(branch.probe_failures),
     )
 
 
@@ -656,32 +783,72 @@ def wait_healthy(base_url: str | None = None, attempts: int = 12) -> dict[str, A
     raise GitHubError(f"deploy not healthy at {health_url}: {last}")
 
 
-def _is_html_response(url: str, *, route: str | None = None) -> bool:
-    """Return True if the URL serves HTML (skip JSON API routes).
+class PageProbeResult(NamedTuple):
+    ok: bool
+    status: int | None
+    is_html: bool
+    reason: str | None = None
 
-    ``/health`` and other JSON endpoints are never screenshot targets.
-    """
-    try:
-        headers = {"User-Agent": "agent-web-screenshots"}
-        if route and route_requires_admin_auth(route):
-            cookie = admin_screenshot_session_cookie()
-            headers["Cookie"] = f"{cookie['name']}={cookie['value']}"
-        req = urllib.request.Request(url, method="GET", headers=headers)
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            if not (200 <= resp.status < 300):
-                return False
-            ctype = (resp.headers.get("Content-Type") or "").lower()
-            if "json" in ctype:
-                return False
-            if "html" in ctype:
-                return True
-            # Peek body for doctype/html if content-type is missing/wrong.
-            chunk = resp.read(256).decode("utf-8", errors="replace").lstrip().lower()
-            if chunk.startswith("{") or chunk.startswith("["):
-                return False
-            return chunk.startswith("<!doctype html") or chunk.startswith("<html")
-    except Exception:
+
+def _body_looks_like_html(chunk: str) -> bool:
+    lowered = chunk.lstrip().lower()
+    if lowered.startswith("{") or lowered.startswith("["):
         return False
+    return lowered.startswith("<!doctype html") or lowered.startswith("<html")
+
+
+def _classify_response(
+    status: int,
+    content_type: str,
+    body_prefix: str,
+    *,
+    expected_status: int,
+) -> PageProbeResult:
+    is_html = "html" in content_type.lower() or _body_looks_like_html(body_prefix)
+    if "json" in content_type.lower() and not is_html:
+        return PageProbeResult(False, status, False, "json_response")
+    if status != expected_status:
+        if expected_status == 200 and status >= 400:
+            return PageProbeResult(False, status, is_html, "unexpected_error_status")
+        return PageProbeResult(False, status, is_html, "status_mismatch")
+    if not is_html:
+        return PageProbeResult(False, status, False, "not_html")
+    return PageProbeResult(True, status, True, None)
+
+
+def _probe_page_response(
+    url: str,
+    *,
+    route: str | None = None,
+    expected_status: int = 200,
+) -> PageProbeResult:
+    """Return whether the URL serves HTML at the expected HTTP status."""
+    headers = {"User-Agent": "agent-web-screenshots"}
+    if route and route_requires_admin_auth(route):
+        cookie = admin_screenshot_session_cookie()
+        headers["Cookie"] = f"{cookie['name']}={cookie['value']}"
+    req = urllib.request.Request(url, method="GET", headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            status = int(getattr(resp, "status", 200) or 200)
+            ctype = (resp.headers.get("Content-Type") or "").lower()
+            chunk = resp.read(256).decode("utf-8", errors="replace")
+            return _classify_response(status, ctype, chunk, expected_status=expected_status)
+    except urllib.error.HTTPError as exc:
+        status = int(exc.code)
+        ctype = (exc.headers.get("Content-Type") or "").lower() if exc.headers else ""
+        try:
+            chunk = exc.read(256).decode("utf-8", errors="replace")
+        except Exception:  # noqa: BLE001
+            chunk = ""
+        return _classify_response(status, ctype, chunk, expected_status=expected_status)
+    except Exception as exc:  # noqa: BLE001
+        return PageProbeResult(False, None, False, f"probe_error:{exc}")
+
+
+def _is_html_response(url: str, *, route: str | None = None) -> bool:
+    """Return True if the URL serves 2xx HTML (legacy helper for callers)."""
+    return _probe_page_response(url, route=route, expected_status=200).ok
 
 
 def _route_url(base: str, route: str) -> str:
@@ -908,6 +1075,50 @@ def format_empty_data_hard_fail(empty_pages: list[dict[str, Any]]) -> str | None
     )
 
 
+def format_probe_hard_fail(probe_failures: list[dict[str, Any]]) -> str | None:
+    """Build a Reviewer hard-fail when expected pages were not captured."""
+    if not probe_failures:
+        return None
+    by_key: dict[tuple[str, int], dict[str, Any]] = {}
+    for item in probe_failures:
+        route = str(item.get("route") or "")
+        expected = int(item.get("expected_status") or 200)
+        key = (route, expected)
+        if route and key not in by_key:
+            by_key[key] = item
+    sample = next(iter(by_key.values()))
+    labels = ", ".join(
+        format_screenshot_target_label(ScreenshotTarget(route, expected))
+        for route, expected in sorted(by_key)
+    )
+    actual = sample.get("actual_status")
+    reason = sample.get("reason") or "probe_failed"
+    return (
+        "screenshot probe failed: expected HTML page(s) were not captured — "
+        f"{labels} reason=`{reason}` actual_status={actual!r}; "
+        "register expected-status fixtures in app/admin_layout.py "
+        "ADMIN_SCREENSHOT_TARGETS and ensure ADMIN_PREVIEW_MODE serves HTML"
+    )
+
+
+def _probe_capture_action(
+    probe: PageProbeResult, target: ScreenshotTarget
+) -> str:
+    """Return ``capture``, ``fail``, or ``skip`` for a probe result."""
+    if probe.ok:
+        return "capture"
+    if target.expected_status != 200:
+        return "fail"
+    if probe.reason in {"unexpected_error_status", "status_mismatch"}:
+        if probe.status is not None and probe.status >= 400:
+            return "fail"
+    if probe.reason in {"json_response", "not_html"}:
+        return "skip"
+    if probe.reason and probe.reason.startswith("probe_error"):
+        return "skip"
+    return "skip"
+
+
 def format_admin_nav_hard_fail(nav_failures: list[dict[str, Any]]) -> str | None:
     """Build a Reviewer hard-fail when desktop admin nav links are invisible."""
     if not nav_failures:
@@ -933,6 +1144,7 @@ def capture(
     *,
     phase: str = "pre",
     routes: list[str] | None = None,
+    targets: list[ScreenshotTargetInput] | None = None,
     preview_root: Path | None = None,
     changed_files: list[str] | None = None,
     allow_admin: bool = False,
@@ -949,33 +1161,43 @@ def capture(
     overflows: list[dict[str, Any]] = []
     empty_pages: list[dict[str, Any]] = []
     nav_failures: list[dict[str, Any]] = []
+    probe_failures: list[dict[str, Any]] = []
     base = resolve_base_url(base_url)
-    if routes is None:
-        source = resolve_screenshot_routes(
+    if targets is not None:
+        source = normalize_screenshot_targets(targets)
+    elif routes is not None:
+        source = normalize_screenshot_targets(routes)
+    else:
+        source = resolve_screenshot_targets(
             preview_root,
             changed_files=changed_files,
             include_admin=allow_admin,
         )
-    else:
-        source = routes
-    html_routes = []
-    for r in source:
-        if is_skipped_api_or_meta_route(r):
+    html_targets: list[ScreenshotTarget] = []
+    for target in source:
+        route = target.route
+        if is_skipped_api_or_meta_route(route):
             continue
-        if is_admin_screenshot_route(r) and not allow_admin:
+        if is_admin_screenshot_route(route) and not allow_admin:
             continue
-        html_routes.append(r)
-    if not html_routes:
+        html_targets.append(target)
+    if not html_targets:
         # Explicit empty set (e.g. docs-only PR) — nothing to capture.
-        if routes is not None or changed_files is not None:
+        if routes is not None or targets is not None or changed_files is not None:
             report = out_dir / f"{phase}-overflow.json"
             report.write_text("[]\n", encoding="utf-8")
             empty_report = out_dir / f"{phase}-empty-pages.json"
             empty_report.write_text("[]\n", encoding="utf-8")
+            probe_report = out_dir / f"{phase}-probe-failures.json"
+            probe_report.write_text("[]\n", encoding="utf-8")
             return CaptureResult(
-                paths=[], overflows=[], empty_pages=[], nav_failures=[]
+                paths=[],
+                overflows=[],
+                empty_pages=[],
+                nav_failures=[],
+                probe_failures=[],
             )
-        html_routes = list(HTML_PATHS)
+        html_targets = [ScreenshotTarget(route) for route in HTML_PATHS]
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
@@ -994,16 +1216,40 @@ def capture(
                         }
                     ]
                 )
-            for route in html_routes:
+            for target in html_targets:
+                route = target.route
                 url = _route_url(base, route)
-                if not _is_html_response(url, route=route):
-                    # JSON API, redirect miss, or non-HTML — skip (e.g. /hello, new
-                    # PR route not yet on production).
+                probe = _probe_page_response(
+                    url, route=route, expected_status=target.expected_status
+                )
+                action = _probe_capture_action(probe, target)
+                if action == "skip":
+                    continue
+                if action == "fail":
+                    probe_failures.append(
+                        {
+                            "viewport": viewport_name,
+                            "route": route,
+                            "expected_status": target.expected_status,
+                            "actual_status": probe.status,
+                            "reason": probe.reason or "probe_failed",
+                        }
+                    )
                     continue
                 last_err: Exception | None = None
+                response = None
                 for _ in range(6):
                     try:
-                        page.goto(url, wait_until="networkidle", timeout=60_000)
+                        response = page.goto(
+                            url, wait_until="networkidle", timeout=60_000
+                        )
+                        actual_status = response.status if response else None
+                        if actual_status != target.expected_status:
+                            last_err = GitHubError(
+                                f"{url} status {actual_status} != "
+                                f"expected {target.expected_status}"
+                            )
+                            break
                         # Double-check we did not land on JSON.
                         body_prefix = page.content()[:200].lstrip().lower()
                         if body_prefix.startswith("{") or body_prefix.startswith("["):
@@ -1015,9 +1261,18 @@ def capture(
                         last_err = exc
                         time.sleep(8)
                 if last_err is not None:
-                    page.close()
-                    browser.close()
-                    raise GitHubError(f"failed to load {url}: {last_err}")
+                    probe_failures.append(
+                        {
+                            "viewport": viewport_name,
+                            "route": route,
+                            "expected_status": target.expected_status,
+                            "actual_status": getattr(response, "status", None)
+                            if response
+                            else None,
+                            "reason": f"load_failed:{last_err}",
+                        }
+                    )
+                    continue
                 overflows.extend(
                     _page_overflows(page, viewport=viewport_name, route=route)
                 )
@@ -1034,10 +1289,19 @@ def capture(
                 paths.append(dest)
             page.close()
         browser.close()
+    if probe_failures:
+        probe_report = out_dir / f"{phase}-probe-failures.json"
+        probe_report.write_text(
+            json.dumps(probe_failures, indent=2) + "\n", encoding="utf-8"
+        )
+        fail_msg = format_probe_hard_fail(probe_failures)
+        if fail_msg:
+            raise GitHubError(fail_msg)
     if not paths:
+        tried = ", ".join(format_screenshot_target_label(t) for t in html_targets)
         raise GitHubError(
             f"no HTML pages to screenshot under {base} "
-            f"(tried {', '.join(html_routes)}; "
+            f"(tried {tried}; "
             f"JSON APIs and {HEALTH_PATH} are never screenshotted)"
         )
     report = out_dir / f"{phase}-overflow.json"
@@ -1046,11 +1310,14 @@ def capture(
     empty_report.write_text(json.dumps(empty_pages, indent=2) + "\n", encoding="utf-8")
     nav_report = out_dir / f"{phase}-nav-failures.json"
     nav_report.write_text(json.dumps(nav_failures, indent=2) + "\n", encoding="utf-8")
+    probe_report = out_dir / f"{phase}-probe-failures.json"
+    probe_report.write_text("[]\n", encoding="utf-8")
     return CaptureResult(
         paths=paths,
         overflows=overflows,
         empty_pages=empty_pages,
         nav_failures=nav_failures,
+        probe_failures=probe_failures,
     )
 
 
@@ -1113,6 +1380,7 @@ def comment_markdown_pre_dual(
     prod_urls: list[str] | None = None,
     extra: list[str] | None = None,
     routes: list[str] | None = None,
+    targets: list[ScreenshotTargetInput] | None = None,
 ) -> str:
     """PR review comment: branch preview shots only (no saberistic.com pre)."""
     del prod_url, prod_urls  # production screenshots are post-deploy only
@@ -1121,7 +1389,18 @@ def comment_markdown_pre_dual(
         f"- branch (PR head local, ADMIN_PREVIEW_MODE): `{branch_url}`",
         "- production: skipped pre-merge (saberistic.com shots are post-deploy only)",
     ]
-    if routes is not None:
+    if targets is not None:
+        normalized = normalize_screenshot_targets(targets)
+        target_list = ", ".join(format_screenshot_target_label(t) for t in normalized)
+        lines.append(f"- targets (PR-affected): {target_list or '(none)'}")
+        for target in normalized:
+            desktop = screenshot_basename(PRE_BRANCH_PHASE, target.route, "desktop")
+            mobile = screenshot_basename(PRE_BRANCH_PHASE, target.route, "mobile")
+            label = format_screenshot_target_label(target)
+            lines.append(
+                f"  - {label}: `{desktop}`, `{mobile}`"
+            )
+    elif routes is not None:
         route_list = ", ".join(f"`{r}`" for r in routes) or "(none)"
         lines.append(f"- routes (PR-affected): {route_list}")
     lines.extend(
@@ -1190,7 +1469,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.pr:
             changed = fetch_pr_changed_paths(args.repo, args.pr)
         include_admin = args.phase == "pre" and not args.prod_only
-        routes = resolve_screenshot_routes(
+        targets = resolve_screenshot_targets(
             Path(args.preview_root) if args.preview_root else None,
             changed_files=changed,
             include_admin=include_admin,
@@ -1198,12 +1477,12 @@ def main(argv: list[str] | None = None) -> int:
         dual_pre = args.phase == "pre" and not args.prod_only
         if dual_pre:
             preview = Path(args.preview_root) if args.preview_root else None
-            if not routes:
+            if not targets:
                 body = (
                     "### reviewer_screenshots_pre\n"
                     "- production: skipped pre-merge "
                     "(saberistic.com shots are post-deploy only)\n"
-                    "- routes (PR-affected): (none)\n"
+                    "- targets (PR-affected): (none)\n"
                     "- note: no pages affected by this PR "
                     "(tests/docs/scripts only); screenshots skipped\n"
                 )
@@ -1212,7 +1491,7 @@ def main(argv: list[str] | None = None) -> int:
                 dual = capture_pre_dual(
                     args.out_dir,
                     preview_root=preview,
-                    routes=routes,
+                    targets=targets,
                 )
                 branch_urls = upload_to_branch(
                     args.repo, branch, dual.branch_paths, prefix
@@ -1220,7 +1499,7 @@ def main(argv: list[str] | None = None) -> int:
                 body = comment_markdown_pre_dual(
                     branch_url=dual.branch_url,
                     branch_urls=branch_urls,
-                    routes=routes,
+                    targets=targets,
                 )
                 urls = branch_urls
         else:

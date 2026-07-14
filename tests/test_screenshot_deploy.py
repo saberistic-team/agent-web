@@ -1,14 +1,26 @@
 from screenshot_deploy import (
     VIEWPORTS,
+    PageProbeResult,
+    ScreenshotTarget,
+    _body_looks_like_html,
+    _classify_response,
+    _probe_capture_action,
+    _probe_page_response,
     admin_screenshot_session_cookie,
     discover_screenshot_routes,
+    discover_screenshot_targets,
     format_overflow_hard_fail,
+    format_probe_hard_fail,
+    format_screenshot_target_label,
     is_admin_screenshot_route,
     is_production_pre_shot,
     is_public_screenshot_route,
     is_skipped_api_or_meta_route,
+    normalize_screenshot_target,
+    normalize_screenshot_targets,
     resolve_base_url,
     resolve_screenshot_routes,
+    resolve_screenshot_targets,
     route_requires_admin_auth,
     routes_affected_by_changed_files,
     screenshot_basename,
@@ -113,14 +125,22 @@ def test_discover_screenshot_routes_include_admin() -> None:
 
 
 def test_admin_screenshot_routes_match_layout() -> None:
-    from app.admin_layout import ADMIN_SCREENSHOT_PATHS
+    from app.admin_layout import ADMIN_SCREENSHOT_PATHS, ADMIN_SCREENSHOT_TARGETS
     from scripts.screenshot_deploy import (
         ADMIN_SCREENSHOT_ROUTES,
         resolved_admin_screenshot_routes,
+        resolved_admin_screenshot_targets,
     )
 
     assert tuple(ADMIN_SCREENSHOT_PATHS) == ADMIN_SCREENSHOT_ROUTES
     assert resolved_admin_screenshot_routes() == ADMIN_SCREENSHOT_ROUTES
+    targets = resolved_admin_screenshot_targets()
+    assert [t.route for t in targets] == list(ADMIN_SCREENSHOT_PATHS)
+    brief_503 = next(t for t in targets if t.route == "/admin/briefs/503")
+    assert brief_503.expected_status == 503
+    assert list(normalize_screenshot_targets(list(ADMIN_SCREENSHOT_TARGETS))) == list(
+        targets
+    )
 
 
 def test_routes_affected_by_single_html_file() -> None:
@@ -331,10 +351,11 @@ def test_wait_healthy_builds_absolute_url(monkeypatch) -> None:
 def test_comment_markdown_pre_branch_only() -> None:
     from screenshot_deploy import comment_markdown_pre_dual
 
+    targets = [ScreenshotTarget("/"), ScreenshotTarget("/admin/briefs/503", 503)]
     body = comment_markdown_pre_dual(
         branch_url="http://127.0.0.1:8765",
         branch_urls=["https://raw.example/branch-home.png"],
-        routes=["/", "/admin"],
+        targets=targets,
     )
     assert "### reviewer_screenshots_pre" in body
     assert "http://127.0.0.1:8765" in body
@@ -343,7 +364,11 @@ def test_comment_markdown_pre_branch_only() -> None:
     assert "branch-home.png" in body
     assert "Production baseline" not in body
     assert "pre-home.png" not in body
-    assert "routes (PR-affected): `/`, `/admin`" in body
+    assert "targets (PR-affected):" in body
+    assert "`/`" in body
+    assert "`/admin/briefs/503` (503)" in body
+    assert "branch-admin-briefs-503.png" in body
+    assert "branch-admin-briefs-503-mobile.png" in body
     assert "- **branch-home.png**\n      ![branch-home.png](" in body
     assert "branch-home.png: ![" not in body
 
@@ -383,3 +408,216 @@ def test_upload_to_branch_batches_one_commit(tmp_path, monkeypatch) -> None:
     assert "2 screenshot" in str(seen["message"])
     assert urls[0].endswith(".agent/screenshots/pr-1/branch-home.png")
     assert urls[1].endswith(".agent/screenshots/pr-1/branch-about.png")
+
+
+def test_normalize_screenshot_target_coerces_inputs() -> None:
+    assert normalize_screenshot_target("/about") == ScreenshotTarget("/about", 200)
+    assert normalize_screenshot_target(ScreenshotTarget("/admin/briefs/503", 503)) == (
+        ScreenshotTarget("/admin/briefs/503", 503)
+    )
+    from app.admin_layout import AdminScreenshotTarget
+
+    assert normalize_screenshot_target(
+        AdminScreenshotTarget("/admin/briefs/503", 503)
+    ) == ScreenshotTarget("/admin/briefs/503", 503)
+    assert normalize_screenshot_targets(["/", "/about"]) == [
+        ScreenshotTarget("/", 200),
+        ScreenshotTarget("/about", 200),
+    ]
+
+
+def test_format_screenshot_target_label() -> None:
+    assert format_screenshot_target_label(ScreenshotTarget("/", 200)) == "`/`"
+    assert (
+        format_screenshot_target_label(ScreenshotTarget("/admin/briefs/503", 503))
+        == "`/admin/briefs/503` (503)"
+    )
+
+
+def test_discover_screenshot_targets_include_admin_503() -> None:
+    targets = discover_screenshot_targets(include_admin=True)
+    brief_503 = next(t for t in targets if t.route == "/admin/briefs/503")
+    assert brief_503.expected_status == 503
+
+
+def test_classify_response_expected_200_html() -> None:
+    result = _classify_response(
+        200, "text/html; charset=utf-8", "<!doctype html><html>", expected_status=200
+    )
+    assert result == PageProbeResult(True, 200, True, None)
+
+
+def test_classify_response_expected_503_html() -> None:
+    result = _classify_response(
+        503,
+        "text/html; charset=utf-8",
+        "<!doctype html><html>",
+        expected_status=503,
+    )
+    assert result == PageProbeResult(True, 503, True, None)
+
+
+def test_classify_response_expected_404_html() -> None:
+    result = _classify_response(
+        404,
+        "text/html; charset=utf-8",
+        "<!doctype html><html>",
+        expected_status=404,
+    )
+    assert result == PageProbeResult(True, 404, True, None)
+
+
+def test_classify_response_unexpected_500_on_200_route() -> None:
+    result = _classify_response(
+        500,
+        "text/html; charset=utf-8",
+        "<!doctype html><html>",
+        expected_status=200,
+    )
+    assert result.ok is False
+    assert result.reason == "unexpected_error_status"
+    assert result.status == 500
+
+
+def test_classify_response_json_error() -> None:
+    result = _classify_response(
+        500, "application/json", '{"error": true}', expected_status=200
+    )
+    assert result.ok is False
+    assert result.reason == "json_response"
+    assert result.is_html is False
+
+
+def test_classify_response_status_mismatch_for_expected_error_page() -> None:
+    result = _classify_response(
+        404,
+        "text/html; charset=utf-8",
+        "<!doctype html><html>",
+        expected_status=503,
+    )
+    assert result.ok is False
+    assert result.reason == "status_mismatch"
+
+
+def test_body_looks_like_html() -> None:
+    assert _body_looks_like_html("<!doctype html><html>")
+    assert _body_looks_like_html("<html><body></body></html>")
+    assert not _body_looks_like_html('{"status":"ok"}')
+    assert not _body_looks_like_html("[1,2,3]")
+
+
+def test_probe_capture_action_matrix() -> None:
+    ok = PageProbeResult(True, 200, True, None)
+    assert _probe_capture_action(ok, ScreenshotTarget("/", 200)) == "capture"
+    expected_503 = ScreenshotTarget("/admin/briefs/503", 503)
+    mismatch = PageProbeResult(False, 404, True, "status_mismatch")
+    assert _probe_capture_action(mismatch, expected_503) == "fail"
+    unexpected = PageProbeResult(False, 500, True, "unexpected_error_status")
+    assert _probe_capture_action(unexpected, ScreenshotTarget("/", 200)) == "fail"
+    json_err = PageProbeResult(False, 200, False, "json_response")
+    assert _probe_capture_action(json_err, ScreenshotTarget("/hello", 200)) == "skip"
+
+
+def test_probe_page_response_expected_503(monkeypatch) -> None:
+    import urllib.error
+
+    class Resp:
+        def __init__(self, status: int, body: bytes, ctype: str) -> None:
+            self.status = status
+            self.headers = {"Content-Type": ctype}
+            self._body = body
+
+        def read(self, n: int = 256) -> bytes:
+            return self._body[:n]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    class HTTPError(urllib.error.HTTPError):
+        def __init__(self, code: int, body: bytes, ctype: str) -> None:
+            super().__init__(
+                "http://test/admin/briefs/503",
+                code,
+                "error",
+                {"Content-Type": ctype},
+                None,
+            )
+            self._body = body
+
+        def read(self, n: int = 256) -> bytes:
+            return self._body[:n]
+
+    def fake_urlopen(req, timeout=30):  # noqa: ANN001
+        if "503" in req.full_url:
+            raise HTTPError(503, b"<!doctype html><html>", "text/html")
+        return Resp(200, b"<!doctype html><html>", "text/html")
+
+    monkeypatch.setattr("screenshot_deploy.urllib.request.urlopen", fake_urlopen)
+    ok = _probe_page_response(
+        "http://test/admin/briefs/503",
+        route="/admin/briefs/503",
+        expected_status=503,
+    )
+    assert ok.ok is True
+    assert ok.status == 503
+    bad = _probe_page_response(
+        "http://test/about", route="/about", expected_status=200
+    )
+    assert bad.ok is True
+
+
+def test_probe_page_response_redirect_not_html(monkeypatch) -> None:
+    class Resp:
+        status = 302
+        headers = {"Content-Type": "text/html"}
+
+        def read(self, n: int = 256) -> bytes:
+            return b""
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(
+        "screenshot_deploy.urllib.request.urlopen", lambda *a, **k: Resp()
+    )
+    result = _probe_page_response(
+        "http://test/redirect", route="/redirect", expected_status=200
+    )
+    assert result.ok is False
+    assert result.reason == "status_mismatch"
+
+
+def test_format_probe_hard_fail_lists_targets() -> None:
+    msg = format_probe_hard_fail(
+        [
+            {
+                "route": "/admin/briefs/503",
+                "expected_status": 503,
+                "actual_status": 404,
+                "reason": "status_mismatch",
+            },
+            {
+                "route": "/admin/briefs/503",
+                "expected_status": 503,
+                "actual_status": 404,
+                "reason": "status_mismatch",
+                "viewport": "mobile",
+            },
+        ]
+    )
+    assert msg is not None
+    assert "screenshot probe failed" in msg
+    assert "`/admin/briefs/503` (503)" in msg
+    assert "ADMIN_SCREENSHOT_TARGETS" in msg
+
+
+def test_resolve_screenshot_targets_preserves_expected_status() -> None:
+    targets = resolve_screenshot_targets(changed_files=None, include_admin=True)
+    brief_503 = next(t for t in targets if t.route == "/admin/briefs/503")
+    assert brief_503.expected_status == 503
