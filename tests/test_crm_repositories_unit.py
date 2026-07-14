@@ -179,6 +179,44 @@ def test_contact_repository_search_without_query_excludes_archived() -> None:
 
 
 @pytest.mark.unit
+def test_contact_repository_update_no_fields_returns_existing() -> None:
+    repo = PostgresContactRepository()
+    row = {"id": CONTACT_ID, "name": "Lead"}
+    conn = _mock_conn(row)
+    result = repo.update(conn, CONTACT_ID)
+    assert result is not None
+    assert result["name"] == "Lead"
+    sql_calls = [
+        str(call.args[0])
+        for call in conn.cursor.return_value.__enter__.return_value.execute.call_args_list
+    ]
+    assert not any("UPDATE contacts" in sql for sql in sql_calls)
+
+
+@pytest.mark.unit
+def test_contact_repository_update_archive_and_permissions() -> None:
+    repo = PostgresContactRepository()
+    row = {"id": CONTACT_ID, "name": "Lead", "is_archived": True}
+    conn = _mock_conn(row)
+    updated = repo.update(
+        conn,
+        CONTACT_ID,
+        profile_url="https://linkedin.com/in/lead",
+        normalized_profile_url="linkedin.com/in/lead",
+        normalized_email="lead@example.com",
+        email_permission="permitted",
+        email_provenance="intro",
+        relationship_strength="good",
+        is_archived=True,
+    )
+    assert updated is not None
+    sql = str(conn.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    assert "profile_url = %s" in sql
+    assert "email_permission = %s" in sql
+    assert "is_archived = %s" in sql
+
+
+@pytest.mark.unit
 def test_company_repository_list_all() -> None:
     repo = PostgresCompanyRepository()
     conn = _mock_conn([{"id": COMPANY_ID, "name": "Acme"}])
