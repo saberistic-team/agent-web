@@ -8,13 +8,13 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from app import admin, admin_auth, admin_pages, db
+from app.admin_crm_routes import router as admin_crm_router
 from app.admin_deps import (
     issue_session_csrf,
     load_valid_session,
     require_admin_auth_configured,
     require_admin_session,
 )
-from app.admin_crm_routes import router as admin_crm_router
 from app.config import Settings, get_settings
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -222,8 +222,15 @@ def admin_logout(
 def admin_dashboard(request: Request) -> HTMLResponse:
     session = require_admin_session(request)
     settings = get_settings()
-    csrf_token = _issue_session_csrf(settings, session.id)
-    return HTMLResponse(admin.render_admin_dashboard_page(csrf_token=csrf_token))
+    csrf_token = ""
+    if session.id:
+        csrf_token = _issue_session_csrf(settings, session.id)
+    return HTMLResponse(
+        admin.render_admin_dashboard_page(
+            admin_username=session.admin_username,
+            csrf_token=csrf_token,
+        )
+    )
 
 
 router.include_router(admin_crm_router)
