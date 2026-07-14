@@ -144,6 +144,18 @@ def _issue_login_flow_response(
     csrf_hash = admin_auth.hash_csrf_token(raw_csrf_token)
     expires_at = admin_auth.login_flow_expires_at()
     with db.db_connection(settings.database_url) as conn:
+        try:
+            db.cleanup_stale_admin_login_flows(
+                conn,
+                now=datetime.now(timezone.utc),
+                retention_seconds=admin_auth.LOGIN_FLOW_CLEANUP_RETENTION_SECONDS,
+                batch_size=admin_auth.LOGIN_FLOW_CLEANUP_BATCH_SIZE,
+            )
+        except Exception:
+            logger.warning(
+                "Admin login flow cleanup failed; continuing with new flow",
+                exc_info=True,
+            )
         db.create_admin_login_flow(
             conn,
             flow_token_hash=flow_hash,
