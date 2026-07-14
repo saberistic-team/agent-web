@@ -397,6 +397,11 @@ class PostgresProjectBriefRepository:
         id, created_at, website, contact_value, status, paid_at,
         utm_source, utm_campaign
     """
+    _DETAIL_COLUMNS = """
+        id, created_at, website, contact_method, contact_value, brief, status,
+        stripe_session_id, stripe_payment_intent_id, paid_at,
+        utm_source, utm_medium, utm_campaign, utm_content, utm_term
+    """
 
     def _build_filters(
         self,
@@ -471,6 +476,23 @@ class PostgresProjectBriefRepository:
             )
             rows = [dict(row) for row in cur.fetchall()]
         return rows, total
+
+    def get_by_id(
+        self,
+        conn: psycopg.Connection,
+        brief_id: int,
+    ) -> dict[str, Any] | None:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT {self._DETAIL_COLUMNS}
+                FROM project_briefs
+                WHERE id = %s
+                """,
+                (brief_id,),
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
 
 
 class PostgresAuditEventRepository:
