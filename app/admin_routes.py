@@ -50,6 +50,8 @@ def _load_valid_session(request: Request, settings: Settings) -> admin_auth.Admi
 
 def require_admin_session(request: Request) -> admin_auth.AdminSession:
     settings = get_settings()
+    if settings.admin_preview_enabled:
+        return admin_auth.preview_admin_session(settings)
     _require_admin_auth_configured(settings)
     session = _load_valid_session(request, settings)
     if session is None:
@@ -167,6 +169,19 @@ def _issue_session(
 @router.get("/login", response_class=HTMLResponse, response_model=None)
 def admin_login_form(request: Request, next: str | None = None) -> Response:
     settings = get_settings()
+    if settings.admin_preview_enabled:
+        # Preview mode: render login UI without requiring live auth secrets/DB.
+        csrf_token = (
+            admin_auth.generate_csrf_value()
+            if settings.admin_session_secret
+            else "preview-csrf"
+        )
+        return HTMLResponse(
+            admin_pages.render_admin_login_page(
+                csrf_token=csrf_token,
+                next_path=next,
+            )
+        )
     _require_admin_auth_configured(settings)
     if _load_valid_session(request, settings) is not None:
         return RedirectResponse(

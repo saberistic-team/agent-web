@@ -142,7 +142,7 @@ def _issue_work(rows: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
         if role == "builder" and action == "build" and outcome in _OK:
             bucket["built"] = True
         if action in {"review:approved", "review"} and outcome in _OK:
-            # Approve path always requires pre screenshots (branch + prod).
+            # Approve path posts pre-merge branch screenshots (incl. admin preview).
             bucket["approved"] = action == "review:approved" or bucket["approved"]
             if action == "review:approved":
                 bucket["screenshotish"] = True
@@ -309,8 +309,9 @@ def render_digest(rows: list[dict[str, Any]], *, since: datetime, until: datetim
 
     lines.extend(["", "### Screenshots & visual evidence", ""])
     lines.append(
-        "Pre-merge Reviewer captures **PR branch** (local) + **saberistic.com**; "
-        "post-deploy CI captures **saberistic.com** only "
+        "Pre-merge Reviewer captures **PR branch** only (local uvicorn, "
+        "`ADMIN_PREVIEW_MODE` for `/admin`); post-deploy CI captures "
+        "**saberistic.com** public pages only "
         "([docs/SCREENSHOTS.md](../docs/SCREENSHOTS.md))."
     )
     lines.append("")
@@ -328,7 +329,7 @@ def render_digest(rows: list[dict[str, Any]], *, since: datetime, until: datetim
             if meta["approved"] or any(
                 a.startswith("review:") for a in meta["actions"]
             ):
-                parts.append("pre-merge screenshots (branch + production)")
+                parts.append("pre-merge screenshots (PR branch)")
             if meta["merged"]:
                 parts.append("post-deploy screenshots (production)")
             if not parts:
