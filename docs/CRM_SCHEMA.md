@@ -169,7 +169,9 @@ Short-lived pre-authentication browser flows for login CSRF ([#139](https://gith
 | `created_at`, `expires_at` | `TIMESTAMPTZ` | 15-minute TTL enforced at read |
 | `consumed_at` | `TIMESTAMPTZ` | Set on each login POST (one-time use) |
 
-Index: `flow_token_hash`. See [ADMIN_AUTH.md](ADMIN_AUTH.md).
+Index: `flow_token_hash`. Partial indexes on `expires_at` (unconsumed) and
+`consumed_at` (consumed) support bounded cleanup (migration `009`). See
+[ADMIN_AUTH.md](ADMIN_AUTH.md).
 
 ### `admin_login_rate_limits`
 
