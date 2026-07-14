@@ -80,6 +80,7 @@ ADMIN_SCREENSHOT_ROUTES: tuple[str, ...] = (
     "/admin/login",
     "/admin/briefs/1",
     "/admin/briefs/2",
+    "/admin/briefs/503",
 )
 
 # Shared presentation — any change here affects all public pages.
