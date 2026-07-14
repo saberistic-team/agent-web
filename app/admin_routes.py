@@ -12,6 +12,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import ValidationError
 
 from app import admin, admin_auth, admin_pages, admin_research_pages, audit_service, brief_service, db
+from app.crm_uow import crm_transaction
 from app.actor_context import actor_context_from_request, anonymous_actor_context, correlation_id_from_request
 from app.admin_layout import ADMIN_NAV_LINKS, render_admin_shell
 from app.admin_preview import PREVIEW_BRIEF_DATABASE_ERROR_ID
@@ -121,12 +122,13 @@ def _record_login_failure(
     actor_context = actor_context_from_request(request, actor=actor)
     try:
         with db.db_connection(settings.database_url) as conn:
-            audit_service.record_login_failure(
-                conn,
-                actor_context=actor_context,
-                reason=reason,
-                attempted_username=attempted_username,
-            )
+            with crm_transaction(conn):
+                audit_service.record_login_failure(
+                    conn,
+                    actor_context=actor_context,
+                    reason=reason,
+                    attempted_username=attempted_username,
+                )
     except Exception:
         logger.exception("Failed to record login failure audit event")
 
@@ -145,19 +147,6 @@ def _issue_login_flow_response(
     csrf_hash = admin_auth.hash_csrf_token(raw_csrf_token)
     expires_at = admin_auth.login_flow_expires_at()
     with db.db_connection(settings.database_url) as conn:
-        try:
-            db.cleanup_stale_admin_login_flows(
-                conn,
-                now=datetime.now(timezone.utc),
-                expired_retention_seconds=admin_auth.LOGIN_FLOW_EXPIRED_RETENTION_SECONDS,
-                consumed_retention_seconds=admin_auth.LOGIN_FLOW_CONSUMED_RETENTION_SECONDS,
-                batch_size=admin_auth.LOGIN_FLOW_CLEANUP_BATCH_SIZE,
-            )
-        except Exception:
-            logger.warning(
-                "Admin login flow cleanup failed; continuing with new flow",
-                exc_info=True,
-            )
         db.create_admin_login_flow(
             conn,
             flow_token_hash=flow_hash,
@@ -231,7 +220,8 @@ def _issue_session(
     if prior_raw_token:
         prior_hash = admin_auth.hash_session_token(prior_raw_token)
         with db.db_connection(settings.database_url) as conn:
-            db.revoke_admin_session(conn, token_hash=prior_hash)
+            with crm_transaction(conn):
+                db.revoke_admin_session(conn, token_hash=prior_hash)
 
     raw_token = admin_auth.generate_session_token()
     token_hash = admin_auth.hash_session_token(raw_token)
@@ -239,21 +229,19 @@ def _issue_session(
     initial_csrf = admin_auth.generate_csrf_value()
     csrf_hash = admin_auth.hash_csrf_token(initial_csrf)
     with db.db_connection(settings.database_url) as conn:
-        session_id = db.create_admin_session(
-            conn,
-            token_hash=token_hash,
-            admin_username=admin_username,
-            expires_at=expires_at,
-            csrf_token_hash=csrf_hash,
-        )
-        try:
+        with crm_transaction(conn):
+            session_id = db.create_admin_session(
+                conn,
+                token_hash=token_hash,
+                admin_username=admin_username,
+                expires_at=expires_at,
+                csrf_token_hash=csrf_hash,
+            )
             audit_service.record_login_success(
                 conn,
                 actor_context=actor_context_from_request(request, actor=admin_username),
                 session_id=session_id,
             )
-        except Exception:
-            logger.exception("Failed to record login success audit event")
     admin_auth.set_session_cookie(response, raw_token, settings)
     return session_id
 
@@ -375,8 +363,8 @@ def admin_logout(
         if raw_token is not None:
             token_hash = admin_auth.hash_session_token(raw_token)
             with db.db_connection(settings.database_url) as conn:
-                db.revoke_admin_session(conn, token_hash=token_hash)
-                try:
+                with crm_transaction(conn):
+                    db.revoke_admin_session(conn, token_hash=token_hash)
                     audit_service.record_logout(
                         conn,
                         actor_context=actor_context_from_request(
@@ -384,17 +372,16 @@ def admin_logout(
                         ),
                         session_id=session.id,
                     )
-                except Exception:
-                    logger.exception("Failed to record logout audit event")
     else:
         if settings.database_url:
             try:
                 with db.db_connection(settings.database_url) as conn:
-                    audit_service.record_logout(
-                        conn,
-                        actor_context=anonymous_actor_context(request),
-                        session_id=None,
-                    )
+                    with crm_transaction(conn):
+                        audit_service.record_logout(
+                            conn,
+                            actor_context=anonymous_actor_context(request),
+                            session_id=None,
+                        )
             except Exception:
                 logger.exception("Failed to record anonymous logout audit event")
     response = RedirectResponse(url="/admin/login", status_code=303)
