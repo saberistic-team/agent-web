@@ -436,17 +436,11 @@ main {
 }
 
 .offer-alt,
-.services-alt {
+.services-alt,
+.services-qualification {
   margin: 0 0 2rem;
   max-width: 52ch;
   color: var(--muted);
-}
-
-.services-qual {
-  margin: 2rem 0;
-  max-width: 52ch;
-  color: var(--muted);
-  font-style: italic;
 }
 
 .offer-alt a,
@@ -573,20 +567,18 @@ main {
   white-space: nowrap;
 }
 
-.case-summary {
-  margin: 0 0 1.25rem;
+.proof-summary {
+  margin: 0.5rem 0 0;
   max-width: 52ch;
   color: var(--muted);
-  font-size: 0.9rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
 }
 
-.case-index .proof-link {
-  padding-bottom: 0.75rem;
-}
-
-.case-index-cta {
+.case-studies-cta {
   margin: 2rem 0 1rem;
   max-width: 52ch;
+  color: var(--muted);
 }
 
 .case-study {
