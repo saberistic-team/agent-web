@@ -362,7 +362,7 @@ def test_login_success_uses_single_transaction_for_session_and_audit() -> None:
                                 },
                             )
                             assert login.status_code == 303
-                            tx.assert_called()
+                            tx.assert_called_once()
                             create_session.assert_called_once()
                             success_audit.assert_called_once()
 

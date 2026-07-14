@@ -49,12 +49,28 @@ both commit or roll back together.
 |------|-------|--------|
 | CRM import, delete, pipeline, scoring, analytics, export | `CrmService` | Required audit; failure rolls back mutation |
 | Brief-to-CRM linkage | `CrmService.link_project_brief_source` | Transactional write; audit ships with future routes |
-| Login success | `admin_routes._issue_session` | Session + required audit atomically |
+| Login success | `admin_routes._issue_session` | Prior-session revocation (if any) + new session + required audit atomically |
 | Logout (authenticated) | `admin_routes.admin_logout` | Revocation + required audit atomically |
 | Login failure / anonymous logout | `admin_routes` | Best-effort audit (`required=False`) |
 
 `record_event(..., required=True)` propagates persistence errors. Security-sensitive
 mutations must not return success when a required audit event could not be stored.
+
+### Admin login session boundary
+
+`admin_routes._issue_session` opens one `db_connection` and one `crm_transaction`
+for every successful login — with or without a prior session cookie (e.g. two-tab
+re-login). Inside that unit of work:
+
+1. Revoke the prior session row when `prior_raw_token` is present.
+2. Insert the replacement `admin_sessions` row.
+3. Append the required `auth.login.success` audit event.
+
+The handler commits once after all three steps succeed. Any failure in session
+creation or audit insertion rolls back prior-session revocation as well, so the
+operator is never left without a valid server-side session. The session cookie is
+set on the redirect response only after the transaction exits successfully; failed
+or rolled-back logins never emit a new session cookie.
 
 ## Audited actions
 
