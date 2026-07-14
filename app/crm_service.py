@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Generator
 from uuid import UUID
 
 import psycopg
@@ -41,6 +42,17 @@ def default_crm_repositories() -> CrmRepositories:
     )
 
 
+@contextmanager
+def crm_transaction(conn: psycopg.Connection) -> Generator[None, None, None]:
+    """Commit once after all repository mutations succeed; rollback on any failure."""
+    try:
+        yield
+        conn.commit()
+    except BaseException:
+        conn.rollback()
+        raise
+
+
 class CrmService:
     """Thin service layer for admin/import/discovery callers."""
 
@@ -56,18 +68,19 @@ class CrmService:
         contact_email: str,
         contact_name: str | None = None,
     ) -> dict[str, Any]:
-        company = self._repos.companies.create(
-            conn,
-            name=company_name,
-            website=website,
-        )
-        contact = self._repos.contacts.create(
-            conn,
-            email=contact_email,
-            full_name=contact_name,
-            company_id=UUID(str(company["id"])),
-        )
-        return {"company": company, "contact": contact}
+        with crm_transaction(conn):
+            company = self._repos.companies.create(
+                conn,
+                name=company_name,
+                website=website,
+            )
+            contact = self._repos.contacts.create(
+                conn,
+                email=contact_email,
+                full_name=contact_name,
+                company_id=UUID(str(company["id"])),
+            )
+            return {"company": company, "contact": contact}
 
     def record_activity_for_company(
         self,
@@ -79,14 +92,15 @@ class CrmService:
         contact_id: UUID | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        return self._repos.activities.create(
-            conn,
-            activity_type=activity_type,
-            summary=summary,
-            company_id=company_id,
-            contact_id=contact_id,
-            metadata=metadata,
-        )
+        with crm_transaction(conn):
+            return self._repos.activities.create(
+                conn,
+                activity_type=activity_type,
+                summary=summary,
+                company_id=company_id,
+                contact_id=contact_id,
+                metadata=metadata,
+            )
 
     def link_project_brief_source(
         self,
@@ -97,14 +111,15 @@ class CrmService:
         contact_id: UUID,
         payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        return self._repos.source_records.create(
-            conn,
-            source_type="project_brief",
-            external_id=str(brief_id),
-            company_id=company_id,
-            contact_id=contact_id,
-            payload=payload,
-        )
+        with crm_transaction(conn):
+            return self._repos.source_records.create(
+                conn,
+                source_type="project_brief",
+                external_id=str(brief_id),
+                company_id=company_id,
+                contact_id=contact_id,
+                payload=payload,
+            )
 
     def get_admin_user_by_email(
         self,
