@@ -19,6 +19,7 @@ from app.actor_context import ActorContext
 from app.admin_auth import SESSION_COOKIE_NAME
 from app.audit_service import REDACTED_VALUE
 from app.config import get_settings
+from app.crm_service import CrmRepositories, CrmService
 from app.main import app
 from app.migrations.definitions import MIGRATIONS
 from app.migrations.runner import pending_migrations
@@ -78,18 +79,18 @@ def _session_row(
 @pytest.mark.unit
 def test_audit_migration_present_and_ordered() -> None:
     versions = [migration.version for migration in MIGRATIONS]
-    assert "004" in versions
-    audit = next(m for m in MIGRATIONS if m.version == "004")
+    assert "005" in versions
+    audit = next(m for m in MIGRATIONS if m.version == "005")
     assert "audit_events" in audit.up_sql
     assert "prevent_audit_events_mutation" in audit.up_sql
-    assert versions.index("004") > versions.index("003")
+    assert versions.index("005") > versions.index("004")
 
 
 @pytest.mark.unit
-def test_pending_migrations_skips_applied() -> None:
-    pending = pending_migrations(applied_versions={"001", "002", "003"})
+def test_pending_migrations_includes_audit_after_sessions() -> None:
+    pending = pending_migrations(applied_versions={"001", "002", "003", "004"})
     assert len(pending) == 1
-    assert pending[0].version == "004"
+    assert pending[0].version == "005"
 
 
 @pytest.mark.unit
@@ -199,6 +200,85 @@ def test_representative_mutation_helpers_call_record_event() -> None:
 
 
 @pytest.mark.unit
+def test_crm_service_audited_mutations_record_events() -> None:
+    conn = MagicMock()
+    source_repo = MagicMock()
+    source_repo.create.return_value = {"id": "sr-1"}
+    audit_repo = MagicMock()
+    actor = _actor("corr-crm")
+
+    service = CrmService(
+        repos=CrmRepositories(
+            companies=MagicMock(),
+            contacts=MagicMock(),
+            source_records=source_repo,
+            activities=MagicMock(),
+            admin_users=MagicMock(),
+        )
+    )
+
+    with patch("app.crm_service.audit_service.record_import_batch", wraps=audit_service.record_import_batch) as import_audit:
+        with patch("app.crm_service.audit_service.record_entity_delete", wraps=audit_service.record_entity_delete) as delete_audit:
+            with patch("app.crm_service.audit_service.record_pipeline_update", wraps=audit_service.record_pipeline_update) as pipeline_audit:
+                with patch("app.crm_service.audit_service.record_scoring_rule_update", wraps=audit_service.record_scoring_rule_update) as scoring_audit:
+                    with patch("app.crm_service.audit_service.record_analytics_config_update", wraps=audit_service.record_analytics_config_update) as analytics_audit:
+                        with patch("app.crm_service.audit_service.record_export_request", wraps=audit_service.record_export_request) as export_audit:
+                            with patch("app.crm_service.audit_service.get_repositories") as get_repos:
+                                get_repos.return_value.audit_events = audit_repo
+                                audit_repo.append.return_value = {"id": "evt"}
+
+                                service.import_batch(
+                                    conn,
+                                    actor_context=actor,
+                                    batch_id="batch-9",
+                                    source_type="csv",
+                                    records=[{"name": "Acme"}],
+                                )
+                                service.delete_entity(
+                                    conn,
+                                    actor_context=actor,
+                                    entity_type="company",
+                                    entity_id="co-1",
+                                    summary_before={"name": "Acme"},
+                                )
+                                service.update_pipeline(
+                                    conn,
+                                    actor_context=actor,
+                                    entity_id="deal-1",
+                                    summary_before={"stage": "new"},
+                                    summary_after={"stage": "qualified"},
+                                )
+                                service.update_scoring_rule(
+                                    conn,
+                                    actor_context=actor,
+                                    rule_id="rule-1",
+                                    summary_before={"weight": 1},
+                                    summary_after={"weight": 2},
+                                )
+                                service.update_analytics_config(
+                                    conn,
+                                    actor_context=actor,
+                                    config_key="funnel",
+                                    summary_before={"enabled": False},
+                                    summary_after={"enabled": True},
+                                )
+                                service.request_export(
+                                    conn,
+                                    actor_context=actor,
+                                    export_type="companies_csv",
+                                    filters={"status": "active"},
+                                )
+
+    import_audit.assert_called_once()
+    delete_audit.assert_called_once()
+    pipeline_audit.assert_called_once()
+    scoring_audit.assert_called_once()
+    analytics_audit.assert_called_once()
+    export_audit.assert_called_once()
+    assert source_repo.create.call_count == 1
+
+
+@pytest.mark.unit
 def test_postgres_audit_repository_append_serializes_json() -> None:
     conn = MagicMock()
     cursor = MagicMock()
@@ -221,10 +301,19 @@ def test_postgres_audit_repository_append_serializes_json() -> None:
 
 
 @pytest.mark.unit
+def test_audit_repository_has_no_update_or_delete_methods() -> None:
+    repo = PostgresAuditEventRepository()
+    assert not hasattr(repo, "update")
+    assert not hasattr(repo, "delete")
+    assert hasattr(repo, "append")
+    assert hasattr(repo, "list_page")
+
+
+@pytest.mark.unit
 @pytest.mark.integration
 def test_login_success_and_failure_create_audit_events() -> None:
     with mock_db_connection() as conn:
-        with patch("app.admin_routes.admin_db.create_admin_session", return_value=42) as create_session:
+        with patch("app.admin_routes.db.create_admin_session", return_value=42) as create_session:
             with patch("app.admin_routes.audit_service.record_login_success") as success_audit:
                 with patch("app.admin_routes.audit_service.record_login_failure") as failure_audit:
                     login = client.post(
@@ -259,8 +348,8 @@ def test_logout_records_audit_event() -> None:
     token_hash = admin_auth.hash_session_token("session-token")
     row = _session_row(token_hash=token_hash)
     with mock_db_connection() as conn:
-        with patch("app.admin_routes.admin_db.get_admin_session_by_token_hash", return_value=row):
-            with patch("app.admin_routes.admin_db.revoke_admin_session") as revoke_session:
+        with patch("app.admin_routes.db.get_admin_session_by_token_hash", return_value=row):
+            with patch("app.admin_routes.db.revoke_admin_session") as revoke_session:
                 with patch("app.admin_routes.audit_service.record_logout") as logout_audit:
                     response = client.post(
                         "/admin/logout",
@@ -300,7 +389,7 @@ def test_admin_audit_page_renders_paginated_events() -> None:
         }
     ]
     with mock_db_connection() as conn:
-        with patch("app.admin_routes.admin_db.get_admin_session_by_token_hash", return_value=row):
+        with patch("app.admin_routes.db.get_admin_session_by_token_hash", return_value=row):
             with patch(
                 "app.admin_routes.audit_service.list_events",
                 return_value=(events, 1),
@@ -395,9 +484,7 @@ def test_postgres_audit_repository_list_page() -> None:
 
 
 @pytest.mark.unit
-def test_admin_db_session_helpers() -> None:
-    from app import admin_db
-
+def test_db_session_helpers() -> None:
     conn = MagicMock()
     cursor = MagicMock()
     conn.cursor.return_value.__enter__.return_value = cursor
@@ -406,7 +493,7 @@ def test_admin_db_session_helpers() -> None:
         {"id": 7, "admin_username": TEST_USERNAME, "revoked_at": None},
     ]
 
-    session_id = admin_db.create_admin_session(
+    session_id = db.create_admin_session(
         conn,
         token_hash="hash",
         admin_username=TEST_USERNAME,
@@ -414,10 +501,10 @@ def test_admin_db_session_helpers() -> None:
     )
     assert session_id == 7
 
-    row = admin_db.get_admin_session_by_token_hash(conn, "hash")
+    row = db.get_admin_session_by_token_hash(conn, "hash")
     assert row["id"] == 7
 
-    admin_db.revoke_admin_session(conn, token_hash="hash")
+    db.revoke_admin_session(conn, token_hash="hash")
     assert conn.commit.call_count == 2
 
 
@@ -474,3 +561,11 @@ def test_get_repositories_returns_singleton() -> None:
     assert get_repositories() is get_repositories()
 
 
+@pytest.mark.unit
+def test_audit_migration_triggers_reject_mutations_at_runtime() -> None:
+    """Verify append-only enforcement is defined in migration SQL."""
+    audit = next(m for m in MIGRATIONS if m.name == "audit_events")
+    sql = audit.up_sql
+    assert "BEFORE UPDATE ON audit_events" in sql
+    assert "BEFORE DELETE ON audit_events" in sql
+    assert "RAISE EXCEPTION 'audit_events records are append-only'" in sql
