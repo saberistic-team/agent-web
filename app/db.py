@@ -121,15 +121,16 @@ def create_admin_session(
     token_hash: str,
     admin_username: str,
     expires_at: datetime,
+    csrf_token_hash: str | None = None,
 ) -> int:
     with conn.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO admin_sessions (token_hash, admin_username, expires_at)
-            VALUES (%s, %s, %s)
+            INSERT INTO admin_sessions (token_hash, admin_username, expires_at, csrf_token_hash)
+            VALUES (%s, %s, %s, %s)
             RETURNING id
             """,
-            (token_hash, admin_username, expires_at),
+            (token_hash, admin_username, expires_at, csrf_token_hash),
         )
         row = cur.fetchone()
         conn.commit()
@@ -143,7 +144,8 @@ def get_admin_session_by_token_hash(
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT id, token_hash, admin_username, created_at, expires_at, revoked_at
+            SELECT id, token_hash, admin_username, created_at, expires_at, revoked_at,
+                   csrf_token_hash
             FROM admin_sessions
             WHERE token_hash = %s
             """,
@@ -162,6 +164,75 @@ def revoke_admin_session(conn: psycopg.Connection, *, token_hash: str) -> None:
             WHERE token_hash = %s AND revoked_at IS NULL
             """,
             (revoked_at, token_hash),
+        )
+        conn.commit()
+
+
+def update_admin_session_csrf(
+    conn: psycopg.Connection,
+    *,
+    session_id: int,
+    csrf_token_hash: str,
+) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE admin_sessions
+            SET csrf_token_hash = %s
+            WHERE id = %s AND revoked_at IS NULL
+            """,
+            (csrf_token_hash, session_id),
+        )
+        conn.commit()
+
+
+def create_admin_login_flow(
+    conn: psycopg.Connection,
+    *,
+    flow_token_hash: str,
+    csrf_token_hash: str,
+    expires_at: datetime,
+) -> int:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO admin_login_flows (flow_token_hash, csrf_token_hash, expires_at)
+            VALUES (%s, %s, %s)
+            RETURNING id
+            """,
+            (flow_token_hash, csrf_token_hash, expires_at),
+        )
+        row = cur.fetchone()
+        conn.commit()
+    return int(row["id"])
+
+
+def get_admin_login_flow_by_token_hash(
+    conn: psycopg.Connection,
+    flow_token_hash: str,
+) -> dict[str, Any] | None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, flow_token_hash, csrf_token_hash, created_at, expires_at, consumed_at
+            FROM admin_login_flows
+            WHERE flow_token_hash = %s
+            """,
+            (flow_token_hash,),
+        )
+        return cur.fetchone()
+
+
+def consume_admin_login_flow(conn: psycopg.Connection, *, flow_token_hash: str) -> None:
+    consumed_at = datetime.now(timezone.utc)
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE admin_login_flows
+            SET consumed_at = %s
+            WHERE flow_token_hash = %s AND consumed_at IS NULL
+            """,
+            (consumed_at, flow_token_hash),
         )
         conn.commit()
 

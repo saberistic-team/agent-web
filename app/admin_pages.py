@@ -93,7 +93,12 @@ def render_admin_login_page(
 """
 
 
-def render_admin_dashboard_page(*, admin_username: str, settings: Settings) -> str:
+def render_admin_dashboard_page(
+    *,
+    admin_username: str,
+    settings: Settings,
+    csrf_token: str,
+) -> str:
     username = html.escape(admin_username)
     base_url = html.escape(settings.base_url, quote=True)
     return f"""<!DOCTYPE html>
@@ -124,6 +129,7 @@ def render_admin_dashboard_page(*, admin_username: str, settings: Settings) -> s
         />
       </a>
       <form method="post" action="/admin/logout">
+        <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}" />
         <button class="top-link admin-logout" type="submit">Sign out</button>
       </form>
     </header>
