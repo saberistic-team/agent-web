@@ -374,6 +374,12 @@ def test_analytics_js_exists_and_documents_funnel() -> None:
     body = response.text
     assert "Brief Form Started" in body
     assert "Contact Initiated" in body
+    assert "Nav Services" in body
+    assert "Nav Case Studies" in body
+    assert "Nav Insights" in body
+    assert "Nav Diagnostic" in body
+    assert "Services Viewed" in body
+    assert "Case Studies Viewed" in body
     assert "saberistic_utm" in body
     assert "Never sends brief text" in body
     assert "About Viewed" in body

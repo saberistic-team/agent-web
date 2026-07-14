@@ -104,7 +104,8 @@ def test_about_page_cta_flow() -> None:
     about = client.get("/about")
     assert about.status_code == 200
     assert 'href="/brief"' in about.text
-    assert 'href="/#proof"' in about.text
+    assert 'href="/case-studies"' in about.text
+    assert "Request an Architecture Diagnostic" in about.text
 
 
 @pytest.mark.integration

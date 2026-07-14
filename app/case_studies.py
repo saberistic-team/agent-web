@@ -156,7 +156,7 @@ def render_case_studies_index(path: Path | None = None) -> str:
         </p>
       </section>"""
 
-    return _render_page_shell(head=head, main=main, top_link="Insights")
+    return _render_page_shell(head=head, main=main, active_path="/case-studies")
 
 
 def case_study_page_title(study: dict[str, Any]) -> str:
@@ -210,4 +210,4 @@ def render_case_study_page(study: dict[str, Any]) -> str:
         </p>
       </article>"""
 
-    return _render_page_shell(head=head, main=main, top_link="Insights")
+    return _render_page_shell(head=head, main=main, active_path="/case-studies")

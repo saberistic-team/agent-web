@@ -9,7 +9,6 @@ from typing import AsyncIterator
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import (
-    FileResponse,
     HTMLResponse,
     JSONResponse,
     PlainTextResponse,
@@ -67,7 +66,9 @@ async def handle_http_exception(request: Request, exc: StarletteHTTPException) -
         return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
     if wants_json_not_found(request.url.path, request.headers.get("accept", "")):
         return JSONResponse({"detail": "Not Found"}, status_code=404)
-    return FileResponse(SITE_DIR / "404.html", status_code=404)
+    response = page_service.serve_page("404.html", get_settings())
+    response.status_code = 404
+    return response
 
 
 @app.get("/robots.txt", response_class=PlainTextResponse)

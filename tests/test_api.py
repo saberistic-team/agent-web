@@ -98,9 +98,10 @@ def test_about_page() -> None:
     assert "distributed systems" in body
     assert "Minecraft" in body
     assert "leave things better than I found them" in body
+    assert "Working through a difficult technical decision?" in body
+    assert "Request an Architecture Diagnostic" in body
     assert 'href="/brief"' in body
-    assert 'href="/#proof"' in body
-    assert "Request architecture review" in body
+    assert 'href="/case-studies"' in body
 
 
 @pytest.mark.unit

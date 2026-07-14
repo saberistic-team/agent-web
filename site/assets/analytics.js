@@ -23,6 +23,13 @@
     "/brief/success": { event: "Brief Success Viewed", step: 7 },
   };
 
+  const NAV_DESTINATION_EVENTS = {
+    "/services": "Nav Services",
+    "/case-studies": "Nav Case Studies",
+    "/insights": "Nav Insights",
+    "/brief": "Nav Diagnostic",
+  };
+
   const domainMeta = document.querySelector(
     'meta[name="saberistic-analytics-domain"]'
   );
@@ -160,6 +167,27 @@
     );
   }
 
+  function bindNavLinks() {
+    document
+      .querySelectorAll(".top-nav a[data-nav-destination]")
+      .forEach((link) => {
+        link.addEventListener("click", () => {
+          const destination = link.getAttribute("data-nav-destination");
+          if (!destination) {
+            return;
+          }
+          const eventName = NAV_DESTINATION_EVENTS[destination];
+          if (!eventName) {
+            return;
+          }
+          track(eventName, {
+            page: window.location.pathname,
+            nav_destination: destination,
+          });
+        });
+      });
+  }
+
   captureUtm();
 
   let initialized = false;
@@ -171,6 +199,7 @@
     trackPageView();
     bindBriefForm();
     bindContactLinks();
+    bindNavLinks();
   };
 
   const start = () => loadPlausible(initAnalytics);

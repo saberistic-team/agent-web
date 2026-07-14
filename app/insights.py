@@ -9,6 +9,7 @@ from typing import Any
 
 from app.metadata import OG_IMAGE, OG_IMAGE_ALT
 from app.seo import CANONICAL_BASE
+from app.site_layout import render_site_header
 
 DATA_PATH = Path(__file__).resolve().parent.parent / "site" / "data" / "insights.json"
 DEFAULT_AUTHOR = "AmirSaber Sharifi"
@@ -161,26 +162,15 @@ def _render_head(
     <link rel="stylesheet" href="/assets/site.css" />"""
 
 
-def _render_page_shell(*, head: str, main: str, top_link: str = "Insights") -> str:
-    top_href = "/insights" if top_link == "Insights" else "/"
+def _render_page_shell(*, head: str, main: str, active_path: str | None = None) -> str:
+    header = render_site_header(active_path)
     return f"""<!DOCTYPE html>
 <html lang="en">
   <head>
 {head}
   </head>
   <body>
-    <header class="top">
-      <a class="brand" href="/" aria-label="saberistic home">
-        <img
-          class="brand-word"
-          src="/assets/logo-text.png"
-          width="160"
-          height="41"
-          alt="saberistic"
-        />
-      </a>
-      <a class="top-link" href="{top_href}">{html.escape(top_link)}</a>
-    </header>
+{header}
 
     <main>
 {main}
@@ -267,7 +257,7 @@ def render_insights_index(path: Path | None = None) -> str:
         </p>
       </section>"""
 
-    return _render_page_shell(head=head, main=main, top_link="Home")
+    return _render_page_shell(head=head, main=main, active_path="/insights")
 
 
 def render_insight_page(article: dict[str, Any]) -> str:
@@ -331,7 +321,7 @@ def render_insight_page(article: dict[str, Any]) -> str:
         </p>
       </article>"""
 
-    return _render_page_shell(head=head, main=main, top_link="Insights")
+    return _render_page_shell(head=head, main=main, active_path="/insights")
 
 
 def render_atom_feed(path: Path | None = None) -> str:

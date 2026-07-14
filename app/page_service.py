@@ -3,13 +3,23 @@
 from __future__ import annotations
 
 import html
+import re
 from pathlib import Path
 
 from fastapi.responses import HTMLResponse
 
 from app.config import Settings
+from app.site_layout import PAGE_PATH_BY_FILENAME, render_site_header
 
 SITE_DIR = Path(__file__).resolve().parent.parent / "site"
+
+_HEADER_PATTERN = re.compile(r"<header class=\"top\">.*?</header>", re.DOTALL)
+
+
+def inject_site_header(page_html: str, active_path: str | None) -> str:
+    """Replace the page header with the shared primary navigation."""
+    header = render_site_header(active_path)
+    return _HEADER_PATTERN.sub(header, page_html, count=1)
 
 
 def inject_analytics(
@@ -71,4 +81,7 @@ def serve_html(
 def serve_page(filename: str, settings: Settings) -> HTMLResponse:
     """Return a site HTML page, injecting analytics tags when enabled."""
     page_html = (SITE_DIR / filename).read_text(encoding="utf-8")
+    active_path = PAGE_PATH_BY_FILENAME.get(filename)
+    if active_path is not None or filename in PAGE_PATH_BY_FILENAME:
+        page_html = inject_site_header(page_html, active_path)
     return serve_html(page_html, settings)
