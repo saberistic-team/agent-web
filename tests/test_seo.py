@@ -67,6 +67,29 @@ def test_sitemap_xml_route() -> None:
 
 
 @pytest.mark.unit
+def test_diagnostic_redirects_to_brief() -> None:
+    response = client.get("/diagnostic", follow_redirects=False)
+    assert response.status_code == 301
+    assert response.headers["location"] == "/brief"
+
+
+@pytest.mark.unit
+def test_diagnostic_redirect_has_no_chain() -> None:
+    response = client.get("/diagnostic", follow_redirects=False)
+    assert response.status_code == 301
+    brief = client.get("/brief", follow_redirects=False)
+    assert brief.status_code == 200
+
+
+@pytest.mark.unit
+def test_sitemap_excludes_diagnostic() -> None:
+    xml = sitemap_xml(lastmod=date(2026, 7, 13))
+    assert "https://saberistic.com/diagnostic" not in xml
+    assert "https://saberistic.com/services" in xml
+    assert "https://saberistic.com/case-studies" in xml
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     "path,expected_href",
     [
@@ -75,7 +98,6 @@ def test_sitemap_xml_route() -> None:
         ("/brief", "https://saberistic.com/brief"),
         ("/services", "https://saberistic.com/services"),
         ("/case-studies", "https://saberistic.com/case-studies"),
-        ("/diagnostic", "https://saberistic.com/diagnostic"),
         ("/insights", "https://saberistic.com/insights"),
     ],
 )
