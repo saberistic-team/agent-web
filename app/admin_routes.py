@@ -409,6 +409,94 @@ def admin_briefs_list(
     )
 
 
+@router.get("/briefs/{brief_id}", response_class=HTMLResponse)
+def admin_brief_detail(
+    request: Request,
+    brief_id: int,
+    page: int = 1,
+    q: str | None = None,
+    status: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> HTMLResponse:
+    session = require_admin_session(request)
+    settings = get_settings()
+    csrf_token = ""
+    if session.id:
+        csrf_token = _issue_session_csrf(settings, session.id)
+    back_filters = brief_service.normalize_list_back_params(
+        page=page,
+        q=q,
+        status=status,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    if settings.admin_preview_enabled:
+        brief = brief_service.preview_brief_detail(brief_id)
+        if brief is None:
+            return HTMLResponse(
+                admin_pages.render_admin_brief_not_found(
+                    brief_id=brief_id,
+                    admin_username=session.admin_username,
+                    back_filters=back_filters,
+                    csrf_token=csrf_token,
+                ),
+                status_code=404,
+            )
+        return HTMLResponse(
+            admin_pages.render_admin_brief_detail_page(
+                admin_username=session.admin_username,
+                brief=brief,
+                back_filters=back_filters,
+                price_cents=settings.brief_price_cents,
+                csrf_token=csrf_token,
+            )
+        )
+    if not settings.database_url:
+        return HTMLResponse(
+            admin_pages.render_admin_brief_not_found(
+                brief_id=brief_id,
+                admin_username=session.admin_username,
+                back_filters=back_filters,
+                csrf_token=csrf_token,
+            ),
+            status_code=404,
+        )
+    try:
+        with db.db_connection(settings.database_url) as conn:
+            brief = brief_service.get_brief(conn, brief_id)
+    except Exception:
+        logger.exception("Failed to load admin brief detail for id %s", brief_id)
+        return HTMLResponse(
+            admin_pages.render_admin_brief_not_found(
+                brief_id=brief_id,
+                admin_username=session.admin_username,
+                back_filters=back_filters,
+                csrf_token=csrf_token,
+            ),
+            status_code=404,
+        )
+    if brief is None:
+        return HTMLResponse(
+            admin_pages.render_admin_brief_not_found(
+                brief_id=brief_id,
+                admin_username=session.admin_username,
+                back_filters=back_filters,
+                csrf_token=csrf_token,
+            ),
+            status_code=404,
+        )
+    return HTMLResponse(
+        admin_pages.render_admin_brief_detail_page(
+            admin_username=session.admin_username,
+            brief=brief,
+            back_filters=back_filters,
+            price_cents=settings.brief_price_cents,
+            csrf_token=csrf_token,
+        )
+    )
+
+
 @router.get("/audit", response_class=HTMLResponse)
 def admin_audit_list(request: Request, page: int = 1) -> HTMLResponse:
     session = require_admin_session(request)
