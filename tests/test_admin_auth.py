@@ -522,20 +522,6 @@ def _request_with_client(host: str) -> Request:
     return Request(scope)
 
 
-def _asgi_with_client_host(client_host: str):
-    async def middleware(scope, receive, send):
-        if scope["type"] == "http":
-            scope = dict(scope)
-            scope["client"] = (client_host, 12345)
-        await app(scope, receive, send)
-
-    return middleware
-
-
-def _trusted_proxy_client(peer_host: str = "10.0.0.55") -> TestClient:
-    return TestClient(_asgi_with_client_host(peer_host), follow_redirects=False)
-
-
 @pytest.mark.unit
 def test_admin_preview_mode_allows_dashboard_without_login(
     monkeypatch: pytest.MonkeyPatch,
@@ -673,14 +659,14 @@ def test_client_ip_ignores_forwarded_without_trusted_proxy(
 
 
 @pytest.mark.unit
-def test_client_ip_uses_forwarded_when_trusted_proxy_enabled(
+def test_client_ip_uses_trusted_forwarding_chain_when_proxy_boundary_matches(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
+    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", "10.0.0.0/8,203.0.113.0/30")
     settings = get_settings()
     request = _request_with_client("10.0.0.1")
     request.headers.__dict__["_list"].append(
-        (b"x-forwarded-for", b"203.0.113.50, 10.0.0.1")
+        (b"x-forwarded-for", b"203.0.113.50, 203.0.113.1")
     )
     assert admin_auth.client_ip(request, settings) == "203.0.113.50"
 
@@ -1028,47 +1014,32 @@ def test_rate_limit_expires_after_lockout(
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_rate_limit_uses_forwarded_ip_when_trusted(
+def test_rate_limit_uses_trusted_forwarding_chain_when_proxy_boundary_matches(
     rate_limit_store: FakeRateLimitStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
+    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", "10.0.0.0/8,203.0.113.0/30")
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
-    trusted_client = _trusted_proxy_client()
-    with shared_rate_limiter(rate_limit_store):
-        headers = {"X-Forwarded-For": "203.0.113.77"}
-        with mock_db_connection():
-            csrf_a, cookies_a = _parse_login_form(trusted_client.get("/admin/login"))
-            assert trusted_client.post(
-                "/admin/login",
-                data={"username": "ghost", "password": "wrong", "csrf_token": csrf_a},
-                cookies=cookies_a,
-                headers=headers,
-            ).status_code == 401
-            csrf_b, cookies_b = _parse_login_form(trusted_client.get("/admin/login"))
-            assert trusted_client.post(
-                "/admin/login",
-                data={"username": "ghost", "password": "wrong", "csrf_token": csrf_b},
-                cookies=cookies_b,
-                headers=headers,
-            ).status_code == 401
-            csrf_c, cookies_c = _parse_login_form(trusted_client.get("/admin/login"))
-            assert trusted_client.post(
-                "/admin/login",
-                data={"username": "ghost", "password": "wrong", "csrf_token": csrf_c},
-                cookies=cookies_c,
-                headers=headers,
-            ).status_code == 429
+    settings = get_settings()
+    trusted_request = _request_with_client("10.0.0.1")
+    trusted_request.headers.__dict__["_list"].append(
+        (b"x-forwarded-for", b"203.0.113.77, 203.0.113.1")
+    )
+    other_request = _request_with_client("10.0.0.1")
+    other_request.headers.__dict__["_list"].append(
+        (b"x-forwarded-for", b"203.0.113.88, 203.0.113.1")
+    )
+    assert admin_auth.client_ip(trusted_request, settings) == "203.0.113.77"
+    assert admin_auth.client_ip(other_request, settings) == "203.0.113.88"
+    assert admin_auth.build_source_rate_limit_key("203.0.113.77") != (
+        admin_auth.build_source_rate_limit_key("203.0.113.88")
+    )
 
-        other_ip_headers = {"X-Forwarded-For": "203.0.113.88"}
-        with mock_db_connection():
-            csrf_d, cookies_d = _parse_login_form(trusted_client.get("/admin/login"))
-            assert trusted_client.post(
-                "/admin/login",
-                data={"username": "ghost", "password": "wrong", "csrf_token": csrf_d},
-                cookies=cookies_d,
-                headers=other_ip_headers,
-            ).status_code == 401
+    trusted_headers = {"X-Forwarded-For": "203.0.113.77, 203.0.113.1"}
+    with shared_rate_limiter(rate_limit_store):
+        assert _login(username="ghost", password="wrong", headers=trusted_headers).status_code == 401
+        assert _login(username="ghost", password="wrong", headers=trusted_headers).status_code == 401
+        assert _login(username="ghost", password="wrong", headers=trusted_headers).status_code == 429
 
 
 @pytest.mark.unit
@@ -1275,35 +1246,21 @@ def test_account_rate_limit_blocks_configured_username_across_sources(
     rate_limit_store: FakeRateLimitStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", "10.0.0.0/8,203.0.113.0/30")
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
-    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
-    trusted_client = _trusted_proxy_client()
     with shared_rate_limiter(rate_limit_store):
-        for forwarded in ("203.0.113.1", "203.0.113.2"):
-            with mock_db_connection():
-                csrf_token, cookies = _parse_login_form(trusted_client.get("/admin/login"))
-                assert trusted_client.post(
-                    "/admin/login",
-                    data={
-                        "username": TEST_USERNAME,
-                        "password": "wrong",
-                        "csrf_token": csrf_token,
-                    },
-                    cookies=cookies,
-                    headers={"X-Forwarded-For": forwarded},
-                ).status_code == 401
-        with mock_db_connection():
-            csrf_token, cookies = _parse_login_form(trusted_client.get("/admin/login"))
-            blocked = trusted_client.post(
-                "/admin/login",
-                data={
-                    "username": TEST_USERNAME,
-                    "password": "wrong",
-                    "csrf_token": csrf_token,
-                },
-                cookies=cookies,
-                headers={"X-Forwarded-For": "203.0.113.3"},
-            )
+        assert _login(
+            password="wrong",
+            headers={"X-Forwarded-For": "203.0.113.1, 203.0.113.1"},
+        ).status_code == 401
+        assert _login(
+            password="wrong",
+            headers={"X-Forwarded-For": "203.0.113.2, 203.0.113.1"},
+        ).status_code == 401
+        blocked = _login(
+            password="wrong",
+            headers={"X-Forwarded-For": "203.0.113.3, 203.0.113.1"},
+        )
     assert blocked.status_code == 429
 
 
