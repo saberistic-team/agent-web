@@ -42,14 +42,6 @@ def pipeline_capabilities_available(settings: Settings) -> bool:
     return bool(settings.database_url)
 
 
-def brief_revenue_cents(brief: dict[str, Any], *, list_price_cents: int) -> int:
-    if str(brief.get("status", "")) == "paid":
-        paid = brief.get("payment_amount_cents")
-        if paid is not None:
-            return int(paid)
-    return list_price_cents
-
-
 def build_conversion_proposal(
     brief: dict[str, Any],
     *,
@@ -62,10 +54,10 @@ def build_conversion_proposal(
     pipeline_stage = initial_pipeline_stage_for_brief_status(brief_status)
     expected_value: float | None = None
     if brief_status == "paid":
-        expected_value = round(
-            brief_revenue_cents(brief, list_price_cents=price_cents) / 100,
-            2,
-        )
+        amount_cents = brief.get("payment_amount_cents")
+        if amount_cents is None:
+            amount_cents = price_cents
+        expected_value = round(int(amount_cents) / 100, 2)
     return {
         "company_name": derive_company_name(website=str(brief.get("website", "")), domain=domain),
         "website": str(brief.get("website", "")),

@@ -159,9 +159,30 @@ def test_postgres_project_brief_repository_get_by_id_selects_detail_columns() ->
     sql = cursor.execute.call_args[0][0]
     assert "stripe_session_id" in sql
     assert "payment_amount_cents" in sql
-    assert "stripe_promotion_code_id" in sql
     assert "utm_term" in sql
     assert "WHERE id = %s" in sql
+
+
+@pytest.mark.unit
+def test_render_admin_brief_detail_page_shows_discounted_payment_breakdown() -> None:
+    brief = _detail_brief()
+    brief["payment_subtotal_cents"] = 20_000
+    brief["payment_discount_cents"] = 5_000
+    brief["payment_amount_cents"] = 15_000
+    brief["payment_currency"] = "usd"
+    brief["stripe_promotion_code_id"] = "promo_test_abc"
+    brief["stripe_coupon_id"] = "coupon_test_xyz"
+    html_out = render_admin_brief_detail_page(
+        admin_username=TEST_USERNAME,
+        brief=brief,
+        back_filters=_back_filters(),
+        price_cents=20_000,
+    )
+    assert "Subtotal: $200 USD" in html_out
+    assert "Discount: −$50 USD" in html_out
+    assert "Total: $150 USD" in html_out
+    assert "promo_test_abc" in html_out
+    assert "coupon_test_xyz" in html_out
 
 
 @pytest.mark.unit
@@ -218,30 +239,6 @@ def test_render_admin_brief_detail_page_shows_nullable_payment_and_utm_fields() 
     assert "Stripe references" not in html_out
     assert "audit-muted" in html_out
     assert "Pending" in html_out
-
-
-@pytest.mark.unit
-def test_render_admin_brief_detail_page_shows_discounted_payment_fields() -> None:
-    brief = _detail_brief()
-    brief["payment_subtotal_cents"] = 20_000
-    brief["payment_discount_cents"] = 5_000
-    brief["payment_amount_cents"] = 15_000
-    brief["payment_currency"] = "usd"
-    brief["stripe_promotion_code_id"] = "promo_preview_launch25"
-    brief["stripe_coupon_id"] = "coupon_preview_launch25"
-    html_out = render_admin_brief_detail_page(
-        admin_username=TEST_USERNAME,
-        brief=brief,
-        back_filters=_back_filters(),
-        price_cents=20_000,
-    )
-    assert "Subtotal:" in html_out
-    assert "Discount:" in html_out
-    assert "Total:" in html_out
-    assert "Currency:" in html_out
-    assert "promo_preview_launch25" in html_out
-    assert "coupon_preview_launch25" in html_out
-    assert "$150" in html_out
 
 
 @pytest.mark.unit

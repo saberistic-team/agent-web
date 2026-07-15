@@ -642,10 +642,6 @@ def build_preview_brief_rows(
         paid_at: datetime | None = None
         session_id: str | None = None
         intent_id: str | None = None
-        if status == "paid":
-            paid_at = created + timedelta(minutes=rng.randint(5, 90))
-            session_id = f"cs_preview_{rng.randint(100000, 999999)}"
-            intent_id = f"pi_preview_{rng.randint(100000, 999999)}"
         payment_subtotal_cents: int | None = None
         payment_discount_cents: int | None = None
         payment_amount_cents: int | None = None
@@ -653,18 +649,19 @@ def build_preview_brief_rows(
         stripe_promotion_code_id: str | None = None
         stripe_coupon_id: str | None = None
         if status == "paid":
+            paid_at = created + timedelta(minutes=rng.randint(5, 90))
+            session_id = f"cs_preview_{rng.randint(100000, 999999)}"
+            intent_id = f"pi_preview_{rng.randint(100000, 999999)}"
+            payment_subtotal_cents = 20_000
+            payment_currency = "usd"
             if brief_id == 1:
-                payment_subtotal_cents = 20_000
                 payment_discount_cents = 5_000
                 payment_amount_cents = 15_000
-                payment_currency = "usd"
-                stripe_promotion_code_id = "promo_preview_launch25"
-                stripe_coupon_id = "coupon_preview_launch25"
+                stripe_promotion_code_id = f"promo_preview_{rng.randint(100000, 999999)}"
+                stripe_coupon_id = f"coupon_preview_{rng.randint(100000, 999999)}"
             else:
-                payment_subtotal_cents = 20_000
-                payment_discount_cents = 0
                 payment_amount_cents = 20_000
-                payment_currency = "usd"
+                payment_discount_cents = 0
         utm_source = None if brief_id == 2 else rng.choice(UTM_SOURCES)
         utm_medium = None if brief_id == 2 else rng.choice(UTM_MEDIUMS)
         utm_campaign = None if brief_id == 2 else rng.choice(UTM_CAMPAIGNS)

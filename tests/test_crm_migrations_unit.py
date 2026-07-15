@@ -73,27 +73,10 @@ def test_brief_migrations_remain_idempotent() -> None:
 
 
 @pytest.mark.unit
-def test_brief_payment_amount_migration_is_idempotent() -> None:
-    migration = next(m for m in MIGRATIONS if m.name == "project_briefs_payment_amounts")
-    sql = migration.up_sql
-    for column in (
-        "payment_subtotal_cents",
-        "payment_discount_cents",
-        "payment_amount_cents",
-        "payment_currency",
-        "stripe_promotion_code_id",
-        "stripe_coupon_id",
-    ):
-        assert f"ADD COLUMN IF NOT EXISTS {column}" in sql
-
-
-@pytest.mark.unit
 def test_pending_migrations_skips_applied_versions() -> None:
     applied = {"001", "002"}
     pending = pending_migrations(applied_versions=applied)
-    assert [m.version for m in pending] == [
-        "003", "004", "005", "006", "007", "008", "009", "010", "011", "012", "013", "014",
-    ]
+    assert [m.version for m in pending] == ["003", "004", "005", "006", "007", "008", "009", "010", "011", "012", "013", "014"]
 
 
 @pytest.mark.unit
@@ -216,6 +199,21 @@ def test_acquisition_pipeline_migration_is_idempotent() -> None:
     assert "pipeline_stage" in pipeline.up_sql
     assert "pipeline_stage_history" in pipeline.up_sql
     assert "diagnostic_paid" in pipeline.up_sql
+
+
+@pytest.mark.unit
+def test_brief_payment_details_migration_is_idempotent() -> None:
+    migration = next(m for m in MIGRATIONS if m.name == "project_briefs_payment_details")
+    assert migration.version == "014"
+    for column in (
+        "payment_subtotal_cents",
+        "payment_discount_cents",
+        "payment_amount_cents",
+        "payment_currency",
+        "stripe_promotion_code_id",
+        "stripe_coupon_id",
+    ):
+        assert f"ADD COLUMN IF NOT EXISTS {column}" in migration.up_sql
 
 
 @pytest.mark.unit

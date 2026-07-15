@@ -1148,8 +1148,7 @@ class PostgresAdminUserRepository:
 class PostgresProjectBriefRepository:
     _LIST_COLUMNS = """
         id, created_at, website, contact_value, status, paid_at,
-        payment_subtotal_cents, payment_discount_cents, payment_amount_cents,
-        payment_currency,
+        payment_amount_cents, payment_discount_cents,
         utm_source, utm_campaign
     """
     _DETAIL_COLUMNS = """
