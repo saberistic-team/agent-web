@@ -39,17 +39,21 @@ def main(argv: list[str] | None = None) -> int:
         if not isinstance(payload, dict) or payload.get(key) != expected:
             print(f"FAIL {url}: got {payload!r}, expected {key}={expected!r}", file=sys.stderr)
             return 1
+        if path == "/health":
+            proxy_trust = payload.get("admin_login_proxy_trust")
+            if not isinstance(proxy_trust, dict):
+                print(
+                    f"FAIL {url}: missing admin_login_proxy_trust summary",
+                    file=sys.stderr,
+                )
+                return 1
+            if proxy_trust.get("enabled") and not proxy_trust.get("trusted_network_count"):
+                print(
+                    f"FAIL {url}: proxy trust enabled without trusted networks",
+                    file=sys.stderr,
+                )
+                return 1
         print(f"PASS {url} → {payload}")
-    health = get_json(f"{base}/health")
-    trust_mode = health.get("admin_client_source_trust")
-    if trust_mode != "verified_proxy_chain":
-        print(
-            f"FAIL {base}/health: admin_client_source_trust={trust_mode!r}, "
-            "expected 'verified_proxy_chain'",
-            file=sys.stderr,
-        )
-        return 1
-    print(f"PASS {base}/health admin_client_source_trust=verified_proxy_chain")
     return 0
 
 

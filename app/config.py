@@ -28,7 +28,9 @@ class Settings:
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
     admin_trust_proxy_headers: bool = False
-    admin_trusted_proxy_cidrs: tuple[str, ...] = ()
+    admin_trusted_proxy_ips: str = ""
+    admin_cloudflare_edge_ips: str = ""
+    uvicorn_forwarded_allow_ips: str = ""
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -48,11 +50,6 @@ class Settings:
     def admin_preview_mode(self) -> bool:
         flag = os.environ.get("ADMIN_PREVIEW_MODE", "").lower()
         return flag in ("1", "true", "yes")
-
-    @property
-    def admin_proxy_trust_enabled(self) -> bool:
-        """True when trusted proxy CIDRs or legacy proxy trust flag are configured."""
-        return bool(self.admin_trusted_proxy_cidrs) or self.admin_trust_proxy_headers
 
     @property
     def admin_auth_configured(self) -> bool:
@@ -119,9 +116,11 @@ def get_settings() -> Settings:
             "ADMIN_TRUST_PROXY_HEADERS", ""
         ).lower()
         in ("1", "true", "yes"),
-        admin_trusted_proxy_cidrs=tuple(
-            part.strip()
-            for part in os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "").split(",")
-            if part.strip()
-        ),
+        admin_trusted_proxy_ips=os.environ.get("ADMIN_TRUSTED_PROXY_IPS", "").strip(),
+        admin_cloudflare_edge_ips=os.environ.get(
+            "ADMIN_CLOUDFLARE_EDGE_IPS", ""
+        ).strip(),
+        uvicorn_forwarded_allow_ips=os.environ.get(
+            "UVICORN_FORWARDED_ALLOW_IPS", ""
+        ).strip(),
     )
