@@ -106,7 +106,7 @@ or rolled-back logins never emit a new session cookie.
 | Action | When recorded |
 |--------|----------------|
 | `auth.login.success` | Valid admin login creates a server-side session |
-| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting (actor is always `anonymous`) |
+| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting |
 | `auth.logout` | Authenticated session revocation (live session → revoked) |
 | `import.batch` | Data import batches via `CrmService.commit_linkedin_import` / `import_batch` |
 | `import.batch.rollback` | Rollback of committed import batches via `CrmService.rollback_import_batch` |
@@ -116,32 +116,26 @@ or rolled-back logins never emit a new session cookie.
 | `analytics.config.update` | Analytics configuration via `CrmService.update_analytics_config` |
 | `export.request` | Export requests via `CrmService.request_export` |
 
-Auth events are wired in `app/admin_routes.py`. Other mutations record audit events through `CrmService` methods that future admin UI routes will call.
-
 ### Login failure actor policy
 
-Every `auth.login.failure` event recorded before successful authentication uses
-actor `anonymous`. Submitted username candidates are never persisted in the
-immutable `actor` column, metadata, or reason text. Server-defined reasons are
-limited to values such as `invalid_credentials`, `invalid_csrf`, and
-`rate_limited`.
+Pre-authentication login failures (`auth.login.failure`) always use actor
+`anonymous`. Submitted username candidates must not appear in `actor`, metadata,
+reason text, correlation identifiers, logs, or metrics.
 
-Authenticated events (`auth.login.success`, `auth.logout`, and CRM mutations)
-continue to record the configured administrator username after session
-establishment.
+Authenticated events (`auth.login.success`, `auth.logout`, CRM mutations) retain the
+verified administrator username in `actor`.
 
-### Historical login-failure actors (pre-#242)
+#### Historical exposure (pre-#242)
 
-Deployments before keyed limiter identifiers and anonymous failure actors
-(issue #242) could persist submitted username strings in `audit_events.actor` for
-`auth.login.failure` rows. Those rows remain append-only; application code does
-not rewrite or delete historical audit data.
+Before issue #242, some deployments could persist attacker-supplied username
+candidates in the immutable `actor` column for `auth.login.failure` rows even
+though `attempted_username` was excluded from metadata. These rows cannot be
+updated or deleted through application code (append-only triggers). Treat
+unexpected `actor` values on historical failure events as unverified spray
+candidates, not authenticated identities. New failures after #242 use `anonymous`
+only.
 
-Operators reviewing auth-failure reports should treat pre-remediation `actor`
-values on `auth.login.failure` rows as **untrusted candidates**, not
-authenticated administrator identities. Forward-fix behavior prevents new
-occurrences. Remediation of historical rows requires an explicit data-governance
-decision outside normal application code.
+Auth events are wired in `app/admin_routes.py`. Other mutations record audit events through `CrmService` methods that future admin UI routes will call.
 
 ## Admin UI
 

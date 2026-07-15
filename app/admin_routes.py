@@ -234,6 +234,10 @@ def _brief_detail_context(
 def _require_admin_auth_configured(settings: Settings) -> None:
     if not settings.admin_auth_configured:
         raise HTTPException(status_code=503, detail="Admin authentication not configured")
+    try:
+        admin_auth.validate_admin_login_limiter_configuration(settings)
+    except ValueError:
+        raise HTTPException(status_code=503, detail="Admin authentication not configured")
 
 
 def _preview_session(settings: Settings) -> admin_auth.AdminSession:
@@ -527,7 +531,9 @@ def admin_login_submit(
                 reason="rate_limited",
             )
         else:
-            _record_login_failure(request, reason="invalid_csrf")
+            _record_login_failure(
+                request, reason="invalid_csrf"
+            )
         return _issue_login_flow_response(
             settings=settings,
             error_message=admin_auth.INVALID_CREDENTIALS_MESSAGE,

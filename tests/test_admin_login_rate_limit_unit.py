@@ -9,6 +9,8 @@ import pytest
 
 from app import db
 
+TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!!"
+
 
 @pytest.mark.unit
 def test_is_admin_login_throttled_false_when_no_row() -> None:
@@ -97,37 +99,6 @@ def test_try_admit_admin_login_rejects_active_lockout_without_update() -> None:
     admission = db.try_admit_admin_login(
         conn,
         limiter_keys=("key123",),
-        now=now,
-        rate_limit=5,
-        window_seconds=900,
-        lockout_seconds=900,
-    )
-
-    executed_sql = " ".join(call.args[0] for call in cur.execute.call_args_list)
-    assert "UPDATE admin_login_rate_limits" not in executed_sql
-    assert not admission.admitted
-    assert admission.already_locked
-
-
-@pytest.mark.unit
-def test_try_admit_admin_login_rejects_guard_key_lockout_without_update() -> None:
-    conn = MagicMock()
-    cur = MagicMock()
-    conn.cursor.return_value.__enter__.return_value = cur
-    now = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
-    cur.fetchall.return_value = [
-        {
-            "limiter_key": "guard-key",
-            "failure_count": 5,
-            "window_started_at": now - timedelta(minutes=1),
-            "locked_until": datetime(2026, 1, 1, 13, 0, tzinfo=timezone.utc),
-        }
-    ]
-
-    admission = db.try_admit_admin_login(
-        conn,
-        limiter_keys=("write-key",),
-        guard_keys=("guard-key",),
         now=now,
         rate_limit=5,
         window_seconds=900,
@@ -343,6 +314,7 @@ def test_is_login_throttled_falls_back_when_db_unavailable(
         "$argon2id$v=19$m=65536,t=3,p=4$aaaaaaaaaaaaaaaaaaaaaa$bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     )
     monkeypatch.setenv("ADMIN_SESSION_SECRET", "test-session-secret-32chars-minimum!!")
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
     monkeypatch.setenv("BASE_URL", "http://testserver")
     settings = get_settings()
     scope = {
@@ -384,6 +356,7 @@ def test_finalize_successful_login_clears_fallback_when_db_unavailable(
         "$argon2id$v=19$m=65536,t=3,p=4$aaaaaaaaaaaaaaaaaaaaaa$bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     )
     monkeypatch.setenv("ADMIN_SESSION_SECRET", "test-session-secret-32chars-minimum!!")
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "test-limiter-secret-32chars-minimum!!")
     monkeypatch.setenv("BASE_URL", "http://testserver")
     settings = get_settings()
     scope = {
@@ -407,3 +380,38 @@ def test_finalize_successful_login_clears_fallback_when_db_unavailable(
                 admin_auth.finalize_successful_login(request, settings, username="operator")
                 clear_fallback.assert_called_once()
                 release_fallback.assert_called_once()
+
+
+@pytest.mark.unit
+def test_try_admit_honors_lock_check_keys_without_incrementing_legacy_rows() -> None:
+    conn = MagicMock()
+    cur = MagicMock()
+    conn.cursor.return_value.__enter__.return_value = cur
+    now = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+    cur.fetchall.return_value = [
+        {
+            "limiter_key": "legacy-locked",
+            "failure_count": 5,
+            "window_started_at": now,
+            "locked_until": datetime(2026, 1, 1, 13, 0, tzinfo=timezone.utc),
+        }
+    ]
+
+    admission = db.try_admit_admin_login(
+        conn,
+        limiter_keys=("current-key",),
+        lock_check_keys=("legacy-locked", "current-key"),
+        now=now,
+        rate_limit=5,
+        window_seconds=900,
+        lockout_seconds=900,
+    )
+
+    assert not admission.admitted
+    assert admission.already_locked
+    update_calls = [
+        call.args[0]
+        for call in cur.execute.call_args_list
+        if call.args and "UPDATE admin_login_rate_limits" in call.args[0]
+    ]
+    assert not update_calls
