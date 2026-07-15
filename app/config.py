@@ -4,7 +4,21 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from functools import cached_property
+
+
+DEFAULT_TRUSTED_PROXY_CIDRS: tuple[str, ...] = (
+    "10.0.0.0/8",
+    "172.16.0.0/12",
+    "192.168.0.0/16",
+    "127.0.0.1/32",
+    "::1/128",
+)
+
+
+def _parse_cidr_list(raw: str) -> tuple[str, ...]:
+    if not raw.strip():
+        return ()
+    return tuple(part.strip() for part in raw.split(",") if part.strip())
 
 
 @dataclass(frozen=True)
@@ -28,9 +42,9 @@ class Settings:
     admin_login_rate_limit: int = 5
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
-    admin_trusted_proxy_ips: str = ""
-    admin_trusted_cloudflare_ips: str = ""
-    admin_trust_cloudflare_edge: bool = False
+    admin_trust_proxy_headers: bool = False
+    admin_trusted_proxy_cidrs: tuple[str, ...] = ()
+    admin_trusted_cloudflare_cidrs: tuple[str, ...] = ()
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -84,18 +98,6 @@ class Settings:
             return False
         return bool(self.plausible_domain)
 
-    @cached_property
-    def admin_trusted_proxy_networks(self) -> tuple:
-        from app.proxy_trust import parse_trusted_networks
-
-        return parse_trusted_networks(self.admin_trusted_proxy_ips)
-
-    @cached_property
-    def admin_cloudflare_networks(self) -> tuple:
-        from app.proxy_trust import parse_trusted_networks
-
-        return parse_trusted_networks(self.admin_trusted_cloudflare_ips)
-
 
 def get_settings() -> Settings:
     return Settings(
@@ -124,12 +126,26 @@ def get_settings() -> Settings:
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
         brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
-        admin_trusted_proxy_ips=os.environ.get("ADMIN_TRUSTED_PROXY_IPS", "").strip(),
-        admin_trusted_cloudflare_ips=os.environ.get(
-            "ADMIN_TRUSTED_CLOUDFLARE_IPS", ""
-        ).strip(),
-        admin_trust_cloudflare_edge=os.environ.get(
-            "ADMIN_TRUST_CLOUDFLARE_EDGE", ""
+        admin_trust_proxy_headers=os.environ.get(
+            "ADMIN_TRUST_PROXY_HEADERS", ""
         ).lower()
         in ("1", "true", "yes"),
+        admin_trusted_proxy_cidrs=_resolve_admin_trusted_proxy_cidrs(),
+        admin_trusted_cloudflare_cidrs=_parse_cidr_list(
+            os.environ.get("ADMIN_TRUSTED_CLOUDFLARE_CIDRS", "")
+        ),
     )
+
+
+def _resolve_admin_trusted_proxy_cidrs() -> tuple[str, ...]:
+    explicit = _parse_cidr_list(os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", ""))
+    if explicit:
+        return explicit
+    legacy_trust = os.environ.get("ADMIN_TRUST_PROXY_HEADERS", "").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    if legacy_trust:
+        return DEFAULT_TRUSTED_PROXY_CIDRS
+    return ()

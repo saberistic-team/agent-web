@@ -20,11 +20,11 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.config import Settings
-from app.proxy_trust import (
-    log_source_resolution_telemetry,
+from app.admin_client_source import (
+    record_client_source_resolution,
     resolve_admin_login_client_source,
 )
+from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
 LOGIN_FLOW_COOKIE_NAME = "admin_login_flow"
@@ -241,15 +241,23 @@ def read_login_flow_token(request: Request) -> str | None:
 def client_ip(request: Request, settings: Settings) -> str:
     """Resolve the client source IP for rate limiting.
 
-    Forwarding headers are honored only when the immediate TCP peer appears in
-    ``ADMIN_TRUSTED_PROXY_IPS``. Otherwise the direct peer address is used so
-    clients cannot spoof ``X-Forwarded-For``, ``Forwarded``, or
-    ``CF-Connecting-IP``.
+    Forwarding headers are honored only when the immediate peer matches
+    ``ADMIN_TRUSTED_PROXY_CIDRS``. The resolver walks trusted hops from right
+    to left so attacker-controlled left-most ``X-Forwarded-For`` values cannot
+    mint fresh source buckets.
 
-    See :func:`resolve_admin_login_client_source` and ``docs/ADMIN_AUTH.md``.
+    Source identity notes:
+
+    * **IPv4 / IPv6** — stored only as keyed digests; the resolved string is
+      passed verbatim into the source bucket (e.g. ``203.0.113.1``,
+      ``2001:db8::1``).
+    * **Missing peer** — falls back to ``unknown`` so attempts still share one
+      bucket instead of creating an unbounded namespace.
+    * **Trusted proxy** — right-to-left parsing after peer verification; direct
+      peers and spoofed vendor headers are ignored.
     """
     resolution = resolve_admin_login_client_source(request, settings)
-    log_source_resolution_telemetry(resolution)
+    record_client_source_resolution(resolution.path)
     return resolution.source
 
 
@@ -374,9 +382,7 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    resolution = resolve_admin_login_client_source(request, settings)
-    log_source_resolution_telemetry(resolution)
-    source = resolution.source
+    source = client_ip(request, settings)
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,
@@ -428,7 +434,6 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "lockout_transition": admission.lockout_transition,
-                "source_resolution_path": resolution.path,
             },
         )
     elif admission.already_locked:
