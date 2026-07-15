@@ -163,7 +163,10 @@ GitHub still says clean).
   default in Actions, `cloud` optional). Optional OpenAI / GitHub Models
   backup — [docs/MODELS.md](../docs/MODELS.md), [docs/DESIGN.md](../docs/DESIGN.md).
 - Verify/smoke issues may complete via `scripts/smoke_deploy.py` without a
-  model call; landing scaffolds may also skip codegen.
+  model call; landing scaffolds may also skip codegen. The verify-deploy
+  shortcut requires a deploy-intent **title** (or `smoke_deploy.py`) plus a
+  live target (`onrender.com` or `/health`+`/hello`) — acceptance bullets that
+  merely say “verify …” / “ready to deploy” must still produce a PR (#210).
 - Branch / PR must reference `#issue` (`Closes #N`); follow-ups stay on that
   same PR head (see **Branch and PR reuse**).
 - Tests relevant to the change are added or updated when behavior changes.
@@ -255,6 +258,22 @@ Regressing those surfaces creates screenshot 404/500s and Builder↔Reviewer
 loops on unrelated PRs (learned from #109 / #180 and #110 / #181). Prefer
 surgical edits over rewriting whole `admin_routes.py` / migration files.
 
+## Contaminated PR heads (anti-loop)
+
+When `builder_conflicts` repeatedly returns `broken_after_resolve` after
+cross-issue commit thrash (wrong PR binding) **or** after a reset left the
+PR head identical to `main` (0 commits ahead):
+
+1. **Reset** the existing PR head to current `main` (`force-with-lease` on
+   the same `builder/{issue}-…` branch — never open a second PR).
+2. Re-implement (or clean cherry-pick) the issue on that clean base.
+3. Run full pytest + `scripts/check_coverage.py` before Reviewer handoff.
+4. Dependent PR bodies must not use bare `#earlier` prose (use “issue N” /
+   “PR #M”) so `linked_open_prs` cannot re-bind the wrong head.
+
+Empty PR heads (`ahead_by: 0`) are **not** “done” — they need implementation
+commits. Do not hand off `waiting` forever without new commits.
+
 ## Dependent milestone issues (anti-loop)
 
 When stacked issues share admin/CRM surfaces (LinkedIn import #109→#110→#111),
@@ -296,12 +315,19 @@ Do **not** escalate / `status:blocked` for:
 - Soft “too many files” budgets after a raise of `CURSOR_MAX_FILES` (requeue;
   learned from [#105](https://github.com/saberistic-team/agent-web/issues/105))
 - Single transient Contents API `500` / timeout
+- Codegen write failures (`git/trees` / Contents `403` “Resource not accessible
+  by integration”) when an **intentional open PR already links the issue** —
+  hand that head to Reviewer (or `waiting` if dirty) instead of
+  `@human-review` / `status:blocked` (learned from [#210](https://github.com/saberistic-team/agent-web/issues/210)
+  / #218). Grant the Builder App `contents: write` separately.
 - Service coverage below threshold, missing tests, failing CI assertions, visual
   readability / mobile overflow, or merge conflicts with `main` — fix those
   (same PR head) and re-run
 
 `scripts/run_agent.py` classifies retryable codegen errors with
 `is_retryable_codegen_failure()` → `waiting` handoff, not `@human-review`.
+Existing linked PRs use `recover_builder_after_codegen_failure()` so a second
+Builder run cannot strand Reviewer with a false `status:blocked`.
 
 ## Special case: landing / UI design
 

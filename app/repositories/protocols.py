@@ -8,6 +8,8 @@ from uuid import UUID
 
 import psycopg
 
+from app.patch import UNSET, MaybeUnset
+
 
 class CompanyRepository(Protocol):
     def create(
@@ -51,17 +53,17 @@ class CompanyRepository(Protocol):
         conn: psycopg.Connection,
         company_id: UUID,
         *,
-        name: str | None = None,
-        website: str | None = None,
-        status: str | None = None,
-        domain: str | None = None,
-        category: str | None = None,
-        stage: str | None = None,
-        headcount_estimate: int | None = None,
-        funding_summary: str | None = None,
-        target_status: str | None = None,
-        last_verified_at: date | None = None,
-        notes: str | None = None,
+        name: MaybeUnset[str] = UNSET,
+        website: MaybeUnset[str] = UNSET,
+        status: MaybeUnset[str] = UNSET,
+        domain: MaybeUnset[str] = UNSET,
+        category: MaybeUnset[str] = UNSET,
+        stage: MaybeUnset[str] = UNSET,
+        headcount_estimate: MaybeUnset[int] = UNSET,
+        funding_summary: MaybeUnset[str] = UNSET,
+        target_status: MaybeUnset[str] = UNSET,
+        last_verified_at: MaybeUnset[date] = UNSET,
+        notes: MaybeUnset[str] = UNSET,
     ) -> dict[str, Any] | None: ...
 
     def archive(self, conn: psycopg.Connection, company_id: UUID) -> dict[str, Any] | None: ...
@@ -88,15 +90,23 @@ class ContactRepository(Protocol):
 
     def get_by_id(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None: ...
 
-    def get_by_email(self, conn: psycopg.Connection, email: str) -> dict[str, Any] | None: ...
-
     def get_active_by_email(
         self,
         conn: psycopg.Connection,
         email: str,
         *,
         exclude_contact_id: UUID | None = None,
-    ) -> dict[str, Any] | None: ...
+    ) -> dict[str, Any] | None:
+        """Active-contact identity lookup — excludes archived rows (#226)."""
+        ...
+
+    def get_archived_by_email(
+        self,
+        conn: psycopg.Connection,
+        email: str,
+    ) -> dict[str, Any] | None:
+        """Archived-contact lookup — separate op for restore/review only (#226)."""
+        ...
 
     def find_by_profile_url(
         self,
@@ -140,16 +150,16 @@ class ContactRepository(Protocol):
         conn: psycopg.Connection,
         contact_id: UUID,
         *,
-        full_name: str | None = None,
-        email: str | None = None,
-        title: str | None = None,
-        profile_url: str | None = None,
-        email_permission: str | None = None,
-        company_id: UUID | None = None,
-        last_interaction_at: date | None = None,
-        relationship_strength: str | None = None,
-        notes: str | None = None,
-        buying_roles: list[str] | None = None,
+        full_name: MaybeUnset[str] = UNSET,
+        email: MaybeUnset[str] = UNSET,
+        title: MaybeUnset[str] = UNSET,
+        profile_url: MaybeUnset[str] = UNSET,
+        email_permission: MaybeUnset[str] = UNSET,
+        company_id: MaybeUnset[UUID] = UNSET,
+        last_interaction_at: MaybeUnset[date] = UNSET,
+        relationship_strength: MaybeUnset[str] = UNSET,
+        notes: MaybeUnset[str] = UNSET,
+        buying_roles: MaybeUnset[list[str]] = UNSET,
     ) -> dict[str, Any] | None: ...
 
     def archive(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None: ...
@@ -270,13 +280,13 @@ class PipelineRepository(Protocol):
         conn: psycopg.Connection,
         company_id: UUID,
         *,
-        pipeline_stage: str | None = None,
-        next_action: str | None = None,
-        next_action_due_at: datetime | None = None,
-        pipeline_owner: str | None = None,
-        expected_value_cents: int | None = None,
-        pipeline_loss_reason: str | None = None,
-        pipeline_nurture_reason: str | None = None,
+        pipeline_stage: MaybeUnset[str] = UNSET,
+        next_action: MaybeUnset[str] = UNSET,
+        next_action_due_at: MaybeUnset[datetime] = UNSET,
+        pipeline_owner: MaybeUnset[str] = UNSET,
+        expected_value_cents: MaybeUnset[int] = UNSET,
+        pipeline_loss_reason: MaybeUnset[str] = UNSET,
+        pipeline_nurture_reason: MaybeUnset[str] = UNSET,
         clear_loss_reason: bool = False,
         clear_nurture_reason: bool = False,
     ) -> dict[str, Any] | None: ...
@@ -431,3 +441,68 @@ class AuditEventRepository(Protocol):
         page: int = 1,
         per_page: int = 50,
     ) -> tuple[list[dict[str, Any]], int]: ...
+
+class ImportBatchRepository(Protocol):
+    def create(
+        self,
+        conn: psycopg.Connection,
+        *,
+        source_type: str,
+        schema_version: str,
+        checksum: str,
+        actor: str,
+        status: str,
+        correlation_id: str,
+        export_date: date | None = None,
+        summary_counts: dict[str, Any] | None = None,
+        error_message: str | None = None,
+    ) -> dict[str, Any]: ...
+
+    def get_by_id(self, conn: psycopg.Connection, batch_id: UUID) -> dict[str, Any] | None: ...
+
+    def get_committed_by_checksum(
+        self, conn: psycopg.Connection, checksum: str
+    ) -> dict[str, Any] | None: ...
+
+    def list_page(
+        self,
+        conn: psycopg.Connection,
+        *,
+        page: int = 1,
+        per_page: int = 50,
+    ) -> tuple[list[dict[str, Any]], int]: ...
+
+    def update_status(
+        self,
+        conn: psycopg.Connection,
+        batch_id: UUID,
+        *,
+        status: str,
+        summary_counts: dict[str, Any] | None = None,
+        error_message: str | None = None,
+    ) -> dict[str, Any] | None: ...
+
+    def create_row(
+        self,
+        conn: psycopg.Connection,
+        *,
+        batch_id: UUID,
+        row_index: int,
+        source_kind: str,
+        source_identity: dict[str, Any],
+        outcome: str,
+        entity_type: str | None = None,
+        entity_id: UUID | None = None,
+        prior_snapshot: dict[str, Any] | None = None,
+        applied_snapshot: dict[str, Any] | None = None,
+        detail: str | None = None,
+    ) -> dict[str, Any]: ...
+
+    def list_rows_for_batch(
+        self,
+        conn: psycopg.Connection,
+        batch_id: UUID,
+        *,
+        outcome: str | None = None,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]: ...

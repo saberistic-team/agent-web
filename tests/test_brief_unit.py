@@ -93,6 +93,7 @@ def test_create_checkout_session_calls_stripe() -> None:
     assert kwargs["metadata"]["brief_id"] == "3"
     assert kwargs["line_items"][0]["price_data"]["unit_amount"] == 20_000
     assert kwargs["line_items"][0]["price_data"]["product_data"]["name"] == "Architecture Diagnostic"
+    assert kwargs["allow_promotion_codes"] is True
 
 
 @pytest.mark.unit

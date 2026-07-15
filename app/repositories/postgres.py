@@ -10,6 +10,7 @@ from uuid import UUID
 import psycopg
 
 from app.contacts import DECISION_MAKER_BUYING_ROLES
+from app.patch import UNSET, MaybeUnset
 from app.repositories.protocols import (
     ActivityRepository,
     AdminUserRepository,
@@ -143,30 +144,30 @@ class PostgresCompanyRepository:
         conn: psycopg.Connection,
         company_id: UUID,
         *,
-        name: str | None = None,
-        website: str | None = None,
-        status: str | None = None,
-        domain: str | None = None,
-        category: str | None = None,
-        stage: str | None = None,
-        headcount_estimate: int | None = None,
-        funding_summary: str | None = None,
-        target_status: str | None = None,
-        last_verified_at: date | None = None,
-        notes: str | None = None,
+        name: MaybeUnset[str] = UNSET,
+        website: MaybeUnset[str] = UNSET,
+        status: MaybeUnset[str] = UNSET,
+        domain: MaybeUnset[str] = UNSET,
+        category: MaybeUnset[str] = UNSET,
+        stage: MaybeUnset[str] = UNSET,
+        headcount_estimate: MaybeUnset[int] = UNSET,
+        funding_summary: MaybeUnset[str] = UNSET,
+        target_status: MaybeUnset[str] = UNSET,
+        last_verified_at: MaybeUnset[date] = UNSET,
+        notes: MaybeUnset[str] = UNSET,
     ) -> dict[str, Any] | None:
+        """Apply a partial patch.
+
+        A parameter left at :data:`UNSET` is omitted from the ``UPDATE`` and keeps
+        its stored value. An explicit ``None`` writes SQL ``NULL`` (clear); any
+        other value replaces the column.
+        """
         fields: list[str] = []
         values: list[Any] = []
-        if name is not None:
-            fields.append("name = %s")
-            values.append(name)
-        if website is not None:
-            fields.append("website = %s")
-            values.append(website)
-        if status is not None:
-            fields.append("status = %s")
-            values.append(status)
         for column, value in (
+            ("name", name),
+            ("website", website),
+            ("status", status),
             ("domain", domain),
             ("category", category),
             ("stage", stage),
@@ -176,9 +177,10 @@ class PostgresCompanyRepository:
             ("last_verified_at", last_verified_at),
             ("notes", notes),
         ):
-            if value is not None:
-                fields.append(f"{column} = %s")
-                values.append(value)
+            if value is UNSET:
+                continue
+            fields.append(f"{column} = %s")
+            values.append(value)
         if not fields:
             return self.get_by_id(conn, company_id)
 
@@ -274,16 +276,6 @@ class PostgresContactRepository:
             row = cur.fetchone()
         return dict(row) if row else None
 
-    def get_by_email(self, conn: psycopg.Connection, email: str) -> dict[str, Any] | None:
-        normalized = email.strip().lower()
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT * FROM contacts WHERE lower(email) = %s",
-                (normalized,),
-            )
-            row = cur.fetchone()
-        return dict(row) if row else None
-
     def get_active_by_email(
         self,
         conn: psycopg.Connection,
@@ -291,11 +283,18 @@ class PostgresContactRepository:
         *,
         exclude_contact_id: UUID | None = None,
     ) -> dict[str, Any] | None:
+        """Return the single active (non-archived) contact for an email, if any.
+
+        Active identity lookup: excludes archived rows (``archived_at IS NULL``).
+        The partial unique index ``idx_contacts_email_unique`` guarantees at most
+        one active row per normalized email; ``ORDER BY id`` keeps the result
+        deterministic even if that guarantee is ever weakened.
+        """
         normalized = email.strip().lower()
-        conditions = ["LOWER(email) = %s", "archived_at IS NULL"]
+        conditions = ["LOWER(c.email) = %s", "c.archived_at IS NULL"]
         params: list[Any] = [normalized]
         if exclude_contact_id is not None:
-            conditions.append("id <> %s")
+            conditions.append("c.id <> %s")
             params.append(exclude_contact_id)
         with conn.cursor() as cur:
             cur.execute(
@@ -304,9 +303,39 @@ class PostgresContactRepository:
                 FROM contacts c
                 LEFT JOIN companies co ON co.id = c.company_id
                 WHERE {' AND '.join(conditions)}
+                ORDER BY c.id ASC
                 LIMIT 1
                 """,
                 params,
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def get_archived_by_email(
+        self,
+        conn: psycopg.Connection,
+        email: str,
+    ) -> dict[str, Any] | None:
+        """Return the best archived contact match for an email, if any.
+
+        Archived identity lookup: the deliberate counterpart to
+        ``get_active_by_email`` (issue #226). Archived rows are never silently
+        linked as an active CRM contact — callers surface this only as a
+        restore/review option. The most recently archived row wins so operators
+        review the freshest history first.
+        """
+        normalized = email.strip().lower()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT c.*, co.name AS company_name
+                FROM contacts c
+                LEFT JOIN companies co ON co.id = c.company_id
+                WHERE LOWER(c.email) = %s AND c.archived_at IS NOT NULL
+                ORDER BY c.archived_at DESC, c.id
+                LIMIT 1
+                """,
+                (normalized,),
             )
             row = cur.fetchone()
         return dict(row) if row else None
@@ -436,17 +465,23 @@ class PostgresContactRepository:
         conn: psycopg.Connection,
         contact_id: UUID,
         *,
-        full_name: str | None = None,
-        email: str | None = None,
-        title: str | None = None,
-        profile_url: str | None = None,
-        email_permission: str | None = None,
-        company_id: UUID | None = None,
-        last_interaction_at: date | None = None,
-        relationship_strength: str | None = None,
-        notes: str | None = None,
-        buying_roles: list[str] | None = None,
+        full_name: MaybeUnset[str] = UNSET,
+        email: MaybeUnset[str] = UNSET,
+        title: MaybeUnset[str] = UNSET,
+        profile_url: MaybeUnset[str] = UNSET,
+        email_permission: MaybeUnset[str] = UNSET,
+        company_id: MaybeUnset[UUID] = UNSET,
+        last_interaction_at: MaybeUnset[date] = UNSET,
+        relationship_strength: MaybeUnset[str] = UNSET,
+        notes: MaybeUnset[str] = UNSET,
+        buying_roles: MaybeUnset[list[str]] = UNSET,
     ) -> dict[str, Any] | None:
+        """Apply a partial patch.
+
+        A parameter left at :data:`UNSET` is omitted and keeps its stored value.
+        An explicit ``None`` writes SQL ``NULL`` (clear) — e.g. clearing an email
+        or disassociating a company — and any other value replaces the column.
+        """
         fields: list[str] = []
         values: list[Any] = []
         for column, value in (
@@ -459,13 +494,12 @@ class PostgresContactRepository:
             ("last_interaction_at", last_interaction_at),
             ("relationship_strength", relationship_strength),
             ("notes", notes),
+            ("buying_roles", buying_roles),
         ):
-            if value is not None:
-                fields.append(f"{column} = %s")
-                values.append(value)
-        if buying_roles is not None:
-            fields.append("buying_roles = %s")
-            values.append(buying_roles)
+            if value is UNSET:
+                continue
+            fields.append(f"{column} = %s")
+            values.append(value)
         if not fields:
             return self.get_by_id(conn, contact_id)
 
@@ -749,16 +783,24 @@ class PostgresPipelineRepository:
         conn: psycopg.Connection,
         company_id: UUID,
         *,
-        pipeline_stage: str | None = None,
-        next_action: str | None = None,
-        next_action_due_at: datetime | None = None,
-        pipeline_owner: str | None = None,
-        expected_value_cents: int | None = None,
-        pipeline_loss_reason: str | None = None,
-        pipeline_nurture_reason: str | None = None,
+        pipeline_stage: MaybeUnset[str] = UNSET,
+        next_action: MaybeUnset[str] = UNSET,
+        next_action_due_at: MaybeUnset[datetime] = UNSET,
+        pipeline_owner: MaybeUnset[str] = UNSET,
+        expected_value_cents: MaybeUnset[int] = UNSET,
+        pipeline_loss_reason: MaybeUnset[str] = UNSET,
+        pipeline_nurture_reason: MaybeUnset[str] = UNSET,
         clear_loss_reason: bool = False,
         clear_nurture_reason: bool = False,
     ) -> dict[str, Any] | None:
+        """Apply a partial pipeline patch.
+
+        A parameter left at :data:`UNSET` is omitted and keeps its stored value;
+        an explicit ``None`` writes SQL ``NULL`` (clear); any other value replaces
+        the column. The ``clear_loss_reason``/``clear_nurture_reason`` flags force
+        a ``NULL`` write for stage-driven resets and are mutually exclusive with
+        supplying that same reason as a value.
+        """
         fields: list[str] = []
         values: list[Any] = []
         for column, value in (
@@ -770,12 +812,13 @@ class PostgresPipelineRepository:
             ("pipeline_loss_reason", pipeline_loss_reason),
             ("pipeline_nurture_reason", pipeline_nurture_reason),
         ):
-            if value is not None:
-                fields.append(f"{column} = %s")
-                values.append(value)
-        if clear_loss_reason:
+            if value is UNSET:
+                continue
+            fields.append(f"{column} = %s")
+            values.append(value)
+        if clear_loss_reason and pipeline_loss_reason is UNSET:
             fields.append("pipeline_loss_reason = NULL")
-        if clear_nurture_reason:
+        if clear_nurture_reason and pipeline_nurture_reason is UNSET:
             fields.append("pipeline_nurture_reason = NULL")
         if not fields:
             return self.get_company_pipeline(conn, company_id)
@@ -1148,11 +1191,14 @@ class PostgresAdminUserRepository:
 class PostgresProjectBriefRepository:
     _LIST_COLUMNS = """
         id, created_at, website, contact_value, status, paid_at,
+        payment_amount_cents, payment_discount_cents, payment_currency,
         utm_source, utm_campaign
     """
     _DETAIL_COLUMNS = """
         id, created_at, website, contact_method, contact_value, brief, status,
         stripe_session_id, stripe_payment_intent_id, paid_at,
+        payment_subtotal_cents, payment_discount_cents, payment_amount_cents,
+        payment_currency, stripe_promotion_code_id, stripe_coupon_id,
         utm_source, utm_medium, utm_campaign, utm_content, utm_term
     """
 
@@ -1313,6 +1359,193 @@ class PostgresAuditEventRepository:
         return dict(row)
 
 
+class PostgresImportBatchRepository:
+    def create(
+        self,
+        conn: psycopg.Connection,
+        *,
+        source_type: str,
+        schema_version: str,
+        checksum: str,
+        actor: str,
+        status: str,
+        correlation_id: str,
+        export_date: date | None = None,
+        summary_counts: dict[str, Any] | None = None,
+        error_message: str | None = None,
+    ) -> dict[str, Any]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO import_batches (
+                    source_type, export_date, schema_version, checksum, actor,
+                    status, summary_counts, error_message, correlation_id
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+                RETURNING *
+                """,
+                (
+                    source_type,
+                    export_date,
+                    schema_version,
+                    checksum,
+                    actor,
+                    status,
+                    json.dumps(summary_counts or {}),
+                    error_message,
+                    correlation_id,
+                ),
+            )
+            row = cur.fetchone()
+        return dict(row)
+
+    def get_by_id(self, conn: psycopg.Connection, batch_id: UUID) -> dict[str, Any] | None:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM import_batches WHERE id = %s", (batch_id,))
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def get_committed_by_checksum(
+        self, conn: psycopg.Connection, checksum: str
+    ) -> dict[str, Any] | None:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT * FROM import_batches
+                WHERE checksum = %s AND status = 'committed'
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (checksum,),
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def list_page(
+        self,
+        conn: psycopg.Connection,
+        *,
+        page: int = 1,
+        per_page: int = 50,
+    ) -> tuple[list[dict[str, Any]], int]:
+        safe_page = max(page, 1)
+        safe_per_page = max(min(per_page, 100), 1)
+        offset = (safe_page - 1) * safe_per_page
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) AS total FROM import_batches")
+            total_row = cur.fetchone()
+            total = int(total_row["total"]) if total_row else 0
+            cur.execute(
+                """
+                SELECT * FROM import_batches
+                ORDER BY created_at DESC
+                LIMIT %s OFFSET %s
+                """,
+                (safe_per_page, offset),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows], total
+
+    def update_status(
+        self,
+        conn: psycopg.Connection,
+        batch_id: UUID,
+        *,
+        status: str,
+        summary_counts: dict[str, Any] | None = None,
+        error_message: str | None = None,
+    ) -> dict[str, Any] | None:
+        fields = ["status = %s", "updated_at = %s"]
+        values: list[Any] = [status, _now()]
+        if summary_counts is not None:
+            fields.append("summary_counts = %s::jsonb")
+            values.append(json.dumps(summary_counts))
+        if error_message is not None:
+            fields.append("error_message = %s")
+            values.append(error_message)
+        values.append(batch_id)
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                UPDATE import_batches
+                SET {", ".join(fields)}
+                WHERE id = %s
+                RETURNING *
+                """,
+                values,
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def create_row(
+        self,
+        conn: psycopg.Connection,
+        *,
+        batch_id: UUID,
+        row_index: int,
+        source_kind: str,
+        source_identity: dict[str, Any],
+        outcome: str,
+        entity_type: str | None = None,
+        entity_id: UUID | None = None,
+        prior_snapshot: dict[str, Any] | None = None,
+        applied_snapshot: dict[str, Any] | None = None,
+        detail: str | None = None,
+    ) -> dict[str, Any]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO import_batch_rows (
+                    batch_id, row_index, source_kind, source_identity, outcome,
+                    entity_type, entity_id, prior_snapshot, applied_snapshot, detail
+                )
+                VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s, %s::jsonb, %s::jsonb, %s)
+                RETURNING *
+                """,
+                (
+                    batch_id,
+                    row_index,
+                    source_kind,
+                    json.dumps(source_identity),
+                    outcome,
+                    entity_type,
+                    entity_id,
+                    json.dumps(prior_snapshot) if prior_snapshot is not None else None,
+                    json.dumps(applied_snapshot) if applied_snapshot is not None else None,
+                    detail,
+                ),
+            )
+            row = cur.fetchone()
+        return dict(row)
+
+    def list_rows_for_batch(
+        self,
+        conn: psycopg.Connection,
+        batch_id: UUID,
+        *,
+        outcome: str | None = None,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        conditions = ["batch_id = %s"]
+        params: list[Any] = [batch_id]
+        if outcome:
+            conditions.append("outcome = %s")
+            params.append(outcome)
+        params.append(limit)
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT * FROM import_batch_rows
+                WHERE {' AND '.join(conditions)}
+                ORDER BY row_index ASC
+                LIMIT %s
+                """,
+                params,
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+
 class PostgresRepositories:
     """Bundle of Postgres repository implementations including CRM + audit."""
 
@@ -1327,6 +1560,7 @@ class PostgresRepositories:
         self.project_briefs = PostgresProjectBriefRepository()
         self.acquisition_dashboard = PostgresAcquisitionDashboardRepository()
         self.pipeline = PostgresPipelineRepository()
+        self.import_batches = PostgresImportBatchRepository()
 
 
 _default_repositories = PostgresRepositories()
@@ -1349,6 +1583,7 @@ def default_repositories() -> dict[str, Any]:
         "project_briefs": repos.project_briefs,
         "acquisition_dashboard": repos.acquisition_dashboard,
         "pipeline": repos.pipeline,
+        "import_batches": repos.import_batches,
     }
 
 

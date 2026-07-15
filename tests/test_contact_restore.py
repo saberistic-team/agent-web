@@ -75,6 +75,7 @@ def _service_with_contact_repo(contact_repo: MagicMock) -> tuple[CrmService, Mag
             research_records=MagicMock(),
             admin_users=MagicMock(),
             pipeline=MagicMock(),
+            import_batches=MagicMock(),
         )
     )
     return service, MagicMock()

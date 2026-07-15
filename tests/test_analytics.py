@@ -266,6 +266,10 @@ def test_stripe_webhook_emits_payment_completed(monkeypatch: pytest.MonkeyPatch)
                 "id": "cs_test_123",
                 "payment_intent": "pi_test_123",
                 "metadata": {"brief_id": "1"},
+                "amount_subtotal": 20_000,
+                "amount_total": 15_000,
+                "currency": "usd",
+                "total_details": {"amount_discount": 5_000},
             }
         },
     }
@@ -288,6 +292,7 @@ def test_stripe_webhook_emits_payment_completed(monkeypatch: pytest.MonkeyPatch)
     assert response.status_code == 200
     track_payment.assert_called_once()
     assert track_payment.call_args.kwargs["brief_id"] == 1
+    assert track_payment.call_args.kwargs["price_cents"] == 15_000
     assert track_payment.call_args.kwargs["utm"]["utm_source"] == "linkedin"
 
 

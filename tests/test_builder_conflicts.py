@@ -161,6 +161,9 @@ def test_linked_pr_conflict_status_dirty(monkeypatch) -> None:
     assert status["status"] == "dirty"
     assert status["pr"] == 80
     assert "return to Builder" in format_merge_conflict_hard_fail(status)
+    assert "return to Docs" in format_merge_conflict_hard_fail(
+        status, implementer="Docs"
+    )
 
 
 def test_merge_fetch_uses_explicit_refspec_for_single_branch_clone(monkeypatch) -> None:
@@ -321,6 +324,27 @@ def test_smoke_pytest_run_reports_failure(tmp_path, monkeypatch) -> None:
     ok, detail = smoke_pytest_run(tmp_path)
     assert ok is False
     assert "Companies by stage" in detail
+
+
+def test_smoke_env_keeps_preview_only_for_import(tmp_path, monkeypatch) -> None:
+    from builder_conflicts import _smoke_env
+
+    monkeypatch.delenv("ADMIN_PREVIEW_MODE", raising=False)
+    import_env = _smoke_env(tmp_path, for_import=True)
+    assert import_env.get("ADMIN_PREVIEW_MODE") == "1"
+
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    pytest_env = _smoke_env(tmp_path)
+    assert "ADMIN_PREVIEW_MODE" not in pytest_env
+
+
+def test_truncate_pytest_detail_keeps_tail_summary() -> None:
+    from builder_conflicts import _truncate_pytest_detail
+
+    body = ("." * 2000) + "\nFAILED tests/test_audit_events.py::test_pending_migrations\n"
+    out = _truncate_pytest_detail(body, limit=80)
+    assert "test_pending_migrations" in out
+    assert len(out) == 80
 
 
 def test_repair_main_wiring_adds_missing_imports() -> None:

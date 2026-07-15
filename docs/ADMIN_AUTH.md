@@ -15,9 +15,12 @@ Parent issue: [#101](https://github.com/saberistic-team/agent-web/issues/101).
   pre-authentication browser flow stored server-side.
 - Authenticated state-changing requests (e.g. logout) require a CSRF token bound
   to the active server-side session.
-- Login POST requests are rate limited per username-and-source key in shared
-  Postgres storage (consistent across instances).
-- Logout revokes the active session server-side and clears the cookie.
+- Login POST requests are rate limited using source-wide and account-wide buckets in
+  shared Postgres storage with atomic admission (consistent across instances).
+- Logout revokes the active session server-side, records one `auth.logout` audit
+  event in the same transaction, and clears the cookie. Missing, invalid,
+  expired, or already-revoked sessions receive idempotent cookie cleanup with
+  no audit write.
 - Anonymous requests to protected `/admin` routes receive a safe redirect to
   `/admin/login`.
 
@@ -27,7 +30,7 @@ Parent issue: [#101](https://github.com/saberistic-team/agent-web/issues/101).
 |-------|------|---------|
 | `GET /admin/login` | Public | Sign-in form; mints pre-auth flow + CSRF |
 | `POST /admin/login` | Public | Authenticate; flow-bound CSRF + rate limit enforced |
-| `POST /admin/logout` | Session optional | Revoke session; session-bound CSRF when signed in |
+| `POST /admin/logout` | Session optional | Revoke live session + audit when signed in with valid CSRF; otherwise idempotent cookie clear |
 | `GET /admin` | Required | Authenticated operator landing (stub) |
 | Other `GET /admin/*` | Required | Redirect to login when anonymous |
 
@@ -42,11 +45,46 @@ server-side; raw tokens appear in HTML forms only and are never logged.
    `flow_token_hash` and `csrf_token_hash`, then sets an `admin_login_flow`
    cookie (`HttpOnly`, `SameSite=strict`, path `/admin`, 15-minute TTL).
 2. The login form embeds the raw CSRF token in a hidden field.
-3. `POST /admin/login` requires both the flow cookie and matching CSRF field.
-   The flow row is consumed (one-time use) on every POST attempt.
-4. On failure or throttle, a fresh flow and CSRF token are issued.
-5. On success, the flow cookie is cleared and a new authenticated session is
+3. `POST /admin/login` atomically **claims** the flow row in one conditional
+   `UPDATE … RETURNING` that matches the browser flow cookie digest, submitted
+   CSRF digest, `consumed_at IS NULL`, and `expires_at > now`. Exactly one
+   concurrent submission can succeed; a zero-row update is a failed security
+   claim.
+4. **Consumption point** — the flow is marked consumed at successful claim,
+   *before* password verification. This closes the time-of-check/time-of-use
+   race: concurrent replays cannot both reach credential checks. A successful
+   claim with invalid credentials still receives a replacement flow (`#153`);
+   the operator retries with the new form, not the consumed row.
+5. Failed claims (missing cookie, wrong CSRF, expired, already consumed, or
+   concurrent loss) burn the flow cookie when it is still valid but CSRF did not
+   match, then return the same generic failure message without running password
+   verification or session mutation.
+6. On failure or throttle, a fresh flow and CSRF token are issued.
+7. On success, the flow cookie is cleared and a new authenticated session is
    minted (session fixation resistance).
+
+#### Verified PostgreSQL concurrency (#243)
+
+Integration tests in
+``tests/test_admin_login_flow_claim_pg_integration.py`` race **independent**
+``psycopg`` connections (separate transactions, no Python lock around the
+claim) against one ``admin_login_flows`` row. PostgreSQL row locking and the
+conditional ``UPDATE … RETURNING`` determine the outcome:
+
+| Scenario | PostgreSQL behavior |
+|----------|---------------------|
+| Two or more concurrent valid claims | Exactly one ``RETURNING`` row; all others zero-row |
+| Loser at the route layer | Failed security claim (HTTP 400); no password verify, session, or ``auth.login.success`` audit |
+| Winner with invalid credentials | One password verify and one replacement flow; loser cannot consume the replacement |
+| Uncommitted winning ``UPDATE`` rolled back | Row remains claimable; a later transaction may claim |
+| Claim at ``expires_at`` | Zero-row update (``expires_at > now`` is strict) |
+| Cleanup vs in-flight claim | Cleanup never deletes active (unexpired, unconsumed) rows |
+
+CI sets ``REQUIRE_TEST_DATABASE=1`` so these tests fail closed when
+``TEST_DATABASE_URL`` is missing. Fast mocked unit tests in
+``tests/test_admin_login_flow_claim_concurrency.py`` and
+``tests/test_admin_login_flow_concurrency.py`` remain supplemental branch
+coverage.
 
 Stale flows are removed opportunistically when minting a new flow
 (see [Login flow retention](#login-flow-retention)). Only hashed tokens are
@@ -102,6 +140,22 @@ authenticated forms). No token values or validation internals are exposed.
 `SameSite=strict` on session and login-flow cookies is defense-in-depth against
 cross-site cookie delivery; it is **not** the sole CSRF defense. Origin/Referer
 checks are likewise not relied upon for CSRF protection.
+
+### Logout audit policy
+
+`POST /admin/logout` records an immutable `auth.logout` audit event only when a
+**live** authenticated session is revoked in the same database transaction.
+Session-bound CSRF is required for that path.
+
+| Request shape | Audit row | Operator experience |
+|---------------|-----------|---------------------|
+| Valid session + valid CSRF | One `auth.logout` linked to the session id | Session revoked; cookie cleared; redirect to login |
+| Valid session + missing/invalid/cross-session CSRF | None | Session stays active; HTTP 400 *Invalid request* |
+| No cookie, malformed cookie, expired session, or revoked session | None | Idempotent cookie clear + redirect to login |
+
+Repeat logout after revocation does not append additional audit events. Anonymous
+or cross-site-shaped logout traffic is not written to `audit_events`; use HTTP
+access logs or metrics for operational visibility if needed.
 
 ## Environment variables
 
@@ -201,33 +255,92 @@ limits apply consistently across web processes, instances, and deployments.
 
 ### Limiter key strategy
 
-Each attempt is keyed by a SHA-256 hash of `normalized_username:client_source`:
+Each attempt consults one or two privacy-preserving SHA-256 buckets (only the digest
+is stored as ``limiter_key``):
 
-- **Username** — submitted value lowercased and stripped (not stored in the table).
-- **Client source** — resolved IP from :func:`client_ip` (not stored in the table).
+| Bucket | Key material | Purpose |
+|--------|--------------|---------|
+| **Source-wide** | ``src:<normalized_client_source>`` | Stops username rotation from one client source |
+| **Account-wide** | ``acct:<normalized_configured_admin_username>`` | Limits distributed attempts against the configured admin account |
 
-Only the hash (`limiter_key`) is persisted.
+The submitted username is normalized (lowercased/stripped) only to decide whether the
+account bucket applies. Unknown usernames still share the source bucket for their
+client source; responses remain generic.
 
-### Trusted proxy handling
+Raw usernames, passwords, IP addresses, forwarding headers, CSRF tokens, and session
+secrets are never written to limiter rows or limiter observability logs.
 
-Set `ADMIN_TRUST_PROXY_HEADERS=true` when the app runs behind a trusted reverse
-proxy (e.g. Render) so `X-Forwarded-For` is used for the client source. Leave it
-unset or `false` for local development and direct connections; spoofed forwarding
-headers are ignored and the direct peer address is used instead.
+### Client source resolution
 
-### Lockout and recovery
+Resolved client source comes from :func:`client_ip`:
 
-- After `ADMIN_LOGIN_RATE_LIMIT` failures within `ADMIN_LOGIN_RATE_WINDOW_SECONDS`,
-  further attempts are blocked until `ADMIN_LOGIN_LOCKOUT_SECONDS` elapse.
-- A successful login deletes the limiter row for that key (and clears any in-memory
-  fallback state).
-- Expired rows are removed opportunistically on failed-login writes (retention is
-  `2 × max(window, lockout)`).
+- **IPv4 / IPv6** — used verbatim in the source bucket digest (e.g. ``203.0.113.1``,
+  ``2001:db8::1``).
+- **Missing peer** — ``unknown`` (still one shared bucket).
+- **Trusted proxy** — when ``ADMIN_TRUST_PROXY_HEADERS=true``, the left-most
+  ``X-Forwarded-For`` value is used (Render and similar deployments).
+- **Direct connections / local dev** — leave proxy trust off; spoofed
+  ``X-Forwarded-For`` values are ignored and the direct peer address is used.
+
+### Atomic admission
+
+``POST /admin/login`` calls :func:`try_admit_login_attempt` **before** Argon2
+verification. The helper executes one PostgreSQL transaction that:
+
+1. Ensures limiter rows exist for the relevant bucket(s).
+2. Locks those rows with ``SELECT … FOR UPDATE`` in deterministic key order.
+3. Denies admission when any bucket is actively locked (no counter increment).
+4. Otherwise increments failure counters and sets ``locked_until`` when the threshold
+   is reached.
+
+With limit ``N``, at most ``N`` requests per bucket set can reach password verification
+during a synchronized burst across connections and instances.
+
+Successful login clears the account-wide bucket and releases the current source-wide
+admission reservation (decrements the source failure counter by one without clearing
+unrelated source history). Source-wide counters otherwise decay via the rolling window
+and lockout expiry.
+
+### Attempt / window / lockout semantics
+
+| Setting | Meaning |
+|---------|---------|
+| ``ADMIN_LOGIN_RATE_LIMIT`` (`N`) | Maximum admitted attempts (each may reach Argon2) per bucket within the active window before lockout |
+| ``ADMIN_LOGIN_RATE_WINDOW_SECONDS`` | Rolling window; expired windows reset counters on the next admitted attempt |
+| ``ADMIN_LOGIN_LOCKOUT_SECONDS`` | After the `N`th admitted attempt in a window, ``locked_until`` blocks further admission until this duration elapses |
+
+Admission is reserved before credential checks. Invalid CSRF and invalid credentials
+still consume an admitted attempt. Throttled requests do **not** run Argon2, do not
+consume the login flow, and do not mint replacement flows.
+
+### Throttled-request durability
+
+While a bucket is locked:
+
+- Repeated denials do not append immutable audit events (one lockout transition event
+  is recorded when the threshold is first reached).
+- Login flows are not consumed solely because the limiter denied the request.
+- Limiter rows are not created per rotated username (source bucket is bounded).
+
+### Input bounds
+
+Before hashing, storage, or verification, login POST fields are capped:
+
+| Field | Max length |
+|-------|------------|
+| Username | 256 |
+| Password | 512 |
+| CSRF token | 256 |
+| Login-flow cookie | 512 |
+| ``next`` | 2048 |
+
+Oversized values receive the same generic *Invalid username or password* response
+without Argon2 work.
 
 ### When Postgres is unavailable
 
 If the shared limiter cannot be reached, the app logs a warning and applies a
-conservative in-memory fallback (2 failures per 60 seconds per key). This fails
+conservative in-memory fallback (2 admissions per 60 seconds per bucket set). This fails
 closed without creating a permanent lockout — the fallback window is short and
 resets automatically. Restore database connectivity to resume shared enforcement.
 
@@ -241,6 +354,9 @@ WHERE updated_at < NOW() - INTERVAL '30 minutes'
   AND (locked_until IS NULL OR locked_until < NOW());
 ```
 
+Expired rows are also removed opportunistically after admitted attempts (retention is
+``2 × max(window, lockout)``).
+
 ## Login flow retention
 
 Every `GET /admin/login` inserts an `admin_login_flows` row. Without cleanup,
@@ -252,7 +368,7 @@ expired and consumed flows would accumulate indefinitely.
 |-------|--------------|-----------|
 | **Active** (unexpired, unconsumed) | Never | Required for in-flight sign-in |
 | **Expired** (past `expires_at`, never consumed) | `expires_at` + **30 minutes** | Allows clock skew; matches `2 ×` flow TTL (15 min) |
-| **Consumed** (one-time POST used) | `consumed_at` + **15 minutes** | Replay is already blocked at consume time; brief grace for concurrent requests |
+| **Consumed** (one-time POST used) | `consumed_at` + **15 minutes** | Claim is atomic at POST time; brief grace for concurrent requests |
 
 Constants: `LOGIN_FLOW_EXPIRED_RETENTION_SECONDS` (1800), `LOGIN_FLOW_CONSUMED_RETENTION_SECONDS` (900), aligned with `CSRF_MAX_AGE_SECONDS` (900).
 
@@ -265,6 +381,9 @@ does not scan the full table. No Redis, cron, or external scheduler is required.
 
 If cleanup fails (database error), the failure is logged and the new flow is
 still created — cleanup errors never expose token values and do not block sign-in.
+Cleanup only targets rows past retention; an in-flight claim holds the row until
+its `UPDATE` commits, so concurrent claims and cleanup do not resurrect or
+double-consume flows.
 
 ### Manual cleanup
 

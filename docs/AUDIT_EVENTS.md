@@ -50,11 +50,40 @@ both commit or roll back together.
 | CRM import, delete, pipeline, scoring, analytics, export | `CrmService` | Required audit; failure rolls back mutation |
 | Brief-to-CRM linkage | `CrmService.link_project_brief_source` | Transactional write; audit ships with future routes |
 | Login success | `admin_routes._issue_session` | Prior-session revocation (if any) + new session + required audit atomically |
-| Logout (authenticated) | `admin_routes.admin_logout` | Revocation + required audit atomically |
-| Login failure / anonymous logout | `admin_routes` | Best-effort audit (`required=False`) |
+| Logout (authenticated) | `admin_routes.admin_logout` | Revocation + required audit atomically when the session row transitions to revoked |
+| Login failure | `admin_routes` | Best-effort audit (`required=False`) |
 
 `record_event(..., required=True)` propagates persistence errors. Security-sensitive
 mutations must not return success when a required audit event could not be stored.
+
+### Admin logout session boundary
+
+`admin_routes.admin_logout` distinguishes authenticated revocation from anonymous
+cleanup:
+
+| Outcome | Audit event | Session mutation |
+|---------|-------------|------------------|
+| Valid session + valid session-bound CSRF | Exactly one `auth.logout` when revocation succeeds | Revoke live session row in the same transaction |
+| Valid session + missing/invalid/cross-session CSRF | None | Session remains active; HTTP 400 |
+| Missing, invalid, expired, or revoked session cookie | None | Idempotent cookie clear + redirect to `/admin/login` |
+
+Authenticated logout opens one `db_connection` and one `crm_transaction`. Inside
+that unit of work:
+
+1. Revoke the session row (`revoked_at` set only when still live).
+2. Append the required `auth.logout` audit event only when step 1 updated a row.
+
+The handler commits once after both steps succeed. Any failure in revocation or
+audit insertion rolls back the transaction, so the operator is not left with a
+revoked session and no audit row (or vice versa). The cookie-clearing redirect is
+emitted only after the transaction exits successfully.
+
+Repeat logout submissions for an already-revoked or unknown session perform
+idempotent browser cleanup only — no additional immutable audit rows.
+
+Anonymous logout traffic is not stored in `audit_events`. Operational visibility,
+if needed, should use bounded HTTP access logs or metrics — never the append-only
+admin audit table.
 
 ### Admin login session boundary
 
@@ -78,18 +107,16 @@ or rolled-back logins never emit a new session cookie.
 |--------|----------------|
 | `auth.login.success` | Valid admin login creates a server-side session |
 | `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting |
-| `auth.logout` | Session revocation and cookie clear |
-| `import.batch` | Data import batches via `CrmService.import_batch` |
+| `auth.logout` | Authenticated session revocation (live session → revoked) |
+| `import.batch` | Data import batches via `CrmService.commit_linkedin_import` / `import_batch` |
+| `import.batch.rollback` | Rollback of committed import batches via `CrmService.rollback_import_batch` |
 | `entity.delete` | Hard deletes via `CrmService.delete_entity` |
-| `pipeline.update` | Pipeline field updates via `CrmService.update_pipeline` / `update_pipeline_next_action` / stage transitions |
-| `pipeline.stage_change` | Acquisition stage transitions via `CrmService.transition_pipeline_stage` |
-| `pipeline.activity_recorded` | Pipeline activities via `CrmService.record_pipeline_activity` |
-| `pipeline.next_action_updated` | Next action / due date / owner updates via `CrmService.update_pipeline_next_action` |
+| `pipeline.update` | Pipeline stage changes via `CrmService.update_pipeline` |
 | `scoring_rule.update` | Scoring rule edits via `CrmService.update_scoring_rule` |
 | `analytics.config.update` | Analytics configuration via `CrmService.update_analytics_config` |
 | `export.request` | Export requests via `CrmService.request_export` |
 
-Auth events are wired in `app/admin_routes.py`. Acquisition pipeline mutations are exposed at `/admin/pipeline/*` (HTML form routes) and record audit events through `CrmService` methods.
+Auth events are wired in `app/admin_routes.py`. Other mutations record audit events through `CrmService` methods that future admin UI routes will call.
 
 ## Admin UI
 

@@ -16,7 +16,6 @@ from app.repositories.postgres import (
     PostgresAdminUserRepository,
     PostgresCompanyRepository,
     PostgresContactRepository,
-    PostgresPipelineRepository,
     PostgresResearchRecordRepository,
     PostgresSourceRecordRepository,
 )
@@ -48,6 +47,7 @@ def test_crm_service_records_company_contact_and_activity() -> None:
             research_records=research_repo,
             admin_users=admin_repo,
             pipeline=MagicMock(),
+            import_batches=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -88,6 +88,7 @@ def test_crm_service_links_project_brief_source() -> None:
             research_records=MagicMock(),
             admin_users=MagicMock(),
             pipeline=MagicMock(),
+            import_batches=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -120,7 +121,10 @@ def test_default_crm_repositories_use_postgres_backends() -> None:
     assert isinstance(service._repos.activities, PostgresActivityRepository)
     assert isinstance(service._repos.research_records, PostgresResearchRecordRepository)
     assert isinstance(service._repos.admin_users, PostgresAdminUserRepository)
+    from app.repositories.postgres import PostgresImportBatchRepository, PostgresPipelineRepository
+
     assert isinstance(service._repos.pipeline, PostgresPipelineRepository)
+    assert isinstance(service._repos.import_batches, PostgresImportBatchRepository)
 
 
 def _service_with_mocks(
@@ -139,6 +143,7 @@ def _service_with_mocks(
         "research_records": MagicMock(),
         "admin_users": admin_repo or MagicMock(),
         "pipeline": MagicMock(),
+        "import_batches": MagicMock(),
     }
     service = CrmService(repos=CrmRepositories(**repos))
     conn = MagicMock()
@@ -328,7 +333,7 @@ def test_contact_crud_helpers_commit_and_return_nonblocking_duplicate_warnings()
     contact_repo.find_by_profile_url.return_value = [
         {"id": CONTACT_ID, "full_name": "Ada", "profile_url": "https://linkedin.com/in/ada"}
     ]
-    contact_repo.get_by_email.return_value = {"id": CONTACT_ID, "full_name": "Ada", "email": "ada@example.com"}
+    contact_repo.get_active_by_email.return_value = {"id": CONTACT_ID, "full_name": "Ada", "email": "ada@example.com"}
     contact_repo.find_by_name_company.return_value = [
         {"id": CONTACT_ID, "full_name": "Ada", "company_id": COMPANY_ID}
     ]
@@ -395,3 +400,104 @@ def test_search_contacts_aliases_list_contacts() -> None:
     with patch.object(service, "list_contacts", return_value=[{"id": "x"}]) as listed:
         assert service.search_contacts(conn, query="pat") == [{"id": "x"}]
         listed.assert_called_once_with(conn, query="pat")
+
+
+def _contact_email_unique_violation() -> Exception:
+    """A UniqueViolation carrying the partial active-email index constraint (#226)."""
+    from psycopg import errors as pg_errors
+
+    diag = MagicMock(constraint_name="idx_contacts_email_unique", table_name="contacts")
+
+    class _WithDiag(pg_errors.UniqueViolation):
+        @property
+        def diag(self) -> MagicMock:
+            return diag
+
+    return _WithDiag("duplicate active email")
+
+
+def _other_unique_violation() -> Exception:
+    from psycopg import errors as pg_errors
+
+    diag = MagicMock(constraint_name="contacts_profile_url_unique", table_name="contacts")
+
+    class _WithDiag(pg_errors.UniqueViolation):
+        @property
+        def diag(self) -> MagicMock:
+            return diag
+
+    return _WithDiag("some other constraint")
+
+
+@pytest.mark.unit
+def test_create_contact_active_email_conflict_is_safe_domain_error() -> None:
+    from app.contacts import ContactEmailConflictError
+
+    contact_repo = MagicMock()
+    contact_repo.get_active_by_email.return_value = None
+    contact_repo.create.side_effect = _contact_email_unique_violation()
+    service, conn, _ = _service_with_mocks(contact_repo=contact_repo)
+
+    with pytest.raises(ContactEmailConflictError):
+        service.create_contact(
+            conn,
+            contact=ContactCreate(full_name="Ada", email="ada@example.com"),
+        )
+    conn.rollback.assert_called_once()
+    conn.commit.assert_not_called()
+
+
+@pytest.mark.unit
+def test_create_contact_reraises_unrelated_unique_violation() -> None:
+    from psycopg.errors import UniqueViolation
+
+    contact_repo = MagicMock()
+    contact_repo.get_active_by_email.return_value = None
+    contact_repo.create.side_effect = _other_unique_violation()
+    service, conn, _ = _service_with_mocks(contact_repo=contact_repo)
+
+    with pytest.raises(UniqueViolation):
+        service.create_contact(
+            conn,
+            contact=ContactCreate(full_name="Ada", email="ada@example.com"),
+        )
+
+
+@pytest.mark.unit
+def test_update_contact_active_email_conflict_is_safe_domain_error() -> None:
+    from app.contacts import ContactEmailConflictError
+
+    contact_repo = MagicMock()
+    contact_repo.get_active_by_email.return_value = None
+    contact_repo.update.side_effect = _contact_email_unique_violation()
+    service, conn, _ = _service_with_mocks(contact_repo=contact_repo)
+
+    with pytest.raises(ContactEmailConflictError):
+        service.update_contact(
+            conn,
+            CONTACT_ID,
+            contact=ContactUpdate(full_name="Ada", email="ada@example.com"),
+        )
+    conn.rollback.assert_called_once()
+    conn.commit.assert_not_called()
+
+
+@pytest.mark.unit
+def test_create_contact_email_matches_use_active_lookup_only() -> None:
+    contact_repo = MagicMock()
+    contact_repo.get_active_by_email.return_value = {
+        "id": CONTACT_ID,
+        "full_name": "Ada",
+        "email": "ada@example.com",
+    }
+    contact_repo.create.return_value = {"id": CONTACT_ID, "full_name": "Ada"}
+    service, conn, repos = _service_with_mocks(contact_repo=contact_repo)
+
+    result = service.create_contact(
+        conn,
+        contact=ContactCreate(full_name="Ada", email="ADA@example.com"),
+    )
+
+    # Case-insensitive active match becomes a non-blocking duplicate warning.
+    assert any(w.match_type == "email" for w in result["duplicate_warnings"])
+    contact_repo.get_active_by_email.assert_called_once()
