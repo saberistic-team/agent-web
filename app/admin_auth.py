@@ -21,9 +21,8 @@ from fastapi.responses import Response
 
 from app import db
 from app.admin_client_source import (
-    ClientSourceResult,
-    log_source_resolution,
     resolve_admin_login_client_source,
+    resolve_admin_login_client_source_detail,
 )
 from app.config import Settings
 
@@ -239,17 +238,25 @@ def read_login_flow_token(request: Request) -> str | None:
     return token.strip() or None
 
 
-def resolve_admin_login_client_source_result(
-    request: Request,
-    settings: Settings,
-) -> ClientSourceResult:
-    """Resolve the effective client source for admin login rate limiting."""
-    return resolve_admin_login_client_source(request, settings)
-
-
 def client_ip(request: Request, settings: Settings) -> str:
-    """Return the normalized client source address for rate limiting."""
-    return resolve_admin_login_client_source(request, settings).address
+    """Resolve the client source IP for rate limiting.
+
+    Forwarding headers are honored only when the immediate peer address matches
+    ``ADMIN_TRUSTED_PROXY_CIDRS``. The resolver walks trusted hops from right
+    to left and never trusts a leftmost ``X-Forwarded-For`` value from an
+    unverified peer.
+
+    Source identity notes:
+
+    * **IPv4 / IPv6** — stored only as keyed digests; the resolved string is
+      passed verbatim into the source bucket (e.g. ``203.0.113.1``,
+      ``2001:db8::1``).
+    * **Missing peer** — falls back to ``unknown`` so attempts still share one
+      bucket instead of creating an unbounded namespace.
+    * **Trusted proxy** — right-to-left trusted-hop parsing and verified
+      ``CF-Connecting-IP`` when a Cloudflare edge hop is proven in the chain.
+    """
+    return resolve_admin_login_client_source_detail(request, settings).source
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
@@ -373,8 +380,8 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    source_result = resolve_admin_login_client_source(request, settings)
-    source = source_result.address
+    source_resolution = resolve_admin_login_client_source_detail(request, settings)
+    source = source_resolution.source
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,
@@ -426,7 +433,7 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "lockout_transition": admission.lockout_transition,
-                "source_resolution_path": source_result.path.value,
+                "resolution_path": source_resolution.path,
             },
         )
     elif admission.already_locked:
@@ -435,7 +442,7 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "already_locked": True,
-                "source_resolution_path": source_result.path.value,
+                "resolution_path": source_resolution.path,
             },
         )
     return LoginAdmissionResult(
