@@ -54,6 +54,7 @@ TEST_USERNAME = "operator"
 TEST_PASSWORD = "correct-horse-battery-staple"
 TEST_HASH = PasswordHasher().hash(TEST_PASSWORD)
 TEST_SECRET = "test-session-secret-32chars-minimum"
+TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!!"
 
 _login_flows: dict[str, dict[str, Any]] = {}
 _session_store: dict[str, dict[str, Any]] = {}
@@ -82,14 +83,12 @@ class FakeRateLimitStore:
         limiter_keys: tuple[str, ...],
         now: datetime,
         *,
-        guard_keys: tuple[str, ...] = (),
         rate_limit: int,
         window_seconds: int,
         lockout_seconds: int,
     ) -> db.AdminLoginAdmission:
         with self._lock:
-            ordered_keys = tuple(sorted(set(limiter_keys + guard_keys)))
-            write_keys = tuple(sorted(limiter_keys))
+            ordered_keys = tuple(sorted(limiter_keys))
             for limiter_key in ordered_keys:
                 if limiter_key not in self.rows:
                     self.rows[limiter_key] = {
@@ -111,7 +110,7 @@ class FakeRateLimitStore:
                     )
 
             lockout_transition = False
-            for limiter_key in write_keys:
+            for limiter_key in ordered_keys:
                 row = self.rows[limiter_key]
                 window_start = now - timedelta(seconds=window_seconds)
                 if row["window_started_at"] < window_start:
@@ -199,7 +198,6 @@ def shared_rate_limiter(store: FakeRateLimitStore) -> Generator[None, None, None
         conn: Any,
         *,
         limiter_keys: tuple[str, ...],
-        guard_keys: tuple[str, ...] = (),
         now: datetime,
         rate_limit: int,
         window_seconds: int,
@@ -208,7 +206,6 @@ def shared_rate_limiter(store: FakeRateLimitStore) -> Generator[None, None, None
         return store.try_admit(
             limiter_keys,
             now,
-            guard_keys=guard_keys,
             rate_limit=rate_limit,
             window_seconds=window_seconds,
             lockout_seconds=lockout_seconds,
@@ -261,7 +258,8 @@ def admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_USERNAME", TEST_USERNAME)
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_HASH)
     monkeypatch.setenv("ADMIN_SESSION_SECRET", TEST_SECRET)
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "test-limiter-secret-32chars-minimum!!")
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
+    monkeypatch.delenv("ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS", raising=False)
     monkeypatch.setenv("BASE_URL", "http://testserver")
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "5")
     monkeypatch.setenv("ADMIN_LOGIN_RATE_WINDOW_SECONDS", "900")
@@ -562,6 +560,7 @@ def test_admin_preview_mode_allows_dashboard_without_login(
     monkeypatch.delenv("ADMIN_USERNAME", raising=False)
     monkeypatch.delenv("ADMIN_PASSWORD_HASH", raising=False)
     monkeypatch.delenv("ADMIN_SESSION_SECRET", raising=False)
+    monkeypatch.delenv("ADMIN_LOGIN_LIMITER_SECRET", raising=False)
     monkeypatch.delenv("DATABASE_URL", raising=False)
     dash = client.get("/admin")
     assert dash.status_code == 200
@@ -589,6 +588,7 @@ def test_admin_auth_settings_flags(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ADMIN_USERNAME", raising=False)
     monkeypatch.delenv("ADMIN_PASSWORD_HASH", raising=False)
     monkeypatch.delenv("ADMIN_SESSION_SECRET", raising=False)
+    monkeypatch.delenv("ADMIN_LOGIN_LIMITER_SECRET", raising=False)
     settings = get_settings()
     assert not settings.admin_auth_configured
 
@@ -648,24 +648,26 @@ def test_build_source_and_account_rate_limit_keys() -> None:
 
 @pytest.mark.unit
 def test_login_limiter_keys_include_account_for_configured_username() -> None:
+    settings = get_settings()
     keys = admin_auth.login_limiter_keys(
+        settings=settings,
         submitted_username="Operator",
         client_source="203.0.113.1",
-        configured_admin_username="operator",
     )
     assert len(keys) == 2
-    assert admin_auth.build_source_rate_limit_key("203.0.113.1") in keys
-    assert admin_auth.build_account_rate_limit_key("operator") in keys
+    assert admin_auth.build_source_rate_limit_key("203.0.113.1", settings) in keys
+    assert admin_auth.build_account_rate_limit_key("operator", settings) in keys
 
 
 @pytest.mark.unit
 def test_login_limiter_keys_source_only_for_unknown_username() -> None:
+    settings = get_settings()
     keys = admin_auth.login_limiter_keys(
+        settings=settings,
         submitted_username="ghost",
         client_source="203.0.113.1",
-        configured_admin_username="operator",
     )
-    assert keys == (admin_auth.build_source_rate_limit_key("203.0.113.1"),)
+    assert keys == (admin_auth.build_source_rate_limit_key("203.0.113.1", settings),)
 
 
 @pytest.mark.unit
