@@ -5,13 +5,6 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from app.proxy_trust_config import (
-    DEFAULT_TRUSTED_EDGE_CIDRS,
-    DEFAULT_TRUSTED_PROXY_CIDRS,
-    DEFAULT_UVICORN_FORWARDED_ALLOW_IPS,
-    parse_cidr_list,
-)
-
 
 @dataclass(frozen=True)
 class Settings:
@@ -36,10 +29,6 @@ class Settings:
     admin_login_lockout_seconds: int = 900
     admin_trust_proxy_headers: bool = False
     admin_trusted_proxy_cidrs: tuple[str, ...] = ()
-    admin_trusted_forward_hop_cidrs: tuple[str, ...] = ()
-    admin_trusted_edge_cidrs: tuple[str, ...] = ()
-    uvicorn_proxy_headers: bool = False
-    uvicorn_forwarded_allow_ips: str = ""
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -59,6 +48,11 @@ class Settings:
     def admin_preview_mode(self) -> bool:
         flag = os.environ.get("ADMIN_PREVIEW_MODE", "").lower()
         return flag in ("1", "true", "yes")
+
+    @property
+    def admin_proxy_trust_enabled(self) -> bool:
+        """True when trusted proxy CIDRs or legacy proxy trust flag are configured."""
+        return bool(self.admin_trusted_proxy_cidrs) or self.admin_trust_proxy_headers
 
     @property
     def admin_auth_configured(self) -> bool:
@@ -125,21 +119,9 @@ def get_settings() -> Settings:
             "ADMIN_TRUST_PROXY_HEADERS", ""
         ).lower()
         in ("1", "true", "yes"),
-        admin_trusted_proxy_cidrs=parse_cidr_list(
-            os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS"),
-            default=DEFAULT_TRUSTED_PROXY_CIDRS,
+        admin_trusted_proxy_cidrs=tuple(
+            part.strip()
+            for part in os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "").split(",")
+            if part.strip()
         ),
-        admin_trusted_forward_hop_cidrs=parse_cidr_list(
-            os.environ.get("ADMIN_TRUSTED_FORWARD_HOP_CIDRS"),
-            default=DEFAULT_TRUSTED_PROXY_CIDRS,
-        ),
-        admin_trusted_edge_cidrs=parse_cidr_list(
-            os.environ.get("ADMIN_TRUSTED_EDGE_CIDRS"),
-            default=DEFAULT_TRUSTED_EDGE_CIDRS,
-        ),
-        uvicorn_proxy_headers=os.environ.get("UVICORN_PROXY_HEADERS", "").lower()
-        in ("1", "true", "yes"),
-        uvicorn_forwarded_allow_ips=os.environ.get(
-            "UVICORN_FORWARDED_ALLOW_IPS", DEFAULT_UVICORN_FORWARDED_ALLOW_IPS
-        ).strip(),
     )
