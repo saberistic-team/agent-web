@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlparse
 from uuid import UUID
 
@@ -155,6 +155,40 @@ class ContactDuplicateWarning:
     contact_id: str
     label: str
     match_type: str
+
+
+@dataclass(frozen=True)
+class ContactSafeSummary:
+    """CRM fields safe to show when comparing contacts during restore conflicts."""
+
+    contact_id: str
+    full_name: str | None
+    title: str | None
+    company_name: str | None
+    company_id: str | None
+
+
+@dataclass(frozen=True)
+class ContactRestoreResult:
+    outcome: Literal["success", "conflict", "not_found"]
+    contact: dict[str, Any] | None = None
+    archived_contact: dict[str, Any] | None = None
+    conflicting_contact: ContactSafeSummary | None = None
+
+
+def contact_safe_summary(
+    contact: dict[str, Any],
+    *,
+    company_name: str | None = None,
+) -> ContactSafeSummary:
+    company_id = contact.get("company_id")
+    return ContactSafeSummary(
+        contact_id=str(contact["id"]),
+        full_name=contact.get("full_name"),
+        title=contact.get("title"),
+        company_name=company_name or contact.get("company_name"),
+        company_id=str(company_id) if company_id else None,
+    )
 
 
 def find_profile_url_duplicate_warnings(

@@ -12,6 +12,7 @@ from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 
 from app import admin_auth
+from app.contacts import ContactRestoreResult
 from app.main import app
 
 client = TestClient(app, follow_redirects=False)
@@ -376,7 +377,10 @@ def test_contact_new_edit_restore_and_invalid_fields_are_handled() -> None:
             crm.get_contact.return_value = editable
             crm.list_companies.return_value = [_company]
             crm.update_contact.return_value = {"contact": editable, "duplicate_warnings": []}
-            crm.restore_contact.return_value = editable
+            crm.restore_contact.return_value = ContactRestoreResult(
+                outcome="success",
+                contact=editable,
+            )
             new_page = client.get("/admin/contacts/new")
             assert new_page.status_code == 200 and "Add contact" in new_page.text
             edit_page = client.get(f"/admin/contacts/{CONTACT_ID}/edit")

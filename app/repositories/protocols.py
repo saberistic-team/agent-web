@@ -90,6 +90,14 @@ class ContactRepository(Protocol):
 
     def get_by_email(self, conn: psycopg.Connection, email: str) -> dict[str, Any] | None: ...
 
+    def get_active_by_email(
+        self,
+        conn: psycopg.Connection,
+        email: str,
+        *,
+        exclude_contact_id: UUID | None = None,
+    ) -> dict[str, Any] | None: ...
+
     def find_by_profile_url(
         self,
         conn: psycopg.Connection,

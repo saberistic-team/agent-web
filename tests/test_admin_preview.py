@@ -6,6 +6,7 @@ import random
 from datetime import datetime, timezone
 
 import pytest
+from fastapi.testclient import TestClient
 
 from app.admin_preview import (
     COMPANY_NAMES,
@@ -19,6 +20,7 @@ from app.admin_preview import (
     render_preview_section_main,
 )
 from app.admin_dashboard_pages import render_acquisition_dashboard_page
+from app.main import app
 
 
 @pytest.mark.unit
@@ -232,6 +234,38 @@ def test_admin_preview_briefs_list_and_detail_have_mock_data(
     assert audit.status_code == 200
     assert "No audit events recorded yet." not in audit.text
     assert "audit-table" in audit.text
+
+
+@pytest.mark.unit
+def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytest.MonkeyPatch) -> None:
+    import random
+
+    from argon2 import PasswordHasher
+
+    from app.admin_preview import (
+        PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID,
+        preview_contact_restore_conflict,
+    )
+
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "7")
+    monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
+    monkeypatch.setenv(
+        "ADMIN_PASSWORD_HASH",
+        PasswordHasher().hash("preview"),
+    )
+    monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
+    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    preview = preview_contact_restore_conflict(rng=random.Random(7))
+    client = TestClient(app, follow_redirects=False)
+    response = client.get(
+        f"/admin/contacts/{PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID}/restore-conflict"
+    )
+    assert response.status_code == 200
+    assert preview["archived_contact"]["full_name"] in response.text
+    assert preview["conflicting_contact"]["full_name"] in response.text
+    assert "Restore blocked" in response.text
 
 
 @pytest.mark.unit

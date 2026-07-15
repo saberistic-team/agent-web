@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from uuid import UUID
 
 import pytest
 
 from app.crm_service import CrmRepositories, CrmService
 from app.companies import CompanyCreate, CompanyUpdate
-from app.contacts import ContactCreate, ContactUpdate
+from app.actor_context import ActorContext
+from app.contacts import ContactCreate, ContactRestoreResult, ContactUpdate
 from app.repositories.postgres import (
     PostgresActivityRepository,
     PostgresAdminUserRepository,
@@ -342,8 +343,15 @@ def test_contact_crud_helpers_commit_and_return_nonblocking_duplicate_warnings()
         "buying_roles": ["executive_buyer"],
     }
     contact_repo.archive.return_value = {"id": CONTACT_ID, "archived_at": "now"}
+    contact_repo.get_by_id.return_value = {
+        "id": CONTACT_ID,
+        "full_name": "Ada",
+        "email": None,
+        "archived_at": "now",
+    }
     contact_repo.restore.return_value = {"id": CONTACT_ID, "archived_at": None}
     service, conn, _ = _service_with_mocks(contact_repo=contact_repo)
+    actor = ActorContext(actor="admin", correlation_id="test")
 
     created = service.create_contact(
         conn,
@@ -371,7 +379,11 @@ def test_contact_crud_helpers_commit_and_return_nonblocking_duplicate_warnings()
     )
     assert updated is not None and updated["contact"]["full_name"] == "Ada Updated"
     assert service.archive_contact(conn, CONTACT_ID)["archived_at"] == "now"
-    assert service.restore_contact(conn, CONTACT_ID)["archived_at"] is None
+    with patch("app.crm_service.audit_service.record_contact_restore"):
+        restored = service.restore_contact(conn, CONTACT_ID, actor_context=actor)
+    assert restored.outcome == "success"
+    assert restored.contact is not None
+    assert restored.contact["archived_at"] is None
     assert conn.commit.call_count == 4
 
 

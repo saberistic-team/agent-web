@@ -68,6 +68,7 @@ ACTION_SCORING_RULE_UPDATE = "scoring_rule.update"
 ACTION_ANALYTICS_CONFIG_UPDATE = "analytics.config.update"
 ACTION_EXPORT_REQUEST = "export.request"
 ACTION_BRIEF_CONVERT = "brief.convert"
+ACTION_CONTACT_RESTORE = "contact.restore"
 
 
 def _is_sensitive_key(key: str) -> bool:
@@ -425,6 +426,27 @@ def record_brief_convert(
         action=ACTION_BRIEF_CONVERT,
         entity_type="project_brief",
         entity_id=brief_id,
+        summary_after=summary_after,
+        repository=repository,
+    )
+
+
+def record_contact_restore(
+    conn: psycopg.Connection,
+    *,
+    actor_context: ActorContext,
+    contact_id: str,
+    summary_before: dict[str, Any] | None = None,
+    summary_after: dict[str, Any] | None = None,
+    repository: AuditEventRepository | None = None,
+) -> dict[str, Any] | None:
+    return record_event(
+        conn,
+        actor_context=actor_context,
+        action=ACTION_CONTACT_RESTORE,
+        entity_type="contact",
+        entity_id=contact_id,
+        summary_before=summary_before,
         summary_after=summary_after,
         repository=repository,
     )

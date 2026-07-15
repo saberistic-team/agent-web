@@ -13,6 +13,7 @@ from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 
 from app import admin_auth, db
+from app.contacts import ContactRestoreResult
 from app.admin_auth import SESSION_COOKIE_NAME
 from app.main import app
 
@@ -117,7 +118,10 @@ def test_update_contact_rejects_invalid_payload(authenticated_admin: dict[str, A
 @pytest.mark.unit
 def test_restore_contact_redirects_to_edit(authenticated_admin: dict[str, Any]) -> None:
     crm = MagicMock()
-    crm.restore_contact.return_value = {"id": CONTACT_ID}
+    crm.restore_contact.return_value = ContactRestoreResult(
+        outcome="success",
+        contact={"id": CONTACT_ID},
+    )
     with patch("app.admin_routes._crm", crm):
         response = client.post(
             f"/admin/contacts/{CONTACT_ID}/restore",
