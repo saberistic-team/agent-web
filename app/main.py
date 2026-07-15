@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -25,6 +24,7 @@ from app.admin_auth import AdminLoginRequired, login_redirect_url
 from app.admin_pipeline_routes import router as admin_pipeline_router
 from app.admin_routes import router as admin_router
 from app.actor_context import CORRELATION_HEADER
+from app.client_source import client_source_policy_summary
 from app.config import get_settings
 from app.models import BriefCreateRequest, BriefCreateResponse
 from app.seo import (
@@ -120,10 +120,7 @@ def health() -> dict:
     """
     payload: dict = {"status": "ok"}
     settings = get_settings()
-    payload["admin_proxy_trust"] = {
-        "mode": "peer_allowlist" if settings.admin_proxy_trust_enabled else "direct_peer",
-        "uvicorn_forwarded_allow_ips": os.environ.get("FORWARDED_ALLOW_IPS", "127.0.0.1"),
-    }
+    payload["admin_client_source_policy"] = client_source_policy_summary(settings)
     if not settings.database_configured:
         return payload
     try:
