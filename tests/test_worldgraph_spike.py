@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ipaddress
+import json
 import socket
 from pathlib import Path
 from unittest.mock import patch
@@ -10,6 +11,13 @@ from unittest.mock import patch
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+RESEARCH_CORPUS_PATH = REPO_ROOT / "docs" / "worldgraph" / "research-corpus.json"
+MANIFEST_SCHEMA_PATH = REPO_ROOT / "docs" / "worldgraph" / "world-manifest-v0.schema.json"
+
+
+def load_research_corpus() -> list[dict]:
+    with RESEARCH_CORPUS_PATH.open(encoding="utf-8") as handle:
+        return list(json.load(handle)["entries"])
 
 from spike.worldgraph.corpus import load_corpus, load_queries
 from spike.worldgraph.deterministic_extractor import DeterministicExtractor
@@ -413,3 +421,54 @@ def test_fetch_fixture_uses_local_fixtures() -> None:
     fetched = fetch_fixture(entry["canonical_url"], fixture_loader=loader, skip_dns_validation=True)
     assert fetched.status_code == 200
     assert fetched.body
+
+
+@pytest.mark.unit
+def test_manifest_v0_schema_file_declares_version() -> None:
+    schema = json.loads(MANIFEST_SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert schema["properties"]["schema_version"]["const"] == "world-manifest-v0"
+
+
+@pytest.mark.unit
+def test_research_corpus_supplementary_fixtures_exist() -> None:
+    for entry in load_research_corpus():
+        if fixture := entry.get("fixture"):
+            assert (REPO_ROOT / fixture).is_file(), f"missing fixture: {fixture}"
+
+
+@pytest.mark.unit
+def test_research_corpus_ssrf_and_scheme_negative_controls() -> None:
+    for entry in load_research_corpus():
+        reason = entry.get("expected_block_reason")
+        if reason == "ssrf_private_host":
+            with pytest.raises(FetchError):
+                validate_public_url(entry["url"])
+        elif reason == "unsafe_scheme":
+            with pytest.raises(FetchError, match="http or https"):
+                validate_public_url(entry["url"])
+
+
+@pytest.mark.unit
+def test_xss_negative_control_sanitizes_scripts() -> None:
+    html = (REPO_ROOT / "tests/fixtures/worldgraph/neg-006-xss.html").read_text(encoding="utf-8")
+    text = strip_html_to_text(html)
+    assert "alert" not in text
+    assert "XSS World" in text
+
+
+@pytest.mark.unit
+def test_supplementary_injection_readme_does_not_escalate_claim_status() -> None:
+    body = (REPO_ROOT / "tests/fixtures/worldgraph/neg-005-injection-readme.md").read_text(
+        encoding="utf-8"
+    )
+    extractor = ModelAssistedExtractor()
+    result = extractor.extract(
+        source_id="neg-005",
+        canonical_url="https://github.com/malicious-world/injected-readme",
+        content_type="text/markdown",
+        body=body,
+        qualification_hint="qualifies",
+    )
+    validate_manifest_v0(result.manifest)
+    assert result.manifest["trust"]["claim_status"] == "unclaimed"
+    assert detect_injection_phrases(body)

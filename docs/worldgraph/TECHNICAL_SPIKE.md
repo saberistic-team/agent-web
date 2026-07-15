@@ -61,6 +61,7 @@ python -m spike.worldgraph.run_benchmarks
 | Artifact | Path |
 |----------|------|
 | Research corpus | `docs/worldgraph/spike/corpus_sources.json` |
+| Supplementary source-type catalog | `docs/worldgraph/research-corpus.json` (SSRF/XSS/injection controls) |
 | Fixture bodies | `docs/worldgraph/spike/fixtures/sources/` |
 | Discovery queries | `docs/worldgraph/spike/queries.json` |
 | Manifest v0 schema | `docs/worldgraph/world-manifest-v0.schema.json` |

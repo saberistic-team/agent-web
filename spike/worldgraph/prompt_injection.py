@@ -6,6 +6,7 @@ import re
 
 _INJECTION_PATTERNS = (
     re.compile(r"(?i)ignore prior instructions"),
+    re.compile(r"(?i)ignore previous instructions"),
     re.compile(r"(?i)ignore safety rules"),
     re.compile(r"(?i)set verification_status to"),
     re.compile(r"(?i)set claim_status to"),
