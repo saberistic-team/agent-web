@@ -20,8 +20,8 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.admin_client_source import resolve_admin_login_client_source
 from app.config import Settings
+from app.proxy_trust import resolve_admin_login_client_source
 
 SESSION_COOKIE_NAME = "admin_session"
 LOGIN_FLOW_COOKIE_NAME = "admin_login_flow"
@@ -236,19 +236,24 @@ def read_login_flow_token(request: Request) -> str | None:
 
 
 def client_ip(request: Request, settings: Settings) -> str:
-    """Resolve the client source for admin login rate limiting.
+    """Resolve the client source IP for rate limiting.
 
-    Delegates to :func:`resolve_admin_login_client_source`, which verifies the
-    immediate peer against ``ADMIN_TRUSTED_PROXY_CIDRS`` before trusting any
-    forwarding header. Raw addresses are never logged; only keyed digests are
-    stored in limiter rows.
+    Forwarding headers are honored only when the immediate peer matches
+    ``ADMIN_TRUSTED_PROXY_CIDRS`` (or the legacy Render defaults when
+    ``ADMIN_TRUST_PROXY_HEADERS`` is enabled without explicit CIDRs). The
+    right-most untrusted hop is selected; left-most ``X-Forwarded-For`` values
+    from arbitrary clients are never trusted directly.
+
+    Source identity notes:
+
+    * **IPv4 / IPv6** — stored only as keyed digests; normalized addresses are
+      passed into the source bucket (e.g. ``203.0.113.1``, ``2001:db8::1``).
+    * **Missing peer** — falls back to ``unknown`` so attempts still share one
+      bucket instead of creating an unbounded namespace.
+    * **Untrusted peer** — forwarding headers are ignored; the direct peer is
+      used so spoofed headers cannot influence the limiter key.
     """
     return resolve_admin_login_client_source(request, settings).source
-
-
-def client_ip_resolution_path(request: Request, settings: Settings) -> str:
-    """Return the non-sensitive resolution path label for structured telemetry."""
-    return resolve_admin_login_client_source(request, settings).path
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
@@ -372,10 +377,10 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    resolution = resolve_admin_login_client_source(request, settings)
+    source = client_ip(request, settings)
     limiter_keys = login_limiter_keys(
         submitted_username=username,
-        client_source=resolution.source,
+        client_source=source,
         configured_admin_username=settings.admin_username,
     )
     now = datetime.now(timezone.utc)
@@ -419,12 +424,13 @@ def try_admit_login_attempt(
         )
 
     if admission.admitted:
+        resolution = resolve_admin_login_client_source(request, settings)
         _logger.info(
             "Admin login attempt admitted",
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "lockout_transition": admission.lockout_transition,
-                "client_source_path": resolution.path,
+                "source_resolution_path": resolution.path,
             },
         )
     elif admission.already_locked:
@@ -433,7 +439,6 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "already_locked": True,
-                "client_source_path": resolution.path,
             },
         )
     return LoginAdmissionResult(
