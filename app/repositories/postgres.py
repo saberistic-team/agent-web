@@ -223,41 +223,6 @@ class PostgresCompanyRepository:
             row = cur.fetchone()
         return dict(row) if row else None
 
-class PostgresCompanyStageHistoryRepository:
-    """Unused alternate history store from main; prefer PipelineRepository."""
-
-    def record(
-        self,
-        conn: psycopg.Connection,
-        *,
-        company_id: UUID,
-        from_stage: str,
-        to_stage: str,
-        changed_by: str,
-        reason: str | None = None,
-        metadata: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO company_stage_history (
-                    company_id, from_stage, to_stage, changed_by, reason, metadata
-                )
-                VALUES (%s, %s, %s, %s, %s, %s)
-                RETURNING *
-                """,
-                (
-                    company_id,
-                    from_stage,
-                    to_stage,
-                    changed_by,
-                    reason,
-                    json.dumps(metadata) if metadata is not None else None,
-                ),
-            )
-            row = cur.fetchone()
-        return dict(row)
-
 
 class PostgresContactRepository:
     def create(
@@ -1341,7 +1306,6 @@ class PostgresRepositories:
         self.admin_users = PostgresAdminUserRepository()
         self.audit_events = PostgresAuditEventRepository()
         self.project_briefs = PostgresProjectBriefRepository()
-        self.stage_history = PostgresCompanyStageHistoryRepository()
         self.acquisition_dashboard = PostgresAcquisitionDashboardRepository()
         self.pipeline = PostgresPipelineRepository()
 
@@ -1364,7 +1328,6 @@ def default_repositories() -> dict[str, Any]:
         "admin_users": repos.admin_users,
         "audit_events": repos.audit_events,
         "project_briefs": repos.project_briefs,
-        "stage_history": repos.stage_history,
         "acquisition_dashboard": repos.acquisition_dashboard,
         "pipeline": repos.pipeline,
     }

@@ -108,6 +108,25 @@ def test_preview_contacts_rows_stable_with_seed() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/admin/signals",
+        "/admin/pipeline",
+        "/admin/imports",
+        "/admin/discovery",
+        "/admin/analytics",
+        "/admin/content",
+        "/admin/settings",
+    ],
+)
+def test_preview_section_rows_cover_admin_paths(path: str) -> None:
+    rows = build_preview_section_rows(path, rng=random.Random(7))
+    assert 4 <= len(rows) <= 8
+    assert all(len(row) == 5 for row in rows)
+
+
+@pytest.mark.unit
 def test_preview_section_main_html_includes_mock_table() -> None:
     html = render_preview_section_main(
         label="Companies",
