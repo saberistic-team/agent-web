@@ -30,6 +30,20 @@ Playwright can open admin pages **without login**.
   `app/admin_preview.py` whenever it adds a page (see `AGENTS/builder.md`).
 - See [ADMIN_AUTH.md](ADMIN_AUTH.md).
 
+**Production renderer routes** (preview uses the same page functions as authenticated
+production, with deterministic fixtures from `app/admin_preview.py`):
+
+| Route | Production renderer | Preview fixtures |
+|-------|---------------------|------------------|
+| `/admin/companies` | `admin_companies.render_companies_list_page` | `build_preview_companies` |
+| `/admin/contacts` | `admin_contacts.render_contacts_list_page` | `build_preview_contacts` |
+| `/admin/pipeline` | `admin_pipeline_pages.render_pipeline_list_page` | `build_preview_pipeline_companies` |
+| `/admin/briefs` | `admin_pages` brief list/detail | `build_preview_brief_rows` / `build_preview_brief_detail` |
+| `/admin` (dashboard) | `admin_dashboard_pages.render_acquisition_dashboard_page` | `build_preview_acquisition_dashboard_data` |
+
+Other admin nav pages still use generic `render_preview_section_main` tables until
+they gain production-backed list renderers.
+
 ### Expected-status visual fixtures
 
 Some admin routes intentionally return non-200 **HTML** error pages (for example

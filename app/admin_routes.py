@@ -615,20 +615,30 @@ def admin_companies(
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
-        from app.admin_preview import render_preview_section_main
+        from app.admin_preview import build_preview_companies
 
-        link = next(item for item in ADMIN_NAV_LINKS if item["href"] == "/admin/companies")
+        filters = {
+            "q": q,
+            "category": category if category in COMPANY_CATEGORIES else None,
+            "stage": stage if stage in COMPANY_STAGES else None,
+            "target_status": target_status if target_status in TARGET_STATUSES else None,
+            "freshness": freshness if freshness in FRESHNESS_FILTERS else None,
+            "archived": "1" if archived else None,
+        }
         return HTMLResponse(
-            render_admin_shell(
-                title=link["label"],
-                main=render_preview_section_main(
-                    label=link["label"],
-                    summary=link["summary"],
-                    active_path="/admin/companies",
+            company_pages.render_companies_list_page(
+                companies=build_preview_companies(
+                    query=filters["q"],
+                    category=filters["category"],
+                    stage=filters["stage"],
+                    target_status=filters["target_status"],
+                    freshness=filters["freshness"],
+                    include_archived=archived,
                 ),
-                active_path="/admin/companies",
-                admin_username=session.admin_username,
+                filters=filters,
                 csrf_token=csrf_token,
+                admin_username=session.admin_username,
+                preview_banner="Preview data — not production",
             )
         )
     filters = {
@@ -911,20 +921,34 @@ def admin_contacts(
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
-        from app.admin_preview import render_preview_section_main
+        from app.admin_preview import build_preview_contacts
 
-        link = next(item for item in ADMIN_NAV_LINKS if item["href"] == "/admin/contacts")
+        parsed_company_id: UUID | None = None
+        if company_id:
+            try:
+                parsed_company_id = UUID(company_id)
+            except ValueError:
+                parsed_company_id = None
+        filters = {
+            "q": q,
+            "company_id": company_id if parsed_company_id else None,
+            "buying_role": buying_role if buying_role in BUYING_ROLES else None,
+            "archived": "1" if archived else None,
+        }
+        contacts, companies = build_preview_contacts(
+            query=filters["q"],
+            company_id=parsed_company_id,
+            buying_role=filters["buying_role"],
+            include_archived=archived,
+        )
         return HTMLResponse(
-            render_admin_shell(
-                title=link["label"],
-                main=render_preview_section_main(
-                    label=link["label"],
-                    summary=link["summary"],
-                    active_path="/admin/contacts",
-                ),
-                active_path="/admin/contacts",
-                admin_username=session.admin_username,
+            contact_pages.render_contacts_list_page(
+                contacts=contacts,
+                companies=companies,
+                filters=filters,
                 csrf_token=csrf_token,
+                admin_username=session.admin_username,
+                preview_banner="Preview data — not production",
             )
         )
     parsed_company_id: UUID | None = None

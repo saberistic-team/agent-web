@@ -17,9 +17,11 @@ from app.admin_preview import (
     PREVIEW_CONTACT_POPULATED_ID,
     PREVIEW_PIPELINE_COMPANY_IDS,
     build_preview_acquisition_dashboard_data,
+    build_preview_companies,
     build_preview_company,
     build_preview_company_research,
     build_preview_contact,
+    build_preview_contacts,
     build_preview_dashboard_data,
     build_preview_pipeline_companies,
     build_preview_pipeline_detail,
@@ -29,6 +31,7 @@ from app.admin_preview import (
     render_preview_dashboard_main,
     render_preview_section_main,
 )
+from app.admin_auth import SESSION_COOKIE_NAME
 from app.admin_dashboard_pages import render_acquisition_dashboard_page
 from app.main import app
 
@@ -297,6 +300,82 @@ def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytes
     assert preview["archived_contact"]["full_name"] in response.text
     assert preview["conflicting_contact"]["full_name"] in response.text
     assert "Restore blocked" in response.text
+
+
+@pytest.mark.unit
+def test_preview_companies_seed_stable() -> None:
+    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
+    a = build_preview_companies(rng=random.Random(42), now=now)
+    b = build_preview_companies(rng=random.Random(42), now=now)
+    assert a == b
+    assert len(a) == 5
+    assert a[0]["name"] in COMPANY_NAMES
+
+
+@pytest.mark.unit
+def test_preview_contacts_seed_stable() -> None:
+    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
+    contacts_a, companies_a = build_preview_contacts(rng=random.Random(42), now=now)
+    contacts_b, companies_b = build_preview_contacts(rng=random.Random(42), now=now)
+    assert contacts_a == contacts_b
+    assert companies_a == companies_b
+    assert len(contacts_a) == 5
+    assert contacts_a[0]["full_name"]
+    assert contacts_a[0]["buying_roles"]
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_preview_companies_uses_production_renderer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    client = TestClient(app, follow_redirects=False)
+    response = client.get(
+        "/admin/companies",
+        cookies={SESSION_COOKIE_NAME: "preview-screenshot-session"},
+    )
+    assert response.status_code == 200
+    body = response.text
+    assert "Preview data — not production" in body
+    assert 'id="companies-title"' in body
+    assert 'id="category-filter"' in body
+    assert 'id="stage-filter"' in body
+    assert 'id="target-filter"' in body
+    assert 'id="freshness-filter"' in body
+    assert 'name="archived"' in body
+    assert 'class="admin-section"' in body
+    assert 'id="admin-section-title"' not in body
+    assert 'class="admin-empty"' not in body
+    assert "Northwind Labs" in body
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_preview_contacts_uses_production_renderer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    client = TestClient(app, follow_redirects=False)
+    response = client.get(
+        "/admin/contacts",
+        cookies={SESSION_COOKIE_NAME: "preview-screenshot-session"},
+    )
+    assert response.status_code == 200
+    body = response.text
+    assert "Preview data — not production" in body
+    assert 'id="contacts-title"' in body
+    assert 'id="company-filter"' in body
+    assert 'id="role-filter"' in body
+    assert 'name="archived"' in body
+    assert 'class="admin-section"' in body
+    assert 'id="admin-section-title"' not in body
+    assert 'class="admin-empty"' not in body
+    assert "Roles" in body
 
 
 @pytest.mark.unit
