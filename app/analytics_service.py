@@ -8,10 +8,10 @@ from typing import Any
 import httpx
 
 from app.analytics_event_schema import (
+    ALLOWED_PROPERTY_NAMES,
     EVENT_CHECKOUT_OPENED,
     EVENT_LEAD_PERSISTED,
     EVENT_PAYMENT_COMPLETED,
-    ALLOWED_PROPERTY_NAMES,
     SENSITIVE_PROPERTY_NAMES,
     filter_properties,
     sanitize_attribution,

@@ -244,4 +244,5 @@ pytest tests/test_analytics_event_schema.py tests/test_analytics.py -q
 ## Related docs
 
 - [ANALYTICS_FUNNEL.md](ANALYTICS_FUNNEL.md) — live Plausible funnel map and KPI scorecard
+- [ANALYTICS_INGEST.md](ANALYTICS_INGEST.md) — browser ingestion endpoint and abuse controls
 - [AUDIT_EVENTS.md](AUDIT_EVENTS.md) — admin audit trail (separate from product analytics)
