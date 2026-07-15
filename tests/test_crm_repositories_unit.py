@@ -105,11 +105,12 @@ def test_contact_repository_create_and_lookup() -> None:
     assert "id <> %s" in active_excl_sql
 
     # Archived lookup is a separate, explicit operation (#226).
-    # TODO(#228): once a live-Postgres harness exists, assert end-to-end that the
-    # partial unique index `idx_contacts_email_unique` (a) permits an active row to
-    # coexist with an archived row sharing the same email, (b) blocks two active
-    # rows, and that get_active_by_email / get_archived_by_email return the expected
-    # rows against real data instead of asserting on generated SQL text.
+    # The real-Postgres proofs #226 requires — that the partial unique index
+    # `idx_contacts_email_unique` permits an active row to coexist with an
+    # archived row sharing the same email while blocking two active rows, and
+    # that get_active_by_email / get_archived_by_email return the right rows
+    # against real data — live in tests/test_contact_email_identity_pg.py. The
+    # broader migration/concurrency contract suite is tracked in #228.
     conn3c = _mock_conn(row)
     assert repo.get_archived_by_email(conn3c, "lead@example.com")["id"] == CONTACT_ID
     archived_sql = str(conn3c.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
