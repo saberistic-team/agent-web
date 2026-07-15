@@ -25,7 +25,6 @@ from app.admin_pipeline_routes import router as admin_pipeline_router
 from app.admin_routes import router as admin_router
 from app.actor_context import CORRELATION_HEADER
 from app.config import get_settings
-from app.proxy_trust import proxy_trust_health_summary
 from app.models import BriefCreateRequest, BriefCreateResponse
 from app.seo import (
     PERMANENT_REDIRECTS,
@@ -120,7 +119,11 @@ def health() -> dict:
     """
     payload: dict = {"status": "ok"}
     settings = get_settings()
-    payload["admin_client_source_trust"] = proxy_trust_health_summary(settings)
+    if settings.admin_trusted_proxy_cidrs:
+        payload["admin_client_source_trust"] = {
+            "configured": True,
+            "trusted_proxy_cidr_count": len(settings.admin_trusted_proxy_cidrs),
+        }
     if not settings.database_configured:
         return payload
     try:

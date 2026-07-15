@@ -20,7 +20,10 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.admin_client_source import resolve_admin_login_client_source
+from app.admin_client_source import (
+    log_client_source_resolution,
+    resolve_admin_login_client_source,
+)
 from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
@@ -236,14 +239,26 @@ def read_login_flow_token(request: Request) -> str | None:
 
 
 def client_ip(request: Request, settings: Settings) -> str:
-    """Resolve the client source for rate limiting (privacy-preserving digest input).
+    """Resolve the client source IP for rate limiting.
 
-    Delegates to :func:`resolve_admin_login_client_source`, which trusts
-    forwarding headers only when the immediate peer is in
-    ``ADMIN_TRUSTED_PROXY_CIDRS`` and applies a right-to-left X-Forwarded-For
-    walk for the Cloudflare → Render production chain.
+    Forwarding headers are honored only when the immediate peer is a member of
+    ``ADMIN_TRUSTED_PROXY_CIDRS`` (Render's internal load balancer in
+    production). Untrusted peers always use the direct connection address so
+    clients cannot spoof ``X-Forwarded-For``, ``Forwarded``, or
+    ``CF-Connecting-IP``.
+
+    Source identity notes:
+
+    * **IPv4 / IPv6** — normalized deterministically before digesting (including
+      IPv4-mapped IPv6).
+    * **Missing peer** — falls back to ``unknown`` so attempts still share one
+      bucket instead of creating an unbounded namespace.
+    * **Trusted proxy** — when the immediate peer is verified, vendor headers
+      and forwarding chains are parsed right-to-left across trusted hops.
     """
-    return resolve_admin_login_client_source(request, settings).source
+    resolution = resolve_admin_login_client_source(request, settings)
+    log_client_source_resolution(resolution)
+    return resolution.source
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:

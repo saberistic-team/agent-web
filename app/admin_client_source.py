@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import functools
 import ipaddress
 import logging
 import re
 import time
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from threading import Lock
 
 from fastapi import Request
@@ -16,276 +17,283 @@ from app.config import Settings
 
 _logger = logging.getLogger(__name__)
 
-# Conservative cap on forwarded-hop parsing; excess hops fail closed.
-_MAX_FORWARDED_HOPS = 32
+MAX_FORWARDED_CHAIN_LENGTH = 32
+_MAX_INVALID_FORWARD_LOG_INTERVAL_SECONDS = 60.0
+_invalid_forward_log_lock = Lock()
+_last_invalid_forward_log_at = 0.0
 
-# Sample at most one invalid/untrusted forwarding telemetry event per interval.
-_INVALID_TELEMETRY_INTERVAL_SECONDS = 60.0
+_FORWARDED_FOR_PARAM = re.compile(
+    r"""for=(?:"\[([^\]]+)\](?::\d+)?"|([^;,\s"]+))""",
+    re.IGNORECASE,
+)
 
-_telemetry_lock = Lock()
-_last_invalid_telemetry_at = 0.0
 
-
-class SourceResolutionPath(str, Enum):
-    """Bounded telemetry label for how admin login source identity was derived."""
+class ClientSourceResolutionPath(StrEnum):
+    """Bounded telemetry for how admin login source identity was resolved."""
 
     DIRECT_PEER = "direct_peer"
-    TRUSTED_XFF = "trusted_xff"
-    TRUSTED_FORWARDED = "trusted_forwarded"
-    TRUSTED_CF_CONNECTING_IP = "trusted_cf_connecting_ip"
-    CONSERVATIVE_FALLBACK = "conservative_fallback"
-    INVALID_FORWARDING = "invalid_forwarding"
+    CF_CONNECTING_IP = "cf_connecting_ip"
+    FORWARDED_HEADER = "forwarded_header"
+    X_FORWARDED_FOR_TRUSTED_CHAIN = "x_forwarded_for_trusted_chain"
+    INVALID_FORWARDING_FALLBACK_PEER = "invalid_forwarding_fallback_peer"
+    UNKNOWN_PEER = "unknown_peer"
 
 
 @dataclass(frozen=True)
 class ClientSourceResolution:
-    """Resolved limiter source material and the path used to derive it."""
+    """Resolved limiter source identity without persisting raw forwarding data."""
 
     source: str
-    path: SourceResolutionPath
-    invalid_forwarding: bool = False
+    path: ClientSourceResolutionPath
+
+
+class TrustedProxyBoundary:
+    """Immediate-peer and hop-trust checks for one configured proxy boundary."""
+
+    def __init__(self, trusted_entries: tuple[str, ...]) -> None:
+        self.always_trust = trusted_entries == ("*",)
+        self.trusted_literals: set[str] = set()
+        self.trusted_hosts: set[ipaddress.IPv4Address | ipaddress.IPv6Address] = set()
+        self.trusted_networks: set[ipaddress.IPv4Network | ipaddress.IPv6Network] = set()
+
+        if not self.always_trust:
+            for entry in trusted_entries:
+                if "/" in entry:
+                    try:
+                        self.trusted_networks.add(ipaddress.ip_network(entry, strict=False))
+                    except ValueError:
+                        self.trusted_literals.add(entry)
+                else:
+                    try:
+                        self.trusted_hosts.add(ipaddress.ip_address(entry))
+                    except ValueError:
+                        self.trusted_literals.add(entry)
+
+        self._trusts = functools.lru_cache(maxsize=4096)(self._compute_trust)
+
+    def __contains__(self, host: str | None) -> bool:
+        if self.always_trust:
+            return True
+        if not host:
+            return False
+        if len(host) > 253:
+            return self._compute_trust(host)
+        return self._trusts(host)
+
+    def _compute_trust(self, host: str) -> bool:
+        try:
+            ip = ipaddress.ip_address(host)
+            return ip in self.trusted_hosts or any(ip in net for net in self.trusted_networks)
+        except ValueError:
+            return host in self.trusted_literals
+
+    def configured(self) -> bool:
+        return self.always_trust or bool(
+            self.trusted_literals or self.trusted_hosts or self.trusted_networks
+        )
+
+
+def parse_trusted_proxy_cidrs(raw: str) -> tuple[str, ...]:
+    """Parse comma-separated trusted proxy hosts, literals, or CIDR entries."""
+    return tuple(item.strip() for item in raw.split(",") if item.strip())
+
+
+def _parse_host_port(value: str) -> tuple[str, int]:
+    stripped = value.strip()
+    if not stripped:
+        return "", 0
+
+    if stripped.startswith("["):
+        bracket_end = stripped.find("]")
+        if bracket_end == -1:
+            return stripped, 0
+        host = stripped[1:bracket_end]
+        remainder = stripped[bracket_end + 1 :]
+        if remainder.startswith(":"):
+            try:
+                return host, int(remainder[1:])
+            except ValueError:
+                return host, 0
+        return host, 0
+
+    if stripped.count(":") == 1:
+        host, port_text = stripped.rsplit(":", 1)
+        try:
+            return host, int(port_text)
+        except ValueError:
+            return stripped, 0
+
+    return stripped, 0
+
 
 def normalize_client_address(raw: str) -> str | None:
-    """Normalize IPv4/IPv6 addresses deterministically; return None when invalid."""
-    if not raw:
+    """Normalize IPv4/IPv6 addresses deterministically; reject malformed input."""
+    host, _port = _parse_host_port(raw)
+    if not host or len(host) > 253:
         return None
-    candidate = raw.strip()
-    if not candidate:
-        return None
-    if len(candidate) > 128:
-        return None
-
-    # Bracketed IPv6 with optional port: [::1]:8080
-    bracket_match = re.fullmatch(r"\[([^\]]+)\](?::\d+)?", candidate)
-    if bracket_match:
-        candidate = bracket_match.group(1)
-
-    # IPv4/hostname with trailing port: 203.0.113.1:443
-    if candidate.count(":") == 1 and "." in candidate:
-        host, maybe_port = candidate.rsplit(":", 1)
-        if maybe_port.isdigit():
-            candidate = host
-
-    # Strip zone id for IPv6: fe80::1%eth0
-    if "%" in candidate:
-        candidate = candidate.split("%", 1)[0]
-
     try:
-        parsed = ipaddress.ip_address(candidate)
+        ip = ipaddress.ip_address(host)
     except ValueError:
         return None
-
-    if isinstance(parsed, ipaddress.IPv6Address) and parsed.ipv4_mapped is not None:
-        return str(parsed.ipv4_mapped)
-    if isinstance(parsed, ipaddress.IPv4Address):
-        return str(parsed)
-    return parsed.compressed
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        return str(ip.ipv4_mapped)
+    return str(ip)
 
 
-def _ip_in_trusted_networks(
-    address: str,
-    networks: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...],
-) -> bool:
-    try:
-        parsed = ipaddress.ip_address(address)
-    except ValueError:
-        return False
-    return any(parsed in network for network in networks)
+def _split_forwarding_chain(header_value: str) -> list[str]:
+    return [segment.strip() for segment in header_value.split(",") if segment.strip()]
 
 
-def _parse_x_forwarded_for(header_value: str) -> tuple[str, ...] | None:
-    if not header_value or len(header_value) > 2048:
+def _client_from_trusted_hop_chain(
+    hop_values: list[str],
+    boundary: TrustedProxyBoundary,
+) -> str | None:
+    if not hop_values:
         return None
-    hops: list[str] = []
-    for part in header_value.split(","):
-        hop = part.strip()
-        if not hop:
-            continue
+    if len(hop_values) > MAX_FORWARDED_CHAIN_LENGTH:
+        return None
+
+    normalized_hops: list[str] = []
+    for hop in hop_values:
         normalized = normalize_client_address(hop)
         if normalized is None:
             return None
-        hops.append(normalized)
-        if len(hops) > _MAX_FORWARDED_HOPS:
-            return None
-    return tuple(hops)
+        normalized_hops.append(normalized)
 
-
-def _parse_forwarded_header(header_value: str) -> str | None:
-    """Extract the first ``for="..."`` client from an RFC 7239 Forwarded header."""
-    if not header_value or len(header_value) > 2048:
-        return None
-    for entry in header_value.split(","):
-        for token in entry.split(";"):
-            token = token.strip()
-            if not token.lower().startswith("for="):
-                continue
-            value = token[4:].strip().strip('"')
-            if value.lower() == "unknown":
-                continue
-            if value.startswith("["):
-                end = value.find("]")
-                if end == -1:
-                    return None
-                value = value[1:end]
-            else:
-                value = value.split(":", 1)[0]
-            normalized = normalize_client_address(value)
-            if normalized is None:
-                return None
-            return normalized
-    return None
-
-
-def _resolve_from_trusted_xff(
-    xff_hops: tuple[str, ...],
-    trusted_networks: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...],
-) -> str | None:
-    """Walk X-Forwarded-For right-to-left, skipping trusted proxy hops."""
-    for hop in reversed(xff_hops):
-        if not _ip_in_trusted_networks(hop, trusted_networks):
+    for hop in reversed(normalized_hops):
+        if hop not in boundary:
             return hop
-    return None
+
+    return normalized_hops[0]
 
 
-def _record_resolution_telemetry(resolution: ClientSourceResolution) -> None:
-    if resolution.invalid_forwarding:
-        global _last_invalid_telemetry_at
-        now = time.monotonic()
-        with _telemetry_lock:
-            if now - _last_invalid_telemetry_at < _INVALID_TELEMETRY_INTERVAL_SECONDS:
-                return
-            _last_invalid_telemetry_at = now
-        _logger.info(
-            "Admin login source forwarding rejected",
-            extra={"resolution_path": resolution.path.value},
+def _parse_forwarded_header_for_values(header_value: str) -> list[str]:
+    values: list[str] = []
+    for entry in header_value.split(","):
+        match = _FORWARDED_FOR_PARAM.search(entry)
+        if match is None:
+            continue
+        captured = match.group(1) or match.group(2) or ""
+        if captured:
+            values.append(captured.strip())
+    return values
+
+
+def _immediate_peer_host(request: Request) -> str | None:
+    if request.client is None:
+        return None
+    return request.client.host
+
+
+def _has_forwarding_headers(request: Request) -> bool:
+    header_names = {name.decode("latin1").lower() for name, _value in request.headers.raw}
+    return bool(
+        header_names.intersection(
+            {
+                "x-forwarded-for",
+                "forwarded",
+                "cf-connecting-ip",
+                "true-client-ip",
+            }
         )
-        return
-
-    _logger.debug(
-        "Admin login source resolved",
-        extra={"resolution_path": resolution.path.value},
     )
 
 
-def reset_admin_client_source_telemetry() -> None:
-    """Reset sampled invalid-forwarding telemetry (tests only)."""
-    global _last_invalid_telemetry_at
-    with _telemetry_lock:
-        _last_invalid_telemetry_at = 0.0
+def _log_invalid_forwarding_attempt(path: ClientSourceResolutionPath) -> None:
+    global _last_invalid_forward_log_at
+    now = time.monotonic()
+    with _invalid_forward_log_lock:
+        if now - _last_invalid_forward_log_at < _MAX_INVALID_FORWARD_LOG_INTERVAL_SECONDS:
+            return
+        _last_invalid_forward_log_at = now
+    _logger.info(
+        "Admin login client source rejected forwarded identity",
+        extra={"source_resolution_path": path.value},
+    )
+
+
+def _peer_source_identity(peer_host: str) -> tuple[str, ClientSourceResolutionPath]:
+    normalized = normalize_client_address(peer_host)
+    if normalized is not None:
+        return normalized, ClientSourceResolutionPath.DIRECT_PEER
+    stripped = peer_host.strip().lower()
+    if stripped:
+        return stripped, ClientSourceResolutionPath.DIRECT_PEER
+    return "unknown", ClientSourceResolutionPath.UNKNOWN_PEER
 
 
 def resolve_admin_login_client_source(
     request: Request,
     settings: Settings,
 ) -> ClientSourceResolution:
-    """Resolve the effective client source for admin login rate limiting.
+    """Resolve the effective admin login source address for rate limiting."""
+    boundary = TrustedProxyBoundary(settings.admin_trusted_proxy_cidrs)
+    peer_host = _immediate_peer_host(request)
 
-    Trust model (production: Client → Cloudflare → Render load balancer → Uvicorn):
-
-    1. Determine the immediate TCP peer (``request.client.host``).
-    2. When the peer is **not** in ``ADMIN_TRUSTED_PROXY_CIDRS``, ignore all
-       forwarding and vendor headers; use the peer address only.
-    3. When the peer **is** trusted, derive the client using this precedence:
-
-       a. Right-to-left ``X-Forwarded-For`` walk (Cloudflare appends the
-          connecting address; leftmost values may be attacker-controlled).
-       b. RFC 7239 ``Forwarded`` header ``for=`` value when XFF is absent.
-       c. ``CF-Connecting-IP`` only when it agrees with the XFF-derived client.
-       d. Conservative ``unknown`` when the chain is empty, malformed, or only
-          contains trusted proxy hops.
-
-    Uvicorn's ``--forwarded-allow-ips`` is configured to avoid rewriting
-    ``request.client`` from leftmost XFF; this resolver owns the trust boundary.
-    """
-    trusted_networks = settings.admin_trusted_proxy_networks
-    peer_raw = request.client.host if request.client is not None else ""
-    peer = normalize_client_address(peer_raw)
-
-    if peer is None:
-        resolution = ClientSourceResolution(
+    if peer_host is None:
+        return ClientSourceResolution(
             source="unknown",
-            path=SourceResolutionPath.CONSERVATIVE_FALLBACK,
-            invalid_forwarding=bool(peer_raw.strip()),
+            path=ClientSourceResolutionPath.UNKNOWN_PEER,
         )
-        _record_resolution_telemetry(resolution)
-        return resolution
 
-    if not trusted_networks or not _ip_in_trusted_networks(peer, trusted_networks):
-        resolution = ClientSourceResolution(
-            source=peer,
-            path=SourceResolutionPath.DIRECT_PEER,
-        )
-        _record_resolution_telemetry(resolution)
-        return resolution
+    normalized_peer = normalize_client_address(peer_host)
+    peer_source, peer_path = _peer_source_identity(peer_host)
 
-    xff_header = request.headers.get("x-forwarded-for", "")
-    xff_hops = _parse_x_forwarded_for(xff_header) if xff_header else None
-    if xff_header and xff_hops is None:
-        resolution = ClientSourceResolution(
-            source="unknown",
-            path=SourceResolutionPath.INVALID_FORWARDING,
-            invalid_forwarding=True,
-        )
-        _record_resolution_telemetry(resolution)
-        return resolution
-
-    xff_client: str | None = None
-    if xff_hops:
-        xff_client = _resolve_from_trusted_xff(xff_hops, trusted_networks)
-        if xff_client is not None:
-            resolution = ClientSourceResolution(
-                source=xff_client,
-                path=SourceResolutionPath.TRUSTED_XFF,
+    if normalized_peer is None:
+        if _has_forwarding_headers(request):
+            _log_invalid_forwarding_attempt(
+                ClientSourceResolutionPath.INVALID_FORWARDING_FALLBACK_PEER
             )
-            _record_resolution_telemetry(resolution)
-            return resolution
+        return ClientSourceResolution(source=peer_source, path=peer_path)
 
-    forwarded_header = request.headers.get("forwarded", "")
-    forwarded_client = (
-        _parse_forwarded_header(forwarded_header) if forwarded_header else None
-    )
-    if forwarded_header and forwarded_client is None:
-        resolution = ClientSourceResolution(
-            source="unknown",
-            path=SourceResolutionPath.INVALID_FORWARDING,
-            invalid_forwarding=True,
-        )
-        _record_resolution_telemetry(resolution)
-        return resolution
-    if forwarded_client is not None:
-        resolution = ClientSourceResolution(
-            source=forwarded_client,
-            path=SourceResolutionPath.TRUSTED_FORWARDED,
-        )
-        _record_resolution_telemetry(resolution)
-        return resolution
+    if not boundary.configured() or normalized_peer not in boundary:
+        if _has_forwarding_headers(request):
+            _log_invalid_forwarding_attempt(ClientSourceResolutionPath.DIRECT_PEER)
+        return ClientSourceResolution(source=peer_source, path=peer_path)
 
-    cf_header = request.headers.get("cf-connecting-ip", "")
-    cf_client = normalize_client_address(cf_header) if cf_header else None
-    if cf_header and cf_client is None:
-        resolution = ClientSourceResolution(
-            source="unknown",
-            path=SourceResolutionPath.INVALID_FORWARDING,
-            invalid_forwarding=True,
-        )
-        _record_resolution_telemetry(resolution)
-        return resolution
-
-    if cf_client is not None and xff_hops:
-        xff_agreement = _resolve_from_trusted_xff(xff_hops, trusted_networks)
-        # When every XFF hop is trusted, agreement is None; do not trust CF alone.
-        if xff_agreement is not None and cf_client == xff_agreement:
-            resolution = ClientSourceResolution(
-                source=cf_client,
-                path=SourceResolutionPath.TRUSTED_CF_CONNECTING_IP,
+    cf_connecting_ip = request.headers.get("cf-connecting-ip", "").strip()
+    if cf_connecting_ip:
+        normalized_cf = normalize_client_address(cf_connecting_ip)
+        if normalized_cf is not None:
+            return ClientSourceResolution(
+                source=normalized_cf,
+                path=ClientSourceResolutionPath.CF_CONNECTING_IP,
             )
-            _record_resolution_telemetry(resolution)
-            return resolution
 
-    resolution = ClientSourceResolution(
-        source="unknown",
-        path=SourceResolutionPath.CONSERVATIVE_FALLBACK,
-        invalid_forwarding=bool(xff_header or forwarded_header or cf_header),
+    forwarded_header = request.headers.get("forwarded", "").strip()
+    if forwarded_header:
+        forwarded_hops = _parse_forwarded_header_for_values(forwarded_header)
+        resolved = _client_from_trusted_hop_chain(forwarded_hops, boundary)
+        if resolved is not None:
+            return ClientSourceResolution(
+                source=resolved,
+                path=ClientSourceResolutionPath.FORWARDED_HEADER,
+            )
+
+    x_forwarded_for = request.headers.get("x-forwarded-for", "").strip()
+    if x_forwarded_for:
+        xff_hops = _split_forwarding_chain(x_forwarded_for)
+        resolved = _client_from_trusted_hop_chain(xff_hops, boundary)
+        if resolved is not None:
+            return ClientSourceResolution(
+                source=resolved,
+                path=ClientSourceResolutionPath.X_FORWARDED_FOR_TRUSTED_CHAIN,
+            )
+
+    if _has_forwarding_headers(request):
+        _log_invalid_forwarding_attempt(
+            ClientSourceResolutionPath.INVALID_FORWARDING_FALLBACK_PEER
+        )
+
+    return ClientSourceResolution(
+        source=normalized_peer,
+        path=ClientSourceResolutionPath.INVALID_FORWARDING_FALLBACK_PEER,
     )
-    _record_resolution_telemetry(resolution)
-    return resolution
+
+
+def log_client_source_resolution(resolution: ClientSourceResolution) -> None:
+    """Emit bounded telemetry without raw addresses or forwarding headers."""
+    _logger.debug(
+        "Admin login client source resolved",
+        extra={"source_resolution_path": resolution.path.value},
+    )
