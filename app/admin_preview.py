@@ -19,6 +19,7 @@ from app.acquisition_dashboard import (
     EvidenceRow,
     NextActionRow,
 )
+from app.acquisition_pipeline import PIPELINE_STAGES
 from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES
 
 
@@ -60,7 +61,6 @@ CONTACT_LAST = (
 STATUSES = ("new", "paid", "follow-up", "closed")
 SOURCES = ("brief", "referral", "inbound", "partner")
 SIGNAL_TYPES = ("hiring", "funding", "tech-stack", "intent", "news")
-PIPELINE_STAGES = ("qualified", "discovery", "proposal", "negotiation", "won")
 IMPORT_STATUSES = ("queued", "running", "complete", "failed")
 CONTENT_KINDS = ("insight", "case-study", "landing", "brief copy")
 BRIEF_PAYMENT_STATUSES = ("pending_payment", "paid", "abandoned")
@@ -87,7 +87,13 @@ UTM_SOURCES = ("linkedin", "referral", "google", "newsletter", "partner")
 UTM_MEDIUMS = ("social", "cpc", "email", "organic", None)
 UTM_CAMPAIGNS = ("spring-launch", "architecture-diagnostic", "inbound-q3", None)
 
-# Section path → short column labels for preview tables.
+PREVIEW_PIPELINE_COMPANY_IDS = (
+    UUID("11111111-1111-1111-1111-111111111111"),
+    UUID("22222222-2222-2222-2222-222222222222"),
+    UUID("33333333-3333-3333-3333-333333333333"),
+    UUID("44444444-4444-4444-4444-444444444444"),
+    UUID("55555555-5555-5555-5555-555555555555"),
+)
 _SECTION_COLUMNS: dict[str, tuple[str, ...]] = {
     "/admin/companies": ("Company", "Category", "Stage", "Target", "Verified"),
     "/admin/contacts": ("Name", "Roles", "Company", "Email", "Last touch"),
@@ -418,11 +424,12 @@ def build_preview_section_rows(
                 )
             )
         elif active_path == "/admin/pipeline":
+            stage_key = rng.choice(list(PIPELINE_STAGES))
             rows.append(
                 (
                     f"{company.split()[0]} pilot",
                     company,
-                    rng.choice(PIPELINE_STAGES),
+                    PIPELINE_STAGES[stage_key],
                     _format_amount(rng.choice((20_000, 35_000, 50_000, 75_000))),
                     stamp,
                 )
@@ -483,6 +490,94 @@ def build_preview_section_rows(
             rows.append((company, person, stamp, rng.choice(STATUSES), "preview"))
 
     return tuple(rows)
+
+
+def build_preview_pipeline_companies(
+    *,
+    stage_filter: str | None = None,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> list[dict[str, object]]:
+    """Randomized pipeline companies for ADMIN_PREVIEW_MODE."""
+    rng = rng or _preview_rng()
+    now = now or datetime.now(timezone.utc)
+    stage_keys = list(PIPELINE_STAGES)
+    companies: list[dict[str, object]] = []
+    for index, company_id in enumerate(PREVIEW_PIPELINE_COMPANY_IDS):
+        stage_key = stage_keys[index % len(stage_keys)]
+        if stage_filter and stage_key != stage_filter:
+            continue
+        due_offset = rng.randint(-5, 12)
+        companies.append(
+            {
+                "id": company_id,
+                "name": COMPANY_NAMES[index % len(COMPANY_NAMES)],
+                "pipeline_stage": stage_key,
+                "expected_value_cents": rng.choice((25_000, 50_000, 75_000, 120_000)),
+                "next_action": rng.choice(
+                    (
+                        "Send diagnostic proposal",
+                        "Schedule discovery call",
+                        "Follow up on reply",
+                        None,
+                    )
+                ),
+                "next_action_due_at": now + timedelta(days=due_offset),
+                "pipeline_owner": rng.choice(("alex", "sam", "preview")),
+            }
+        )
+    return companies
+
+
+def build_preview_pipeline_detail(
+    company_id: UUID,
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> tuple[dict[str, object], list[dict[str, object]], list[dict[str, object]]] | None:
+    """Preview pipeline detail for a fixed company id."""
+    rng = rng or _preview_rng()
+    now = now or datetime.now(timezone.utc)
+    companies = build_preview_pipeline_companies(rng=rng, now=now)
+    company = next((row for row in companies if row["id"] == company_id), None)
+    if company is None:
+        return None
+    stage = str(company["pipeline_stage"])
+    history = [
+        {
+            "changed_at": now - timedelta(days=14),
+            "from_stage": "researching",
+            "to_stage": "qualified",
+            "changed_by": "preview",
+        },
+        {
+            "changed_at": now - timedelta(days=7),
+            "from_stage": "qualified",
+            "to_stage": stage,
+            "changed_by": "preview",
+        },
+    ]
+    activities = [
+        {
+            "created_at": now - timedelta(days=3),
+            "activity_type": "outreach",
+            "summary": "Sent intro email with diagnostic overview.",
+        },
+        {
+            "created_at": now - timedelta(days=1),
+            "activity_type": "reply",
+            "summary": "Prospect asked for pricing and timeline.",
+        },
+    ]
+    if company_id == PREVIEW_PIPELINE_COMPANY_IDS[1]:
+        company = {
+            **company,
+            "next_action": None,
+            "next_action_due_at": None,
+            "pipeline_owner": None,
+            "expected_value_cents": None,
+        }
+    return company, history, activities
 
 
 def _brief_website(company: str, rng: random.Random) -> str:
@@ -694,7 +789,7 @@ def build_preview_audit_events(
                 "entity_id": str(rng.randint(10, 99)) if "pipeline" in action else None,
                 "correlation_id": f"corr-preview-{rng.randint(1000, 9999)}",
                 "summary_before": {"name": company} if "update" in action else None,
-                "summary_after": {"status": rng.choice(PIPELINE_STAGES)}
+                "summary_after": {"pipeline_stage": rng.choice(list(PIPELINE_STAGES))}
                 if "update" in action
                 else {"ok": True},
             }

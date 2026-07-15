@@ -73,9 +73,15 @@ See [AUDIT_EVENTS.md](AUDIT_EVENTS.md) for append-only audit semantics.
 | `notes` | `TEXT` | Optional operator notes |
 | `archived_at` | `TIMESTAMPTZ` | Soft archive timestamp; related records remain untouched |
 | `status` | `TEXT` | `prospect`, `active`, `inactive` |
+| `pipeline_stage` | `TEXT` | Acquisition stage (default `researching`); see `app/pipeline.py` |
+| `next_action` | `TEXT` | Operator next step |
+| `next_action_due_at` | `TIMESTAMPTZ` | Due date for next action |
+| `owner` | `TEXT` | Assigned operator |
+| `expected_value` | `NUMERIC(12,2)` | Expected deal value |
+| `stage_reason` | `TEXT` | Required context when stage is `lost` or `nurture` |
 
 Indexes: `status`, `website`, `domain`, `category`, `stage`, `target_status`,
-`archived_at`, `last_verified_at`.
+`archived_at`, `last_verified_at`, `pipeline_stage`, `next_action_due_at`, `owner`.
 
 `app/companies.py` owns the category/stage/target registries and normalizes domains
 before storage. Unknown registry values are validation errors; blank optional values
@@ -122,7 +128,7 @@ Unique: `(source_type, external_id)`. Indexes on FK columns and `source_type`.
 | Column | Type | Notes |
 |--------|------|-------|
 | `id` | `UUID` | PK |
-| `activity_type` | `TEXT` | `note`, `email`, `call`, `meeting`, `status_change`, `payment` |
+| `activity_type` | `TEXT` | `note`, `outreach`, `reply`, `meeting`, `proposal`, `payment`, `task_completion`, plus legacy `email`, `call`, `status_change` |
 | `company_id` | `UUID` | FK → `companies`, `ON DELETE CASCADE` |
 | `contact_id` | `UUID` | FK → `contacts`, `ON DELETE SET NULL` |
 | `source_record_id` | `UUID` | FK → `source_records`, `ON DELETE SET NULL` |
@@ -130,6 +136,22 @@ Unique: `(source_type, external_id)`. Indexes on FK columns and `source_type`.
 | `metadata` | `JSONB` | Optional structured fields |
 
 Indexes: `company_id`, `contact_id`, `source_record_id`, `created_at`.
+
+### `pipeline_stage_history`
+
+Timestamped acquisition pipeline stage changes ([#107](https://github.com/saberistic-team/agent-web/issues/107)).
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | `UUID` | PK |
+| `company_id` | `UUID` | FK → `companies`, `ON DELETE CASCADE` |
+| `from_stage` | `TEXT` | Prior pipeline stage (nullable for first assignment) |
+| `to_stage` | `TEXT` | New pipeline stage |
+| `changed_at` | `TIMESTAMPTZ` | When the transition occurred (`DEFAULT NOW()`) |
+| `changed_by` | `TEXT` | Admin username |
+| `metadata` | `JSONB` | Optional structured fields (loss/nurture reasons live on `companies`) |
+
+Indexes: `(company_id, changed_at DESC)`.
 
 ### `research_records`
 
@@ -230,8 +252,7 @@ Migrations live in `app/migrations/definitions.py` and are applied at startup vi
 | `006` | `admin_csrf_binding` | Login-flow CSRF rows and session CSRF column |
 | `007` | `research_records` | Typed research records with provenance and expiry |
 | `010` | `company_records` | Company firmographics, normalized domain, and soft archival |
-| `011` | `acquisition_dashboard_indexes` | Research-record indexes for the acquisition dashboard |
-| `012` | `contact_records` | Contact roles, relationship context, optional email, soft archival |
+| `011` | `acquisition_pipeline` | Pipeline stage, next actions, stage history, extended activity types |
 
 Applied versions are recorded in `schema_migrations`. Steps are **idempotent**
 (`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`) so empty and existing Render Postgres

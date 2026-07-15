@@ -246,6 +246,43 @@ def test_smoke_import_app_reports_failure(tmp_path) -> None:
     assert detail
 
 
+def test_smoke_pytest_collect_reports_import_error(tmp_path, monkeypatch) -> None:
+    """Stale test ImportErrors must fail smoke even when app.main would load."""
+    from builder_conflicts import smoke_pytest_collect
+
+    class FakeProc:
+        returncode = 2
+        stdout = ""
+        stderr = (
+            "ImportError: cannot import name 'PostgresStageHistoryRepository' "
+            "from 'app.repositories.postgres'"
+        )
+
+    def fake_run(*args, **kwargs):
+        return FakeProc()
+
+    monkeypatch.setattr("builder_conflicts.subprocess.run", fake_run)
+    ok, detail = smoke_pytest_collect(tmp_path)
+    assert ok is False
+    assert "PostgresStageHistoryRepository" in detail
+
+
+def test_smoke_and_maybe_repair_fails_when_collect_fails(tmp_path, monkeypatch) -> None:
+    from builder_conflicts import smoke_and_maybe_repair_app
+
+    monkeypatch.setattr(
+        "builder_conflicts.smoke_import_app", lambda cwd: (True, "ok")
+    )
+    monkeypatch.setattr(
+        "builder_conflicts.smoke_pytest_collect",
+        lambda cwd: (False, "pytest collect failed: ImportError"),
+    )
+    ok, detail, repairs = smoke_and_maybe_repair_app(tmp_path)
+    assert ok is False
+    assert "pytest collect failed" in detail
+    assert repairs == []
+
+
 def test_repair_main_wiring_adds_missing_imports() -> None:
     from builder_conflicts import repair_main_wiring
 

@@ -1293,7 +1293,7 @@ def admin_brief_convert_preview(
 ) -> HTMLResponse:
     session = require_admin_session(request)
     settings = get_settings()
-    csrf_token = _issue_session_csrf(settings, session.id) if session.id else ""
+    csrf_token = _session_csrf_for_forms(request, settings)
     back_filters = brief_service.normalize_list_back_params(
         page=page,
         q=q,
@@ -1398,7 +1398,7 @@ def admin_brief_convert_confirm(
     date_to: str | None = Form(default=None),
 ) -> RedirectResponse:
     session = require_admin_session(request)
-    _verify_session_csrf(session, csrf_token)
+    _verify_session_csrf(request, session, csrf_token)
     settings = get_settings()
     parsed_brief_id = brief_service.parse_brief_id(brief_id)
     if parsed_brief_id is None:
@@ -1491,7 +1491,7 @@ def admin_audit_list(request: Request, page: int = 1) -> HTMLResponse:
 
 
 for _link in ADMIN_NAV_LINKS:
-    if _link["href"] in {"/admin", "/admin/audit", "/admin/briefs", "/admin/companies", "/admin/contacts"}:
+    if _link["href"] in {"/admin", "/admin/audit", "/admin/briefs", "/admin/companies", "/admin/contacts", "/admin/pipeline"}:
         continue
     _section = _link["href"].removeprefix("/admin/")
 

@@ -3,12 +3,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
 import psycopg
 
 from app import audit_service
+from app.acquisition_pipeline import (
+    PipelineActivityCreate,
+    PipelineNextActionUpdate,
+    PipelineStageChange,
+    PipelineTransitionError,
+    assess_stage_transition,
+    pipeline_summary,
+)
 from app.actor_context import ActorContext
 from app.brief_conversion import (
     BriefConversionValidationError,
@@ -29,13 +38,13 @@ from app.repositories import (
     ActivityRepository,
     AdminUserRepository,
     CompanyRepository,
-    CompanyStageHistoryRepository,
     ContactRepository,
+    PipelineRepository,
     PostgresActivityRepository,
     PostgresAdminUserRepository,
     PostgresCompanyRepository,
-    PostgresCompanyStageHistoryRepository,
     PostgresContactRepository,
+    PostgresPipelineRepository,
     PostgresResearchRecordRepository,
     PostgresSourceRecordRepository,
     ResearchRecordRepository,
@@ -51,7 +60,7 @@ class CrmRepositories:
     activities: ActivityRepository
     research_records: ResearchRecordRepository
     admin_users: AdminUserRepository
-    stage_history: CompanyStageHistoryRepository
+    pipeline: PipelineRepository
 
 
 def default_crm_repositories() -> CrmRepositories:
@@ -62,7 +71,7 @@ def default_crm_repositories() -> CrmRepositories:
         activities=PostgresActivityRepository(),
         research_records=PostgresResearchRecordRepository(),
         admin_users=PostgresAdminUserRepository(),
-        stage_history=PostgresCompanyStageHistoryRepository(),
+        pipeline=PostgresPipelineRepository(),
     )
 
 
@@ -223,12 +232,21 @@ class CrmService:
             if race is not None:
                 return self._conversion_result_from_source(conn, race, idempotent=True)
 
+            expected_value = proposal.get("expected_value")
+            expected_value_cents = (
+                int(round(float(expected_value) * 100))
+                if expected_value is not None
+                else None
+            )
+
             if company_choice == "existing":
                 assert selected_company_id is not None
                 company = self._repos.companies.get_by_id(conn, selected_company_id)
                 if company is None:
                     raise BriefConversionValidationError("Selected company was not found.")
-                from_stage = str(company.get("pipeline_stage") or "researching")
+                from_stage = company.get("pipeline_stage")
+                if from_stage is not None:
+                    from_stage = str(from_stage)
             else:
                 from_stage = "researching"
                 company = self._repos.companies.create(
@@ -236,8 +254,6 @@ class CrmService:
                     name=str(proposal["company_name"]),
                     website=str(proposal["website"]),
                     domain=domain,
-                    pipeline_stage=pipeline_stage,
-                    expected_value=proposal.get("expected_value"),
                 )
 
             if contact_choice == "existing":
@@ -249,29 +265,27 @@ class CrmService:
                 contact = self._repos.contacts.create(
                     conn,
                     email=email,
-                    full_name=proposal.get("contact_name"),
+                    full_name=proposal.get("contact_name") or email.split("@", 1)[0],
                     company_id=UUID(str(company["id"])),
                 )
 
-            if company_choice == "existing":
-                updated = self._repos.companies.set_pipeline_stage(
-                    conn,
-                    UUID(str(company["id"])),
-                    pipeline_stage=pipeline_stage,
-                    expected_value=proposal.get("expected_value"),
-                )
-                if updated is not None:
-                    company = updated
+            updated = self._repos.pipeline.update_pipeline_fields(
+                conn,
+                UUID(str(company["id"])),
+                pipeline_stage=pipeline_stage,
+                expected_value_cents=expected_value_cents,
+            )
+            if updated is not None:
+                company = updated
 
             if from_stage != pipeline_stage:
-                self._repos.stage_history.record(
+                self._repos.pipeline.record_stage_history(
                     conn,
                     company_id=UUID(str(company["id"])),
                     from_stage=from_stage,
                     to_stage=pipeline_stage,
                     changed_by=actor_context.actor,
-                    reason="Brief conversion",
-                    metadata={"brief_id": brief_id},
+                    metadata={"brief_id": brief_id, "reason": "Brief conversion"},
                 )
 
             payload = {
@@ -780,6 +794,196 @@ class CrmService:
                 summary_after=summary_after,
             )
         return {"entity_id": entity_id, "summary_after": summary_after}
+
+    def list_pipeline_companies(
+        self,
+        conn: psycopg.Connection,
+        *,
+        pipeline_stage: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        return self._repos.pipeline.list_companies(
+            conn, pipeline_stage=pipeline_stage, limit=limit
+        )
+
+    def get_pipeline_company(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+    ) -> dict[str, Any] | None:
+        return self._repos.pipeline.get_company_pipeline(conn, company_id)
+
+    def list_pipeline_stage_history(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        return self._repos.pipeline.list_stage_history(conn, company_id, limit=limit)
+
+    def list_pipeline_overdue_actions(
+        self,
+        conn: psycopg.Connection,
+        *,
+        reference: datetime | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        ref = reference or datetime.now(timezone.utc)
+        return self._repos.pipeline.list_overdue_next_actions(
+            conn, reference=ref, limit=limit
+        )
+
+    def list_pipeline_upcoming_actions(
+        self,
+        conn: psycopg.Connection,
+        *,
+        reference: datetime | None = None,
+        window_days: int = 14,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        ref = reference or datetime.now(timezone.utc)
+        window_end = ref + timedelta(days=window_days)
+        return self._repos.pipeline.list_upcoming_next_actions(
+            conn, reference=ref, window_end=window_end, limit=limit
+        )
+
+    def transition_pipeline_stage(
+        self,
+        conn: psycopg.Connection,
+        *,
+        actor_context: ActorContext,
+        company_id: UUID,
+        change: PipelineStageChange,
+    ) -> dict[str, Any]:
+        company = self._repos.pipeline.get_company_pipeline(conn, company_id)
+        if company is None:
+            raise ValueError("Company not found.")
+        from_stage = company.get("pipeline_stage")
+        assess_stage_transition(
+            from_stage,
+            change.to_stage,
+            confirm=change.confirm,
+            loss_reason=change.loss_reason,
+            nurture_reason=change.nurture_reason,
+        )
+        summary_before = pipeline_summary(company)
+        loss_reason = change.loss_reason if change.to_stage == "lost" else None
+        nurture_reason = change.nurture_reason if change.to_stage == "nurture" else None
+        with crm_transaction(conn):
+            updated = self._repos.pipeline.update_pipeline_fields(
+                conn,
+                company_id,
+                pipeline_stage=change.to_stage,
+                pipeline_loss_reason=loss_reason,
+                pipeline_nurture_reason=nurture_reason,
+                clear_loss_reason=change.to_stage != "lost",
+                clear_nurture_reason=change.to_stage != "nurture",
+            )
+            if updated is None:
+                raise ValueError("Company not found.")
+            history = self._repos.pipeline.record_stage_history(
+                conn,
+                company_id=company_id,
+                from_stage=from_stage,
+                to_stage=change.to_stage,
+                changed_by=actor_context.actor,
+                metadata={
+                    "confirm": change.confirm,
+                    "loss_reason": change.loss_reason,
+                    "nurture_reason": change.nurture_reason,
+                },
+            )
+            self._repos.activities.create(
+                conn,
+                activity_type="status_change",
+                summary=(
+                    f"Pipeline stage: {from_stage or 'none'} → {change.to_stage}"
+                ),
+                company_id=company_id,
+                metadata={
+                    "from_stage": from_stage,
+                    "to_stage": change.to_stage,
+                    "history_id": str(history.get("id")),
+                },
+            )
+            summary_after = pipeline_summary(updated)
+            audit_service.record_pipeline_update(
+                conn,
+                actor_context=actor_context,
+                entity_id=str(company_id),
+                summary_before=summary_before,
+                summary_after=summary_after,
+            )
+        return {"company": updated, "history": history}
+
+    def update_pipeline_next_action(
+        self,
+        conn: psycopg.Connection,
+        *,
+        actor_context: ActorContext,
+        company_id: UUID,
+        update: PipelineNextActionUpdate,
+    ) -> dict[str, Any]:
+        company = self._repos.pipeline.get_company_pipeline(conn, company_id)
+        if company is None:
+            raise ValueError("Company not found.")
+        summary_before = pipeline_summary(company)
+        with crm_transaction(conn):
+            updated = self._repos.pipeline.update_pipeline_fields(
+                conn,
+                company_id,
+                next_action=update.next_action,
+                next_action_due_at=update.next_action_due_at,
+                pipeline_owner=update.pipeline_owner,
+                expected_value_cents=update.expected_value_cents,
+            )
+            if updated is None:
+                raise ValueError("Company not found.")
+            summary_after = pipeline_summary(updated)
+            audit_service.record_pipeline_update(
+                conn,
+                actor_context=actor_context,
+                entity_id=str(company_id),
+                summary_before=summary_before,
+                summary_after=summary_after,
+            )
+        return {"company": updated}
+
+    def record_pipeline_activity(
+        self,
+        conn: psycopg.Connection,
+        *,
+        company_id: UUID,
+        activity: PipelineActivityCreate,
+    ) -> dict[str, Any]:
+        contact_id = UUID(activity.contact_id) if activity.contact_id else None
+        with crm_transaction(conn):
+            created = self._repos.activities.create(
+                conn,
+                activity_type=activity.activity_type,
+                summary=activity.summary,
+                company_id=company_id,
+                contact_id=contact_id,
+                metadata=activity.metadata,
+            )
+        return created
+
+    def assign_company_to_pipeline(
+        self,
+        conn: psycopg.Connection,
+        *,
+        actor_context: ActorContext,
+        company_id: UUID,
+        initial_stage: str = "researching",
+    ) -> dict[str, Any]:
+        change = PipelineStageChange(to_stage=initial_stage)
+        return self.transition_pipeline_stage(
+            conn,
+            actor_context=actor_context,
+            company_id=company_id,
+            change=change,
+        )
 
     def update_scoring_rule(
         self,

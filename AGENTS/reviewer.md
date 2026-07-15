@@ -117,6 +117,17 @@ preview shells, invisible desktop admin nav, and **merge conflicts** are
 Do **not** treat them as terminal `@human-review` / `status:blocked` (see
 `scripts/review_decision.py`). Do **not** resolve conflicts yourself.
 
+**Anti-loop (CI collection after conflicts, learned from
+[#107](https://github.com/saberistic-team/agent-web/issues/107) / #145):**
+When AI review already `approved` and acceptance is `all_done: true`, but CI
+fails only on **pytest collection ImportError** for deleted/renamed symbols
+(e.g. `PostgresStageHistoryRepository`), keep requesting changes — but cite
+the **stale-test / conflict-merge** root cause so Builder deletes orphan
+modules instead of regenerating a second parallel API. Builder smoke now
+includes `pytest --collect-only`; if the same collection error returns after
+a claimed `resolved` merge, escalate `@human-review` rather than inventing
+another domain module.
+
 When posting `### acceptance_checklist`, mark a criterion **not_done** if
 screenshot evidence contradicts it (e.g. empty desktop sidebar while claiming
 “desktop navigation unchanged”). Do not set `all_done: true` while any

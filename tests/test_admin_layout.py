@@ -256,14 +256,25 @@ def test_admin_nav_links_present(path: str) -> None:
     token_hash = admin_auth.hash_session_token(raw_token)
     row = _session_row(token_hash=token_hash)
     with mock_db_connection():
-        with (
+        patchers = [
             patch(
                 "app.admin_routes.db.get_admin_session_by_token_hash",
                 return_value=row,
             ),
             patch("app.admin_routes._crm.list_companies", return_value=[]),
-        ):
-            response = client.get(path, cookies={SESSION_COOKIE_NAME: raw_token})
+        ]
+        if path == "/admin/pipeline":
+            patchers.append(
+                patch("app.admin_pipeline_routes._crm.list_pipeline_companies", return_value=[])
+            )
+        with patchers[0]:
+            for extra in patchers[1:]:
+                extra.start()
+            try:
+                response = client.get(path, cookies={SESSION_COOKIE_NAME: raw_token})
+            finally:
+                for extra in reversed(patchers[1:]):
+                    extra.stop()
     assert response.status_code == 200
     body = response.text
     assert 'aria-label="Admin"' in body
@@ -279,7 +290,7 @@ def test_admin_nav_links_present(path: str) -> None:
         ("/admin", "Today's attention", "dashboard-title", "Dashboard"),
         ("/admin/contacts", "Contacts", "contacts-title", "Contacts"),
         ("/admin/signals", "Signals", "admin-empty-title", "Signals"),
-        ("/admin/pipeline", "Pipeline", "admin-empty-title", "Pipeline"),
+        ("/admin/pipeline", "Pipeline", "pipeline-title", "Pipeline"),
         ("/admin/imports", "Imports", "admin-empty-title", "Imports"),
         ("/admin/discovery", "Discovery", "admin-empty-title", "Discovery"),
         ("/admin/analytics", "Analytics", "admin-empty-title", "Analytics"),
@@ -314,6 +325,8 @@ def test_admin_active_nav(path: str, heading: str, title_id: str, nav_label: str
         if path == "/admin/contacts":
             patchers.append(patch("app.admin_routes._crm.list_contacts", return_value=[]))
             patchers.append(patch("app.admin_routes._crm.list_companies", return_value=[]))
+        if path == "/admin/pipeline":
+            patchers.append(patch("app.admin_pipeline_routes._crm.list_pipeline_companies", return_value=[]))
         with patchers[0]:
             for extra in patchers[1:]:
                 extra.start()

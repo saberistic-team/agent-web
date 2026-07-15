@@ -61,6 +61,9 @@ ACTION_AUTH_LOGOUT = "auth.logout"
 ACTION_IMPORT_BATCH = "import.batch"
 ACTION_ENTITY_DELETE = "entity.delete"
 ACTION_PIPELINE_UPDATE = "pipeline.update"
+ACTION_PIPELINE_STAGE_CHANGE = "pipeline.stage_change"
+ACTION_PIPELINE_ACTIVITY = "pipeline.activity_recorded"
+ACTION_PIPELINE_NEXT_ACTION = "pipeline.next_action_updated"
 ACTION_SCORING_RULE_UPDATE = "scoring_rule.update"
 ACTION_ANALYTICS_CONFIG_UPDATE = "analytics.config.update"
 ACTION_EXPORT_REQUEST = "export.request"
@@ -276,6 +279,71 @@ def record_pipeline_update(
         action=ACTION_PIPELINE_UPDATE,
         entity_type="pipeline",
         entity_id=entity_id,
+        summary_before=summary_before,
+        summary_after=summary_after,
+        repository=repository,
+    )
+
+
+def record_pipeline_stage_change(
+    conn: psycopg.Connection,
+    *,
+    actor_context: ActorContext,
+    company_id: str,
+    summary_before: dict[str, Any] | None = None,
+    summary_after: dict[str, Any] | None = None,
+    metadata: dict[str, Any] | None = None,
+    repository: AuditEventRepository | None = None,
+) -> dict[str, Any] | None:
+    return record_event(
+        conn,
+        actor_context=actor_context,
+        action=ACTION_PIPELINE_STAGE_CHANGE,
+        entity_type="company",
+        entity_id=company_id,
+        summary_before=summary_before,
+        summary_after=summary_after,
+        metadata=metadata,
+        repository=repository,
+    )
+
+
+def record_pipeline_activity(
+    conn: psycopg.Connection,
+    *,
+    actor_context: ActorContext,
+    company_id: str,
+    summary_after: dict[str, Any] | None = None,
+    metadata: dict[str, Any] | None = None,
+    repository: AuditEventRepository | None = None,
+) -> dict[str, Any] | None:
+    return record_event(
+        conn,
+        actor_context=actor_context,
+        action=ACTION_PIPELINE_ACTIVITY,
+        entity_type="company",
+        entity_id=company_id,
+        summary_after=summary_after,
+        metadata=metadata,
+        repository=repository,
+    )
+
+
+def record_pipeline_next_action_update(
+    conn: psycopg.Connection,
+    *,
+    actor_context: ActorContext,
+    company_id: str,
+    summary_before: dict[str, Any] | None = None,
+    summary_after: dict[str, Any] | None = None,
+    repository: AuditEventRepository | None = None,
+) -> dict[str, Any] | None:
+    return record_event(
+        conn,
+        actor_context=actor_context,
+        action=ACTION_PIPELINE_NEXT_ACTION,
+        entity_type="company",
+        entity_id=company_id,
         summary_before=summary_before,
         summary_after=summary_after,
         repository=repository,

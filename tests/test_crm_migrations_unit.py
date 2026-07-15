@@ -197,7 +197,7 @@ def test_acquisition_pipeline_migration_is_idempotent() -> None:
     pipeline = next(m for m in MIGRATIONS if m.name == "acquisition_pipeline")
     assert pipeline.version == "013"
     assert "pipeline_stage" in pipeline.up_sql
-    assert "company_stage_history" in pipeline.up_sql
+    assert "pipeline_stage_history" in pipeline.up_sql
     assert "diagnostic_paid" in pipeline.up_sql
 
 
@@ -365,4 +365,14 @@ def test_audit_events_migration_is_append_only() -> None:
     assert "prevent_audit_events_mutation" in audit.up_sql
     assert "BEFORE UPDATE ON audit_events" in audit.up_sql
     assert "BEFORE DELETE ON audit_events" in audit.up_sql
+
+
+@pytest.mark.unit
+def test_acquisition_pipeline_migration_adds_columns_and_history() -> None:
+    pipeline = next(m for m in MIGRATIONS if m.name == "acquisition_pipeline")
+    assert pipeline.version == "013"
+    assert "pipeline_stage TEXT" in pipeline.up_sql
+    assert "pipeline_stage_history" in pipeline.up_sql
+    assert "outreach" in pipeline.up_sql
+    assert "task_completion" in pipeline.up_sql
 

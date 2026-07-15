@@ -240,7 +240,7 @@ def test_crm_service_audited_mutations_record_events() -> None:
             activities=MagicMock(),
             research_records=MagicMock(),
             admin_users=MagicMock(),
-            stage_history=MagicMock(),
+            pipeline=MagicMock(),
         )
     )
 

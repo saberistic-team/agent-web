@@ -9,8 +9,11 @@ import pytest
 
 from app.admin_preview import (
     COMPANY_NAMES,
+    PREVIEW_PIPELINE_COMPANY_IDS,
     build_preview_acquisition_dashboard_data,
     build_preview_dashboard_data,
+    build_preview_pipeline_companies,
+    build_preview_pipeline_detail,
     build_preview_section_rows,
     render_preview_dashboard_main,
     render_preview_section_main,
@@ -102,6 +105,25 @@ def test_preview_contacts_rows_stable_with_seed() -> None:
     assert 4 <= len(a) <= 8
     assert all(len(row) == 5 for row in a)
     assert any("buyer" in row[1].lower() or "founder" in row[1].lower() for row in a)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/admin/signals",
+        "/admin/pipeline",
+        "/admin/imports",
+        "/admin/discovery",
+        "/admin/analytics",
+        "/admin/content",
+        "/admin/settings",
+    ],
+)
+def test_preview_section_rows_cover_admin_paths(path: str) -> None:
+    rows = build_preview_section_rows(path, rng=random.Random(7))
+    assert 4 <= len(rows) <= 8
+    assert all(len(row) == 5 for row in rows)
 
 
 @pytest.mark.unit
@@ -213,9 +235,27 @@ def test_admin_preview_briefs_list_and_detail_have_mock_data(
 
 
 @pytest.mark.unit
-def test_preview_acquisition_dashboard_data_is_populated() -> None:
-    from app.admin_preview import build_preview_acquisition_dashboard_data
+def test_preview_pipeline_companies_seed_stable() -> None:
+    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
+    a = build_preview_pipeline_companies(rng=random.Random(42), now=now)
+    b = build_preview_pipeline_companies(rng=random.Random(42), now=now)
+    assert a == b
+    assert len(a) == len(PREVIEW_PIPELINE_COMPANY_IDS)
+    assert a[0]["name"] in COMPANY_NAMES
 
+
+@pytest.mark.unit
+def test_preview_pipeline_detail_nullable_fields() -> None:
+    detail = build_preview_pipeline_detail(PREVIEW_PIPELINE_COMPANY_IDS[1])
+    assert detail is not None
+    company, history, activities = detail
+    assert company["next_action"] is None
+    assert len(history) >= 2
+    assert len(activities) >= 2
+
+
+@pytest.mark.unit
+def test_preview_acquisition_dashboard_data_is_populated() -> None:
     data = build_preview_acquisition_dashboard_data()
     assert data.company_counts_by_stage
     assert data.overdue_actions
