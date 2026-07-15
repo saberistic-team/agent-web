@@ -195,8 +195,18 @@ def client_source_trust_health(settings: Settings) -> dict[str, Any]:
     }
 
 
+def trust_model_summary(settings: Settings) -> dict[str, Any]:
+    """Alias for deployment verification tooling."""
+    return client_source_trust_health(settings)
+
+
 def reset_untrusted_header_telemetry_for_tests() -> None:
     """Clear sampled telemetry counters (tests only)."""
     global _untrusted_header_counter, _untrusted_header_last_log
     _untrusted_header_counter = 0
     _untrusted_header_last_log = 0.0
+
+
+def reset_client_source_telemetry_for_tests() -> None:
+    """Alias for test harness compatibility."""
+    reset_untrusted_header_telemetry_for_tests()

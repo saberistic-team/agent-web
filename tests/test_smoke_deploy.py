@@ -14,7 +14,10 @@ def test_smoke_deploy_requires_admin_client_source_trust(monkeypatch: pytest.Mon
     def fake_get_json(url: str) -> dict:
         calls.append(url)
         if url.endswith("/health"):
-            return {"status": "ok", "admin_client_source_trust": {"immediate_peer_cidrs_configured": False}}
+            return {
+                "status": "ok",
+                "admin_client_source_trust": {"immediate_peer_cidrs_configured": False},
+            }
         if url.endswith("/hello"):
             return {"message": "hello world"}
         raise AssertionError(url)

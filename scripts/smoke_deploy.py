@@ -48,13 +48,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"FAIL {health_url}: {exc}", file=sys.stderr)
         return 1
     trust = health_payload.get("admin_client_source_trust")
-    if not isinstance(trust, dict):
-        print(f"FAIL {health_url}: missing admin_client_source_trust", file=sys.stderr)
-        return 1
-    if not trust.get("immediate_peer_cidrs_configured"):
+    if not isinstance(trust, dict) or not trust.get("immediate_peer_cidrs_configured"):
         print(
-            f"FAIL {health_url}: admin_client_source_trust.immediate_peer_cidrs_configured "
-            f"is false — proxy trust misconfigured",
+            f"FAIL {health_url}: admin_client_source_trust not configured: {trust!r}",
             file=sys.stderr,
         )
         return 1

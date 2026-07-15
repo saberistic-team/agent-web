@@ -12,7 +12,7 @@ client = TestClient(app)
 def test_health_handler_unit() -> None:
     payload = health()
     assert payload["status"] == "ok"
-    assert "admin_proxy_trust" in payload
+    assert "admin_client_source_trust" in payload
 
 
 @pytest.mark.unit
@@ -61,7 +61,7 @@ def test_health() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "ok"
-    assert "admin_proxy_trust" in payload
+    assert "admin_client_source_trust" in payload
 
 
 @pytest.mark.unit
