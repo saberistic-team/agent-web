@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+from app.proxy_trust import parse_trusted_proxy_networks
 
 
 @dataclass(frozen=True)
@@ -27,10 +29,9 @@ class Settings:
     admin_login_rate_limit: int = 5
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
-    admin_trusted_proxy_cidrs: tuple[str, ...] = ()
     admin_trust_proxy_headers: bool = False
-    uvicorn_proxy_headers: bool = False
-    uvicorn_forwarded_allow_ips: str = "127.0.0.1"
+    admin_trusted_proxy_cidrs: str = ""
+    admin_trusted_proxy_networks: tuple = field(default_factory=tuple)
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -86,6 +87,7 @@ class Settings:
 
 
 def get_settings() -> Settings:
+    admin_trusted_proxy_cidrs = os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "").strip()
     return Settings(
         database_url=os.environ.get("DATABASE_URL", ""),
         stripe_secret_key=os.environ.get("STRIPE_SECRET_KEY", ""),
@@ -112,30 +114,12 @@ def get_settings() -> Settings:
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
         brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
-        admin_trusted_proxy_cidrs=_parse_admin_trusted_proxy_cidrs(),
         admin_trust_proxy_headers=os.environ.get(
             "ADMIN_TRUST_PROXY_HEADERS", ""
         ).lower()
         in ("1", "true", "yes"),
-        uvicorn_proxy_headers=os.environ.get("UVICORN_PROXY_HEADERS", "").lower()
-        in ("1", "true", "yes"),
-        uvicorn_forwarded_allow_ips=_uvicorn_forwarded_allow_ips(),
+        admin_trusted_proxy_cidrs=admin_trusted_proxy_cidrs,
+        admin_trusted_proxy_networks=parse_trusted_proxy_networks(
+            admin_trusted_proxy_cidrs
+        ),
     )
-
-
-def _uvicorn_forwarded_allow_ips() -> str:
-    raw = os.environ.get("UVICORN_FORWARDED_ALLOW_IPS")
-    if raw is None:
-        return "127.0.0.1"
-    return raw.strip()
-
-
-def _parse_admin_trusted_proxy_cidrs() -> tuple[str, ...]:
-    from app.client_source import RENDER_TRUSTED_PROXY_CIDRS, parse_trusted_proxy_cidrs
-
-    explicit = os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "").strip()
-    if explicit:
-        return parse_trusted_proxy_cidrs(explicit)
-    if os.environ.get("ADMIN_TRUST_PROXY_HEADERS", "").lower() in ("1", "true", "yes"):
-        return parse_trusted_proxy_cidrs(RENDER_TRUSTED_PROXY_CIDRS)
-    return ()

@@ -15,35 +15,6 @@ def get_json(url: str) -> dict:
         return json.loads(resp.read().decode())
 
 
-def verify_admin_login_source_trust(payload: dict, url: str) -> bool:
-    trust = payload.get("admin_login_source_trust")
-    if not isinstance(trust, dict):
-        print(
-            f"FAIL {url}: missing admin_login_source_trust in health payload",
-            file=sys.stderr,
-        )
-        return False
-    required = {
-        "trusted_proxies_configured": True,
-        "resolution_mode": "trusted_hop_chain",
-    }
-    for key, expected in required.items():
-        if trust.get(key) != expected:
-            print(
-                f"FAIL {url}: admin_login_source_trust[{key!r}]="
-                f"{trust.get(key)!r}, expected {expected!r}",
-                file=sys.stderr,
-            )
-            return False
-    if trust.get("uvicorn_forwarded_allow_ips") != "":
-        print(
-            f"FAIL {url}: uvicorn_forwarded_allow_ips must be empty in production",
-            file=sys.stderr,
-        )
-        return False
-    return True
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -68,9 +39,21 @@ def main(argv: list[str] | None = None) -> int:
         if not isinstance(payload, dict) or payload.get(key) != expected:
             print(f"FAIL {url}: got {payload!r}, expected {key}={expected!r}", file=sys.stderr)
             return 1
-        if path == "/health" and not verify_admin_login_source_trust(payload, url):
-            return 1
         print(f"PASS {url} → {payload}")
+        if path == "/health":
+            trust = payload.get("admin_client_source_trust")
+            if not isinstance(trust, dict):
+                print(
+                    f"FAIL {url}: missing admin_client_source_trust verification metadata",
+                    file=sys.stderr,
+                )
+                return 1
+            if trust.get("resolution_model") != "verified_hop":
+                print(
+                    f"FAIL {url}: unexpected admin_client_source_trust model: {trust!r}",
+                    file=sys.stderr,
+                )
+                return 1
     return 0
 
 

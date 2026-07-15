@@ -20,8 +20,8 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.client_source import record_client_source_telemetry, resolve_request_client_source
 from app.config import Settings
+from app.proxy_trust import resolve_admin_login_client_source
 
 SESSION_COOKIE_NAME = "admin_session"
 LOGIN_FLOW_COOKIE_NAME = "admin_login_flow"
@@ -236,31 +236,8 @@ def read_login_flow_token(request: Request) -> str | None:
 
 
 def client_ip(request: Request, settings: Settings) -> str:
-    """Resolve the client source IP for rate limiting.
-
-    Forwarding headers are honored only when the immediate peer matches
-    ``ADMIN_TRUSTED_PROXY_CIDRS``. The resolver walks ``X-Forwarded-For``
-    right-to-left across trusted hops instead of trusting a leftmost value from
-    arbitrary requests.
-
-    Source identity notes:
-
-    * **IPv4 / IPv6** — stored only as keyed digests; the resolved string is
-      passed verbatim into the source bucket (e.g. ``203.0.113.1``,
-      ``2001:db8::1``).
-    * **Missing peer** — falls back to ``unknown`` so attempts still share one
-      bucket instead of creating an unbounded namespace.
-    * **Trusted proxy** — when trusted CIDRs are configured and the direct peer
-      is verified, the rightmost untrusted hop in the forwarding chain is used.
-    * **Direct / local** — leave ``ADMIN_TRUSTED_PROXY_CIDRS`` empty so spoofed
-      forwarding headers are ignored and the direct peer address is used.
-    """
-    result = resolve_request_client_source(
-        request,
-        trusted_proxy_cidrs=settings.admin_trusted_proxy_cidrs,
-    )
-    record_client_source_telemetry(result)
-    return result.source
+    """Return the resolved client source string for rate limiting."""
+    return resolve_admin_login_client_source(request, settings).source
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
@@ -384,7 +361,8 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    source = client_ip(request, settings)
+    source_resolution = resolve_admin_login_client_source(request, settings)
+    source = source_resolution.source
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,
@@ -410,7 +388,10 @@ def try_admit_login_attempt(
     except Exception:
         _logger.warning(
             "Admin login rate limiter unavailable; using conservative fallback",
-            extra={"limiter_key_count": len(limiter_keys)},
+            extra={
+                "limiter_key_count": len(limiter_keys),
+                "source_resolution_path": source_resolution.path,
+            },
             exc_info=True,
         )
         if _is_fallback_throttled(limiter_keys):
@@ -436,6 +417,7 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "lockout_transition": admission.lockout_transition,
+                "source_resolution_path": source_resolution.path,
             },
         )
     elif admission.already_locked:
@@ -444,6 +426,7 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "already_locked": True,
+                "source_resolution_path": source_resolution.path,
             },
         )
     return LoginAdmissionResult(
