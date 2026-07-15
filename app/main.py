@@ -119,11 +119,8 @@ def health() -> dict:
     """
     payload: dict = {"status": "ok"}
     settings = get_settings()
-    payload["admin_client_source_trust"] = (
-        "proxy_verified" if settings.admin_trust_proxy_headers else "direct_peer"
-    )
-    if settings.admin_trust_proxy_headers:
-        payload["admin_forwarded_allow_ips"] = settings.admin_forwarded_allow_ips
+    if settings.admin_trust_proxy_headers and settings.admin_trusted_proxy_cidrs:
+        payload["admin_proxy_trust"] = "configured"
     if not settings.database_configured:
         return payload
     try:

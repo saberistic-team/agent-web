@@ -20,8 +20,8 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.admin_client_source import client_ip
 from app.config import Settings
+from app.proxy_trust import resolve_admin_login_client_source
 
 SESSION_COOKIE_NAME = "admin_session"
 LOGIN_FLOW_COOKIE_NAME = "admin_login_flow"
@@ -233,6 +233,27 @@ def read_login_flow_token(request: Request) -> str | None:
     if not token:
         return None
     return token.strip() or None
+
+
+def client_ip(request: Request, settings: Settings) -> str:
+    """Resolve the client source IP for rate limiting.
+
+    Delegates to :func:`resolve_admin_login_client_source`, which accepts
+    forwarded identity only when the immediate peer matches
+    ``ADMIN_TRUSTED_PROXY_CIDRS`` and walks the forwarding chain from right to
+    left across trusted hops. Spoofed left-most ``X-Forwarded-For`` values are
+    never trusted from an unverified peer.
+
+    Source identity notes:
+
+    * **IPv4 / IPv6** — normalized and stored only as keyed digests.
+    * **Missing peer** — falls back to ``unknown`` so attempts still share one
+      bucket instead of creating an unbounded namespace.
+    * **Trusted proxy** — requires ``ADMIN_TRUST_PROXY_HEADERS`` plus explicit
+      trusted-proxy CIDRs; vendor headers such as ``CF-Connecting-IP`` are used
+      only after a Cloudflare hop is present in the verified chain.
+    """
+    return resolve_admin_login_client_source(request, settings).source
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
