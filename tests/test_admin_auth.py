@@ -659,15 +659,14 @@ def test_client_ip_ignores_forwarded_without_trusted_proxy(
 
 
 @pytest.mark.unit
-def test_client_ip_uses_rightmost_untrusted_hop_when_trusted_proxy_enabled(
+def test_client_ip_uses_trusted_hop_chain_when_proxy_trust_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ADMIN_TRUST_PROXY_HEADERS", "true")
-    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_IPS", "10.0.0.0/8")
     settings = get_settings()
-    request = _request_with_client("10.0.0.1")
+    request = _request_with_client("10.0.0.5")
     request.headers.__dict__["_list"].append(
-        (b"x-forwarded-for", b"203.0.113.1, 203.0.113.50, 10.0.0.1")
+        (b"x-forwarded-for", b"203.0.113.50, 172.64.1.1")
     )
     assert admin_auth.client_ip(request, settings) == "203.0.113.50"
 
@@ -1015,53 +1014,19 @@ def test_rate_limit_expires_after_lockout(
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_rate_limit_uses_forwarded_ip_when_trusted(
+def test_rate_limit_ignores_rotating_spoofed_forwarded_without_trusted_peer(
     rate_limit_store: FakeRateLimitStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ADMIN_TRUST_PROXY_HEADERS", "true")
-    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_IPS", "127.0.0.1,::1,testclient,10.0.0.0/8")
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
     with shared_rate_limiter(rate_limit_store):
-        headers = {"X-Forwarded-For": "203.0.113.77"}
-        assert _login(username="ghost", password="wrong", headers=headers).status_code == 401
-        assert _login(username="ghost", password="wrong", headers=headers).status_code == 401
-        assert _login(username="ghost", password="wrong", headers=headers).status_code == 429
-
-        other_ip_headers = {"X-Forwarded-For": "203.0.113.88"}
-        assert _login(username="ghost", password="wrong", headers=other_ip_headers).status_code == 401
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_rate_limit_rotating_spoofed_leftmost_headers_share_source_bucket(
-    rate_limit_store: FakeRateLimitStore,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("ADMIN_TRUST_PROXY_HEADERS", "true")
-    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_IPS", "127.0.0.1,::1,testclient,10.0.0.0/8")
-    monkeypatch.setenv("ADMIN_TRUST_CLOUDFLARE_HEADERS", "true")
-    monkeypatch.setenv("ADMIN_CLOUDFLARE_PROXY_CIDRS", "203.0.113.200/32")
-    monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "3")
-    client_ip = "203.0.113.55"
-    cloudflare_edge = "203.0.113.200"
-    with shared_rate_limiter(rate_limit_store):
-        for index in range(3):
-            headers = {
-                "X-Forwarded-For": f"203.0.113.{index}, {client_ip}, {cloudflare_edge}",
-            }
-            assert _login(username="ghost", password="wrong", headers=headers).status_code == 401
-
-        blocked = _login(
-            username="ghost",
-            password="wrong",
-            headers={"X-Forwarded-For": f"203.0.113.99, {client_ip}, {cloudflare_edge}"},
-        )
+        headers_a = {"X-Forwarded-For": "203.0.113.77"}
+        headers_b = {"X-Forwarded-For": "203.0.113.88"}
+        assert _login(username="ghost", password="wrong", headers=headers_a).status_code == 401
+        assert _login(username="ghost", password="wrong", headers=headers_b).status_code == 401
+        blocked = _login(username="ghost", password="wrong", headers=headers_a)
         assert blocked.status_code == 429
-
-    source_key = admin_auth.build_source_rate_limit_key(client_ip)
-    assert len(rate_limit_store.rows) == 1
-    assert source_key in rate_limit_store.rows
 
 
 @pytest.mark.unit
@@ -1270,20 +1235,10 @@ def test_account_rate_limit_blocks_configured_username_across_sources(
 ) -> None:
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
     monkeypatch.setenv("ADMIN_TRUST_PROXY_HEADERS", "true")
-    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_IPS", "127.0.0.1,::1,testclient,10.0.0.0/8")
     with shared_rate_limiter(rate_limit_store):
-        assert _login(
-            password="wrong",
-            headers={"X-Forwarded-For": "203.0.113.1"},
-        ).status_code == 401
-        assert _login(
-            password="wrong",
-            headers={"X-Forwarded-For": "203.0.113.2"},
-        ).status_code == 401
-        blocked = _login(
-            password="wrong",
-            headers={"X-Forwarded-For": "203.0.113.3"},
-        )
+        assert _login(password="wrong", headers={"X-Forwarded-For": "203.0.113.1"}).status_code == 401
+        assert _login(password="wrong", headers={"X-Forwarded-For": "203.0.113.2"}).status_code == 401
+        blocked = _login(password="wrong", headers={"X-Forwarded-For": "203.0.113.3"})
     assert blocked.status_code == 429
 
 

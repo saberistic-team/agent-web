@@ -238,20 +238,9 @@ def read_login_flow_token(request: Request) -> str | None:
 def client_ip(request: Request, settings: Settings) -> str:
     """Resolve the client source IP for rate limiting.
 
-    Forwarding headers are honored only when the immediate TCP peer is a member
-    of ``ADMIN_TRUSTED_PROXY_IPS`` and ``ADMIN_TRUST_PROXY_HEADERS`` is enabled.
-    The resolver walks ``X-Forwarded-For`` from right to left, skipping trusted
-    proxy hops, instead of trusting a client-supplied leftmost value.
-
-    Source identity notes:
-
-    * **IPv4 / IPv6** — stored only as keyed digests; the resolved string is
-      passed verbatim into the source bucket (e.g. ``203.0.113.1``,
-      ``2001:db8::1``).
-    * **Missing peer** — falls back to ``unknown`` so attempts still share one
-      bucket instead of creating an unbounded namespace.
-    * **Untrusted peer** — forwarding headers are ignored; the direct peer
-      address is used so spoofed ``X-Forwarded-For`` cannot rotate buckets.
+    Delegates to :func:`resolve_admin_login_client_source`, which verifies the
+    immediate TCP peer against the configured trusted-proxy boundary before
+    parsing forwarding headers right-to-left. Raw addresses are never logged.
     """
     return resolve_admin_login_client_source(request, settings).source
 
