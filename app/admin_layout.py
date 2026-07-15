@@ -4,13 +4,6 @@ from __future__ import annotations
 
 import html
 
-from app.admin_preview import (
-    PREVIEW_COMPANY_ARCHIVE_ID,
-    PREVIEW_COMPANY_RESTORE_ID,
-    PREVIEW_CONTACT_ARCHIVE_ID,
-    PREVIEW_CONTACT_RESTORE_ID,
-)
-
 ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
     {
         "label": "Dashboard",
@@ -100,12 +93,12 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
-    f"/admin/companies/{PREVIEW_COMPANY_ARCHIVE_ID}",
-    f"/admin/companies/{PREVIEW_COMPANY_RESTORE_ID}",
-    f"/admin/contacts/{PREVIEW_CONTACT_ARCHIVE_ID}",
-    f"/admin/contacts/{PREVIEW_CONTACT_RESTORE_ID}",
-    f"/admin/contacts/{PREVIEW_CONTACT_ARCHIVE_ID}/edit",
-    f"/admin/contacts/{PREVIEW_CONTACT_RESTORE_ID}/edit",
+    "/admin/companies/c0c0c0c0-c0c0-c0c0-c0c0-c0c0c0c0c001",
+    "/admin/companies/c0c0c0c0-c0c0-c0c0-c0c0-c0c0c0c0c002",
+    "/admin/contacts/c0c0c0c0-c0c0-c0c0-c0c0-c0c0c0c0d001",
+    "/admin/contacts/c0c0c0c0-c0c0-c0c0-c0c0-c0c0c0c0d001/edit",
+    "/admin/contacts/c0c0c0c0-c0c0-c0c0-c0c0-c0c0c0c0d002",
+    "/admin/contacts/c0c0c0c0-c0c0-c0c0-c0c0-c0c0c0c0d002/edit",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
@@ -114,6 +107,13 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
 ADMIN_SCREENSHOT_EXPECTED_STATUS: dict[str, int] = {
     "/admin/briefs/503": 503,
 }
+
+
+def archive_restore_button_class(*, archived_at: object) -> str:
+    """Semantic classes for archive (destructive) vs restore (secondary) form actions."""
+    if archived_at:
+        return "admin-action-btn admin-action-btn--secondary"
+    return "admin-action-btn admin-action-btn--destructive"
 
 
 def _active_nav_label(active_path: str) -> str:
