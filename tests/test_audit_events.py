@@ -425,6 +425,10 @@ def test_login_success_and_failure_create_audit_events() -> None:
                         create_session.assert_called_once()
                         success_audit.assert_called_once()
                         assert success_audit.call_args.kwargs["session_id"] == 42
+                        assert (
+                            success_audit.call_args.kwargs["actor_context"].actor
+                            == TEST_USERNAME
+                        )
 
                         bad_login = client.post(
                             "/admin/login",
@@ -439,6 +443,10 @@ def test_login_success_and_failure_create_audit_events() -> None:
                         assert (
                             failure_audit.call_args.kwargs["reason"]
                             == "invalid_credentials"
+                        )
+                        assert (
+                            failure_audit.call_args.kwargs["actor_context"].actor
+                            == "anonymous"
                         )
 
 

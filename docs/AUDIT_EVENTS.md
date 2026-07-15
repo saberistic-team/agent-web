@@ -51,22 +51,26 @@ both commit or roll back together.
 | Brief-to-CRM linkage | `CrmService.link_project_brief_source` | Transactional write; audit ships with future routes |
 | Login success | `admin_routes._issue_session` | Prior-session revocation (if any) + new session + required audit atomically |
 | Logout (authenticated) | `admin_routes.admin_logout` | Revocation + required audit atomically when the session row transitions to revoked |
-| Login failure | `admin_routes` | Best-effort audit (`required=False`); actor is always `anonymous` before authentication |
+| Login failure | `admin_routes` | Best-effort audit (`required=False`); actor is always `anonymous` |
 
-Unauthenticated login failures never place submitted username candidates in the
-immutable ``actor`` column, metadata, or reason text. Failure reasons are a small
-server-defined enum (`invalid_credentials`, `invalid_csrf`, `rate_limited`). Only
-events recorded after successful authentication retain the configured administrator
-identity.
+Unauthenticated login failures (`auth.login.failure`) always record
+`actor = anonymous`. Submitted username candidates are **not** stored in the
+`actor` column, metadata, reason text, logs, or metrics. Failure `reason` values
+are a small server-defined enum: `invalid_credentials`, `invalid_csrf`, or
+`rate_limited`.
 
-### Historical login-failure actors
+Authenticated `auth.login.success` and `auth.logout` events retain the
+configured administrator username and session linkage.
 
-Rows written before keyed limiter identifiers and anonymous failure actors shipped may
-still contain attacker-supplied strings in ``audit_events.actor`` for
-``auth.login.failure`` events. Those rows are append-only; remediation requires an
-explicit data-governance decision (for example, archival annotation or offline
-reporting filters). Forward fixes prevent all new occurrences regardless of how
-historical rows are handled.
+### Historical `auth.login.failure` actors (pre-#242)
+
+Before keyed limiter identifiers and anonymous-actor enforcement landed
+([#242](https://github.com/saberistic-team/agent-web/issues/242)), some
+`auth.login.failure` rows may have attacker-supplied strings in the immutable
+`actor` column. Append-only protections are unchanged — these rows are not
+silently rewritten or deleted. Security reporting should treat pre-#242
+`actor` values on failure events as **untrusted** unless corroborated by
+authenticated session evidence. The forward fix prevents all new occurrences.
 
 `record_event(..., required=True)` propagates persistence errors. Security-sensitive
 mutations must not return success when a required audit event could not be stored.
@@ -121,7 +125,7 @@ or rolled-back logins never emit a new session cookie.
 | Action | When recorded |
 |--------|----------------|
 | `auth.login.success` | Valid admin login creates a server-side session |
-| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting (actor is always `anonymous`) |
+| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting |
 | `auth.logout` | Authenticated session revocation (live session → revoked) |
 | `import.batch` | Data import batches via `CrmService.commit_linkedin_import` / `import_batch` |
 | `import.batch.rollback` | Rollback of committed import batches via `CrmService.rollback_import_batch` |
