@@ -24,6 +24,7 @@ from app.admin_auth import AdminLoginRequired, login_redirect_url
 from app.admin_pipeline_routes import router as admin_pipeline_router
 from app.admin_routes import router as admin_router
 from app.actor_context import CORRELATION_HEADER
+from app.admin_client_source import resolve_trusted_proxy_cidr_strings
 from app.config import get_settings
 from app.models import BriefCreateRequest, BriefCreateResponse
 from app.seo import (
@@ -119,11 +120,12 @@ def health() -> dict:
     """
     payload: dict = {"status": "ok"}
     settings = get_settings()
-    if settings.admin_trust_proxy_headers or settings.admin_trusted_proxy_ips:
-        payload["admin_proxy_trust"] = {
-            "enabled": settings.admin_trust_proxy_headers,
-            "trusted_proxy_entry_count": len(settings.admin_trusted_proxy_ips),
-        }
+    trusted_cidrs = resolve_trusted_proxy_cidr_strings(settings)
+    if trusted_cidrs:
+        payload["admin_proxy_trust"] = (
+            settings.admin_trusted_proxy_preset.strip()
+            or "custom_cidrs"
+        )
     if not settings.database_configured:
         return payload
     try:
