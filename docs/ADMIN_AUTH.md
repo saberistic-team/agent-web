@@ -286,6 +286,10 @@ Verify deployed settings after release:
 ```bash
 curl -sS https://saberistic.com/health | jq '.admin_client_source_policy'
 # Expect mode "trusted_proxy_cidrs" with non-zero network counts in production.
+
+curl -sS https://saberistic.com/health | jq '.admin_proxy_trust'
+# Expect {"enabled": true, "trusted_proxy_entry_count": <non-zero>}.
+# scripts/smoke_deploy.py checks this block on every production/Render deploy.
 ```
 
 #### Rollback / recovery

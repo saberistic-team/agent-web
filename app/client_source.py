@@ -425,3 +425,17 @@ def client_source_policy_summary(settings: Settings) -> dict[str, object]:
         "trusted_edge_network_count": len(trusted.edge_networks),
         "legacy_admin_trust_proxy_headers": settings.admin_trust_proxy_headers,
     }
+
+
+def admin_proxy_trust_summary(settings: Settings) -> dict[str, object]:
+    """Production verification payload for /health (see ``scripts/smoke_deploy.py``).
+
+    Reports whether an ``ADMIN_TRUSTED_PROXY_CIDRS`` / ``ADMIN_TRUSTED_EDGE_CIDRS``
+    boundary is configured, without exposing the raw CIDR values.
+    """
+    trusted = trusted_networks_from_settings(settings)
+    entry_count = len(trusted.networks) + len(trusted.edge_networks)
+    return {
+        "enabled": entry_count > 0,
+        "trusted_proxy_entry_count": entry_count,
+    }
