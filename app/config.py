@@ -5,14 +5,6 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-DEFAULT_TRUSTED_PROXY_CIDRS: tuple[str, ...] = (
-    "10.0.0.0/8",
-    "172.16.0.0/12",
-    "192.168.0.0/16",
-    "127.0.0.1",
-    "::1",
-)
-
 
 @dataclass(frozen=True)
 class Settings:
@@ -36,8 +28,7 @@ class Settings:
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
     admin_trust_proxy_headers: bool = False
-    admin_trusted_proxy_ips: tuple[str, ...] = DEFAULT_TRUSTED_PROXY_CIDRS
-    admin_cloudflare_proxy_cidrs: tuple[str, ...] = ()
+    admin_trusted_proxy_ips: tuple[str, ...] = ()
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -123,19 +114,9 @@ def get_settings() -> Settings:
             "ADMIN_TRUST_PROXY_HEADERS", ""
         ).lower()
         in ("1", "true", "yes"),
-        admin_trusted_proxy_ips=_parse_csv_setting(
-            os.environ.get("ADMIN_TRUSTED_PROXY_IPS", ""),
-            default=DEFAULT_TRUSTED_PROXY_CIDRS,
-        ),
-        admin_cloudflare_proxy_cidrs=_parse_csv_setting(
-            os.environ.get("ADMIN_CLOUDFLARE_PROXY_CIDRS", ""),
-            default=(),
+        admin_trusted_proxy_ips=tuple(
+            spec.strip()
+            for spec in os.environ.get("ADMIN_TRUSTED_PROXY_IPS", "").split(",")
+            if spec.strip()
         ),
     )
-
-
-def _parse_csv_setting(raw: str, *, default: tuple[str, ...]) -> tuple[str, ...]:
-    stripped = raw.strip()
-    if not stripped:
-        return default
-    return tuple(part.strip() for part in stripped.split(",") if part.strip())
