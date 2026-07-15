@@ -40,12 +40,7 @@ from app.admin_preview import (
     PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR,
     PREVIEW_BRIEF_DATABASE_ERROR_ID,
     PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID,
-    PREVIEW_CRM_COMPANY_DETAIL_IDS,
-    PREVIEW_CRM_CONTACT_DETAIL_IDS,
     preview_contact_restore_conflict,
-    preview_crm_company_detail,
-    preview_crm_contact_detail,
-    preview_crm_contact_edit,
 )
 from app.config import Settings, get_settings
 from app.crm_service import CrmService
@@ -708,13 +703,18 @@ def admin_company_research(
     session = require_admin_session(request)
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
-    if settings.admin_preview_enabled and company_id in PREVIEW_CRM_COMPANY_DETAIL_IDS:
-        preview = preview_crm_company_detail(company_id)
+    if settings.admin_preview_enabled:
+        from app.admin_preview import build_preview_company_research
+
+        preview = build_preview_company_research(company_id)
+        if preview is None:
+            raise HTTPException(status_code=404, detail="Company not found")
+        company, contacts, records = preview
         return HTMLResponse(
             admin_research_pages.render_admin_company_research_page(
-                company=preview["company"],  # type: ignore[arg-type]
-                contacts=preview["contacts"],  # type: ignore[arg-type]
-                records=preview["records"],  # type: ignore[arg-type]
+                company=company,  # type: ignore[arg-type]
+                contacts=contacts,  # type: ignore[arg-type]
+                records=records,  # type: ignore[arg-type]
                 csrf_token=csrf_token,
                 admin_username=session.admin_username,
                 error_message=error,
@@ -995,14 +995,22 @@ def admin_contact_edit(
     session = require_admin_session(request)
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
-    if settings.admin_preview_enabled and contact_id in PREVIEW_CRM_CONTACT_DETAIL_IDS:
-        preview = preview_crm_contact_edit(contact_id)
+    if settings.admin_preview_enabled:
+        from app.admin_preview import (
+            build_preview_companies_for_forms,
+            build_preview_contact_research,
+        )
+
+        preview = build_preview_contact_research(contact_id)
+        if preview is None:
+            raise HTTPException(status_code=404, detail="Contact not found")
+        contact, _company, _records = preview
         return HTMLResponse(
             contact_pages.render_contact_form_page(
                 csrf_token=csrf_token,
                 admin_username=session.admin_username,
-                companies=preview["companies"],  # type: ignore[arg-type]
-                contact=preview["contact"],  # type: ignore[arg-type]
+                companies=build_preview_companies_for_forms(),  # type: ignore[arg-type]
+                contact=contact,  # type: ignore[arg-type]
                 error_message=error or warning,
             )
         )
@@ -1154,13 +1162,18 @@ def admin_contact_research(
     session = require_admin_session(request)
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
-    if settings.admin_preview_enabled and contact_id in PREVIEW_CRM_CONTACT_DETAIL_IDS:
-        preview = preview_crm_contact_detail(contact_id)
+    if settings.admin_preview_enabled:
+        from app.admin_preview import build_preview_contact_research
+
+        preview = build_preview_contact_research(contact_id)
+        if preview is None:
+            raise HTTPException(status_code=404, detail="Contact not found")
+        contact, company, records = preview
         return HTMLResponse(
             admin_research_pages.render_admin_contact_research_page(
-                contact=preview["contact"],  # type: ignore[arg-type]
-                company=preview["company"],  # type: ignore[arg-type]
-                records=preview["records"],  # type: ignore[arg-type]
+                contact=contact,  # type: ignore[arg-type]
+                company=company,  # type: ignore[arg-type]
+                records=records,  # type: ignore[arg-type]
                 csrf_token=csrf_token,
                 admin_username=session.admin_username,
                 error_message=error,

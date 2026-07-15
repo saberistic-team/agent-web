@@ -87,12 +87,12 @@ ADMIN_SCREENSHOT_ROUTES: tuple[str, ...] = (
     "/admin/briefs/4/convert",
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
-    "/admin/companies/cccccccc-cccc-cccc-cccc-cccccccccc01",
-    "/admin/companies/cccccccc-cccc-cccc-cccc-cccccccccc02",
-    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd01",
-    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd02",
-    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd01/edit",
-    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd02/edit",
+    "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    "/admin/companies/cccccccc-cccc-cccc-cccc-cccccccccccc",
+    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd",
+    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/edit",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd/edit",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
 )
 

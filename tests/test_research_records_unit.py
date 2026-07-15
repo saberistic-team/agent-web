@@ -221,8 +221,7 @@ def test_admin_research_page_renderers_cover_company_and_contact(
     )
     assert "research-type-badge--fact" in company_html
     assert "bad input" in company_html
-    assert 'class="admin-action admin-action--destructive"' in company_html
-    assert "Archive company" in company_html
+    assert 'class="admin-action admin-action--destructive" type="submit">Archive company' in company_html
 
     contact_html = render_admin_contact_research_page(
         contact=contact,
@@ -231,5 +230,4 @@ def test_admin_research_page_renderers_cover_company_and_contact(
         csrf_token="csrf",
     )
     assert "research-type-badge--fact" in contact_html
-    assert 'class="admin-action admin-action--destructive"' in contact_html
-    assert "Archive contact" in contact_html
+    assert 'class="admin-action admin-action--destructive" type="submit">Archive contact' in contact_html

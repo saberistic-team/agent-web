@@ -5,7 +5,7 @@ from __future__ import annotations
 import html
 from typing import Any
 
-from app.admin_layout import render_admin_archive_action_button, render_admin_shell
+from app.admin_layout import archive_restore_action_class, render_admin_shell
 from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES, TARGET_STATUSES
 from app.contacts import EMAIL_PERMISSIONS, RELATIONSHIP_STRENGTHS, format_buying_roles
 from app.research_records import (
@@ -206,10 +206,7 @@ def render_admin_company_research_page(
     )
     archive_action = "restore" if company.get("archived_at") else "archive"
     archive_label = "Restore company" if company.get("archived_at") else "Archive company"
-    archive_button = render_admin_archive_action_button(
-        label=archive_label,
-        is_restore=bool(company.get("archived_at")),
-    )
+    archive_class = archive_restore_action_class(is_archived=bool(company.get("archived_at")))
     error_html = ""
     if error_message:
         error_html = (
@@ -252,7 +249,7 @@ def render_admin_company_research_page(
           <dl class="research-provenance">{facts_html}</dl>
           <form method="post" action="/admin/companies/{company_id}/{archive_action}">
             <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}" />
-            {archive_button}
+            <button class="{archive_class}" type="submit">{archive_label}</button>
           </form>
           <h2 class="admin-section-heading">Contacts</h2>
           <p><a class="cta" href="/admin/contacts/new">Add contact</a></p>
@@ -336,10 +333,7 @@ def render_admin_contact_research_page(
     form_body = _research_form_body(csrf_token=csrf_token)
     archive_action = "restore" if contact.get("archived_at") else "archive"
     archive_label = "Restore contact" if contact.get("archived_at") else "Archive contact"
-    archive_button = render_admin_archive_action_button(
-        label=archive_label,
-        is_restore=bool(contact.get("archived_at")),
-    )
+    archive_class = archive_restore_action_class(is_archived=bool(contact.get("archived_at")))
     main = f"""        <section class="admin-research" aria-labelledby="contact-research-title">
           <p class="admin-breadcrumb"><a href="/admin/contacts">Contacts</a></p>
           <h1 class="admin-title" id="contact-research-title">{display_name}</h1>
@@ -349,7 +343,7 @@ def render_admin_contact_research_page(
           <dl class="research-provenance">{facts_html}</dl>
           <form method="post" action="/admin/contacts/{contact_id}/{archive_action}">
             <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}" />
-            {archive_button}
+            <button class="{archive_class}" type="submit">{archive_label}</button>
           </form>
           <h2 class="admin-section-heading">Attach record</h2>
           {error_html}
