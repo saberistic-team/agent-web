@@ -6,21 +6,6 @@ import os
 from dataclasses import dataclass
 
 
-DEFAULT_TRUSTED_PROXY_CIDRS: tuple[str, ...] = (
-    "10.0.0.0/8",
-    "172.16.0.0/12",
-    "192.168.0.0/16",
-    "127.0.0.1/32",
-    "::1/128",
-)
-
-
-def _parse_cidr_list(raw: str) -> tuple[str, ...]:
-    if not raw.strip():
-        return ()
-    return tuple(part.strip() for part in raw.split(",") if part.strip())
-
-
 @dataclass(frozen=True)
 class Settings:
     database_url: str
@@ -43,8 +28,7 @@ class Settings:
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
     admin_trust_proxy_headers: bool = False
-    admin_trusted_proxy_cidrs: tuple[str, ...] = ()
-    admin_trusted_cloudflare_cidrs: tuple[str, ...] = ()
+    admin_trusted_proxy_cidrs: str = ""
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -130,22 +114,5 @@ def get_settings() -> Settings:
             "ADMIN_TRUST_PROXY_HEADERS", ""
         ).lower()
         in ("1", "true", "yes"),
-        admin_trusted_proxy_cidrs=_resolve_admin_trusted_proxy_cidrs(),
-        admin_trusted_cloudflare_cidrs=_parse_cidr_list(
-            os.environ.get("ADMIN_TRUSTED_CLOUDFLARE_CIDRS", "")
-        ),
+        admin_trusted_proxy_cidrs=os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "").strip(),
     )
-
-
-def _resolve_admin_trusted_proxy_cidrs() -> tuple[str, ...]:
-    explicit = _parse_cidr_list(os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", ""))
-    if explicit:
-        return explicit
-    legacy_trust = os.environ.get("ADMIN_TRUST_PROXY_HEADERS", "").lower() in (
-        "1",
-        "true",
-        "yes",
-    )
-    if legacy_trust:
-        return DEFAULT_TRUSTED_PROXY_CIDRS
-    return ()
