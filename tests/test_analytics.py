@@ -270,7 +270,7 @@ def test_stripe_webhook_emits_payment_completed(monkeypatch: pytest.MonkeyPatch)
                 "amount_total": 15_000,
                 "currency": "usd",
                 "total_details": {"amount_discount": 5_000},
-                "discounts": [],
+                "discounts": [{"promotion_code": "promo_test"}],
             }
         },
     }

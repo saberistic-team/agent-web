@@ -190,38 +190,31 @@ def _format_brief_status(status: str) -> str:
 
 
 def _format_amount(cents: int) -> str:
-    dollars = cents / 100
-    if cents % 100 == 0:
-        return f"${dollars:.0f}"
-    return f"${dollars:.2f}"
+    return f"${cents / 100:.0f}"
 
 
-def _brief_collected_amount_cents(brief: dict[str, Any], list_price_cents: int) -> int:
-    if str(brief.get("status")) != "paid":
-        return list_price_cents
+def _brief_paid_amount_cents(brief: dict[str, Any], list_price_cents: int) -> int:
     stored = brief.get("payment_amount_cents")
     if stored is not None:
         return int(stored)
     return list_price_cents
 
 
-def _format_paid_amount_lines(brief: dict[str, Any], list_price_cents: int) -> list[str]:
-    """Return HTML lines for paid brief payment breakdown."""
-    discount = int(brief.get("payment_discount_cents") or 0)
-    subtotal = brief.get("payment_subtotal_cents")
-    amount = _brief_collected_amount_cents(brief, list_price_cents)
+def _format_brief_payment_summary(brief: dict[str, Any], list_price_cents: int) -> str:
+    """Format paid brief amounts: list subtotal, discount, final total, currency."""
+    amount_cents = _brief_paid_amount_cents(brief, list_price_cents)
+    discount_cents = brief.get("payment_discount_cents") or 0
+    subtotal_cents = brief.get("payment_subtotal_cents")
     currency = str(brief.get("payment_currency") or "usd").upper()
-    lines: list[str] = []
-    if discount > 0 and subtotal is not None:
-        lines.append(f"Subtotal: {html.escape(_format_amount(int(subtotal)))} {html.escape(currency)}")
-        lines.append(f"Discount: −{html.escape(_format_amount(discount))} {html.escape(currency)}")
-        lines.append(f"Total: {html.escape(_format_amount(amount))} {html.escape(currency)}")
-    else:
-        lines.append(html.escape(_format_amount(amount)))
-    paid_at = brief.get("paid_at")
-    if paid_at:
-        lines.append(_format_timestamp(paid_at))
-    return lines
+
+    if discount_cents and int(discount_cents) > 0:
+        parts: list[str] = []
+        if subtotal_cents is not None:
+            parts.append(f"{_format_amount(int(subtotal_cents))} subtotal")
+        parts.append(f"−{_format_amount(int(discount_cents))} discount")
+        parts.append(f"{_format_amount(amount_cents)} {currency}")
+        return " · ".join(parts)
+    return _format_amount(amount_cents)
 
 
 def _format_utm(source: str | None, campaign: str | None) -> str:
@@ -281,7 +274,7 @@ def render_admin_briefs_page(
         payment_cell = f'<span class="admin-status admin-status-{status_class}">{html.escape(status_label)}</span>'
         paid_at = brief.get("paid_at")
         if status == "paid":
-            paid_parts = [_format_amount(_brief_collected_amount_cents(brief, price_cents))]
+            paid_parts = [_format_brief_payment_summary(brief, price_cents)]
             if paid_at:
                 paid_parts.append(_format_timestamp(paid_at))
             payment_cell = "<br>".join(paid_parts)
@@ -443,30 +436,27 @@ def _format_stripe_reference(value: str | None) -> str:
     return f'<code class="brief-stripe-ref">{html.escape(str(value))}</code>'
 
 
-def _brief_stripe_references(brief: dict[str, Any]) -> list[tuple[str, str]] | None:
+def _brief_stripe_references(brief: dict[str, Any]) -> tuple[str, str] | None:
     """Return Stripe reference rows when they help operators reconcile payment state."""
     status = str(brief.get("status", ""))
     session_id = brief.get("stripe_session_id")
     intent_id = brief.get("stripe_payment_intent_id")
-    promotion_code_id = brief.get("stripe_promotion_code_id")
-    coupon_id = brief.get("stripe_coupon_id")
-    rows: list[tuple[str, str]] = []
     if status == "paid" and (session_id or intent_id):
-        rows.append(("Checkout session", _format_stripe_reference(session_id)))
-        rows.append(("Payment intent", _format_stripe_reference(intent_id)))
-    elif status == "pending_payment" and session_id:
-        rows.append(("Checkout session", _format_stripe_reference(session_id)))
-        rows.append(("Payment intent", '<span class="audit-muted">—</span>'))
-    elif status == "abandoned" and session_id:
-        rows.append(("Checkout session", _format_stripe_reference(session_id)))
-        rows.append(("Payment intent", '<span class="audit-muted">—</span>'))
-    else:
-        return None
-    if promotion_code_id:
-        rows.append(("Promotion code ID", _format_stripe_reference(promotion_code_id)))
-    if coupon_id:
-        rows.append(("Coupon ID", _format_stripe_reference(coupon_id)))
-    return rows
+        return (
+            _format_stripe_reference(session_id),
+            _format_stripe_reference(intent_id),
+        )
+    if status == "pending_payment" and session_id:
+        return (
+            _format_stripe_reference(session_id),
+            '<span class="audit-muted">—</span>',
+        )
+    if status == "abandoned" and session_id:
+        return (
+            _format_stripe_reference(session_id),
+            '<span class="audit-muted">—</span>',
+        )
+    return None
 
 
 def render_admin_brief_database_unavailable(
@@ -561,25 +551,39 @@ def render_admin_brief_detail_page(
     )
     payment_lines = [status_html]
     if status == "paid":
-        payment_lines.extend(_format_paid_amount_lines(brief, price_cents))
+        payment_lines.append(
+            html.escape(_format_brief_payment_summary(brief, price_cents))
+        )
+        paid_at = brief.get("paid_at")
+        if paid_at:
+            payment_lines.append(_format_timestamp(paid_at))
     payment_html = "<br>".join(payment_lines)
 
     stripe_refs = _brief_stripe_references(brief)
+    promo_code_id = brief.get("stripe_promotion_code_id")
     stripe_section = ""
     if stripe_refs is not None:
-        ref_rows = "\n".join(
-            f"""              <div class="brief-detail-row">
-                <dt>{html.escape(label)}</dt>
-                <dd>{cell}</dd>
+        session_cell, intent_cell = stripe_refs
+        promo_row = ""
+        if promo_code_id:
+            promo_row = f"""
+              <div class="brief-detail-row">
+                <dt>Promotion code</dt>
+                <dd>{_format_stripe_reference(str(promo_code_id))}</dd>
               </div>"""
-            for label, cell in stripe_refs
-        )
         stripe_section = f"""
           <section class="brief-detail-section" aria-labelledby="brief-stripe-title">
             <h2 class="brief-detail-heading" id="brief-stripe-title">Stripe references</h2>
             <p class="admin-note">For operator reconciliation only. Not indexed or logged.</p>
             <dl class="brief-detail-dl">
-{ref_rows}
+              <div class="brief-detail-row">
+                <dt>Checkout session</dt>
+                <dd>{session_cell}</dd>
+              </div>
+              <div class="brief-detail-row">
+                <dt>Payment intent</dt>
+                <dd>{intent_cell}</dd>
+              </div>{promo_row}
             </dl>
           </section>"""
 

@@ -114,25 +114,6 @@ def test_preview_contacts_rows_stable_with_seed() -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize(
-    "path",
-    [
-        "/admin/signals",
-        "/admin/pipeline",
-        "/admin/imports",
-        "/admin/discovery",
-        "/admin/analytics",
-        "/admin/content",
-        "/admin/settings",
-    ],
-)
-def test_preview_section_rows_cover_admin_paths(path: str) -> None:
-    rows = build_preview_section_rows(path, rng=random.Random(7))
-    assert 4 <= len(rows) <= 8
-    assert all(len(row) == 5 for row in rows)
-
-
-@pytest.mark.unit
 def test_preview_section_main_html_includes_mock_table() -> None:
     html = render_preview_section_main(
         label="Companies",
@@ -171,8 +152,6 @@ def test_preview_brief_rows_randomized_and_seed_stable() -> None:
     assert a == b
     assert 5 <= len(a) <= 9
     assert a[0]["id"] == 1 and a[0]["status"] == "paid"
-    assert a[0]["payment_amount_cents"] == 15_000
-    assert a[0]["payment_discount_cents"] == 5_000
     assert a[1]["id"] == 2 and a[1]["status"] == "pending_payment"
     assert a[1]["utm_source"] is None and a[1]["paid_at"] is None
     assert a[0]["website"] != c[0]["website"] or a[0]["contact_value"] != c[0]["contact_value"]
@@ -248,9 +227,10 @@ def test_admin_preview_briefs_list_and_detail_have_mock_data(
     detail = client.get("/admin/briefs/1")
     assert detail.status_code == 200
     assert "Project brief #1" in detail.text
+    assert "$200 subtotal" in detail.text
+    assert "−$50 discount" in detail.text
+    assert "$150 USD" in detail.text
     assert "Paid" in detail.text
-    assert "Subtotal: $200 USD" in detail.text
-    assert "Total: $150 USD" in detail.text
     emptyish = client.get("/admin/briefs/2")
     assert emptyish.status_code == 200
     assert "Project brief #2" in emptyish.text
@@ -321,12 +301,38 @@ def test_preview_pipeline_detail_nullable_fields() -> None:
 
 @pytest.mark.unit
 def test_preview_acquisition_dashboard_data_is_populated() -> None:
+    from app.admin_preview import build_preview_acquisition_dashboard_data
+
     data = build_preview_acquisition_dashboard_data()
     assert data.company_counts_by_stage
     assert data.overdue_actions
     assert data.recent_evidence
     assert data.without_decision_maker
     assert data.without_decision_maker[0].company_name == "Meridian Stack"
+
+
+@pytest.mark.unit
+def test_preview_import_batches_seed_stable() -> None:
+    from app.admin_preview import build_preview_import_batch_detail, build_preview_import_batches
+
+    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
+    batches_a, total_a = build_preview_import_batches(rng=random.Random(110), now=now)
+    batches_b, total_b = build_preview_import_batches(rng=random.Random(110), now=now)
+    assert batches_a == batches_b
+    assert total_a == total_b
+    detail = build_preview_import_batch_detail(
+        str(batches_a[0]["id"]),
+        rng=random.Random(110),
+        now=now,
+    )
+    assert detail is not None
+    assert {row["outcome"] for row in detail["rows"]} == {
+        "inserted",
+        "updated",
+        "unchanged",
+        "skipped",
+        "conflicted",
+    }
 
 
 @pytest.mark.unit

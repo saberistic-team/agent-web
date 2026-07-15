@@ -52,16 +52,14 @@ def _unique_violation(
     return _WithDiag(message)
 
 
-def _brief(*, status: str = "paid", **extra: object) -> dict:
-    row = {
+def _brief(*, status: str = "paid") -> dict:
+    return {
         "id": 42,
         "website": "https://acme.example",
         "contact_value": "Ops@Acme.Example",
         "status": status,
         "utm_source": "linkedin",
     }
-    row.update(extra)
-    return row
 
 
 def _service_with_mocks(**repos: MagicMock) -> tuple[CrmService, MagicMock, dict[str, MagicMock]]:
@@ -73,6 +71,7 @@ def _service_with_mocks(**repos: MagicMock) -> tuple[CrmService, MagicMock, dict
         "research_records": MagicMock(),
         "admin_users": MagicMock(),
         "pipeline": MagicMock(),
+    "import_batches": MagicMock(),
     }
     defaults.update(repos)
     service = CrmService(repos=CrmRepositories(**defaults))
@@ -465,15 +464,18 @@ def test_paid_and_unpaid_brief_status_map_to_documented_stages() -> None:
 
 
 def test_build_conversion_proposal_uses_brief_payment_not_operator_input() -> None:
-    paid = build_conversion_proposal(
-        _brief(status="paid", payment_amount_cents=15_000),
+    paid = build_conversion_proposal(_brief(status="paid"), price_cents=20_000)
+    discounted = build_conversion_proposal(
+        {
+            **_brief(status="paid"),
+            "payment_amount_cents": 15_000,
+        },
         price_cents=20_000,
     )
     unpaid = build_conversion_proposal(_brief(status="pending_payment"), price_cents=20_000)
-    assert paid["expected_value"] == 150.0
     assert paid["pipeline_stage"] == "diagnostic_paid"
-    fallback = build_conversion_proposal(_brief(status="paid"), price_cents=20_000)
-    assert fallback["expected_value"] == 200.0
+    assert paid["expected_value"] == 200.0
+    assert discounted["expected_value"] == 150.0
     assert unpaid["pipeline_stage"] == "qualified"
     assert unpaid["expected_value"] is None
 

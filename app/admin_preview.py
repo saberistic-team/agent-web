@@ -642,26 +642,24 @@ def build_preview_brief_rows(
         paid_at: datetime | None = None
         session_id: str | None = None
         intent_id: str | None = None
+        if status == "paid":
+            paid_at = created + timedelta(minutes=rng.randint(5, 90))
+            session_id = f"cs_preview_{rng.randint(100000, 999999)}"
+            intent_id = f"pi_preview_{rng.randint(100000, 999999)}"
         payment_subtotal_cents: int | None = None
         payment_discount_cents: int | None = None
         payment_amount_cents: int | None = None
         payment_currency: str | None = None
         stripe_promotion_code_id: str | None = None
-        stripe_coupon_id: str | None = None
         if status == "paid":
-            paid_at = created + timedelta(minutes=rng.randint(5, 90))
-            session_id = f"cs_preview_{rng.randint(100000, 999999)}"
-            intent_id = f"pi_preview_{rng.randint(100000, 999999)}"
             payment_subtotal_cents = 20_000
-            payment_currency = "usd"
             if brief_id == 1:
                 payment_discount_cents = 5_000
                 payment_amount_cents = 15_000
                 stripe_promotion_code_id = f"promo_preview_{rng.randint(100000, 999999)}"
-                stripe_coupon_id = f"coupon_preview_{rng.randint(100000, 999999)}"
             else:
                 payment_amount_cents = 20_000
-                payment_discount_cents = 0
+            payment_currency = "usd"
         utm_source = None if brief_id == 2 else rng.choice(UTM_SOURCES)
         utm_medium = None if brief_id == 2 else rng.choice(UTM_MEDIUMS)
         utm_campaign = None if brief_id == 2 else rng.choice(UTM_CAMPAIGNS)
@@ -695,7 +693,6 @@ def build_preview_brief_rows(
                 "payment_amount_cents": payment_amount_cents,
                 "payment_currency": payment_currency,
                 "stripe_promotion_code_id": stripe_promotion_code_id,
-                "stripe_coupon_id": stripe_coupon_id,
                 "utm_source": utm_source,
                 "utm_medium": utm_medium,
                 "utm_campaign": utm_campaign,
@@ -992,6 +989,88 @@ def render_preview_imports_main(
             <ul class="linkedin-import-ignored">{ignored_rows}</ul>
           </div>
         </section>"""
+
+
+PREVIEW_IMPORT_BATCH_IDS = (
+    UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"),
+    UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2"),
+)
+
+
+def build_preview_import_batches(
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> tuple[list[dict[str, object]], int]:
+    """Mock committed import batches for ADMIN_PREVIEW_MODE."""
+    rng = rng or _preview_rng()
+    now = now or datetime.now(timezone.utc)
+    batches: list[dict[str, object]] = []
+    for index, batch_id in enumerate(PREVIEW_IMPORT_BATCH_IDS):
+        created = now - timedelta(days=index + 1, hours=rng.randint(1, 8))
+        batches.append(
+            {
+                "id": str(batch_id),
+                "created_at": created,
+                "updated_at": created,
+                "source_type": "linkedin",
+                "export_date": (created - timedelta(days=3)).date().isoformat(),
+                "schema_version": "linkedin_export_v1",
+                "checksum": f"preview-checksum-{index + 1:02d}{'a' * 52}",
+                "actor": "preview-operator",
+                "status": "committed" if index == 0 else "rolled_back",
+                "summary_counts": {
+                    "inserted": rng.randint(8, 24),
+                    "updated": rng.randint(2, 9),
+                    "unchanged": rng.randint(30, 90),
+                    "skipped": rng.randint(0, 3),
+                    "conflicted": 1 if index == 1 else 0,
+                },
+                "correlation_id": f"corr-preview-import-{index + 1}",
+            }
+        )
+    return batches, len(batches)
+
+
+def build_preview_import_batch_detail(
+    batch_id: str,
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> dict[str, object] | None:
+    """Mock batch detail with representative row outcomes."""
+    rng = rng or _preview_rng()
+    batches, _ = build_preview_import_batches(rng=rng, now=now)
+    batch = next((item for item in batches if str(item["id"]) == batch_id), None)
+    if batch is None:
+        return None
+    rows: list[dict[str, object]] = []
+    outcomes = ("inserted", "updated", "unchanged", "skipped", "conflicted")
+    for index, outcome in enumerate(outcomes):
+        company = rng.choice(COMPANY_NAMES)
+        first = rng.choice(CONTACT_FIRST)
+        last = rng.choice(CONTACT_LAST)
+        rows.append(
+            {
+                "row_index": index,
+                "source_kind": "linkedin_connection",
+                "source_identity": {
+                    "profile_url": f"https://linkedin.com/in/{first.lower()}-{last.lower()}",
+                    "full_name": f"{first} {last}",
+                    "company_name": company,
+                    "title": rng.choice(("CTO", "VP Engineering", "Founder")),
+                },
+                "outcome": outcome,
+                "entity_type": "contact" if outcome != "skipped" else None,
+                "entity_id": str(UUID(int=rng.getrandbits(128), version=4))
+                if outcome not in {"skipped", "conflicted"}
+                else None,
+                "detail": "Multiple contacts share this profile URL"
+                if outcome == "conflicted"
+                else ("Missing profile URL" if outcome == "skipped" else None),
+            }
+        )
+    return {"batch": batch, "rows": rows}
 
 
 def render_preview_section_main(

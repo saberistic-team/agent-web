@@ -97,66 +97,54 @@ def test_create_checkout_session_calls_stripe() -> None:
 
 
 @pytest.mark.unit
-def test_extract_payment_from_session_full_price() -> None:
-    payment = stripe_service.extract_payment_from_session(
+def test_extract_payment_details_from_session_full_price() -> None:
+    details = stripe_service.extract_payment_details_from_session(
         {
             "amount_subtotal": 20_000,
             "amount_total": 20_000,
             "currency": "usd",
             "total_details": {"amount_discount": 0},
-            "discounts": [],
         }
     )
-    assert payment.subtotal_cents == 20_000
-    assert payment.discount_cents == 0
-    assert payment.amount_cents == 20_000
-    assert payment.currency == "usd"
-    assert payment.promotion_code_id is None
-    assert payment.coupon_id is None
+    assert details.subtotal_cents == 20_000
+    assert details.discount_cents == 0
+    assert details.amount_cents == 20_000
+    assert details.currency == "usd"
+    assert details.promotion_code_id is None
 
 
 @pytest.mark.unit
-def test_extract_payment_from_session_discounted() -> None:
-    payment = stripe_service.extract_payment_from_session(
+def test_extract_payment_details_from_session_discounted() -> None:
+    details = stripe_service.extract_payment_details_from_session(
         {
             "amount_subtotal": 20_000,
             "amount_total": 15_000,
             "currency": "usd",
             "total_details": {"amount_discount": 5_000},
-            "discounts": [
-                {
-                    "promotion_code": "promo_test_abc",
-                    "coupon": {"id": "coupon_test_xyz"},
-                }
-            ],
+            "discounts": [{"promotion_code": "promo_test_abc"}],
         }
     )
-    assert payment.subtotal_cents == 20_000
-    assert payment.discount_cents == 5_000
-    assert payment.amount_cents == 15_000
-    assert payment.promotion_code_id == "promo_test_abc"
-    assert payment.coupon_id == "coupon_test_xyz"
+    assert details.subtotal_cents == 20_000
+    assert details.discount_cents == 5_000
+    assert details.amount_cents == 15_000
+    assert details.promotion_code_id == "promo_test_abc"
 
 
 @pytest.mark.unit
-def test_extract_payment_from_session_hundred_percent_off() -> None:
-    payment = stripe_service.extract_payment_from_session(
+def test_extract_payment_details_from_session_hundred_percent_off() -> None:
+    details = stripe_service.extract_payment_details_from_session(
         {
             "amount_subtotal": 20_000,
             "amount_total": 0,
             "currency": "usd",
             "total_details": {"amount_discount": 20_000},
-            "discounts": [{"promotion_code": "promo_free", "coupon": "coupon_free"}],
+            "discounts": [{"promotion_code": {"id": "promo_free"}}],
+            "payment_intent": None,
         }
     )
-    assert payment.amount_cents == 0
-    assert payment.discount_cents == 20_000
-
-
-@pytest.mark.unit
-def test_extract_payment_from_session_requires_amount_total() -> None:
-    with pytest.raises(ValueError, match="amount_total"):
-        stripe_service.extract_payment_from_session({"currency": "usd"})
+    assert details.amount_cents == 0
+    assert details.discount_cents == 20_000
+    assert details.promotion_code_id == "promo_free"
 
 
 @pytest.mark.unit
@@ -276,8 +264,7 @@ def test_db_helpers_use_connection() -> None:
         payment_discount_cents=5_000,
         payment_amount_cents=15_000,
         payment_currency="usd",
-        stripe_promotion_code_id="promo_test",
-        stripe_coupon_id="coupon_test",
+        stripe_promotion_code_id="promo_1",
     )
     assert paid["status"] == "paid"
 
@@ -335,11 +322,6 @@ def test_webhook_skips_email_when_not_configured(monkeypatch: pytest.MonkeyPatch
                 "id": "cs_test_123",
                 "payment_intent": "pi_test_123",
                 "metadata": {"brief_id": "1"},
-                "amount_subtotal": 20_000,
-                "amount_total": 20_000,
-                "currency": "usd",
-                "total_details": {"amount_discount": 0},
-                "discounts": [],
             }
         },
     }
