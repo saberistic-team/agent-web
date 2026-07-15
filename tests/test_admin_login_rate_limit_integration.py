@@ -13,10 +13,15 @@ import pytest
 from psycopg.rows import dict_row
 
 from app import admin_auth, db
-from app.config import Settings, get_settings
+from app.config import get_settings
 from app.migrations.runner import apply_migrations
 
-TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum"
+TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!!"
+
+
+@pytest.fixture(autouse=True)
+def limiter_secret_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
 
 _REQUIRED = (os.environ.get("REQUIRE_TEST_DATABASE") or "").strip() in {"1", "true", "yes"}
 _DATABASE_URL = (os.environ.get("TEST_DATABASE_URL") or "").strip()
@@ -28,22 +33,6 @@ def _require_database_url() -> str:
     if _REQUIRED:
         pytest.fail("REQUIRE_TEST_DATABASE=1 but TEST_DATABASE_URL is unset")
     pytest.skip("TEST_DATABASE_URL not set; skipping live Postgres login limiter tests")
-
-
-@pytest.fixture(autouse=True)
-def limiter_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ADMIN_USERNAME", "operator")
-    monkeypatch.setenv(
-        "ADMIN_PASSWORD_HASH",
-        "$argon2id$v=19$m=65536,t=3,p=4$aaaaaaaaaaaaaaaaaaaaaa$bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-    )
-    monkeypatch.setenv("ADMIN_SESSION_SECRET", "test-session-secret-32chars-minimum")
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
-    monkeypatch.setenv("BASE_URL", "http://testserver")
-
-
-def _settings() -> Settings:
-    return get_settings()
 
 
 @pytest.fixture(scope="module")
@@ -118,10 +107,11 @@ def _admit(
 @pytest.mark.integration
 def test_username_rotation_shares_source_bucket(pg_conn: psycopg.Connection) -> None:
     now = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
-    source_key = admin_auth.build_source_rate_limit_key("203.0.113.10", _settings())
+    settings = get_settings()
+    source_key = admin_auth.build_source_rate_limit_key("203.0.113.10", settings)
 
     for index in range(5):
-        user_key = admin_auth.build_rate_limit_key(f"user-{index}", "203.0.113.10", _settings())
+        user_key = admin_auth.build_rate_limit_key(f"user-{index}", "203.0.113.10")
         assert user_key != source_key
         admission = _admit(
             pg_conn,
@@ -146,7 +136,8 @@ def test_username_rotation_shares_source_bucket(pg_conn: psycopg.Connection) -> 
 def test_concurrent_admission_does_not_overshoot_threshold(
     pg_conn: psycopg.Connection,
 ) -> None:
-    source_key = admin_auth.build_source_rate_limit_key("198.51.100.20", _settings())
+    settings = get_settings()
+    source_key = admin_auth.build_source_rate_limit_key("198.51.100.20", settings)
     now = datetime(2026, 2, 1, 9, 0, tzinfo=timezone.utc)
     rate_limit = 5
     barrier = threading.Barrier(8)
@@ -179,11 +170,12 @@ def test_concurrent_admission_does_not_overshoot_threshold(
 def test_account_bucket_limits_configured_admin_across_sources(
     pg_conn: psycopg.Connection,
 ) -> None:
-    account_key = admin_auth.build_account_rate_limit_key("operator", _settings())
+    settings = get_settings()
+    account_key = admin_auth.build_account_rate_limit_key("operator", settings)
     now = datetime(2026, 3, 1, 8, 0, tzinfo=timezone.utc)
 
     for index in range(5):
-        source_key = admin_auth.build_source_rate_limit_key(f"203.0.113.{index + 1}", _settings())
+        source_key = admin_auth.build_source_rate_limit_key(f"203.0.113.{index + 1}", settings)
         admission = _admit(
             pg_conn,
             keys=(source_key, account_key),
@@ -192,7 +184,7 @@ def test_account_bucket_limits_configured_admin_across_sources(
         )
         assert admission.admitted
 
-    blocked_source = admin_auth.build_source_rate_limit_key("203.0.113.99", _settings())
+    blocked_source = admin_auth.build_source_rate_limit_key("203.0.113.99", settings)
     blocked = _admit(
         pg_conn,
         keys=(blocked_source, account_key),
@@ -205,7 +197,8 @@ def test_account_bucket_limits_configured_admin_across_sources(
 
 @pytest.mark.integration
 def test_window_boundary_resets_failure_count(pg_conn: psycopg.Connection) -> None:
-    source_key = admin_auth.build_source_rate_limit_key("203.0.113.44", _settings())
+    settings = get_settings()
+    source_key = admin_auth.build_source_rate_limit_key("203.0.113.44", settings)
     window_seconds = 60
     start = datetime(2026, 4, 1, 10, 0, tzinfo=timezone.utc)
 
@@ -235,7 +228,8 @@ def test_window_boundary_resets_failure_count(pg_conn: psycopg.Connection) -> No
 
 @pytest.mark.integration
 def test_expired_lockout_allows_new_admissions(pg_conn: psycopg.Connection) -> None:
-    source_key = admin_auth.build_source_rate_limit_key("203.0.113.55", _settings())
+    settings = get_settings()
+    source_key = admin_auth.build_source_rate_limit_key("203.0.113.55", settings)
     start = datetime(2026, 5, 1, 10, 0, tzinfo=timezone.utc)
     lockout_seconds = 30
 
@@ -271,7 +265,8 @@ def test_expired_lockout_allows_new_admissions(pg_conn: psycopg.Connection) -> N
 
 @pytest.mark.integration
 def test_cleanup_removes_stale_unlocked_rows(pg_conn: psycopg.Connection) -> None:
-    source_key = admin_auth.build_source_rate_limit_key("203.0.113.66", _settings())
+    settings = get_settings()
+    source_key = admin_auth.build_source_rate_limit_key("203.0.113.66", settings)
     now = datetime(2026, 6, 1, 10, 0, tzinfo=timezone.utc)
     _admit(pg_conn, keys=(source_key,), now=now, rate_limit=5, window_seconds=60)
 

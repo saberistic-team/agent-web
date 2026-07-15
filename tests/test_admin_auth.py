@@ -30,7 +30,7 @@ TEST_USERNAME = "operator"
 TEST_PASSWORD = "correct-horse-battery-staple"
 TEST_HASH = PasswordHasher().hash(TEST_PASSWORD)
 TEST_SECRET = "test-session-secret-32chars-minimum"
-TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum"
+TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!!"
 
 _login_flows: dict[str, dict[str, Any]] = {}
 _session_store: dict[str, dict[str, Any]] = {}
@@ -59,15 +59,13 @@ class FakeRateLimitStore:
         limiter_keys: tuple[str, ...],
         now: datetime,
         *,
-        guard_keys: tuple[str, ...] | None = None,
         rate_limit: int,
         window_seconds: int,
         lockout_seconds: int,
     ) -> db.AdminLoginAdmission:
         with self._lock:
-            ordered_guard = tuple(sorted(guard_keys if guard_keys is not None else limiter_keys))
-            ordered_admit = tuple(sorted(limiter_keys))
-            for limiter_key in ordered_admit:
+            ordered_keys = tuple(sorted(limiter_keys))
+            for limiter_key in ordered_keys:
                 if limiter_key not in self.rows:
                     self.rows[limiter_key] = {
                         "failure_count": 0,
@@ -76,10 +74,8 @@ class FakeRateLimitStore:
                         "updated_at": now,
                     }
 
-            for limiter_key in ordered_guard:
-                row = self.rows.get(limiter_key)
-                if row is None:
-                    continue
+            for limiter_key in ordered_keys:
+                row = self.rows[limiter_key]
                 locked_until = row.get("locked_until")
                 if locked_until is not None and locked_until > now:
                     return db.AdminLoginAdmission(
@@ -90,7 +86,7 @@ class FakeRateLimitStore:
                     )
 
             lockout_transition = False
-            for limiter_key in ordered_admit:
+            for limiter_key in ordered_keys:
                 row = self.rows[limiter_key]
                 window_start = now - timedelta(seconds=window_seconds)
                 if row["window_started_at"] < window_start:
@@ -178,7 +174,6 @@ def shared_rate_limiter(store: FakeRateLimitStore) -> Generator[None, None, None
         conn: Any,
         *,
         limiter_keys: tuple[str, ...],
-        guard_keys: tuple[str, ...] | None = None,
         now: datetime,
         rate_limit: int,
         window_seconds: int,
@@ -187,7 +182,6 @@ def shared_rate_limiter(store: FakeRateLimitStore) -> Generator[None, None, None
         return store.try_admit(
             limiter_keys,
             now,
-            guard_keys=guard_keys,
             rate_limit=rate_limit,
             window_seconds=window_seconds,
             lockout_seconds=lockout_seconds,
@@ -241,6 +235,7 @@ def admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_HASH)
     monkeypatch.setenv("ADMIN_SESSION_SECRET", TEST_SECRET)
     monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
+    monkeypatch.delenv("ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET", raising=False)
     monkeypatch.setenv("BASE_URL", "http://testserver")
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "5")
     monkeypatch.setenv("ADMIN_LOGIN_RATE_WINDOW_SECONDS", "900")
@@ -622,18 +617,15 @@ def test_build_source_and_account_rate_limit_keys() -> None:
     account_a = admin_auth.build_account_rate_limit_key("Operator", settings)
     account_b = admin_auth.build_account_rate_limit_key("operator", settings)
     assert account_a == account_b
-    plain = admin_auth.plain_sha256_limiter_digest("src", "203.0.113.1")
-    assert source_a != plain
 
 
 @pytest.mark.unit
 def test_login_limiter_keys_include_account_for_configured_username() -> None:
     settings = get_settings()
     keys = admin_auth.login_limiter_keys(
+        settings=settings,
         submitted_username="Operator",
         client_source="203.0.113.1",
-        configured_admin_username="operator",
-        settings=settings,
     )
     assert len(keys) == 2
     assert admin_auth.build_source_rate_limit_key("203.0.113.1", settings) in keys
@@ -644,20 +636,18 @@ def test_login_limiter_keys_include_account_for_configured_username() -> None:
 def test_login_limiter_keys_source_only_for_unknown_username() -> None:
     settings = get_settings()
     keys = admin_auth.login_limiter_keys(
+        settings=settings,
         submitted_username="ghost",
         client_source="203.0.113.1",
-        configured_admin_username="operator",
-        settings=settings,
     )
     assert keys == (admin_auth.build_source_rate_limit_key("203.0.113.1", settings),)
 
 
 @pytest.mark.unit
 def test_build_rate_limit_key_hashes_username_and_source() -> None:
-    settings = get_settings()
-    key_a = admin_auth.build_rate_limit_key("Operator", "203.0.113.1", settings)
-    key_b = admin_auth.build_rate_limit_key("operator", "203.0.113.1", settings)
-    key_c = admin_auth.build_rate_limit_key("operator", "203.0.113.2", settings)
+    key_a = admin_auth.build_rate_limit_key("Operator", "203.0.113.1")
+    key_b = admin_auth.build_rate_limit_key("operator", "203.0.113.1")
+    key_c = admin_auth.build_rate_limit_key("operator", "203.0.113.2")
     assert key_a == key_b
     assert key_a != key_c
     assert len(key_a) == 64
