@@ -8,8 +8,7 @@ from pathlib import Path
 import pytest
 
 from scripts.verify_admin_proxy_config import (
-    RENDER_TRUSTED_CIDRS,
-    UVICORN_FORWARDED_ALLOW_IPS,
+    RENDER_TRUSTED_PROXY_CIDRS,
     verify_admin_proxy_config,
 )
 
@@ -22,21 +21,20 @@ def test_render_yaml_proxy_settings_match_application_trust_model() -> None:
     start_match = re.search(r"startCommand:\s*(.+)", render_text)
     assert start_match is not None
     start_command = start_match.group(1)
-    assert "--proxy-headers" in start_command
-    assert f"--forwarded-allow-ips {UVICORN_FORWARDED_ALLOW_IPS}" in start_command
+    assert "--forwarded-allow-ips=''" in start_command or '--forwarded-allow-ips=""' in start_command
 
     trusted_match = re.search(
         r'- key: ADMIN_TRUSTED_PROXY_CIDRS\s+value: "([^"]+)"',
         render_text,
     )
-    edge_match = re.search(
-        r'- key: ADMIN_EDGE_PROXY_CIDRS\s+value: "([^"]+)"',
+    uvicorn_match = re.search(
+        r'- key: UVICORN_FORWARDED_ALLOW_IPS\s+value: "([^"]*)"',
         render_text,
     )
     assert trusted_match is not None
-    assert edge_match is not None
-    assert trusted_match.group(1) == RENDER_TRUSTED_CIDRS
-    assert "173.245.48.0/20" in edge_match.group(1)
+    assert uvicorn_match is not None
+    assert trusted_match.group(1) == RENDER_TRUSTED_PROXY_CIDRS
+    assert uvicorn_match.group(1) == ""
 
 
 @pytest.mark.unit
@@ -47,7 +45,7 @@ def test_verify_admin_proxy_config_script_passes() -> None:
 @pytest.mark.unit
 def test_admin_auth_doc_documents_proxy_chain_and_verification() -> None:
     doc_text = (REPO_ROOT / "docs" / "ADMIN_AUTH.md").read_text(encoding="utf-8")
-    assert "Cloudflare (edge) → Render load balancer → Uvicorn" in doc_text
+    assert "Cloudflare edge" in doc_text
     assert "verify_admin_proxy_config.py" in doc_text
     assert "ADMIN_TRUSTED_PROXY_CIDRS" in doc_text
-    assert "ADMIN_TRUST_PROXY_HEADERS" not in doc_text
+    assert "Right-to-left parse" in doc_text

@@ -11,10 +11,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 RENDER_YAML = REPO_ROOT / "render.yaml"
 ADMIN_AUTH_DOC = REPO_ROOT / "docs" / "ADMIN_AUTH.md"
 
-RENDER_TRUSTED_CIDRS = (
-    "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10"
+RENDER_TRUSTED_PROXY_CIDRS = (
+    "127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 )
-UVICORN_FORWARDED_ALLOW_IPS = RENDER_TRUSTED_CIDRS
 
 
 def _read_text(path: Path) -> str:
@@ -22,7 +21,7 @@ def _read_text(path: Path) -> str:
 
 
 def _extract_render_env_value(text: str, key: str) -> str | None:
-    pattern = rf"- key: {re.escape(key)}\s+value: \"([^\"]+)\""
+    pattern = rf"- key: {re.escape(key)}\s+value: \"([^\"]*)\""
     match = re.search(pattern, text)
     return match.group(1) if match else None
 
@@ -37,33 +36,32 @@ def verify_admin_proxy_config() -> list[str]:
     render_text = _read_text(RENDER_YAML)
     start_command = _extract_start_command(render_text)
 
-    if "--proxy-headers" not in start_command:
-        errors.append("render.yaml startCommand must include --proxy-headers")
-    if "--forwarded-allow-ips" not in start_command:
-        errors.append("render.yaml startCommand must include --forwarded-allow-ips")
-    if UVICORN_FORWARDED_ALLOW_IPS not in start_command:
-        errors.append("render.yaml forwarded-allow-ips must match Render trusted CIDRs")
+    if "--forwarded-allow-ips=''" not in start_command and '--forwarded-allow-ips=""' not in start_command:
+        errors.append(
+            "render.yaml startCommand must disable uvicorn forwarded-header trust "
+            "with --forwarded-allow-ips=''"
+        )
 
     trusted = _extract_render_env_value(render_text, "ADMIN_TRUSTED_PROXY_CIDRS")
-    if trusted != RENDER_TRUSTED_CIDRS:
-        errors.append("ADMIN_TRUSTED_PROXY_CIDRS must match uvicorn forwarded-allow-ips")
+    if trusted != RENDER_TRUSTED_PROXY_CIDRS:
+        errors.append("ADMIN_TRUSTED_PROXY_CIDRS must match the documented Render ranges")
 
-    edge = _extract_render_env_value(render_text, "ADMIN_EDGE_PROXY_CIDRS")
-    if not edge:
-        errors.append("ADMIN_EDGE_PROXY_CIDRS must be configured for Cloudflare edge proof")
+    uvicorn_allow = _extract_render_env_value(render_text, "UVICORN_FORWARDED_ALLOW_IPS")
+    if uvicorn_allow != "":
+        errors.append("UVICORN_FORWARDED_ALLOW_IPS must be empty in production")
 
     doc_text = _read_text(ADMIN_AUTH_DOC)
     for needle in (
         "ADMIN_TRUSTED_PROXY_CIDRS",
-        "ADMIN_EDGE_PROXY_CIDRS",
-        "--forwarded-allow-ips",
-        "Cloudflare (edge) → Render load balancer → Uvicorn",
+        "ADMIN_TRUSTED_FORWARDING_CIDRS",
+        "ADMIN_CLOUDFLARE_FORWARDING_CIDRS",
+        "--forwarded-allow-ips=''",
+        "Right-to-left parse",
+        "Cloudflare edge",
+        "verify_admin_proxy_config.py",
     ):
         if needle not in doc_text:
             errors.append(f"docs/ADMIN_AUTH.md must document {needle!r}")
-
-    if re.search(r"ADMIN_TRUST_PROXY_HEADERS", doc_text):
-        errors.append("docs/ADMIN_AUTH.md must not reference deprecated ADMIN_TRUST_PROXY_HEADERS")
 
     return errors
 

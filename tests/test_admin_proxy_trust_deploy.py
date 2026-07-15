@@ -21,9 +21,8 @@ def test_render_yaml_declares_explicit_uvicorn_forwarded_allow_ips() -> None:
 @pytest.mark.unit
 def test_render_yaml_enables_admin_proxy_trust_settings() -> None:
     content = RENDER_YAML.read_text(encoding="utf-8")
-    assert "ADMIN_TRUST_PROXY_HEADERS" in content
-    assert 'value: "true"' in content
     assert "ADMIN_TRUSTED_PROXY_CIDRS" in content
+    assert "UVICORN_FORWARDED_ALLOW_IPS" in content
 
 
 @pytest.mark.unit
@@ -32,5 +31,5 @@ def test_admin_auth_doc_matches_runtime_trust_model() -> None:
     assert "ADMIN_TRUSTED_PROXY_CIDRS" in content
     assert "--forwarded-allow-ips=''" in content
     assert "CF-Connecting-IP" in content
-    assert "right-to-left" in content
+    assert "Right-to-left parse" in content
     assert "Cloudflare" in content

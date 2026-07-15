@@ -313,6 +313,19 @@ address (one shared source bucket). Recovery:
 4. To temporarily widen admission while investigating, raise
    ``ADMIN_LOGIN_RATE_LIMIT`` in Render (does not expose raw sources).
 
+#### Post-deploy verification
+
+After each production deploy, confirm repository settings match runtime:
+
+```bash
+python scripts/verify_admin_proxy_config.py
+curl -sS https://saberistic.com/health | jq '.admin_login_source_trust'
+```
+
+Expect ``proxy_boundary_configured: true`` and
+``uvicorn_forwarded_allow_ips_disabled: true`` when proxy CIDRs are set in
+``render.yaml``.
+
 ### Atomic admission
 
 ``POST /admin/login`` calls :func:`try_admit_login_attempt` **before** Argon2
