@@ -20,8 +20,8 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.client_source import resolve_client_source
 from app.config import Settings
+from app.proxy_trust import ClientSourceResolution, resolve_admin_login_client_source
 
 SESSION_COOKIE_NAME = "admin_session"
 LOGIN_FLOW_COOKIE_NAME = "admin_login_flow"
@@ -235,22 +235,30 @@ def read_login_flow_token(request: Request) -> str | None:
     return token.strip() or None
 
 
-def resolve_admin_login_client_source(request: Request, settings: Settings) -> str:
-    """Resolve the effective client source for admin login rate limiting.
-
-    Forwarding headers are honored only when the immediate peer matches
-    ``ADMIN_TRUSTED_PROXY_CIDRS`` / ``ADMIN_TRUSTED_EDGE_CIDRS``. Untrusted
-    peers always use the direct connection address so clients cannot spoof
-    ``X-Forwarded-For``, ``Forwarded``, or ``CF-Connecting-IP``.
-
-    Resolved sources are normalized IPv4/IPv6 strings, digested before storage,
-    and never logged in raw form.
-    """
-    return resolve_client_source(request, settings).source
-
-
 def client_ip(request: Request, settings: Settings) -> str:
-    """Backward-compatible alias for :func:`resolve_admin_login_client_source`."""
+    """Resolve the client source IP for rate limiting.
+
+    Forwarding headers are honored only when ``ADMIN_TRUST_PROXY_HEADERS`` is
+    enabled and the immediate TCP peer is a configured trusted proxy. The
+    ``X-Forwarded-For`` chain is walked right-to-left; the first untrusted hop
+    is the client. Untrusted peers ignore ``X-Forwarded-For``, ``Forwarded``,
+    and ``CF-Connecting-IP`` so direct requests cannot spoof limiter identity.
+
+    Source identity notes:
+
+    * **IPv4 / IPv6** — normalized deterministically and stored only as keyed
+      digests (e.g. ``203.0.113.1``, ``2001:db8::1``).
+    * **Missing peer** — falls back to ``unknown`` so attempts still share one
+      bucket instead of creating an unbounded namespace.
+    * **Trusted proxy** — requires both ``ADMIN_TRUST_PROXY_HEADERS=true`` and
+      a verified immediate peer in ``ADMIN_TRUSTED_PROXY_IPS`` (defaults include
+      Render internal peers and Cloudflare edge ranges).
+    """
+    return resolve_admin_login_client_source(request, settings).address
+
+
+def client_ip_resolution(request: Request, settings: Settings) -> ClientSourceResolution:
+    """Return resolved client source plus the bounded telemetry path label."""
     return resolve_admin_login_client_source(request, settings)
 
 
@@ -375,7 +383,8 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    source = client_ip(request, settings)
+    resolution = client_ip_resolution(request, settings)
+    source = resolution.address
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,
@@ -421,11 +430,15 @@ def try_admit_login_attempt(
             store_unavailable=True,
         )
 
+    telemetry_extra = {
+        "limiter_key_count": len(limiter_keys),
+        "source_resolution_path": resolution.path.value,
+    }
     if admission.admitted:
         _logger.info(
             "Admin login attempt admitted",
             extra={
-                "limiter_key_count": len(limiter_keys),
+                **telemetry_extra,
                 "lockout_transition": admission.lockout_transition,
             },
         )
@@ -433,7 +446,7 @@ def try_admit_login_attempt(
         _logger.info(
             "Admin login attempt throttled",
             extra={
-                "limiter_key_count": len(limiter_keys),
+                **telemetry_extra,
                 "already_locked": True,
             },
         )
