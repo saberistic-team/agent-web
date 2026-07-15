@@ -20,7 +20,7 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.client_source import ClientSourceResolution, resolve_admin_login_client_source
+from app.admin_client_source import resolve_admin_login_client_source
 from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
@@ -236,23 +236,13 @@ def read_login_flow_token(request: Request) -> str | None:
 
 
 def client_ip(request: Request, settings: Settings) -> str:
-    """Resolve the client source IP for rate limiting.
+    """Resolve the client source IP for admin login rate limiting.
 
-    Forwarding headers are honored only when ``ADMIN_TRUST_PROXY_HEADERS`` is
-    enabled and the immediate peer matches ``FORWARDED_ALLOW_IPS``. The
-    resolver walks ``X-Forwarded-For`` right-to-left (Cloudflare append
-    semantics) and ignores single-hop or vendor-only headers that could be
-    spoofed at the public origin.
+    Delegates to :func:`resolve_admin_login_client_source`, which verifies the
+    immediate TCP peer against ``ADMIN_TRUSTED_PROXY_CIDRS`` before honoring
+    forwarding headers. Resolved values are stored only as keyed digests.
     """
     return resolve_admin_login_client_source(request, settings).source
-
-
-def resolve_client_source_for_login(
-    request: Request,
-    settings: Settings,
-) -> ClientSourceResolution:
-    """Return resolved source identity and telemetry path for admin login."""
-    return resolve_admin_login_client_source(request, settings)
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
@@ -376,8 +366,7 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    resolution = resolve_client_source_for_login(request, settings)
-    source = resolution.source
+    source = client_ip(request, settings)
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,
@@ -403,10 +392,7 @@ def try_admit_login_attempt(
     except Exception:
         _logger.warning(
             "Admin login rate limiter unavailable; using conservative fallback",
-            extra={
-                "limiter_key_count": len(limiter_keys),
-                "resolution_path": resolution.path,
-            },
+            extra={"limiter_key_count": len(limiter_keys)},
             exc_info=True,
         )
         if _is_fallback_throttled(limiter_keys):
@@ -432,7 +418,6 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "lockout_transition": admission.lockout_transition,
-                "resolution_path": resolution.path,
             },
         )
     elif admission.already_locked:
@@ -441,7 +426,6 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "already_locked": True,
-                "resolution_path": resolution.path,
             },
         )
     return LoginAdmissionResult(
