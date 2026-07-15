@@ -92,20 +92,14 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert",
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
-    "/admin/companies/a1111111-1111-1111-1111-111111111111",
-    "/admin/companies/a2222222-2222-2222-2222-222222222222",
-    "/admin/contacts/b1111111-1111-1111-1111-111111111111",
-    "/admin/contacts/b2222222-2222-2222-2222-222222222222",
-    "/admin/contacts/b2222222-2222-2222-2222-222222222222/edit",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
+    "/admin/companies/12121212-1212-1212-1212-121212121212",
+    "/admin/companies/13131313-1313-1313-1313-131313131313",
+    "/admin/contacts/14141414-1414-1414-1414-141414141414",
+    "/admin/contacts/15151515-1515-1515-1515-151515151515",
+    "/admin/contacts/14141414-1414-1414-1414-141414141414/edit",
+    "/admin/contacts/15151515-1515-1515-1515-151515151515/edit",
 )
-
-
-def archive_restore_button_class(*, is_archived: bool) -> str:
-    """CSS classes for restore (secondary) vs archive (destructive) form actions."""
-    if is_archived:
-        return "admin-action-btn admin-action-btn--secondary"
-    return "admin-action-btn admin-action-btn--destructive"
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
 # Register preview-only ids in app/admin_preview.py so ADMIN_PREVIEW_MODE
@@ -121,6 +115,23 @@ def _active_nav_label(active_path: str) -> str:
         if link["href"] == active_path:
             return link["label"]
     return "Admin"
+
+
+def render_admin_archive_action_form(
+    *,
+    action_path: str,
+    label: str,
+    csrf_token: str,
+    variant: str,
+) -> str:
+    """Return a POST form with a themed archive/restore action button."""
+    if variant not in ("secondary", "destructive"):
+        raise ValueError(f"unsupported archive action variant: {variant}")
+    class_names = f"admin-action admin-action--{variant}"
+    return f"""<form method="post" action="{html.escape(action_path, quote=True)}">
+            <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}" />
+            <button class="{class_names}" type="submit">{html.escape(label)}</button>
+          </form>"""
 
 
 def render_admin_nav(active_path: str) -> str:
