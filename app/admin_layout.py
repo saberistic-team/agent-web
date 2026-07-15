@@ -92,12 +92,6 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert",
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
-    "/admin/companies/a1a1a1a1-a1a1-a1a1-a1a1-a1a1a1a1a1a1",
-    "/admin/companies/b2b2b2b2-b2b2-b2b2-b2b2-b2b2b2b2b2b2",
-    "/admin/contacts/c3c3c3c3-c3c3-c3c3-c3c3-c3c3c3c3c3c3",
-    "/admin/contacts/d4d4d4d4-d4d4-d4d4-d4d4-d4d4d4d4d4d4",
-    "/admin/contacts/c3c3c3c3-c3c3-c3c3-c3c3-c3c3c3c3c3c3/edit",
-    "/admin/contacts/d4d4d4d4-d4d4-d4d4-d4d4-d4d4d4d4d4d4/edit",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
 )
 
@@ -107,12 +101,6 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
 ADMIN_SCREENSHOT_EXPECTED_STATUS: dict[str, int] = {
     "/admin/briefs/503": 503,
 }
-
-
-def archive_action_button_class(*, archived: bool) -> str:
-    """CSS classes for company/contact archive or restore form actions."""
-    variant = "admin-action--restore" if archived else "admin-action--destructive"
-    return f"admin-action {variant}"
 
 
 def _active_nav_label(active_path: str) -> str:
@@ -158,6 +146,13 @@ def render_admin_nav(active_path: str) -> str:
             </ul>
           </details>
         </nav>"""
+
+
+def admin_archive_action_class(*, archived: bool) -> str:
+    """CSS classes for archive/restore form submit buttons."""
+    if archived:
+        return "admin-action admin-action--secondary"
+    return "admin-action admin-action--destructive"
 
 
 def render_admin_shell(

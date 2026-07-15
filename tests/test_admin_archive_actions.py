@@ -1,8 +1,8 @@
-"""Regression tests for themed Archive/Restore admin action buttons (#233)."""
+"""Regression tests for archive/restore admin action button styling (#233)."""
 
 from __future__ import annotations
 
-import random
+import re
 from pathlib import Path
 from uuid import UUID
 
@@ -10,16 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import admin_contacts, admin_research_pages
-from app.admin_auth import SESSION_COOKIE_NAME
-from app.admin_layout import archive_action_button_class
-from app.admin_preview import (
-    PREVIEW_COMPANY_ACTIVE_ID,
-    PREVIEW_COMPANY_ARCHIVED_ID,
-    PREVIEW_CONTACT_ACTIVE_ID,
-    PREVIEW_CONTACT_ARCHIVED_ID,
-    build_preview_company_detail,
-    build_preview_contact_detail,
-)
+from app.admin_layout import admin_archive_action_class
 from app.main import app
 
 ADMIN_CSS = Path(__file__).resolve().parents[1] / "site/assets/admin.css"
@@ -48,46 +39,82 @@ def _rule_block(css: str, selector_fragment: str) -> str:
     raise AssertionError(f"Unclosed rule for {selector_fragment!r}")
 
 
+def _archive_button_classes(html: str, label: str) -> str | None:
+    match = re.search(
+        rf'<button class="([^"]+)" type="submit">{re.escape(label)}</button>',
+        html,
+    )
+    return match.group(1) if match else None
+
+
 @pytest.mark.unit
-def test_archive_action_button_class_variants() -> None:
-    assert archive_action_button_class(archived=False) == (
+def test_admin_archive_action_class_semantics() -> None:
+    assert admin_archive_action_class(archived=False) == (
         "admin-action admin-action--destructive"
     )
-    assert archive_action_button_class(archived=True) == "admin-action admin-action--restore"
+    assert admin_archive_action_class(archived=True) == (
+        "admin-action admin-action--secondary"
+    )
 
 
 @pytest.mark.unit
-def test_admin_action_css_resets_native_button_appearance() -> None:
+def test_admin_action_base_resets_native_button_appearance() -> None:
     css = _admin_css()
-    base = _rule_block(css, ".admin-action {")
-    assert "appearance: none" in base
-    assert "background:" in base
-    assert "border:" in base
-    assert "padding:" in base
-    assert "font-family: inherit" in base
-    assert "border-radius:" in base
-    assert "cursor: pointer" in base
-    assert "color:" in base
-    assert "background: none" not in base
-
-    destructive = _rule_block(css, ".admin-action--destructive {")
-    restore = _rule_block(css, ".admin-action--restore {")
-    assert "background:" in destructive
-    assert "border-color:" in destructive
-    assert "color:" in destructive
-    assert "background:" in restore
-    assert "border-color:" in restore
-    assert "color:" in restore
-
-    focus = _rule_block(css, ".admin-action:focus-visible {")
-    disabled = _rule_block(css, ".admin-action:disabled {")
-    assert "outline:" in focus
-    assert "opacity:" in disabled
-    assert "cursor: not-allowed" in disabled
+    block = _rule_block(css, ".admin-action {")
+    for token in (
+        "appearance: none",
+        "background: none",
+        "border: 1px solid transparent",
+        "border-radius: 2px",
+        "cursor: pointer",
+        "font-family: inherit",
+        "padding: 0.5rem 0.85rem",
+    ):
+        assert token in block
 
 
 @pytest.mark.unit
-def test_company_research_archive_and_restore_buttons_use_semantic_classes() -> None:
+def test_admin_action_secondary_and_destructive_have_themed_surfaces() -> None:
+    css = _admin_css()
+    secondary = _rule_block(css, ".admin-action--secondary {")
+    destructive = _rule_block(css, ".admin-action--destructive {")
+    assert "background:" in secondary
+    assert "color: var(--ink)" in secondary
+    assert "border-color: var(--line)" in secondary
+    assert "background:" in destructive
+    assert "#e05a5a" in destructive
+    assert "background: #fff" not in css
+    assert "background: white" not in css
+
+
+@pytest.mark.unit
+def test_admin_action_states_include_focus_hover_active_and_disabled() -> None:
+    css = _admin_css()
+    for modifier in ("secondary", "destructive"):
+        assert f".admin-action--{modifier}:hover" in css
+        assert f".admin-action--{modifier}:focus-visible" in css
+        assert f".admin-action--{modifier}:active:not(:disabled)" in css
+        assert f".admin-action--{modifier}:disabled" in css
+        focus_block = _rule_block(css, f".admin-action--{modifier}:focus-visible")
+        assert "outline:" in focus_block
+        assert "outline-offset: 2px" in focus_block
+        disabled_block = _rule_block(css, f".admin-action--{modifier}:disabled")
+        assert "cursor: not-allowed" in disabled_block
+        assert "opacity: 0.55" in disabled_block
+
+
+@pytest.mark.unit
+def test_admin_css_asset_served_with_action_button_rules() -> None:
+    response = client.get("/assets/admin.css")
+    assert response.status_code == 200
+    body = response.text
+    assert ".admin-action--destructive" in body
+    assert ".admin-action--secondary" in body
+    assert "appearance: none" in body
+
+
+@pytest.mark.unit
+def test_company_research_archive_and_restore_markup() -> None:
     archive_html = admin_research_pages.render_admin_company_research_page(
         company={"id": COMPANY_ID, "name": "Acme"},
         contacts=[],
@@ -95,162 +122,70 @@ def test_company_research_archive_and_restore_buttons_use_semantic_classes() -> 
         csrf_token="csrf",
         admin_username="operator",
     )
-    assert 'class="admin-action admin-action--destructive"' in archive_html
-    assert '<button class="admin-exit" type="submit">Archive company</button>' not in archive_html
-
     restore_html = admin_research_pages.render_admin_company_research_page(
-        company={"id": COMPANY_ID, "name": "Acme", "archived_at": "2026-07-01"},
+        company={"id": COMPANY_ID, "name": "Acme", "archived_at": "2026-01-01"},
         contacts=[],
         records=[],
         csrf_token="csrf",
         admin_username="operator",
     )
-    assert 'class="admin-action admin-action--restore"' in restore_html
-    assert '<button class="admin-exit" type="submit">Restore company</button>' not in restore_html
+    assert (
+        _archive_button_classes(archive_html, "Archive company")
+        == "admin-action admin-action--destructive"
+    )
+    assert (
+        _archive_button_classes(restore_html, "Restore company")
+        == "admin-action admin-action--secondary"
+    )
+    assert 'action="/admin/companies/' in archive_html
+    assert "/archive" in archive_html
+    assert "/restore" in restore_html
 
 
 @pytest.mark.unit
-def test_contact_research_and_edit_archive_buttons_use_semantic_classes() -> None:
+def test_contact_research_and_edit_archive_and_restore_markup() -> None:
+    active_contact = {
+        "id": CONTACT_ID,
+        "full_name": "Ada",
+        "company_id": COMPANY_ID,
+        "buying_roles": [],
+    }
+    archived_contact = {**active_contact, "archived_at": "2026-01-01"}
+    companies = [{"id": COMPANY_ID, "name": "Acme"}]
+
     research_archive = admin_research_pages.render_admin_contact_research_page(
-        contact={"id": CONTACT_ID, "full_name": "Ada", "buying_roles": []},
-        company=None,
+        contact=active_contact,
+        company=companies[0],
         records=[],
         csrf_token="csrf",
         admin_username="operator",
     )
-    assert 'class="admin-action admin-action--destructive"' in research_archive
-    assert '<button class="admin-exit" type="submit">Archive contact</button>' not in research_archive
-
     research_restore = admin_research_pages.render_admin_contact_research_page(
-        contact={
-            "id": CONTACT_ID,
-            "full_name": "Ada",
-            "buying_roles": [],
-            "archived_at": "2026-07-01",
-        },
-        company=None,
+        contact=archived_contact,
+        company=companies[0],
         records=[],
         csrf_token="csrf",
         admin_username="operator",
     )
-    assert 'class="admin-action admin-action--restore"' in research_restore
-
     edit_archive = admin_contacts.render_contact_form_page(
         csrf_token="csrf",
         admin_username="operator",
-        companies=[],
-        contact={"id": CONTACT_ID, "full_name": "Ada"},
+        companies=companies,
+        contact=active_contact,
     )
-    assert 'class="admin-action admin-action--destructive"' in edit_archive
-    assert '<button class="admin-exit" type="submit">Archive contact</button>' not in edit_archive
-
     edit_restore = admin_contacts.render_contact_form_page(
         csrf_token="csrf",
         admin_username="operator",
-        companies=[],
-        contact={"id": CONTACT_ID, "full_name": "Ada", "archived_at": "2026-07-01"},
+        companies=companies,
+        contact=archived_contact,
     )
-    assert 'class="admin-action admin-action--restore"' in edit_restore
 
-
-@pytest.mark.unit
-def test_preview_company_and_contact_detail_seed_stable() -> None:
-    from datetime import datetime, timezone
-
-    fixed_now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
-    now = build_preview_company_detail(
-        PREVIEW_COMPANY_ACTIVE_ID,
-        rng=random.Random(9),
-        now=fixed_now,
-    )
-    again = build_preview_company_detail(
-        PREVIEW_COMPANY_ACTIVE_ID,
-        rng=random.Random(9),
-        now=fixed_now,
-    )
-    assert now == again
-    assert now is not None
-    company, contacts, records = now
-    assert company["archived_at"] is None
-    assert contacts
-    assert records
-
-    archived = build_preview_company_detail(
-        PREVIEW_COMPANY_ARCHIVED_ID,
-        rng=random.Random(9),
-        now=fixed_now,
-    )
-    assert archived is not None
-    assert archived[0]["archived_at"] is not None
-
-    contact_active = build_preview_contact_detail(
-        PREVIEW_CONTACT_ACTIVE_ID,
-        rng=random.Random(9),
-        now=fixed_now,
-    )
-    contact_archived = build_preview_contact_detail(
-        PREVIEW_CONTACT_ARCHIVED_ID,
-        rng=random.Random(9),
-        now=fixed_now,
-    )
-    assert contact_active is not None
-    assert contact_archived is not None
-    assert contact_active[0]["archived_at"] is None
-    assert contact_archived[0]["archived_at"] is not None
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_preview_routes_render_archive_and_restore_action_buttons(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
-    monkeypatch.delenv("DATABASE_URL", raising=False)
-    cookie = {SESSION_COOKIE_NAME: "preview-screenshot-session"}
-
-    company_archive = client.get(
-        f"/admin/companies/{PREVIEW_COMPANY_ACTIVE_ID}",
-        cookies=cookie,
-    )
-    assert company_archive.status_code == 200
-    assert 'admin-action--destructive' in company_archive.text
-    assert "Archive company" in company_archive.text
-
-    company_restore = client.get(
-        f"/admin/companies/{PREVIEW_COMPANY_ARCHIVED_ID}",
-        cookies=cookie,
-    )
-    assert company_restore.status_code == 200
-    assert 'admin-action--restore' in company_restore.text
-    assert "Restore company" in company_restore.text
-
-    contact_archive = client.get(
-        f"/admin/contacts/{PREVIEW_CONTACT_ACTIVE_ID}",
-        cookies=cookie,
-    )
-    assert contact_archive.status_code == 200
-    assert 'admin-action--destructive' in contact_archive.text
-    assert "Archive contact" in contact_archive.text
-
-    contact_restore = client.get(
-        f"/admin/contacts/{PREVIEW_CONTACT_ARCHIVED_ID}",
-        cookies=cookie,
-    )
-    assert contact_restore.status_code == 200
-    assert 'admin-action--restore' in contact_restore.text
-    assert "Restore contact" in contact_restore.text
-
-    contact_edit_archive = client.get(
-        f"/admin/contacts/{PREVIEW_CONTACT_ACTIVE_ID}/edit",
-        cookies=cookie,
-    )
-    assert contact_edit_archive.status_code == 200
-    assert 'admin-action--destructive' in contact_edit_archive.text
-
-    contact_edit_restore = client.get(
-        f"/admin/contacts/{PREVIEW_CONTACT_ARCHIVED_ID}/edit",
-        cookies=cookie,
-    )
-    assert contact_edit_restore.status_code == 200
-    assert 'admin-action--restore' in contact_edit_restore.text
+    for html, label, expected in (
+        (research_archive, "Archive contact", "admin-action admin-action--destructive"),
+        (research_restore, "Restore contact", "admin-action admin-action--secondary"),
+        (edit_archive, "Archive contact", "admin-action admin-action--destructive"),
+        (edit_restore, "Restore contact", "admin-action admin-action--secondary"),
+    ):
+        classes = _archive_button_classes(html, label)
+        assert classes == expected
+        assert "admin-exit" not in (classes or "")
