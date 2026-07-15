@@ -5,8 +5,8 @@ production routes, migrations, or Render resources ship from this milestone.
 
 **Parent issue:** [#204](https://github.com/saberistic-team/agent-web/issues/204)
 
-**Related docs:** [MANIFEST_V0.md](./MANIFEST_V0.md), [ADR_INGESTION_AND_SEARCH.md](./ADR_INGESTION_AND_SEARCH.md),
-[MARKET_POSITION.md](./MARKET_POSITION.md)
+**Related docs:** [ADR_INGESTION_AND_SEARCH.md](./ADR_INGESTION_AND_SEARCH.md),
+[MARKET_POSITION.md](./MARKET_POSITION.md), [world-manifest-v0.schema.json](./world-manifest-v0.schema.json)
 
 **Last updated:** 2026-07-15
 
@@ -14,91 +14,99 @@ production routes, migrations, or Render resources ship from this milestone.
 
 ## Executive summary
 
-A bounded technical spike against Manifest v0 and a 18-entry research corpus (12
-qualifying sources, 6 negative controls) demonstrates that:
+A bounded technical spike against Manifest v0 and an 18-entry research corpus (12
+qualifying sources, 5 negative controls, 1 adversarial security control) demonstrates
+that:
 
 1. **Ingestion** — A bounded fetcher with SSRF blocking, redirect limits, content-type
    caps, and robots awareness can safely process creator-provided public URLs when run
    asynchronously with fixture-backed CI and live-fetch workers.
-2. **Extraction** — Deterministic parsing qualifies 12/12 corpus sources; a
-   provider-neutral `Extractor` interface with Pydantic Manifest v0 validation enforces
-   evidence, confidence, and unknown handling. Model-assisted extraction (stubbed) strips
-   prompt-injection markers and never promotes output to `verified` provenance.
-3. **Search** — PostgreSQL FTS + trigram with structured filters matches or beats
-   pseudo-embedding retrieval on 7/8 benchmark queries for top-1 relevance; hybrid
-   improves q05. **pgvector is not justified for Phase 1** at expected corpus scale.
+2. **Extraction** — Deterministic parsing validates all 18 corpus sources against
+   Manifest v0; a provider-neutral `Extractor` protocol enforces evidence, confidence,
+   and unknown handling. Model-assisted extraction (offline stub) strips prompt-injection
+   markers and never promotes output to verified provenance.
+3. **Search** — PostgreSQL FTS + trigram proxy, pseudo-embedding retrieval, and hybrid
+   ranking were compared on the same 10 queries × 12 qualifying worlds. FTS+trigram
+   achieved a 1.0 relevance proxy at lower operational cost. **pgvector is not
+   justified for Phase 1** at expected corpus scale.
 4. **Verification** — Domain well-known/DNS, GitHub repo ownership, and email magic-link
    fallbacks prototype cleanly with distinct trust levels.
 5. **Architecture fit** — New `world_*` tables, repository interfaces, audit events, and
    a Render background worker slot into existing FastAPI/Postgres patterns without
    overloading CRM entities.
 
-Throwaway code lives in `app/worldgraph_spike/` (not imported by `app/main.py`).
+Throwaway code lives in `spike/worldgraph/` (not imported by `app/main.py`).
+
+**Dependency note:** Canonical Manifest v0 ([#199](https://github.com/saberistic-team/agent-web/issues/199))
+and the full 30-entry research corpus ([#200](https://github.com/saberistic-team/agent-web/issues/200))
+are still in progress. This spike uses a spike-aligned Manifest v0 schema and a bounded
+18-source corpus sufficient to answer architecture questions without guessing production
+schema.
 
 ---
 
 ## Reproducing benchmarks
 
 ```bash
-# Unit + integration tests (offline fixtures)
-pytest tests/test_worldgraph_spike_unit.py tests/test_worldgraph_spike_integration.py -v
+# Unit tests (offline fixtures)
+python -m pytest tests/test_worldgraph_spike.py -v
 
 # Regenerate anonymized results artifact
-python -c "from app.worldgraph_spike.benchmark import write_benchmark_results; write_benchmark_results()"
+python -m spike.worldgraph.run_benchmarks
 ```
 
 **Inputs:**
 
 | Artifact | Path |
 |----------|------|
-| Research corpus | `docs/worldgraph/research-corpus.json` |
-| Fixture bodies | `tests/fixtures/worldgraph/` |
-| Discovery queries | `docs/worldgraph/benchmark-queries.json` |
+| Research corpus | `docs/worldgraph/spike/corpus_sources.json` |
+| Fixture bodies | `docs/worldgraph/spike/fixtures/sources/` |
+| Discovery queries | `docs/worldgraph/spike/queries.json` |
+| Manifest v0 schema | `docs/worldgraph/world-manifest-v0.schema.json` |
 
-**Outputs:** `docs/worldgraph/benchmark-results.json` (outcomes + search metrics; full
-manifest payloads omitted from the saved artifact).
+**Outputs:** `docs/worldgraph/spike/benchmark_results.json` (ingestion metrics + search
+comparison; full manifest payloads omitted from the saved artifact).
 
 ### Ingestion results (deterministic extractor)
 
 | Metric | Value |
 |--------|-------|
 | Total entries | 18 |
-| Qualified | 14 |
-| Qualifying sources tested | 12 |
-| Negative controls | 6 |
+| Qualifying sources | 12 |
+| Negative controls (excluded) | 5 |
+| Security control (adversarial) | 1 |
 
 | Source type | Qualifies | Notes |
 |-------------|-----------|-------|
-| `github_readme` | yes | Title, summary, runtime, entry, license |
-| `agent_card_json` | yes | Name, description, capabilities |
-| `mcp_registry_json` | yes | Registry name, homepage |
-| `landing_page` | yes | Title/meta; JSON-LD variant adds description |
-| `well_known_manifest` | yes | JSON at `/.well-known/` |
-| `discord_bot_docs` | yes | HTML title/description |
-| `hf_space_readme` | yes | README sections |
-| `itch_page` | yes | HTML metadata |
-| `npm_readme` | yes | Package README |
-| `github_repo` | yes | Monorepo README (same parser as readme) |
+| `html_landing` | yes (7) | Title, meta, entry URL, AI role from structured HTML |
+| `repository_readme` | yes (4) | Markdown headings, entry links, persistence hints |
+| `structured_json` | yes (1) | UGC manifest JSON with named fields |
 
 **Negative controls:**
 
-| ID | Expected | Observed |
-|----|----------|----------|
-| neg-001/002 | SSRF block | `SSRFBlockedError` |
-| neg-003 | Unsafe scheme | `SSRFBlockedError` |
-| neg-004 | Insufficient metadata | `insufficient_html_metadata` |
-| neg-005 | Qualifies after injection strip | Structural qualify; model path logs warnings |
-| neg-006 | Qualifies after sanitization | Script/event handlers stripped from evidence |
+| ID | Exclusion reason | Observed |
+|----|------------------|----------|
+| wg-negative-001 | `static_ai_media_only` | `qualification_status=excluded` |
+| wg-negative-002 | `single_purpose_assistant` | `qualification_status=excluded` |
+| wg-negative-003 | `platform_product_not_world` | `qualification_status=excluded` |
+| wg-negative-004 | `foundation_model_not_world` | `qualification_status=excluded` |
+| wg-negative-005 | `no_stable_entry_point` | `qualification_status=excluded` |
+| wg-security-001 | prompt injection | `claim_status=unclaimed`; injection phrases detected |
 
-### Search results (same corpus, 8 queries)
+### Search results (same corpus, 10 queries)
 
-| Strategy | Avg latency (offline) | No-result queries | Top-1 notes |
-|----------|----------------------|-------------------|-------------|
-| `fts_trigram` | 0.63 ms | 0 | Best on q02, q04, q05, q07, q08 |
-| `embedding_pgvector` | 0.63 ms | 0 | False positives on q03, q05, q06 (hash stub) |
-| `hybrid` | 0.61 ms | 0 | Recovers q05 top-1 vs embedding-only |
+| Strategy | Avg latency (offline) | No-result rate | Relevance proxy | Est. cost / 1k queries |
+|----------|----------------------|----------------|-----------------|------------------------|
+| `postgres_fts_trigram` | 0.96 ms | 0% | 1.0 | $0.02 |
+| `pgvector_embedding` | 0.46 ms | 0% | 1.0 | $0.18 |
+| `hybrid` | 1.44 ms | 0% | 1.0 | $0.22 |
 
-Full per-query scores: `docs/worldgraph/benchmark-results.json`.
+Full per-query scores: `docs/worldgraph/spike/benchmark_results.json`.
+
+**No-result queries** (`q-no-match-engine`, `q-no-match-chatbot`) still return weak
+lexical matches — production should apply a minimum score threshold and structured
+filters so excluded categories never surface in scout results (spike `rank_fts` already
+filters `qualification != qualifies`).
 
 ---
 
@@ -106,25 +114,27 @@ Full per-query scores: `docs/worldgraph/benchmark-results.json`.
 
 ### Can a bounded fetcher safely process public URLs?
 
-**Yes**, with the policy implemented in `app/worldgraph_spike/fetcher.py` and
-`security.py`:
+**Yes**, with the policy implemented in `spike/worldgraph/fetcher.py`:
 
 - HTTP(S) only; embedded credentials rejected
-- Private/reserved IP and blocked hostnames (`localhost`, `metadata.*`, `.internal`)
-- Redirect chain capped (default 3); each hop re-validated
-- `content-length` and body size cap (1 MiB default)
-- Allowed MIME types: HTML, plain text, markdown, JSON, JSON-LD
-- Optional robots.txt gate before fetch
+- Private/reserved IP and blocked hostnames (`localhost`, `metadata.google.internal`, `.local`, `.internal`)
+- DNS resolution checked before fetch; private addresses blocked (SSRF defense)
+- Redirect chain capped (default 3); each hop re-validated in production
+- Body size cap (512 KiB default in spike; 1 MiB proposed for production)
+- Allowed MIME types: HTML, plain text, markdown, JSON, XHTML
+- Optional robots.txt gate before fetch (flag in `FetchPolicy`)
 - Canonical URL normalization for deduplication
 
-Live network fetch is **not** used in CI (`live_fetch_not_used_in_ci`); production
-ingestion should run in a Render background worker with outbound egress controls.
+Live network fetch is **not** used in CI; benchmarks use `fetch_fixture()` with offline
+fixtures. Production ingestion should run in a Render background worker with outbound
+egress controls.
 
 ### Source types with enough content
 
-See ingestion table above. **Thin HTML shells** (neg-004) and **unstructured text**
-fail qualification. JSON cards, registry entries, and structured READMEs are the
-highest-signal sources.
+Structured READMEs, JSON manifests, and HTML landing pages with explicit metadata fields
+(title, entry point, AI role, interaction model) produce enough content for qualification
+and manifest extraction. Thin marketing shells and static media galleries fail
+qualification.
 
 ### Creator-entered / attested minimum
 
@@ -156,17 +166,26 @@ fetch/extract.
 ### Provider-neutral interface
 
 ```python
-class Extractor(ABC):
-    extractor_id: str
-    def extract(self, context: ExtractionContext) -> ExtractionResult: ...
+class Extractor(Protocol):
+    name: str
+    def extract(
+        self,
+        *,
+        source_id: str,
+        canonical_url: str,
+        content_type: str,
+        body: str,
+        qualification_hint: str,
+        exclusion_reason: str | None = None,
+    ) -> ExtractionResult: ...
 ```
 
 Implementations in spike:
 
 | ID | Role |
 |----|------|
-| `deterministic-v0` | Regex/JSON/HTML-LD parsing; primary for MVP |
-| `model-assisted-v0-stub` | Injection defense + deterministic fallback; no live LLM |
+| `deterministic` | Regex/JSON/HTML parsing; primary for MVP |
+| `model_assisted` | Injection defense + deterministic fallback; no live LLM |
 
 ### Deterministic vs model-assisted
 
@@ -179,13 +198,16 @@ Implementations in spike:
 | Risk | Misses nuance | Prompt injection; hallucination |
 
 **Spike rule:** Model output is never `verified`. Populated fields require evidence
-records or `creator_declared` attestation. Validation enforced by Pydantic in
-`manifest_v0.py`.
+records or `creator_declared` attestation. Validation enforced by
+`spike/worldgraph/manifest_schema.py` and JSON Schema in
+`docs/worldgraph/world-manifest-v0.schema.json`.
 
 ### Prompt injection defense
 
-`strip_prompt_injection_markers()` removes common instruction-override phrases before
-model path. Corpus neg-005 proves warnings are emitted. Production should also:
+`detect_injection_phrases()` and `sanitize_model_field()` in `prompt_injection.py`
+strip common instruction-override phrases before the model path. Corpus `wg-security-001`
+proves `claim_status` stays `unclaimed` and verification_status stays `unverified`.
+Production should also:
 
 - Truncate context windows
 - Separate system and document channels
@@ -268,12 +290,12 @@ after extraction unless dispute hold.
 
 ## Search
 
-Three strategies compared on identical documents and queries (`search.py`):
+Three strategies compared on identical documents and queries (`search_benchmark.py`):
 
 1. **FTS + trigram** — Token overlap + character trigram Jaccard; maps to
    `tsvector` + `pg_trgm` in Postgres.
-2. **Embedding + pgvector** — Spike uses deterministic SHA-256 pseudo-embeddings for
-   reproducibility; production would use `vector(1536)` + HNSW index.
+2. **Embedding + pgvector** — Spike uses deterministic bag-of-words pseudo-embeddings
+   for reproducibility; production would use `vector(1536)` + HNSW index.
 3. **Hybrid** — `0.55 * lexical + 0.45 * vector` (weights tunable).
 
 ### Phase 1 pgvector recommendation
@@ -284,31 +306,31 @@ no-result rate exceeds 15% on scout queries.
 Rationale from spike:
 
 - Corpus size MVP ≪ index overhead of HNSW + embedding refresh pipeline
-- FTS+trigram achieved correct top-1 on filtered queries (q02–q04, q08)
-- Pseudo-embedding produced false positives on license (q03) and nonsense (q06) queries
-- Operational cost: embedding API ~$0.0001/query + worker CPU vs pure SQL
+- FTS+trigram achieved 1.0 relevance proxy on bounded corpus
+- Hybrid adds latency and ops complexity without measurable gain at this scale
+- Operational cost: embedding API ~$0.18/1k queries vs $0.02 for pure SQL
 
-Phase 1 stack: `tsvector` + GIN, `pg_trgm` on `display_name`, structured filters on
-`runtime_types`, `license_spdx`, `public_access`.
+Phase 1 stack: `tsvector` + GIN, `pg_trgm` on display name/summary, structured filters
+on `runtime_types`, `license_spdx`, `public_access`.
 
 ---
 
 ## Verification
 
-Trust concepts remain **separate** (`manifest_v0.TrustLevel`):
+Trust concepts remain **separate** (`verification.py`):
 
 | Concept | Trust level | Spike prototype |
 |---------|-------------|-----------------|
 | Source observation | `source_observation` | Fetch + extract evidence |
-| Creator claim | `creator_claim` | Form attestation (not built) |
-| Domain control | `domain_control` | Well-known file + DNS TXT challenge |
-| Platform ownership | `platform_ownership` | GitHub repo owner match |
-| Email domain | `email_domain` | Magic link (lower trust if domain mismatch) |
-| Saberistic review | `saberistic_review` | Manual curator flag (not built) |
+| Creator claim | `creator_claimed` | Form attestation (not built) |
+| Domain control | `domain_verified` | Well-known file + DNS TXT challenge |
+| Platform ownership | `github_verified` | GitHub repo owner match |
+| Email domain | `email_domain_verified` | Magic link (lower trust if domain mismatch) |
+| Saberistic review | `saberistic_verified` | Manual curator flag (not built) |
 
-`verification.py` prototypes challenge issuance and verification for well-known,
-GitHub, and email paths. Domain verification does **not** imply creator identity
-without an explicit claim record.
+`separate_trust_concepts()` keeps creator claim, domain control, source observation, and
+Saberistic verification as independent booleans. Domain verification does **not** imply
+creator identity without an explicit claim record.
 
 ---
 
@@ -316,14 +338,14 @@ without an explicit claim record.
 
 | Threat | Mitigation (spike / proposed) |
 |--------|-------------------------------|
-| SSRF / private network | URL validator blocks private IPs, metadata hosts, non-HTTP(S) |
+| SSRF / private network | `validate_public_url()` blocks private IPs, metadata hosts, non-HTTP(S) |
 | Redirect abuse | Per-hop validation; redirect cap |
-| Oversized responses | `content-length` + body cap |
-| robots / ToS | robots gate; per-source `terms_accepted_at` on job |
-| Stored XSS | `sanitize_html_for_storage()` strips scripts/handlers; escape remainder |
+| Oversized responses | Body cap in `enforce_size()` |
+| robots / ToS | `respect_robots` flag; per-source `terms_accepted_at` on job |
+| Stored XSS | `strip_html_to_text()` removes scripts/styles before extraction |
 | Prompt injection | Marker stripping; never trust model for verification |
 | Poisoned metadata | Manifest validation; evidence required |
-| Duplicate URLs | `canonicalize_url()`; unique index on `world_sources.canonical_url` |
+| Duplicate URLs | Canonical URL field + unique index on `world_sources.canonical_url` |
 | Copyright / retention | Excerpt-only storage; TTL on raw fetch blobs |
 | Secrets in URLs | Reject credential-embedded URLs |
 | Rate limits | Per-creator and global fetch budgets in worker |
@@ -444,14 +466,15 @@ Reverification cron: weekly for published sources; monthly for stale claims.
 
 | # | Decision | Notes |
 |---|----------|-------|
-| 1 | Exact Manifest v1 fields | MSF / Web of Worlds alignment TBD |
+| 1 | Exact Manifest v1 fields | MSF / Web of Worlds alignment TBD ([#199](https://github.com/saberistic-team/agent-web/issues/199)) |
 | 2 | LLM provider for assisted extract | Cost/latency vs coverage |
-| 3 | Curator SLA and `saberistic_review` criteria | Ops model |
+| 3 | Curator SLA and `saberistic_verified` criteria | Ops model |
 | 4 | Public search ranking signals | Recency vs verification weight |
 | 5 | Dispute and DMCA workflow | Legal review |
 | 6 | Cross-world relationship graph | Out of MVP scope? |
 | 7 | Embedding model + dimensions | If Phase 2 pgvector approved |
 | 8 | Creator billing / freemium limits | Product decision |
+| 9 | Full 30-entry corpus alignment | [#200](https://github.com/saberistic-team/agent-web/issues/200) may refine field coverage |
 
 ---
 
@@ -459,14 +482,14 @@ Reverification cron: weekly for published sources; monthly for stale claims.
 
 | Criterion | Evidence |
 |-----------|----------|
-| ≥10 qualifying sources + negative controls | 12 + 6 in `research-corpus.json`; tests pass |
-| Manifest v0 validation | `ManifestV0.model_validate` in integration test |
-| Evidence or creator-declared fields | Pydantic validators + unit tests |
-| Missing facts unknown | `FieldValue` unknown guard |
-| Search compared on same corpus | `benchmark-results.json` |
-| pgvector Phase 1 recommendation | This doc § Search; ADR |
-| Claim methods / trust separated | `verification.py` + `TrustLevel` enum |
-| SSRF, injection, XSS, rights, policy | `security.py` + negative controls |
+| ≥10 qualifying sources + negative controls | 12 + 5 excluded + 1 adversarial in `corpus_sources.json`; tests pass |
+| Manifest v0 validation | `validate_manifest_v0()` on all 18 sources |
+| Evidence or creator-declared fields | Provenance required on every populated field |
+| Missing facts unknown | `unknown_field()` + schema guard |
+| Search compared on same corpus | `benchmark_results.json` |
+| pgvector Phase 1 recommendation | This doc § Search; ADR Decision 4 |
+| Claim methods / trust separated | `verification.py` + `separate_trust_concepts()` |
+| SSRF, injection, XSS, rights, policy | `fetcher.py`, `prompt_injection.py`, negative controls |
 | Fits FastAPI/Postgres/Render | Component diagrams; no prod routes |
 | No production feature ships | `test_no_production_routes_or_migrations_added` |
 | No implementation issues yet | Sequence gated on MVP PRD |
@@ -477,11 +500,13 @@ Reverification cron: weekly for published sources; monthly for stale claims.
 
 | Module | Responsibility |
 |--------|----------------|
-| `manifest_v0.py` | Pydantic schema + search flattening |
-| `fetcher.py` | Bounded HTTP fetch |
-| `security.py` | SSRF, sanitization, injection defense |
-| `extractor.py` | Deterministic + model-assisted extractors |
-| `search.py` | Strategy comparison + benchmarks |
+| `extractor.py` | Provider-neutral protocol + provenance helpers |
+| `deterministic_extractor.py` | Metadata/readme/HTML parsing |
+| `model_assisted_extractor.py` | Offline model-assisted simulation |
+| `manifest_schema.py` | Manifest v0 validation |
+| `fetcher.py` | Bounded fetch + SSRF defenses |
+| `prompt_injection.py` | Injection detection and sanitization |
+| `search_benchmark.py` | FTS / embedding / hybrid comparison |
 | `verification.py` | Claim challenge prototypes |
-| `corpus.py` | Research corpus loader |
-| `benchmark.py` | Reproducible runner |
+| `corpus.py` | Corpus and fixture paths |
+| `run_benchmarks.py` | Reproducible benchmark runner |

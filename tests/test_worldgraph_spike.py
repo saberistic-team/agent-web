@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import ipaddress
 import socket
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 from spike.worldgraph.corpus import load_corpus, load_queries
 from spike.worldgraph.deterministic_extractor import DeterministicExtractor
@@ -363,6 +366,15 @@ def test_rank_fts_excludes_non_qualifying_docs() -> None:
     hits = rank_fts("interactive narrative world", docs)
     assert hits
     assert all(hit.doc_id != "n1" for hit in hits)
+
+
+@pytest.mark.unit
+def test_no_production_routes_or_migrations_added() -> None:
+    migrations = (REPO_ROOT / "app" / "migrations" / "definitions.py").read_text(encoding="utf-8")
+    assert "worldgraph" not in migrations.lower()
+    main = (REPO_ROOT / "app" / "main.py").read_text(encoding="utf-8")
+    assert "worldgraph" not in main.lower()
+    assert not (REPO_ROOT / "app" / "worldgraph_spike").exists()
 
 
 @pytest.mark.unit

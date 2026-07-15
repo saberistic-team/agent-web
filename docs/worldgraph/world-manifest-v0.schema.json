@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://saberistic.com/schemas/world-manifest-v0.json",
   "title": "World Manifest v0",
-  "description": "Alternate JSON Schema view of Manifest v0 field provenance (identity/experience/ai_role/trust sections). Canonical spike validation uses Pydantic models in app/worldgraph_spike/manifest_v0.py documented in MANIFEST_V0.md. Production schema may converge in a follow-on issue.",
+  "description": "JSON Schema for Manifest v0 field provenance (identity/experience/ai_role/trust sections). Spike validation uses spike/worldgraph/manifest_schema.py; production schema may converge with issue #199.",
   "type": "object",
   "required": ["schema_version", "identity", "experience", "ai_role", "trust"],
   "additionalProperties": false,

@@ -6,7 +6,7 @@
 
 **Supersedes:** N/A (first ADR for WorldGraph)
 
-**Related:** [TECHNICAL_SPIKE.md](./TECHNICAL_SPIKE.md), [MANIFEST_V0.md](./MANIFEST_V0.md)
+**Related:** [TECHNICAL_SPIKE.md](./TECHNICAL_SPIKE.md), [world-manifest-v0.schema.json](./world-manifest-v0.schema.json)
 
 ---
 
@@ -25,8 +25,8 @@ Issue #204 required a bounded spike — not production code — to answer:
 - How manifests, evidence, and claims should be stored
 - Whether Phase 1 search needs pgvector or suffices with Postgres lexical search
 
-Evidence: 18-entry research corpus, `app/worldgraph_spike/`, and
-`docs/worldgraph/benchmark-results.json`.
+Evidence: 18-entry research corpus, `spike/worldgraph/`, and
+`docs/worldgraph/spike/benchmark_results.json`.
 
 ---
 
@@ -126,7 +126,7 @@ on display name/summary, and structured filters (`runtime_types`, `license_spdx`
 `public_access`). **pgvector embeddings are Phase 2**, triggered only by corpus scale
 and no-result metrics — not by default.
 
-**Rationale (spike benchmark, 14 documents, 8 queries):**
+**Rationale (spike benchmark, 12 qualifying documents, 10 queries):**
 
 | Signal | FTS + trigram | Embedding (pseudo) | Hybrid |
 |--------|---------------|-------------------|--------|
@@ -200,8 +200,8 @@ remain independent. Fetching a well-known manifest does **not** equal domain ver
 - Canonical URL deduplication
 - Excerpt-only retention (no full HTML archive by default)
 
-**Rationale:** Negative controls neg-001–neg-006 demonstrate failure modes. Relaxing
-any control requires a new ADR.
+**Rationale:** Negative controls `wg-negative-001`–`wg-negative-005` and adversarial
+`wg-security-001` demonstrate failure modes. Relaxing any control requires a new ADR.
 
 ---
 
