@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -197,8 +198,21 @@ class PreCaptureResult(NamedTuple):
 
 
 def screenshot_basename(phase: str, route: str, viewport: str) -> str:
-    """Build ``pre-home.png`` (desktop) or ``pre-home-mobile.png`` filenames."""
-    safe = "home" if route == "/" else route.strip("/").replace("/", "-")
+    """Build ``pre-home.png`` (desktop) or ``pre-home-mobile.png`` filenames.
+
+    Query strings must be encoded safely — raw ``?`` / ``=`` break Actions
+    artifact upload (and NTFS). Keep uniqueness vs the no-query route
+    (``/convert`` vs ``/convert?error=validation``).
+    """
+    if "?" in route:
+        path, query = route.split("?", 1)
+    else:
+        path, query = route, ""
+    safe = "home" if path == "/" else path.strip("/").replace("/", "-")
+    if query:
+        # error=validation → error-validation
+        safe = f"{safe}-{query.replace('=', '-').replace('&', '-')}"
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "-", safe).strip("-") or "route"
     if viewport == "desktop":
         return f"{phase}-{safe}.png"
     return f"{phase}-{safe}-{viewport}.png"
