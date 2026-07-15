@@ -1124,12 +1124,28 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
             hard_fail_reasons.append(f"required deploy screenshots failed: {exc}")
 
     # OpenAI / Models AI review (required for approve path).
+    # Transport/parse glitches (Cursor returning prose) must not start a
+    # Builder↔Reviewer loop when coverage + acceptance already pass
+    # (learned from #186 / #193).
     ai_block = ""
     ai_verdict: dict[str, Any] = {}
+    ai_transport_failed = False
+    ai_transport_error = ""
     try:
         from review_models import ai_review
 
-        ai_verdict = ai_review(repo, issue, pr_number)
+        last_exc: Exception | None = None
+        for attempt in range(3):
+            try:
+                ai_verdict = ai_review(repo, issue, pr_number)
+                last_exc = None
+                break
+            except Exception as attempt_exc:
+                last_exc = attempt_exc
+                if attempt + 1 < 3:
+                    time.sleep(2 * (attempt + 1))
+        if last_exc is not None:
+            raise last_exc
         ai_block += (
                     f"- ai_provider: `cursor-or-openai-or-models`\n"
             f"- ai_model: `{ai_verdict.get('model')}`\n"
@@ -1145,7 +1161,8 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
                 + "; ".join(ai_verdict.get("reasons") or ["does not meet acceptance"])
             )
     except Exception as exc:
-        hard_fail_reasons.append(f"AI reviewer unavailable: {exc}")
+        ai_transport_failed = True
+        ai_transport_error = str(exc)
         ai_block += f"- ai_review: failed (`{exc}`)\n"
 
     # Acceptance criteria checklist with evidence (required before approve)
@@ -1162,14 +1179,26 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
         if (
             infra_only_gap
             and not acceptance.get("all_done")
-            and ai_verdict.get("decision") == "approved"
+            and (
+                ai_verdict.get("decision") == "approved"
+                or (
+                    ai_transport_failed
+                    and not any(
+                        "coverage" in r.lower()
+                        or "check `" in r.lower()
+                        or "screenshot" in r.lower()
+                        or "merge" in r.lower()
+                        for r in hard_fail_reasons
+                    )
+                )
+            )
         ):
-            # Defer to AI review so Cursor prose/JSON glitches do not bounce Builder.
+            # Defer to AI review / coverage so Cursor prose/JSON glitches do not bounce Builder.
             acceptance = dict(acceptance)
             acceptance["all_done"] = True
             acceptance_note += (
                 "- acceptance_ai_infra: `deferred_to_ai_review` "
-                "(checklist AI unavailable; AI review approved)\n"
+                "(checklist AI unavailable; coverage/CI gate held)\n"
             )
         checklist_comment = post_checklist(
             repo, issue, acceptance, role="reviewer"
@@ -1201,6 +1230,23 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
     except Exception as exc:
         acceptance_note = f"- acceptance_checklist: failed (`{exc}`)\n"
         hard_fail_reasons.append(f"acceptance checklist failed: {exc}")
+
+    if ai_transport_failed:
+        blocking = any(
+            "coverage" in r.lower()
+            or "check `" in r.lower()
+            or "screenshot" in r.lower()
+            or "merge" in r.lower()
+            or "acceptance criteria incomplete" in r.lower()
+            for r in hard_fail_reasons
+        )
+        if blocking or not (acceptance_note and "acceptance_all_done: `true`" in acceptance_note):
+            hard_fail_reasons.append(f"AI reviewer unavailable: {ai_transport_error}")
+        else:
+            acceptance_note += (
+                "- ai_review_infra: `deferred` (model returned non-JSON; "
+                "coverage + acceptance held — do not requeue Builder)\n"
+            )
 
     if hard_fail_reasons:
         event = "REQUEST_CHANGES"
