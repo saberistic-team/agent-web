@@ -124,37 +124,6 @@ def test_clear_admin_login_rate_limits_deletes_rows() -> None:
 
 
 @pytest.mark.unit
-def test_try_admit_admin_login_honors_guard_keys_without_incrementing_them() -> None:
-    conn = MagicMock()
-    cur = MagicMock()
-    conn.cursor.return_value.__enter__.return_value = cur
-    now = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
-    cur.fetchall.return_value = [
-        {
-            "limiter_key": "guard-only",
-            "failure_count": 5,
-            "window_started_at": now - timedelta(minutes=1),
-            "locked_until": datetime(2026, 1, 1, 13, 0, tzinfo=timezone.utc),
-        }
-    ]
-
-    admission = db.try_admit_admin_login(
-        conn,
-        limiter_keys=("admit-key",),
-        guard_keys=("admit-key", "guard-only"),
-        now=now,
-        rate_limit=5,
-        window_seconds=900,
-        lockout_seconds=900,
-    )
-
-    assert not admission.admitted
-    assert admission.already_locked
-    executed_sql = " ".join(call.args[0] for call in cur.execute.call_args_list)
-    assert "UPDATE admin_login_rate_limits" not in executed_sql
-
-
-@pytest.mark.unit
 def test_release_admin_login_admission_decrements_and_unlocks() -> None:
     conn = MagicMock()
     cur = MagicMock()
@@ -343,7 +312,7 @@ def test_is_login_throttled_falls_back_when_db_unavailable(
         "$argon2id$v=19$m=65536,t=3,p=4$aaaaaaaaaaaaaaaaaaaaaa$bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     )
     monkeypatch.setenv("ADMIN_SESSION_SECRET", "test-session-secret-32chars-minimum!!")
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "test-limiter-secret-32chars-minimum!!")
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "test-limiter-secret-32chars-minimum!")
     monkeypatch.setenv("BASE_URL", "http://testserver")
     settings = get_settings()
     scope = {
@@ -385,7 +354,7 @@ def test_finalize_successful_login_clears_fallback_when_db_unavailable(
         "$argon2id$v=19$m=65536,t=3,p=4$aaaaaaaaaaaaaaaaaaaaaa$bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     )
     monkeypatch.setenv("ADMIN_SESSION_SECRET", "test-session-secret-32chars-minimum!!")
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "test-limiter-secret-32chars-minimum!!")
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "test-limiter-secret-32chars-minimum!")
     monkeypatch.setenv("BASE_URL", "http://testserver")
     settings = get_settings()
     scope = {

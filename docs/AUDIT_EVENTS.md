@@ -53,12 +53,10 @@ both commit or roll back together.
 | Logout (authenticated) | `admin_routes.admin_logout` | Revocation + required audit atomically when the session row transitions to revoked |
 | Login failure | `admin_routes` | Best-effort audit (`required=False`); actor is always `anonymous` |
 
-Unauthenticated login failures never place submitted username candidates in the
-immutable `actor` column. Prior to [#242](https://github.com/saberistic-team/agent-web/issues/242),
-some historical `auth.login.failure` rows may contain attacker-supplied strings in
-`actor` because the route forwarded the submitted username. Those rows remain
-append-only; operators should treat pre-fix `actor` values on failure events as
-untrusted when the session was not established. No automatic rewrite is performed.
+Unauthenticated login failures never persist submitted usernames, email addresses,
+or other attacker-supplied identifiers in `actor`, metadata, reason text, or
+correlation fields. Only a small server-defined `reason` enum is stored
+(`invalid_credentials`, `invalid_csrf`, `rate_limited`, …).
 
 `record_event(..., required=True)` propagates persistence errors. Security-sensitive
 mutations must not return success when a required audit event could not be stored.
@@ -191,3 +189,29 @@ ORDER BY 1 DESC;
 | `AUDIT_PAGE_SIZE` | `50` | Admin audit list page size (max 100) |
 
 Requires `DATABASE_URL` and admin auth env vars documented in `docs/ADMIN_AUTH.md`.
+
+## Historical login-failure actors
+
+Revisions before keyed limiter identifiers and anonymous failure actors (issue
+[#242](https://github.com/saberistic-team/agent-web/issues/242)) could append
+`auth.login.failure` rows whose `actor` column contained a submitted username
+candidate. Those rows remain immutable under Postgres triggers; application code
+does not rewrite historical audit data.
+
+Forward policy (from #242 onward):
+
+- Every new unauthenticated login failure uses `actor = anonymous`.
+- Submitted username candidates are not stored in audit metadata.
+
+To inventory legacy exposure:
+
+```sql
+SELECT created_at, actor, action, summary_after
+FROM audit_events
+WHERE action = 'auth.login.failure'
+  AND actor <> 'anonymous'
+ORDER BY created_at DESC;
+```
+
+Remediation of historical rows (if required) is a data-governance decision
+outside normal application mutation paths.

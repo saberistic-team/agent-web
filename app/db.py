@@ -398,11 +398,131 @@ def _admin_login_window_expired(
     return started < now - timedelta(seconds=window_seconds)
 
 
+def reconcile_admin_login_limiter_aliases(
+    conn: psycopg.Connection,
+    *,
+    alias_pairs: tuple[tuple[str, str], ...],
+    now: datetime,
+    window_seconds: int,
+    lockout_seconds: int,
+) -> None:
+    """Merge previous-key limiter rows into canonical rows during secret rotation."""
+    if not alias_pairs:
+        return
+
+    with conn.cursor() as cur:
+        for canonical_key, legacy_key in alias_pairs:
+            if canonical_key == legacy_key:
+                continue
+
+            cur.execute(
+                """
+                SELECT limiter_key, failure_count, window_started_at, locked_until, updated_at
+                FROM admin_login_rate_limits
+                WHERE limiter_key = %s
+                FOR UPDATE
+                """,
+                (legacy_key,),
+            )
+            legacy_row = cur.fetchone()
+            if legacy_row is None:
+                continue
+
+            cur.execute(
+                """
+                SELECT limiter_key, failure_count, window_started_at, locked_until, updated_at
+                FROM admin_login_rate_limits
+                WHERE limiter_key = %s
+                FOR UPDATE
+                """,
+                (canonical_key,),
+            )
+            canonical_row = cur.fetchone()
+
+            legacy_started = legacy_row["window_started_at"]
+            if legacy_started.tzinfo is None:
+                legacy_started = legacy_started.replace(tzinfo=timezone.utc)
+            legacy_locked = _normalize_limiter_locked_until(legacy_row["locked_until"])
+            legacy_count = int(legacy_row["failure_count"])
+
+            if canonical_row is None:
+                cur.execute(
+                    """
+                    INSERT INTO admin_login_rate_limits (
+                        limiter_key, failure_count, window_started_at, locked_until, updated_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (limiter_key) DO NOTHING
+                    """,
+                    (
+                        canonical_key,
+                        legacy_count,
+                        legacy_started,
+                        legacy_locked,
+                        legacy_row["updated_at"],
+                    ),
+                )
+                cur.execute(
+                    "DELETE FROM admin_login_rate_limits WHERE limiter_key = %s",
+                    (legacy_key,),
+                )
+                continue
+
+            canonical_started = canonical_row["window_started_at"]
+            if canonical_started.tzinfo is None:
+                canonical_started = canonical_started.replace(tzinfo=timezone.utc)
+            canonical_locked = _normalize_limiter_locked_until(canonical_row["locked_until"])
+            canonical_count = int(canonical_row["failure_count"])
+
+            legacy_window_active = not _admin_login_window_expired(
+                legacy_started,
+                now=now,
+                window_seconds=window_seconds,
+            )
+            canonical_window_active = not _admin_login_window_expired(
+                canonical_started,
+                now=now,
+                window_seconds=window_seconds,
+            )
+
+            merged_count = canonical_count
+            merged_started = canonical_started
+            if legacy_window_active:
+                if canonical_window_active:
+                    merged_count = max(canonical_count, legacy_count)
+                    merged_started = min(canonical_started, legacy_started)
+                else:
+                    merged_count = legacy_count
+                    merged_started = legacy_started
+
+            merged_locked = canonical_locked
+            if legacy_locked is not None and legacy_locked > now:
+                if merged_locked is None or legacy_locked > merged_locked:
+                    merged_locked = legacy_locked
+
+            cur.execute(
+                """
+                UPDATE admin_login_rate_limits
+                SET failure_count = %s,
+                    window_started_at = %s,
+                    locked_until = %s,
+                    updated_at = %s
+                WHERE limiter_key = %s
+                """,
+                (merged_count, merged_started, merged_locked, now, canonical_key),
+            )
+            cur.execute(
+                "DELETE FROM admin_login_rate_limits WHERE limiter_key = %s",
+                (legacy_key,),
+            )
+
+        conn.commit()
+
+
 def try_admit_admin_login(
     conn: psycopg.Connection,
     *,
     limiter_keys: tuple[str, ...],
-    guard_keys: tuple[str, ...] | None = None,
     now: datetime,
     rate_limit: int,
     window_seconds: int,
@@ -410,12 +530,11 @@ def try_admit_admin_login(
 ) -> AdminLoginAdmission:
     """Atomically decide whether a login attempt may reach password verification.
 
-    All ``guard_keys`` are locked in sorted order inside one transaction so
-    concurrent requests cannot overshoot the configured threshold. When any guard
-    key is actively locked, admission is denied without incrementing counters.
-    Only ``limiter_keys`` are upserted and incremented.
+    All ``limiter_keys`` are locked in sorted order inside one transaction so
+    concurrent requests cannot overshoot the configured threshold. When any key
+    is actively locked, admission is denied without incrementing counters.
     """
-    if not limiter_keys and not guard_keys:
+    if not limiter_keys:
         return AdminLoginAdmission(
             admitted=True,
             throttled=False,
@@ -423,10 +542,9 @@ def try_admit_admin_login(
             lockout_transition=False,
         )
 
-    ordered_guard = tuple(sorted(guard_keys if guard_keys is not None else limiter_keys))
-    ordered_admit = tuple(sorted(limiter_keys))
+    ordered_keys = tuple(sorted(limiter_keys))
     with conn.cursor() as cur:
-        for limiter_key in ordered_admit:
+        for limiter_key in ordered_keys:
             cur.execute(
                 """
                 INSERT INTO admin_login_rate_limits (
@@ -446,14 +564,12 @@ def try_admit_admin_login(
             ORDER BY limiter_key
             FOR UPDATE
             """,
-            (list(ordered_guard),),
+            (list(ordered_keys),),
         )
         rows = {str(row["limiter_key"]): row for row in cur.fetchall()}
 
-        for limiter_key in ordered_guard:
-            row = rows.get(limiter_key)
-            if row is None:
-                continue
+        for limiter_key in ordered_keys:
+            row = rows[limiter_key]
             locked_until = _normalize_limiter_locked_until(row["locked_until"])
             if locked_until is not None and locked_until > now:
                 conn.commit()
@@ -466,7 +582,7 @@ def try_admit_admin_login(
 
         updates: dict[str, tuple[int, datetime, datetime | None]] = {}
         lockout_transition = False
-        for limiter_key in ordered_admit:
+        for limiter_key in ordered_keys:
             row = rows[limiter_key]
             window_started_at = row["window_started_at"]
             if window_started_at.tzinfo is None:
