@@ -20,7 +20,7 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.client_source import resolve_client_source
+from app.admin_client_source import client_ip as resolve_admin_client_ip
 from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
@@ -235,23 +235,9 @@ def read_login_flow_token(request: Request) -> str | None:
     return token.strip() or None
 
 
-def resolve_admin_login_client_source(request: Request, settings: Settings) -> str:
-    """Resolve the effective client source for admin login rate limiting.
-
-    Forwarding headers are honored only when the immediate peer matches
-    ``ADMIN_TRUSTED_PROXY_CIDRS`` / ``ADMIN_TRUSTED_EDGE_CIDRS``. Untrusted
-    peers always use the direct connection address so clients cannot spoof
-    ``X-Forwarded-For``, ``Forwarded``, or ``CF-Connecting-IP``.
-
-    Resolved sources are normalized IPv4/IPv6 strings, digested before storage,
-    and never logged in raw form.
-    """
-    return resolve_client_source(request, settings).source
-
-
 def client_ip(request: Request, settings: Settings) -> str:
-    """Backward-compatible alias for :func:`resolve_admin_login_client_source`."""
-    return resolve_admin_login_client_source(request, settings)
+    """Resolve the client source for rate limiting via :mod:`app.admin_client_source`."""
+    return resolve_admin_client_ip(request, settings)
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
