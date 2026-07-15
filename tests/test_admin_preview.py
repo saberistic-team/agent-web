@@ -247,6 +247,8 @@ def test_admin_preview_briefs_list_and_detail_have_mock_data(
     assert detail.status_code == 200
     assert "Project brief #1" in detail.text
     assert "Paid" in detail.text
+    assert "Subtotal: $200" in detail.text
+    assert "Total: $150 USD" in detail.text
     emptyish = client.get("/admin/briefs/2")
     assert emptyish.status_code == 200
     assert "Project brief #2" in emptyish.text

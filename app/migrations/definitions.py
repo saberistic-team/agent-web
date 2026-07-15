@@ -410,4 +410,16 @@ ALTER TABLE activities ADD CONSTRAINT activities_activity_type_check
 """,
     ),
 
+    Migration(
+        version="014",
+        name="project_briefs_payment_amounts",
+        up_sql="""
+ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS payment_subtotal_cents INTEGER;
+ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS payment_discount_cents INTEGER;
+ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS payment_amount_cents INTEGER;
+ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS payment_currency TEXT;
+ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS stripe_promotion_code_id TEXT;
+""",
+    ),
+
 )

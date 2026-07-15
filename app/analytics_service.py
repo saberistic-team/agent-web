@@ -39,6 +39,7 @@ ALLOWED_PROPERTY_NAMES = frozenset(
     {
         "brief_id",
         "price_cents",
+        "discount_cents",
         "environment",
         "utm_source",
         "utm_medium",
@@ -167,6 +168,7 @@ def track_payment_completed(
     *,
     brief_id: int,
     price_cents: int,
+    discount_cents: int | None = None,
     utm: dict[str, str | None] | None = None,
 ) -> None:
     props: dict[str, Any] = {
@@ -174,6 +176,8 @@ def track_payment_completed(
         "price_cents": price_cents,
         "funnel_step": 7,
     }
+    if discount_cents:
+        props["discount_cents"] = discount_cents
     props.update(utm_props_from_mapping(utm))
     track_event(
         settings,

@@ -646,6 +646,22 @@ def build_preview_brief_rows(
             paid_at = created + timedelta(minutes=rng.randint(5, 90))
             session_id = f"cs_preview_{rng.randint(100000, 999999)}"
             intent_id = f"pi_preview_{rng.randint(100000, 999999)}"
+        payment_subtotal_cents: int | None = None
+        payment_discount_cents: int | None = None
+        payment_amount_cents: int | None = None
+        payment_currency: str | None = None
+        stripe_promotion_code_id: str | None = None
+        if status == "paid":
+            if brief_id == 1:
+                payment_subtotal_cents = 20_000
+                payment_discount_cents = 5_000
+                payment_amount_cents = 15_000
+                payment_currency = "usd"
+                stripe_promotion_code_id = "promo_preview_discounted"
+            else:
+                payment_subtotal_cents = 20_000
+                payment_amount_cents = 20_000
+                payment_currency = "usd"
         utm_source = None if brief_id == 2 else rng.choice(UTM_SOURCES)
         utm_medium = None if brief_id == 2 else rng.choice(UTM_MEDIUMS)
         utm_campaign = None if brief_id == 2 else rng.choice(UTM_CAMPAIGNS)
@@ -674,6 +690,11 @@ def build_preview_brief_rows(
                 "stripe_session_id": session_id,
                 "stripe_payment_intent_id": intent_id,
                 "paid_at": paid_at,
+                "payment_subtotal_cents": payment_subtotal_cents,
+                "payment_discount_cents": payment_discount_cents,
+                "payment_amount_cents": payment_amount_cents,
+                "payment_currency": payment_currency,
+                "stripe_promotion_code_id": stripe_promotion_code_id,
                 "utm_source": utm_source,
                 "utm_medium": utm_medium,
                 "utm_campaign": utm_campaign,

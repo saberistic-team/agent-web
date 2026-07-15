@@ -10,15 +10,7 @@ PRODUCT_DIRS = (REPO_ROOT / "app", REPO_ROOT / "site")
 PROJECT_BRIEF_DOC = REPO_ROOT / "docs" / "PROJECT_BRIEF.md"
 
 DEFERRED_HEADINGS = (
-    "Variable pricing / coupons",
     "Full CRM integration",
-)
-
-COUPON_PATTERNS = (
-    re.compile(r"\bcoupon", re.I),
-    re.compile(r"\bpromotion[_-]?code", re.I),
-    re.compile(r"\ballow_promotion_codes\b", re.I),
-    re.compile(r"\bdiscount[_-]?code", re.I),
 )
 
 CRM_PATTERNS = (
@@ -57,16 +49,12 @@ def test_project_brief_doc_lists_deferred_scope() -> None:
     assert "## Intentionally deferred" in body
     for heading in DEFERRED_HEADINGS:
         assert heading in body, f"missing deferred item: {heading}"
+    assert "allow_promotion_codes" in body
 
 
 def test_readme_links_project_brief_doc() -> None:
     readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
     assert "docs/PROJECT_BRIEF.md" in readme
-
-
-def test_no_variable_pricing_or_coupons_in_product() -> None:
-    hits = _scan_patterns(COUPON_PATTERNS)
-    assert not hits, "coupon/pricing patterns found: " + ", ".join(hits)
 
 
 def test_no_crm_integration_in_product() -> None:

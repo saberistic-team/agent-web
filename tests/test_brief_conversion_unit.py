@@ -462,13 +462,24 @@ def test_paid_and_unpaid_brief_status_map_to_documented_stages() -> None:
     assert initial_pipeline_stage_for_brief_status("abandoned") == "qualified"
 
 
-def test_build_conversion_proposal_uses_brief_payment_not_operator_input() -> None:
-    paid = build_conversion_proposal(_brief(status="paid"), price_cents=20_000)
+def test_build_conversion_proposal_uses_stored_payment_amount() -> None:
+    paid = build_conversion_proposal(
+        {
+            **_brief(status="paid"),
+            "payment_amount_cents": 15_000,
+        },
+        price_cents=20_000,
+    )
     unpaid = build_conversion_proposal(_brief(status="pending_payment"), price_cents=20_000)
     assert paid["pipeline_stage"] == "diagnostic_paid"
-    assert paid["expected_value"] == 200.0
+    assert paid["expected_value"] == 150.0
     assert unpaid["pipeline_stage"] == "qualified"
     assert unpaid["expected_value"] is None
+
+
+def test_build_conversion_proposal_falls_back_to_list_price() -> None:
+    paid = build_conversion_proposal(_brief(status="paid"), price_cents=20_000)
+    assert paid["expected_value"] == 200.0
 
 
 def test_pipeline_capabilities_require_database(monkeypatch: pytest.MonkeyPatch) -> None:
