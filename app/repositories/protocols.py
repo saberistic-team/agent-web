@@ -90,15 +90,23 @@ class ContactRepository(Protocol):
 
     def get_by_id(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None: ...
 
-    def get_by_email(self, conn: psycopg.Connection, email: str) -> dict[str, Any] | None: ...
-
     def get_active_by_email(
         self,
         conn: psycopg.Connection,
         email: str,
         *,
         exclude_contact_id: UUID | None = None,
-    ) -> dict[str, Any] | None: ...
+    ) -> dict[str, Any] | None:
+        """Active-contact identity lookup — excludes archived rows (#226)."""
+        ...
+
+    def get_archived_by_email(
+        self,
+        conn: psycopg.Connection,
+        email: str,
+    ) -> dict[str, Any] | None:
+        """Archived-contact lookup — separate op for restore/review only (#226)."""
+        ...
 
     def find_by_profile_url(
         self,

@@ -189,6 +189,46 @@ def test_contact_new_edit_restore_and_invalid_fields_are_handled() -> None:
 
 
 @pytest.mark.unit
+def test_contact_create_email_conflict_redirects_without_500() -> None:
+    from app.contacts import ContactEmailConflictError
+
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        with patch("app.admin_routes._crm") as crm:
+            crm.create_contact.side_effect = ContactEmailConflictError("ada@acme.dev")
+            response = client.post(
+                "/admin/contacts",
+                data={
+                    "csrf_token": CSRF_TOKEN,
+                    "full_name": "Ada Lovelace",
+                    "company_id": str(COMPANY_ID),
+                    "email": "ada@acme.dev",
+                },
+            )
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/admin/contacts/new?error=")
+
+
+@pytest.mark.unit
+def test_contact_update_email_conflict_redirects_without_500() -> None:
+    from app.contacts import ContactEmailConflictError
+
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        with patch("app.admin_routes._crm") as crm:
+            crm.update_contact.side_effect = ContactEmailConflictError("ada@acme.dev")
+            response = client.post(
+                f"/admin/contacts/{CONTACT_ID}/edit",
+                data={
+                    "csrf_token": CSRF_TOKEN,
+                    "full_name": "Ada Lovelace",
+                    "company_id": str(COMPANY_ID),
+                    "email": "ada@acme.dev",
+                },
+            )
+    assert response.status_code == 303
+    assert f"/admin/contacts/{CONTACT_ID}/edit?error=" in response.headers["location"]
+
+
+@pytest.mark.unit
 def test_contact_edit_requires_existing_contact() -> None:
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
         with patch("app.admin_routes._crm") as crm:

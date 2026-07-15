@@ -31,6 +31,7 @@ from app.brief_conversion_lock import acquire_brief_conversion_lock
 from app.companies import CompanyCreate, CompanyUpdate, find_domain_duplicate_warnings, normalize_domain
 from app.contacts import (
     ContactCreate,
+    ContactEmailConflictError,
     ContactUpdate,
     find_email_duplicate_warnings,
     find_name_company_duplicate_warnings,
@@ -219,12 +220,18 @@ class CrmService:
             if domain
             else []
         )
-        contact = self._repos.contacts.get_by_email(conn, email)
-        contacts = [contact] if contact else []
+        # Active identity only drives linking. An archived-only match is surfaced
+        # separately as a restore/review option and is never auto-linked (#226).
+        active_contact = self._repos.contacts.get_active_by_email(conn, email)
+        contacts = [active_contact] if active_contact else []
+        archived_contact = (
+            None if active_contact else self._repos.contacts.get_archived_by_email(conn, email)
+        )
         return {
             "proposal": proposal,
             "company_matches": companies,
             "contact_matches": contacts,
+            "archived_contact_match": archived_contact,
         }
 
     def convert_project_brief(
@@ -255,7 +262,7 @@ class CrmService:
             if domain
             else []
         )
-        contact_match = self._repos.contacts.get_by_email(conn, email)
+        contact_match = self._repos.contacts.get_active_by_email(conn, email)
         self._validate_conversion_choices(
             company_choice=company_choice,
             contact_choice=contact_choice,
@@ -340,6 +347,7 @@ class CrmService:
                 contact = self._repos.contacts.get_by_id(conn, selected_contact_id)
                 if contact is None:
                     raise BriefConversionValidationError("Selected contact was not found.")
+                contact = self._associate_contact_company(conn, contact=contact, company=company)
             else:
                 contact = self._repos.contacts.create(
                     conn,
@@ -464,6 +472,31 @@ class CrmService:
             "source_record": source_record,
             "pipeline_stage": pipeline_stage,
         }
+
+    def _associate_contact_company(
+        self,
+        conn: psycopg.Connection,
+        *,
+        contact: dict[str, Any],
+        company: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Apply the brief-conversion company-association rule (issue #226).
+
+        When a brief supplies a company, linking an existing active contact only
+        *fills in* a missing company association (``company_id IS NULL``). A
+        contact that already belongs to a company keeps that association and is
+        never silently reassigned; an explicit mismatch is rejected upstream in
+        ``_validate_conversion_choices``. See docs/CRM_SCHEMA.md.
+        """
+        company_id = company.get("id")
+        if company_id is None or contact.get("company_id") is not None:
+            return contact
+        updated = self._repos.contacts.update(
+            conn,
+            UUID(str(contact["id"])),
+            company_id=UUID(str(company_id)),
+        )
+        return updated or contact
 
     def _validate_conversion_choices(
         self,
@@ -671,7 +704,8 @@ class CrmService:
             )
             email_matches = (
                 [existing]
-                if contact.email and (existing := self._repos.contacts.get_by_email(conn, contact.email))
+                if contact.email
+                and (existing := self._repos.contacts.get_active_by_email(conn, contact.email))
                 else []
             )
             name_company_matches = (
@@ -683,7 +717,12 @@ class CrmService:
                 if contact.company_id
                 else []
             )
-            created = self._repos.contacts.create(conn, **contact.model_dump())
+            try:
+                created = self._repos.contacts.create(conn, **contact.model_dump())
+            except pg_errors.UniqueViolation as exc:
+                if not _is_contact_email_unique_violation(exc):
+                    raise
+                raise ContactEmailConflictError(contact.email) from exc
         duplicate_warnings = [
             *find_profile_url_duplicate_warnings(profile_matches, profile_url=contact.profile_url),
             *find_email_duplicate_warnings(email_matches, email=contact.email),
@@ -712,8 +751,10 @@ class CrmService:
             )
             email_matches: list[dict[str, Any]] = []
             if contact.email:
-                existing = self._repos.contacts.get_by_email(conn, contact.email)
-                if existing is not None and str(existing.get("id")) != str(contact_id):
+                existing = self._repos.contacts.get_active_by_email(
+                    conn, contact.email, exclude_contact_id=contact_id
+                )
+                if existing is not None:
                     email_matches.append(existing)
             name_company_matches = (
                 self._repos.contacts.find_by_name_company(
@@ -725,9 +766,14 @@ class CrmService:
                 if contact.company_id
                 else []
             )
-            updated = self._repos.contacts.update(
-                conn, contact_id, **contact.model_dump(exclude_unset=True)
-            )
+            try:
+                updated = self._repos.contacts.update(
+                    conn, contact_id, **contact.model_dump(exclude_unset=True)
+                )
+            except pg_errors.UniqueViolation as exc:
+                if not _is_contact_email_unique_violation(exc):
+                    raise
+                raise ContactEmailConflictError(contact.email) from exc
         if updated is None:
             return None
         duplicate_warnings = [

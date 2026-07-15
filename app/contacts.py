@@ -52,6 +52,11 @@ def normalize_contact_name(value: str | None) -> str | None:
 
 
 def normalize_email(value: str | None) -> str | None:
+    """The single email-normalization policy for CRM contacts (issue #226).
+
+    Used identically for create, edit, restore, active/archived lookup, and brief
+    conversion so identity comparison is always case-insensitive and trimmed.
+    """
     if value is None:
         return None
     text = value.strip()
@@ -61,6 +66,20 @@ def normalize_email(value: str | None) -> str | None:
     if "@" not in email or email.startswith("@") or email.endswith("@"):
         raise ValueError("email must be a valid address")
     return email
+
+
+class ContactEmailConflictError(Exception):
+    """An active contact already owns this email address.
+
+    Raised by the service layer when a create/update would collide with the
+    partial unique index ``idx_contacts_email_unique`` so callers return a safe
+    validation/domain error instead of a bare HTTP 500 (issue #226).
+    """
+
+    def __init__(self, email: str | None = None) -> None:
+        self.email = email
+        message = "A contact with this email already exists."
+        super().__init__(message)
 
 
 def normalize_profile_url(value: str | None) -> str | None:
