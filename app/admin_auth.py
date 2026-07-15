@@ -20,7 +20,7 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.admin_client_source import resolve_admin_login_client_source
+from app.admin_client_source import client_ip, resolve_admin_login_client_source
 from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
@@ -233,16 +233,6 @@ def read_login_flow_token(request: Request) -> str | None:
     if not token:
         return None
     return token.strip() or None
-
-
-def client_ip(request: Request, settings: Settings) -> str:
-    """Resolve the client source IP for admin login rate limiting.
-
-    Delegates to :func:`resolve_admin_login_client_source`, which verifies the
-    immediate TCP peer against ``ADMIN_TRUSTED_PROXY_CIDRS`` before honoring
-    forwarding headers. Resolved values are stored only as keyed digests.
-    """
-    return resolve_admin_login_client_source(request, settings).source
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:

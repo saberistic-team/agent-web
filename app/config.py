@@ -28,8 +28,7 @@ class Settings:
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
     admin_trust_proxy_headers: bool = False
-    admin_trusted_proxy_cidrs: tuple[str, ...] = ()
-    admin_trust_cloudflare_proxy: bool = False
+    admin_trusted_proxy_ips: str = ""
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -115,13 +114,5 @@ def get_settings() -> Settings:
             "ADMIN_TRUST_PROXY_HEADERS", ""
         ).lower()
         in ("1", "true", "yes"),
-        admin_trusted_proxy_cidrs=tuple(
-            segment.strip()
-            for segment in os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "").split(",")
-            if segment.strip()
-        ),
-        admin_trust_cloudflare_proxy=os.environ.get(
-            "ADMIN_TRUST_CLOUDFLARE_PROXY", ""
-        ).lower()
-        in ("1", "true", "yes"),
+        admin_trusted_proxy_ips=os.environ.get("ADMIN_TRUSTED_PROXY_IPS", "").strip(),
     )
