@@ -20,6 +20,13 @@ BUYING_ROLES: dict[str, str] = {
     "introducer": "Introducer",
     "other": "Other",
 }
+
+# Roles that satisfy acquisition-dashboard "decision-maker" coverage. Influencer does
+# not qualify — they may shape deals but are not primary buying decision-makers.
+# Investor and introducer are relationship paths, not target outreach owners.
+DECISION_MAKER_BUYING_ROLES: frozenset[str] = frozenset(
+    role for role in BUYING_ROLES if role in ("founder", "technical_buyer", "executive_buyer")
+)
 RELATIONSHIP_STRENGTHS: dict[str, str] = {
     "cold": "Cold",
     "developing": "Developing",

@@ -210,6 +210,24 @@ def build_preview_acquisition_dashboard_data(
             )
         return tuple(rows)
 
+    def _without_decision_maker() -> tuple[CompanyAttentionRow, ...]:
+        """Uncovered targets for screenshots — lack qualifying active decision-makers."""
+        stage_keys = tuple(COMPANY_STAGES.keys())
+        category_keys = tuple(COMPANY_CATEGORIES.keys())
+        uncovered_names = ("Meridian Stack", "Volt Spiral", "Aperture Freight")
+        rows: list[CompanyAttentionRow] = []
+        for i, company in enumerate(uncovered_names):
+            rows.append(
+                CompanyAttentionRow(
+                    company_id=_preview_uuid(rng),
+                    company_name=company,
+                    target_status="target" if i == 0 else "watching",
+                    category=category_keys[i % len(category_keys)],
+                    stage=stage_keys[i % len(stage_keys)],
+                )
+            )
+        return tuple(rows)
+
     def _attention() -> tuple[CompanyAttentionRow, ...]:
         stage_keys = tuple(COMPANY_STAGES.keys())
         category_keys = tuple(COMPANY_CATEGORIES.keys())
@@ -238,7 +256,7 @@ def build_preview_acquisition_dashboard_data(
         upcoming_actions=_next_actions(overdue=False),
         recent_evidence=_evidence(stale=False),
         stale_evidence=_evidence(stale=True),
-        without_decision_maker=_attention(),
+        without_decision_maker=_without_decision_maker(),
         without_next_action=_attention(),
         generated_at=now,
     )

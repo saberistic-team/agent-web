@@ -43,6 +43,9 @@ def test_preview_acquisition_dashboard_html_includes_sections() -> None:
     assert "Overdue next actions" in html
     assert data.overdue_actions[0].company_name in html
     assert "Companies by stage" in html
+    assert "Missing decision-maker" in html
+    assert "qualifying decision-maker" in html
+    assert data.without_decision_maker[0].company_name in html
 
 
 @pytest.mark.unit
@@ -261,6 +264,7 @@ def test_preview_acquisition_dashboard_data_is_populated() -> None:
     assert data.overdue_actions
     assert data.recent_evidence
     assert data.without_decision_maker
+    assert data.without_decision_maker[0].company_name == "Meridian Stack"
 
 
 @pytest.mark.unit

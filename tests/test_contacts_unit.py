@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from app.admin_contacts import render_contact_form_page, render_contacts_list_page
 from app.contacts import (
     ContactCreate,
+    DECISION_MAKER_BUYING_ROLES,
     find_email_duplicate_warnings,
     find_name_company_duplicate_warnings,
     find_profile_url_duplicate_warnings,
@@ -47,6 +48,17 @@ def test_profile_url_and_email_normalization() -> None:
     assert contact.full_name == "Ada Lovelace"
     assert contact.email is None
     assert contact.buying_roles == ["founder", "technical_buyer"]
+
+
+@pytest.mark.unit
+def test_decision_maker_buying_roles_policy() -> None:
+    assert DECISION_MAKER_BUYING_ROLES == frozenset(
+        {"founder", "technical_buyer", "executive_buyer"}
+    )
+    assert "influencer" not in DECISION_MAKER_BUYING_ROLES
+    assert "introducer" not in DECISION_MAKER_BUYING_ROLES
+    assert "investor" not in DECISION_MAKER_BUYING_ROLES
+    assert "other" not in DECISION_MAKER_BUYING_ROLES
 
 
 @pytest.mark.unit

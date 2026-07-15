@@ -16,6 +16,7 @@ from app.acquisition_dashboard import (
     dashboard_is_empty,
     load_acquisition_dashboard,
 )
+from app.contacts import DECISION_MAKER_BUYING_ROLES
 from app.repositories.postgres import PostgresAcquisitionDashboardRepository
 
 COMPANY_ID = UUID("11111111-1111-1111-1111-111111111111")
@@ -49,7 +50,7 @@ def test_metric_definitions_are_explicit() -> None:
         generated_at=NOW,
     )
     assert "follow_up_note" in data.metric_definitions["overdue_next_action"]
-    assert "zero linked contacts" in data.metric_definitions["without_decision_maker"]
+    assert "qualifying decision-maker" in data.metric_definitions["without_decision_maker"]
     assert METRIC_OVERDUE_NEXT_ACTION == data.metric_definitions["overdue_next_action"]
 
 
@@ -104,6 +105,7 @@ def test_count_contacts_by_category_sql() -> None:
     sql = str(conn.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
     assert "FROM contacts ct" in sql
     assert "INNER JOIN companies c" in sql
+    assert "ct.archived_at IS NULL" in sql
     assert rows == [("fintech", 5)]
 
 
@@ -138,9 +140,79 @@ def test_companies_without_decision_maker_sql() -> None:
     conn = _mock_conn([])
     repo.list_companies_without_decision_maker(conn, limit=10)
     sql = str(conn.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    params = conn.cursor.return_value.__enter__.return_value.execute.call_args.args[1]
     assert "NOT EXISTS" in sql
     assert "FROM contacts ct" in sql
+    assert "ct.archived_at IS NULL" in sql
+    assert "buying_roles &&" in sql
+    assert "c.archived_at IS NULL" in sql
+    assert params[0] == ["target", "watching"]
+    assert set(params[1]) == set(DECISION_MAKER_BUYING_ROLES)
+    assert params[2] == 10
     assert METRIC_WITHOUT_DECISION_MAKER.startswith("Non-archived")
+
+
+def _contact_satisfies_coverage(*, buying_roles: list[str], archived: bool) -> bool:
+    if archived:
+        return False
+    return bool(set(buying_roles) & DECISION_MAKER_BUYING_ROLES)
+
+
+def _company_has_decision_maker_coverage(contacts: list[dict[str, object]]) -> bool:
+    return any(
+        _contact_satisfies_coverage(
+            buying_roles=list(contact["buying_roles"]),
+            archived=bool(contact["archived"]),
+        )
+        for contact in contacts
+    )
+
+
+@pytest.mark.unit
+def test_decision_maker_coverage_mixed_active_and_archived_contacts() -> None:
+    assert _company_has_decision_maker_coverage(
+        [
+            {"buying_roles": ["founder"], "archived": True},
+            {"buying_roles": ["introducer"], "archived": False},
+        ]
+    ) is False
+    assert _company_has_decision_maker_coverage(
+        [
+            {"buying_roles": ["introducer"], "archived": True},
+            {"buying_roles": ["technical_buyer"], "archived": False},
+        ]
+    ) is True
+    assert _company_has_decision_maker_coverage([]) is False
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("buying_roles", "archived", "expected"),
+    [
+        ([], False, False),
+        (["founder"], False, True),
+        (["technical_buyer"], False, True),
+        (["executive_buyer"], False, True),
+        (["introducer"], False, False),
+        (["investor"], False, False),
+        (["influencer"], False, False),
+        (["other"], False, False),
+        (["introducer", "investor"], False, False),
+        (["influencer", "introducer"], False, False),
+        (["introducer", "executive_buyer"], False, True),
+        (["founder"], True, False),
+        (["founder", "introducer"], False, True),
+    ],
+)
+def test_decision_maker_coverage_scenarios(
+    buying_roles: list[str],
+    archived: bool,
+    expected: bool,
+) -> None:
+    assert (
+        _contact_satisfies_coverage(buying_roles=buying_roles, archived=archived)
+        is expected
+    )
 
 
 @pytest.mark.unit
