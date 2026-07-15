@@ -277,24 +277,6 @@ def _record_login_failure(
         logger.exception("Failed to record login failure audit event")
 
 
-def _render_login_form_error(
-    *,
-    csrf_token: str,
-    error_message: str,
-    next_path: str | None,
-    status_code: int,
-) -> HTMLResponse:
-    """Render a login error without minting or consuming a pre-auth flow."""
-    return HTMLResponse(
-        admin_pages.render_admin_login_page(
-            csrf_token=csrf_token,
-            error_message=error_message,
-            next_path=next_path,
-        ),
-        status_code=status_code,
-    )
-
-
 def _issue_login_flow_response(
     *,
     settings: Settings,
@@ -446,44 +428,40 @@ def admin_login_submit(
       form with a new CSRF token, and retain the replacement flow cookie.
     * **Invalid credentials** — same as invalid CSRF: consumed flow is not
       replayable; the replacement flow binds the returned CSRF token.
-    * **Rate limited** — keep the existing flow cookie; do not run Argon2 or mint
-      replacement flows for repeated lockout denials.
+    * **Rate limited** — consume the submitted flow and retain a replacement so
+      the operator can retry after lockout without refreshing.
     * **Success** — clear the pre-auth flow cookie and issue the session cookie.
     """
     settings = get_settings()
     _require_admin_auth_configured(settings)
     normalized_username = username.strip()
-    login_flow_token = admin_auth.read_login_flow_token(request)
 
-    if not admin_auth.login_form_inputs_within_bounds(
+    if not admin_auth.login_form_inputs_valid(
         username=username,
         password=password,
         csrf_token=csrf_token,
-        login_flow_token=login_flow_token,
+        login_flow_token=admin_auth.read_login_flow_token(request),
+        next_path=next,
     ):
-        return _render_login_form_error(
-            csrf_token=csrf_token,
-            error_message=admin_auth.INVALID_CREDENTIALS_MESSAGE,
-            next_path=next,
+        return HTMLResponse(
+            admin_pages.render_admin_login_page(
+                csrf_token=csrf_token,
+                error_message=admin_auth.INVALID_CREDENTIALS_MESSAGE,
+                next_path=next,
+            ),
             status_code=400,
         )
 
-    admission = admin_auth.admit_admin_login(
-        request,
-        settings,
-        username=normalized_username,
+    admission = admin_auth.try_admit_login_attempt(
+        request, settings, username=normalized_username
     )
-    if admission.newly_locked:
-        _record_login_failure(
-            request,
-            reason="rate_limited",
-            attempted_username=normalized_username,
-        )
     if not admission.admitted:
-        return _render_login_form_error(
-            csrf_token=csrf_token,
-            error_message=admin_auth.LOGIN_THROTTLED_MESSAGE,
-            next_path=next,
+        return HTMLResponse(
+            admin_pages.render_admin_login_page(
+                csrf_token=csrf_token,
+                error_message=admin_auth.LOGIN_THROTTLED_MESSAGE,
+                next_path=next,
+            ),
             status_code=429,
         )
 
@@ -491,9 +469,16 @@ def admin_login_submit(
     _consume_login_flow(request, settings)
 
     if not csrf_valid:
-        _record_login_failure(
-            request, reason="invalid_csrf", attempted_username=normalized_username
-        )
+        if admission.lockout_transition:
+            _record_login_failure(
+                request,
+                reason="rate_limited",
+                attempted_username=normalized_username,
+            )
+        else:
+            _record_login_failure(
+                request, reason="invalid_csrf", attempted_username=normalized_username
+            )
         return _issue_login_flow_response(
             settings=settings,
             error_message=admin_auth.INVALID_CREDENTIALS_MESSAGE,
@@ -502,9 +487,18 @@ def admin_login_submit(
         )
 
     if not admin_auth.verify_admin_credentials(normalized_username, password, settings):
-        _record_login_failure(
-            request, reason="invalid_credentials", attempted_username=normalized_username
-        )
+        if admission.lockout_transition:
+            _record_login_failure(
+                request,
+                reason="rate_limited",
+                attempted_username=normalized_username,
+            )
+        else:
+            _record_login_failure(
+                request,
+                reason="invalid_credentials",
+                attempted_username=normalized_username,
+            )
         return _issue_login_flow_response(
             settings=settings,
             error_message=admin_auth.INVALID_CREDENTIALS_MESSAGE,
@@ -514,12 +508,7 @@ def admin_login_submit(
 
     destination = admin_auth.safe_admin_next_path(next)
     response = RedirectResponse(url=destination, status_code=303)
-    admin_auth.release_admin_login_admission(
-        request,
-        settings,
-        username=normalized_username,
-    )
-    admin_auth.clear_admin_login_account_limit(request, settings)
+    admin_auth.clear_login_rate_limit(request, settings, username=normalized_username)
     _issue_session(
         request=request,
         response=response,

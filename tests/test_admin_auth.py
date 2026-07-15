@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import re
+import threading
 from contextlib import ExitStack, contextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Any, Generator
@@ -16,6 +17,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.testclient import TestClient
 
 from app import admin_auth
+from app import db
 from app.admin_auth import LOGIN_FLOW_COOKIE_NAME, SESSION_COOKIE_NAME
 from app.admin_routes import _issue_session
 from app.config import get_settings
@@ -38,8 +40,19 @@ class FakeRateLimitStore:
 
     def __init__(self) -> None:
         self.rows: dict[str, dict[str, Any]] = {}
+        self._lock = threading.Lock()
 
-    def admit(
+    def is_throttled(self, limiter_key: str, now: datetime) -> bool:
+        with self._lock:
+            row = self.rows.get(limiter_key)
+            if row is None:
+                return False
+            locked_until = row.get("locked_until")
+            if locked_until is None:
+                return False
+            return locked_until > now
+
+    def try_admit(
         self,
         limiter_keys: tuple[str, ...],
         now: datetime,
@@ -47,84 +60,80 @@ class FakeRateLimitStore:
         rate_limit: int,
         window_seconds: int,
         lockout_seconds: int,
-    ) -> tuple[bool, bool]:
-        snapshots: list[tuple[str, int, datetime, datetime | None]] = []
-        newly_locked = False
-        for limiter_key in limiter_keys:
-            row = self.rows.get(limiter_key)
-            failure_count = 0
-            window_started_at = now
-            locked_until: datetime | None = None
-            if row is not None:
-                failure_count = int(row["failure_count"])
-                window_started_at = row["window_started_at"]
+    ) -> db.AdminLoginAdmission:
+        with self._lock:
+            ordered_keys = tuple(sorted(limiter_keys))
+            for limiter_key in ordered_keys:
+                if limiter_key not in self.rows:
+                    self.rows[limiter_key] = {
+                        "failure_count": 0,
+                        "window_started_at": now,
+                        "locked_until": None,
+                        "updated_at": now,
+                    }
+
+            for limiter_key in ordered_keys:
+                row = self.rows[limiter_key]
                 locked_until = row.get("locked_until")
+                if locked_until is not None and locked_until > now:
+                    return db.AdminLoginAdmission(
+                        admitted=False,
+                        throttled=True,
+                        already_locked=True,
+                        lockout_transition=False,
+                    )
 
-            if locked_until is not None and locked_until > now:
-                return False, newly_locked
+            lockout_transition = False
+            for limiter_key in ordered_keys:
+                row = self.rows[limiter_key]
+                window_start = now - timedelta(seconds=window_seconds)
+                if row["window_started_at"] < window_start:
+                    failure_count = 1
+                    window_started_at = now
+                else:
+                    failure_count = row["failure_count"] + 1
+                    window_started_at = row["window_started_at"]
 
-            window_start = now - timedelta(seconds=window_seconds)
-            lockout_expired = locked_until is not None and locked_until <= now
-            if window_started_at < window_start or lockout_expired:
-                failure_count = 0
-                window_started_at = now
-                locked_until = None
-
-            if failure_count >= rate_limit:
-                if locked_until is None or locked_until <= now:
+                prior_locked_until = row.get("locked_until")
+                locked_until = prior_locked_until
+                if failure_count >= rate_limit:
                     locked_until = now + timedelta(seconds=lockout_seconds)
-                    newly_locked = True
+                    if prior_locked_until is None or prior_locked_until <= now:
+                        lockout_transition = True
+
                 self.rows[limiter_key] = {
                     "failure_count": failure_count,
                     "window_started_at": window_started_at,
                     "locked_until": locked_until,
                     "updated_at": now,
                 }
-                return False, newly_locked
 
-            snapshots.append((limiter_key, failure_count, window_started_at, locked_until))
+            return db.AdminLoginAdmission(
+                admitted=True,
+                throttled=False,
+                already_locked=False,
+                lockout_transition=lockout_transition,
+            )
 
-        for limiter_key, failure_count, window_started_at, locked_until in snapshots:
-            failure_count += 1
-            next_locked_until = locked_until
-            if failure_count >= rate_limit:
-                next_locked_until = now + timedelta(seconds=lockout_seconds)
-                newly_locked = True
-            self.rows[limiter_key] = {
-                "failure_count": failure_count,
-                "window_started_at": window_started_at,
-                "locked_until": next_locked_until,
-                "updated_at": now,
-            }
-        return True, newly_locked
+    def clear_many(self, limiter_keys: tuple[str, ...]) -> None:
+        with self._lock:
+            for limiter_key in limiter_keys:
+                self.rows.pop(limiter_key, None)
 
-    def clear(self, limiter_key: str) -> None:
-        self.rows.pop(limiter_key, None)
-
-    def release(
-        self,
-        limiter_keys: tuple[str, ...],
-        now: datetime,
-        *,
-        rate_limit: int,
-    ) -> None:
-        for limiter_key in limiter_keys:
+    def release_admission(self, limiter_key: str, *, rate_limit: int) -> None:
+        with self._lock:
             row = self.rows.get(limiter_key)
             if row is None:
-                continue
-            failure_count = max(0, int(row["failure_count"]) - 1)
+                return
+            failure_count = max(int(row["failure_count"]) - 1, 0)
             locked_until = row.get("locked_until")
             if failure_count < rate_limit:
                 locked_until = None
-            if failure_count == 0:
-                self.rows.pop(limiter_key, None)
-            else:
-                self.rows[limiter_key] = {
-                    **row,
-                    "failure_count": failure_count,
-                    "locked_until": locked_until,
-                    "updated_at": now,
-                }
+            self.rows[limiter_key] = {
+                **row,
+                "failure_count": failure_count,
+                "locked_until": locked_until,
+            }
 
     def cleanup(
         self,
@@ -133,17 +142,18 @@ class FakeRateLimitStore:
         window_seconds: int,
         lockout_seconds: int,
     ) -> int:
-        retention = max(window_seconds, lockout_seconds) * 2
-        cutoff = now - timedelta(seconds=retention)
-        expired = [
-            key
-            for key, row in self.rows.items()
-            if row["updated_at"] < cutoff
-            and (row["locked_until"] is None or row["locked_until"] < now)
-        ]
-        for key in expired:
-            del self.rows[key]
-        return len(expired)
+        with self._lock:
+            retention = max(window_seconds, lockout_seconds) * 2
+            cutoff = now - timedelta(seconds=retention)
+            expired = [
+                key
+                for key, row in self.rows.items()
+                if row["updated_at"] < cutoff
+                and (row["locked_until"] is None or row["locked_until"] < now)
+            ]
+            for key in expired:
+                del self.rows[key]
+            return len(expired)
 
 
 @pytest.fixture
@@ -155,7 +165,10 @@ def rate_limit_store() -> FakeRateLimitStore:
 def shared_rate_limiter(store: FakeRateLimitStore) -> Generator[None, None, None]:
     """Patch db rate-limit functions to use shared durable storage."""
 
-    def admit(
+    def is_throttled(conn: Any, *, limiter_key: str, now: datetime) -> bool:
+        return store.is_throttled(limiter_key, now)
+
+    def try_admit(
         conn: Any,
         *,
         limiter_keys: tuple[str, ...],
@@ -163,8 +176,8 @@ def shared_rate_limiter(store: FakeRateLimitStore) -> Generator[None, None, None
         rate_limit: int,
         window_seconds: int,
         lockout_seconds: int,
-    ) -> tuple[bool, bool]:
-        return store.admit(
+    ) -> db.AdminLoginAdmission:
+        return store.try_admit(
             limiter_keys,
             now,
             rate_limit=rate_limit,
@@ -172,17 +185,17 @@ def shared_rate_limiter(store: FakeRateLimitStore) -> Generator[None, None, None
             lockout_seconds=lockout_seconds,
         )
 
-    def clear(conn: Any, *, limiter_key: str) -> None:
-        store.clear(limiter_key)
+    def clear_many(conn: Any, *, limiter_keys: tuple[str, ...]) -> None:
+        store.clear_many(limiter_keys)
 
-    def release(
+    def release_admission(
         conn: Any,
         *,
-        limiter_keys: tuple[str, ...],
+        limiter_key: str,
         now: datetime,
         rate_limit: int,
     ) -> None:
-        store.release(limiter_keys, now, rate_limit=rate_limit)
+        store.release_admission(limiter_key, rate_limit=rate_limit)
 
     def cleanup(
         conn: Any,
@@ -198,9 +211,10 @@ def shared_rate_limiter(store: FakeRateLimitStore) -> Generator[None, None, None
         )
 
     with (
-        patch("app.admin_auth.db.admit_admin_login_attempt", side_effect=admit),
-        patch("app.admin_auth.db.release_admin_login_admission", side_effect=release),
-        patch("app.admin_auth.db.clear_admin_login_rate_limit", side_effect=clear),
+        patch("app.admin_auth.db.is_admin_login_throttled", side_effect=is_throttled),
+        patch("app.admin_auth.db.try_admit_admin_login", side_effect=try_admit),
+        patch("app.admin_auth.db.clear_admin_login_rate_limits", side_effect=clear_many),
+        patch("app.admin_auth.db.release_admin_login_admission", side_effect=release_admission),
         patch(
             "app.admin_auth.db.cleanup_expired_admin_login_rate_limits",
             side_effect=cleanup,
@@ -562,23 +576,37 @@ def test_csrf_value_rejects_missing_or_malformed() -> None:
 
 
 @pytest.mark.unit
-def test_build_admin_login_source_limiter_key_is_stable() -> None:
-    settings = get_settings()
-    key_a = admin_auth.build_admin_login_source_limiter_key("203.0.113.1", settings)
-    key_b = admin_auth.build_admin_login_source_limiter_key("203.0.113.1", settings)
-    key_c = admin_auth.build_admin_login_source_limiter_key("203.0.113.2", settings)
-    assert key_a == key_b
-    assert key_a != key_c
-    assert len(key_a) == 64
+def test_build_source_and_account_rate_limit_keys() -> None:
+    source_a = admin_auth.build_source_rate_limit_key("203.0.113.1")
+    source_b = admin_auth.build_source_rate_limit_key("203.0.113.2")
+    assert source_a != source_b
+    assert len(source_a) == 64
+
+    account_a = admin_auth.build_account_rate_limit_key("Operator")
+    account_b = admin_auth.build_account_rate_limit_key("operator")
+    assert account_a == account_b
 
 
 @pytest.mark.unit
-def test_build_admin_login_account_limiter_key_is_stable() -> None:
-    settings = get_settings()
-    key_a = admin_auth.build_admin_login_account_limiter_key(settings)
-    key_b = admin_auth.build_admin_login_account_limiter_key(settings)
-    assert key_a == key_b
-    assert len(key_a) == 64
+def test_login_limiter_keys_include_account_for_configured_username() -> None:
+    keys = admin_auth.login_limiter_keys(
+        submitted_username="Operator",
+        client_source="203.0.113.1",
+        configured_admin_username="operator",
+    )
+    assert len(keys) == 2
+    assert admin_auth.build_source_rate_limit_key("203.0.113.1") in keys
+    assert admin_auth.build_account_rate_limit_key("operator") in keys
+
+
+@pytest.mark.unit
+def test_login_limiter_keys_source_only_for_unknown_username() -> None:
+    keys = admin_auth.login_limiter_keys(
+        submitted_username="ghost",
+        client_source="203.0.113.1",
+        configured_admin_username="operator",
+    )
+    assert keys == (admin_auth.build_source_rate_limit_key("203.0.113.1"),)
 
 
 @pytest.mark.unit
@@ -733,20 +761,32 @@ def test_login_invalid_csrf_retains_replacement_flow_cookie(
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_login_rate_limit_retains_replacement_flow_cookie(
+def test_login_rate_limit_keeps_existing_flow_when_throttled(
     rate_limit_store: FakeRateLimitStore,
 ) -> None:
     with shared_rate_limiter(rate_limit_store):
-        last_failure: Any = None
-        for _ in range(5):
-            last_failure = _login(password="wrong")
-            assert last_failure.status_code == 401
+        with mock_db_connection():
+            csrf_token, cookies = _fetch_login_form()
+            for _ in range(5):
+                response = _login(password="wrong", csrf_token=csrf_token, cookies=cookies)
+                assert response.status_code == 401
+                csrf_token = _extract_csrf_token(response.text)
+                flow_cookie = response.cookies.get(LOGIN_FLOW_COOKIE_NAME)
+                if flow_cookie:
+                    cookies[LOGIN_FLOW_COOKIE_NAME] = flow_cookie
 
-        blocked = _login(password="wrong")
+            blocked = client.post(
+                "/admin/login",
+                data={
+                    "username": TEST_USERNAME,
+                    "password": "wrong",
+                    "csrf_token": csrf_token,
+                },
+                cookies=cookies,
+            )
     assert blocked.status_code == 429
     assert admin_auth.LOGIN_THROTTLED_MESSAGE in blocked.text
-    assert not _login_flow_set_cookie_headers(blocked)
-    _assert_replacement_login_flow_cookie_retained(last_failure)
+    assert _login_flow_set_cookie_headers(blocked) == []
 
 
 @pytest.mark.unit
@@ -900,11 +940,13 @@ def test_login_rate_limiting_enforced_across_instances(rate_limit_store: FakeRat
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_successful_login_clears_rate_limit(
+def test_successful_login_clears_account_rate_limit_only(
     rate_limit_store: FakeRateLimitStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
+    source_key = admin_auth.build_source_rate_limit_key("testclient")
+    account_key = admin_auth.build_account_rate_limit_key(TEST_USERNAME)
     with shared_rate_limiter(rate_limit_store):
         with mock_db_connection():
             assert _login(password="wrong").status_code == 401
@@ -912,6 +954,8 @@ def test_successful_login_clears_rate_limit(
             recovery = _login()
             assert recovery.status_code == 303
             client.cookies.pop(SESSION_COOKIE_NAME, None)
+            assert account_key not in rate_limit_store.rows
+            assert source_key in rate_limit_store.rows
 
             assert _login(password="wrong").status_code == 401
             assert _login(password="wrong").status_code == 429
@@ -930,12 +974,11 @@ def test_rate_limit_expires_after_lockout(
         assert _login(password="wrong").status_code == 401
         assert _login(password="wrong").status_code == 429
 
-        settings = get_settings()
-        source_key = admin_auth.build_admin_login_source_limiter_key("testclient", settings)
-        account_key = admin_auth.build_admin_login_account_limiter_key(settings)
-        expired = datetime.now(timezone.utc) - timedelta(seconds=1)
-        rate_limit_store.rows[source_key]["locked_until"] = expired
-        rate_limit_store.rows[account_key]["locked_until"] = expired
+        source_key = admin_auth.build_source_rate_limit_key("testclient")
+        account_key = admin_auth.build_account_rate_limit_key(TEST_USERNAME)
+        expired_lock = datetime.now(timezone.utc) - timedelta(seconds=1)
+        for key in (source_key, account_key):
+            rate_limit_store.rows[key]["locked_until"] = expired_lock
 
         allowed = _login(password="wrong")
         assert allowed.status_code == 401
@@ -951,12 +994,12 @@ def test_rate_limit_uses_forwarded_ip_when_trusted(
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
     with shared_rate_limiter(rate_limit_store):
         headers = {"X-Forwarded-For": "203.0.113.77"}
-        assert _login(password="wrong", headers=headers).status_code == 401
-        assert _login(password="wrong", headers=headers).status_code == 401
-        assert _login(password="wrong", headers=headers).status_code == 429
+        assert _login(username="ghost", password="wrong", headers=headers).status_code == 401
+        assert _login(username="ghost", password="wrong", headers=headers).status_code == 401
+        assert _login(username="ghost", password="wrong", headers=headers).status_code == 429
 
         other_ip_headers = {"X-Forwarded-For": "203.0.113.88"}
-        assert _login(password="wrong", headers=other_ip_headers).status_code == 429
+        assert _login(username="ghost", password="wrong", headers=other_ip_headers).status_code == 401
 
 
 @pytest.mark.unit
@@ -984,7 +1027,11 @@ def test_rate_limit_fallback_when_database_unavailable(
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "5")
     with (
         patch(
-            "app.admin_auth.db.admit_admin_login_attempt",
+            "app.admin_auth.db.try_admit_admin_login",
+            side_effect=Exception("database unavailable"),
+        ),
+        patch(
+            "app.admin_auth.db.cleanup_expired_admin_login_rate_limits",
             side_effect=Exception("database unavailable"),
         ),
         mock_db_connection(),
@@ -995,6 +1042,177 @@ def test_rate_limit_fallback_when_database_unavailable(
         blocked = _login(password="wrong")
         assert blocked.status_code == 429
         assert admin_auth.LOGIN_THROTTLED_MESSAGE in blocked.text
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_username_rotation_stops_password_verification_at_source_threshold(
+    rate_limit_store: FakeRateLimitStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "3")
+    verify_calls = {"count": 0}
+    original_verify = admin_auth.verify_admin_credentials
+
+    def counting_verify(username: str, password: str, settings: Any) -> bool:
+        verify_calls["count"] += 1
+        return original_verify(username, password, settings)
+
+    with shared_rate_limiter(rate_limit_store):
+        with (
+            mock_db_connection(),
+            patch(
+                "app.admin_routes.admin_auth.verify_admin_credentials",
+                side_effect=counting_verify,
+            ),
+        ):
+            for index in range(4):
+                response = _login(username=f"user-{index}", password="wrong")
+                if index < 3:
+                    assert response.status_code == 401
+                else:
+                    assert response.status_code == 429
+
+    assert verify_calls["count"] == 3
+    source_key = admin_auth.build_source_rate_limit_key("testclient")
+    assert len(rate_limit_store.rows) == 1
+    assert source_key in rate_limit_store.rows
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_already_locked_requests_skip_password_verification_and_audit_amplification(
+    rate_limit_store: FakeRateLimitStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
+    verify_calls = {"count": 0}
+
+    with shared_rate_limiter(rate_limit_store):
+        with (
+            mock_db_connection(),
+            patch(
+                "app.admin_routes.admin_auth.verify_admin_credentials",
+                side_effect=lambda *_args, **_kwargs: verify_calls.__setitem__(
+                    "count", verify_calls["count"] + 1
+                )
+                or False,
+            ),
+            patch("app.admin_routes._record_login_failure") as audit_mock,
+        ):
+            assert _login(password="wrong").status_code == 401
+            assert _login(password="wrong").status_code == 401
+            assert verify_calls["count"] == 2
+            audit_calls_after_lock = audit_mock.call_count
+
+            for _ in range(5):
+                blocked = _login(password="wrong")
+                assert blocked.status_code == 429
+
+    assert verify_calls["count"] == 2
+    assert audit_mock.call_count == audit_calls_after_lock
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_lockout_transition_records_single_audit_event(
+    rate_limit_store: FakeRateLimitStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
+    with shared_rate_limiter(rate_limit_store):
+        with mock_db_connection(), patch("app.admin_routes._record_login_failure") as audit_mock:
+            assert _login(password="wrong").status_code == 401
+            assert audit_mock.call_count == 1
+
+            lockout = _login(password="wrong")
+            assert lockout.status_code == 401
+            assert audit_mock.call_count == 2
+            assert audit_mock.call_args_list[-1].kwargs["reason"] == "rate_limited"
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_oversized_login_fields_rejected_before_password_verification(
+    rate_limit_store: FakeRateLimitStore,
+) -> None:
+    verify_calls = {"count": 0}
+    with shared_rate_limiter(rate_limit_store):
+        with (
+            mock_db_connection(),
+            patch(
+                "app.admin_routes.admin_auth.verify_admin_credentials",
+                side_effect=lambda *_args, **_kwargs: verify_calls.__setitem__(
+                    "count", verify_calls["count"] + 1
+                )
+                or False,
+            ),
+        ):
+            csrf_token, cookies = _fetch_login_form()
+            huge = "x" * (admin_auth.LOGIN_USERNAME_MAX_LENGTH + 1)
+            response = client.post(
+                "/admin/login",
+                data={
+                    "username": huge,
+                    "password": TEST_PASSWORD,
+                    "csrf_token": csrf_token,
+                },
+                cookies=cookies,
+            )
+    assert response.status_code == 400
+    assert admin_auth.INVALID_CREDENTIALS_MESSAGE in response.text
+    assert verify_calls["count"] == 0
+    assert _login_flow_set_cookie_headers(response) == []
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_concurrent_login_admission_respects_shared_threshold(
+    rate_limit_store: FakeRateLimitStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "5")
+    barrier = threading.Barrier(8)
+    admitted_count = {"value": 0}
+    lock = threading.Lock()
+    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    source_key = admin_auth.build_source_rate_limit_key("203.0.113.77")
+
+    def worker() -> None:
+        barrier.wait()
+        admission = rate_limit_store.try_admit(
+            (source_key,),
+            now,
+            rate_limit=5,
+            window_seconds=900,
+            lockout_seconds=900,
+        )
+        if admission.admitted:
+            with lock:
+                admitted_count["value"] += 1
+
+    threads = [threading.Thread(target=worker) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert admitted_count["value"] == 5
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_account_rate_limit_blocks_configured_username_across_sources(
+    rate_limit_store: FakeRateLimitStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
+    monkeypatch.setenv("ADMIN_TRUST_PROXY_HEADERS", "true")
+    with shared_rate_limiter(rate_limit_store):
+        assert _login(password="wrong", headers={"X-Forwarded-For": "203.0.113.1"}).status_code == 401
+        assert _login(password="wrong", headers={"X-Forwarded-For": "203.0.113.2"}).status_code == 401
+        blocked = _login(password="wrong", headers={"X-Forwarded-For": "203.0.113.3"})
+    assert blocked.status_code == 429
 
 
 @pytest.mark.unit
@@ -1709,233 +1927,3 @@ def test_login_flow_cleanup_failure_retry_succeeds(rate_limit_store: FakeRateLim
                 assert second.status_code == 200
 
     assert cleanup_calls["count"] == 2
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_login_username_rotation_stops_at_source_threshold(
-    rate_limit_store: FakeRateLimitStore,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "3")
-    verify_calls: list[int] = []
-    original_verify = admin_auth.verify_admin_credentials
-
-    def counting_verify(*args: Any, **kwargs: Any) -> bool:
-        verify_calls.append(1)
-        return original_verify(*args, **kwargs)
-
-    with shared_rate_limiter(rate_limit_store):
-        with mock_db_connection():
-            with patch.object(
-                admin_auth,
-                "verify_admin_credentials",
-                side_effect=counting_verify,
-            ):
-                for index in range(6):
-                    response = _login(username=f"candidate-{index}", password="wrong")
-                    if index < 3:
-                        assert response.status_code == 401
-                    else:
-                        assert response.status_code == 429
-    assert len(verify_calls) == 3
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_login_concurrent_admission_respects_threshold(
-    rate_limit_store: FakeRateLimitStore,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import concurrent.futures
-    import threading
-
-    monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "5")
-    verify_calls: list[int] = []
-    original_verify = admin_auth.verify_admin_credentials
-    barrier = threading.Barrier(10)
-
-    def counting_verify(*args: Any, **kwargs: Any) -> bool:
-        verify_calls.append(1)
-        return original_verify(*args, **kwargs)
-
-    def attempt_login() -> int:
-        with mock_db_connection():
-            csrf_token, cookies = _parse_login_form(client.get("/admin/login"))
-        barrier.wait()
-        response = _login(password="wrong", csrf_token=csrf_token, cookies=cookies)
-        return response.status_code
-
-    with shared_rate_limiter(rate_limit_store):
-        with patch.object(
-            admin_auth,
-            "verify_admin_credentials",
-            side_effect=counting_verify,
-        ):
-            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-                statuses = list(executor.map(lambda _: attempt_login(), range(10)))
-
-    assert sum(status == 401 for status in statuses) == 5
-    assert sum(status == 429 for status in statuses) == 5
-    assert len(verify_calls) == 5
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_login_account_bucket_limits_distributed_attempts(
-    rate_limit_store: FakeRateLimitStore,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "3")
-    monkeypatch.setenv("ADMIN_TRUST_PROXY_HEADERS", "true")
-    sources = [f"203.0.113.{index}" for index in range(1, 6)]
-
-    with shared_rate_limiter(rate_limit_store):
-        for index, source in enumerate(sources):
-            response = _login(
-                username=TEST_USERNAME,
-                password="wrong",
-                headers={"X-Forwarded-For": source},
-            )
-            if index < 3:
-                assert response.status_code == 401
-            else:
-                assert response.status_code == 429
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_already_locked_requests_skip_password_verification_and_flow_minting(
-    rate_limit_store: FakeRateLimitStore,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
-    verify_calls: list[int] = []
-
-    def reject_verify(*args: Any, **kwargs: Any) -> bool:
-        verify_calls.append(1)
-        return False
-
-    with shared_rate_limiter(rate_limit_store):
-        with mock_db_connection():
-            with patch.object(admin_auth, "verify_admin_credentials", side_effect=reject_verify):
-                assert _login(password="wrong").status_code == 401
-                assert _login(password="wrong").status_code == 401
-
-                csrf_token, cookies = _fetch_login_form()
-                initial_flow_count = len(_login_flows)
-                for _ in range(5):
-                    response = client.post(
-                        "/admin/login",
-                        data={
-                            "username": TEST_USERNAME,
-                            "password": "wrong",
-                            "csrf_token": csrf_token,
-                        },
-                        cookies=cookies,
-                    )
-                    assert response.status_code == 429
-                    assert not _login_flow_set_cookie_headers(response)
-
-                assert len(_login_flows) == initial_flow_count
-                assert len(verify_calls) == 2
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_successful_login_clears_account_bucket_not_source_protection(
-    rate_limit_store: FakeRateLimitStore,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "3")
-    settings = get_settings()
-    source_key = admin_auth.build_admin_login_source_limiter_key("testclient", settings)
-    account_key = admin_auth.build_admin_login_account_limiter_key(settings)
-
-    with shared_rate_limiter(rate_limit_store):
-        with mock_db_connection():
-            assert _login(password="wrong").status_code == 401
-            assert _login(password="wrong").status_code == 401
-
-            recovery = _login()
-            assert recovery.status_code == 303
-            client.cookies.pop(SESSION_COOKIE_NAME, None)
-            assert account_key not in rate_limit_store.rows
-
-            assert _login(password="wrong").status_code == 401
-            assert rate_limit_store.rows[source_key]["failure_count"] == 3
-            blocked = _login(password="wrong")
-            assert blocked.status_code == 429
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_login_rejects_oversized_inputs_before_verification(
-    rate_limit_store: FakeRateLimitStore,
-) -> None:
-    verify_calls: list[int] = []
-
-    def reject_verify(*args: Any, **kwargs: Any) -> bool:
-        verify_calls.append(1)
-        return False
-
-    oversized = "x" * (admin_auth.LOGIN_USERNAME_MAX_LENGTH + 1)
-    with shared_rate_limiter(rate_limit_store):
-        with mock_db_connection():
-            with patch.object(admin_auth, "verify_admin_credentials", side_effect=reject_verify):
-                csrf_token, cookies = _fetch_login_form()
-                response = client.post(
-                    "/admin/login",
-                    data={
-                        "username": oversized,
-                        "password": TEST_PASSWORD,
-                        "csrf_token": csrf_token,
-                    },
-                    cookies=cookies,
-                )
-    assert response.status_code == 400
-    assert admin_auth.INVALID_CREDENTIALS_MESSAGE in response.text
-    assert verify_calls == []
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_lockout_records_single_audit_event(
-    rate_limit_store: FakeRateLimitStore,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
-    audit_calls: list[str] = []
-
-    def capture_audit(*args: Any, **kwargs: Any) -> None:
-        reason = kwargs.get("reason")
-        if reason is None and len(args) >= 2:
-            reason = args[1]
-        audit_calls.append(str(reason))
-
-    with shared_rate_limiter(rate_limit_store):
-        with mock_db_connection():
-            with patch("app.admin_routes._record_login_failure", side_effect=capture_audit):
-                assert _login(password="wrong").status_code == 401
-                assert _login(password="wrong").status_code == 401
-
-                csrf_token, cookies = _fetch_login_form()
-                for _ in range(4):
-                    client.post(
-                        "/admin/login",
-                        data={
-                            "username": TEST_USERNAME,
-                            "password": "wrong",
-                            "csrf_token": csrf_token,
-                        },
-                        cookies=cookies,
-                    )
-
-    assert audit_calls.count("rate_limited") == 1
-
-
-@pytest.mark.unit
-def test_client_ip_supports_ipv6_literal() -> None:
-    settings = get_settings()
-    request = _request_with_client("2001:db8::1")
-    assert admin_auth.client_ip(request, settings) == "2001:db8::1"

@@ -38,15 +38,11 @@ LOGIN_FLOW_CLEANUP_BATCH_SIZE = 100
 INVALID_CREDENTIALS_MESSAGE = "Invalid username or password."
 INVALID_REQUEST_MESSAGE = "Invalid request."
 LOGIN_THROTTLED_MESSAGE = "Too many login attempts. Try again later."
-
-# Documented upper bounds enforced before hashing, normalization, or Argon2 work.
 LOGIN_USERNAME_MAX_LENGTH = 256
-LOGIN_PASSWORD_MAX_LENGTH = 256
-LOGIN_CSRF_MAX_LENGTH = 128
-LOGIN_FLOW_TOKEN_MAX_LENGTH = 128
-
-# Privacy-preserving limiter key namespace (pepper uses ADMIN_SESSION_SECRET).
-_LIMITER_KEY_VERSION = "admin-login-limiter-v1"
+LOGIN_PASSWORD_MAX_LENGTH = 512
+LOGIN_CSRF_MAX_LENGTH = 256
+LOGIN_FLOW_TOKEN_MAX_LENGTH = 512
+LOGIN_NEXT_MAX_LENGTH = 2048
 
 # Conservative in-memory fallback when shared Postgres limiter storage is unavailable.
 _FALLBACK_RATE_LIMIT = 2
@@ -54,7 +50,7 @@ _FALLBACK_WINDOW_SECONDS = 60
 
 _password_hasher = PasswordHasher()
 _fallback_lock = Lock()
-_fallback_attempts: dict[str, tuple[int, float, float | None]] = {}
+_fallback_attempts: dict[str, tuple[int, float]] = {}
 _logger = logging.getLogger(__name__)
 
 
@@ -77,12 +73,13 @@ class AdminSession:
 
 
 @dataclass(frozen=True)
-class AdminLoginAdmission:
-    """Result of an atomic shared-store login admission decision."""
+class LoginAdmissionResult:
+    """Shared-store admission decision for one login POST."""
 
     admitted: bool
     throttled: bool
-    newly_locked: bool
+    already_locked: bool
+    lockout_transition: bool
     store_unavailable: bool = False
 
 
@@ -244,9 +241,15 @@ def client_ip(request: Request, settings: Settings) -> str:
     enabled (e.g. behind Render's load balancer). Otherwise the direct peer
     address is used so clients cannot spoof ``X-Forwarded-For``.
 
-    IPv4 and IPv6 addresses are used as returned by the ASGI server or the
-    left-most ``X-Forwarded-For`` value when trusted. Missing peer information
-    maps to the stable sentinel ``unknown``.
+    Source identity notes:
+
+    * **IPv4 / IPv6** — stored only as keyed digests; the resolved string is
+      passed verbatim into the source bucket (e.g. ``203.0.113.1``,
+      ``2001:db8::1``).
+    * **Missing peer** — falls back to ``unknown`` so attempts still share one
+      bucket instead of creating an unbounded namespace.
+    * **Trusted proxy** — the left-most ``X-Forwarded-For`` value is used when
+      proxy trust is enabled; spoofed headers are ignored when trust is off.
     """
     if settings.admin_trust_proxy_headers:
         forwarded = request.headers.get("x-forwarded-for", "")
@@ -257,145 +260,137 @@ def client_ip(request: Request, settings: Settings) -> str:
     return "unknown"
 
 
-def login_form_inputs_within_bounds(
+def _digest_limiter_key(prefix: str, material: str) -> str:
+    payload = f"{prefix}:{material}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def build_source_rate_limit_key(client_source: str) -> str:
+    """Source-wide bucket keyed by resolved client source (privacy-preserving)."""
+    normalized_source = client_source.strip().lower()
+    return _digest_limiter_key("src", normalized_source)
+
+
+def build_account_rate_limit_key(admin_username: str) -> str:
+    """Account-wide bucket for the configured admin username."""
+    normalized_username = admin_username.strip().lower()
+    return _digest_limiter_key("acct", normalized_username)
+
+
+def build_rate_limit_key(username: str, client_source: str) -> str:
+    """Deprecated composite key kept for tests migrating to dual-bucket strategy."""
+    normalized_username = username.strip().lower()
+    material = f"{normalized_username}:{client_source.strip().lower()}"
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+def login_limiter_keys(
+    *,
+    submitted_username: str,
+    client_source: str,
+    configured_admin_username: str,
+) -> tuple[str, ...]:
+    """Return the shared limiter buckets consulted for one login attempt."""
+    keys = [build_source_rate_limit_key(client_source)]
+    normalized_submitted = submitted_username.strip().lower()
+    normalized_configured = configured_admin_username.strip().lower()
+    if normalized_configured and normalized_submitted == normalized_configured:
+        keys.append(build_account_rate_limit_key(configured_admin_username))
+    return tuple(keys)
+
+
+def _is_fallback_throttled(limiter_keys: tuple[str, ...]) -> bool:
+    now = time.time()
+    with _fallback_lock:
+        for limiter_key in limiter_keys:
+            entry = _fallback_attempts.get(limiter_key)
+            if entry is None:
+                continue
+            count, window_start = entry
+            if now - window_start >= _FALLBACK_WINDOW_SECONDS:
+                del _fallback_attempts[limiter_key]
+                continue
+            if count >= _FALLBACK_RATE_LIMIT:
+                return True
+    return False
+
+
+def _record_fallback_admission(limiter_keys: tuple[str, ...]) -> LoginAdmissionResult:
+    now = time.time()
+    lockout_transition = False
+    with _fallback_lock:
+        for limiter_key in limiter_keys:
+            count, window_start = _fallback_attempts.get(limiter_key, (0, now))
+            if now - window_start >= _FALLBACK_WINDOW_SECONDS:
+                count = 0
+                window_start = now
+            prior_count = count
+            count += 1
+            _fallback_attempts[limiter_key] = (count, window_start)
+            if prior_count < _FALLBACK_RATE_LIMIT <= count:
+                lockout_transition = True
+    return LoginAdmissionResult(
+        admitted=True,
+        throttled=False,
+        already_locked=False,
+        lockout_transition=lockout_transition,
+    )
+
+
+def _clear_fallback_failures(limiter_keys: tuple[str, ...]) -> None:
+    with _fallback_lock:
+        for limiter_key in limiter_keys:
+            _fallback_attempts.pop(limiter_key, None)
+
+
+def _release_fallback_admission(limiter_key: str) -> None:
+    with _fallback_lock:
+        entry = _fallback_attempts.get(limiter_key)
+        if entry is None:
+            return
+        count, window_start = entry
+        _fallback_attempts[limiter_key] = (max(count - 1, 0), window_start)
+
+
+def login_form_inputs_valid(
     *,
     username: str,
     password: str,
     csrf_token: str,
     login_flow_token: str | None,
+    next_path: str | None = None,
 ) -> bool:
-    """Return False when any submitted login value exceeds documented limits."""
-    if len(username) > LOGIN_USERNAME_MAX_LENGTH:
+    """Reject oversized login POST fields before hashing, storage, or verification."""
+    if not username or len(username) > LOGIN_USERNAME_MAX_LENGTH:
         return False
-    if len(password) > LOGIN_PASSWORD_MAX_LENGTH:
+    if not password or len(password) > LOGIN_PASSWORD_MAX_LENGTH:
         return False
-    if len(csrf_token) > LOGIN_CSRF_MAX_LENGTH:
+    if not csrf_token or len(csrf_token) > LOGIN_CSRF_MAX_LENGTH:
         return False
     if login_flow_token is not None and len(login_flow_token) > LOGIN_FLOW_TOKEN_MAX_LENGTH:
+        return False
+    if next_path is not None and len(next_path) > LOGIN_NEXT_MAX_LENGTH:
         return False
     return True
 
 
-def _limiter_pepper(settings: Settings) -> str:
-    return settings.admin_session_secret or ""
-
-
-def build_admin_login_source_limiter_key(client_source: str, settings: Settings) -> str:
-    """Source-wide bucket keyed by resolved client source (username rotation safe)."""
-    material = f"{_LIMITER_KEY_VERSION}:source:{client_source}:{_limiter_pepper(settings)}"
-    return hashlib.sha256(material.encode("utf-8")).hexdigest()
-
-
-def build_admin_login_account_limiter_key(settings: Settings) -> str:
-    """Account-wide bucket for the configured admin username across sources."""
-    normalized = settings.admin_username.strip().lower()
-    material = f"{_LIMITER_KEY_VERSION}:account:{normalized}:{_limiter_pepper(settings)}"
-    return hashlib.sha256(material.encode("utf-8")).hexdigest()
-
-
-def build_rate_limit_key(username: str, client_source: str) -> str:
-    """Legacy combined key helper retained for tests and documentation parity."""
-    normalized_username = username.strip().lower()
-    material = f"{normalized_username}:{client_source}"
-    return hashlib.sha256(material.encode("utf-8")).hexdigest()
-
-
-def submitted_username_targets_configured_admin(username: str, settings: Settings) -> bool:
-    configured = settings.admin_username.strip().lower()
-    submitted = username.strip().lower()
-    if not configured or not submitted:
-        return False
-    return secrets.compare_digest(submitted, configured)
-
-
-def admin_login_limiter_keys(username: str, client_source: str, settings: Settings) -> tuple[str, ...]:
-    """Return ordered limiter buckets consulted for one login admission."""
-    source_key = build_admin_login_source_limiter_key(client_source, settings)
-    if submitted_username_targets_configured_admin(username, settings):
-        return (source_key, build_admin_login_account_limiter_key(settings))
-    return (source_key,)
-
-
-def _fallback_state(limiter_key: str, now: float) -> tuple[int, float, float | None]:
-    with _fallback_lock:
-        entry = _fallback_attempts.get(limiter_key)
-        if entry is None:
-            return 0, now, None
-        count, window_start, locked_until = entry
-        if now - window_start >= _FALLBACK_WINDOW_SECONDS:
-            del _fallback_attempts[limiter_key]
-            return 0, now, None
-        return count, window_start, locked_until
-
-
-def _fallback_admit(limiter_keys: tuple[str, ...]) -> AdminLoginAdmission:
-    now = time.time()
-    snapshots: dict[str, tuple[int, float, float | None]] = {}
-    for key in limiter_keys:
-        count, window_start, locked_until = _fallback_state(key, now)
-        if locked_until is not None and locked_until > now:
-            _logger.info(
-                "Admin login throttled via fallback limiter",
-                extra={"bucket_count": len(limiter_keys), "outcome": "throttled"},
-            )
-            return AdminLoginAdmission(
-                admitted=False,
-                throttled=True,
-                newly_locked=False,
-                store_unavailable=True,
-            )
-        snapshots[key] = (count, window_start, locked_until)
-
-    newly_locked = False
-    with _fallback_lock:
-        for key in limiter_keys:
-            count, window_start, locked_until = snapshots[key]
-            if count >= _FALLBACK_RATE_LIMIT:
-                lock_until = now + _FALLBACK_WINDOW_SECONDS
-                _fallback_attempts[key] = (count, window_start, lock_until)
-                newly_locked = True
-                _logger.info(
-                    "Admin login throttled via fallback limiter",
-                    extra={"bucket_count": len(limiter_keys), "outcome": "lockout"},
-                )
-                return AdminLoginAdmission(
-                    admitted=False,
-                    throttled=True,
-                    newly_locked=newly_locked,
-                    store_unavailable=True,
-                )
-            _fallback_attempts[key] = (count + 1, window_start, locked_until)
-    _logger.info(
-        "Admin login admitted via fallback limiter",
-        extra={"bucket_count": len(limiter_keys), "outcome": "admitted"},
-    )
-    return AdminLoginAdmission(
-        admitted=True,
-        throttled=False,
-        newly_locked=False,
-        store_unavailable=True,
-    )
-
-
-def _clear_fallback_keys(limiter_keys: tuple[str, ...]) -> None:
-    with _fallback_lock:
-        for key in limiter_keys:
-            _fallback_attempts.pop(key, None)
-
-
-def admit_admin_login(
+def try_admit_login_attempt(
     request: Request,
     settings: Settings,
     *,
-    username: str,
-) -> AdminLoginAdmission:
-    """Atomically reserve one login attempt across shared limiter buckets."""
-    client_source = client_ip(request, settings)
-    limiter_keys = admin_login_limiter_keys(username, client_source, settings)
+    username: str = "",
+) -> LoginAdmissionResult:
+    """Atomically reserve shared limiter capacity before password verification."""
+    source = client_ip(request, settings)
+    limiter_keys = login_limiter_keys(
+        submitted_username=username,
+        client_source=source,
+        configured_admin_username=settings.admin_username,
+    )
     now = datetime.now(timezone.utc)
     try:
         with db.db_connection(settings.database_url) as conn:
-            admitted, newly_locked = db.admit_admin_login_attempt(
+            admission = db.try_admit_admin_login(
                 conn,
                 limiter_keys=limiter_keys,
                 now=now,
@@ -412,84 +407,111 @@ def admit_admin_login(
     except Exception:
         _logger.warning(
             "Admin login rate limiter unavailable; using conservative fallback",
+            extra={"limiter_key_count": len(limiter_keys)},
             exc_info=True,
-            extra={"bucket_count": len(limiter_keys), "outcome": "store_failure"},
         )
-        return _fallback_admit(limiter_keys)
+        if _is_fallback_throttled(limiter_keys):
+            return LoginAdmissionResult(
+                admitted=False,
+                throttled=True,
+                already_locked=True,
+                lockout_transition=False,
+                store_unavailable=True,
+            )
+        fallback = _record_fallback_admission(limiter_keys)
+        return LoginAdmissionResult(
+            admitted=fallback.admitted,
+            throttled=fallback.throttled,
+            already_locked=fallback.already_locked,
+            lockout_transition=fallback.lockout_transition,
+            store_unavailable=True,
+        )
 
-    if admitted:
+    if admission.admitted:
         _logger.info(
-            "Admin login admitted",
-            extra={"bucket_count": len(limiter_keys), "outcome": "admitted"},
+            "Admin login attempt admitted",
+            extra={
+                "limiter_key_count": len(limiter_keys),
+                "lockout_transition": admission.lockout_transition,
+            },
         )
-        return AdminLoginAdmission(
-            admitted=True,
-            throttled=False,
-            newly_locked=newly_locked,
+    elif admission.already_locked:
+        _logger.info(
+            "Admin login attempt throttled",
+            extra={
+                "limiter_key_count": len(limiter_keys),
+                "already_locked": True,
+            },
         )
-
-    _logger.info(
-        "Admin login throttled",
-        extra={
-            "bucket_count": len(limiter_keys),
-            "outcome": "lockout" if newly_locked else "throttled",
-        },
-    )
-    return AdminLoginAdmission(
-        admitted=False,
-        throttled=True,
-        newly_locked=newly_locked,
+    return LoginAdmissionResult(
+        admitted=admission.admitted,
+        throttled=admission.throttled,
+        already_locked=admission.already_locked,
+        lockout_transition=admission.lockout_transition,
     )
 
 
-def clear_admin_login_account_limit(request: Request, settings: Settings) -> None:
-    """Clear the configured account bucket after successful login only."""
-    account_key = build_admin_login_account_limiter_key(settings)
-    _clear_fallback_keys((account_key,))
+def is_login_throttled(request: Request, settings: Settings, *, username: str = "") -> bool:
+    """Return whether login attempts are currently blocked (read-only helper)."""
+    source = client_ip(request, settings)
+    limiter_keys = login_limiter_keys(
+        submitted_username=username,
+        client_source=source,
+        configured_admin_username=settings.admin_username,
+    )
+    now = datetime.now(timezone.utc)
     try:
         with db.db_connection(settings.database_url) as conn:
-            db.clear_admin_login_rate_limit(conn, limiter_key=account_key)
+            return any(
+                db.is_admin_login_throttled(conn, limiter_key=key, now=now)
+                for key in limiter_keys
+            )
     except Exception:
         _logger.warning(
-            "Admin login account limiter unavailable; cleared fallback only",
+            "Admin login rate limiter unavailable; using conservative fallback",
             exc_info=True,
         )
+        return _is_fallback_throttled(limiter_keys)
 
 
-def release_admin_login_admission(
-    request: Request,
-    settings: Settings,
-    *,
-    username: str,
-) -> None:
-    """Release one admitted reservation after successful password verification."""
-    client_source = client_ip(request, settings)
-    limiter_keys = admin_login_limiter_keys(username, client_source, settings)
+def record_failed_login(request: Request, settings: Settings, *, username: str = "") -> None:
+    """Deprecated: failures are counted during :func:`try_admit_login_attempt`."""
+    _ = (request, settings, username)
+
+
+def finalize_successful_login(request: Request, settings: Settings, *, username: str = "") -> None:
+    """Clear account bucket state and release the current source admission reservation."""
+    _ = username
+    source = client_ip(request, settings)
+    source_key = build_source_rate_limit_key(source)
+    account_keys = (
+        (build_account_rate_limit_key(settings.admin_username),)
+        if settings.admin_username.strip()
+        else ()
+    )
+    _clear_fallback_failures(account_keys)
+    _release_fallback_admission(source_key)
     now = datetime.now(timezone.utc)
-    with _fallback_lock:
-        for key in limiter_keys:
-            entry = _fallback_attempts.get(key)
-            if entry is None:
-                continue
-            count, window_start, locked_until = entry
-            count = max(0, count - 1)
-            if count == 0:
-                _fallback_attempts.pop(key, None)
-            else:
-                _fallback_attempts[key] = (count, window_start, locked_until)
     try:
         with db.db_connection(settings.database_url) as conn:
+            if account_keys:
+                db.clear_admin_login_rate_limits(conn, limiter_keys=account_keys)
             db.release_admin_login_admission(
                 conn,
-                limiter_keys=limiter_keys,
+                limiter_key=source_key,
                 now=now,
                 rate_limit=settings.admin_login_rate_limit,
             )
     except Exception:
         _logger.warning(
-            "Admin login admission release unavailable; adjusted fallback only",
+            "Admin login rate limiter unavailable; cleared fallback only",
             exc_info=True,
         )
+
+
+def clear_login_rate_limit(request: Request, settings: Settings, *, username: str = "") -> None:
+    """Deprecated alias for :func:`finalize_successful_login`."""
+    finalize_successful_login(request, settings, username=username)
 
 
 def verify_admin_credentials(username: str, password: str, settings: Settings) -> bool:
