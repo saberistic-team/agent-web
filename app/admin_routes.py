@@ -26,7 +26,13 @@ from app.brief_conversion import (
     effective_brief_price_cents,
     pipeline_capabilities_available,
 )
-from app.contacts import BUYING_ROLES, ContactCreate, ContactSafeSummary, ContactUpdate
+from app.contacts import (
+    BUYING_ROLES,
+    ContactCreate,
+    ContactEmailConflictError,
+    ContactSafeSummary,
+    ContactUpdate,
+)
 from app.crm_uow import crm_transaction
 from app.actor_context import actor_context_from_request, correlation_id_from_request
 from app.admin_layout import ADMIN_NAV_LINKS, render_admin_shell
@@ -698,22 +704,21 @@ def admin_company_research(
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
-        from app.admin_preview import build_preview_company_research
+        from app.admin_preview import build_preview_company_detail
 
-        preview = build_preview_company_research(company_id)
-        if preview is None:
-            raise HTTPException(status_code=404, detail="Company not found")
-        company, contacts, records = preview
-        return HTMLResponse(
-            admin_research_pages.render_admin_company_research_page(
-                company=company,
-                contacts=contacts,
-                records=records,
-                csrf_token=csrf_token,
-                admin_username=session.admin_username,
-                error_message=error,
+        preview = build_preview_company_detail(company_id)
+        if preview is not None:
+            company, contacts, records = preview
+            return HTMLResponse(
+                admin_research_pages.render_admin_company_research_page(
+                    company=company,
+                    contacts=contacts,
+                    records=records,
+                    csrf_token=csrf_token,
+                    admin_username=session.admin_username,
+                    error_message=error,
+                )
             )
-        )
     with db.db_connection(settings.database_url) as conn:
         company = _crm.get_company(conn, company_id)
         if company is None:
@@ -969,8 +974,11 @@ def admin_contact_create(
         contact = ContactCreate(**_contact_form_payload(**locals()))
     except (ValueError, TypeError, ValidationError) as exc:
         return RedirectResponse(url=f"/admin/contacts/new?error={quote(str(exc))}", status_code=303)
-    with db.db_connection(get_settings().database_url) as conn:
-        result = _crm.create_contact(conn, contact=contact)
+    try:
+        with db.db_connection(get_settings().database_url) as conn:
+            result = _crm.create_contact(conn, contact=contact)
+    except ContactEmailConflictError as exc:
+        return RedirectResponse(url=f"/admin/contacts/new?error={quote(str(exc))}", status_code=303)
     warnings = result["duplicate_warnings"]
     warning = f"{len(warnings)} possible duplicate(s)" if warnings else ""
     return RedirectResponse(
@@ -990,18 +998,17 @@ def admin_contact_edit(
         from app.admin_preview import build_preview_contact_edit
 
         preview = build_preview_contact_edit(contact_id)
-        if preview is None:
-            raise HTTPException(status_code=404, detail="Contact not found")
-        contact, companies = preview
-        return HTMLResponse(
-            contact_pages.render_contact_form_page(
-                csrf_token=csrf_token,
-                admin_username=session.admin_username,
-                companies=companies,
-                contact=contact,
-                error_message=error or warning,
+        if preview is not None:
+            contact, companies = preview
+            return HTMLResponse(
+                contact_pages.render_contact_form_page(
+                    csrf_token=csrf_token,
+                    admin_username=session.admin_username,
+                    companies=companies,
+                    contact=contact,
+                    error_message=error or warning,
+                )
             )
-        )
     with db.db_connection(settings.database_url) as conn:
         contact = _crm.get_contact(conn, contact_id)
         companies = _crm.list_companies(conn, limit=500)
@@ -1042,8 +1049,13 @@ def admin_contact_update(
         return RedirectResponse(
             url=f"/admin/contacts/{contact_id}/edit?error={quote(str(exc))}", status_code=303
         )
-    with db.db_connection(get_settings().database_url) as conn:
-        result = _crm.update_contact(conn, contact_id, contact=contact)
+    try:
+        with db.db_connection(get_settings().database_url) as conn:
+            result = _crm.update_contact(conn, contact_id, contact=contact)
+    except ContactEmailConflictError as exc:
+        return RedirectResponse(
+            url=f"/admin/contacts/{contact_id}/edit?error={quote(str(exc))}", status_code=303
+        )
     if result is None:
         raise HTTPException(status_code=404, detail="Contact not found")
     warnings = result["duplicate_warnings"]
@@ -1146,22 +1158,21 @@ def admin_contact_research(
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
-        from app.admin_preview import build_preview_contact_research
+        from app.admin_preview import build_preview_contact_detail
 
-        preview = build_preview_contact_research(contact_id)
-        if preview is None:
-            raise HTTPException(status_code=404, detail="Contact not found")
-        contact, company, records = preview
-        return HTMLResponse(
-            admin_research_pages.render_admin_contact_research_page(
-                contact=contact,
-                company=company,
-                records=records,
-                csrf_token=csrf_token,
-                admin_username=session.admin_username,
-                error_message=error,
+        preview = build_preview_contact_detail(contact_id)
+        if preview is not None:
+            contact, company, records = preview
+            return HTMLResponse(
+                admin_research_pages.render_admin_contact_research_page(
+                    contact=contact,
+                    company=company,
+                    records=records,
+                    csrf_token=csrf_token,
+                    admin_username=session.admin_username,
+                    error_message=error,
+                )
             )
-        )
     with db.db_connection(settings.database_url) as conn:
         contact = _crm.get_contact(conn, contact_id)
         if contact is None:

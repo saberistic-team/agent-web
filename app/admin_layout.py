@@ -93,12 +93,12 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
-    "/admin/companies/66666666-6666-6666-6666-666666666666",
-    "/admin/companies/77777777-7777-7777-7777-777777777777",
-    "/admin/contacts/88888888-8888-8888-8888-888888888888",
-    "/admin/contacts/99999999-9999-9999-9999-999999999999",
-    "/admin/contacts/88888888-8888-8888-8888-888888888888/edit",
-    "/admin/contacts/99999999-9999-9999-9999-999999999999/edit",
+    "/admin/companies/a1111111-1111-1111-1111-111111111111",
+    "/admin/companies/a2222222-2222-2222-2222-222222222222",
+    "/admin/contacts/c1111111-1111-1111-1111-111111111111",
+    "/admin/contacts/c2222222-2222-2222-2222-222222222222",
+    "/admin/contacts/c1111111-1111-1111-1111-111111111111/edit",
+    "/admin/contacts/c2222222-2222-2222-2222-222222222222/edit",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
@@ -107,6 +107,16 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
 ADMIN_SCREENSHOT_EXPECTED_STATUS: dict[str, int] = {
     "/admin/briefs/503": 503,
 }
+
+
+def render_archive_action_button(*, archived: bool, entity: str) -> str:
+    """Return themed Archive/Restore submit button for company/contact forms."""
+    label = f"Restore {entity}" if archived else f"Archive {entity}"
+    modifier = "admin-action--secondary" if archived else "admin-action--destructive"
+    return (
+        f'<button class="admin-action {modifier}" type="submit">'
+        f"{html.escape(label)}</button>"
+    )
 
 
 def _active_nav_label(active_path: str) -> str:
@@ -152,13 +162,6 @@ def render_admin_nav(active_path: str) -> str:
             </ul>
           </details>
         </nav>"""
-
-
-def archive_action_button_class(*, archived: bool) -> str:
-    """Semantic classes for archive/restore form submit buttons."""
-    if archived:
-        return "admin-action admin-action--restore"
-    return "admin-action admin-action--destructive"
 
 
 def render_admin_shell(

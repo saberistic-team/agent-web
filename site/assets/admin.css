@@ -68,7 +68,7 @@ body.admin-app {
   padding: 0;
 }
 
-/* Form action buttons — distinct from link-like .admin-exit top-bar typography. */
+/* Form action buttons (archive / restore) — distinct from link-like .admin-exit. */
 .admin-action {
   font-family: inherit;
   font-size: 0.72rem;
@@ -78,49 +78,57 @@ body.admin-app {
   border-radius: 2px;
   cursor: pointer;
   border: 1px solid var(--line);
-  background: color-mix(in srgb, var(--surface) 75%, transparent);
   color: var(--ink);
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
 }
 
-.admin-action:hover,
 .admin-action:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.admin-action:active:not(:disabled) {
-  transform: translateY(1px);
-}
-
 .admin-action:disabled {
-  opacity: 0.45;
+  opacity: 0.55;
   cursor: not-allowed;
 }
 
+.admin-action--secondary {
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+.admin-action--secondary:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+}
+
+.admin-action--secondary:active:not(:disabled) {
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+
 .admin-action--destructive {
-  border-color: color-mix(in srgb, #e05a5a 55%, var(--line));
   background: color-mix(in srgb, #e05a5a 14%, var(--surface));
+  border-color: color-mix(in srgb, #e05a5a 55%, var(--line));
   color: #ffb4b4;
 }
 
-.admin-action--destructive:hover,
-.admin-action--destructive:focus-visible {
-  border-color: #e05a5a;
+.admin-action--destructive:hover:not(:disabled) {
   background: color-mix(in srgb, #e05a5a 22%, var(--surface));
-  outline-color: #e05a5a;
+  border-color: #e88a6a;
+  color: #ffd4c8;
 }
 
-.admin-action--restore {
-  border-color: color-mix(in srgb, #4caf7d 50%, var(--line));
-  background: color-mix(in srgb, #4caf7d 12%, var(--surface));
-  color: #b8f0d0;
+.admin-action--destructive:active:not(:disabled) {
+  background: color-mix(in srgb, #e05a5a 30%, var(--surface));
 }
 
-.admin-action--restore:hover,
-.admin-action--restore:focus-visible {
-  border-color: #4caf7d;
-  background: color-mix(in srgb, #4caf7d 20%, var(--surface));
-  outline-color: #4caf7d;
+.admin-action--destructive:focus-visible {
+  outline-color: #e88a6a;
 }
 
 .admin-layout {

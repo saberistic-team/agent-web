@@ -5,7 +5,7 @@ from __future__ import annotations
 import html
 from typing import Any
 
-from app.admin_layout import archive_action_button_class, render_admin_shell
+from app.admin_layout import render_admin_shell, render_archive_action_button
 from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES, TARGET_STATUSES
 from app.contacts import EMAIL_PERMISSIONS, RELATIONSHIP_STRENGTHS, format_buying_roles
 from app.research_records import (
@@ -204,10 +204,11 @@ def render_admin_company_research_page(
         f"<div><dt>{html.escape(label)}</dt><dd>{html.escape(str(value or '—'))}</dd></div>"
         for label, value in company_fields
     )
-    company_archived = bool(company.get("archived_at"))
-    archive_action = "restore" if company_archived else "archive"
-    archive_label = "Restore company" if company_archived else "Archive company"
-    archive_button_class = archive_action_button_class(archived=company_archived)
+    archive_action = "restore" if company.get("archived_at") else "archive"
+    archive_button = render_archive_action_button(
+        archived=bool(company.get("archived_at")),
+        entity="company",
+    )
     error_html = ""
     if error_message:
         error_html = (
@@ -250,7 +251,7 @@ def render_admin_company_research_page(
           <dl class="research-provenance">{facts_html}</dl>
           <form method="post" action="/admin/companies/{company_id}/{archive_action}">
             <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}" />
-            <button class="{archive_button_class}" type="submit">{archive_label}</button>
+            {archive_button}
           </form>
           <h2 class="admin-section-heading">Contacts</h2>
           <p><a class="cta" href="/admin/contacts/new">Add contact</a></p>
@@ -332,10 +333,11 @@ def render_admin_contact_research_page(
     else:
         records_html = '<p class="admin-note">No research records yet.</p>'
     form_body = _research_form_body(csrf_token=csrf_token)
-    contact_archived = bool(contact.get("archived_at"))
-    archive_action = "restore" if contact_archived else "archive"
-    archive_label = "Restore contact" if contact_archived else "Archive contact"
-    archive_button_class = archive_action_button_class(archived=contact_archived)
+    archive_action = "restore" if contact.get("archived_at") else "archive"
+    archive_button = render_archive_action_button(
+        archived=bool(contact.get("archived_at")),
+        entity="contact",
+    )
     main = f"""        <section class="admin-research" aria-labelledby="contact-research-title">
           <p class="admin-breadcrumb"><a href="/admin/contacts">Contacts</a></p>
           <h1 class="admin-title" id="contact-research-title">{display_name}</h1>
@@ -345,7 +347,7 @@ def render_admin_contact_research_page(
           <dl class="research-provenance">{facts_html}</dl>
           <form method="post" action="/admin/contacts/{contact_id}/{archive_action}">
             <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}" />
-            <button class="{archive_button_class}" type="submit">{archive_label}</button>
+            {archive_button}
           </form>
           <h2 class="admin-section-heading">Attach record</h2>
           {error_html}
