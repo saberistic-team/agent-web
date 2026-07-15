@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime, timezone
+
 import pytest
 
 from app.linkedin_import import (
     LINKEDIN_IMPORT_SCHEMA_VERSION,
+    _json_safe,
     compute_import_checksum,
     contact_matches_snapshot,
     contact_needs_update,
+    empty_summary_counts,
+    increment_summary,
     normalize_connection_row,
     parse_export_date,
     snapshot_contact,
@@ -16,6 +21,7 @@ from app.linkedin_import import (
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_normalize_connection_row_maps_linkedin_headers() -> None:
     identity = normalize_connection_row(
         {
@@ -34,6 +40,20 @@ def test_normalize_connection_row_maps_linkedin_headers() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
+def test_normalize_connection_row_drops_invalid_profile_url() -> None:
+    identity = normalize_connection_row(
+        {
+            "full_name": "Ada",
+            "profile_url": "https://",
+        }
+    )
+    assert identity["profile_url"] is None
+    assert identity["full_name"] == "Ada"
+
+
+@pytest.mark.unit
+@pytest.mark.integration
 def test_compute_import_checksum_is_stable_and_order_independent() -> None:
     rows_a = [
         {"profile_url": "https://linkedin.com/in/ada", "full_name": "Ada"},
@@ -51,13 +71,17 @@ def test_compute_import_checksum_changes_when_identity_changes() -> None:
 
 
 @pytest.mark.unit
-def test_contact_needs_update_detects_title_change() -> None:
+@pytest.mark.integration
+def test_contact_needs_update_detects_name_and_title_changes() -> None:
     contact = {"full_name": "Ada Lovelace", "title": "Engineer"}
-    identity = {"full_name": "Ada Lovelace", "title": "Mathematician"}
-    assert contact_needs_update(contact, identity) is True
+    assert contact_needs_update(contact, {"full_name": "Ada L", "title": "Engineer"}) is True
+    assert contact_needs_update(contact, {"full_name": "Ada Lovelace", "title": "Mathematician"}) is True
+    assert contact_needs_update(contact, {"full_name": "Ada Lovelace", "title": "Engineer"}) is False
+    assert contact_needs_update(contact, {}) is False
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_contact_matches_snapshot_compares_tracked_fields() -> None:
     contact = {
         "full_name": "Ada",
@@ -67,14 +91,35 @@ def test_contact_matches_snapshot_compares_tracked_fields() -> None:
         "archived_at": None,
     }
     assert contact_matches_snapshot(contact, snapshot_contact(contact)) is True
+    assert contact_matches_snapshot(contact, None) is False
     assert contact_matches_snapshot(contact, {"full_name": "Ada", "title": "CEO"}) is False
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_parse_export_date_accepts_common_formats() -> None:
     assert parse_export_date("2026-03-15").isoformat() == "2026-03-15"
     assert parse_export_date("03/15/2026").isoformat() == "2026-03-15"
+    assert parse_export_date("15 Jan 2024").isoformat() == "2024-01-15"
+    assert parse_export_date(date(2026, 7, 1)) == date(2026, 7, 1)
     assert parse_export_date("") is None
+    assert parse_export_date(None) is None
+    assert parse_export_date("   ") is None
+    assert parse_export_date("not-a-date") is None
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_summary_helpers_and_json_safe() -> None:
+    summary = empty_summary_counts()
+    increment_summary(summary, "inserted")
+    increment_summary(summary, "not_a_real_outcome")
+    assert summary["inserted"] == 1
+    assert summary["skipped"] == 0
+    assert _json_safe(None) is None
+    assert _json_safe(datetime(2026, 1, 2, tzinfo=timezone.utc)) == "2026-01-02T00:00:00+00:00"
+    assert _json_safe(date(2026, 1, 2)) == "2026-01-02"
+    assert _json_safe(42) == "42"
 
 
 @pytest.mark.unit

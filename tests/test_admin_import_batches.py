@@ -71,6 +71,7 @@ def authenticated_admin() -> Generator[dict[str, str], None, None]:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_import_batches_requires_auth() -> None:
     response = client.get("/admin/imports/batches")
     assert response.status_code == 303
@@ -78,6 +79,7 @@ def test_import_batches_requires_auth() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_import_batches_preview_lists_mock_batches(
     authenticated_admin: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -93,6 +95,7 @@ def test_import_batches_preview_lists_mock_batches(
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_import_batch_detail_preview_shows_outcomes(
     authenticated_admin: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -111,6 +114,104 @@ def test_import_batch_detail_preview_shows_outcomes(
 
 
 @pytest.mark.unit
+@pytest.mark.integration
+def test_import_batches_lists_from_crm(
+    authenticated_admin: dict[str, str],
+) -> None:
+    batch = {
+        "id": "11111111-1111-1111-1111-111111111111",
+        "source_type": "linkedin",
+        "export_date": "2026-01-15",
+        "schema_version": "linkedin_export_v1",
+        "checksum": "abc1234567890",
+        "actor": "operator",
+        "status": "committed",
+        "summary_counts": {"inserted": 3, "updated": 0, "unchanged": 0, "skipped": 0, "conflicted": 0},
+        "created_at": "2026-01-16T00:00:00+00:00",
+    }
+    with patch("app.admin_routes._crm.list_import_batches", return_value=([batch], 1)):
+        response = client.get("/admin/imports/batches", cookies=authenticated_admin)
+    assert response.status_code == 200
+    assert "Import batches" in response.text
+    assert "inserted 3" in response.text
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_import_batch_detail_from_crm_and_missing(
+    authenticated_admin: dict[str, str],
+) -> None:
+    batch_id = "11111111-1111-1111-1111-111111111111"
+    state = {
+        "batch": {
+            "id": batch_id,
+            "source_type": "linkedin",
+            "export_date": "2026-01-15",
+            "schema_version": "linkedin_export_v1",
+            "checksum": "abc123",
+            "actor": "operator",
+            "status": "committed",
+            "summary_counts": {"inserted": 1, "updated": 0, "unchanged": 0, "skipped": 0, "conflicted": 0},
+            "correlation_id": "corr-1",
+        },
+        "rows": [
+            {
+                "row_index": 0,
+                "outcome": "inserted",
+                "source_identity": {"full_name": "Ada", "profile_url": "https://linkedin.com/in/ada"},
+                "entity_type": "contact",
+                "entity_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+                "detail": None,
+            }
+        ],
+    }
+    with patch("app.admin_routes._crm.get_import_batch", return_value=state):
+        response = client.get(f"/admin/imports/batches/{batch_id}", cookies=authenticated_admin)
+    assert response.status_code == 200
+    assert "Rollback batch" in response.text
+    assert "Ada" in response.text
+
+    with patch("app.admin_routes._crm.get_import_batch", return_value=None):
+        missing = client.get(f"/admin/imports/batches/{batch_id}", cookies=authenticated_admin)
+    assert missing.status_code == 404
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_import_batch_rollback_redirects(
+    authenticated_admin: dict[str, str],
+) -> None:
+    batch_id = "11111111-1111-1111-1111-111111111111"
+    with (
+        patch("app.admin_routes._verify_session_csrf"),
+        patch("app.admin_routes._crm.rollback_import_batch", return_value={"batch": {"id": batch_id}}),
+    ):
+        ok = client.post(
+            f"/admin/imports/batches/{batch_id}/rollback",
+            cookies=authenticated_admin,
+            data={"csrf_token": "csrf-ok"},
+        )
+    assert ok.status_code == 303
+    assert ok.headers["location"] == f"/admin/imports/batches/{batch_id}"
+
+    with (
+        patch("app.admin_routes._verify_session_csrf"),
+        patch(
+            "app.admin_routes._crm.rollback_import_batch",
+            side_effect=ValueError("Only committed import batches can be rolled back."),
+        ),
+    ):
+        failed = client.post(
+            f"/admin/imports/batches/{batch_id}/rollback",
+            cookies=authenticated_admin,
+            data={"csrf_token": "csrf-ok"},
+        )
+    assert failed.status_code == 303
+    assert "error=" in failed.headers["location"]
+
+
+@pytest.mark.unit
+@pytest.mark.integration
 def test_linkedin_commit_api_requires_auth() -> None:
     response = client.post(
         "/admin/api/imports/linkedin/commit",
@@ -120,6 +221,7 @@ def test_linkedin_commit_api_requires_auth() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_linkedin_commit_api_persists_batch(
     authenticated_admin: dict[str, str],
 ) -> None:
@@ -151,3 +253,16 @@ def test_linkedin_commit_api_persists_batch(
     assert payload["batch_id"] == "11111111-1111-1111-1111-111111111111"
     assert payload["summary_counts"]["inserted"] == 1
     commit.assert_called_once()
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_linkedin_commit_api_rejects_bad_payload(
+    authenticated_admin: dict[str, str],
+) -> None:
+    response = client.post(
+        "/admin/api/imports/linkedin/commit",
+        cookies=authenticated_admin,
+        json={"connections": "not-a-list"},
+    )
+    assert response.status_code == 400
