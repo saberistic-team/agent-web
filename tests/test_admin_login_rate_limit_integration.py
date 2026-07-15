@@ -238,7 +238,8 @@ def test_expired_lockout_allows_new_admissions(pg_conn: psycopg.Connection) -> N
     )
     assert not blocked.admitted
 
-    after_lockout = start + timedelta(seconds=lockout_seconds + 1)
+    # Lockout begins at the threshold transition (index 4 => start+4s), not at `start`.
+    after_lockout = start + timedelta(seconds=4 + lockout_seconds + 1)
     allowed = _admit(
         pg_conn,
         keys=(source_key,),
