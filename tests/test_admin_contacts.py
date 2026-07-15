@@ -104,7 +104,11 @@ def test_contacts_route_lists_contacts_when_authenticated() -> None:
 def test_contact_mutations_require_session_and_use_csrf() -> None:
     unauthenticated = client.post(
         "/admin/contacts",
-        data={"csrf_token": CSRF_TOKEN, "full_name": "Alice"},
+        data={
+            "csrf_token": CSRF_TOKEN,
+            "full_name": "Alice",
+            "company_id": str(COMPANY_ID),
+        },
     )
     assert unauthenticated.status_code == 303
 
@@ -139,7 +143,11 @@ def test_contact_edit_rejects_invalid_csrf() -> None:
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
         response = client.post(
             f"/admin/contacts/{CONTACT_ID}/edit",
-            data={"csrf_token": "wrong", "full_name": "Alice"},
+            data={
+                "csrf_token": "wrong",
+                "full_name": "Alice",
+                "company_id": str(COMPANY_ID),
+            },
         )
     assert response.status_code == 400
 
@@ -149,7 +157,11 @@ def test_contact_create_redirects_with_duplicate_warning_count() -> None:
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
         response = client.post(
             "/admin/contacts",
-            data={"csrf_token": CSRF_TOKEN, "full_name": "Alice Example"},
+            data={
+                "csrf_token": CSRF_TOKEN,
+                "full_name": "Alice Example",
+                "company_id": str(COMPANY_ID),
+            },
         )
     assert response.status_code == 303
     assert "warning=1%20possible%20duplicate" in response.headers["location"]

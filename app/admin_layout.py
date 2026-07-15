@@ -87,13 +87,29 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/login",
     "/admin/briefs/1",
     "/admin/briefs/2",
+    "/admin/briefs/503",
     "/admin/contacts/11111111-1111-1111-1111-111111111111",
     "/admin/contacts/22222222-2222-2222-2222-222222222222",
 )
 
 
+def _active_nav_label(active_path: str) -> str:
+    """Return the label for the current admin section."""
+    for link in ADMIN_NAV_LINKS:
+        if link["href"] == active_path:
+            return link["label"]
+    return "Admin"
+
+
 def render_admin_nav(active_path: str) -> str:
-    """Return the admin sidebar navigation list."""
+    """Return the admin sidebar navigation list.
+
+    Desktop gets a always-visible list outside ``<details>``. Mobile uses a
+    collapsed ``details/summary`` disclosure for the same links. Keeping the
+    desktop list *outside* ``details`` avoids fighting the UA rule that hides
+    non-summary children of closed details.
+    """
+    current_label = html.escape(_active_nav_label(active_path))
     items: list[str] = []
     for link in ADMIN_NAV_LINKS:
         href = link["href"]
@@ -101,12 +117,21 @@ def render_admin_nav(active_path: str) -> str:
         attrs = [f'href="{href}"', 'class="admin-nav-link"']
         if active_path == href:
             attrs.append('aria-current="page"')
-        items.append(f'          <li><a {" ".join(attrs)}>{label}</a></li>')
+        items.append(f"          <li><a {' '.join(attrs)}>{label}</a></li>")
     items_html = "\n".join(items)
     return f"""        <nav class="admin-nav" aria-label="Admin">
-          <details class="admin-nav-toggle" open>
-            <summary class="admin-nav-summary">Sections</summary>
-            <ul class="admin-nav-list">
+          <ul class="admin-nav-list admin-nav-desktop">
+{items_html}
+          </ul>
+          <details class="admin-nav-toggle">
+            <summary
+              class="admin-nav-summary"
+              aria-label="Admin sections. Current: {current_label}. Expand for all sections."
+            >
+              <span class="admin-nav-current">{current_label}</span>
+              <span class="admin-nav-expand-label">Menu</span>
+            </summary>
+            <ul class="admin-nav-list admin-nav-mobile-list">
 {items_html}
             </ul>
           </details>

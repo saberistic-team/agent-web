@@ -63,7 +63,14 @@ def render_admin_page(
             render_preview_section_main,
         )
 
-        main = render_preview_dashboard_main(build_preview_dashboard_data())
+        if active_path == "/admin":
+            main = render_preview_dashboard_main(build_preview_dashboard_data())
+        else:
+            main = render_preview_section_main(
+                label=link["label"],
+                summary=link["summary"],
+                active_path=active_path,
+            )
     elif active_path == "/admin":
         return render_admin_dashboard_page(
             admin_username=admin_username,

@@ -80,6 +80,7 @@ ADMIN_SCREENSHOT_ROUTES: tuple[str, ...] = (
     "/admin/login",
     "/admin/briefs/1",
     "/admin/briefs/2",
+    "/admin/briefs/503",
     "/admin/contacts/11111111-1111-1111-1111-111111111111",
     "/admin/contacts/22222222-2222-2222-2222-222222222222",
 )
@@ -121,6 +122,7 @@ class CaptureResult(NamedTuple):
     paths: list[Path]
     overflows: list[dict[str, Any]]
     empty_pages: list[dict[str, Any]] = []
+    nav_failures: list[dict[str, Any]] = []
 
 
 class PreCaptureResult(NamedTuple):
@@ -133,6 +135,7 @@ class PreCaptureResult(NamedTuple):
     branch_url: str
     prod_url: str
     branch_empty_pages: list[dict[str, Any]] = []
+    branch_nav_failures: list[dict[str, Any]] = []
 
     @property
     def paths(self) -> list[Path]:
@@ -146,6 +149,10 @@ class PreCaptureResult(NamedTuple):
     @property
     def empty_pages(self) -> list[dict[str, Any]]:
         return self.branch_empty_pages
+
+    @property
+    def nav_failures(self) -> list[dict[str, Any]]:
+        return self.branch_nav_failures
 
 
 def screenshot_basename(phase: str, route: str, viewport: str) -> str:
@@ -616,6 +623,7 @@ def capture_pre_dual(
         branch_url=branch_url,
         prod_url="",
         branch_empty_pages=list(branch.empty_pages),
+        branch_nav_failures=list(branch.nav_failures),
     )
 
 
@@ -806,6 +814,66 @@ def _page_empty_data(page: Any, *, viewport: str, route: str) -> list[dict[str, 
     ]
 
 
+def _page_missing_admin_nav(
+    page: Any, *, viewport: str, route: str
+) -> list[dict[str, Any]]:
+    """Detect desktop admin shells where nav links exist in DOM but are invisible.
+
+    Catches the UA closed-``details`` trap: removing ``open`` hides ``.admin-nav-list``
+    unless desktop CSS overrides ``details:not([open]) > *:not(summary)``.
+    Mobile may legitimately hide the list when the disclosure is collapsed.
+    """
+    if viewport != "desktop":
+        return []
+    if not is_admin_screenshot_route(route):
+        return []
+    normalized = route if route == "/" else route.rstrip("/") or "/"
+    if normalized in ADMIN_EMPTY_CHECK_SKIP:
+        return []
+    try:
+        raw = page.evaluate(
+            """() => {
+              const links = Array.from(
+                document.querySelectorAll('.admin-nav-link')
+              );
+              if (!links.length) {
+                return { linkCount: 0, visibleCount: 0 };
+              }
+              let visibleCount = 0;
+              for (const el of links) {
+                const r = el.getBoundingClientRect();
+                const style = window.getComputedStyle(el);
+                if (
+                  r.width > 0 &&
+                  r.height > 0 &&
+                  style.visibility !== 'hidden' &&
+                  style.display !== 'none'
+                ) {
+                  visibleCount += 1;
+                }
+              }
+              return { linkCount: links.length, visibleCount };
+            }"""
+        )
+    except Exception:  # noqa: BLE001
+        return []
+    if not isinstance(raw, dict):
+        return []
+    link_count = int(raw.get("linkCount") or 0)
+    visible_count = int(raw.get("visibleCount") or 0)
+    if link_count == 0 or visible_count > 0:
+        return []
+    return [
+        {
+            "viewport": viewport,
+            "route": route,
+            "reason": "desktop_nav_invisible",
+            "link_count": link_count,
+            "visible_count": visible_count,
+        }
+    ]
+
+
 def format_overflow_hard_fail(overflows: list[dict[str, Any]]) -> str | None:
     """Build a Reviewer hard-fail line for mobile/out-of-frame text."""
     mobile = [o for o in overflows if o.get("viewport") == "mobile"]
@@ -842,6 +910,25 @@ def format_empty_data_hard_fail(empty_pages: list[dict[str, Any]]) -> str | None
     )
 
 
+def format_admin_nav_hard_fail(nav_failures: list[dict[str, Any]]) -> str | None:
+    """Build a Reviewer hard-fail when desktop admin nav links are invisible."""
+    if not nav_failures:
+        return None
+    by_route: dict[str, dict[str, Any]] = {}
+    for item in nav_failures:
+        route = str(item.get("route") or "")
+        if route and route not in by_route:
+            by_route[route] = item
+    sample = next(iter(by_route.values()))
+    routes = ", ".join(f"`{r}`" for r in sorted(by_route))
+    return (
+        "admin desktop nav invisible: screenshot page(s) have `.admin-nav-link` in "
+        f"DOM but none visible — {routes} reason=`{sample.get('reason')}`; "
+        "builder must keep the desktop nav list *outside* closed `<details>` "
+        "(`.admin-nav-desktop`) so the sidebar stays visible without JS"
+    )
+
+
 def capture(
     base_url: str | None,
     out_dir: Path,
@@ -863,6 +950,7 @@ def capture(
     paths: list[Path] = []
     overflows: list[dict[str, Any]] = []
     empty_pages: list[dict[str, Any]] = []
+    nav_failures: list[dict[str, Any]] = []
     base = resolve_base_url(base_url)
     if routes is None:
         source = resolve_screenshot_routes(
@@ -886,7 +974,9 @@ def capture(
             report.write_text("[]\n", encoding="utf-8")
             empty_report = out_dir / f"{phase}-empty-pages.json"
             empty_report.write_text("[]\n", encoding="utf-8")
-            return CaptureResult(paths=[], overflows=[], empty_pages=[])
+            return CaptureResult(
+                paths=[], overflows=[], empty_pages=[], nav_failures=[]
+            )
         html_routes = list(HTML_PATHS)
 
     with sync_playwright() as p:
@@ -936,6 +1026,11 @@ def capture(
                 empty_pages.extend(
                     _page_empty_data(page, viewport=viewport_name, route=route)
                 )
+                nav_failures.extend(
+                    _page_missing_admin_nav(
+                        page, viewport=viewport_name, route=route
+                    )
+                )
                 dest = out_dir / screenshot_basename(phase, route, viewport_name)
                 page.screenshot(path=str(dest), full_page=True)
                 paths.append(dest)
@@ -951,7 +1046,14 @@ def capture(
     report.write_text(json.dumps(overflows, indent=2) + "\n", encoding="utf-8")
     empty_report = out_dir / f"{phase}-empty-pages.json"
     empty_report.write_text(json.dumps(empty_pages, indent=2) + "\n", encoding="utf-8")
-    return CaptureResult(paths=paths, overflows=overflows, empty_pages=empty_pages)
+    nav_report = out_dir / f"{phase}-nav-failures.json"
+    nav_report.write_text(json.dumps(nav_failures, indent=2) + "\n", encoding="utf-8")
+    return CaptureResult(
+        paths=paths,
+        overflows=overflows,
+        empty_pages=empty_pages,
+        nav_failures=nav_failures,
+    )
 
 
 def upload_to_branch(

@@ -287,6 +287,7 @@ def render_admin_contact_research_page(
     error_message: str | None = None,
 ) -> str:
     email = html.escape(str(contact.get("email", "")))
+    full_name = html.escape(str(contact.get("full_name") or contact.get("email") or contact["id"]))
     contact_id = html.escape(str(contact["id"]), quote=True)
     company_link = ""
     if company is not None:
@@ -308,9 +309,11 @@ def render_admin_contact_research_page(
         records_html = '<p class="admin-note">No research records yet.</p>'
     form_body = _research_form_body(csrf_token=csrf_token)
     main = f"""        <section class="admin-research" aria-labelledby="contact-research-title">
-          <h1 class="admin-title" id="contact-research-title">{email}</h1>
+          <p class="admin-breadcrumb"><a href="/admin/contacts">Contacts</a> / {full_name}</p>
+          <h1 class="admin-title" id="contact-research-title">{full_name}</h1>
           {company_link}
           <p class="admin-lede">Research records for contact <code>{contact_id}</code>.</p>
+          <p><a class="cta" href="/admin/contacts/{contact_id}/edit">Edit contact</a></p>
           <h2 class="admin-section-heading">Attach record</h2>
           {error_html}
           <form class="admin-form research-form" method="post" action="/admin/contacts/{contact_id}/research">
@@ -322,7 +325,7 @@ def render_admin_contact_research_page(
           </div>
         </section>"""
     return render_admin_shell(
-        title=f"Research — {email}",
+        title=f"Research — {full_name}",
         main=main,
         active_path="/admin/contacts",
         admin_username=admin_username,

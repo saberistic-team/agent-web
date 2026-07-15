@@ -181,7 +181,7 @@ def test_admin_dashboard_renders_shell() -> None:
     assert 'id="main-content"' in body
     assert 'meta name="robots" content="noindex, nofollow"' in body
     assert 'href="/assets/admin.css"' in body
-    assert "Admin foundation" in body
+    assert "Operations" in body
     assert 'admin-nav-toggle" open' not in body
     assert '<span class="admin-nav-current">Dashboard</span>' in body
 
@@ -216,7 +216,6 @@ def test_admin_nav_links_present(path: str) -> None:
 @pytest.mark.parametrize(
     ("path", "label"),
     [
-        ("/admin", "Dashboard"),
         ("/admin/signals", "Signals"),
         ("/admin/pipeline", "Pipeline"),
         ("/admin/imports", "Imports"),

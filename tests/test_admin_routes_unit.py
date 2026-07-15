@@ -14,7 +14,6 @@ from fastapi.testclient import TestClient
 
 from app import admin_auth, db
 from app.admin_auth import SESSION_COOKIE_NAME
-from app.crm_service import CrmService, CrmRepositories
 from app.main import app
 
 client = TestClient(app, follow_redirects=False)
@@ -77,85 +76,65 @@ def authenticated_admin() -> dict[str, Any]:
 
 
 @pytest.mark.unit
-def test_create_contact_rejects_empty_name(authenticated_admin: dict[str, Any]) -> None:
-    company_repo = MagicMock()
-    company_repo.list_all.return_value = []
-    service = CrmService(
-        repos=CrmRepositories(
-            companies=company_repo,
-            contacts=MagicMock(),
-            source_records=MagicMock(),
-            activities=MagicMock(),
-            admin_users=MagicMock(),
-        )
-    )
-    with patch("app.admin_routes._crm_service", return_value=service):
+def test_create_contact_rejects_invalid_payload(authenticated_admin: dict[str, Any]) -> None:
+    crm = MagicMock()
+    crm.list_companies.return_value = []
+    with patch("app.admin_routes._crm", crm):
         response = client.post(
-            "/admin/contacts/new",
+            "/admin/contacts",
             cookies=authenticated_admin["cookies"],
-            data={"csrf_token": authenticated_admin["csrf_token"], "name": "   "},
+            data={
+                "csrf_token": authenticated_admin["csrf_token"],
+                "full_name": "Pat Example",
+                "company_id": "not-a-uuid",
+            },
+            follow_redirects=False,
         )
-    assert response.status_code == 400
-    assert "Name is required" in response.text
+    assert response.status_code == 303
+    assert "error=" in response.headers["location"]
 
 
 @pytest.mark.unit
-def test_update_contact_rejects_empty_name(authenticated_admin: dict[str, Any]) -> None:
-    company_repo = MagicMock()
-    company_repo.list_all.return_value = []
-    contact_repo = MagicMock()
-    service = CrmService(
-        repos=CrmRepositories(
-            companies=company_repo,
-            contacts=contact_repo,
-            source_records=MagicMock(),
-            activities=MagicMock(),
-            admin_users=MagicMock(),
-        )
-    )
-    contact_repo.get_by_id.return_value = {"id": CONTACT_ID, "name": "Pat"}
-    with (
-        patch("app.admin_routes._crm_service", return_value=service),
-        patch.object(service, "get_contact_with_roles", return_value={"id": CONTACT_ID, "name": "Pat"}),
-    ):
+def test_update_contact_rejects_invalid_payload(authenticated_admin: dict[str, Any]) -> None:
+    crm = MagicMock()
+    crm.get_contact.return_value = {"id": CONTACT_ID, "full_name": "Pat"}
+    crm.list_companies.return_value = []
+    with patch("app.admin_routes._crm", crm):
         response = client.post(
-            f"/admin/contacts/{CONTACT_ID}",
+            f"/admin/contacts/{CONTACT_ID}/edit",
             cookies=authenticated_admin["cookies"],
-            data={"csrf_token": authenticated_admin["csrf_token"], "name": "  "},
+            data={
+                "csrf_token": authenticated_admin["csrf_token"],
+                "full_name": "Pat Example",
+                "company_id": "not-a-uuid",
+            },
+            follow_redirects=False,
         )
-    assert response.status_code == 400
-    assert "Name is required" in response.text
+    assert response.status_code == 303
+    assert "error=" in response.headers["location"]
 
 
 @pytest.mark.unit
 def test_restore_contact_redirects_to_edit(authenticated_admin: dict[str, Any]) -> None:
-    with patch.object(CrmService, "restore_contact", return_value={"id": CONTACT_ID}) as restore:
-        with patch("app.admin_routes._crm_service", return_value=CrmService()):
-            response = client.post(
-                f"/admin/contacts/{CONTACT_ID}/restore",
-                cookies=authenticated_admin["cookies"],
-                data={"csrf_token": authenticated_admin["csrf_token"]},
-                follow_redirects=False,
-            )
+    crm = MagicMock()
+    crm.restore_contact.return_value = {"id": CONTACT_ID}
+    with patch("app.admin_routes._crm", crm):
+        response = client.post(
+            f"/admin/contacts/{CONTACT_ID}/restore",
+            cookies=authenticated_admin["cookies"],
+            data={"csrf_token": authenticated_admin["csrf_token"]},
+            follow_redirects=False,
+        )
     assert response.status_code == 303
-    assert response.headers["location"] == f"/admin/contacts/{CONTACT_ID}"
-    restore.assert_called_once()
+    assert response.headers["location"] == f"/admin/contacts/{CONTACT_ID}/edit"
+    crm.restore_contact.assert_called_once()
 
 
 @pytest.mark.unit
 def test_companies_list_renders(authenticated_admin: dict[str, Any]) -> None:
-    company_repo = MagicMock()
-    company_repo.list_all.return_value = [{"id": COMPANY_ID, "name": "Acme", "status": "prospect"}]
-    service = CrmService(
-        repos=CrmRepositories(
-            companies=company_repo,
-            contacts=MagicMock(),
-            source_records=MagicMock(),
-            activities=MagicMock(),
-            admin_users=MagicMock(),
-        )
-    )
-    with patch("app.admin_routes._crm_service", return_value=service):
+    crm = MagicMock()
+    crm.list_companies.return_value = [{"id": COMPANY_ID, "name": "Acme", "status": "prospect"}]
+    with patch("app.admin_routes._crm", crm):
         response = client.get("/admin/companies", cookies=authenticated_admin["cookies"])
     assert response.status_code == 200
     assert "Companies" in response.text
@@ -164,43 +143,39 @@ def test_companies_list_renders(authenticated_admin: dict[str, Any]) -> None:
 
 @pytest.mark.unit
 def test_company_detail_returns_404_when_missing(authenticated_admin: dict[str, Any]) -> None:
-    company_repo = MagicMock()
-    company_repo.get_by_id.return_value = None
-    service = CrmService(
-        repos=CrmRepositories(
-            companies=company_repo,
-            contacts=MagicMock(),
-            source_records=MagicMock(),
-            activities=MagicMock(),
-            admin_users=MagicMock(),
-        )
-    )
-    with patch("app.admin_routes._crm_service", return_value=service):
+    crm = MagicMock()
+    crm.get_company.return_value = None
+    with patch("app.admin_routes._crm", crm):
         response = client.get(f"/admin/companies/{COMPANY_ID}", cookies=authenticated_admin["cookies"])
     assert response.status_code == 404
 
 
 @pytest.mark.unit
 def test_contact_edit_returns_404_when_missing(authenticated_admin: dict[str, Any]) -> None:
-    with patch.object(CrmService, "get_contact_with_roles", return_value=None):
-        with patch("app.admin_routes._crm_service", return_value=CrmService()):
-            response = client.get(
-                f"/admin/contacts/{CONTACT_ID}",
-                cookies=authenticated_admin["cookies"],
-            )
+    crm = MagicMock()
+    crm.get_contact.return_value = None
+    crm.list_companies.return_value = []
+    with patch("app.admin_routes._crm", crm):
+        response = client.get(
+            f"/admin/contacts/{CONTACT_ID}/edit",
+            cookies=authenticated_admin["cookies"],
+        )
     assert response.status_code == 404
 
 
 @pytest.mark.unit
 def test_update_contact_returns_404_when_missing(authenticated_admin: dict[str, Any]) -> None:
-    with patch.object(CrmService, "update_contact", return_value=None):
-        with patch("app.admin_routes._crm_service", return_value=CrmService()):
-            response = client.post(
-                f"/admin/contacts/{CONTACT_ID}",
-                cookies=authenticated_admin["cookies"],
-                data={
-                    "csrf_token": authenticated_admin["csrf_token"],
-                    "name": "Patricia",
-                },
-            )
+    crm = MagicMock()
+    crm.update_contact.return_value = None
+    with patch("app.admin_routes._crm", crm):
+        response = client.post(
+            f"/admin/contacts/{CONTACT_ID}/edit",
+            cookies=authenticated_admin["cookies"],
+            data={
+                "csrf_token": authenticated_admin["csrf_token"],
+                "full_name": "Patricia",
+                "company_id": str(COMPANY_ID),
+            },
+            follow_redirects=False,
+        )
     assert response.status_code == 404

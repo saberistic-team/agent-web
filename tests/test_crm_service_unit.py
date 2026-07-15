@@ -323,10 +323,12 @@ def test_contact_crud_helpers_commit_and_return_nonblocking_duplicate_warnings()
         "id": UUID("99999999-9999-9999-9999-999999999999"),
         "full_name": "Other",
         "email": "alice@acme.dev",
-        "profile_url_normalized": "linkedin.com/in/alice",
+        "profile_url": "https://linkedin.com/in/alice",
         "company_id": COMPANY_ID,
     }
-    contact_repo.find_duplicates.return_value = [duplicate]
+    contact_repo.find_by_profile_url.return_value = [duplicate]
+    contact_repo.get_by_email.return_value = duplicate
+    contact_repo.find_by_name_and_company.return_value = []
     contact_repo.create.return_value = {
         "id": CONTACT_ID,
         "full_name": "Alice",
