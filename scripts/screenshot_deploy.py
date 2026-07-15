@@ -16,7 +16,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator, NamedTuple
-from urllib.parse import urljoin
+from urllib.parse import parse_qs, urljoin, urlparse
 
 from github_api import GitHubError, api, post_issue_comment, put_files, split_repo
 
@@ -88,6 +88,16 @@ ADMIN_SCREENSHOT_ROUTES: tuple[str, ...] = (
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
+    "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    "/admin/companies/new",
+    "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/edit",
+    "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa02",
+    "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/edit?error=validation&focus=name",
+    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    "/admin/contacts/new",
+    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/edit",
+    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbc/edit",
+    "/admin/pipeline/11111111-1111-1111-1111-111111111111",
 )
 
 # Fallback when app.admin_layout import fails (keep in sync).
@@ -1150,6 +1160,28 @@ def format_admin_nav_hard_fail(nav_failures: list[dict[str, Any]]) -> str | None
     )
 
 
+def _focus_field_from_route(route: str) -> str | None:
+    """Return a form field id from ``?focus=`` for keyboard-focus screenshots."""
+    if "?" not in route:
+        return None
+    _path, query = route.split("?", 1)
+    values = parse_qs(query, keep_blank_values=False).get("focus")
+    if not values:
+        return None
+    field_id = values[0].strip()
+    return field_id or None
+
+
+def apply_pre_screenshot_focus(page: Any, route: str) -> None:
+    """Focus a form control before capture so :focus-visible styling is visible."""
+    field_id = _focus_field_from_route(route)
+    if not field_id:
+        return
+    locator = page.locator(f"#{field_id}")
+    if locator.count():
+        locator.first.focus()
+
+
 def capture(
     base_url: str | None,
     out_dir: Path,
@@ -1240,6 +1272,7 @@ def capture(
         nav_failures.extend(
             _page_missing_admin_nav(page, viewport=viewport_name, route=route)
         )
+        apply_pre_screenshot_focus(page, route)
         dest = out_dir / screenshot_basename(phase, route, viewport_name)
         page.screenshot(path=str(dest), full_page=True)
         paths.append(dest)
