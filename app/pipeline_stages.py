@@ -106,3 +106,27 @@ def extract_pipeline_stage_check_values(sql: str) -> frozenset[str]:
     if match is None:
         raise ValueError("pipeline_stage CHECK constraint not found in SQL")
     return frozenset(re.findall(r"'([^']+)'", match.group(1)))
+
+class PipelineError(Exception):
+    """Base pipeline validation error."""
+
+
+class InvalidStageError(PipelineError):
+    """Raised when a stage name is not in the supported pipeline."""
+
+
+def validate_stage(stage: str) -> None:
+    if stage not in PIPELINE_STAGE_ORDER:
+        raise InvalidStageError(f"Unsupported pipeline stage: {stage}")
+
+
+def initial_pipeline_stage_for_brief_status(brief_status: str) -> str:
+    """Map Stripe-derived brief payment status to an initial pipeline stage."""
+    stage = resolve_initial_pipeline_stage_for_brief_status(brief_status)
+    if stage is None:
+        raise InvalidStageError(
+            f"Unsupported brief status for pipeline conversion: {brief_status}"
+        )
+    validate_stage(stage)
+    return stage
+
