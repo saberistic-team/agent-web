@@ -315,6 +315,49 @@ CREATE INDEX IF NOT EXISTS idx_companies_last_verified_at ON companies (last_ver
     ),
     Migration(
         version="011",
+        name="acquisition_dashboard_indexes",
+        up_sql="""
+CREATE INDEX IF NOT EXISTS idx_research_records_review_at
+    ON research_records (review_at)
+    WHERE record_type = 'follow_up_note' AND review_at IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_research_records_created_at
+    ON research_records (created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_research_records_stale_evidence
+    ON research_records (expires_at)
+    WHERE record_type IN ('verified_fact', 'public_signal') AND expires_at IS NOT NULL;
+""",
+    ),
+    Migration(
+        version="012",
+        name="contact_records",
+        up_sql="""
+ALTER TABLE contacts ALTER COLUMN email DROP NOT NULL;
+ALTER TABLE contacts DROP CONSTRAINT IF EXISTS contacts_email_unique;
+
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS title TEXT;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS profile_url TEXT;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS email_permission TEXT;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS last_interaction_at DATE;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS relationship_strength TEXT;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS buying_roles TEXT[];
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_email_unique
+    ON contacts (LOWER(email))
+    WHERE email IS NOT NULL AND archived_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_contacts_profile_url ON contacts (profile_url)
+    WHERE profile_url IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_contacts_archived_at ON contacts (archived_at);
+CREATE INDEX IF NOT EXISTS idx_contacts_last_interaction_at ON contacts (last_interaction_at);
+CREATE INDEX IF NOT EXISTS idx_contacts_buying_roles ON contacts USING GIN (buying_roles);
+""",
+    ),
+    Migration(
+        version="013",
         name="acquisition_pipeline",
         up_sql="""
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS pipeline_stage TEXT;

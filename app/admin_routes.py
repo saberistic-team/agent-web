@@ -11,7 +11,7 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import ValidationError
 
-from app import admin, admin_auth, admin_companies as company_pages, admin_dashboard_pages, admin_pages, admin_research_pages, audit_service, brief_service, db
+from app import admin, admin_auth, admin_companies as company_pages, admin_contacts as contact_pages, admin_dashboard_pages, admin_pages, admin_research_pages, audit_service, brief_service, db
 from app.acquisition_dashboard import AcquisitionDashboardData, load_acquisition_dashboard
 from app.companies import (
     COMPANY_CATEGORIES,
@@ -25,13 +25,13 @@ from app.brief_conversion import (
     BriefConversionValidationError,
     pipeline_capabilities_available,
 )
+from app.contacts import BUYING_ROLES, ContactCreate, ContactUpdate
 from app.crm_uow import crm_transaction
 from app.actor_context import actor_context_from_request, anonymous_actor_context, correlation_id_from_request
 from app.admin_layout import ADMIN_NAV_LINKS, render_admin_shell
 from app.admin_preview import PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR, PREVIEW_BRIEF_DATABASE_ERROR_ID
 from app.config import Settings, get_settings
 from app.crm_service import CrmService
-from app.repositories.postgres import get_repositories
 from app.research_records import ResearchRecordCreate
 from app.repositories.postgres import get_repositories
 
@@ -114,6 +114,49 @@ def _company_form_payload(**values: object) -> dict[str, object]:
         payload["headcount_estimate"] = None
     else:
         payload["headcount_estimate"] = int(str(raw_headcount))
+    return payload
+
+
+def _contact_form_payload(**values: object) -> dict[str, object]:
+    """Map blank optional contact form fields to null before validation."""
+    allowed = {
+        "full_name",
+        "title",
+        "profile_url",
+        "email",
+        "email_permission",
+        "company_id",
+        "last_interaction_at",
+        "relationship_strength",
+        "notes",
+        "buying_roles",
+    }
+    payload: dict[str, object] = {
+        key: value.strip() if isinstance(value, str) else value
+        for key, value in values.items()
+        if key in allowed
+    }
+    for field in (
+        "title",
+        "profile_url",
+        "email",
+        "email_permission",
+        "last_interaction_at",
+        "relationship_strength",
+        "notes",
+    ):
+        if not payload.get(field):
+            payload[field] = None
+    raw_company = payload.get("company_id")
+    if raw_company in (None, ""):
+        payload["company_id"] = None
+    else:
+        payload["company_id"] = UUID(str(raw_company))
+    roles = payload.get("buying_roles")
+    if roles is None:
+        payload["buying_roles"] = []
+    elif isinstance(roles, str):
+        payload["buying_roles"] = [roles]
     return payload
 
 

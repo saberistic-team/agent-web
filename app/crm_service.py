@@ -16,6 +16,13 @@ from app.brief_conversion import (
     safe_conversion_payload,
 )
 from app.companies import CompanyCreate, CompanyUpdate, find_domain_duplicate_warnings, normalize_domain
+from app.contacts import (
+    ContactCreate,
+    ContactUpdate,
+    find_email_duplicate_warnings,
+    find_name_company_duplicate_warnings,
+    find_profile_url_duplicate_warnings,
+)
 from app.crm_uow import crm_transaction
 from app.pipeline import initial_pipeline_stage_for_brief_status, pipeline_stage_label, validate_stage
 from app.repositories import (
