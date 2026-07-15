@@ -57,6 +57,24 @@ def _session_row(*, token_hash: str) -> dict[str, Any]:
     }
 
 
+def _empty_dashboard_for_layout():
+    from app.acquisition_dashboard import AcquisitionDashboardData
+
+    return AcquisitionDashboardData(
+        company_counts_by_stage=(),
+        company_counts_by_category=(),
+        contact_counts_by_stage=(),
+        contact_counts_by_category=(),
+        overdue_actions=(),
+        upcoming_actions=(),
+        recent_evidence=(),
+        stale_evidence=(),
+        without_decision_maker=(),
+        without_next_action=(),
+        generated_at=datetime.now(timezone.utc),
+    )
+
+
 @pytest.mark.unit
 def test_admin_nav_links_include_required_destinations() -> None:
     assert ADMIN_HREFS == (
@@ -204,9 +222,15 @@ def test_admin_dashboard_renders_shell() -> None:
     token_hash = admin_auth.hash_session_token(raw_token)
     row = _session_row(token_hash=token_hash)
     with mock_db_connection():
-        with patch(
-            "app.admin_routes.db.get_admin_session_by_token_hash",
-            return_value=row,
+        with (
+            patch(
+                "app.admin_routes.db.get_admin_session_by_token_hash",
+                return_value=row,
+            ),
+            patch(
+                "app.admin_routes.load_acquisition_dashboard",
+                return_value=_empty_dashboard_for_layout(),
+            ),
         ):
             response = client.get("/admin", cookies={SESSION_COOKIE_NAME: raw_token})
     assert response.status_code == 200
@@ -217,7 +241,7 @@ def test_admin_dashboard_renders_shell() -> None:
     assert 'id="main-content"' in body
     assert 'meta name="robots" content="noindex, nofollow"' in body
     assert 'href="/assets/admin.css"' in body
-    assert "Operations" in body
+    assert "Today's attention" in body or "Today&apos;s attention" in body
     assert 'admin-nav-toggle" open' not in body
     assert '<span class="admin-nav-current">Dashboard</span>' in body
 
@@ -252,7 +276,7 @@ def test_admin_nav_links_present(path: str) -> None:
 @pytest.mark.parametrize(
     ("path", "heading", "title_id", "nav_label"),
     [
-        ("/admin", "Operations", "admin-dashboard-title", "Dashboard"),
+        ("/admin", "Today's attention", "dashboard-title", "Dashboard"),
         ("/admin/contacts", "Contacts", "contacts-title", "Contacts"),
         ("/admin/signals", "Signals", "admin-empty-title", "Signals"),
         ("/admin/pipeline", "Pipeline", "admin-empty-title", "Pipeline"),
@@ -272,14 +296,40 @@ def test_admin_active_nav(path: str, heading: str, title_id: str, nav_label: str
     token_hash = admin_auth.hash_session_token(raw_token)
     row = _session_row(token_hash=token_hash)
     with mock_db_connection():
-        with patch(
-            "app.admin_routes.db.get_admin_session_by_token_hash",
-            return_value=row,
-        ):
-            response = client.get(path, cookies={SESSION_COOKIE_NAME: raw_token})
+        patchers = [
+            patch(
+                "app.admin_routes.db.get_admin_session_by_token_hash",
+                return_value=row,
+            ),
+        ]
+        if path == "/admin":
+            patchers.append(
+                patch(
+                    "app.admin_routes.load_acquisition_dashboard",
+                    return_value=_empty_dashboard_for_layout(),
+                )
+            )
+        if path == "/admin/companies":
+            patchers.append(patch("app.admin_routes._crm.list_companies", return_value=[]))
+        if path == "/admin/contacts":
+            patchers.append(patch("app.admin_routes._crm.list_contacts", return_value=[]))
+            patchers.append(patch("app.admin_routes._crm.list_companies", return_value=[]))
+        with patchers[0]:
+            for extra in patchers[1:]:
+                extra.start()
+            try:
+                response = client.get(path, cookies={SESSION_COOKIE_NAME: raw_token})
+            finally:
+                for extra in reversed(patchers[1:]):
+                    extra.stop()
     assert response.status_code == 200
     body = response.text
-    assert f'id="{title_id}">{heading}</h1>' in body
+    if path == "/admin":
+        assert 'id="dashboard-title"' in body
+        assert "Today&apos;s attention" in body or "Today's attention" in body
+        assert "Start building your pipeline" in body
+    else:
+        assert f'id="{title_id}">{heading}</h1>' in body
     assert body.count('aria-current="page"') == 2
     assert f'href="{path}"' in body
     assert 'aria-current="page"' in body

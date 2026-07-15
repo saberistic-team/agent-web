@@ -315,6 +315,22 @@ CREATE INDEX IF NOT EXISTS idx_companies_last_verified_at ON companies (last_ver
     ),
     Migration(
         version="011",
+        name="acquisition_dashboard_indexes",
+        up_sql="""
+CREATE INDEX IF NOT EXISTS idx_research_records_review_at
+    ON research_records (review_at)
+    WHERE record_type = 'follow_up_note' AND review_at IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_research_records_created_at
+    ON research_records (created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_research_records_stale_evidence
+    ON research_records (expires_at)
+    WHERE record_type IN ('verified_fact', 'public_signal') AND expires_at IS NOT NULL;
+""",
+    ),
+    Migration(
+        version="012",
         name="contact_records",
         up_sql="""
 ALTER TABLE contacts ALTER COLUMN email DROP NOT NULL;

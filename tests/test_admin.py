@@ -134,7 +134,7 @@ def test_admin_dashboard_renders_shell(authenticated_admin: dict[str, str]) -> N
     assert 'class="admin-layout"' in body
     assert 'meta name="robots" content="noindex, nofollow"' in body
     assert 'href="/assets/admin.css"' in body
-    assert "Operations" in body
+    assert "Today's attention" in body or "Today&apos;s attention" in body
 
 
 @pytest.mark.unit

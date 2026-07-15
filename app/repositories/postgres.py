@@ -679,6 +679,206 @@ class PostgresResearchRecordRepository:
         return [dict(row) for row in rows]
 
 
+class PostgresAcquisitionDashboardRepository:
+    _COMPANY_DIMENSIONS = frozenset({"stage", "category"})
+    _PUBLIC_EVIDENCE_TYPES = ("verified_fact", "public_signal")
+    _TARGET_STATUSES = ("target", "watching")
+
+    def count_companies_by_dimension(
+        self,
+        conn: psycopg.Connection,
+        dimension: str,
+    ) -> list[tuple[str, int]]:
+        if dimension not in self._COMPANY_DIMENSIONS:
+            raise ValueError(f"unsupported company dimension: {dimension}")
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT COALESCE({dimension}, 'unspecified') AS bucket, COUNT(*)::int AS total
+                FROM companies
+                WHERE archived_at IS NULL
+                GROUP BY bucket
+                ORDER BY total DESC, bucket ASC
+                """,
+            )
+            rows = cur.fetchall()
+        return [(str(row["bucket"]), int(row["total"])) for row in rows]
+
+    def count_contacts_by_company_dimension(
+        self,
+        conn: psycopg.Connection,
+        dimension: str,
+    ) -> list[tuple[str, int]]:
+        if dimension not in self._COMPANY_DIMENSIONS:
+            raise ValueError(f"unsupported contact dimension: {dimension}")
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT COALESCE(c.{dimension}, 'unspecified') AS bucket, COUNT(*)::int AS total
+                FROM contacts ct
+                INNER JOIN companies c ON c.id = ct.company_id
+                WHERE c.archived_at IS NULL
+                GROUP BY bucket
+                ORDER BY total DESC, bucket ASC
+                """,
+            )
+            rows = cur.fetchall()
+        return [(str(row["bucket"]), int(row["total"])) for row in rows]
+
+    def list_overdue_next_actions(
+        self,
+        conn: psycopg.Connection,
+        *,
+        reference: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT rr.*, c.name AS company_name, ct.full_name AS contact_name
+                FROM research_records rr
+                INNER JOIN companies c ON c.id = rr.company_id
+                LEFT JOIN contacts ct ON ct.id = rr.contact_id
+                WHERE rr.record_type = 'follow_up_note'
+                  AND rr.review_at IS NOT NULL
+                  AND rr.review_at < %s
+                  AND c.archived_at IS NULL
+                ORDER BY rr.review_at ASC
+                LIMIT %s
+                """,
+                (reference, limit),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def list_upcoming_next_actions(
+        self,
+        conn: psycopg.Connection,
+        *,
+        reference: datetime,
+        window_end: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT rr.*, c.name AS company_name, ct.full_name AS contact_name
+                FROM research_records rr
+                INNER JOIN companies c ON c.id = rr.company_id
+                LEFT JOIN contacts ct ON ct.id = rr.contact_id
+                WHERE rr.record_type = 'follow_up_note'
+                  AND rr.review_at IS NOT NULL
+                  AND rr.review_at >= %s
+                  AND rr.review_at <= %s
+                  AND c.archived_at IS NULL
+                ORDER BY rr.review_at ASC
+                LIMIT %s
+                """,
+                (reference, window_end, limit),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def list_recent_evidence(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT rr.*, c.name AS company_name
+                FROM research_records rr
+                INNER JOIN companies c ON c.id = rr.company_id
+                WHERE rr.record_type = ANY(%s)
+                  AND c.archived_at IS NULL
+                ORDER BY rr.created_at DESC
+                LIMIT %s
+                """,
+                (list(self._PUBLIC_EVIDENCE_TYPES), limit),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def list_stale_evidence(
+        self,
+        conn: psycopg.Connection,
+        *,
+        reference: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT rr.*, c.name AS company_name
+                FROM research_records rr
+                INNER JOIN companies c ON c.id = rr.company_id
+                WHERE rr.record_type = ANY(%s)
+                  AND rr.expires_at IS NOT NULL
+                  AND rr.expires_at <= %s
+                  AND c.archived_at IS NULL
+                ORDER BY rr.expires_at ASC
+                LIMIT %s
+                """,
+                (list(self._PUBLIC_EVIDENCE_TYPES), reference, limit),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def list_companies_without_decision_maker(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT c.*
+                FROM companies c
+                WHERE c.archived_at IS NULL
+                  AND c.target_status = ANY(%s)
+                  AND NOT EXISTS (
+                      SELECT 1 FROM contacts ct WHERE ct.company_id = c.id
+                  )
+                ORDER BY c.name ASC
+                LIMIT %s
+                """,
+                (list(self._TARGET_STATUSES), limit),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def list_companies_without_next_action(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT c.*
+                FROM companies c
+                WHERE c.archived_at IS NULL
+                  AND c.target_status = ANY(%s)
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM research_records rr
+                      WHERE rr.company_id = c.id
+                        AND rr.record_type = 'follow_up_note'
+                        AND rr.review_at IS NOT NULL
+                  )
+                ORDER BY c.name ASC
+                LIMIT %s
+                """,
+                (list(self._TARGET_STATUSES), limit),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+
 class PostgresAdminUserRepository:
     def create(
         self,
@@ -895,6 +1095,7 @@ class PostgresRepositories:
         self.admin_users = PostgresAdminUserRepository()
         self.audit_events = PostgresAuditEventRepository()
         self.project_briefs = PostgresProjectBriefRepository()
+        self.acquisition_dashboard = PostgresAcquisitionDashboardRepository()
 
 
 _default_repositories = PostgresRepositories()
@@ -915,6 +1116,7 @@ def default_repositories() -> dict[str, Any]:
         "admin_users": repos.admin_users,
         "audit_events": repos.audit_events,
         "project_briefs": repos.project_briefs,
+        "acquisition_dashboard": repos.acquisition_dashboard,
     }
 
 

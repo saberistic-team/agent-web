@@ -230,7 +230,8 @@ Migrations live in `app/migrations/definitions.py` and are applied at startup vi
 | `006` | `admin_csrf_binding` | Login-flow CSRF rows and session CSRF column |
 | `007` | `research_records` | Typed research records with provenance and expiry |
 | `010` | `company_records` | Company firmographics, normalized domain, and soft archival |
-| `011` | `contact_records` | Contact roles, relationship context, optional email, soft archival |
+| `011` | `acquisition_dashboard_indexes` | Research-record indexes for the acquisition dashboard |
+| `012` | `contact_records` | Contact roles, relationship context, optional email, soft archival |
 
 Applied versions are recorded in `schema_migrations`. Steps are **idempotent**
 (`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`) so empty and existing Render Postgres

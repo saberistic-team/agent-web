@@ -230,6 +230,102 @@ body.admin-app {
   color: var(--ink);
 }
 
+.admin-stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 0.75rem 1rem;
+  margin: 0 0 1.5rem;
+  padding: 0;
+}
+
+.admin-stat-row > div {
+  border: 1px solid var(--line);
+  padding: 0.75rem 0.85rem;
+  background: color-mix(in srgb, var(--surface) 75%, transparent);
+}
+
+.admin-stat-row dt {
+  margin: 0 0 0.35rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.admin-stat-row dd {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 1.35rem;
+  color: var(--ink);
+}
+
+.admin-section-title {
+  margin: 0 0 0.65rem;
+  font-family: var(--display);
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.admin-preview-banner {
+  margin: 0 0 1rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.dashboard-grid {
+  display: grid;
+  gap: 1.25rem;
+  margin: 0 0 1.5rem;
+}
+
+.dashboard-panel {
+  margin: 0 0 1.75rem;
+}
+
+.dashboard-metric-def {
+  margin: 0 0 0.75rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+  max-width: 44rem;
+}
+
+.dashboard-count-table td:last-child {
+  font-family: var(--mono);
+  text-align: right;
+  width: 4rem;
+}
+
+.dashboard-empty {
+  margin: 0 0 1.5rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+
+.dashboard-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  align-items: center;
+  margin: 0 0 0.75rem;
+}
+
+.dashboard-secondary-link {
+  font-size: 0.85rem;
+  color: var(--ink);
+}
+
+.dashboard-footnote {
+  margin-top: 0.65rem;
+}
+
 .admin-empty code {
   color: var(--ink);
   background: color-mix(in srgb, var(--surface) 90%, transparent);
@@ -605,6 +701,10 @@ body.admin-app {
 }
 
 @media (min-width: 769px) {
+  .dashboard-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .admin-nav {
     position: sticky;
     top: 0;

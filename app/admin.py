@@ -58,13 +58,21 @@ def render_admin_page(
         )
     if get_settings().admin_preview_enabled:
         from app.admin_preview import (
-            build_preview_dashboard_data,
-            render_preview_dashboard_main,
+            build_preview_acquisition_dashboard_data,
             render_preview_section_main,
         )
 
         if active_path == "/admin":
-            main = render_preview_dashboard_main(build_preview_dashboard_data())
+            from app.admin_dashboard_pages import render_acquisition_dashboard_page
+
+            main = render_acquisition_dashboard_page(
+                data=build_preview_acquisition_dashboard_data(),
+                admin_username=admin_username,
+                csrf_token=csrf_token,
+                preview_banner="Preview data — not production",
+            )
+            # render_acquisition_dashboard_page returns full shell; short-circuit.
+            return main
         else:
             main = render_preview_section_main(
                 label=link["label"],

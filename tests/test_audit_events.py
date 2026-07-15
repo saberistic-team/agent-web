@@ -87,8 +87,8 @@ def test_audit_migration_present_and_ordered() -> None:
 @pytest.mark.unit
 def test_pending_migrations_includes_audit_after_sessions() -> None:
     pending = pending_migrations(applied_versions={"001", "002", "003", "004", "005", "006"})
-    assert len(pending) == 5
-    assert [m.version for m in pending] == ["007", "008", "009", "010", "011"]
+    assert len(pending) == 6
+    assert [m.version for m in pending] == ["007", "008", "009", "010", "011", "012"]
 
 
 @pytest.mark.unit
@@ -624,6 +624,17 @@ def test_render_admin_section_empty_state() -> None:
     )
     assert "Companies" in html_out
     assert "CRM data model" in html_out
+
+
+@pytest.mark.unit
+def test_render_admin_page_preview_dashboard(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app import admin
+
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
+    html_out = admin.render_admin_page("/admin", admin_username=TEST_USERNAME)
+    assert "Today&apos;s attention" in html_out
+    assert "Preview data — not production" in html_out
 
 
 @pytest.mark.unit
