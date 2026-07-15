@@ -42,6 +42,7 @@ from app.contacts import (
     normalize_email,
 )
 from app.crm_uow import crm_transaction
+from app.patch import UNSET
 from app.linkedin_import import (
     LINKEDIN_IMPORT_SCHEMA_VERSION,
     SOURCE_KIND_CONNECTION,
@@ -359,7 +360,11 @@ class CrmService:
                 conn,
                 UUID(str(company["id"])),
                 pipeline_stage=pipeline_stage,
-                expected_value_cents=expected_value_cents,
+                # Omit rather than clear when the brief carries no expected value,
+                # so linking to an existing company preserves its stored amount.
+                expected_value_cents=(
+                    expected_value_cents if expected_value_cents is not None else UNSET
+                ),
             )
             if updated is not None:
                 company = updated
@@ -624,7 +629,7 @@ class CrmService:
                 else []
             )
             updated = self._repos.companies.update(
-                conn, company_id, **company.model_dump(exclude_none=True)
+                conn, company_id, **company.model_dump(exclude_unset=True)
             )
         if updated is None:
             return None
@@ -763,7 +768,7 @@ class CrmService:
             )
             try:
                 updated = self._repos.contacts.update(
-                    conn, contact_id, **contact.model_dump()
+                    conn, contact_id, **contact.model_dump(exclude_unset=True)
                 )
             except pg_errors.UniqueViolation as exc:
                 if not _is_contact_email_unique_violation(exc):
@@ -1411,8 +1416,15 @@ class CrmService:
             nurture_reason=change.nurture_reason,
         )
         summary_before = pipeline_summary(company)
-        loss_reason = change.loss_reason if change.to_stage == "lost" else None
-        nurture_reason = change.nurture_reason if change.to_stage == "nurture" else None
+        to_lost = change.to_stage == "lost"
+        to_nurture = change.to_stage == "nurture"
+        # Set the reason only when a real value is supplied; otherwise omit it and
+        # let the clear_* flags reset the reason that no longer applies. Passing a
+        # value and the matching clear flag together would double-assign the column.
+        loss_reason = change.loss_reason if (to_lost and change.loss_reason) else UNSET
+        nurture_reason = (
+            change.nurture_reason if (to_nurture and change.nurture_reason) else UNSET
+        )
         with crm_transaction(conn):
             updated = self._repos.pipeline.update_pipeline_fields(
                 conn,
@@ -1420,8 +1432,8 @@ class CrmService:
                 pipeline_stage=change.to_stage,
                 pipeline_loss_reason=loss_reason,
                 pipeline_nurture_reason=nurture_reason,
-                clear_loss_reason=change.to_stage != "lost",
-                clear_nurture_reason=change.to_stage != "nurture",
+                clear_loss_reason=not to_lost,
+                clear_nurture_reason=not to_nurture,
             )
             if updated is None:
                 raise ValueError("Company not found.")
@@ -1472,14 +1484,15 @@ class CrmService:
         if company is None:
             raise ValueError("Company not found.")
         summary_before = pipeline_summary(company)
+        # Only fields the caller actually supplied are patched; a supplied blank
+        # (mapped to None by the model) clears the column, while omitted fields
+        # keep their stored value.
+        patch = update.model_dump(exclude_unset=True)
         with crm_transaction(conn):
             updated = self._repos.pipeline.update_pipeline_fields(
                 conn,
                 company_id,
-                next_action=update.next_action,
-                next_action_due_at=update.next_action_due_at,
-                pipeline_owner=update.pipeline_owner,
-                expected_value_cents=update.expected_value_cents,
+                **patch,
             )
             if updated is None:
                 raise ValueError("Company not found.")
