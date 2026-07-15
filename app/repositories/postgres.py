@@ -1156,7 +1156,7 @@ class PostgresProjectBriefRepository:
         id, created_at, website, contact_method, contact_value, brief, status,
         stripe_session_id, stripe_payment_intent_id, paid_at,
         payment_subtotal_cents, payment_discount_cents, payment_amount_cents,
-        payment_currency, stripe_discount_id,
+        payment_currency, stripe_promotion_code_id, stripe_coupon_id,
         utm_source, utm_medium, utm_campaign, utm_content, utm_term
     """
 

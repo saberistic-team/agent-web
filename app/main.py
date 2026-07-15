@@ -325,15 +325,15 @@ async def stripe_webhook(request: Request) -> JSONResponse:
     if paid_brief is None:
         return JSONResponse({"received": True})
 
-    amount_cents = payment_details.get("payment_amount_cents")
-    if amount_cents is None:
-        amount_cents = settings.brief_price_cents
+    paid_amount_cents = payment_details.get("payment_amount_cents")
+    if paid_amount_cents is None:
+        paid_amount_cents = settings.brief_price_cents
 
     try:
         analytics_service.track_payment_completed(
             settings,
             brief_id=brief_id,
-            price_cents=int(amount_cents),
+            price_cents=paid_amount_cents,
             utm={
                 "utm_source": paid_brief.get("utm_source"),
                 "utm_medium": paid_brief.get("utm_medium"),

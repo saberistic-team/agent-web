@@ -638,33 +638,28 @@ def build_preview_brief_rows(
         # Keep id=1 rich/paid and id=2 unpaid+nullable so Reviewer shots cover both AC states.
         if brief_id == 1:
             status = "paid"
-        elif brief_id == 3:
-            status = "paid"
         created = now - timedelta(hours=rng.randint(2, 120), minutes=rng.randint(0, 50))
         paid_at: datetime | None = None
         session_id: str | None = None
         intent_id: str | None = None
-        payment_subtotal_cents: int | None = None
-        payment_discount_cents: int | None = None
-        payment_amount_cents: int | None = None
-        payment_currency: str | None = None
-        stripe_discount_id: str | None = None
         if status == "paid":
             paid_at = created + timedelta(minutes=rng.randint(5, 90))
             session_id = f"cs_preview_{rng.randint(100000, 999999)}"
             intent_id = f"pi_preview_{rng.randint(100000, 999999)}"
+        payment_subtotal_cents: int | None = None
+        payment_discount_cents: int | None = None
+        payment_amount_cents: int | None = None
+        payment_currency: str | None = None
+        stripe_promotion_code_id: str | None = None
+        stripe_coupon_id: str | None = None
+        if status == "paid":
             if brief_id == 1:
-                payment_subtotal_cents = 20_000
-                payment_discount_cents = 0
-                payment_amount_cents = 20_000
-                payment_currency = "usd"
-            elif brief_id == 3:
                 payment_subtotal_cents = 20_000
                 payment_discount_cents = 5_000
                 payment_amount_cents = 15_000
                 payment_currency = "usd"
-                stripe_discount_id = "promo_preview_abc"
-                intent_id = None
+                stripe_promotion_code_id = "promo_preview_launch25"
+                stripe_coupon_id = "coupon_preview_launch25"
             else:
                 payment_subtotal_cents = 20_000
                 payment_discount_cents = 0
@@ -702,7 +697,8 @@ def build_preview_brief_rows(
                 "payment_discount_cents": payment_discount_cents,
                 "payment_amount_cents": payment_amount_cents,
                 "payment_currency": payment_currency,
-                "stripe_discount_id": stripe_discount_id,
+                "stripe_promotion_code_id": stripe_promotion_code_id,
+                "stripe_coupon_id": stripe_coupon_id,
                 "utm_source": utm_source,
                 "utm_medium": utm_medium,
                 "utm_campaign": utm_campaign,

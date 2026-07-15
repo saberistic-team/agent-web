@@ -471,10 +471,10 @@ def test_build_conversion_proposal_uses_brief_payment_not_operator_input() -> No
     assert unpaid["expected_value"] is None
 
 
-def test_build_conversion_proposal_uses_stored_payment_amount() -> None:
-    discounted = _brief(status="paid")
-    discounted["payment_amount_cents"] = 15_000
-    proposal = build_conversion_proposal(discounted, price_cents=20_000)
+def test_build_conversion_proposal_uses_discounted_paid_amount() -> None:
+    brief = _brief(status="paid")
+    brief["payment_amount_cents"] = 15_000
+    proposal = build_conversion_proposal(brief, price_cents=20_000)
     assert proposal["expected_value"] == 150.0
 
 

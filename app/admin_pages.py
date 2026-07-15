@@ -193,43 +193,74 @@ def _format_amount(cents: int) -> str:
     return f"${cents / 100:.0f}"
 
 
-def _brief_collected_amount_cents(brief: dict[str, Any], default_price_cents: int) -> int:
-    amount = brief.get("payment_amount_cents")
-    if amount is not None:
-        return int(amount)
-    return default_price_cents
+def _brief_paid_amount_cents(brief: dict[str, Any], list_price_cents: int) -> int:
+    paid = brief.get("payment_amount_cents")
+    if paid is not None:
+        return int(paid)
+    return list_price_cents
 
 
-def _format_brief_payment_list_cell(brief: dict[str, Any], default_price_cents: int) -> str:
-    amount = _brief_collected_amount_cents(brief, default_price_cents)
-    discount = brief.get("payment_discount_cents")
-    if discount is not None and int(discount) > 0:
-        return f"{_format_amount(amount)} (−{_format_amount(int(discount))})"
-    return _format_amount(amount)
+def _format_paid_payment_summary(brief: dict[str, Any], list_price_cents: int) -> str:
+    final_cents = _brief_paid_amount_cents(brief, list_price_cents)
+    discount_cents = brief.get("payment_discount_cents")
+    subtotal_cents = brief.get("payment_subtotal_cents")
+    currency = brief.get("payment_currency")
+    currency_suffix = ""
+    if currency and str(currency).lower() != "usd":
+        currency_suffix = f" {html.escape(str(currency).upper())}"
+
+    if (
+        discount_cents is not None
+        and int(discount_cents) > 0
+        and subtotal_cents is not None
+    ):
+        return (
+            f"{html.escape(_format_amount(int(subtotal_cents)))}"
+            f" − {html.escape(_format_amount(int(discount_cents)))}"
+            f" = {html.escape(_format_amount(final_cents))}{currency_suffix}"
+        )
+    return html.escape(_format_amount(final_cents)) + currency_suffix
 
 
-def _format_brief_payment_detail_lines(
+def _format_paid_payment_detail_lines(
     brief: dict[str, Any],
-    default_price_cents: int,
+    list_price_cents: int,
 ) -> list[str]:
-    subtotal = brief.get("payment_subtotal_cents")
-    discount = brief.get("payment_discount_cents")
-    amount = brief.get("payment_amount_cents")
+    final_cents = _brief_paid_amount_cents(brief, list_price_cents)
+    discount_cents = brief.get("payment_discount_cents")
+    subtotal_cents = brief.get("payment_subtotal_cents")
     currency = brief.get("payment_currency")
 
-    if subtotal is None and amount is None:
-        return [html.escape(_format_amount(default_price_cents))]
+    if (
+        discount_cents is not None
+        and int(discount_cents) > 0
+        and subtotal_cents is not None
+    ):
+        lines = [
+            f"Subtotal: {html.escape(_format_amount(int(subtotal_cents)))}",
+            f"Discount: {html.escape(_format_amount(int(discount_cents)))}",
+            f"Total: {html.escape(_format_amount(final_cents))}",
+        ]
+        if currency:
+            lines.append(f"Currency: {html.escape(str(currency).upper())}")
+        promo_id = brief.get("stripe_promotion_code_id")
+        coupon_id = brief.get("stripe_coupon_id")
+        if promo_id:
+            lines.append(
+                f"Promotion code ID: "
+                f'<code class="brief-stripe-ref">{html.escape(str(promo_id))}</code>'
+            )
+        if coupon_id:
+            lines.append(
+                f"Coupon ID: "
+                f'<code class="brief-stripe-ref">{html.escape(str(coupon_id))}</code>'
+            )
+        return lines
 
-    lines: list[str] = []
-    if subtotal is not None:
-        lines.append(f"Subtotal: {html.escape(_format_amount(int(subtotal)))}")
-    if discount is not None and int(discount) > 0:
-        lines.append(f"Discount: −{html.escape(_format_amount(int(discount)))}")
-    final = int(amount) if amount is not None else default_price_cents
-    lines.append(f"Total: {html.escape(_format_amount(final))}")
-    if currency:
-        lines.append(f"Currency: {html.escape(str(currency).upper())}")
-    return lines
+    currency_suffix = ""
+    if currency and str(currency).lower() != "usd":
+        currency_suffix = f" {html.escape(str(currency).upper())}"
+    return [html.escape(_format_amount(final_cents)) + currency_suffix]
 
 
 def _format_utm(source: str | None, campaign: str | None) -> str:
@@ -289,7 +320,7 @@ def render_admin_briefs_page(
         payment_cell = f'<span class="admin-status admin-status-{status_class}">{html.escape(status_label)}</span>'
         paid_at = brief.get("paid_at")
         if status == "paid":
-            paid_parts = [_format_brief_payment_list_cell(brief, price_cents)]
+            paid_parts = [_format_paid_payment_summary(brief, price_cents)]
             if paid_at:
                 paid_parts.append(_format_timestamp(paid_at))
             payment_cell = "<br>".join(paid_parts)
@@ -566,7 +597,9 @@ def render_admin_brief_detail_page(
     )
     payment_lines = [status_html]
     if status == "paid":
-        payment_lines.extend(_format_brief_payment_detail_lines(brief, price_cents))
+        payment_lines.extend(
+            _format_paid_payment_detail_lines(brief, price_cents)
+        )
         paid_at = brief.get("paid_at")
         if paid_at:
             payment_lines.append(_format_timestamp(paid_at))

@@ -55,46 +55,43 @@ def extract_brief_id_from_session(session: dict[str, Any]) -> int | None:
     return int(raw_id)
 
 
-def extract_payment_details_from_session(
-    session: dict[str, Any],
-) -> dict[str, int | str | None]:
-    """Read completed Checkout Session payment totals (source of truth for discounts)."""
+def _stripe_object_id(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped or None
+    if isinstance(value, dict):
+        raw_id = value.get("id")
+        if raw_id is None:
+            return None
+        return str(raw_id).strip() or None
+    return None
+
+
+def extract_payment_details_from_session(session: dict[str, Any]) -> dict[str, Any]:
+    """Read completed Checkout Session amounts and applied discount identifiers."""
     total_details = session.get("total_details") or {}
     discount_cents = total_details.get("amount_discount")
     if discount_cents is None:
         discount_cents = 0
 
-    stripe_discount_id: str | None = None
-    for entry in session.get("discounts") or []:
-        if not isinstance(entry, dict):
+    promotion_code_id: str | None = None
+    coupon_id: str | None = None
+    for discount in session.get("discounts") or []:
+        if not isinstance(discount, dict):
             continue
-        promotion_code = entry.get("promotion_code")
-        coupon = entry.get("coupon")
-        if isinstance(promotion_code, dict):
-            promo_id = promotion_code.get("id")
-            if promo_id:
-                stripe_discount_id = str(promo_id)
-                break
-        if isinstance(promotion_code, str) and promotion_code:
-            stripe_discount_id = promotion_code
-            break
-        if isinstance(coupon, dict):
-            coupon_id = coupon.get("id")
-            if coupon_id:
-                stripe_discount_id = str(coupon_id)
-                break
-        if isinstance(coupon, str) and coupon:
-            stripe_discount_id = coupon
+        promotion_code_id = _stripe_object_id(discount.get("promotion_code"))
+        coupon_id = _stripe_object_id(discount.get("coupon"))
+        if promotion_code_id or coupon_id:
             break
 
-    subtotal = session.get("amount_subtotal")
-    total = session.get("amount_total")
     currency = session.get("currency")
-
     return {
-        "payment_subtotal_cents": int(subtotal) if subtotal is not None else None,
-        "payment_discount_cents": int(discount_cents),
-        "payment_amount_cents": int(total) if total is not None else None,
+        "payment_subtotal_cents": session.get("amount_subtotal"),
+        "payment_discount_cents": discount_cents,
+        "payment_amount_cents": session.get("amount_total"),
         "payment_currency": str(currency).lower() if currency else None,
-        "stripe_discount_id": stripe_discount_id,
+        "stripe_promotion_code_id": promotion_code_id,
+        "stripe_coupon_id": coupon_id,
     }

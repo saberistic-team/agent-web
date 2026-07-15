@@ -99,7 +99,8 @@ def mark_brief_paid(
     payment_discount_cents: int | None = None,
     payment_amount_cents: int | None = None,
     payment_currency: str | None = None,
-    stripe_discount_id: str | None = None,
+    stripe_promotion_code_id: str | None = None,
+    stripe_coupon_id: str | None = None,
 ) -> dict[str, Any] | None:
     paid_at = datetime.now(timezone.utc)
     with conn.cursor() as cur:
@@ -114,7 +115,8 @@ def mark_brief_paid(
                 payment_discount_cents = %s,
                 payment_amount_cents = %s,
                 payment_currency = %s,
-                stripe_discount_id = %s
+                stripe_promotion_code_id = %s,
+                stripe_coupon_id = %s
             WHERE id = %s AND status != 'paid'
             RETURNING *
             """,
@@ -126,7 +128,8 @@ def mark_brief_paid(
                 payment_discount_cents,
                 payment_amount_cents,
                 payment_currency,
-                stripe_discount_id,
+                stripe_promotion_code_id,
+                stripe_coupon_id,
                 brief_id,
             ),
         )
