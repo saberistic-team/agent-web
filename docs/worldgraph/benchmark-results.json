@@ -197,7 +197,7 @@
             "hit_count": 5,
             "top_slug": "relay-nexus-discord-bot",
             "top_score": 0.253,
-            "latency_ms": 0.8485030001029372,
+            "latency_ms": 0.8693699999712408,
             "explain_sample": {
               "fts": 0.3273268353539886,
               "trigram": 0.1415929203539823
@@ -207,7 +207,7 @@
             "hit_count": 5,
             "top_slug": "relay-nexus-discord-bot",
             "top_score": 0.7111,
-            "latency_ms": 0.8237670001108199,
+            "latency_ms": 0.8451639999984764,
             "explain_sample": {
               "embedding": 0.7110897036360737
             }
@@ -216,7 +216,7 @@
             "hit_count": 5,
             "top_slug": "relay-nexus-discord-bot",
             "top_score": 0.4592,
-            "latency_ms": 0.8239690002519637,
+            "latency_ms": 0.8118450000183657,
             "explain_sample": {
               "fts": 0.3273268353539886,
               "trigram": 0.1415929203539823,
@@ -233,7 +233,7 @@
             "hit_count": 5,
             "top_slug": "ember-atelier",
             "top_score": 0.1775,
-            "latency_ms": 0.413001999957487,
+            "latency_ms": 0.3803440000046976,
             "explain_sample": {
               "fts": 0.24096579867074966,
               "trigram": 0.0821917808219178
@@ -243,7 +243,7 @@
             "hit_count": 5,
             "top_slug": "ember-atelier",
             "top_score": 0.5346,
-            "latency_ms": 0.38143199984915555,
+            "latency_ms": 0.3764990000636317,
             "explain_sample": {
               "embedding": 0.5345998039042366
             }
@@ -252,7 +252,7 @@
             "hit_count": 5,
             "top_slug": "ember-atelier",
             "top_score": 0.3382,
-            "latency_ms": 0.3699400001205504,
+            "latency_ms": 0.35672899993369356,
             "explain_sample": {
               "fts": 0.24096579867074966,
               "trigram": 0.0821917808219178,
@@ -269,7 +269,7 @@
             "hit_count": 3,
             "top_slug": "ember-atelier-monorepo",
             "top_score": 0.0857,
-            "latency_ms": 0.28569299983792007,
+            "latency_ms": 0.26178799994522706,
             "explain_sample": {
               "fts": 0.10660035817780521,
               "trigram": 0.05434782608695652
@@ -279,7 +279,7 @@
             "hit_count": 3,
             "top_slug": "ember-atelier",
             "top_score": 0.5871,
-            "latency_ms": 0.25738999992609024,
+            "latency_ms": 0.25285500002792105,
             "explain_sample": {
               "embedding": 0.5870937376669727
             }
@@ -288,7 +288,7 @@
             "hit_count": 3,
             "top_slug": "ember-atelier",
             "top_score": 0.3057,
-            "latency_ms": 0.2519410001114011,
+            "latency_ms": 0.23540000000502914,
             "explain_sample": {
               "fts": 0.08980265101338746,
               "trigram": 0.053811659192825115,
@@ -305,7 +305,7 @@
             "hit_count": 4,
             "top_slug": "relay-nexus",
             "top_score": 0.3332,
-            "latency_ms": 0.21067299996502697,
+            "latency_ms": 0.2049039999837987,
             "explain_sample": {
               "fts": 0.4472135954999579,
               "trigram": 0.16216216216216217
@@ -315,7 +315,7 @@
             "hit_count": 4,
             "top_slug": "relay-nexus",
             "top_score": 0.5886,
-            "latency_ms": 0.22131300019100308,
+            "latency_ms": 0.1880290000117384,
             "explain_sample": {
               "embedding": 0.5885690300400498
             }
@@ -324,7 +324,7 @@
             "hit_count": 4,
             "top_slug": "relay-nexus",
             "top_score": 0.4481,
-            "latency_ms": 0.20038399985060096,
+            "latency_ms": 0.17924500006483868,
             "explain_sample": {
               "fts": 0.4472135954999579,
               "trigram": 0.16216216216216217,
@@ -341,7 +341,7 @@
             "hit_count": 5,
             "top_slug": "lumen-grove",
             "top_score": 0.1765,
-            "latency_ms": 0.7884319999720901,
+            "latency_ms": 0.7656060000299476,
             "explain_sample": {
               "fts": 0.24253562503633297,
               "trigram": 0.07751937984496124
@@ -351,7 +351,7 @@
             "hit_count": 5,
             "top_slug": "relay-nexus-discord-bot",
             "top_score": 0.6015,
-            "latency_ms": 0.7641459999140352,
+            "latency_ms": 0.7425109999603592,
             "explain_sample": {
               "embedding": 0.6015310928939406
             }
@@ -360,7 +360,7 @@
             "hit_count": 5,
             "top_slug": "lumen-grove",
             "top_score": 0.3491,
-            "latency_ms": 0.7803269999567419,
+            "latency_ms": 0.7440640000277199,
             "explain_sample": {
               "fts": 0.22941573387056174,
               "trigram": 0.09022556390977443,
@@ -377,7 +377,7 @@
             "hit_count": 5,
             "top_slug": "xss-world",
             "top_score": 0.1583,
-            "latency_ms": 0.7906759998295456,
+            "latency_ms": 0.7567130000679754,
             "explain_sample": {
               "fts": 0.20412414523193154,
               "trigram": 0.08955223880597014
@@ -387,7 +387,7 @@
             "hit_count": 5,
             "top_slug": "ember-atelier-by-studio-ember",
             "top_score": 0.6373,
-            "latency_ms": 0.7815779999364167,
+            "latency_ms": 0.7472590000252239,
             "explain_sample": {
               "embedding": 0.6372774298687713
             }
@@ -396,7 +396,7 @@
             "hit_count": 5,
             "top_slug": "xss-world",
             "top_score": 0.3729,
-            "latency_ms": 0.7596580001991242,
+            "latency_ms": 0.7305639999685809,
             "explain_sample": {
               "fts": 0.20412414523193154,
               "trigram": 0.08955223880597014,
@@ -413,7 +413,7 @@
             "hit_count": 5,
             "top_slug": "lumen-grove",
             "top_score": 0.2399,
-            "latency_ms": 0.8088099998421967,
+            "latency_ms": 0.7719550000037998,
             "explain_sample": {
               "fts": 0.2809757434745082,
               "trigram": 0.17829457364341086
@@ -423,7 +423,7 @@
             "hit_count": 5,
             "top_slug": "ember-atelier-by-studio-ember",
             "top_score": 0.6672,
-            "latency_ms": 0.8063950000796467,
+            "latency_ms": 0.7478300000075251,
             "explain_sample": {
               "embedding": 0.6672421920729302
             }
@@ -432,7 +432,7 @@
             "hit_count": 5,
             "top_slug": "lumen-grove",
             "top_score": 0.3883,
-            "latency_ms": 0.8014150001108646,
+            "latency_ms": 0.754529999976512,
             "explain_sample": {
               "fts": 0.2809757434745082,
               "trigram": 0.17829457364341086,
@@ -449,7 +449,7 @@
             "hit_count": 5,
             "top_slug": "ember-atelier",
             "top_score": 0.268,
-            "latency_ms": 0.7927999999374151,
+            "latency_ms": 0.7640839999658056,
             "explain_sample": {
               "fts": 0.3592106040535498,
               "trigram": 0.13106796116504854
@@ -459,7 +459,7 @@
             "hit_count": 5,
             "top_slug": "ember-atelier-monorepo",
             "top_score": 0.5768,
-            "latency_ms": 0.7683749999850988,
+            "latency_ms": 0.7519460000330582,
             "explain_sample": {
               "embedding": 0.5767569585261618
             }
@@ -468,7 +468,7 @@
             "hit_count": 5,
             "top_slug": "ember-atelier",
             "top_score": 0.3859,
-            "latency_ms": 0.7850649999454618,
+            "latency_ms": 0.735331000003498,
             "explain_sample": {
               "fts": 0.3592106040535498,
               "trigram": 0.13106796116504854,
@@ -482,15 +482,15 @@
     "summary": {
       "fts_trigram": {
         "no_result_queries": 0,
-        "avg_latency_ms": 0.617
+        "avg_latency_ms": 0.597
       },
       "embedding_pgvector": {
         "no_result_queries": 0,
-        "avg_latency_ms": 0.601
+        "avg_latency_ms": 0.582
       },
       "hybrid": {
         "no_result_queries": 0,
-        "avg_latency_ms": 0.597
+        "avg_latency_ms": 0.568
       }
     }
   }

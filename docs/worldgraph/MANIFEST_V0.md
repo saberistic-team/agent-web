@@ -77,6 +77,10 @@ Allowed `provenance`: `extracted`, `creator_declared`, `verified`, `unknown`.
 Pydantic models live in `app/worldgraph_spike/manifest_v0.py` (spike-only module).
 Validation tests: `tests/test_worldgraph_spike_unit.py`.
 
+An alternate JSON Schema export with `identity` / `experience` / `ai_role` / `trust`
+sections lives in `world-manifest-v0.schema.json` for external tooling; spike
+extractors and benchmarks validate against the Pydantic models above.
+
 ## Qualifying source types (spike corpus)
 
 | `source_type` | Typical signals | Creator-entered minimum |
