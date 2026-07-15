@@ -402,22 +402,20 @@ def try_admit_admin_login(
     conn: psycopg.Connection,
     *,
     limiter_keys: tuple[str, ...],
+    guard_keys: tuple[str, ...] | None = None,
     now: datetime,
     rate_limit: int,
     window_seconds: int,
     lockout_seconds: int,
-    increment_keys: tuple[str, ...] | None = None,
 ) -> AdminLoginAdmission:
     """Atomically decide whether a login attempt may reach password verification.
 
-    All ``limiter_keys`` are locked in sorted order inside one transaction so
-    concurrent requests cannot overshoot the configured threshold. When any key
-    is actively locked, admission is denied without incrementing counters.
-    Only ``increment_keys`` (defaults to all ``limiter_keys``) receive counter
-    updates so rotation overlap can honor previous-key lockouts without
-    double-counting failures.
+    All ``guard_keys`` are locked in sorted order inside one transaction so
+    concurrent requests cannot overshoot the configured threshold. When any guard
+    key is actively locked, admission is denied without incrementing counters.
+    Only ``limiter_keys`` are upserted and incremented.
     """
-    if not limiter_keys:
+    if not limiter_keys and not guard_keys:
         return AdminLoginAdmission(
             admitted=True,
             throttled=False,
@@ -425,10 +423,10 @@ def try_admit_admin_login(
             lockout_transition=False,
         )
 
-    increment_set = set(increment_keys if increment_keys is not None else limiter_keys)
-    ordered_keys = tuple(sorted(limiter_keys))
+    ordered_guard = tuple(sorted(guard_keys if guard_keys is not None else limiter_keys))
+    ordered_admit = tuple(sorted(limiter_keys))
     with conn.cursor() as cur:
-        for limiter_key in ordered_keys:
+        for limiter_key in ordered_admit:
             cur.execute(
                 """
                 INSERT INTO admin_login_rate_limits (
@@ -448,12 +446,14 @@ def try_admit_admin_login(
             ORDER BY limiter_key
             FOR UPDATE
             """,
-            (list(ordered_keys),),
+            (list(ordered_guard),),
         )
         rows = {str(row["limiter_key"]): row for row in cur.fetchall()}
 
-        for limiter_key in ordered_keys:
-            row = rows[limiter_key]
+        for limiter_key in ordered_guard:
+            row = rows.get(limiter_key)
+            if row is None:
+                continue
             locked_until = _normalize_limiter_locked_until(row["locked_until"])
             if locked_until is not None and locked_until > now:
                 conn.commit()
@@ -466,9 +466,7 @@ def try_admit_admin_login(
 
         updates: dict[str, tuple[int, datetime, datetime | None]] = {}
         lockout_transition = False
-        for limiter_key in ordered_keys:
-            if limiter_key not in increment_set:
-                continue
+        for limiter_key in ordered_admit:
             row = rows[limiter_key]
             window_started_at = row["window_started_at"]
             if window_started_at.tzinfo is None:

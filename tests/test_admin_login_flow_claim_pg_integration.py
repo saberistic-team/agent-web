@@ -33,7 +33,7 @@ _DATABASE_URL = (os.environ.get("TEST_DATABASE_URL") or "").strip()
 
 TEST_HASH = PasswordHasher().hash(TEST_PASSWORD)
 TEST_SECRET = "test-session-secret-32chars-minimum"
-TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!!"
+TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum"
 
 pytestmark = [pytest.mark.integration]
 
