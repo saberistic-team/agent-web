@@ -246,6 +246,25 @@ def test_legacy_admin_trust_proxy_headers_applies_default_boundary(
 
 
 @pytest.mark.unit
+def test_rotating_spoofed_headers_share_one_limiter_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = _trusted_settings(monkeypatch)
+    keys: set[str] = set()
+    for index in range(5):
+        request = _request_with_client(
+            RENDER_PROXY,
+            headers={
+                "X-Forwarded-For": f"203.0.113.{index}, {CLIENT_A}, {RENDER_PROXY}",
+            },
+        )
+        resolution = resolve_admin_login_client_source(request, settings)
+        keys.add(admin_auth.build_source_rate_limit_key(resolution.source))
+    assert len(keys) == 1
+    assert keys.pop() == admin_auth.build_source_rate_limit_key(CLIENT_A)
+
+
+@pytest.mark.unit
 def test_telemetry_logs_resolution_path_without_raw_addresses(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,

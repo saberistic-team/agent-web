@@ -254,6 +254,10 @@ def client_ip(request: Request, settings: Settings) -> str:
     return resolve_admin_login_client_source(request, settings).source
 
 
+def _login_client_source(request: Request, settings: Settings) -> ClientSourceResolution:
+    return resolve_admin_login_client_source(request, settings)
+
+
 def _digest_limiter_key(prefix: str, material: str) -> str:
     payload = f"{prefix}:{material}"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -366,10 +370,6 @@ def login_form_inputs_valid(
     if next_path is not None and len(next_path) > LOGIN_NEXT_MAX_LENGTH:
         return False
     return True
-
-
-def _login_client_source(request: Request, settings: Settings) -> ClientSourceResolution:
-    return resolve_admin_login_client_source(request, settings)
 
 
 def try_admit_login_attempt(
