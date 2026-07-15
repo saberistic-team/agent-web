@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import ipaddress
 import os
 from dataclasses import dataclass
-
-from app.ip_trust import parse_trusted_proxy_networks
 
 
 @dataclass(frozen=True)
@@ -30,10 +27,7 @@ class Settings:
     admin_login_rate_limit: int = 5
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
-    admin_trusted_proxy_ips: str = ""
-    admin_trusted_proxy_networks: tuple[
-        ipaddress.IPv4Network | ipaddress.IPv6Network, ...
-    ] = ()
+    admin_trusted_proxy_cidrs: str = ""
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -115,8 +109,8 @@ def get_settings() -> Settings:
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
         brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
-        admin_trusted_proxy_ips=os.environ.get("ADMIN_TRUSTED_PROXY_IPS", "").strip(),
-        admin_trusted_proxy_networks=parse_trusted_proxy_networks(
-            os.environ.get("ADMIN_TRUSTED_PROXY_IPS", "").strip()
-        ),
+        admin_trusted_proxy_cidrs=os.environ.get(
+            "ADMIN_TRUSTED_PROXY_CIDRS",
+            os.environ.get("UVICORN_FORWARDED_ALLOW_IPS", ""),
+        ).strip(),
     )
