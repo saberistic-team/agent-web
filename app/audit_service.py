@@ -187,6 +187,10 @@ def record_login_failure(
     reason: str,
     repository: AuditEventRepository | None = None,
 ) -> dict[str, Any] | None:
+    actor_context = ActorContext(
+        actor="anonymous",
+        correlation_id=actor_context.correlation_id,
+    )
     metadata: dict[str, Any] = {"reason": reason}
     return record_event(
         conn,

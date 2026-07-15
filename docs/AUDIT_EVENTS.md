@@ -51,7 +51,7 @@ both commit or roll back together.
 | Brief-to-CRM linkage | `CrmService.link_project_brief_source` | Transactional write; audit ships with future routes |
 | Login success | `admin_routes._issue_session` | Prior-session revocation (if any) + new session + required audit atomically |
 | Logout (authenticated) | `admin_routes.admin_logout` | Revocation + required audit atomically when the session row transitions to revoked |
-| Login failure | `admin_routes` | Best-effort audit (`required=False`) |
+| Login failure | `admin_routes` | Best-effort audit (`required=False`); actor is always `anonymous` before authentication |
 
 `record_event(..., required=True)` propagates persistence errors. Security-sensitive
 mutations must not return success when a required audit event could not be stored.
@@ -81,24 +81,6 @@ emitted only after the transaction exits successfully.
 Repeat logout submissions for an already-revoked or unknown session perform
 idempotent browser cleanup only — no additional immutable audit rows.
 
-### Admin login failure actor policy
-
-Every `auth.login.failure` event emitted **before** successful authentication uses
-actor `anonymous`. The audit service does not persist submitted username candidates
-in actor, metadata, reason text, or correlation identifiers. Failure reasons are
-a small server-defined enum (`invalid_credentials`, `invalid_csrf`, `rate_limited`).
-
-Authenticated `auth.login.success` and `auth.logout` events retain the configured
-administrator username and session linkage.
-
-#### Historical immutable rows (pre–#242)
-
-Deployments before keyed limiter identifiers and anonymous failure actors may have
-append-only rows where `actor` contains a submitted login username candidate rather
-than `anonymous`. Application code does not rewrite or delete historical audit rows.
-Forward deployments prevent all new occurrences. Remediating historical exposure
-requires an explicit data-governance decision outside normal application code.
-
 Anonymous logout traffic is not stored in `audit_events`. Operational visibility,
 if needed, should use bounded HTTP access logs or metrics — never the append-only
 admin audit table.
@@ -118,6 +100,21 @@ creation or audit insertion rolls back prior-session revocation as well, so the
 operator is never left without a valid server-side session. The session cookie is
 set on the redirect response only after the transaction exits successfully; failed
 or rolled-back logins never emit a new session cookie.
+
+#### Unauthenticated login failures
+
+Every `auth.login.failure` event recorded before successful authentication uses
+the canonical actor `anonymous`. Submitted usernames, email addresses, client
+source values, limiter digest inputs, and limiter secrets are **never** persisted
+in the audit row's `actor`, `metadata`, `summary_after`, or `reason` fields.
+
+Failure reasons are a small server-defined enum (`invalid_credentials`,
+`invalid_csrf`, `rate_limited`, …) carried in redacted metadata only.
+
+**Historical note:** Rows written before issue #242 may contain attacker-supplied
+strings in `actor` for failed login attempts. Those rows remain append-only; this
+forward fix prevents new occurrences. Remediation of historical immutable rows
+requires an explicit data-governance decision outside normal application code.
 
 ## Audited actions
 

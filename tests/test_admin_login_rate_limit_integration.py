@@ -104,7 +104,7 @@ def test_username_rotation_shares_source_bucket(pg_conn: psycopg.Connection) -> 
     source_key = admin_auth.build_source_rate_limit_key("203.0.113.10", settings)
 
     for index in range(5):
-        user_key = admin_auth.build_rate_limit_key(f"user-{index}", "203.0.113.10", settings)
+        user_key = admin_auth.build_rate_limit_key(f"user-{index}", "203.0.113.10")
         assert user_key != source_key
         admission = _admit(
             pg_conn,
@@ -168,7 +168,9 @@ def test_account_bucket_limits_configured_admin_across_sources(
     now = datetime(2026, 3, 1, 8, 0, tzinfo=timezone.utc)
 
     for index in range(5):
-        source_key = admin_auth.build_source_rate_limit_key(f"203.0.113.{index + 1}", settings)
+        source_key = admin_auth.build_source_rate_limit_key(
+            f"203.0.113.{index + 1}", settings
+        )
         admission = _admit(
             pg_conn,
             keys=(source_key, account_key),
@@ -254,6 +256,42 @@ def test_expired_lockout_allows_new_admissions(pg_conn: psycopg.Connection) -> N
         lockout_seconds=lockout_seconds,
     )
     assert allowed.admitted
+
+
+@pytest.mark.integration
+def test_previous_secret_lockout_blocks_admission_after_rotation(
+    pg_conn: psycopg.Connection,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    previous_secret = "previous-limiter-secret-32chars-min-x"
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS", previous_secret)
+    settings = get_settings()
+    previous_key = admin_auth._hmac_limiter_digest("src", "203.0.113.70", previous_secret)
+    now = datetime(2026, 7, 2, 12, 0, tzinfo=timezone.utc)
+
+    for index in range(5):
+        _admit(
+            pg_conn,
+            keys=(previous_key,),
+            now=now + timedelta(seconds=index),
+            rate_limit=5,
+        )
+
+    lookup_keys = admin_auth.login_limiter_keys(
+        submitted_username="",
+        client_source="203.0.113.70",
+        configured_admin_username=settings.admin_username,
+        settings=settings,
+        include_previous=True,
+    )
+    blocked = _admit(
+        pg_conn,
+        keys=lookup_keys,
+        now=now + timedelta(seconds=10),
+        rate_limit=5,
+    )
+    assert not blocked.admitted
+    assert blocked.already_locked
 
 
 @pytest.mark.integration

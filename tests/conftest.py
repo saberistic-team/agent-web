@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-TEST_LOGIN_LIMITER_SECRET = "test-login-limiter-secret-32chars-min!!"
+TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum-x"
 
 
 @pytest.fixture(autouse=True)
-def _default_admin_login_limiter_secret(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Ensure limiter HMAC secret is present unless a test overrides it."""
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LOGIN_LIMITER_SECRET)
+def admin_login_limiter_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Provide a strong limiter secret for every test unless explicitly cleared."""
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
     monkeypatch.delenv("ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS", raising=False)
