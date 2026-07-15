@@ -92,12 +92,11 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert",
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
-    "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-    "/admin/companies/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
-    "/admin/contacts/cccccccc-cccc-cccc-cccc-cccccccccccc",
-    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd",
-    "/admin/contacts/cccccccc-cccc-cccc-cccc-cccccccccccc/edit",
-    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd/edit",
+    "/admin/companies/c0c0c0c0-c0c0-c0c0-c0c0-c0c0c0c0c0c1",
+    "/admin/companies/c0c0c0c0-c0c0-c0c0-c0c0-c0c0c0c0c0c2",
+    "/admin/contacts/c0c0c0c0-c0c0-c0c0-c0c0-c0c0c0c0c0c3",
+    "/admin/contacts/c0c0c0c0-c0c0-c0c0-c0c0-c0c0c0c0c0c4",
+    "/admin/contacts/c0c0c0c0-c0c0-c0c0-c0c0-c0c0c0c0c0c4/edit",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
 )
 
@@ -107,6 +106,15 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
 ADMIN_SCREENSHOT_EXPECTED_STATUS: dict[str, int] = {
     "/admin/briefs/503": 503,
 }
+
+
+def render_archive_restore_button(*, label: str, is_restore: bool) -> str:
+    """Return a themed archive/restore submit button (not a top-bar exit link)."""
+    variant = "admin-action-restore" if is_restore else "admin-action-destructive"
+    return (
+        f'<button class="admin-action-button {variant}" type="submit">'
+        f"{html.escape(label)}</button>"
+    )
 
 
 def _active_nav_label(active_path: str) -> str:

@@ -39,14 +39,11 @@ from app.admin_layout import ADMIN_NAV_LINKS, render_admin_shell
 from app.admin_preview import (
     PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR,
     PREVIEW_BRIEF_DATABASE_ERROR_ID,
-    PREVIEW_COMPANY_ACTIVE_ID,
-    PREVIEW_COMPANY_ARCHIVED_ID,
-    PREVIEW_CONTACT_ACTIVE_ID,
-    PREVIEW_CONTACT_ARCHIVED_ID,
+    PREVIEW_COMPANY_ARCHIVE_ID,
     PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID,
-    preview_company_research_detail,
-    preview_contact_edit_detail,
-    preview_contact_research_detail,
+    build_preview_company_detail,
+    build_preview_contact_detail,
+    build_preview_contact_form,
     preview_contact_restore_conflict,
 )
 from app.config import Settings, get_settings
@@ -711,22 +708,19 @@ def admin_company_research(
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
-        if company_id == PREVIEW_COMPANY_ACTIVE_ID:
-            company, contacts, records = preview_company_research_detail(archived=False)
-        elif company_id == PREVIEW_COMPANY_ARCHIVED_ID:
-            company, contacts, records = preview_company_research_detail(archived=True)
-        else:
-            raise HTTPException(status_code=404, detail="Company not found")
-        return HTMLResponse(
-            admin_research_pages.render_admin_company_research_page(
-                company=company,
-                contacts=contacts,
-                records=records,
-                csrf_token=csrf_token,
-                admin_username=session.admin_username,
-                error_message=error,
+        detail = build_preview_company_detail(company_id)
+        if detail is not None:
+            company, contacts, records = detail
+            return HTMLResponse(
+                admin_research_pages.render_admin_company_research_page(
+                    company=company,
+                    contacts=contacts,
+                    records=records,
+                    csrf_token=csrf_token,
+                    admin_username=session.admin_username,
+                    error_message=error,
+                )
             )
-        )
     with db.db_connection(settings.database_url) as conn:
         company = _crm.get_company(conn, company_id)
         if company is None:
@@ -1003,21 +997,25 @@ def admin_contact_edit(
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
-        if contact_id == PREVIEW_CONTACT_ACTIVE_ID:
-            contact, companies = preview_contact_edit_detail(archived=False)
-        elif contact_id == PREVIEW_CONTACT_ARCHIVED_ID:
-            contact, companies = preview_contact_edit_detail(archived=True)
-        else:
-            raise HTTPException(status_code=404, detail="Contact not found")
-        return HTMLResponse(
-            contact_pages.render_contact_form_page(
-                csrf_token=csrf_token,
-                admin_username=session.admin_username,
-                companies=companies,
-                contact=contact,
-                error_message=error or warning,
+        preview_contact = build_preview_contact_form(contact_id)
+        if preview_contact is not None:
+            from app.admin_preview import build_preview_section_rows
+
+            company_rows = build_preview_section_rows("/admin/companies", rng=None)
+            companies = [
+                {"id": PREVIEW_COMPANY_ARCHIVE_ID, "name": company_rows[0][0]}
+                if company_rows
+                else {"id": PREVIEW_COMPANY_ARCHIVE_ID, "name": "Preview Co"}
+            ]
+            return HTMLResponse(
+                contact_pages.render_contact_form_page(
+                    csrf_token=csrf_token,
+                    admin_username=session.admin_username,
+                    companies=companies,
+                    contact=preview_contact,
+                    error_message=error or warning,
+                )
             )
-        )
     with db.db_connection(settings.database_url) as conn:
         contact = _crm.get_contact(conn, contact_id)
         companies = _crm.list_companies(conn, limit=500)
@@ -1167,22 +1165,19 @@ def admin_contact_research(
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
-        if contact_id == PREVIEW_CONTACT_ACTIVE_ID:
-            contact, company, records = preview_contact_research_detail(archived=False)
-        elif contact_id == PREVIEW_CONTACT_ARCHIVED_ID:
-            contact, company, records = preview_contact_research_detail(archived=True)
-        else:
-            raise HTTPException(status_code=404, detail="Contact not found")
-        return HTMLResponse(
-            admin_research_pages.render_admin_contact_research_page(
-                contact=contact,
-                company=company,
-                records=records,
-                csrf_token=csrf_token,
-                admin_username=session.admin_username,
-                error_message=error,
+        detail = build_preview_contact_detail(contact_id)
+        if detail is not None:
+            contact, company, records = detail
+            return HTMLResponse(
+                admin_research_pages.render_admin_contact_research_page(
+                    contact=contact,
+                    company=company,
+                    records=records,
+                    csrf_token=csrf_token,
+                    admin_username=session.admin_username,
+                    error_message=error,
+                )
             )
-        )
     with db.db_connection(settings.database_url) as conn:
         contact = _crm.get_contact(conn, contact_id)
         if contact is None:

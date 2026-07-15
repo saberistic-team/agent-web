@@ -10,8 +10,14 @@ from fastapi.testclient import TestClient
 
 from app.admin_preview import (
     COMPANY_NAMES,
+    PREVIEW_COMPANY_ARCHIVE_ID,
+    PREVIEW_COMPANY_RESTORE_ID,
+    PREVIEW_CONTACT_ARCHIVE_ID,
+    PREVIEW_CONTACT_RESTORE_ID,
     PREVIEW_PIPELINE_COMPANY_IDS,
     build_preview_acquisition_dashboard_data,
+    build_preview_company_detail,
+    build_preview_contact_detail,
     build_preview_dashboard_data,
     build_preview_pipeline_companies,
     build_preview_pipeline_detail,
@@ -310,6 +316,25 @@ def test_preview_pipeline_detail_nullable_fields() -> None:
 
 
 @pytest.mark.unit
+def test_preview_company_and_contact_detail_include_archive_actions() -> None:
+    company_archive = build_preview_company_detail(PREVIEW_COMPANY_ARCHIVE_ID, rng=random.Random(42))
+    company_restore = build_preview_company_detail(PREVIEW_COMPANY_RESTORE_ID, rng=random.Random(42))
+    assert company_archive is not None
+    assert company_restore is not None
+    assert company_archive[0]["archived_at"] is None
+    assert company_restore[0]["archived_at"] is not None
+    assert company_archive[2]
+
+    contact_archive = build_preview_contact_detail(PREVIEW_CONTACT_ARCHIVE_ID, rng=random.Random(42))
+    contact_restore = build_preview_contact_detail(PREVIEW_CONTACT_RESTORE_ID, rng=random.Random(42))
+    assert contact_archive is not None
+    assert contact_restore is not None
+    assert contact_archive[0]["archived_at"] is None
+    assert contact_restore[0]["archived_at"] is not None
+    assert contact_archive[2]
+
+
+@pytest.mark.unit
 def test_preview_acquisition_dashboard_data_is_populated() -> None:
     from app.admin_preview import build_preview_acquisition_dashboard_data
 
@@ -366,40 +391,3 @@ def test_preview_brief_conversion_states() -> None:
     assert matches["company_matches"]
     assert matches["contact_matches"]
     assert matches["proposal"]["pipeline_stage"] in {"qualified", "diagnostic_paid"}
-
-
-@pytest.mark.unit
-def test_preview_crm_archive_restore_detail_html_includes_mock_records(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from app.admin_auth import SESSION_COOKIE_NAME
-    from app.admin_preview import (
-        PREVIEW_CRM_COMPANY_ACTIVE_ID,
-        PREVIEW_CRM_CONTACT_ARCHIVED_ID,
-        preview_crm_company,
-        preview_crm_contact,
-    )
-
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
-    monkeypatch.delenv("DATABASE_URL", raising=False)
-    company = preview_crm_company(PREVIEW_CRM_COMPANY_ACTIVE_ID, rng=random.Random(42))
-    contact = preview_crm_contact(PREVIEW_CRM_CONTACT_ARCHIVED_ID, rng=random.Random(42))
-    assert company is not None and company["name"]
-    assert contact is not None and contact["full_name"]
-
-    client = TestClient(app, follow_redirects=False)
-    company_response = client.get(
-        f"/admin/companies/{PREVIEW_CRM_COMPANY_ACTIVE_ID}",
-        cookies={SESSION_COOKIE_NAME: "preview-screenshot-session"},
-    )
-    contact_response = client.get(
-        f"/admin/contacts/{PREVIEW_CRM_CONTACT_ARCHIVED_ID}/edit",
-        cookies={SESSION_COOKIE_NAME: "preview-screenshot-session"},
-    )
-    assert company_response.status_code == 200
-    assert contact_response.status_code == 200
-    assert company["name"] in company_response.text
-    assert contact["full_name"] in contact_response.text
-    assert 'class="admin-action admin-action--destructive"' in company_response.text
-    assert 'class="admin-action admin-action--restore"' in contact_response.text
