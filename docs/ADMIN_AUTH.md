@@ -50,6 +50,19 @@ server-side; raw tokens appear in HTML forms only and are never logged.
    CSRF digest, `consumed_at IS NULL`, and `expires_at > now`. Exactly one
    concurrent submission can succeed; a zero-row update is a failed security
    claim.
+
+   **PostgreSQL concurrency guarantee (verified #243):** independent
+   `psycopg` connections racing the production `claim_admin_login_flow`
+   statement against one row produce exactly one non-empty `RETURNING` result;
+   blocked waiters observe zero rows after the winner commits. A rolled-back
+   claim leaves `consumed_at` unset so a later claimant can succeed. Route-level
+   integration tests confirm only one concurrent `POST` reaches password
+   verification, mints a session, or records `auth.login.success`; losers follow
+   the failed-claim path with no session or success audit. Fast mocked unit
+   tests in `tests/test_admin_login_flow_claim_concurrency.py` and
+   `tests/test_admin_login_flow_concurrency.py` remain supplemental; live
+   coverage lives in `tests/test_admin_login_flow_claim_pg_integration.py`
+   (CI sets `REQUIRE_TEST_DATABASE=1`).
 4. **Consumption point** — the flow is marked consumed at successful claim,
    *before* password verification. This closes the time-of-check/time-of-use
    race: concurrent replays cannot both reach credential checks. A successful
@@ -62,21 +75,6 @@ server-side; raw tokens appear in HTML forms only and are never logged.
 6. On failure or throttle, a fresh flow and CSRF token are issued.
 7. On success, the flow cookie is cleared and a new authenticated session is
    minted (session fixation resistance).
-
-#### Concurrency verification (#243)
-
-The conditional `UPDATE … RETURNING` claim is verified under real PostgreSQL
-concurrency with independent connections, overlapping transactions, and
-route-level replay tests (`tests/test_admin_login_flow_claim_integration.py`).
-PostgreSQL row locking decides the winner: exactly one concurrent claimant
-receives a row; every other claimant observes a zero-row `RETURNING`, and the
-login route treats that as a failed security claim without password verification,
-session mutation, or `auth.login.success` audit writes.
-
-**Rollback semantics:** `claim_admin_login_flow` commits the consumption update
-before returning to the route. An uncommitted claim `UPDATE` that is rolled back
-leaves `consumed_at` unchanged, so a later claimant may still win. Once the
-claim commit succeeds, the flow cannot be reclaimed.
 
 Stale flows are removed opportunistically when minting a new flow
 (see [Login flow retention](#login-flow-retention)). Only hashed tokens are
