@@ -51,7 +51,27 @@ both commit or roll back together.
 | Brief-to-CRM linkage | `CrmService.link_project_brief_source` | Transactional write; audit ships with future routes |
 | Login success | `admin_routes._issue_session` | Prior-session revocation (if any) + new session + required audit atomically |
 | Logout (authenticated) | `admin_routes.admin_logout` | Revocation + required audit atomically when the session row transitions to revoked |
-| Login failure | `admin_routes` | Best-effort audit (`required=False`) |
+| Login failure | `admin_routes` | Best-effort audit (`required=False`); actor is always `anonymous` |
+
+### Login failure actor policy
+
+Every `auth.login.failure` event recorded before successful authentication uses
+actor `anonymous`. Submitted username candidates are never written to the
+immutable `actor` column, metadata, reason text, correlation identifiers, or
+structured logs — even when the configured administrator username was supplied.
+
+Authenticated `auth.login.success` and `auth.logout` events continue to use the
+verified administrator username.
+
+### Historical immutable rows (pre-#242)
+
+Deployments before keyed limiter identifiers and anonymous failure actors may
+have `auth.login.failure` rows whose `actor` column contains attacker-supplied
+username candidates from the login form. These rows are append-only; application
+code does not rewrite or delete them. Security reporting should treat unknown
+`actor` values on `auth.login.failure` events as unauthenticated attempts, not
+as verified administrator identities. The forward fix in #242 prevents all new
+occurrences.
 
 `record_event(..., required=True)` propagates persistence errors. Security-sensitive
 mutations must not return success when a required audit event could not be stored.
@@ -175,40 +195,6 @@ FROM audit_events
 WHERE action = 'export.request'
 GROUP BY 1
 ORDER BY 1 DESC;
-```
-
-## Login failure actor policy
-
-Every `auth.login.failure` event recorded **before** successful authentication uses
-actor `anonymous`. Submitted username candidates, client source addresses, limiter
-digest inputs, and limiter secrets must not appear in the immutable `actor` column,
-`metadata`, `summary_after`, application logs, or metrics.
-
-Failure reasons are a small server-defined enum persisted in `summary_after.reason`
-(for example `invalid_credentials`, `invalid_csrf`, `rate_limited`).
-
-Authenticated events (`auth.login.success`, `auth.logout`, CRM mutations) continue
-to record the configured administrator username in `actor` with session linkage
-where applicable.
-
-### Historical rows (pre-#242)
-
-Append-only guarantees are unchanged. Deployments that accepted login attempts before
-issue #242 may have `auth.login.failure` rows whose `actor` column contains
-attacker-supplied username candidates (the route previously forwarded submitted
-usernames into `actor` while omitting them from metadata). Those rows are
-immutable; remediation requires an explicit data-governance decision (for example
-annotated export, reporting filter, or offline archive) — not application-level
-`UPDATE`/`DELETE`. The forward fix prevents **new** occurrences only.
-
-To inventory affected rows:
-
-```sql
-SELECT created_at, actor, action, correlation_id, summary_after
-FROM audit_events
-WHERE action = 'auth.login.failure'
-  AND actor <> 'anonymous'
-ORDER BY created_at DESC;
 ```
 
 ## Environment
