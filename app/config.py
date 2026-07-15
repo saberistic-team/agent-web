@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
-from app.proxy_trust import DEFAULT_TRUSTED_PROXY_CIDRS, parse_trusted_proxy_networks
+from app.client_source import DEFAULT_TRUSTED_PROXY_IPS
 
 
 @dataclass(frozen=True)
@@ -29,9 +29,7 @@ class Settings:
     admin_login_rate_limit: int = 5
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
-    admin_trust_proxy_headers: bool = False
-    admin_trusted_proxy_ips: str = ""
-    admin_trusted_proxy_networks: tuple = field(default_factory=tuple)
+    admin_trusted_proxy_ips: tuple[str, ...] = ()
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -87,10 +85,6 @@ class Settings:
 
 
 def get_settings() -> Settings:
-    trusted_proxy_ips = (
-        os.environ.get("ADMIN_TRUSTED_PROXY_IPS", "").strip()
-        or ",".join(DEFAULT_TRUSTED_PROXY_CIDRS)
-    )
     return Settings(
         database_url=os.environ.get("DATABASE_URL", ""),
         stripe_secret_key=os.environ.get("STRIPE_SECRET_KEY", ""),
@@ -117,10 +111,19 @@ def get_settings() -> Settings:
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
         brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
-        admin_trust_proxy_headers=os.environ.get(
-            "ADMIN_TRUST_PROXY_HEADERS", ""
-        ).lower()
-        in ("1", "true", "yes"),
-        admin_trusted_proxy_ips=trusted_proxy_ips,
-        admin_trusted_proxy_networks=parse_trusted_proxy_networks(trusted_proxy_ips),
+        admin_trusted_proxy_ips=_resolve_admin_trusted_proxy_ips(),
     )
+
+
+def _resolve_admin_trusted_proxy_ips() -> tuple[str, ...]:
+    raw = os.environ.get("ADMIN_TRUSTED_PROXY_IPS", "").strip()
+    if not raw:
+        legacy = os.environ.get("ADMIN_TRUST_PROXY_HEADERS", "").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        if legacy:
+            return DEFAULT_TRUSTED_PROXY_IPS
+        return ()
+    return tuple(part.strip() for part in raw.split(",") if part.strip())

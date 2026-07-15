@@ -14,6 +14,14 @@ def test_health_handler_unit() -> None:
 
 
 @pytest.mark.unit
+def test_health_reports_admin_source_trust_when_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_IPS", "10.0.0.0/8")
+    assert health()["admin_source_trust"] == "trusted_proxy_boundary"
+
+
+@pytest.mark.unit
 def test_hello_handler_unit() -> None:
     assert hello() == {"message": "hello world"}
 

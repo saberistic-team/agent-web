@@ -119,11 +119,8 @@ def health() -> dict:
     """
     payload: dict = {"status": "ok"}
     settings = get_settings()
-    if settings.admin_trust_proxy_headers:
-        payload["admin_proxy_trust"] = {
-            "enabled": True,
-            "trusted_network_count": len(settings.admin_trusted_proxy_networks),
-        }
+    if settings.admin_trusted_proxy_ips:
+        payload["admin_source_trust"] = "trusted_proxy_boundary"
     if not settings.database_configured:
         return payload
     try:
