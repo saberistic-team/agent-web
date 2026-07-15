@@ -88,11 +88,11 @@ ADMIN_SCREENSHOT_ROUTES: tuple[str, ...] = (
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
     "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-    "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaab",
-    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
-    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbc",
-    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/edit",
-    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbc/edit",
+    "/admin/companies/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    "/admin/contacts/cccccccc-cccc-cccc-cccc-cccccccccccc",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd",
+    "/admin/contacts/cccccccc-cccc-cccc-cccc-cccccccccccc/edit",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd/edit",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
 )
 
