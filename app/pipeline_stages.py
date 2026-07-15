@@ -57,6 +57,8 @@ STAGE_ORDER: Final[tuple[str, ...]] = (
     "won",
 )
 
+DEFAULT_PIPELINE_STAGE: Final[str] = "researching"
+
 TERMINAL_STAGES: Final[frozenset[str]] = frozenset({"won", "lost"})
 SIDE_EXIT_STAGES: Final[frozenset[str]] = frozenset({"lost", "nurture"})
 
@@ -106,6 +108,48 @@ def extract_pipeline_stage_check_values(sql: str) -> frozenset[str]:
     if match is None:
         raise ValueError("pipeline_stage CHECK constraint not found in SQL")
     return frozenset(re.findall(r"'([^']+)'", match.group(1)))
+
+
+
+def pipeline_stages_ordered() -> dict[str, str]:
+    """Stage key → display label in canonical pipeline order."""
+    return {key: PIPELINE_STAGE_LABELS[key] for key in PIPELINE_STAGE_ORDER}
+
+
+def pipeline_stage_display_label(stage: str) -> str:
+    return pipeline_stage_label(stage if stage else None)
+
+
+def pipeline_stage_check_constraint_literals() -> tuple[str, ...]:
+    return PIPELINE_STAGE_ORDER
+
+
+def pipeline_stage_check_constraint_sql() -> str:
+    return ", ".join(f"'{stage}'" for stage in PIPELINE_STAGE_ORDER)
+
+
+def _validate_registry() -> None:
+    if len(PIPELINE_STAGE_ORDER) != len(set(PIPELINE_STAGE_ORDER)):
+        raise RuntimeError("Duplicate pipeline stage keys in PIPELINE_STAGE_ORDER")
+    label_keys = set(PIPELINE_STAGE_LABELS)
+    order_keys = set(PIPELINE_STAGE_ORDER)
+    if label_keys != order_keys:
+        raise RuntimeError(
+            "PIPELINE_STAGE_LABELS keys must match PIPELINE_STAGE_ORDER "
+            f"(missing labels: {sorted(order_keys - label_keys)!r}, "
+            f"extra labels: {sorted(label_keys - order_keys)!r})"
+        )
+    for key in PIPELINE_STAGE_ORDER:
+        if not PIPELINE_STAGE_LABELS[key].strip():
+            raise RuntimeError(f"Pipeline stage {key!r} has an empty display label")
+    for status, stage in BRIEF_STATUS_INITIAL_PIPELINE_STAGE.items():
+        if stage not in order_keys:
+            raise RuntimeError(
+                f"Brief status {status!r} maps to unknown pipeline stage {stage!r}"
+            )
+
+
+_validate_registry()
 
 class PipelineError(Exception):
     """Base pipeline validation error."""

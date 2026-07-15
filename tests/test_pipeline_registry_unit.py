@@ -8,7 +8,7 @@ from app.acquisition_pipeline import PIPELINE_STAGES as ACQUISITION_PIPELINE_STA
 from app.acquisition_pipeline import STAGE_ORDER
 from app.migrations.definitions import MIGRATIONS
 from app.pipeline import PIPELINE_STAGES as PIPELINE_STAGE_KEYS
-from app.pipeline_registry import (
+from app.pipeline_stages import (
     BRIEF_STATUS_INITIAL_PIPELINE_STAGE,
     DEFAULT_PIPELINE_STAGE,
     PIPELINE_STAGE_LABELS,
@@ -74,8 +74,8 @@ def test_terminal_and_side_exit_semantics() -> None:
 def test_migration_check_constraint_matches_registry() -> None:
     pipeline = next(m for m in MIGRATIONS if m.name == "acquisition_pipeline")
     constraint_values = extract_pipeline_stage_check_values(pipeline.up_sql)
-    assert constraint_values == pipeline_stage_check_constraint_literals()
-    assert constraint_values == PIPELINE_STAGE_ORDER
+    assert set(constraint_values) == set(pipeline_stage_check_constraint_literals())
+    assert set(constraint_values) == set(PIPELINE_STAGE_ORDER)
     for stage in PIPELINE_STAGE_ORDER:
         assert f"'{stage}'" in pipeline.up_sql
 
