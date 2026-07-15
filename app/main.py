@@ -19,8 +19,8 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app import admin_auth, analytics_service, case_studies, db, email_service, insights, page_service, stripe_service
-from app.admin_auth import AdminLoginRequired, login_redirect_url
+from app import analytics_service, case_studies, db, email_service, insights, page_service, stripe_service
+from app.admin_auth import AdminLoginRequired, login_redirect_url, validate_admin_security_secrets
 from app.admin_pipeline_routes import router as admin_pipeline_router
 from app.admin_routes import router as admin_router
 from app.actor_context import CORRELATION_HEADER
@@ -44,8 +44,7 @@ ASSETS_DIR = SITE_DIR / "assets"
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
-    if settings.admin_auth_configured:
-        admin_auth.validate_admin_security_secrets(settings)
+    validate_admin_security_secrets(settings)
     if settings.database_configured:
         db.init_db(settings.database_url)
         logger.info("database schema ready")

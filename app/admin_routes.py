@@ -230,7 +230,6 @@ def _brief_detail_context(
 def _require_admin_auth_configured(settings: Settings) -> None:
     if not settings.admin_auth_configured:
         raise HTTPException(status_code=503, detail="Admin authentication not configured")
-    admin_auth.validate_admin_security_secrets(settings)
 
 
 def _preview_session(settings: Settings) -> admin_auth.AdminSession:
