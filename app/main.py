@@ -24,7 +24,8 @@ from app.admin_auth import AdminLoginRequired, login_redirect_url
 from app.admin_pipeline_routes import router as admin_pipeline_router
 from app.admin_routes import router as admin_router
 from app.actor_context import CORRELATION_HEADER
-from app.config import get_settings
+from app.config import cloudflare_edge_networks, get_settings, trusted_proxy_networks
+from app.proxy_trust import proxy_trust_health_summary
 from app.models import BriefCreateRequest, BriefCreateResponse
 from app.seo import (
     PERMANENT_REDIRECTS,
@@ -119,8 +120,12 @@ def health() -> dict:
     """
     payload: dict = {"status": "ok"}
     settings = get_settings()
-    if settings.admin_trusted_proxy_ips:
-        payload["admin_source_trust"] = "trusted_proxy_boundary"
+    payload["proxy_trust"] = proxy_trust_health_summary(
+        trusted_networks=trusted_proxy_networks(settings),
+        cloudflare_networks=cloudflare_edge_networks(settings),
+        trust_cloudflare_edge=settings.admin_trust_cloudflare_edge,
+        uvicorn_forwarded_allow_ips=settings.uvicorn_forwarded_allow_ips,
+    )
     if not settings.database_configured:
         return payload
     try:

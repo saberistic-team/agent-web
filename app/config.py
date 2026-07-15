@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import ipaddress
 import os
 from dataclasses import dataclass
 
-from app.client_source import DEFAULT_TRUSTED_PROXY_IPS
+from app import proxy_trust
 
 
 @dataclass(frozen=True)
@@ -29,7 +30,10 @@ class Settings:
     admin_login_rate_limit: int = 5
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
-    admin_trusted_proxy_ips: tuple[str, ...] = ()
+    admin_trusted_proxy_cidrs: tuple[str, ...] = ()
+    admin_cloudflare_edge_cidrs: tuple[str, ...] = ()
+    admin_trust_cloudflare_edge: bool = False
+    uvicorn_forwarded_allow_ips: str = "127.0.0.1"
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -111,19 +115,32 @@ def get_settings() -> Settings:
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
         brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
-        admin_trusted_proxy_ips=_resolve_admin_trusted_proxy_ips(),
+        admin_trusted_proxy_cidrs=_split_csv_env("ADMIN_TRUSTED_PROXY_CIDRS"),
+        admin_cloudflare_edge_cidrs=_split_csv_env("ADMIN_CLOUDFLARE_EDGE_CIDRS"),
+        admin_trust_cloudflare_edge=os.environ.get(
+            "ADMIN_TRUST_CLOUDFLARE_EDGE", ""
+        ).lower()
+        in ("1", "true", "yes"),
+        uvicorn_forwarded_allow_ips=os.environ.get(
+            "UVICORN_FORWARDED_ALLOW_IPS", "127.0.0.1"
+        ).strip(),
     )
 
 
-def _resolve_admin_trusted_proxy_ips() -> tuple[str, ...]:
-    raw = os.environ.get("ADMIN_TRUSTED_PROXY_IPS", "").strip()
-    if not raw:
-        legacy = os.environ.get("ADMIN_TRUST_PROXY_HEADERS", "").lower() in (
-            "1",
-            "true",
-            "yes",
-        )
-        if legacy:
-            return DEFAULT_TRUSTED_PROXY_IPS
+def _split_csv_env(name: str) -> tuple[str, ...]:
+    raw = os.environ.get(name, "")
+    if not raw.strip():
         return ()
     return tuple(part.strip() for part in raw.split(",") if part.strip())
+
+
+def trusted_proxy_networks(
+    settings: Settings,
+) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+    return proxy_trust.parse_trusted_cidrs(",".join(settings.admin_trusted_proxy_cidrs))
+
+
+def cloudflare_edge_networks(
+    settings: Settings,
+) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+    return proxy_trust.parse_trusted_cidrs(",".join(settings.admin_cloudflare_edge_cidrs))
