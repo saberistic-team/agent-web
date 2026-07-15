@@ -20,6 +20,7 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
+from app.admin_client_source import resolve_admin_login_client_source
 from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
@@ -234,10 +235,21 @@ def read_login_flow_token(request: Request) -> str | None:
     return token.strip() or None
 
 
-from app.admin_client_source import (
-    client_ip,
-    resolve_admin_login_client_source,
-)
+def client_ip(request: Request, settings: Settings) -> str:
+    """Resolve the client source IP for rate limiting.
+
+    Delegates to :func:`resolve_admin_login_client_source`, which trusts
+    forwarding headers only after the immediate peer matches
+    ``ADMIN_TRUSTED_PROXY_CIDRS`` and walks the chain from right to left.
+
+    Source identity notes:
+
+    * **IPv4 / IPv6** — normalized deterministically before digesting.
+    * **Missing peer** — ``unknown`` (one shared bucket).
+    * **Untrusted peer** — direct peer only; spoofed forwarding headers ignored.
+    """
+    return resolve_admin_login_client_source(request, settings)
+
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
     payload = f"{prefix}:{material}"
@@ -360,15 +372,7 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    resolution = resolve_admin_login_client_source(request, settings)
-    source = resolution.source
-    _logger.info(
-        "Admin login client source resolved",
-        extra={
-            "source_resolution_path": resolution.path.value,
-            "untrusted_forwarding_detected": resolution.untrusted_forwarding_detected,
-        },
-    )
+    source = client_ip(request, settings)
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,

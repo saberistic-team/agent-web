@@ -4,34 +4,6 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from functools import cached_property
-import ipaddress
-
-
-def _parse_trusted_proxy_entries(
-    raw: str,
-) -> tuple[
-    ipaddress.IPv4Network
-    | ipaddress.IPv6Network
-    | ipaddress.IPv4Address
-    | ipaddress.IPv6Address,
-    ...,
-]:
-    entries: list[
-        ipaddress.IPv4Network | ipaddress.IPv6Network | ipaddress.IPv4Address | ipaddress.IPv6Address
-    ] = []
-    for item in raw.split(","):
-        candidate = item.strip()
-        if not candidate:
-            continue
-        try:
-            if "/" in candidate:
-                entries.append(ipaddress.ip_network(candidate, strict=False))
-            else:
-                entries.append(ipaddress.ip_address(candidate))
-        except ValueError:
-            continue
-    return tuple(entries)
 
 
 @dataclass(frozen=True)
@@ -55,7 +27,8 @@ class Settings:
     admin_login_rate_limit: int = 5
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
-    admin_trusted_proxy_ips: str = ""
+    admin_trusted_proxy_cidrs: str = ""
+    admin_cloudflare_trusted_cidrs: str = ""
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -86,22 +59,6 @@ class Settings:
         if self.admin_preview_mode:
             return creds
         return bool(self.database_url and creds)
-
-    @cached_property
-    def admin_trusted_proxy_entries(
-        self,
-    ) -> tuple[
-        ipaddress.IPv4Network
-        | ipaddress.IPv6Network
-        | ipaddress.IPv4Address
-        | ipaddress.IPv6Address,
-        ...,
-    ]:
-        return _parse_trusted_proxy_entries(self.admin_trusted_proxy_ips)
-
-    @property
-    def admin_proxy_trust_configured(self) -> bool:
-        return bool(self.admin_trusted_proxy_ips.strip())
 
     @property
     def admin_preview_enabled(self) -> bool:
@@ -153,5 +110,8 @@ def get_settings() -> Settings:
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
         brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
-        admin_trusted_proxy_ips=os.environ.get("ADMIN_TRUSTED_PROXY_IPS", "").strip(),
+        admin_trusted_proxy_cidrs=os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "").strip(),
+        admin_cloudflare_trusted_cidrs=os.environ.get(
+            "ADMIN_CLOUDFLARE_TRUSTED_CIDRS", ""
+        ).strip(),
     )
