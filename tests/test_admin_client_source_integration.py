@@ -1,164 +1,155 @@
-"""Integration tests for admin login source resolution through ASGI proxy middleware."""
+"""Integration tests for admin client source through Uvicorn proxy middleware."""
 
 from __future__ import annotations
 
-import threading
-from datetime import datetime, timezone
+import asyncio
 from typing import Any
-from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
-from fastapi.testclient import TestClient
+from starlette.requests import Request
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app import admin_auth
-from app.config import get_settings
-from app.main import app
-from app.trusted_proxy_defaults import UVICORN_FORWARDED_ALLOW_IPS
-from tests.test_admin_auth import FakeRateLimitStore, shared_rate_limiter
+from app.admin_client_source import ClientSourceResolutionPath, resolve_admin_login_client_source
+from app.config import Settings
 
-RENDER_PROXY = "10.0.0.5"
-CLOUDFLARE_EDGE = "104.16.0.1"
-CLIENT_IPV4 = "203.0.113.77"
-UNTRUSTED_PEER = "198.51.100.10"
-TEST_TRUSTED_CIDRS = "10.0.0.0/8,104.16.0.0/13"
+TRUSTED_PROXY = "10.0.0.1"
+TRUSTED_SETTINGS = Settings(
+    database_url="postgresql://test:test@localhost:5432/test",
+    stripe_secret_key="",
+    stripe_webhook_secret="",
+    stripe_publishable_key="",
+    resend_api_key="",
+    from_email="noreply@example.com",
+    notify_email="ops@example.com",
+    base_url="http://testserver",
+    plausible_domain="",
+    plausible_api_key="",
+    analytics_environment="test",
+    admin_username="operator",
+    admin_password_hash="hash",
+    admin_session_secret="secret-secret-secret-secret",
+    admin_trusted_proxy_cidrs=("10.0.0.0/8",),
+)
+
+PRODUCTION_FORWARDED_ALLOW_IPS = "10.0.0.0/8,100.64.0.0/10,172.16.0.0/12,192.168.0.0/16,127.0.0.1,::1"
 
 
-@pytest.fixture
-def rate_limit_store() -> FakeRateLimitStore:
-    return FakeRateLimitStore()
+async def _scope_after_proxy_middleware(
+    *,
+    peer_host: str,
+    headers: list[tuple[bytes, bytes]],
+) -> dict[str, Any]:
+    captured: dict[str, Any] = {}
 
+    async def capture_app(scope: dict[str, Any], receive: Any, send: Any) -> None:
+        captured["scope"] = dict(scope)
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b""})
 
-@pytest.fixture(autouse=True)
-def admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    from argon2 import PasswordHasher
+    proxy_app = ProxyHeadersMiddleware(capture_app, trusted_hosts=PRODUCTION_FORWARDED_ALLOW_IPS)
 
-    monkeypatch.setenv("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
-    monkeypatch.setenv("ADMIN_USERNAME", "operator")
-    monkeypatch.setenv("ADMIN_PASSWORD_HASH", PasswordHasher().hash("wrong-password"))
-    monkeypatch.setenv("ADMIN_SESSION_SECRET", "test-session-secret-32chars-minimum")
-    monkeypatch.setenv("BASE_URL", "http://testserver")
-    monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
-    monkeypatch.setenv("ADMIN_TRUST_PROXY_HEADERS", "true")
-    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", TEST_TRUSTED_CIDRS)
-    monkeypatch.setenv("ADMIN_CLOUDFLARE_PROXY_CIDRS", "104.16.0.0/13")
-    admin_auth.reset_login_rate_limiter()
+    scope: dict[str, Any] = {
+        "type": "http",
+        "asgi": {"spec_version": "2.3", "version": "3.0"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "path": "/health",
+        "raw_path": b"/health",
+        "query_string": b"",
+        "headers": headers,
+        "client": (peer_host, 54321),
+        "server": ("testserver", 80),
+    }
+
+    async def receive() -> dict[str, Any]:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(_message: dict[str, Any]) -> None:
+        return None
+
+    await proxy_app(scope, receive, send)
+    assert "scope" in captured
+    return captured["scope"]
 
 
 @pytest.mark.integration
-def test_production_proxy_headers_middleware_uses_render_trusted_hosts() -> None:
-    middleware = ProxyHeadersMiddleware(app, trusted_hosts=UVICORN_FORWARDED_ALLOW_IPS)
-    trusted = middleware.trusted_hosts
-    assert any("10.0.0.0/8" in str(network) for network in trusted.trusted_networks)
-    assert trusted.get_trusted_client_address("203.0.113.1, 10.0.0.5")[0] == "203.0.113.1"
-
-
-@pytest.mark.integration
-def test_login_route_throttles_by_trusted_chain_client(
-    rate_limit_store: FakeRateLimitStore,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from tests.test_admin_auth import _fetch_login_form, mock_db_connection
-
-    monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
-
-    def _resolve(_request: Any, _settings: Any) -> str:
-        return CLIENT_IPV4
-
-    with (
-        shared_rate_limiter(rate_limit_store),
-        mock_db_connection(),
-        patch(
-            "app.admin_routes.admin_auth.resolve_admin_login_client_source_for_limiter",
-            side_effect=_resolve,
-        ),
-    ):
-        route_client = TestClient(app, follow_redirects=False)
-        for _ in range(2):
-            csrf_token, cookies = _fetch_login_form()
-            response = route_client.post(
-                "/admin/login",
-                data={"username": "ghost", "password": "wrong", "csrf_token": csrf_token},
-                cookies=cookies,
-            )
-            assert response.status_code == 401
-
-        csrf_token, cookies = _fetch_login_form()
-        blocked = route_client.post(
-            "/admin/login",
-            data={"username": "ghost", "password": "wrong", "csrf_token": csrf_token},
-            cookies=cookies,
+def test_uvicorn_proxy_middleware_with_trusted_peer_and_spoofed_xff() -> None:
+    scope = asyncio.run(
+        _scope_after_proxy_middleware(
+            peer_host=TRUSTED_PROXY,
+            headers=[(b"x-forwarded-for", b"203.0.113.99, 198.51.100.10")],
         )
-        assert blocked.status_code == 429
-
-    source_key = admin_auth.build_source_rate_limit_key(CLIENT_IPV4)
-    assert len(rate_limit_store.rows) == 1
-    assert source_key in rate_limit_store.rows
-
-
-@pytest.mark.integration
-def test_integration_trusted_peer_required_for_forwarded_identity(
-    rate_limit_store: FakeRateLimitStore,
-) -> None:
-    settings = get_settings()
-
-    with shared_rate_limiter(rate_limit_store):
-        for _ in range(3):
-            request = MagicMock()
-            request.client = MagicMock(host=UNTRUSTED_PEER)
-            request.headers = MagicMock()
-            request.headers.get = lambda key, default="": {
-                "x-forwarded-for": f"{CLIENT_IPV4}, {CLOUDFLARE_EDGE}",
-            }.get(key.lower(), default)
-            admin_auth.try_admit_login_attempt(request, settings)
-
-    peer_key = admin_auth.build_source_rate_limit_key(UNTRUSTED_PEER)
-    client_key = admin_auth.build_source_rate_limit_key(CLIENT_IPV4)
-    assert client_key not in rate_limit_store.rows
-    assert peer_key in rate_limit_store.rows
+    )
+    request = Request(scope)
+    result = resolve_admin_login_client_source(request, TRUSTED_SETTINGS)
+    assert result.source == "198.51.100.10"
+    assert scope["client"][0] == "198.51.100.10"
 
 
 @pytest.mark.integration
-def test_concurrent_spoof_rotation_still_one_source_bucket(
-    rate_limit_store: FakeRateLimitStore,
-) -> None:
-    settings = get_settings()
-    barrier = threading.Barrier(6)
-    admitted = {"count": 0}
-    lock = threading.Lock()
-    now = datetime.now(timezone.utc)
-    source_key = admin_auth.build_source_rate_limit_key(CLIENT_IPV4)
-
-    def worker(index: int) -> None:
-        barrier.wait()
-        spoofed = f"203.0.113.{index}"
-        request = MagicMock()
-        request.client = MagicMock(host=RENDER_PROXY)
-        request.headers = MagicMock()
-        request.headers.get = lambda key, default="": {
-            "x-forwarded-for": f"{spoofed}, {CLIENT_IPV4}, {CLOUDFLARE_EDGE}",
-        }.get(key.lower(), default)
-        resolution = admin_auth.resolve_admin_login_client_source_for_limiter(
-            request,
-            settings,
+def test_uvicorn_proxy_middleware_ignores_xff_from_untrusted_peer() -> None:
+    scope = asyncio.run(
+        _scope_after_proxy_middleware(
+            peer_host="203.0.113.77",
+            headers=[(b"x-forwarded-for", b"203.0.113.99")],
         )
-        assert resolution == CLIENT_IPV4
-        admission = rate_limit_store.try_admit(
-            (source_key,),
-            now,
-            rate_limit=5,
-            window_seconds=900,
-            lockout_seconds=900,
-        )
-        if admission.admitted:
-            with lock:
-                admitted["count"] += 1
+    )
+    request = Request(scope)
+    result = resolve_admin_login_client_source(request, TRUSTED_SETTINGS)
+    assert result.source == "203.0.113.77"
+    assert scope["client"][0] == "203.0.113.77"
 
-    threads = [threading.Thread(target=worker, args=(i,)) for i in range(6)]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join()
 
-    assert admitted["count"] == 5
-    assert len(rate_limit_store.rows) == 1
+@pytest.mark.integration
+def test_limiter_key_stable_when_rotating_spoofed_headers_from_untrusted_peer() -> None:
+    keys: set[str] = set()
+    for index in range(5):
+        scope = {
+            "type": "http",
+            "headers": [(b"x-forwarded-for", f"203.0.113.{index}".encode("ascii"))],
+            "client": ("198.51.100.10", 12345),
+            "method": "POST",
+            "path": "/admin/login",
+        }
+        request = Request(scope)
+        source = resolve_admin_login_client_source(request, TRUSTED_SETTINGS).source
+        assert source == "198.51.100.10"
+        keys.add(admin_auth.build_source_rate_limit_key(source))
+    assert len(keys) == 1
+
+
+@pytest.mark.integration
+def test_health_route_reachable_through_proxy_middleware() -> None:
+    from app.main import app
+
+    proxy_app = ProxyHeadersMiddleware(app, trusted_hosts=PRODUCTION_FORWARDED_ALLOW_IPS)
+
+    async def run() -> httpx.Response:
+        transport = httpx.ASGITransport(app=proxy_app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            return await client.get("/health")
+
+    response = asyncio.run(run())
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+
+
+@pytest.mark.integration
+def test_trusted_peer_cf_connecting_ip_path() -> None:
+    scope = {
+        "type": "http",
+        "headers": [
+            (b"cf-connecting-ip", b"203.0.113.50"),
+            (b"x-forwarded-for", b"203.0.113.99, 198.51.100.10"),
+        ],
+        "client": (TRUSTED_PROXY, 12345),
+        "method": "POST",
+        "path": "/admin/login",
+    }
+    request = Request(scope)
+    result = resolve_admin_login_client_source(request, TRUSTED_SETTINGS)
+    assert result.source == "203.0.113.50"
+    assert result.path is ClientSourceResolutionPath.CF_CONNECTING_IP

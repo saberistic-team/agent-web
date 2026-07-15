@@ -511,10 +511,14 @@ def _session_row(
     }
 
 
-def _request_with_client(host: str) -> Request:
+def _request_with_client(
+    host: str,
+    *,
+    headers: list[tuple[bytes, bytes]] | None = None,
+) -> Request:
     scope = {
         "type": "http",
-        "headers": [],
+        "headers": headers or [],
         "client": (host, 12345),
         "method": "POST",
         "path": "/admin/login",
@@ -666,7 +670,7 @@ def test_client_ip_uses_forwarded_when_trusted_proxy_enabled(
     settings = get_settings()
     request = _request_with_client("10.0.0.1")
     request.headers.__dict__["_list"].append(
-        (b"x-forwarded-for", b"203.0.113.50, 10.0.0.1")
+        (b"x-forwarded-for", b"203.0.113.50, 10.0.0.2")
     )
     assert admin_auth.client_ip(request, settings) == "203.0.113.50"
 
@@ -1014,21 +1018,47 @@ def test_rate_limit_expires_after_lockout(
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_rate_limit_ignores_rotated_forwarded_ip_without_trusted_peer(
+def test_rate_limit_uses_forwarded_ip_when_trusted(
     rate_limit_store: FakeRateLimitStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_TRUST_PROXY_HEADERS", "true")
+    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
+    settings = get_settings()
     with shared_rate_limiter(rate_limit_store):
-        headers = {"X-Forwarded-For": "203.0.113.77"}
-        assert _login(username="ghost", password="wrong", headers=headers).status_code == 401
-        assert _login(username="ghost", password="wrong", headers=headers).status_code == 401
-        assert _login(username="ghost", password="wrong", headers=headers).status_code == 429
+        for _ in range(2):
+            request = _request_with_client(
+                "10.0.0.1",
+                headers=[(b"cf-connecting-ip", b"203.0.113.77")],
+            )
+            admission = admin_auth.try_admit_login_attempt(
+                request,
+                settings,
+                username="ghost",
+            )
+            assert admission.admitted
 
-        other_ip_headers = {"X-Forwarded-For": "203.0.113.88"}
-        blocked = _login(username="ghost", password="wrong", headers=other_ip_headers)
-        assert blocked.status_code == 429
+        blocked_request = _request_with_client(
+            "10.0.0.1",
+            headers=[(b"cf-connecting-ip", b"203.0.113.77")],
+        )
+        blocked = admin_auth.try_admit_login_attempt(
+            blocked_request,
+            settings,
+            username="ghost",
+        )
+        assert not blocked.admitted
+
+        other_request = _request_with_client(
+            "10.0.0.1",
+            headers=[(b"cf-connecting-ip", b"203.0.113.88")],
+        )
+        other = admin_auth.try_admit_login_attempt(
+            other_request,
+            settings,
+            username="ghost",
+        )
+        assert other.admitted
 
 
 @pytest.mark.unit
@@ -1235,13 +1265,32 @@ def test_account_rate_limit_blocks_configured_username_across_sources(
     rate_limit_store: FakeRateLimitStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
-    monkeypatch.setenv("ADMIN_TRUST_PROXY_HEADERS", "true")
+    settings = get_settings()
     with shared_rate_limiter(rate_limit_store):
-        assert _login(password="wrong", headers={"X-Forwarded-For": "203.0.113.1"}).status_code == 401
-        assert _login(password="wrong", headers={"X-Forwarded-For": "203.0.113.2"}).status_code == 401
-        blocked = _login(password="wrong", headers={"X-Forwarded-For": "203.0.113.3"})
-    assert blocked.status_code == 429
+        for index in range(2):
+            request = _request_with_client(
+                "10.0.0.1",
+                headers=[(b"cf-connecting-ip", f"203.0.113.{index + 1}".encode("ascii"))],
+            )
+            admission = admin_auth.try_admit_login_attempt(
+                request,
+                settings,
+                username=TEST_USERNAME,
+            )
+            assert admission.admitted
+
+        blocked_request = _request_with_client(
+            "10.0.0.1",
+            headers=[(b"cf-connecting-ip", b"203.0.113.3")],
+        )
+        blocked = admin_auth.try_admit_login_attempt(
+            blocked_request,
+            settings,
+            username=TEST_USERNAME,
+        )
+    assert not blocked.admitted
 
 
 @pytest.mark.unit
