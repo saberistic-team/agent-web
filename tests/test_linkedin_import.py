@@ -151,3 +151,10 @@ def test_summary_helpers_and_json_safe() -> None:
 @pytest.mark.unit
 def test_schema_version_constant() -> None:
     assert LINKEDIN_IMPORT_SCHEMA_VERSION == "linkedin_export_v1"
+
+
+@pytest.mark.unit
+def test_normalize_connection_row_drops_invalid_email() -> None:
+    identity = normalize_connection_row({"Email Address": "not-an-email", "full_name": "Ada"})
+    assert identity["email"] is None
+    assert identity["full_name"] == "Ada"

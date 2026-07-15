@@ -902,6 +902,52 @@ def render_preview_imports_main(
     rng = rng or _preview_rng()
     now = now or datetime.now(timezone.utc)
     data = build_preview_linkedin_import_data(rng=rng)
+    reconcile = build_preview_linkedin_reconcile(rng=rng)
+    summary = reconcile["summary_counts"]
+    assert isinstance(summary, dict)
+    rows = reconcile["rows"]
+    assert isinstance(rows, list)
+    row_html = []
+    for row in rows:
+        assert isinstance(row, dict)
+        identity = row.get("identity") or {}
+        assert isinstance(identity, dict)
+        label = html.escape(str(identity.get("full_name") or "Unknown"))
+        outcome = html.escape(str(row.get("outcome")))
+        tier = html.escape(str(row.get("match_tier") or "—"))
+        row_html.append(
+            f"<tr><td>{label}</td><td>{outcome}</td><td>{tier}</td>"
+            f"<td>{html.escape(str(identity.get('company_name') or '—'))}</td></tr>"
+        )
+    reconcile_section = f"""
+          <div class="linkedin-import-reconcile">
+            <h2 class="admin-section-title" id="reconcile-title">LinkedIn reconcile preview</h2>
+            <p class="admin-lede">
+              Incremental merge preview — inserts, updates, unchanged rows, and conflicts.
+              Connections absent from this export are preserved ({reconcile["absent_preserved"]} existing).
+            </p>
+            <dl class="linkedin-import-summary">
+              <div><dt>Insert</dt><dd>{summary.get("insert", 0)}</dd></div>
+              <div><dt>Update</dt><dd>{summary.get("update", 0)}</dd></div>
+              <div><dt>Unchanged</dt><dd>{summary.get("unchanged", 0)}</dd></div>
+              <div><dt>Conflict</dt><dd>{summary.get("conflict", 0)}</dd></div>
+            </dl>
+            <div class="admin-table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Connection</th>
+                    <th scope="col">Outcome</th>
+                    <th scope="col">Match tier</th>
+                    <th scope="col">Company</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {"".join(row_html)}
+                </tbody>
+              </table>
+            </div>
+          </div>"""
     generated = now.strftime("%Y-%m-%d %H:%M:%S UTC")
     dup_rows = "".join(
         f"<li>{html.escape(url)}</li>" for url in data.duplicate_urls
@@ -969,6 +1015,7 @@ def render_preview_imports_main(
             <h3 class="admin-section-title">Ignored archive entries</h3>
             <ul class="linkedin-import-ignored">{ignored_rows}</ul>
           </div>
+          {reconcile_section}
         </section>"""
 
 
@@ -1198,58 +1245,3 @@ def build_preview_linkedin_reconcile(
         },
         "absent_preserved": rng.randint(12, 48),
     }
-
-
-def render_preview_imports_main(
-    *,
-    rng: random.Random | None = None,
-) -> str:
-    """HTML main for imports page preview with reconcile outcomes."""
-    preview = build_preview_linkedin_reconcile(rng=rng)
-    summary = preview["summary_counts"]
-    assert isinstance(summary, dict)
-    rows = preview["rows"]
-    assert isinstance(rows, list)
-    row_html = []
-    for row in rows:
-        assert isinstance(row, dict)
-        identity = row.get("identity") or {}
-        assert isinstance(identity, dict)
-        label = html.escape(str(identity.get("full_name") or "Unknown"))
-        outcome = html.escape(str(row.get("outcome")))
-        tier = html.escape(str(row.get("match_tier") or "—"))
-        row_html.append(
-            f"<tr><td>{label}</td><td>{outcome}</td><td>{tier}</td>"
-            f"<td>{html.escape(str(identity.get('company_name') or '—'))}</td></tr>"
-        )
-    return f"""        <section class="admin-section linkedin-import" aria-labelledby="imports-title">
-          <p class="admin-preview-banner" role="status">Preview data — not production</p>
-          <p class="admin-eyebrow">Data import</p>
-          <h1 class="admin-title" id="imports-title">LinkedIn reconcile preview</h1>
-          <p class="admin-lede">
-            Incremental merge preview — inserts, updates, unchanged rows, and conflicts.
-            Connections absent from this export are preserved ({preview["absent_preserved"]} existing).
-          </p>
-          <dl class="linkedin-import-summary">
-            <div><dt>Insert</dt><dd>{summary.get("insert", 0)}</dd></div>
-            <div><dt>Update</dt><dd>{summary.get("update", 0)}</dd></div>
-            <div><dt>Unchanged</dt><dd>{summary.get("unchanged", 0)}</dd></div>
-            <div><dt>Conflict</dt><dd>{summary.get("conflict", 0)}</dd></div>
-          </dl>
-          <div class="admin-table-wrap">
-            <table class="admin-table">
-              <thead>
-                <tr>
-                  <th scope="col">Connection</th>
-                  <th scope="col">Outcome</th>
-                  <th scope="col">Match tier</th>
-                  <th scope="col">Company</th>
-                </tr>
-              </thead>
-              <tbody>
-                {"".join(row_html)}
-              </tbody>
-            </table>
-          </div>
-        </section>"""
-

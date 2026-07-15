@@ -256,3 +256,93 @@ def test_list_import_conflicts_returns_conflict_rows() -> None:
     conflicts = service.list_import_conflicts(conn)
     assert len(conflicts) == 1
     assert conflicts[0]["outcome"] == "conflicted"
+
+
+@pytest.mark.unit
+def test_list_import_conflicts_for_specific_batch() -> None:
+    import_batches = MagicMock()
+    import_batches.list_rows_for_batch.return_value = [
+        {"outcome": "conflicted", "batch_id": str(BATCH_ID)}
+    ]
+    service, conn = _service(import_batches=import_batches)
+    conflicts = service.list_import_conflicts(conn, batch_id=BATCH_ID, limit=10)
+    assert len(conflicts) == 1
+    import_batches.list_rows_for_batch.assert_called_once_with(
+        conn, BATCH_ID, outcome="conflicted", limit=10
+    )
+
+
+@pytest.mark.unit
+def test_commit_skips_when_match_contact_missing() -> None:
+    import_batches = MagicMock()
+    contacts = MagicMock()
+    companies = MagicMock()
+    import_batches.get_committed_by_checksum.return_value = None
+    import_batches.create.return_value = _batch_row()
+    import_batches.update_status.return_value = _batch_row()
+    import_batches.create_row.side_effect = lambda *args, **kwargs: {"id": "row", **kwargs}
+    # Profile URL present but empty match list and forced MatchResolution via empty profile? 
+    # Simulate email match returning a match with missing contact by patching preview path:
+    # Use profile match of length 1 then wipe somehow — easier to mock resolve via identity
+    # that matches by email where email_match is a dict without going through create.
+    contacts.find_by_profile_url.return_value = []
+    contacts.get_active_by_email.return_value = {
+        "id": CONTACT_ID,
+        "full_name": "Ada",
+        "email": "ada@example.com",
+        "email_permission": "inferred",
+        "profile_url": None,
+        "title": "Engineer",
+        "field_sources": {
+            "title": {"source": "linkedin", "batch_id": "old", "seen_at": "2026-01-01"},
+        },
+        "archived_at": None,
+    }
+    companies.find_by_exact_name.return_value = []
+    contacts.update.return_value = {
+        "id": CONTACT_ID,
+        "full_name": "Ada",
+        "title": "Mathematician",
+        "email": "ada@example.com",
+        "profile_url": None,
+        "field_sources": {},
+        "archived_at": None,
+    }
+
+    service, conn = _service(
+        import_batches=import_batches,
+        contacts=contacts,
+        companies=companies,
+    )
+    with pytest.MonkeyPatch.context() as patcher:
+        patcher.setattr("app.crm_service.audit_service.record_import_batch", MagicMock())
+        # Force preview to update path then clear match.contact after preview —
+        # instead, patch preview_connection_row to return update with match.contact None later.
+        from app.linkedin_reconcile import ReconcilePreviewRow
+
+        def _preview(**kwargs):
+            return ReconcilePreviewRow(
+                row_index=kwargs["row_index"],
+                outcome="update",
+                identity={"profile_url": None, "email": "ada@example.com", "full_name": "Ada"},
+                match_tier="email",
+                contact_id=str(CONTACT_ID),
+                field_changes=[],
+            )
+
+        patcher.setattr("app.crm_service.preview_connection_row", _preview)
+        patcher.setattr(
+            "app.crm_service.CrmService._resolve_linkedin_match",
+            lambda self, conn, identity: (
+                __import__("app.linkedin_reconcile", fromlist=["MatchResolution"]).MatchResolution(
+                    tier="email", contact=None
+                ),
+                None,
+            ),
+        )
+        result = service.commit_linkedin_import(
+            conn,
+            actor_context=ACTOR,
+            connections=[{"Email Address": "ada@example.com", "Position": "Mathematician"}],
+        )
+    assert result["summary_counts"]["skipped"] == 1

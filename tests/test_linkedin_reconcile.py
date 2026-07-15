@@ -273,3 +273,128 @@ def test_repeat_snapshot_yields_unchanged_preview() -> None:
         batch_id="new-batch",
     )
     assert row.outcome == "unchanged"
+
+
+@pytest.mark.unit
+def test_resolve_company_id_paths() -> None:
+    from app.linkedin_reconcile import resolve_company_id
+
+    assert resolve_company_id(None, companies_by_name={}) == (None, [])
+    assert resolve_company_id("", companies_by_name={}) == (None, [])
+    single = {"id": COMPANY_ID, "name": "Analytical Engines"}
+    company_id, matches = resolve_company_id(
+        "Analytical Engines",
+        companies_by_name={"analytical engines": [single]},
+    )
+    assert company_id == COMPANY_ID
+    assert matches == [single]
+    ambiguous = [
+        {"id": COMPANY_ID, "name": "Analytical Engines"},
+        {"id": UUID("cccccccc-cccc-cccc-cccc-cccccccccccc"), "name": "Analytical Engines"},
+    ]
+    company_id, matches = resolve_company_id(
+        "Analytical Engines",
+        companies_by_name={"analytical engines": ambiguous},
+    )
+    assert company_id is None
+    assert matches == ambiguous
+
+
+@pytest.mark.unit
+def test_company_ambiguity_conflict_and_email_helpers() -> None:
+    identity = normalize_connection_row(
+        {"First Name": "Ada", "Last Name": "Lovelace", "Company": "Analytical Engines"}
+    )
+    match = resolve_connection_match(
+        identity,
+        profile_matches=[],
+        email_match=None,
+        name_company_matches=[],
+        company_ambiguity=[{"id": COMPANY_ID}, {"id": UUID("cccccccc-cccc-cccc-cccc-cccccccccccc")}],
+    )
+    assert match.conflict is True
+    assert match.tier == "name_company"
+
+    assert email_match_permitted(None, "ada@example.com") is True
+    assert email_match_permitted(_contact(email=""), "ada@example.com") is True
+    assert email_match_permitted(_contact(email="not-an-email"), "ada@example.com") is False
+
+
+@pytest.mark.unit
+def test_email_fill_and_protected_field_skip() -> None:
+    contact = _contact(email=None, email_permission=None, title="Engineer")
+    contact["field_sources"] = {
+        "notes": {"source": SOURCE_MANUAL},
+        "title": {"source": SOURCE_MANUAL},
+    }
+    updates, sources, changes = compute_importable_updates(
+        contact,
+        normalize_connection_row(
+            {
+                "URL": "https://linkedin.com/in/ada-lovelace",
+                "Email Address": "ada@new.example",
+                "Position": "CTO",
+                "Connected On": "15 Jan 2024",
+            }
+        ),
+        company_id=COMPANY_ID,
+        batch_id=BATCH_ID,
+        seen_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
+    )
+    assert "title" not in updates  # manual-owned
+    assert updates.get("email") == "ada@new.example"
+    assert updates.get("email_permission") == "inferred"
+    assert any(change.field == "email" for change in changes)
+    assert sources["email"]["source"] == SOURCE_LINKEDIN
+
+
+@pytest.mark.unit
+def test_build_reconcile_preview_and_serialization() -> None:
+    from app.linkedin_reconcile import (
+        build_reconcile_preview,
+        index_companies_by_name,
+        preview_row_to_dict,
+        preview_to_dict,
+    )
+
+    indexed = index_companies_by_name(
+        [
+            {"id": COMPANY_ID, "name": "Analytical Engines"},
+            {"id": COMPANY_ID, "name": ""},
+            {"id": UUID("cccccccc-cccc-cccc-cccc-cccccccccccc"), "name": "Analytical Engines"},
+        ]
+    )
+    assert "analytical engines" in indexed
+    assert len(indexed["analytical engines"]) == 2
+
+    def lookup(identity: dict) -> tuple[MatchResolution, UUID | None]:
+        if identity.get("profile_url"):
+            return MatchResolution(tier="none", contact=None), None
+        return MatchResolution(tier="none", contact=None), None
+
+    preview = build_reconcile_preview(
+        [
+            {
+                "URL": "https://linkedin.com/in/new-person",
+                "First Name": "New",
+                "Last Name": "Person",
+            },
+            {},
+        ],
+        lookup=lookup,
+        batch_id=BATCH_ID,
+        existing_contact_count=5,
+    )
+    assert preview.summary_counts["insert"] == 1
+    assert preview.summary_counts["skipped"] == 1
+    assert preview.absent_preserved == 5
+    payload = preview_to_dict(preview)
+    assert payload["absent_preserved"] == 5
+    assert payload["rows"][0]["outcome"] == "insert"
+    assert preview_row_to_dict(preview.rows[0])["match_tier"] == "none"
+
+
+@pytest.mark.unit
+def test_is_field_user_owned_protects_notes_without_linkedin_stamp() -> None:
+    assert is_field_user_owned({}, "notes") is False
+    assert is_field_user_owned({"notes": {"source": "unknown"}}, "notes") is True
