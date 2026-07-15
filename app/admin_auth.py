@@ -20,10 +20,7 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.admin_client_source import (
-    client_ip_from_resolution,
-    resolve_admin_login_client_source,
-)
+from app.admin_client_source import resolve_admin_login_client_source
 from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
@@ -239,13 +236,25 @@ def read_login_flow_token(request: Request) -> str | None:
 
 
 def client_ip(request: Request, settings: Settings) -> str:
-    """Resolve the client source for admin login rate limiting.
+    """Resolve the client source IP for rate limiting.
 
-    Forwarding headers are honored only when the immediate TCP peer is listed in
-    ``ADMIN_TRUSTED_PROXY_CIDRS``. See :func:`resolve_admin_login_client_source`
-    for the trusted-hop parser and header precedence rules.
+    Forwarding headers are honored only when ``ADMIN_TRUST_PROXY_HEADERS`` is
+    enabled **and** the immediate TCP peer is listed in
+    ``ADMIN_TRUSTED_PROXY_CIDRS``. The rightmost untrusted ``X-Forwarded-For``
+    hop is used (Cloudflare appends the connecting address; a spoofed leftmost
+    value is ignored). Vendor headers such as ``CF-Connecting-IP`` are accepted
+    only after a configured Cloudflare proxy hop appears in the forwarded chain.
+
+    Source identity notes:
+
+    * **IPv4 / IPv6** — stored only as keyed digests; normalized addresses are
+      passed into the source bucket (e.g. ``203.0.113.1``, ``2001:db8::1``).
+    * **Missing peer** — falls back to ``unknown`` so attempts still share one
+      bucket instead of creating an unbounded namespace.
+    * **Untrusted peer** — direct peer address is used; spoofed forwarding
+      headers are ignored.
     """
-    return client_ip_from_resolution(resolve_admin_login_client_source(request, settings))
+    return resolve_admin_login_client_source(request, settings).source
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
