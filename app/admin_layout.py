@@ -93,19 +93,7 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
-    "/admin/companies/12121212-1212-1212-1212-121212121212",
-    "/admin/companies/13131313-1313-1313-1313-131313131313",
-    "/admin/contacts/14141414-1414-1414-1414-141414141414",
-    "/admin/contacts/15151515-1515-1515-1515-151515151515",
-    "/admin/contacts/14141414-1414-1414-1414-141414141414/edit",
-    "/admin/contacts/15151515-1515-1515-1515-151515151515/edit",
 )
-
-
-def admin_archive_action_class(*, archived: bool) -> str:
-    """Return CSS classes for archive/restore form submit buttons."""
-    variant = "restore" if archived else "destructive"
-    return f"admin-action admin-action--{variant}"
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
 # Register preview-only ids in app/admin_preview.py so ADMIN_PREVIEW_MODE
@@ -121,6 +109,15 @@ def _active_nav_label(active_path: str) -> str:
         if link["href"] == active_path:
             return link["label"]
     return "Admin"
+
+
+def render_admin_archive_restore_button(*, label: str, is_archived: bool) -> str:
+    """Return a themed Archive/Restore submit button for admin detail forms."""
+    variant = "admin-action-btn--restore" if is_archived else "admin-action-btn--destructive"
+    return (
+        f'<button class="admin-action-btn {variant}" type="submit">'
+        f"{html.escape(label)}</button>"
+    )
 
 
 def render_admin_nav(active_path: str) -> str:
