@@ -470,4 +470,14 @@ CREATE INDEX IF NOT EXISTS idx_import_batch_rows_entity_id
 """,
     ),
 
+
+    Migration(
+        version="015",
+        name="contact_field_sources",
+        up_sql="""
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS field_sources JSONB NOT NULL DEFAULT '{}'::jsonb;
+""",
+    ),
+
+
 )

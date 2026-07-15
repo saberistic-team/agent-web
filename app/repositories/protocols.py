@@ -46,6 +46,14 @@ class CompanyRepository(Protocol):
         self, conn: psycopg.Connection, domain: str, *, exclude_company_id: UUID | None = None
     ) -> list[dict[str, Any]]: ...
 
+    def find_by_exact_name(
+        self,
+        conn: psycopg.Connection,
+        name: str,
+        *,
+        exclude_company_id: UUID | None = None,
+    ) -> list[dict[str, Any]]: ...
+
     def update(
         self,
         conn: psycopg.Connection,
@@ -84,6 +92,7 @@ class ContactRepository(Protocol):
         relationship_strength: str | None = None,
         notes: str | None = None,
         buying_roles: list[str] | None = None,
+        field_sources: dict[str, Any] | None = None,
     ) -> dict[str, Any]: ...
 
     def get_by_id(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None: ...
@@ -150,7 +159,10 @@ class ContactRepository(Protocol):
         relationship_strength: str | None = None,
         notes: str | None = None,
         buying_roles: list[str] | None = None,
+        field_sources: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None: ...
+
+    def count_active(self, conn: psycopg.Connection) -> int: ...
 
     def archive(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None: ...
 

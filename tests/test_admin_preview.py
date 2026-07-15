@@ -13,10 +13,12 @@ from app.admin_preview import (
     PREVIEW_PIPELINE_COMPANY_IDS,
     build_preview_acquisition_dashboard_data,
     build_preview_dashboard_data,
+    build_preview_linkedin_reconcile,
     build_preview_pipeline_companies,
     build_preview_pipeline_detail,
     build_preview_section_rows,
     render_preview_dashboard_main,
+    render_preview_imports_main,
     render_preview_section_main,
 )
 from app.admin_dashboard_pages import render_acquisition_dashboard_page
@@ -353,3 +355,23 @@ def test_preview_brief_conversion_states() -> None:
     assert matches["company_matches"]
     assert matches["contact_matches"]
     assert matches["proposal"]["pipeline_stage"] in {"qualified", "diagnostic_paid"}
+
+
+@pytest.mark.unit
+def test_preview_linkedin_reconcile_stable_with_seed() -> None:
+    a = build_preview_linkedin_reconcile(rng=random.Random(42))
+    b = build_preview_linkedin_reconcile(rng=random.Random(42))
+    assert a == b
+    assert a["summary_counts"]["insert"] == 1
+    assert a["summary_counts"]["conflict"] == 1
+
+
+@pytest.mark.unit
+def test_render_preview_imports_main_includes_outcomes() -> None:
+    html = render_preview_imports_main(rng=random.Random(42))
+    assert "LinkedIn reconcile preview" in html
+    assert "insert" in html
+    assert "update" in html
+    assert "unchanged" in html
+    assert "conflict" in html
+    assert "absent from this export are preserved" in html

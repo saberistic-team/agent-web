@@ -138,6 +138,30 @@ class PostgresCompanyRepository:
             rows = cur.fetchall()
         return [dict(row) for row in rows]
 
+    def find_by_exact_name(
+        self,
+        conn: psycopg.Connection,
+        name: str,
+        *,
+        exclude_company_id: UUID | None = None,
+    ) -> list[dict[str, Any]]:
+        conditions = ["LOWER(name) = LOWER(%s)", "archived_at IS NULL"]
+        params: list[Any] = [name.strip()]
+        if exclude_company_id is not None:
+            conditions.append("id <> %s")
+            params.append(exclude_company_id)
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT * FROM companies
+                WHERE {' AND '.join(conditions)}
+                ORDER BY name ASC
+                """,
+                params,
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
     def update(
         self,
         conn: psycopg.Connection,
@@ -240,6 +264,7 @@ class PostgresContactRepository:
         relationship_strength: str | None = None,
         notes: str | None = None,
         buying_roles: list[str] | None = None,
+        field_sources: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         with conn.cursor() as cur:
             cur.execute(
@@ -247,9 +272,9 @@ class PostgresContactRepository:
                 INSERT INTO contacts (
                     full_name, email, title, profile_url, email_permission,
                     company_id, last_interaction_at, relationship_strength,
-                    notes, buying_roles
+                    notes, buying_roles, field_sources
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
                 RETURNING *
                 """,
                 (
@@ -263,6 +288,7 @@ class PostgresContactRepository:
                     relationship_strength,
                     notes,
                     buying_roles or [],
+                    json.dumps(field_sources or {}),
                 ),
             )
             row = cur.fetchone()
@@ -446,6 +472,7 @@ class PostgresContactRepository:
         relationship_strength: str | None = None,
         notes: str | None = None,
         buying_roles: list[str] | None = None,
+        field_sources: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         fields: list[str] = []
         values: list[Any] = []
@@ -466,6 +493,9 @@ class PostgresContactRepository:
         if buying_roles is not None:
             fields.append("buying_roles = %s")
             values.append(buying_roles)
+        if field_sources is not None:
+            fields.append("field_sources = %s::jsonb")
+            values.append(json.dumps(field_sources))
         if not fields:
             return self.get_by_id(conn, contact_id)
 
@@ -484,6 +514,12 @@ class PostgresContactRepository:
             )
             row = cur.fetchone()
         return dict(row) if row else None
+
+    def count_active(self, conn: psycopg.Connection) -> int:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) AS total FROM contacts WHERE archived_at IS NULL")
+            row = cur.fetchone()
+        return int(row["total"]) if row else 0
 
     def archive(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None:
         with conn.cursor() as cur:
