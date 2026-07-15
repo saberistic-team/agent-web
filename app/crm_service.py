@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -12,7 +11,11 @@ import psycopg
 from app import audit_service
 from app.actor_context import ActorContext
 from app.companies import CompanyCreate, CompanyUpdate, find_domain_duplicate_warnings
-from app.contacts import ContactCreate, ContactUpdate, find_contact_duplicate_warnings, normalize_profile_url
+from app.contacts import (
+    ContactCreate,
+    ContactUpdate,
+    collect_contact_duplicate_warnings,
+)
 from app.crm_uow import crm_transaction
 from app.repositories import (
     ActivityRepository,
@@ -57,14 +60,6 @@ class CrmService:
     def __init__(self, repos: CrmRepositories | None = None) -> None:
         self._repos = repos or default_crm_repositories()
 
-    @staticmethod
-    def _contact_last_interaction(value: date | datetime | None) -> datetime | None:
-        if value is None:
-            return None
-        if isinstance(value, datetime):
-            return value
-        return datetime.combine(value, datetime.min.time(), tzinfo=timezone.utc)
-
     def record_company_with_contact(
         self,
         conn: psycopg.Connection,
@@ -82,8 +77,8 @@ class CrmService:
             )
             contact = self._repos.contacts.create(
                 conn,
+                full_name=contact_name or contact_email,
                 email=contact_email,
-                full_name=contact_name,
                 company_id=UUID(str(company["id"])),
             )
         return {"company": company, "contact": contact}
@@ -221,121 +216,6 @@ class CrmService:
         with crm_transaction(conn):
             return self._repos.companies.restore(conn, company_id)
 
-    def list_contacts(
-        self,
-        conn: psycopg.Connection,
-        *,
-        limit: int = 100,
-        query: str | None = None,
-        company_id: UUID | None = None,
-        buying_role: str | None = None,
-        include_archived: bool = False,
-    ) -> list[dict[str, Any]]:
-        return self._repos.contacts.list_all(
-            conn,
-            limit=limit,
-            query=query,
-            company_id=company_id,
-            buying_role=buying_role,
-            include_archived=include_archived,
-        )
-
-    def create_contact(
-        self,
-        conn: psycopg.Connection,
-        *,
-        contact: ContactCreate,
-    ) -> dict[str, Any]:
-        payload = contact.model_dump()
-        profile_url = payload.pop("profile_url", None)
-        profile_url_normalized = normalize_profile_url(profile_url) if profile_url else None
-        company_id = payload.get("company_id")
-        last_interaction = self._contact_last_interaction(payload.pop("last_interaction_at", None))
-        with crm_transaction(conn):
-            duplicates = self._repos.contacts.find_duplicates(
-                conn,
-                profile_url_normalized=profile_url_normalized,
-                email=payload.get("email"),
-                full_name=payload.get("full_name"),
-                company_id=company_id,
-            )
-            created = self._repos.contacts.create(
-                conn,
-                profile_url=profile_url,
-                profile_url_normalized=profile_url_normalized,
-                last_interaction_at=last_interaction,
-                **payload,
-            )
-        return {
-            "contact": created,
-            "duplicate_warnings": find_contact_duplicate_warnings(
-                duplicates,
-                profile_url=profile_url,
-                email=payload.get("email"),
-                full_name=payload.get("full_name"),
-                company_id=company_id,
-            ),
-        }
-
-    def update_contact(
-        self,
-        conn: psycopg.Connection,
-        contact_id: UUID,
-        *,
-        contact: ContactUpdate,
-    ) -> dict[str, Any] | None:
-        payload = contact.model_dump(exclude_none=True)
-        company_id = payload.pop("company_id", contact.company_id)
-        profile_url = payload.pop("profile_url", None)
-        last_interaction = self._contact_last_interaction(payload.pop("last_interaction_at", None))
-        profile_url_normalized = (
-            normalize_profile_url(profile_url) if profile_url is not None else None
-        )
-        with crm_transaction(conn):
-            duplicates = self._repos.contacts.find_duplicates(
-                conn,
-                profile_url_normalized=profile_url_normalized,
-                email=payload.get("email"),
-                full_name=payload.get("full_name"),
-                company_id=company_id,
-                exclude_contact_id=contact_id,
-            )
-            updated = self._repos.contacts.update(
-                conn,
-                contact_id,
-                profile_url=profile_url,
-                profile_url_normalized=profile_url_normalized,
-                company_id=company_id,
-                set_company=True,
-                last_interaction_at=last_interaction,
-                **payload,
-            )
-        if updated is None:
-            return None
-        return {
-            "contact": updated,
-            "duplicate_warnings": find_contact_duplicate_warnings(
-                duplicates,
-                profile_url=profile_url,
-                email=payload.get("email"),
-                full_name=payload.get("full_name"),
-                company_id=company_id,
-                exclude_contact_id=contact_id,
-            ),
-        }
-
-    def archive_contact(
-        self, conn: psycopg.Connection, contact_id: UUID
-    ) -> dict[str, Any] | None:
-        with crm_transaction(conn):
-            return self._repos.contacts.archive(conn, contact_id)
-
-    def restore_contact(
-        self, conn: psycopg.Connection, contact_id: UUID
-    ) -> dict[str, Any] | None:
-        with crm_transaction(conn):
-            return self._repos.contacts.restore(conn, contact_id)
-
     def list_contacts_for_company(
         self,
         conn: psycopg.Connection,
@@ -351,6 +231,131 @@ class CrmService:
         contact_id: UUID,
     ) -> dict[str, Any] | None:
         return self._repos.contacts.get_by_id(conn, contact_id)
+
+    def list_contacts(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int = 100,
+        query: str | None = None,
+        buying_role: str | None = None,
+        company_id: UUID | None = None,
+        include_archived: bool = False,
+    ) -> list[dict[str, Any]]:
+        return self._repos.contacts.list_all(
+            conn,
+            limit=limit,
+            query=query,
+            buying_role=buying_role,
+            company_id=company_id,
+            include_archived=include_archived,
+        )
+
+    def _contact_duplicate_candidates(
+        self,
+        conn: psycopg.Connection,
+        *,
+        profile_url: str | None,
+        email: str | None,
+        full_name: str,
+        company_id: UUID,
+        exclude_contact_id: UUID | None = None,
+    ) -> list[dict[str, Any]]:
+        candidates: dict[str, dict[str, Any]] = {}
+        if profile_url:
+            for row in self._repos.contacts.find_by_profile_url(
+                conn, profile_url, exclude_contact_id=exclude_contact_id
+            ):
+                candidates[str(row["id"])] = row
+        if email:
+            existing = self._repos.contacts.get_by_email(conn, email)
+            if existing and (
+                exclude_contact_id is None or str(existing["id"]) != str(exclude_contact_id)
+            ):
+                candidates[str(existing["id"])] = existing
+        for row in self._repos.contacts.find_by_name_and_company(
+            conn,
+            full_name=full_name,
+            company_id=company_id,
+            exclude_contact_id=exclude_contact_id,
+        ):
+            candidates[str(row["id"])] = row
+        return list(candidates.values())
+
+    def create_contact(
+        self,
+        conn: psycopg.Connection,
+        *,
+        contact: ContactCreate,
+    ) -> dict[str, Any]:
+        with crm_transaction(conn):
+            duplicates = self._contact_duplicate_candidates(
+                conn,
+                profile_url=contact.profile_url,
+                email=contact.email,
+                full_name=contact.full_name,
+                company_id=contact.company_id,
+            )
+            payload = contact.model_dump()
+            buying_roles = payload.pop("buying_roles")
+            created = self._repos.contacts.create(conn, buying_roles=buying_roles, **payload)
+        return {
+            "contact": created,
+            "duplicate_warnings": collect_contact_duplicate_warnings(
+                duplicates,
+                full_name=contact.full_name,
+                company_id=contact.company_id,
+                profile_url=contact.profile_url,
+                email=contact.email,
+            ),
+        }
+
+    def update_contact(
+        self,
+        conn: psycopg.Connection,
+        contact_id: UUID,
+        *,
+        contact: ContactUpdate,
+    ) -> dict[str, Any] | None:
+        with crm_transaction(conn):
+            duplicates = self._contact_duplicate_candidates(
+                conn,
+                profile_url=contact.profile_url,
+                email=contact.email,
+                full_name=contact.full_name,
+                company_id=contact.company_id,
+                exclude_contact_id=contact_id,
+            )
+            payload = contact.model_dump()
+            buying_roles = payload.pop("buying_roles")
+            updated = self._repos.contacts.update(
+                conn, contact_id, buying_roles=buying_roles, **payload
+            )
+        if updated is None:
+            return None
+        return {
+            "contact": updated,
+            "duplicate_warnings": collect_contact_duplicate_warnings(
+                duplicates,
+                full_name=contact.full_name,
+                company_id=contact.company_id,
+                profile_url=contact.profile_url,
+                email=contact.email,
+                exclude_contact_id=contact_id,
+            ),
+        }
+
+    def archive_contact(
+        self, conn: psycopg.Connection, contact_id: UUID
+    ) -> dict[str, Any] | None:
+        with crm_transaction(conn):
+            return self._repos.contacts.archive(conn, contact_id)
+
+    def restore_contact(
+        self, conn: psycopg.Connection, contact_id: UUID
+    ) -> dict[str, Any] | None:
+        with crm_transaction(conn):
+            return self._repos.contacts.restore(conn, contact_id)
 
     def list_research_for_company(
         self,

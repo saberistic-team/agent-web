@@ -225,70 +225,162 @@ class PostgresCompanyRepository:
 
 
 class PostgresContactRepository:
+    def _load_buying_roles(
+        self, conn: psycopg.Connection, contact_ids: list[UUID]
+    ) -> dict[str, list[str]]:
+        if not contact_ids:
+            return {}
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT contact_id, role
+                FROM contact_buying_roles
+                WHERE contact_id = ANY(%s)
+                ORDER BY role ASC
+                """,
+                (contact_ids,),
+            )
+            rows = cur.fetchall()
+        roles_by_contact: dict[str, list[str]] = {str(cid): [] for cid in contact_ids}
+        for row in rows:
+            roles_by_contact[str(row["contact_id"])].append(str(row["role"]))
+        return roles_by_contact
+
+    def _attach_buying_roles(
+        self, conn: psycopg.Connection, contacts: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        if not contacts:
+            return contacts
+        contact_ids = [UUID(str(row["id"])) for row in contacts]
+        roles_by_contact = self._load_buying_roles(conn, contact_ids)
+        enriched: list[dict[str, Any]] = []
+        for contact in contacts:
+            row = dict(contact)
+            row["buying_roles"] = roles_by_contact.get(str(row["id"]), [])
+            enriched.append(row)
+        return enriched
+
+    def _replace_buying_roles(
+        self, conn: psycopg.Connection, contact_id: UUID, buying_roles: list[str] | None
+    ) -> None:
+        if buying_roles is None:
+            return
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM contact_buying_roles WHERE contact_id = %s",
+                (contact_id,),
+            )
+            for role in buying_roles:
+                cur.execute(
+                    """
+                    INSERT INTO contact_buying_roles (contact_id, role)
+                    VALUES (%s, %s)
+                    ON CONFLICT DO NOTHING
+                    """,
+                    (contact_id, role),
+                )
+
     def create(
         self,
         conn: psycopg.Connection,
         *,
+        full_name: str,
+        company_id: UUID,
         email: str | None = None,
-        full_name: str | None = None,
-        company_id: UUID | None = None,
         title: str | None = None,
         profile_url: str | None = None,
-        profile_url_normalized: str | None = None,
         email_permission: str | None = None,
-        email_source: str | None = None,
         last_interaction_at: datetime | None = None,
         relationship_strength: str | None = None,
         notes: str | None = None,
         buying_roles: list[str] | None = None,
     ) -> dict[str, Any]:
-        roles = buying_roles or []
         with conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO contacts (
-                    email, full_name, company_id, title, profile_url,
-                    profile_url_normalized, email_permission, email_source,
-                    last_interaction_at, relationship_strength, notes, buying_roles
+                    full_name, company_id, email, title, profile_url,
+                    email_permission, last_interaction_at, relationship_strength, notes
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING *
                 """,
                 (
-                    email,
                     full_name,
                     company_id,
+                    email,
                     title,
                     profile_url,
-                    profile_url_normalized,
                     email_permission,
-                    email_source,
                     last_interaction_at,
                     relationship_strength,
                     notes,
-                    json.dumps(roles),
                 ),
             )
             row = cur.fetchone()
-        return dict(row)
+        contact = dict(row)
+        self._replace_buying_roles(conn, UUID(str(contact["id"])), buying_roles or [])
+        return self._attach_buying_roles(conn, [contact])[0]
 
     def get_by_id(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM contacts WHERE id = %s", (contact_id,))
             row = cur.fetchone()
-        return dict(row) if row else None
+        if row is None:
+            return None
+        return self._attach_buying_roles(conn, [dict(row)])[0]
 
     def get_by_email(self, conn: psycopg.Connection, email: str) -> dict[str, Any] | None:
         with conn.cursor() as cur:
             cur.execute(
-                """
-                SELECT * FROM contacts
-                WHERE LOWER(TRIM(email)) = LOWER(TRIM(%s)) AND archived_at IS NULL
-                """,
+                "SELECT * FROM contacts WHERE LOWER(email) = LOWER(%s) AND archived_at IS NULL",
                 (email,),
             )
             row = cur.fetchone()
-        return dict(row) if row else None
+        if row is None:
+            return None
+        return self._attach_buying_roles(conn, [dict(row)])[0]
+
+    def find_by_profile_url(
+        self, conn: psycopg.Connection, profile_url: str, *, exclude_contact_id: UUID | None = None
+    ) -> list[dict[str, Any]]:
+        clauses = ["profile_url = %s", "archived_at IS NULL"]
+        params: list[Any] = [profile_url]
+        if exclude_contact_id is not None:
+            clauses.append("id <> %s")
+            params.append(exclude_contact_id)
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT * FROM contacts WHERE {' AND '.join(clauses)}",
+                tuple(params),
+            )
+            rows = cur.fetchall()
+        return self._attach_buying_roles(conn, [dict(row) for row in rows])
+
+    def find_by_name_and_company(
+        self,
+        conn: psycopg.Connection,
+        *,
+        full_name: str,
+        company_id: UUID,
+        exclude_contact_id: UUID | None = None,
+    ) -> list[dict[str, Any]]:
+        clauses = [
+            "company_id = %s",
+            "LOWER(full_name) = LOWER(%s)",
+            "archived_at IS NULL",
+        ]
+        params: list[Any] = [company_id, full_name]
+        if exclude_contact_id is not None:
+            clauses.append("id <> %s")
+            params.append(exclude_contact_id)
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT * FROM contacts WHERE {' AND '.join(clauses)}",
+                tuple(params),
+            )
+            rows = cur.fetchall()
+        return self._attach_buying_roles(conn, [dict(row) for row in rows])
 
     def list_for_company(
         self,
@@ -298,22 +390,22 @@ class PostgresContactRepository:
         limit: int = 100,
         include_archived: bool = False,
     ) -> list[dict[str, Any]]:
-        conditions = ["company_id = %s"]
+        clauses = ["company_id = %s"]
         params: list[Any] = [company_id]
         if not include_archived:
-            conditions.append("archived_at IS NULL")
+            clauses.append("archived_at IS NULL")
         with conn.cursor() as cur:
             cur.execute(
                 f"""
                 SELECT * FROM contacts
-                WHERE {' AND '.join(conditions)}
+                WHERE {' AND '.join(clauses)}
                 ORDER BY full_name ASC NULLS LAST, email ASC NULLS LAST
                 LIMIT %s
                 """,
-                [*params, limit],
+                (*params, limit),
             )
             rows = cur.fetchall()
-        return [dict(row) for row in rows]
+        return self._attach_buying_roles(conn, [dict(row) for row in rows])
 
     def list_all(
         self,
@@ -321,144 +413,102 @@ class PostgresContactRepository:
         *,
         limit: int = 100,
         query: str | None = None,
-        company_id: UUID | None = None,
         buying_role: str | None = None,
+        company_id: UUID | None = None,
         include_archived: bool = False,
     ) -> list[dict[str, Any]]:
-        conditions: list[str] = []
+        clauses: list[str] = []
         params: list[Any] = []
         if not include_archived:
-            conditions.append("archived_at IS NULL")
-        if query:
-            pattern = f"%{query.strip()}%"
-            conditions.append(
-                "(full_name ILIKE %s OR email ILIKE %s OR title ILIKE %s OR profile_url ILIKE %s)"
-            )
-            params.extend((pattern, pattern, pattern, pattern))
+            clauses.append("c.archived_at IS NULL")
         if company_id is not None:
-            conditions.append("company_id = %s")
+            clauses.append("c.company_id = %s")
             params.append(company_id)
+        if query:
+            clauses.append(
+                "(c.full_name ILIKE %s OR c.email ILIKE %s OR c.title ILIKE %s OR co.name ILIKE %s)"
+            )
+            pattern = f"%{query.strip()}%"
+            params.extend([pattern, pattern, pattern, pattern])
         if buying_role:
-            conditions.append("buying_roles @> %s::jsonb")
-            params.append(json.dumps([buying_role]))
-        where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+            clauses.append(
+                """
+                EXISTS (
+                    SELECT 1 FROM contact_buying_roles r
+                    WHERE r.contact_id = c.id AND r.role = %s
+                )
+                """
+            )
+            params.append(buying_role)
+        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         with conn.cursor() as cur:
             cur.execute(
                 f"""
-                SELECT contacts.*, companies.name AS company_name
-                FROM contacts
-                LEFT JOIN companies ON companies.id = contacts.company_id
+                SELECT c.*, co.name AS company_name
+                FROM contacts c
+                LEFT JOIN companies co ON co.id = c.company_id
                 {where_sql}
-                ORDER BY contacts.full_name ASC NULLS LAST, contacts.email ASC NULLS LAST
+                ORDER BY c.full_name ASC NULLS LAST, c.email ASC NULLS LAST
                 LIMIT %s
                 """,
-                [*params, limit],
+                (*params, limit),
             )
             rows = cur.fetchall()
-        return [dict(row) for row in rows]
-
-    def find_duplicates(
-        self,
-        conn: psycopg.Connection,
-        *,
-        profile_url_normalized: str | None = None,
-        email: str | None = None,
-        full_name: str | None = None,
-        company_id: UUID | None = None,
-        exclude_contact_id: UUID | None = None,
-    ) -> list[dict[str, Any]]:
-        conditions = ["archived_at IS NULL"]
-        params: list[Any] = []
-        match_parts: list[str] = []
-        if profile_url_normalized:
-            match_parts.append("profile_url_normalized = %s")
-            params.append(profile_url_normalized)
-        if email:
-            match_parts.append("LOWER(TRIM(email)) = LOWER(TRIM(%s))")
-            params.append(email)
-        if full_name and company_id is not None:
-            match_parts.append(
-                "company_id = %s AND LOWER(TRIM(full_name)) = LOWER(TRIM(%s))"
-            )
-            params.extend((company_id, full_name))
-        if not match_parts:
-            return []
-        conditions.append(f"({' OR '.join(match_parts)})")
-        if exclude_contact_id is not None:
-            conditions.append("id <> %s")
-            params.append(exclude_contact_id)
-        with conn.cursor() as cur:
-            cur.execute(
-                f"""
-                SELECT * FROM contacts
-                WHERE {' AND '.join(conditions)}
-                ORDER BY full_name ASC NULLS LAST
-                """,
-                params,
-            )
-            rows = cur.fetchall()
-        return [dict(row) for row in rows]
+        return self._attach_buying_roles(conn, [dict(row) for row in rows])
 
     def update(
         self,
         conn: psycopg.Connection,
         contact_id: UUID,
         *,
+        full_name: str,
+        company_id: UUID,
         email: str | None = None,
-        full_name: str | None = None,
-        company_id: UUID | None = None,
         title: str | None = None,
         profile_url: str | None = None,
-        profile_url_normalized: str | None = None,
         email_permission: str | None = None,
-        email_source: str | None = None,
         last_interaction_at: datetime | None = None,
         relationship_strength: str | None = None,
         notes: str | None = None,
         buying_roles: list[str] | None = None,
-        set_company: bool = False,
     ) -> dict[str, Any] | None:
-        fields: list[str] = []
-        values: list[Any] = []
-        for column, value in (
-            ("email", email),
-            ("full_name", full_name),
-            ("title", title),
-            ("profile_url", profile_url),
-            ("profile_url_normalized", profile_url_normalized),
-            ("email_permission", email_permission),
-            ("email_source", email_source),
-            ("last_interaction_at", last_interaction_at),
-            ("relationship_strength", relationship_strength),
-            ("notes", notes),
-        ):
-            if value is not None:
-                fields.append(f"{column} = %s")
-                values.append(value)
-        if set_company:
-            fields.append("company_id = %s")
-            values.append(company_id)
-        if buying_roles is not None:
-            fields.append("buying_roles = %s")
-            values.append(json.dumps(buying_roles))
-        if not fields:
-            return self.get_by_id(conn, contact_id)
-
-        fields.append("updated_at = %s")
-        values.append(_now())
-        values.append(contact_id)
         with conn.cursor() as cur:
             cur.execute(
-                f"""
-                UPDATE contacts
-                SET {", ".join(fields)}
+                """
+                UPDATE contacts SET
+                    full_name = %s,
+                    company_id = %s,
+                    email = %s,
+                    title = %s,
+                    profile_url = %s,
+                    email_permission = %s,
+                    last_interaction_at = %s,
+                    relationship_strength = %s,
+                    notes = %s,
+                    updated_at = %s
                 WHERE id = %s
                 RETURNING *
                 """,
-                values,
+                (
+                    full_name,
+                    company_id,
+                    email,
+                    title,
+                    profile_url,
+                    email_permission,
+                    last_interaction_at,
+                    relationship_strength,
+                    notes,
+                    _now(),
+                    contact_id,
+                ),
             )
             row = cur.fetchone()
-        return dict(row) if row else None
+        if row is None:
+            return None
+        if buying_roles is not None:
+            self._replace_buying_roles(conn, contact_id, buying_roles)
+        return self.get_by_id(conn, contact_id)
 
     def archive(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None:
         with conn.cursor() as cur:
@@ -471,7 +521,9 @@ class PostgresContactRepository:
                 (_now(), _now(), contact_id),
             )
             row = cur.fetchone()
-        return dict(row) if row else None
+        if row is None:
+            return None
+        return self._attach_buying_roles(conn, [dict(row)])[0]
 
     def restore(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None:
         with conn.cursor() as cur:
@@ -484,7 +536,9 @@ class PostgresContactRepository:
                 (_now(), contact_id),
             )
             row = cur.fetchone()
-        return dict(row) if row else None
+        if row is None:
+            return None
+        return self._attach_buying_roles(conn, [dict(row)])[0]
 
 
 class PostgresSourceRecordRepository:

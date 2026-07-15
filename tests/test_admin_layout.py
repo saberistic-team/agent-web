@@ -282,7 +282,7 @@ def test_admin_companies_page_renders_research_list() -> None:
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_admin_contacts_page_renders_list() -> None:
+def test_admin_contacts_page_renders_contact_list() -> None:
     from app import admin_auth
 
     raw_token = admin_auth.generate_session_token()

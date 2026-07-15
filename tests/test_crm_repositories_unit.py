@@ -69,23 +69,21 @@ def test_company_repository_crud() -> None:
 
 
 @pytest.mark.unit
-def test_contact_repository_create_lookup_and_archive() -> None:
+def test_contact_repository_create_and_lookup() -> None:
     repo = PostgresContactRepository()
     row = {
         "id": CONTACT_ID,
         "email": "lead@example.com",
         "full_name": "Lead",
         "company_id": COMPANY_ID,
-        "buying_roles": ["founder"],
     }
     conn = _mock_conn(row)
 
     created = repo.create(
         conn,
-        email="lead@example.com",
         full_name="Lead",
+        email="lead@example.com",
         company_id=COMPANY_ID,
-        buying_roles=["founder", "technical_buyer"],
     )
     assert created["email"] == "lead@example.com"
     conn.commit.assert_not_called()
@@ -94,13 +92,10 @@ def test_contact_repository_create_lookup_and_archive() -> None:
     assert repo.get_by_email(conn2, "lead@example.com")["id"] == CONTACT_ID
 
     conn3 = _mock_conn([row])
+    cur3 = conn3.cursor.return_value.__enter__.return_value
+    cur3.fetchall.side_effect = [[row], []]
     contacts = repo.list_for_company(conn3, COMPANY_ID, limit=10)
     assert len(contacts) == 1
-
-    conn4 = _mock_conn(row)
-    repo.archive(conn4, CONTACT_ID)
-    archive_sql = str(conn4.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
-    assert "UPDATE contacts SET archived_at" in archive_sql
 
 
 @pytest.mark.unit

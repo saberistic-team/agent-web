@@ -91,30 +91,23 @@ warning rather than preventing a save.
 | `full_name` | `TEXT` | Required display name |
 | `title` | `TEXT` | Optional job title |
 | `profile_url` | `TEXT` | Optional LinkedIn/profile URL (normalized on save) |
-| `email` | `TEXT` | Optional; partial unique index when set and not archived |
-| `email_permitted` | `BOOLEAN` | Whether outreach email is permitted |
-| `email_provenance` | `TEXT` | Optional source of email (`linkedin`, `introducer`, etc.) |
-| `last_interaction_at` | `DATE` | Optional last touch date |
-| `relationship_strength` | `TEXT` | Optional: `weak`, `moderate`, `strong`, `unknown` |
+| `email` | `TEXT` | Optional; unique among active contacts when set |
+| `email_permission` | `TEXT` | Provenance/permission when email is present |
+| `last_interaction_at` | `TIMESTAMPTZ` | Optional last touch timestamp |
+| `relationship_strength` | `TEXT` | Optional relationship score band |
 | `notes` | `TEXT` | Optional operator notes |
 | `archived_at` | `TIMESTAMPTZ` | Soft archive timestamp |
 
-Indexes: `company_id`, `email` (partial unique), `profile_url`, `archived_at`, `full_name`.
+Indexes: `company_id`, `email` (partial unique on active rows), `profile_url`,
+`archived_at`, `last_interaction_at`.
 
-`app/contacts.py` owns buying-role and relationship registries, normalizes profile URLs
-and emails, and surfaces non-blocking duplicate warnings for profile URL, email, and
-name+company combinations.
+`contact_buying_roles` stores one row per role (`founder`, `technical_buyer`,
+`executive_buyer`, `influencer`, `investor`, `introducer`, `other`). A contact
+may have multiple roles.
 
-### `contact_buying_roles`
-
-Junction table linking contacts to one or more buying roles.
-
-| Column | Type | Notes |
-|--------|------|-------|
-| `contact_id` | `UUID` | FK → `contacts`, `ON DELETE CASCADE` |
-| `role` | `TEXT` | `founder`, `technical_buyer`, `executive_buyer`, `influencer`, `investor`, `introducer`, `other` |
-
-Primary key: `(contact_id, role)`. Index on `role`.
+`app/contacts.py` owns buying-role and relationship registries, normalizes profile
+URLs and email, and surfaces non-blocking duplicate warnings for profile URL,
+email, and name/company combinations.
 
 ### `source_records`
 

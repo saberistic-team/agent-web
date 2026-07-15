@@ -10,6 +10,7 @@ import os
 import random
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from uuid import UUID
 
 
 COMPANY_NAMES = (
@@ -73,7 +74,7 @@ UTM_CAMPAIGNS = ("spring-launch", "architecture-diagnostic", "inbound-q3", None)
 # Section path → short column labels for preview tables.
 _SECTION_COLUMNS: dict[str, tuple[str, ...]] = {
     "/admin/companies": ("Company", "Category", "Stage", "Target", "Verified"),
-    "/admin/contacts": ("Name", "Title", "Company", "Email", "Roles", "Last touch"),
+    "/admin/contacts": ("Name", "Title", "Roles", "Company", "Email", "Last touch"),
     "/admin/signals": ("Signal", "Company", "Score", "Source", "Seen"),
     "/admin/pipeline": ("Deal", "Company", "Stage", "Value", "Next step"),
     "/admin/imports": ("Job", "Rows", "Status", "Source", "Started"),
@@ -286,9 +287,16 @@ def build_preview_section_rows(
                 (
                     person,
                     rng.choice(("CTO", "VP Eng", "Founder", "Ops lead")),
+                    rng.choice(
+                        (
+                            "Technical buyer",
+                            "Executive buyer",
+                            "Founder, Influencer",
+                            "Investor",
+                        )
+                    ),
                     company,
                     _slug_email(first, last, company, rng),
-                    rng.choice(("Founder", "Technical buyer", "Executive buyer")),
                     stamp,
                 )
             )
@@ -553,4 +561,55 @@ def render_preview_section_main(
             </table>
           </div>
         </section>"""
+
+
+PREVIEW_CONTACT_ID_1 = UUID("11111111-1111-1111-1111-111111111111")
+PREVIEW_CONTACT_ID_2 = UUID("22222222-2222-2222-2222-222222222222")
+PREVIEW_CONTACT_IDS = {PREVIEW_CONTACT_ID_1: 1, PREVIEW_CONTACT_ID_2: 2}
+
+
+def build_preview_contact_detail(
+    contact_key: int,
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> dict[str, object] | None:
+    """Preview contact fixtures: 1 = full record, 2 = sparse/nullable fields."""
+    if contact_key not in (1, 2):
+        return None
+    rng = rng or _preview_rng()
+    now = now or datetime.now(timezone.utc)
+    company = COMPANY_NAMES[(contact_key - 1) % len(COMPANY_NAMES)]
+    person = _person(rng)
+    if contact_key == 1:
+        return {
+            "id": PREVIEW_CONTACT_ID_1,
+            "full_name": person,
+            "title": "VP Engineering",
+            "company_id": PREVIEW_CONTACT_ID_1,
+            "company_name": company,
+            "profile_url": "https://linkedin.com/in/preview-contact",
+            "email": _slug_email(*person.split(" ", 1), company, rng),
+            "email_permission": "permitted",
+            "last_interaction_at": now - timedelta(days=3),
+            "relationship_strength": "strong",
+            "notes": "Warm intro via portfolio founder.",
+            "buying_roles": ["technical_buyer", "influencer"],
+            "archived_at": None,
+        }
+    return {
+        "id": PREVIEW_CONTACT_ID_2,
+        "full_name": person,
+        "title": None,
+        "company_id": PREVIEW_CONTACT_ID_2,
+        "company_name": company,
+        "profile_url": None,
+        "email": None,
+        "email_permission": None,
+        "last_interaction_at": None,
+        "relationship_strength": None,
+        "notes": None,
+        "buying_roles": ["founder"],
+        "archived_at": None,
+    }
 

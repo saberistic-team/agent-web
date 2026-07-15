@@ -193,6 +193,16 @@ def test_admin_login_flows_cleanup_indexes_migration_is_idempotent() -> None:
 
 
 @pytest.mark.unit
+def test_contact_records_migration_adds_roles_and_optional_email() -> None:
+    contact_records = next(m for m in MIGRATIONS if m.name == "contact_records")
+    assert contact_records.version == "011"
+    assert "contact_buying_roles" in contact_records.up_sql
+    assert "technical_buyer" in contact_records.up_sql
+    assert "ALTER COLUMN email DROP NOT NULL" in contact_records.up_sql
+    assert "idx_contacts_email_active" in contact_records.up_sql
+
+
+@pytest.mark.unit
 def test_migration_rollback_strategy_is_forward_only() -> None:
     for migration in MIGRATIONS:
         assert not hasattr(migration, "down_sql")
@@ -337,17 +347,6 @@ def test_apply_migrations_raises_when_lock_times_out(monkeypatch: pytest.MonkeyP
 
     conn.rollback.assert_called_once()
     conn.commit.assert_not_called()
-
-@pytest.mark.unit
-def test_contact_records_migration_adds_roles_and_optional_email() -> None:
-    migration = next(m for m in MIGRATIONS if m.name == "contact_records")
-    assert migration.version == "011"
-    assert "ALTER TABLE contacts ALTER COLUMN email DROP NOT NULL" in migration.up_sql
-    assert "buying_roles JSONB" in migration.up_sql
-    assert "profile_url_normalized" in migration.up_sql
-    assert "archived_at TIMESTAMPTZ" in migration.up_sql
-    assert "idx_contacts_email_unique" in migration.up_sql
-
 
 @pytest.mark.unit
 def test_audit_events_migration_is_append_only() -> None:

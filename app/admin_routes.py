@@ -112,19 +112,19 @@ def _company_form_payload(**values: object) -> dict[str, object]:
 
 
 def _contact_form_payload(**values: object) -> dict[str, object]:
-    """Map blank optional contact form fields to null before domain-model validation."""
+    buying_roles = values.pop("buying_roles", None)
+    for key in ("request", "session", "csrf_token", "contact_id"):
+        values.pop(key, None)
     allowed = {
         "full_name",
-        "company_id",
         "title",
+        "company_id",
         "profile_url",
         "email",
         "email_permission",
-        "email_source",
         "last_interaction_at",
         "relationship_strength",
         "notes",
-        "buying_roles",
     }
     payload: dict[str, object] = {
         key: value.strip() if isinstance(value, str) else value
@@ -132,33 +132,21 @@ def _contact_form_payload(**values: object) -> dict[str, object]:
         if key in allowed
     }
     for field in (
-        "company_id",
         "title",
         "profile_url",
         "email",
         "email_permission",
-        "email_source",
         "last_interaction_at",
         "relationship_strength",
         "notes",
     ):
         if not payload.get(field):
             payload[field] = None
-    raw_company = payload.get("company_id")
-    if raw_company:
-        payload["company_id"] = UUID(str(raw_company))
-    else:
-        payload["company_id"] = None
-    raw_last = payload.get("last_interaction_at")
-    if raw_last:
-        from datetime import date
-
-        payload["last_interaction_at"] = date.fromisoformat(str(raw_last))
-    roles = payload.get("buying_roles")
-    if roles is None:
-        payload["buying_roles"] = []
-    elif isinstance(roles, str):
-        payload["buying_roles"] = [roles]
+    raw_company_id = payload.get("company_id")
+    if not raw_company_id:
+        raise ValueError("company is required")
+    payload["company_id"] = UUID(str(raw_company_id))
+    payload["buying_roles"] = list(buying_roles or [])
     return payload
 
 
@@ -822,17 +810,32 @@ def admin_contacts(
 
 
 @router.get("/contacts/new", response_class=HTMLResponse)
-def admin_contact_new(request: Request) -> HTMLResponse:
+def admin_contact_new(request: Request, company_id: UUID | None = None) -> HTMLResponse:
     session = require_admin_session(request)
     settings = get_settings()
     csrf_token = _issue_session_csrf(settings, session.id) if session.id else ""
+    if settings.admin_preview_enabled:
+        from app.admin_preview import build_preview_contact_detail
+
+        contact = build_preview_contact_detail(1)
+        companies = [{"id": contact["company_id"], "name": contact.get("company_name", "Preview Co")}]
+        return HTMLResponse(
+            contact_pages.render_contact_form_page(
+                csrf_token=csrf_token,
+                admin_username=session.admin_username,
+                companies=companies,
+                contact=contact,
+            )
+        )
     with db.db_connection(settings.database_url) as conn:
         companies = _crm.list_companies(conn, limit=500)
+    preset = {"company_id": company_id} if company_id else None
     return HTMLResponse(
         contact_pages.render_contact_form_page(
             csrf_token=csrf_token,
             admin_username=session.admin_username,
             companies=companies,
+            contact=preset,
         )
     )
 
@@ -842,12 +845,11 @@ def admin_contact_create(
     request: Request,
     csrf_token: str = Form(...),
     full_name: str = Form(...),
-    company_id: str | None = Form(default=None),
+    company_id: str = Form(...),
     title: str | None = Form(default=None),
     profile_url: str | None = Form(default=None),
     email: str | None = Form(default=None),
     email_permission: str | None = Form(default=None),
-    email_source: str | None = Form(default=None),
     last_interaction_at: str | None = Form(default=None),
     relationship_strength: str | None = Form(default=None),
     notes: str | None = Form(default=None),
@@ -871,14 +873,28 @@ def admin_contact_create(
 
 @router.get("/contacts/{contact_id}/edit", response_class=HTMLResponse)
 def admin_contact_edit(
-    request: Request,
-    contact_id: UUID,
-    error: str | None = None,
-    warning: str | None = None,
+    request: Request, contact_id: UUID, error: str | None = None, warning: str | None = None
 ) -> HTMLResponse:
     session = require_admin_session(request)
     settings = get_settings()
     csrf_token = _issue_session_csrf(settings, session.id) if session.id else ""
+    if settings.admin_preview_enabled:
+        from app.admin_preview import PREVIEW_CONTACT_IDS, build_preview_contact_detail
+
+        preview_key = PREVIEW_CONTACT_IDS.get(contact_id)
+        if preview_key is None:
+            raise HTTPException(status_code=404, detail="Contact not found")
+        contact = build_preview_contact_detail(preview_key)
+        companies = [{"id": contact["company_id"], "name": contact.get("company_name", "Preview Co")}]
+        return HTMLResponse(
+            contact_pages.render_contact_form_page(
+                csrf_token=csrf_token,
+                admin_username=session.admin_username,
+                companies=companies,
+                contact=contact,
+                error_message=error or warning,
+            )
+        )
     with db.db_connection(settings.database_url) as conn:
         contact = _crm.get_contact(conn, contact_id)
         companies = _crm.list_companies(conn, limit=500)
@@ -901,12 +917,11 @@ def admin_contact_update(
     contact_id: UUID,
     csrf_token: str = Form(...),
     full_name: str = Form(...),
-    company_id: str | None = Form(default=None),
+    company_id: str = Form(...),
     title: str | None = Form(default=None),
     profile_url: str | None = Form(default=None),
     email: str | None = Form(default=None),
     email_permission: str | None = Form(default=None),
-    email_source: str | None = Form(default=None),
     last_interaction_at: str | None = Form(default=None),
     relationship_strength: str | None = Form(default=None),
     notes: str | None = Form(default=None),
@@ -918,8 +933,7 @@ def admin_contact_update(
         contact = ContactUpdate(**_contact_form_payload(**locals()))
     except (ValueError, TypeError, ValidationError) as exc:
         return RedirectResponse(
-            url=f"/admin/contacts/{contact_id}/edit?error={quote(str(exc))}",
-            status_code=303,
+            url=f"/admin/contacts/{contact_id}/edit?error={quote(str(exc))}", status_code=303
         )
     with db.db_connection(get_settings().database_url) as conn:
         result = _crm.update_contact(conn, contact_id, contact=contact)
@@ -931,15 +945,23 @@ def admin_contact_update(
 
 
 @router.post("/contacts/{contact_id}/archive", response_model=None)
-def admin_contact_archive(
-    request: Request, contact_id: UUID, csrf_token: str = Form(...)
-) -> Response:
+def admin_contact_archive(request: Request, contact_id: UUID, csrf_token: str = Form(...)) -> Response:
     session = require_admin_session(request)
     _verify_session_csrf(session, csrf_token)
     with db.db_connection(get_settings().database_url) as conn:
         if _crm.archive_contact(conn, contact_id) is None:
             raise HTTPException(status_code=404, detail="Contact not found")
     return RedirectResponse(url="/admin/contacts", status_code=303)
+
+
+@router.post("/contacts/{contact_id}/restore", response_model=None)
+def admin_contact_restore(request: Request, contact_id: UUID, csrf_token: str = Form(...)) -> Response:
+    session = require_admin_session(request)
+    _verify_session_csrf(session, csrf_token)
+    with db.db_connection(get_settings().database_url) as conn:
+        if _crm.restore_contact(conn, contact_id) is None:
+            raise HTTPException(status_code=404, detail="Contact not found")
+    return RedirectResponse(url=f"/admin/contacts/{contact_id}/edit", status_code=303)
 
 
 @router.get("/contacts/{contact_id}", response_class=HTMLResponse)
