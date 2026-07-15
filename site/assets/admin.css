@@ -68,71 +68,72 @@ body.admin-app {
   padding: 0;
 }
 
-/* Form action buttons — distinct from top-bar .admin-exit link typography. */
-.admin-action {
-  display: inline-block;
+/* Form archive/restore actions — not top-bar .admin-exit link typography. */
+.admin-action-btn {
   font-family: inherit;
   font-size: 0.72rem;
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  text-decoration: none;
+  line-height: 1.3;
   padding: 0.5rem 0.85rem;
+  margin: 0;
   border-radius: 2px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--ink);
   cursor: pointer;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 75%, transparent);
+  color: var(--ink);
   transition:
+    border-color 0.2s ease,
     background 0.2s ease,
     color 0.2s ease,
-    border-color 0.2s ease,
     transform 0.15s ease;
 }
 
-.admin-action:hover,
-.admin-action:focus-visible {
-  outline: none;
+.admin-action-btn--secondary {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--line);
 }
 
-.admin-action:focus-visible {
+.admin-action-btn--destructive {
+  border-color: color-mix(in srgb, #e05a5a 50%, var(--line));
+  background: color-mix(in srgb, #e05a5a 14%, var(--surface));
+  color: #ffd0d0;
+}
+
+.admin-action-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.admin-action-btn--secondary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+}
+
+.admin-action-btn--destructive:hover:not(:disabled) {
+  border-color: #e88a6a;
+  background: color-mix(in srgb, #e05a5a 22%, var(--surface));
+  color: #ffe0e0;
+}
+
+.admin-action-btn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.admin-action:active:not(:disabled) {
+.admin-action-btn--destructive:focus-visible {
+  outline-color: #e88a6a;
+}
+
+.admin-action-btn:active:not(:disabled) {
   transform: translateY(1px);
 }
 
-.admin-action:disabled {
-  cursor: not-allowed;
+.admin-action-btn:disabled {
   opacity: 0.45;
-}
-
-.admin-action--secondary {
-  color: var(--ink);
-  border-color: var(--line);
-  background: color-mix(in srgb, var(--surface) 70%, transparent);
-}
-
-.admin-action--secondary:hover:not(:disabled),
-.admin-action--secondary:focus-visible:not(:disabled) {
-  color: var(--accent-ink);
-  border-color: var(--accent);
-  background: var(--accent);
-}
-
-.admin-action--destructive {
-  color: #ffb4b4;
-  border-color: color-mix(in srgb, #e05a5a 55%, var(--line));
-  background: color-mix(in srgb, #e05a5a 12%, transparent);
-}
-
-.admin-action--destructive:hover:not(:disabled),
-.admin-action--destructive:focus-visible:not(:disabled) {
-  color: #fff0f0;
-  border-color: #e05a5a;
-  background: color-mix(in srgb, #e05a5a 35%, transparent);
+  cursor: not-allowed;
+  transform: none;
 }
 
 .admin-layout {

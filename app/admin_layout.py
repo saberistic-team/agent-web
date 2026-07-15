@@ -92,13 +92,13 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert",
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
+    "/admin/companies/12121212-1212-1212-1212-121212121212",
+    "/admin/companies/13131313-1313-1313-1313-131313131313",
+    "/admin/contacts/14141414-1414-1414-1414-141414141414",
+    "/admin/contacts/15151515-1515-1515-1515-151515151515",
+    "/admin/contacts/14141414-1414-1414-1414-141414141414/edit",
+    "/admin/contacts/15151515-1515-1515-1515-151515151515/edit",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
-    "/admin/companies/10101010-1010-1010-1010-101010101010",
-    "/admin/companies/20202020-2020-2020-2020-202020202020",
-    "/admin/contacts/30303030-3030-3030-3030-303030303030",
-    "/admin/contacts/40404040-4040-4040-4040-404040404040",
-    "/admin/contacts/30303030-3030-3030-3030-303030303030/edit",
-    "/admin/contacts/40404040-4040-4040-4040-404040404040/edit",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
@@ -109,25 +109,34 @@ ADMIN_SCREENSHOT_EXPECTED_STATUS: dict[str, int] = {
 }
 
 
+def render_admin_archive_form(
+    *,
+    action_url: str,
+    label: str,
+    is_archived: bool,
+    csrf_token: str,
+) -> str:
+    """POST form for archive/restore with themed admin action button."""
+    modifier = (
+        "admin-action-btn--secondary" if is_archived else "admin-action-btn--destructive"
+    )
+    safe_url = html.escape(action_url, quote=True)
+    safe_token = html.escape(csrf_token, quote=True)
+    safe_label = html.escape(label)
+    return (
+        f'<form method="post" action="{safe_url}">'
+        f'<input type="hidden" name="csrf_token" value="{safe_token}" />'
+        f'<button class="admin-action-btn {modifier}" type="submit">{safe_label}</button>'
+        f"</form>"
+    )
+
+
 def _active_nav_label(active_path: str) -> str:
     """Return the label for the current admin section."""
     for link in ADMIN_NAV_LINKS:
         if link["href"] == active_path:
             return link["label"]
     return "Admin"
-
-
-def admin_archive_action_classes(*, is_archived: bool) -> str:
-    """CSS classes for Archive/Restore form submit buttons."""
-    if is_archived:
-        return "admin-action admin-action--secondary"
-    return "admin-action admin-action--destructive"
-
-
-def render_admin_archive_button(*, label: str, is_archived: bool) -> str:
-    """Return a themed Archive or Restore submit button."""
-    classes = admin_archive_action_classes(is_archived=is_archived)
-    return f'<button class="{classes}" type="submit">{html.escape(label)}</button>'
 
 
 def render_admin_nav(active_path: str) -> str:
