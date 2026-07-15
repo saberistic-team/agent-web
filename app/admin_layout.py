@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+from typing import Any
 
 ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
     {
@@ -92,13 +93,11 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert",
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
-    "/admin/companies/a101aaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-    "/admin/companies/a102aaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-    "/admin/contacts/b101bbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
-    "/admin/contacts/b102bbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
-    "/admin/contacts/b101bbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/edit",
-    "/admin/contacts/b102bbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/edit",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
+    "/admin/companies/12121212-1212-1212-1212-121212121212",
+    "/admin/companies/13131313-1313-1313-1313-131313131313",
+    "/admin/contacts/14141414-1414-1414-1414-141414141414",
+    "/admin/contacts/15151515-1515-1515-1515-151515151515/edit",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
@@ -109,18 +108,42 @@ ADMIN_SCREENSHOT_EXPECTED_STATUS: dict[str, int] = {
 }
 
 
-def admin_archive_action_classes(*, is_archived: bool) -> str:
-    """CSS classes for Archive (destructive) or Restore (secondary) form actions."""
-    variant = "secondary" if is_archived else "destructive"
-    return f"admin-action admin-action--{variant}"
-
-
 def _active_nav_label(active_path: str) -> str:
     """Return the label for the current admin section."""
     for link in ADMIN_NAV_LINKS:
         if link["href"] == active_path:
             return link["label"]
     return "Admin"
+
+
+def render_archive_restore_form(
+    *,
+    resource: str,
+    record_id: Any,
+    archived_at: Any,
+    csrf_token: str,
+) -> str:
+    """Return a POST form with themed archive or restore action styling."""
+    resource_paths = {"company": "companies", "contact": "contacts"}
+    resource_path = resource_paths.get(resource)
+    if resource_path is None:
+        raise ValueError(f"unsupported archive resource: {resource}")
+    archive_action = "restore" if archived_at else "archive"
+    action_class = (
+        "admin-action admin-action--restore"
+        if archived_at
+        else "admin-action admin-action--destructive"
+    )
+    label = f"Restore {resource}" if archived_at else f"Archive {resource}"
+    safe_id = html.escape(str(record_id), quote=True)
+    safe_token = html.escape(csrf_token, quote=True)
+    safe_label = html.escape(label)
+    return (
+        f'<form method="post" action="/admin/{resource_path}/{safe_id}/{archive_action}">'
+        f'<input type="hidden" name="csrf_token" value="{safe_token}" />'
+        f'<button class="{action_class}" type="submit">{safe_label}</button>'
+        f"</form>"
+    )
 
 
 def render_admin_nav(active_path: str) -> str:
