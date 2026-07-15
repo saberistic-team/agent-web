@@ -42,9 +42,10 @@ python scripts/check_coverage.py
 1. Service exists as Blueprint from [`render.yaml`](../render.yaml); custom domain
    **saberistic.com** points at service **agent-web-hello**.
 2. In Render → **agent-web-hello** → **Settings** → **Deploy Hook**, copy the URL.
-3. In GitHub → repo **Settings** → **Secrets and variables** → **Actions**, add secret:
-   - Name: `RENDER_DEPLOY_HOOK_URL`
-   - Value: the deploy hook URL
+3. In GitHub → repo **Settings** → **Secrets and variables** → **Actions**, add:
+   - Secret `RENDER_DEPLOY_HOOK_URL` = deploy hook URL
+   - Secret `RENDER_API_KEY` = Render API key (Account Settings → API Keys)
+   - Secret `RENDER_SERVICE_ID` = `srv-…` (optional if the hook URL contains it)
 4. Set Actions variable `DEPLOY_BASE_URL` = `https://saberistic.com` (optional if
    code default matches).
 5. In Render → **Settings** → **Auto-Deploy**, prefer **Off** or **After CI Checks Pass** so deploys are gated by GitHub Actions tests (avoids double-deploy with the hook).
@@ -55,9 +56,13 @@ On every push/merge to `main`, [`.github/workflows/ci.yml`](../.github/workflows
 
 1. Runs `pytest -q`
 2. Runs `python scripts/check_coverage.py` (unit ≥90% / integration ≥70% on `app/`)
-3. If both pass, `POST`s the Render deploy hook
-4. `post-deploy-visual` polls `/health` (JSON) and captures production screenshots
-   ([SCREENSHOTS.md](SCREENSHOTS.md))
+3. If both pass, `scripts/render_deploy.py` triggers the deploy hook for that
+   commit SHA and **polls the Render API until the deploy is `live`** (or fails).
+   Schema migrations run in app startup (`db.init_db`); a migration failure marks
+   the Render deploy `update_failed` and fails this CI job. After live, CI also
+   requires `/health` `schema_version` to match the latest migration in the tree.
+4. `Freeze shipped migrations` and `post-deploy-visual` run after a successful
+   deploy (screenshots + digest freeze)
 
 CI skips push jobs whose commit message starts with `review: record` or
 `deploy: record` / `deploy: freeze` (screenshot/health/migration-freeze recorder commits).

@@ -19,6 +19,24 @@ def init_db(database_url: str) -> None:
         apply_migrations(conn)
 
 
+def latest_schema_version(database_url: str) -> str | None:
+    """Return the highest applied ``schema_migrations.version``, or None."""
+    with psycopg.connect(database_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT version
+                FROM schema_migrations
+                ORDER BY version DESC
+                LIMIT 1
+                """
+            )
+            row = cur.fetchone()
+    if row is None:
+        return None
+    return str(row[0])
+
+
 @contextmanager
 def db_connection(database_url: str) -> Generator[psycopg.Connection, None, None]:
     with psycopg.connect(database_url, row_factory=dict_row) as conn:
