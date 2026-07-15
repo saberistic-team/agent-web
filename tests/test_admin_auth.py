@@ -33,6 +33,7 @@ TEST_SECRET = "test-session-secret-32chars-minimum"
 
 _login_flows: dict[str, dict[str, Any]] = {}
 _session_store: dict[str, dict[str, Any]] = {}
+_login_flow_lock = threading.Lock()
 
 
 class FakeRateLimitStore:
@@ -277,21 +278,49 @@ def _mock_cleanup_stale_admin_login_flows(conn: MagicMock, **kwargs: Any) -> int
     return len(stale_hashes)
 
 
-def _mock_get_admin_login_flow_by_token_hash(
+def _mock_claim_admin_login_flow(
     conn: MagicMock,
+    *,
     flow_token_hash: str,
+    csrf_token_hash: str,
+    now: datetime,
 ) -> dict[str, Any] | None:
-    return _login_flows.get(flow_token_hash)
+    with _login_flow_lock:
+        row = _login_flows.get(flow_token_hash)
+        if row is None:
+            return None
+        if row.get("consumed_at") is not None:
+            return None
+        expires_at = row["expires_at"]
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at <= now:
+            return None
+        if row.get("csrf_token_hash") != csrf_token_hash:
+            return None
+        row["consumed_at"] = now
+        return dict(row)
 
 
 def _mock_consume_admin_login_flow(
     conn: MagicMock,
     *,
     flow_token_hash: str,
-) -> None:
-    row = _login_flows.get(flow_token_hash)
-    if row is not None:
-        row["consumed_at"] = datetime.now(timezone.utc)
+    now: datetime,
+) -> bool:
+    with _login_flow_lock:
+        row = _login_flows.get(flow_token_hash)
+        if row is None:
+            return False
+        if row.get("consumed_at") is not None:
+            return False
+        expires_at = row["expires_at"]
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at <= now:
+            return False
+        row["consumed_at"] = now
+        return True
 
 
 def _mock_create_admin_session(conn: MagicMock, **kwargs: Any) -> int:
@@ -349,10 +378,7 @@ def mock_db_connection() -> Generator[MagicMock, None, None]:
             )
         )
         stack.enter_context(
-            patch(
-                "app.admin_routes.db.get_admin_login_flow_by_token_hash",
-                _mock_get_admin_login_flow_by_token_hash,
-            )
+            patch("app.admin_routes.db.claim_admin_login_flow", _mock_claim_admin_login_flow)
         )
         stack.enter_context(
             patch("app.admin_routes.db.consume_admin_login_flow", _mock_consume_admin_login_flow)

@@ -322,35 +322,54 @@ def _issue_login_flow_response(
     return response
 
 
-def _verify_login_flow_csrf(
+def _try_claim_login_flow(
     request: Request,
     settings: Settings,
     csrf_token: str,
 ) -> bool:
-    """Validate a login CSRF token against the initiating browser flow."""
+    """Atomically claim a pre-auth login flow before credential verification.
+
+    Consumption happens here (before password check) so exactly one concurrent
+    submission can proceed; losers receive the same generic failure path as
+    other invalid flows without running password verification.
+    """
+    raw_flow_token = admin_auth.read_login_flow_token(request)
+    if raw_flow_token is None or not csrf_token:
+        return False
+    flow_hash = admin_auth.hash_session_token(raw_flow_token)
+    csrf_hash = admin_auth.hash_csrf_token(csrf_token)
+    now = datetime.now(timezone.utc)
+    with db.db_connection(settings.database_url) as conn:
+        row = db.claim_admin_login_flow(
+            conn,
+            flow_token_hash=flow_hash,
+            csrf_token_hash=csrf_hash,
+            now=now,
+        )
+    return row is not None
+
+
+def _try_burn_login_flow_cookie(request: Request, settings: Settings) -> bool:
+    """Consume an unconsumed flow by cookie only (throttle or wrong CSRF)."""
     raw_flow_token = admin_auth.read_login_flow_token(request)
     if raw_flow_token is None:
         return False
     flow_hash = admin_auth.hash_session_token(raw_flow_token)
+    now = datetime.now(timezone.utc)
     with db.db_connection(settings.database_url) as conn:
-        row = db.get_admin_login_flow_by_token_hash(conn, flow_hash)
-    if row is None or row.get("consumed_at") is not None:
-        return False
-    expires_at = row["expires_at"]
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if expires_at <= datetime.now(timezone.utc):
-        return False
-    return admin_auth.verify_csrf_value(csrf_token, row.get("csrf_token_hash"))
+        return db.consume_admin_login_flow(
+            conn,
+            flow_token_hash=flow_hash,
+            now=now,
+        )
 
 
-def _consume_login_flow(request: Request, settings: Settings) -> None:
-    raw_flow_token = admin_auth.read_login_flow_token(request)
-    if raw_flow_token is None:
-        return
-    flow_hash = admin_auth.hash_session_token(raw_flow_token)
-    with db.db_connection(settings.database_url) as conn:
-        db.consume_admin_login_flow(conn, flow_token_hash=flow_hash)
+def _redirect_to_login_form(*, next_path: str | None) -> RedirectResponse:
+    """Send the operator back to GET /admin/login when flow persistence fails."""
+    login_url = "/admin/login"
+    if next_path:
+        login_url = f"{login_url}?next={quote(next_path, safe='')}"
+    return RedirectResponse(url=login_url, status_code=303)
 
 
 def _issue_session(
@@ -424,12 +443,16 @@ def admin_login_submit(
 
     Login-flow cookie lifecycle (``admin_login_flow``):
 
-    * **Invalid CSRF** — consume the submitted flow (single-use), render a fresh
-      form with a new CSRF token, and retain the replacement flow cookie.
-    * **Invalid credentials** — same as invalid CSRF: consumed flow is not
-      replayable; the replacement flow binds the returned CSRF token.
-    * **Rate limited** — consume the submitted flow and retain a replacement so
-      the operator can retry after lockout without refreshing.
+    * **Claim** — every POST first atomically claims the flow (cookie + CSRF +
+      unconsumed + unexpired). Exactly one concurrent submission can claim;
+      consumption happens at claim time before password verification.
+    * **Invalid / lost claim** — failed claims burn the remaining unconsumed
+      flow when CSRF differs and return a generic failure without verifying
+      the password or minting a session.
+    * **Invalid credentials** — successful claim with bad password issues a
+      replacement flow cookie (``#153``); the consumed flow is not replayable.
+    * **Rate limited** — keep the existing pre-auth flow (``#215``) and return
+      the throttled message without claiming.
     * **Success** — clear the pre-auth flow cookie and issue the session cookie.
     """
     settings = get_settings()
@@ -465,10 +488,18 @@ def admin_login_submit(
             status_code=429,
         )
 
-    csrf_valid = _verify_login_flow_csrf(request, settings, csrf_token)
-    _consume_login_flow(request, settings)
+    try:
+        claimed = _try_claim_login_flow(request, settings, csrf_token)
+    except Exception:
+        logger.exception("Failed to claim login flow")
+        return _redirect_to_login_form(next_path=next)
 
-    if not csrf_valid:
+    if not claimed:
+        try:
+            _try_burn_login_flow_cookie(request, settings)
+        except Exception:
+            logger.exception("Failed to burn login flow after failed claim")
+            return _redirect_to_login_form(next_path=next)
         if admission.lockout_transition:
             _record_login_failure(
                 request,

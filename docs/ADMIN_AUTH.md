@@ -45,11 +45,22 @@ server-side; raw tokens appear in HTML forms only and are never logged.
    `flow_token_hash` and `csrf_token_hash`, then sets an `admin_login_flow`
    cookie (`HttpOnly`, `SameSite=strict`, path `/admin`, 15-minute TTL).
 2. The login form embeds the raw CSRF token in a hidden field.
-3. `POST /admin/login` requires both the flow cookie and matching CSRF field.
-   The flow row is consumed (one-time use) on every POST attempt.
-4. On failure, a fresh flow and CSRF token are issued when the login flow was consumed.
-5. On throttle, the existing flow remains valid and is not replaced.
-6. On success, the flow cookie is cleared and a new authenticated session is
+3. `POST /admin/login` atomically **claims** the flow row in one conditional
+   `UPDATE … RETURNING` that matches the browser flow cookie digest, submitted
+   CSRF digest, `consumed_at IS NULL`, and `expires_at > now`. Exactly one
+   concurrent submission can succeed; a zero-row update is a failed security
+   claim.
+4. **Consumption point** — the flow is marked consumed at successful claim,
+   *before* password verification. This closes the time-of-check/time-of-use
+   race: concurrent replays cannot both reach credential checks. A successful
+   claim with invalid credentials still receives a replacement flow (`#153`);
+   the operator retries with the new form, not the consumed row.
+5. Failed claims (missing cookie, wrong CSRF, expired, already consumed, or
+   concurrent loss) burn the flow cookie when it is still valid but CSRF did not
+   match, then return the same generic failure message without running password
+   verification or session mutation.
+6. On failure or throttle, a fresh flow and CSRF token are issued.
+7. On success, the flow cookie is cleared and a new authenticated session is
    minted (session fixation resistance).
 
 Stale flows are removed opportunistically when minting a new flow
@@ -334,7 +345,7 @@ expired and consumed flows would accumulate indefinitely.
 |-------|--------------|-----------|
 | **Active** (unexpired, unconsumed) | Never | Required for in-flight sign-in |
 | **Expired** (past `expires_at`, never consumed) | `expires_at` + **30 minutes** | Allows clock skew; matches `2 ×` flow TTL (15 min) |
-| **Consumed** (one-time POST used) | `consumed_at` + **15 minutes** | Replay is already blocked at consume time; brief grace for concurrent requests |
+| **Consumed** (one-time POST used) | `consumed_at` + **15 minutes** | Claim is atomic at POST time; brief grace for concurrent requests |
 
 Constants: `LOGIN_FLOW_EXPIRED_RETENTION_SECONDS` (1800), `LOGIN_FLOW_CONSUMED_RETENTION_SECONDS` (900), aligned with `CSRF_MAX_AGE_SECONDS` (900).
 
@@ -347,6 +358,9 @@ does not scan the full table. No Redis, cron, or external scheduler is required.
 
 If cleanup fails (database error), the failure is logged and the new flow is
 still created — cleanup errors never expose token values and do not block sign-in.
+Cleanup only targets rows past retention; an in-flight claim holds the row until
+its `UPDATE` commits, so concurrent claims and cleanup do not resurrect or
+double-consume flows.
 
 ### Manual cleanup
 

@@ -241,18 +241,63 @@ def get_admin_login_flow_by_token_hash(
         return cur.fetchone()
 
 
-def consume_admin_login_flow(conn: psycopg.Connection, *, flow_token_hash: str) -> None:
-    consumed_at = datetime.now(timezone.utc)
+def claim_admin_login_flow(
+    conn: psycopg.Connection,
+    *,
+    flow_token_hash: str,
+    csrf_token_hash: str,
+    now: datetime,
+) -> dict[str, Any] | None:
+    """Atomically validate and consume a login flow for credential verification.
+
+    Exactly one concurrent caller can claim a matching unconsumed, unexpired row.
+    A zero-row update returns ``None`` (failed claim).
+    """
+    consumed_at = now
     with conn.cursor() as cur:
         cur.execute(
             """
             UPDATE admin_login_flows
             SET consumed_at = %s
-            WHERE flow_token_hash = %s AND consumed_at IS NULL
+            WHERE flow_token_hash = %s
+              AND csrf_token_hash = %s
+              AND consumed_at IS NULL
+              AND expires_at > %s
+            RETURNING id, flow_token_hash, csrf_token_hash, created_at, expires_at, consumed_at
             """,
-            (consumed_at, flow_token_hash),
+            (consumed_at, flow_token_hash, csrf_token_hash, now),
         )
+        row = cur.fetchone()
         conn.commit()
+    return row
+
+
+def consume_admin_login_flow(
+    conn: psycopg.Connection,
+    *,
+    flow_token_hash: str,
+    now: datetime,
+) -> bool:
+    """Consume an unconsumed flow by cookie identity only (throttle / invalid CSRF).
+
+    Returns ``True`` when a row was updated, ``False`` on a zero-row claim.
+    """
+    consumed_at = now
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE admin_login_flows
+            SET consumed_at = %s
+            WHERE flow_token_hash = %s
+              AND consumed_at IS NULL
+              AND expires_at > %s
+            RETURNING id
+            """,
+            (consumed_at, flow_token_hash, now),
+        )
+        row = cur.fetchone()
+        conn.commit()
+    return row is not None
 
 
 def cleanup_stale_admin_login_flows(
