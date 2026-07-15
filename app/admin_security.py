@@ -1,55 +1,51 @@
-"""Admin security secret validation (fail-fast at startup)."""
+"""Fail-fast validation for admin authentication security settings."""
 
 from __future__ import annotations
 
+import re
+
 from app.config import Settings
 
-MIN_ADMIN_SECRET_BYTES = 32
+MIN_ADMIN_LOGIN_LIMITER_SECRET_BYTES = 32
 
-_WEAK_EXACT_SECRETS = frozenset(
-    {
-        "changeme",
-        "password",
-        "secret",
-        "placeholder",
-        "example",
-        "test",
-        "admin",
-    }
+_PLACEHOLDER_SECRET_PATTERN = re.compile(
+    r"(?i)(changeme|change-me|replace-me|placeholder|example|dummy|test-secret|your-secret|"
+    r"admin_login_limiter_secret|insert-secret|todo|fixme|xxx+)"
 )
+
+
+class AdminSecurityConfigError(ValueError):
+    """Raised when required admin security settings are missing or weak."""
 
 
 def validate_admin_login_limiter_secret(
     secret: str,
     *,
-    field_name: str = "ADMIN_LOGIN_LIMITER_SECRET",
+    env_name: str = "ADMIN_LOGIN_LIMITER_SECRET",
 ) -> None:
-    """Reject missing, weak, malformed, or placeholder limiter key material."""
-    if not secret:
-        raise ValueError(f"{field_name} is required")
-    if secret != secret.strip():
-        raise ValueError(f"{field_name} must not contain leading or trailing whitespace")
-    if len(secret.encode("utf-8")) < MIN_ADMIN_SECRET_BYTES:
-        raise ValueError(
-            f"{field_name} must be at least {MIN_ADMIN_SECRET_BYTES} random bytes"
+    """Reject missing, weak, or placeholder limiter key material."""
+    normalized = secret.strip()
+    if not normalized:
+        raise AdminSecurityConfigError(f"{env_name} is required")
+    encoded = normalized.encode("utf-8")
+    if len(encoded) < MIN_ADMIN_LOGIN_LIMITER_SECRET_BYTES:
+        raise AdminSecurityConfigError(
+            f"{env_name} must be at least {MIN_ADMIN_LOGIN_LIMITER_SECRET_BYTES} bytes"
         )
-    if secret.lower() in _WEAK_EXACT_SECRETS:
-        raise ValueError(f"{field_name} must not use placeholder or dictionary values")
-    if len(set(secret)) <= 2:
-        raise ValueError(f"{field_name} must not use low-entropy repeated material")
+    if _PLACEHOLDER_SECRET_PATTERN.search(normalized):
+        raise AdminSecurityConfigError(f"{env_name} must not use placeholder key material")
 
 
-def validate_admin_auth_secrets(settings: Settings) -> None:
-    """Validate admin security secrets before serving authenticated routes."""
+def validate_admin_login_limiter_settings(settings: Settings) -> None:
+    """Validate limiter secrets when admin authentication is fully configured."""
     validate_admin_login_limiter_secret(settings.admin_login_limiter_secret)
-    previous = settings.admin_login_limiter_secret_previous
+    previous = settings.admin_login_limiter_secret_previous.strip()
     if previous:
         validate_admin_login_limiter_secret(
             previous,
-            field_name="ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS",
+            env_name="ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS",
         )
         if previous == settings.admin_login_limiter_secret:
-            raise ValueError(
-                "ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS must differ from "
-                "ADMIN_LOGIN_LIMITER_SECRET"
+            raise AdminSecurityConfigError(
+                "ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS must differ from ADMIN_LOGIN_LIMITER_SECRET"
             )

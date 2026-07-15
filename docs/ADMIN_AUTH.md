@@ -143,7 +143,7 @@ access logs or metrics for operational visibility if needed.
 | `ADMIN_PASSWORD_HASH` | Yes | Argon2id hash of the operator password |
 | `ADMIN_SESSION_SECRET` | Yes | Retained for configuration parity (≥ 32 random bytes); CSRF is session-bound, not HMAC-signed with this secret |
 | `ADMIN_LOGIN_LIMITER_SECRET` | Yes | Dedicated HMAC key for login rate-limiter identifiers (≥ 32 random bytes; environment-specific) |
-| `ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS` | Optional | Prior limiter secret during a bounded rotation window (must differ from current) |
+| `ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS` | Optional | Previous limiter secret during rotation (see [Limiter secret rotation](#limiter-secret-rotation)) |
 | `ADMIN_SESSION_TTL_SECONDS` | Optional | Session lifetime in seconds (default `86400`) |
 | `ADMIN_LOGIN_RATE_LIMIT` | Optional | Failed login attempts allowed per window (default `5`) |
 | `ADMIN_LOGIN_RATE_WINDOW_SECONDS` | Optional | Rate-limit counting window in seconds (default `900`) |
@@ -175,7 +175,7 @@ print(secrets.token_urlsafe(48))
 PY
 ```
 
-Generate a **separate** login limiter secret (do not reuse `ADMIN_SESSION_SECRET`):
+Generate a **separate** limiter secret (do not reuse the session secret):
 
 ```bash
 python - <<'PY'
@@ -189,7 +189,7 @@ On Render, add:
 1. `ADMIN_USERNAME` — e.g. `operator`
 2. `ADMIN_PASSWORD_HASH` — output from the Argon2 command
 3. `ADMIN_SESSION_SECRET` — output from the secrets command
-4. `ADMIN_LOGIN_LIMITER_SECRET` — output from a second secrets command (test/staging/production must each use distinct values)
+4. `ADMIN_LOGIN_LIMITER_SECRET` — output from a second secrets command
 
 Redeploy after changing any of the above.
 
@@ -210,31 +210,28 @@ Redeploy after changing any of the above.
 3. CSRF tokens are session- and flow-bound; rotating this secret does not
    invalidate active sessions or in-flight login flows.
 
-### Login limiter secret rotation
+### Limiter secret rotation
 
-Limiter rows store only **keyed** HMAC-SHA256 identifiers. Rotating
-`ADMIN_LOGIN_LIMITER_SECRET` without a grace window makes existing
-`admin_login_rate_limits` rows unreachable, which **resets effective rate-limit
-history** for every bucket.
+Rotating `ADMIN_LOGIN_LIMITER_SECRET` changes the HMAC key used for **new**
+limiter rows. Rows keyed under the previous secret remain in Postgres until
+bounded cleanup removes them, but they no longer receive new failure counts.
 
-**Bounded rotation (recommended):**
+**Recommended procedure (no protection gap):**
 
 1. Generate a new limiter secret.
 2. Set `ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS` to the **current** value.
-3. Set `ADMIN_LOGIN_LIMITER_SECRET` to the new value and redeploy.
-4. During the grace window, admission still honors lockouts recorded under the
-   previous secret (read-only) while new counters use the current secret.
-5. Successful logins clear account buckets for both current and previous
-   identifiers; stale previous rows remain eligible for bounded cleanup.
-6. After at least `2 × max(window, lockout)` seconds with no active lockouts,
-   remove `ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS` and redeploy.
+3. Set `ADMIN_LOGIN_LIMITER_SECRET` to the new value.
+4. Redeploy. During this window, active lockouts under the previous secret
+   still block admission; new attempts increment buckets under the current
+   secret only.
+5. After lockout/window retention has elapsed (``2 × max(window, lockout)``),
+   unset `ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS` and redeploy.
 
-**Controlled reset (acceptable alternative):** rotate only `ADMIN_LOGIN_LIMITER_SECRET`
-during a maintenance window when briefly relaxed login protection is acceptable,
-then prune stale rows manually (see [Manual cleanup](#manual-cleanup)).
+**Cold rotation (accepts a brief reset):** update `ADMIN_LOGIN_LIMITER_SECRET`
+without setting `ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS`. Existing rate-limit
+history becomes unreachable immediately; protection restarts under the new key.
 
-Never commit limiter secrets to the repository. Test, preview, and production
-environments must use independent values.
+Use independent limiter secrets in test, preview, and production environments.
 
 ### Emergency session revocation
 
@@ -271,23 +268,24 @@ limits apply consistently across web processes, instances, and deployments.
 
 ### Limiter key strategy
 
-Each attempt consults one or two privacy-preserving **HMAC-SHA256** buckets keyed
-by `ADMIN_LOGIN_LIMITER_SECRET` (only the 64-character hex digest is stored as
-``limiter_key``):
+Each attempt consults one or two privacy-preserving HMAC-SHA-256 buckets (only the
+digest is stored as ``limiter_key``). Key material comes from a dedicated
+``ADMIN_LOGIN_LIMITER_SECRET`` (≥ 32 random bytes, validated at startup). Without
+this secret, a database reader cannot verify guessed client sources or usernames
+by hashing candidate values offline.
 
 | Bucket | Domain prefix | Key material | Purpose |
 |--------|---------------|--------------|---------|
-| **Source-wide** | `src` | normalized client source | Stops username rotation from one client source |
-| **Account-wide** | `acct` | normalized configured admin username | Limits distributed attempts against the configured admin account |
+| **Source-wide** | ``src`` | ``<normalized_client_source>`` | Stops username rotation from one client source |
+| **Account-wide** | ``acct`` | ``<normalized_configured_admin_username>`` | Limits distributed attempts against the configured admin account |
 
 The submitted username is normalized (lowercased/stripped) only to decide whether the
 account bucket applies. Unknown usernames still share the source bucket for their
 client source; responses remain generic.
 
-A table reader **without** the limiter secret cannot verify guessed IP addresses or
-usernames by hashing them directly. The secret is validated at startup (missing,
-weak, or placeholder material fails fast), never logged, and never written to audit
-or limiter rows.
+Raw usernames, passwords, IP addresses, forwarding headers, CSRF tokens, limiter
+secrets, and digest inputs are never written to limiter rows or limiter
+observability logs.
 
 ### Client source resolution
 
@@ -422,7 +420,7 @@ WHERE (
 ## Security notes
 
 - Authentication failures return a generic *Invalid username or password* message.
-- Every unauthenticated `auth.login.failure` audit event uses actor `anonymous`.
+- Unauthenticated login failures record audit events with actor `anonymous` only.
   Submitted usernames never appear in audit actor, metadata, reason text, logs,
   metrics, or limiter state.
 - Login always mints a fresh session ID and revokes any prior session cookie

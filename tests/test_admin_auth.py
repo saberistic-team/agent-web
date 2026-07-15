@@ -30,7 +30,7 @@ TEST_USERNAME = "operator"
 TEST_PASSWORD = "correct-horse-battery-staple"
 TEST_HASH = PasswordHasher().hash(TEST_PASSWORD)
 TEST_SECRET = "test-session-secret-32chars-minimum"
-TEST_LIMITER_SECRET = "test-login-limiter-secret-32chars-min"
+TEST_LIMITER_SECRET = "prod-limiter-secret-32chars-minimum!"
 
 _login_flows: dict[str, dict[str, Any]] = {}
 _session_store: dict[str, dict[str, Any]] = {}
@@ -622,10 +622,9 @@ def test_build_source_and_account_rate_limit_keys() -> None:
 def test_login_limiter_keys_include_account_for_configured_username() -> None:
     settings = get_settings()
     keys = admin_auth.login_limiter_keys(
+        settings=settings,
         submitted_username="Operator",
         client_source="203.0.113.1",
-        configured_admin_username="operator",
-        settings=settings,
     )
     assert len(keys) == 2
     assert admin_auth.build_source_rate_limit_key("203.0.113.1", settings) in keys
@@ -636,20 +635,18 @@ def test_login_limiter_keys_include_account_for_configured_username() -> None:
 def test_login_limiter_keys_source_only_for_unknown_username() -> None:
     settings = get_settings()
     keys = admin_auth.login_limiter_keys(
+        settings=settings,
         submitted_username="ghost",
         client_source="203.0.113.1",
-        configured_admin_username="operator",
-        settings=settings,
     )
     assert keys == (admin_auth.build_source_rate_limit_key("203.0.113.1", settings),)
 
 
 @pytest.mark.unit
 def test_build_rate_limit_key_hashes_username_and_source() -> None:
-    settings = get_settings()
-    key_a = admin_auth.build_rate_limit_key("Operator", "203.0.113.1", settings)
-    key_b = admin_auth.build_rate_limit_key("operator", "203.0.113.1", settings)
-    key_c = admin_auth.build_rate_limit_key("operator", "203.0.113.2", settings)
+    key_a = admin_auth.build_rate_limit_key("Operator", "203.0.113.1")
+    key_b = admin_auth.build_rate_limit_key("operator", "203.0.113.1")
+    key_c = admin_auth.build_rate_limit_key("operator", "203.0.113.2")
     assert key_a == key_b
     assert key_a != key_c
     assert len(key_a) == 64
@@ -1011,9 +1008,8 @@ def test_rate_limit_expires_after_lockout(
         assert _login(password="wrong").status_code == 401
         assert _login(password="wrong").status_code == 429
 
-        settings = get_settings()
-        source_key = admin_auth.build_source_rate_limit_key("testclient", settings)
-        account_key = admin_auth.build_account_rate_limit_key(TEST_USERNAME, settings)
+        source_key = admin_auth.build_source_rate_limit_key("testclient", get_settings())
+        account_key = admin_auth.build_account_rate_limit_key(TEST_USERNAME, get_settings())
         expired_lock = datetime.now(timezone.utc) - timedelta(seconds=1)
         for key in (source_key, account_key):
             rate_limit_store.rows[key]["locked_until"] = expired_lock

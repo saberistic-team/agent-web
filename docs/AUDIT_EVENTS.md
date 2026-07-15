@@ -51,20 +51,21 @@ both commit or roll back together.
 | Brief-to-CRM linkage | `CrmService.link_project_brief_source` | Transactional write; audit ships with future routes |
 | Login success | `admin_routes._issue_session` | Prior-session revocation (if any) + new session + required audit atomically |
 | Logout (authenticated) | `admin_routes.admin_logout` | Revocation + required audit atomically when the session row transitions to revoked |
-| Login failure | `admin_routes` | Best-effort audit (`required=False`); actor is always `anonymous` before authentication |
+| Login failure | `admin_routes` | Best-effort audit (`required=False`); actor is always `anonymous` |
 
-`auth.login.failure` events record only a server-defined `reason` enum in metadata
-(`invalid_credentials`, `invalid_csrf`, or `rate_limited`). Submitted usernames,
-client sources, and limiter digest inputs are never persisted.
+Unauthenticated login failures must use actor `anonymous`. Submitted username
+candidates are never stored in `actor`, metadata, reason text, or correlation
+fields. Only server-defined failure reasons (for example `invalid_credentials`,
+`invalid_csrf`, `rate_limited`) appear in event summaries.
 
-### Historical login-failure actors
+### Historical login-failure actors (pre-#242)
 
-Rows written **before** keyed limiter identifiers and anonymous failure actors
-(issue #242) may contain attacker-supplied strings in the `actor` column. Those
-rows are immutable — application code must not rewrite or delete them to
-“clean up” reporting. Forward fixes prevent all new occurrences. If historical
-remediation is required, obtain an explicit data-governance decision and use a
-documented offline export/transform outside normal append-only application paths.
+Deployments before keyed limiter identifiers and anonymous failure actors
+(issue #242) may have appended `auth.login.failure` rows whose `actor` column
+contains attacker-supplied username candidates from the login form. Those rows
+are immutable under normal application policy; do not disable append-only
+protections or rewrite history without an explicit data-governance decision.
+New failures after #242 always use `anonymous`.
 
 `record_event(..., required=True)` propagates persistence errors. Security-sensitive
 mutations must not return success when a required audit event could not be stored.
@@ -119,7 +120,7 @@ or rolled-back logins never emit a new session cookie.
 | Action | When recorded |
 |--------|----------------|
 | `auth.login.success` | Valid admin login creates a server-side session |
-| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting (`actor` = `anonymous`) |
+| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting (actor `anonymous`) |
 | `auth.logout` | Authenticated session revocation (live session → revoked) |
 | `import.batch` | Data import batches via `CrmService.commit_linkedin_import` / `import_batch` |
 | `import.batch.rollback` | Rollback of committed import batches via `CrmService.rollback_import_batch` |
