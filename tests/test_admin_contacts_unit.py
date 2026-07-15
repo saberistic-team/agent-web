@@ -73,8 +73,8 @@ def test_render_contact_form_page_new_and_edit() -> None:
     )
     assert "Edit Pat" in edit_html
     assert f"/admin/contacts/{CONTACT_ID}/edit" in edit_html
-    assert 'class="admin-action admin-action--destructive"' in edit_html
     assert "Archive contact" in edit_html
+    assert 'class="admin-action admin-action--destructive"' in edit_html
     assert "Possible duplicate" in edit_html
 
 
