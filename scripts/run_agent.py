@@ -185,7 +185,8 @@ def handoff_builder_when_mergeable(repo: str, issue: int) -> None:
 
     Unresolved conflicts re-enter the priority queue (``waiting``) so Builder
     runs again — never send a dirty PR to Reviewer. Even mergeable/clean heads
-    are smoke-imported so stale NameErrors cannot bounce Reviewer↔Builder.
+    are smoke-imported (and pytest-collected) so stale NameErrors / ImportErrors
+    cannot bounce Reviewer↔Builder.
     """
     from builder_conflicts import (
         linked_open_prs,
@@ -288,7 +289,8 @@ def handoff_builder_when_mergeable(repo: str, issue: int) -> None:
                     f"- smoke_error: `{smoke.get('smoke_error')}`\n"
                     f"- repairs: `{smoke.get('repairs')}`\n"
                     "- note: not handing off to Reviewer; re-entering "
-                    "`status:queued` until `from app.main import app` succeeds.\n"
+                    "`status:queued` until `from app.main import app` and "
+                    "`pytest --collect-only` succeed.\n"
                 ),
             )
             write_builder_handoff("waiting")

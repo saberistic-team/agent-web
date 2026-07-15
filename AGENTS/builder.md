@@ -102,16 +102,25 @@ a dirty PR as unfinished Builder work.
    Builder↔Reviewer. `builder_conflicts.py` must fetch with an explicit refspec:
    `+refs/heads/{base}:refs/remotes/origin/{base}`.
    **Post-merge smoke (mandatory):** after conflict resolution, `builder_conflicts`
-   must run `from app.main import app` and refuse to push / claim `resolved`
-   when markers remain or import fails (typical breaks: dropped `admin_router`,
-   missing Protocol exports, obsolete Basic-auth imports). Status
+   must run `from app.main import app` **and** `pytest --collect-only`, and refuse
+   to push / claim `resolved` when markers remain, import fails, or collection
+   fails (typical breaks: dropped `admin_router`, missing Protocol exports,
+   obsolete Basic-auth imports, **stale tests importing deleted symbols** like
+   `PostgresStageHistoryRepository` after API consolidation — learned from
+   [#107](https://github.com/saberistic-team/agent-web/issues/107) / #145). Status
    `broken_after_resolve` → `waiting` handoff — never Reviewer.
    **Pre-handoff smoke (mandatory even when `mergeable: clean`):** Builder also
-   clones the PR head and smoke-imports before writing `reviewer` handoff.
-   Stale heads with `NameError: admin_router` / `CORRELATION_HEADER` are
-   mergeable but still break Reviewer screenshots — that was a Builder↔Reviewer
-   loop on CRM PRs. Known import gaps may be auto-repaired (`repair_main_wiring`)
-   once; persistent smoke failure stays `waiting`.
+   clones the PR head and runs the same smoke+collect gate before writing
+   `reviewer` handoff. Stale heads with `NameError: admin_router` /
+   `CORRELATION_HEADER` or collection `ImportError`s are mergeable but still
+   break Reviewer / CI — that was a Builder↔Reviewer loop on CRM PRs. Known
+   import gaps may be auto-repaired (`repair_main_wiring`) once; persistent
+   smoke failure stays `waiting`.
+   **Conflicted API shapes:** when merging concurrent CRM PRs, keep **one**
+   canonical module set (`app/acquisition_pipeline.py` + `PostgresPipelineRepository`
+   + `test_*pipeline*_unit.py`). Delete orphan alternate domains (`app/pipeline.py`)
+   and stale test files that still import the old names — do not leave both
+   generations in the tree.
    **Circular routers:** mount feature routers from `app.main` only — never
    `include_router` a module that imports `require_admin_session` from
    `admin_routes` back into `admin_routes` (ImportError loop on #107).

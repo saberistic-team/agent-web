@@ -137,7 +137,7 @@ Unique: `(source_type, external_id)`. Indexes on FK columns and `source_type`.
 
 Indexes: `company_id`, `contact_id`, `source_record_id`, `created_at`.
 
-### `company_stage_history`
+### `pipeline_stage_history`
 
 Timestamped acquisition pipeline stage changes ([#107](https://github.com/saberistic-team/agent-web/issues/107)).
 
@@ -145,14 +145,13 @@ Timestamped acquisition pipeline stage changes ([#107](https://github.com/saberi
 |--------|------|-------|
 | `id` | `UUID` | PK |
 | `company_id` | `UUID` | FK → `companies`, `ON DELETE CASCADE` |
-| `from_stage` | `TEXT` | Prior pipeline stage |
+| `from_stage` | `TEXT` | Prior pipeline stage (nullable for first assignment) |
 | `to_stage` | `TEXT` | New pipeline stage |
-| `changed_at` | `TIMESTAMPTZ` | When the transition occurred |
+| `changed_at` | `TIMESTAMPTZ` | When the transition occurred (`DEFAULT NOW()`) |
 | `changed_by` | `TEXT` | Admin username |
-| `reason` | `TEXT` | Optional; required for `lost`/`nurture` exits |
-| `metadata` | `JSONB` | Optional structured fields |
+| `metadata` | `JSONB` | Optional structured fields (loss/nurture reasons live on `companies`) |
 
-Indexes: `company_id`, `changed_at`.
+Indexes: `(company_id, changed_at DESC)`.
 
 ### `research_records`
 

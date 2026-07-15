@@ -28,7 +28,13 @@ MAX_FILE_CHARS = 60_000
 # ``resolved`` were looping Builder↔Reviewer (e.g. dropped ``admin_router``,
 # missing Protocol exports). Fail closed until smoke passes.
 SMOKE_IMPORT = "from app.main import app"
+# Import smoke alone is not enough: conflict resolution can leave stale test
+# modules importing deleted symbols (e.g. ``PostgresStageHistoryRepository``
+# after #107 API consolidations) while ``app.main`` still loads — CI then
+# fails collection and Reviewer hard-fails forever. Collect-only catches that.
+SMOKE_COLLECT_ARGS = ("-q", "--collect-only")
 SMOKE_TIMEOUT_SEC = 90
+SMOKE_COLLECT_TIMEOUT_SEC = 180
 
 # Symbols commonly dropped during conflict/codegen that break ``app.main``.
 MAIN_WIRING_IMPORTS: tuple[tuple[str, str], ...] = (
@@ -115,18 +121,22 @@ def try_repair_main_after_smoke(
     return True, f"added imports for: {', '.join(added)}"
 
 
-def smoke_import_app(cwd: Path) -> tuple[bool, str]:
-    """Import ``app.main`` after a merge; return ``(ok, detail)``."""
+def _smoke_env(cwd: Path) -> dict[str, str]:
     env = {**os.environ, "PYTHONPATH": str(cwd)}
     # Preview/auth settings are optional for import; avoid requiring secrets.
     env.setdefault("ADMIN_PREVIEW_MODE", "1")
+    return env
+
+
+def smoke_import_app(cwd: Path) -> tuple[bool, str]:
+    """Import ``app.main`` after a merge; return ``(ok, detail)``."""
     try:
         proc = subprocess.run(
             [sys.executable, "-c", SMOKE_IMPORT],
             cwd=cwd,
             capture_output=True,
             text=True,
-            env=env,
+            env=_smoke_env(cwd),
             timeout=SMOKE_TIMEOUT_SEC,
             check=False,
         )
@@ -138,20 +148,46 @@ def smoke_import_app(cwd: Path) -> tuple[bool, str]:
     return True, "ok"
 
 
+def smoke_pytest_collect(cwd: Path) -> tuple[bool, str]:
+    """Run ``pytest --collect-only`` so stale test imports cannot hide behind
+    a green ``app.main`` smoke (Builder↔Reviewer loop on #107 / #145)."""
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-m", "pytest", *SMOKE_COLLECT_ARGS],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            env=_smoke_env(cwd),
+            timeout=SMOKE_COLLECT_TIMEOUT_SEC,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return (
+            False,
+            f"pytest collect timed out after {SMOKE_COLLECT_TIMEOUT_SEC}s",
+        )
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip() or f"exit {proc.returncode}"
+        return False, detail[:1200]
+    return True, "ok"
+
+
 def smoke_and_maybe_repair_app(cwd: Path) -> tuple[bool, str, list[str]]:
-    """Smoke ``app.main``; attempt one known-import repair on NameError."""
+    """Smoke ``app.main`` then pytest collect; attempt one known-import repair."""
     ok, detail = smoke_import_app(cwd)
     repairs: list[str] = []
-    if ok:
-        return True, detail, repairs
-    repaired, note = try_repair_main_after_smoke(cwd, detail)
-    if not repaired:
-        return False, detail, repairs
-    repairs.append(note)
-    ok2, detail2 = smoke_import_app(cwd)
-    if ok2:
-        return True, detail2, repairs
-    return False, detail2, repairs
+    if not ok:
+        repaired, note = try_repair_main_after_smoke(cwd, detail)
+        if not repaired:
+            return False, detail, repairs
+        repairs.append(note)
+        ok, detail = smoke_import_app(cwd)
+        if not ok:
+            return False, detail, repairs
+    collect_ok, collect_detail = smoke_pytest_collect(cwd)
+    if not collect_ok:
+        return False, f"pytest collect failed: {collect_detail}", repairs
+    return True, detail, repairs
 
 
 def clone_pr_head(repo: str, pr: dict[str, Any], *, dest: Path) -> Path:
@@ -691,7 +727,8 @@ def merge_default_into_pr_branch(
         )
 
         # Fail closed: do not push or claim ``resolved`` when markers remain or
-        # ``app.main`` no longer imports (classic Builder↔Reviewer loop).
+        # smoke fails (``app.main`` import **or** pytest collection — classic
+        # Builder↔Reviewer loop when stale tests import deleted APIs).
         marker_hits = leftover_conflict_markers(root, resolved_paths)
         smoke_ok, smoke_detail, repairs = smoke_and_maybe_repair_app(root)
         if repairs:
@@ -801,7 +838,8 @@ def maybe_resolve_pr_conflicts(
             lines.append(f"- smoke_error: `{result['smoke_error']}`\n")
         lines.append(
             "- note: resolution did **not** push; re-enter Builder (`waiting`) — "
-            "do not hand off to Reviewer until `from app.main import app` succeeds.\n"
+            "do not hand off to Reviewer until `from app.main import app` and "
+            "`pytest --collect-only` succeed.\n"
         )
     post_issue_comment(repo, issue, "".join(lines))
     return result
