@@ -106,6 +106,18 @@ VIEWPORTS: tuple[tuple[str, int, int], ...] = (
     ("mobile", 390, 844),
 )
 
+# Extra admin-nav evidence for layout acceptance (#167): tablet breakpoint,
+# narrow desktop, and open mobile disclosure — only on representative routes.
+ADMIN_NAV_EVIDENCE_ROUTES: tuple[str, ...] = (
+    "/admin",
+    "/admin/audit",
+    "/admin/briefs",
+)
+ADMIN_EXTRA_VIEWPORTS: tuple[tuple[str, int, int], ...] = (
+    ("tablet", 768, 1024),
+    ("narrow-desktop", 1024, 800),
+)
+
 # Elements that must stay readable inside the viewport (esp. mobile).
 OVERFLOW_SELECTORS = ("h1", ".lede", ".cta-row", ".hero")
 
@@ -159,6 +171,12 @@ def screenshot_basename(phase: str, route: str, viewport: str) -> str:
     if viewport == "desktop":
         return f"{phase}-{safe}.png"
     return f"{phase}-{safe}-{viewport}.png"
+
+
+def is_admin_nav_evidence_route(route: str) -> bool:
+    """True for short/long admin pages used in nav layout screenshot evidence."""
+    normalized = route if route == "/" else route.rstrip("/") or "/"
+    return normalized in ADMIN_NAV_EVIDENCE_ROUTES
 
 
 def is_production_pre_shot(name: str) -> bool:
@@ -821,7 +839,7 @@ def _page_missing_admin_nav(
     unless desktop CSS overrides ``details:not([open]) > *:not(summary)``.
     Mobile may legitimately hide the list when the disclosure is collapsed.
     """
-    if viewport != "desktop":
+    if viewport not in ("desktop", "narrow-desktop"):
         return []
     if not is_admin_screenshot_route(route):
         return []
@@ -1032,7 +1050,77 @@ def capture(
                 dest = out_dir / screenshot_basename(phase, route, viewport_name)
                 page.screenshot(path=str(dest), full_page=True)
                 paths.append(dest)
+                if (
+                    allow_admin
+                    and viewport_name == "mobile"
+                    and is_admin_nav_evidence_route(route)
+                ):
+                    toggle = page.locator(".admin-nav-toggle")
+                    if toggle.count():
+                        toggle.first.evaluate("el => el.setAttribute('open', '')")
+                        open_dest = out_dir / screenshot_basename(
+                            phase, route, "mobile-open"
+                        )
+                        page.screenshot(path=str(open_dest), full_page=True)
+                        paths.append(open_dest)
+                        toggle.first.evaluate("el => el.removeAttribute('open')")
             page.close()
+        if allow_admin:
+            evidence_routes = [
+                route for route in html_routes if is_admin_nav_evidence_route(route)
+            ]
+            for viewport_name, width, height in ADMIN_EXTRA_VIEWPORTS:
+                page = browser.new_page(viewport={"width": width, "height": height})
+                admin_cookie = admin_screenshot_session_cookie()
+                page.context.add_cookies(
+                    [
+                        {
+                            "name": admin_cookie["name"],
+                            "value": admin_cookie["value"],
+                            "url": base + "/admin",
+                            "httpOnly": admin_cookie["httpOnly"],
+                            "sameSite": admin_cookie["sameSite"],
+                        }
+                    ]
+                )
+                for route in evidence_routes:
+                    url = _route_url(base, route)
+                    if not _is_html_response(url, route=route):
+                        continue
+                    last_err: Exception | None = None
+                    for _ in range(6):
+                        try:
+                            page.goto(url, wait_until="networkidle", timeout=60_000)
+                            body_prefix = page.content()[:200].lstrip().lower()
+                            if body_prefix.startswith("{") or body_prefix.startswith(
+                                "["
+                            ):
+                                last_err = GitHubError(f"{url} returned JSON, not HTML")
+                                break
+                            last_err = None
+                            break
+                        except Exception as exc:  # noqa: BLE001
+                            last_err = exc
+                            time.sleep(8)
+                    if last_err is not None:
+                        page.close()
+                        browser.close()
+                        raise GitHubError(f"failed to load {url}: {last_err}")
+                    overflows.extend(
+                        _page_overflows(page, viewport=viewport_name, route=route)
+                    )
+                    empty_pages.extend(
+                        _page_empty_data(page, viewport=viewport_name, route=route)
+                    )
+                    nav_failures.extend(
+                        _page_missing_admin_nav(
+                            page, viewport=viewport_name, route=route
+                        )
+                    )
+                    dest = out_dir / screenshot_basename(phase, route, viewport_name)
+                    page.screenshot(path=str(dest), full_page=True)
+                    paths.append(dest)
+                page.close()
         browser.close()
     if not paths:
         raise GitHubError(

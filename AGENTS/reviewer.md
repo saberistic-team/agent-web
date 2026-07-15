@@ -16,7 +16,10 @@ Before approving you must:
    budget on a conflicted PR. Merge conflicts are always Builder work on the
    same PR head.
 2. Capture **headless Chromium screenshots** via Actions Playwright
-   (`scripts/screenshot_deploy.py`) at **desktop and mobile** viewports for
+   (`scripts/screenshot_deploy.py`, preferring the **PR-head** copy under
+   `COVERAGE_ROOT` when present — see [docs/SCREENSHOTS.md](../docs/SCREENSHOTS.md))
+   at **desktop and mobile** viewports (plus admin tablet / narrow-desktop /
+   open-mobile-nav evidence routes when the PR-head script defines them) for
    **PR-affected pages on the PR head only** (local uvicorn with
    `ADMIN_PREVIEW_MODE` so admin pages can be captured without login). Do **not**
    screenshot saberistic.com pre-merge — production shots are post-deploy:
@@ -118,6 +121,16 @@ When posting `### acceptance_checklist`, mark a criterion **not_done** if
 screenshot evidence contradicts it (e.g. empty desktop sidebar while claiming
 “desktop navigation unchanged”). Do not set `all_done: true` while any
 screenshot-backed criterion fails.
+
+**Anti-loop (learned from [#167](https://github.com/saberistic-team/agent-web/issues/167)):**
+If AI review **approved** the product change and the only incomplete criteria are
+missing capture modes (open mobile menu, tablet, narrow desktop) that the
+**loaded** `screenshot_deploy` matrix does not emit, request changes once with
+an explicit “extend `screenshot_deploy` on this PR” note — do **not** keep
+requeuing Builder for the same missing filenames after the matrix was already
+extended on the PR head. Prefer CSS/layout guardrail tests + available
+`branch-*` shots (including `*-mobile-open` / `*-tablet` / `*-narrow-desktop`
+when present) when judging layout sizing.
 
 ## Judgment call
 

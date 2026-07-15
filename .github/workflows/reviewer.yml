@@ -88,7 +88,8 @@ jobs:
           SCREENSHOTS_REQUIRED: ${{ vars.SCREENSHOTS_REQUIRED }}
           COVERAGE_UNIT_MIN: ${{ vars.COVERAGE_UNIT_MIN }}
           COVERAGE_INTEGRATION_MIN: ${{ vars.COVERAGE_INTEGRATION_MIN }}
-          # Coverage measures the PR tree; agent scripts stay on main.
+          # Coverage measures the PR tree; prefer PR-head screenshot_deploy when
+          # present (run_agent.load_screenshot_deploy). Other agent scripts stay on main.
           COVERAGE_ROOT: ${{ github.workspace }}/pr-head
         run: |
           python scripts/run_agent.py \
