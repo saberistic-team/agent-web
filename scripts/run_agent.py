@@ -309,10 +309,32 @@ def handoff_builder_when_mergeable(repo: str, issue: int) -> None:
 
 
 def is_verify_deploy_issue(title: str, body: str) -> bool:
-    text = f"{title}\n{body}".lower()
-    if not re.search(r"\bverify\b|\bsmoke\b", text):
+    """True only for ops smoke checks against a live deploy.
+
+    Must not match product issues that merely say "verify …" or "ready to
+    deploy" in acceptance criteria (learned from #210).
+    """
+    title_l = (title or "").lower()
+    body_l = (body or "").lower()
+    text = f"{title_l}\n{body_l}"
+
+    # Explicit smoke script is an unambiguous ops signal.
+    if re.search(r"smoke_deploy\.py", text):
+        return True
+
+    # Require the *title* to be about verifying/smoking a deploy — not AC
+    # bullets that say "Verify X" while also mentioning deploy readiness.
+    title_is_verify_deploy = bool(
+        re.search(r"\b(verify|smoke)\b", title_l)
+        and re.search(r"\b(deploy|render|production)\b", title_l)
+    )
+    if not title_is_verify_deploy:
         return False
-    return bool(re.search(r"\brender\b|\bdeploy\b|onrender\.com|/health|/hello", text))
+
+    return bool(
+        re.search(r"onrender\.com", text)
+        or (re.search(r"/health", text) and re.search(r"/hello", text))
+    )
 
 
 def close_linked_open_prs(repo: str, issue: int, reason: str) -> None:
