@@ -99,12 +99,12 @@ def _admit(
 
 @pytest.mark.integration
 def test_username_rotation_shares_source_bucket(pg_conn: psycopg.Connection) -> None:
-    settings = get_settings()
     now = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+    settings = get_settings()
     source_key = admin_auth.build_source_rate_limit_key("203.0.113.10", settings)
 
     for index in range(5):
-        user_key = admin_auth.build_rate_limit_key(f"user-{index}", "203.0.113.10", settings)
+        user_key = admin_auth.build_rate_limit_key(f"user-{index}", "203.0.113.10")
         assert user_key != source_key
         admission = _admit(
             pg_conn,
