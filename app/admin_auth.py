@@ -20,10 +20,7 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.admin_client_source import (
-    log_admin_login_source_resolution,
-    resolve_admin_login_client_source,
-)
+from app.client_source import resolve_client_source
 from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
@@ -238,17 +235,23 @@ def read_login_flow_token(request: Request) -> str | None:
     return token.strip() or None
 
 
-def client_ip(request: Request, settings: Settings) -> str:
-    """Resolve the client source IP for admin login rate limiting.
+def resolve_admin_login_client_source(request: Request, settings: Settings) -> str:
+    """Resolve the effective client source for admin login rate limiting.
 
-    Delegates to :func:`resolve_admin_login_client_source`, which verifies the
-    immediate ASGI peer against ``ADMIN_TRUSTED_PROXY_CIDRS`` before honoring
-    forwarding headers. Raw addresses are never logged; only privacy-preserving
-    digests are stored in shared limiter rows.
+    Forwarding headers are honored only when the immediate peer matches
+    ``ADMIN_TRUSTED_PROXY_CIDRS`` / ``ADMIN_TRUSTED_EDGE_CIDRS``. Untrusted
+    peers always use the direct connection address so clients cannot spoof
+    ``X-Forwarded-For``, ``Forwarded``, or ``CF-Connecting-IP``.
+
+    Resolved sources are normalized IPv4/IPv6 strings, digested before storage,
+    and never logged in raw form.
     """
-    resolution = resolve_admin_login_client_source(request, settings)
-    log_admin_login_source_resolution(resolution)
-    return resolution.source
+    return resolve_client_source(request, settings).source
+
+
+def client_ip(request: Request, settings: Settings) -> str:
+    """Backward-compatible alias for :func:`resolve_admin_login_client_source`."""
+    return resolve_admin_login_client_source(request, settings)
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:

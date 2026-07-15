@@ -2,22 +2,8 @@
 
 from __future__ import annotations
 
-import ipaddress
 import os
 from dataclasses import dataclass
-
-
-def _parse_cidr_list(raw: str) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
-    networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
-    for part in raw.split(","):
-        candidate = part.strip()
-        if not candidate:
-            continue
-        try:
-            networks.append(ipaddress.ip_network(candidate, strict=False))
-        except ValueError:
-            continue
-    return tuple(networks)
 
 
 @dataclass(frozen=True)
@@ -42,8 +28,8 @@ class Settings:
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
     admin_trust_proxy_headers: bool = False
-    admin_trusted_proxy_cidrs: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...] = ()
-    admin_cloudflare_proxy_cidrs: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...] = ()
+    admin_trusted_proxy_cidrs: str = ""
+    admin_trusted_edge_cidrs: str = ""
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -129,10 +115,6 @@ def get_settings() -> Settings:
             "ADMIN_TRUST_PROXY_HEADERS", ""
         ).lower()
         in ("1", "true", "yes"),
-        admin_trusted_proxy_cidrs=_parse_cidr_list(
-            os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "")
-        ),
-        admin_cloudflare_proxy_cidrs=_parse_cidr_list(
-            os.environ.get("ADMIN_CLOUDFLARE_PROXY_CIDRS", "")
-        ),
+        admin_trusted_proxy_cidrs=os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "").strip(),
+        admin_trusted_edge_cidrs=os.environ.get("ADMIN_TRUSTED_EDGE_CIDRS", "").strip(),
     )

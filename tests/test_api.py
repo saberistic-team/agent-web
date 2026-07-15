@@ -10,10 +10,7 @@ client = TestClient(app)
 
 @pytest.mark.unit
 def test_health_handler_unit() -> None:
-    payload = health()
-    assert payload["status"] == "ok"
-    assert "admin_login_source_trust" in payload
-    assert payload["admin_login_source_trust"]["enabled"] is False
+    assert health()["status"] == "ok"
 
 
 @pytest.mark.unit
