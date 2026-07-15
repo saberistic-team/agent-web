@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import os
+import ipaddress
 from dataclasses import dataclass
+
+from app.proxy_trust import DEFAULT_TRUSTED_PROXY_IPS, parse_trusted_proxy_networks
 
 
 @dataclass(frozen=True)
@@ -28,7 +31,7 @@ class Settings:
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
     admin_trust_proxy_headers: bool = False
-    admin_trusted_proxy_cidrs: str = ""
+    admin_trusted_proxy_ips: str = DEFAULT_TRUSTED_PROXY_IPS
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -48,6 +51,12 @@ class Settings:
     def admin_preview_mode(self) -> bool:
         flag = os.environ.get("ADMIN_PREVIEW_MODE", "").lower()
         return flag in ("1", "true", "yes")
+
+    @property
+    def admin_trusted_proxy_networks(
+        self,
+    ) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+        return parse_trusted_proxy_networks(self.admin_trusted_proxy_ips)
 
     @property
     def admin_auth_configured(self) -> bool:
@@ -114,7 +123,8 @@ def get_settings() -> Settings:
             "ADMIN_TRUST_PROXY_HEADERS", ""
         ).lower()
         in ("1", "true", "yes"),
-        admin_trusted_proxy_cidrs=os.environ.get(
-            "ADMIN_TRUSTED_PROXY_CIDRS", ""
-        ).strip(),
+        admin_trusted_proxy_ips=os.environ.get(
+            "ADMIN_TRUSTED_PROXY_IPS", DEFAULT_TRUSTED_PROXY_IPS
+        ).strip()
+        or DEFAULT_TRUSTED_PROXY_IPS,
     )

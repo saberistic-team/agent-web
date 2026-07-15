@@ -1,109 +1,155 @@
-"""Integration test exercising Uvicorn proxy-header trust with admin login limiter."""
+"""Uvicorn integration coverage for verified admin client-source resolution."""
 
 from __future__ import annotations
 
-import re
+import socket
+import threading
+import time
 from typing import Any
 
+import httpx
 import pytest
-from argon2 import PasswordHasher
-from fastapi.testclient import TestClient
+import uvicorn
+from fastapi import FastAPI, Request
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
-from app import admin_auth
-from app.main import app
-from tests.test_admin_auth import (
-    RENDER_TRUSTED,
-    FakeRateLimitStore,
-    mock_db_connection,
-    shared_rate_limiter,
-)
+from app.admin_client_source import reset_client_source_telemetry_for_tests, resolve_admin_login_client_source
+from app.asgi import ImmediatePeerMiddleware
+from app.config import get_settings
 
-TEST_PASSWORD = "wrong-password"
-TEST_HASH = PasswordHasher().hash(TEST_PASSWORD)
-TEST_SECRET = "integration-secret-32-characters-min"
-TEST_USERNAME = "operator"
+REAL_CLIENT = "203.0.113.77"
+SPOOFED_LEFTMOST = "203.0.113.99"
+CLOUDFLARE_HOP = "172.18.0.1"
+TRUSTED_PROXY_IPS = "10.0.0.0/8,172.16.0.0/12,127.0.0.0/8"
 
 
-@pytest.fixture
-def rate_limit_store() -> FakeRateLimitStore:
-    return FakeRateLimitStore()
+def _free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
 
 
-@pytest.fixture(autouse=True)
-def admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
-    monkeypatch.setenv("ADMIN_USERNAME", TEST_USERNAME)
-    monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_HASH)
-    monkeypatch.setenv("ADMIN_SESSION_SECRET", TEST_SECRET)
-    monkeypatch.setenv("BASE_URL", "http://testserver")
-    monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "5")
-    monkeypatch.delenv("ADMIN_TRUST_PROXY_HEADERS", raising=False)
-    monkeypatch.delenv("ADMIN_TRUSTED_PROXY_CIDRS", raising=False)
-    admin_auth.reset_login_rate_limiter()
+def _build_probe_app(captured: dict[str, str]) -> ImmediatePeerMiddleware:
+    probe = FastAPI()
+
+    @probe.get("/health")
+    def health() -> dict[str, str]:
+        return {"status": "ok"}
+
+    @probe.middleware("http")
+    async def capture_resolution(request: Request, call_next):  # noqa: ANN001
+        settings = get_settings()
+        resolution = resolve_admin_login_client_source(request, settings)
+        captured["source"] = resolution.source
+        captured["path"] = resolution.path
+        captured["immediate_peer"] = str(request.scope.get("immediate_peer", ""))
+        return await call_next(request)
+
+    stack = ProxyHeadersMiddleware(probe, trusted_hosts=TRUSTED_PROXY_IPS)
+    return ImmediatePeerMiddleware(stack)
 
 
-class _SimulateRenderProxy:
-    def __init__(self, inner: Any, proxy_ip: str = "10.0.0.1") -> None:
-        self.inner = inner
-        self.proxy_ip = proxy_ip
-
-    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
-        if scope["type"] == "http":
-            scope = dict(scope)
-            scope["client"] = (self.proxy_ip, 0)
-        await self.inner(scope, receive, send)
-
-
-def _proxy_stack(proxy_ip: str = "10.0.0.1") -> Any:
-    return _SimulateRenderProxy(
-        ProxyHeadersMiddleware(app, trusted_hosts=RENDER_TRUSTED),
-        proxy_ip=proxy_ip,
+def _start_uvicorn_probe() -> tuple[Any, threading.Thread, int, dict[str, str]]:
+    captured: dict[str, str] = {}
+    port = _free_port()
+    config = uvicorn.Config(
+        _build_probe_app(captured),
+        host="127.0.0.1",
+        port=port,
+        log_level="warning",
+        proxy_headers=False,
     )
+    server = uvicorn.Server(config=config)
+    thread = threading.Thread(target=server.run, daemon=True)
+    reset_client_source_telemetry_for_tests()
+    thread.start()
+    deadline = time.time() + 5
+    while not server.started and time.time() < deadline:
+        time.sleep(0.01)
+    if not server.started:
+        raise RuntimeError("uvicorn server failed to start")
+    return server, thread, port, captured
 
 
-def _extract_csrf(html: str) -> str:
-    match = re.search(r'name="csrf_token" value="([^"]+)"', html)
-    assert match is not None
-    return match.group(1)
+def _stop_uvicorn(server: Any, thread: threading.Thread) -> None:
+    server.should_exit = True
+    thread.join(timeout=5)
 
 
 @pytest.mark.integration
-def test_uvicorn_proxy_middleware_and_limiter_share_one_source_bucket(
-    rate_limit_store: FakeRateLimitStore,
+def test_uvicorn_proxy_stack_resolves_client_from_trusted_chain(
     monkeypatch: pytest.MonkeyPatch,
-    admin_env: None,
+) -> None:
+    """Exercise the same ImmediatePeer → ProxyHeaders stack used in deployment."""
+    monkeypatch.setenv("ADMIN_TRUST_PROXY_HEADERS", "true")
+    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_IPS", TRUSTED_PROXY_IPS)
+
+    server, thread, port, captured = _start_uvicorn_probe()
+    try:
+        response = httpx.get(
+            f"http://127.0.0.1:{port}/health",
+            headers={
+                "X-Forwarded-For": f"{SPOOFED_LEFTMOST}, {REAL_CLIENT}, {CLOUDFLARE_HOP}",
+            },
+            timeout=5.0,
+        )
+        assert response.status_code == 200
+        assert captured["immediate_peer"].startswith("127.0.0.1")
+        assert captured["source"] == REAL_CLIENT
+        assert captured["path"] == "verified_forwarded_chain"
+    finally:
+        _stop_uvicorn(server, thread)
+
+
+@pytest.mark.integration
+def test_uvicorn_direct_peer_ignores_spoofed_xff_when_peer_untrusted(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ADMIN_TRUST_PROXY_HEADERS", "true")
-    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", RENDER_TRUSTED)
-    monkeypatch.setenv("FORWARDED_ALLOW_IPS", RENDER_TRUSTED)
-    monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
-    admin_auth.reset_login_rate_limiter()
+    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_IPS", "10.0.0.0/8")
 
-    proxy_client = TestClient(_proxy_stack(), follow_redirects=False)
+    captured: dict[str, str] = {}
+    probe = FastAPI()
 
-    with shared_rate_limiter(rate_limit_store):
-        with mock_db_connection():
-            for index in range(3):
-                form = proxy_client.get("/admin/login")
-                assert form.status_code == 200
-                csrf_token = _extract_csrf(form.text)
-                response = proxy_client.post(
-                    "/admin/login",
-                    data={
-                        "username": f"user-{index}",
-                        "password": "wrong-password",
-                        "csrf_token": csrf_token,
-                    },
-                    cookies=form.cookies,
-                    headers={
-                        "X-Forwarded-For": f"203.0.113.{index}, 203.0.113.77, 10.0.0.1",
-                    },
-                )
-                if index < 2:
-                    assert response.status_code == 401
-                else:
-                    assert response.status_code == 429
+    @probe.get("/health")
+    def health() -> dict[str, str]:
+        return {"status": "ok"}
 
-    assert len(rate_limit_store.rows) == 1
-    assert admin_auth.build_source_rate_limit_key("203.0.113.77") in rate_limit_store.rows
+    @probe.middleware("http")
+    async def capture_resolution(request: Request, call_next):  # noqa: ANN001
+        settings = get_settings()
+        resolution = resolve_admin_login_client_source(request, settings)
+        captured["source"] = resolution.source
+        captured["path"] = resolution.path
+        captured["immediate_peer"] = str(request.scope.get("immediate_peer", ""))
+        return await call_next(request)
+
+    stack = ImmediatePeerMiddleware(probe)
+    port = _free_port()
+    config = uvicorn.Config(
+        stack,
+        host="127.0.0.1",
+        port=port,
+        log_level="warning",
+        proxy_headers=False,
+    )
+    server = uvicorn.Server(config=config)
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    deadline = time.time() + 5
+    while not server.started and time.time() < deadline:
+        time.sleep(0.01)
+
+    try:
+        response = httpx.get(
+            f"http://127.0.0.1:{port}/health",
+            headers={"X-Forwarded-For": SPOOFED_LEFTMOST},
+            timeout=5.0,
+        )
+        assert response.status_code == 200
+        assert captured["source"] == captured["immediate_peer"]
+        assert captured["path"] == "untrusted_peer_headers_ignored"
+        assert captured["source"] != SPOOFED_LEFTMOST
+    finally:
+        server.should_exit = True
+        thread.join(timeout=5)

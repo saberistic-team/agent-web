@@ -169,8 +169,8 @@ access logs or metrics for operational visibility if needed.
 | `ADMIN_LOGIN_RATE_LIMIT` | Optional | Failed login attempts allowed per window (default `5`) |
 | `ADMIN_LOGIN_RATE_WINDOW_SECONDS` | Optional | Rate-limit counting window in seconds (default `900`) |
 | `ADMIN_LOGIN_LOCKOUT_SECONDS` | Optional | Lockout duration after limit exceeded (default `900`) |
-| `ADMIN_TRUST_PROXY_HEADERS` | Optional | Enable trusted-proxy client source resolution (default off; set `true` on Render behind Cloudflare) |
-| `ADMIN_TRUSTED_PROXY_CIDRS` | Required when proxy trust is on | Comma-separated CIDRs for the immediate peer trust boundary (Render load balancer private ranges in production) |
+| `ADMIN_TRUST_PROXY_HEADERS` | Optional | Enable verified proxy-header parsing for client source (default off; set `true` on Render behind Cloudflare) |
+| `ADMIN_TRUSTED_PROXY_IPS` | Optional | Comma-separated trusted proxy CIDRs/IPs for immediate-peer verification and hop skipping (Render private ranges in production; applied by ``app/asgi.py`` ``ProxyHeadersMiddleware``) |
 | `ADMIN_PREVIEW_MODE` | Optional | **CI / local only.** When `1`/`true`, protected `/admin` GET pages render without login and admin pages fill with **randomized mock data** for Playwright screenshots. Hard-disabled if `BASE_URL` contains `saberistic.com`. Never set on production Render. |
 | `ADMIN_PREVIEW_SEED` | Optional | Seed for mock admin randomization (stable screenshots/tests). |
 | `BASE_URL` | Yes | Public site URL; `https://…` enables `Secure` session cookies |
@@ -245,7 +245,7 @@ export ADMIN_PASSWORD_HASH='…'
 export ADMIN_SESSION_SECRET='…'
 export BASE_URL=http://localhost:8000
 # Leave ADMIN_TRUST_PROXY_HEADERS unset locally so spoofed X-Forwarded-For is ignored.
-uvicorn app.main:app --reload --port 8000
+uvicorn app.asgi:app --reload --port 8000 --no-proxy-headers
 ```
 
 Visit `http://localhost:8000/admin/login`.
@@ -274,62 +274,69 @@ secrets are never written to limiter rows or limiter observability logs.
 
 ### Client source resolution
 
-Production request chain:
+Production traffic path:
 
 ```text
-browser → Cloudflare edge → Render load balancer → Uvicorn (agent-web)
+Client → Cloudflare (edge) → Render load balancer → Uvicorn (`app.asgi:app`)
 ```
 
-Resolved client source comes from :func:`app.admin_client_source.resolve_admin_login_client_source`:
+``render.yaml`` sets ``ADMIN_TRUSTED_PROXY_IPS``, starts ``app.asgi:app``, and
+passes ``--no-proxy-headers`` so Uvicorn does **not** apply its own default
+``ProxyHeadersMiddleware`` (which would rewrite ``scope["client"]`` before the app
+stack runs). ``app/asgi.py`` wraps FastAPI with ``ImmediatePeerMiddleware``
+(captures the raw TCP peer) and ``ProxyHeadersMiddleware`` (same CIDR allowlist)
+so the verified trust boundary is applied in one auditable place.
 
-- **Direct peer** — when ``ADMIN_TRUST_PROXY_HEADERS`` is off (local dev, tests,
-  direct-origin access), only ``request.client.host`` is used. Spoofed
-  ``X-Forwarded-For``, ``Forwarded``, and ``CF-Connecting-IP`` values are
-  ignored.
-- **Trusted proxy boundary** — when proxy trust is on, forwarding headers are
-  honored only if the immediate peer matches ``ADMIN_TRUSTED_PROXY_CIDRS``.
-  Otherwise the direct peer is used and a sampled operational log records that
-  forwarding data was rejected.
-- **Header precedence (trusted peer only)** — ``CF-Connecting-IP`` (Cloudflare
-  edge), then ``X-Forwarded-For`` parsed right-to-left skipping trusted hops,
-  then RFC 7239 ``Forwarded``. Cloudflare appends the connecting address to an
-  existing ``X-Forwarded-For`` chain, so the left-most value must never be
-  trusted blindly.
-- **IPv4 / IPv6** — normalized deterministically (including IPv4-mapped IPv6)
-  before entering the source bucket digest.
-- **Missing / malformed / overlong chains** — fall back to the direct peer or
-  ``unknown`` without exposing validation details in login responses.
+Resolved client source comes from :func:`client_ip` / :func:`resolve_admin_login_client_source`:
 
-Uvicorn is started with an explicit ``--forwarded-allow-ips`` list matching the
-same private Render ranges declared in ``render.yaml``. Application limiter
-logic still performs its own trusted-peer check and right-to-left parsing; do
-not rely on Uvicorn's left-most ``X-Forwarded-For`` behavior for rate limiting.
+| Environment | Behavior |
+|-------------|----------|
+| **Local / tests** | ``ADMIN_TRUST_PROXY_HEADERS`` off (default): ignore all forwarding headers; use direct peer |
+| **Production (Render)** | Trust enabled; immediate peer must match Render private CIDRs; ``X-Forwarded-For`` parsed right-to-left skipping trusted hops |
+| **Direct Render origin** | Peer is the connecting client (not a Render proxy): forwarding headers ignored |
+| **Preview / CI** | Same as local unless tests opt in to proxy trust |
 
-#### Environment differences
+Header precedence when the immediate peer is verified:
 
-| Context | Proxy trust | Typical source path |
-|---------|-------------|---------------------|
-| Local dev / unit tests | Off | ``direct_peer`` (``testclient`` / ``127.0.0.1``) |
-| CI preview screenshots | Off | ``direct_peer`` |
-| Production (Cloudflare → Render) | On + Render CIDRs | ``trusted_cf_connecting_ip`` or ``trusted_xff_chain`` |
-| Direct Render origin (bypassing Cloudflare) | On + Render CIDRs | ``untrusted_peer`` — vendor headers ignored |
+1. ``X-Forwarded-For`` (right-to-left trusted-hop walk; Cloudflare appends the connecting address so leftmost values cannot rotate buckets)
+2. ``Forwarded`` (RFC 7239 ``for=`` identifiers) when ``X-Forwarded-For`` is absent
+3. ``CF-Connecting-IP`` is **never** accepted alone (ignored on direct origin requests)
 
-#### Rollback / recovery
+IPv4, IPv6, and IPv4-mapped IPv6 addresses are normalized deterministically.
+Missing, malformed, overlong, or ambiguous forwarding data falls back to the
+verified peer address without exposing details in login responses.
 
-If proxy trust is misconfigured so every request shares one limiter source
-(e.g. empty ``ADMIN_TRUSTED_PROXY_CIDRS`` with trust enabled):
+Structured logs record ``resolution_path`` and bounded ``hop_count`` only — never
+raw addresses or header chains. Limiter rows store keyed digests only.
 
-1. Set ``ADMIN_TRUST_PROXY_HEADERS=false`` in Render and redeploy — all requests
-   use the Render load balancer peer until trust is corrected.
-2. Or restore the documented ``ADMIN_TRUSTED_PROXY_CIDRS`` values and confirm
-   ``GET /health`` reports ``admin_proxy_trust.enabled=true`` and
-   ``admin_proxy_trust.boundary_configured=true``.
-3. Prune stale limiter rows if needed (see [Manual cleanup](#manual-cleanup)).
+#### Rollback / misconfiguration recovery
 
-Telemetry records only a bounded ``source_path`` label (for example
-``trusted_xff_chain``, ``untrusted_peer``). Raw addresses and forwarding
-header chains are never written to limiter rows, audit metadata, or normal
-application logs.
+If proxy trust is misconfigured and every request shares one limiter source
+(for example all resolve to ``unknown`` or one Render proxy address):
+
+1. Set ``ADMIN_TRUST_PROXY_HEADERS=false`` in Render and redeploy — direct peer
+   identity is used (safe default; may bucket all Render egress together).
+2. Confirm ``ADMIN_TRUSTED_PROXY_IPS`` matches the CIDR list documented in
+   ``render.yaml`` and applied by ``app/asgi.py``.
+3. After redeploy, verify ``resolution_path`` telemetry shows
+   ``verified_forwarded_chain`` for Cloudflare-fronted requests (see deployment
+   verification below).
+
+#### Deployment verification
+
+After release, confirm the version-controlled settings are live:
+
+```bash
+python scripts/verify_admin_proxy_config.py
+python scripts/smoke_deploy.py --base-url https://saberistic.com
+```
+
+Operational checks (no raw IP logging required):
+
+- Structured logs include ``resolution_path=verified_forwarded_chain`` for
+  Cloudflare-fronted admin login traffic.
+- Spoofed ``X-Forwarded-For`` attempts against the public Render origin produce
+  ``resolution_path=untrusted_peer_headers_ignored`` at a sampled rate.
 
 ### Atomic admission
 

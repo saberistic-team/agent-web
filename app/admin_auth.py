@@ -20,7 +20,7 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.admin_client_source import client_ip, resolve_admin_login_client_source
+from app.admin_client_source import resolve_admin_login_client_source
 from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
@@ -235,6 +235,27 @@ def read_login_flow_token(request: Request) -> str | None:
     return token.strip() or None
 
 
+def client_ip(request: Request, settings: Settings) -> str:
+    """Resolve the client source IP for rate limiting.
+
+    Forwarding headers are honored only when ``ADMIN_TRUST_PROXY_HEADERS`` is
+    enabled **and** the immediate TCP peer matches ``ADMIN_TRUSTED_PROXY_IPS``.
+    The parser walks ``X-Forwarded-For`` / ``Forwarded`` from right to left,
+    skipping configured trusted hops, so attacker-controlled leftmost values
+    cannot mint fresh source buckets.
+
+    Source identity notes:
+
+    * **IPv4 / IPv6** — normalized deterministically; only keyed digests are
+      stored (e.g. ``203.0.113.1``, ``2001:db8::1``).
+    * **Missing peer** — falls back to ``unknown`` so attempts still share one
+      bucket instead of creating an unbounded namespace.
+    * **Untrusted peer** — direct peers and direct Render origin requests ignore
+      ``X-Forwarded-For``, ``Forwarded``, and ``CF-Connecting-IP``.
+    """
+    return resolve_admin_login_client_source(request, settings).source
+
+
 def _digest_limiter_key(prefix: str, material: str) -> str:
     payload = f"{prefix}:{material}"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -403,13 +424,11 @@ def try_admit_login_attempt(
         )
 
     if admission.admitted:
-        resolution = resolve_admin_login_client_source(request, settings)
         _logger.info(
             "Admin login attempt admitted",
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "lockout_transition": admission.lockout_transition,
-                "source_path": resolution.path,
             },
         )
     elif admission.already_locked:
