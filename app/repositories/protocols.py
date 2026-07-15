@@ -213,6 +213,66 @@ class ResearchRecordRepository(Protocol):
     ) -> list[dict[str, Any]]: ...
 
 
+class AcquisitionDashboardRepository(Protocol):
+    def count_companies_by_dimension(
+        self,
+        conn: psycopg.Connection,
+        dimension: str,
+    ) -> list[tuple[str, int]]: ...
+
+    def count_contacts_by_company_dimension(
+        self,
+        conn: psycopg.Connection,
+        dimension: str,
+    ) -> list[tuple[str, int]]: ...
+
+    def list_overdue_next_actions(
+        self,
+        conn: psycopg.Connection,
+        *,
+        reference: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]: ...
+
+    def list_upcoming_next_actions(
+        self,
+        conn: psycopg.Connection,
+        *,
+        reference: datetime,
+        window_end: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]: ...
+
+    def list_recent_evidence(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int,
+    ) -> list[dict[str, Any]]: ...
+
+    def list_stale_evidence(
+        self,
+        conn: psycopg.Connection,
+        *,
+        reference: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]: ...
+
+    def list_companies_without_decision_maker(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int,
+    ) -> list[dict[str, Any]]: ...
+
+    def list_companies_without_next_action(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int,
+    ) -> list[dict[str, Any]]: ...
+
+
 class ProjectBriefRepository(Protocol):
     def list_page(
         self,

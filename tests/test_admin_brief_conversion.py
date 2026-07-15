@@ -161,6 +161,9 @@ def test_brief_detail_shows_linked_records_when_converted() -> None:
     assert response.status_code == 200
     assert "Pipeline linkage" in response.text
     assert "Diagnostic paid" in response.text
+    assert f'href="/admin/companies/{COMPANY_ID}"' in response.text
+    assert f'href="/admin/contacts/{CONTACT_ID}"' in response.text
+    assert 'href="/admin/pipeline"' in response.text
     assert "Add to pipeline" not in response.text
 
 
@@ -277,6 +280,55 @@ def test_convert_post_is_idempotent_on_repeat_submission() -> None:
 
 @pytest.mark.unit
 @pytest.mark.integration
+def test_convert_get_redirects_when_brief_already_linked() -> None:
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        with mock_db_connection() as conn:
+            with patch("app.admin_routes.brief_service.get_brief", return_value=_detail_brief()):
+                with patch("app.admin_routes._crm") as crm:
+                    crm.get_project_brief_source.return_value = {"external_id": "42"}
+                    response = client.get("/admin/briefs/42/convert")
+    assert response.status_code == 303
+    assert response.headers["location"] == "/admin/briefs/42?converted=1"
+    crm.find_brief_conversion_matches.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_convert_get_not_found_for_missing_brief() -> None:
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        with mock_db_connection():
+            with patch("app.admin_routes.brief_service.get_brief", return_value=None):
+                response = client.get("/admin/briefs/42/convert")
+    assert response.status_code == 404
+    assert "Brief not found" in response.text
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_convert_get_renders_matches_for_unconverted_brief() -> None:
+    preview = {
+        "proposal": {"company_name": "Acme", "pipeline_stage_label": "Qualified"},
+        "company_matches": [],
+        "contact_matches": [],
+    }
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        with mock_db_connection():
+            with patch("app.admin_routes.brief_service.get_brief", return_value=_detail_brief()):
+                with patch("app.admin_routes._crm") as crm:
+                    crm.get_project_brief_source.return_value = None
+                    crm.find_brief_conversion_matches.return_value = preview
+                    with patch(
+                        "app.admin_routes._issue_session_csrf",
+                        return_value=CSRF_TOKEN,
+                    ):
+                        response = client.get("/admin/briefs/42/convert")
+    assert response.status_code == 200
+    assert "Proposed records" in response.text
+    crm.find_brief_conversion_matches.assert_called_once()
+
+
+@pytest.mark.unit
+@pytest.mark.integration
 def test_preview_mode_convert_pages_use_mock_data(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
@@ -290,3 +342,17 @@ def test_preview_mode_convert_pages_use_mock_data(monkeypatch: pytest.MonkeyPatc
     assert "Proposed records" in convert_page.text
     assert converted.status_code == 200
     assert "Pipeline linkage" in converted.text
+    assert 'href="/admin/contacts/' in converted.text
+    assert 'href="/admin/pipeline"' in converted.text
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_preview_convert_validation_error_renders_alert(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        with patch("app.admin_routes._issue_session_csrf", return_value=CSRF_TOKEN):
+            response = client.get("/admin/briefs/4/convert?error=validation")
+    assert response.status_code == 200
+    assert "form-error" in response.text
+    assert "Select an existing company match" in response.text

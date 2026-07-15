@@ -14,10 +14,16 @@ from app.brief_conversion import (
     derive_company_name,
     normalize_brief_email,
     pipeline_capabilities_available,
+    safe_conversion_payload,
 )
 from app.config import get_settings
 from app.crm_service import CrmRepositories, CrmService
-from app.pipeline import initial_pipeline_stage_for_brief_status
+from app.pipeline import (
+    InvalidStageError,
+    initial_pipeline_stage_for_brief_status,
+    pipeline_stage_label,
+    validate_stage,
+)
 
 
 COMPANY_ID = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
@@ -54,6 +60,54 @@ def _service_with_mocks(**repos: MagicMock) -> tuple[CrmService, MagicMock, dict
 
 
 @pytest.mark.unit
+def test_safe_conversion_payload_excludes_sensitive_fields() -> None:
+    payload = safe_conversion_payload(
+        {
+            "id": 7,
+            "status": "paid",
+            "brief": "secret text",
+            "contact_value": "ops@acme.example",
+            "utm_source": "linkedin",
+            "utm_medium": "social",
+            "utm_campaign": "spring",
+        }
+    )
+    assert payload == {
+        "brief_id": 7,
+        "brief_status": "paid",
+        "utm_source": "linkedin",
+        "utm_medium": "social",
+        "utm_campaign": "spring",
+    }
+    assert "brief" not in payload
+    assert "contact_value" not in payload
+
+
+@pytest.mark.unit
+def test_get_project_brief_source_delegates_to_repository() -> None:
+    service, conn, repos = _service_with_mocks()
+    repos["source_records"].get_by_source.return_value = {"external_id": "42"}
+    assert service.get_project_brief_source(conn, 42) == {"external_id": "42"}
+    repos["source_records"].get_by_source.assert_called_once_with(
+        conn,
+        source_type="project_brief",
+        external_id="42",
+    )
+
+
+@pytest.mark.unit
+def test_find_brief_conversion_matches_without_domain() -> None:
+    service, conn, repos = _service_with_mocks()
+    brief = {"id": 1, "website": "", "contact_value": "ops@acme.example", "status": "paid"}
+    repos["contacts"].get_by_email.return_value = None
+
+    result = service.find_brief_conversion_matches(conn, brief, price_cents=100)
+
+    assert result["company_matches"] == []
+    repos["companies"].find_by_domain.assert_not_called()
+
+
+@pytest.mark.unit
 def test_normalize_brief_email_lowercases() -> None:
     assert normalize_brief_email("  Ops@Acme.Example ") == "ops@acme.example"
 
@@ -61,6 +115,301 @@ def test_normalize_brief_email_lowercases() -> None:
 @pytest.mark.unit
 def test_derive_company_name_from_domain() -> None:
     assert derive_company_name(website="https://north-wind.io", domain="north-wind.io") == "North Wind"
+
+
+@pytest.mark.unit
+def test_derive_company_name_without_domain() -> None:
+    assert derive_company_name(website="", domain=None) == "Unknown company"
+
+
+@pytest.mark.unit
+def test_pipeline_stage_label_and_validation() -> None:
+    assert pipeline_stage_label("diagnostic_paid") == "Diagnostic paid"
+    validate_stage("qualified")
+    with pytest.raises(InvalidStageError):
+        validate_stage("not-a-stage")
+    with pytest.raises(InvalidStageError):
+        initial_pipeline_stage_for_brief_status("unknown_status")
+
+
+@pytest.mark.unit
+def test_get_brief_conversion_state_returns_none_without_source() -> None:
+    service, conn, repos = _service_with_mocks()
+    repos["source_records"].get_by_source.return_value = None
+    assert service.get_brief_conversion_state(conn, 42) is None
+
+
+@pytest.mark.unit
+def test_find_brief_conversion_matches_returns_proposal_and_matches() -> None:
+    service, conn, repos = _service_with_mocks()
+    repos["companies"].find_by_domain.return_value = [{"id": COMPANY_ID, "name": "Acme"}]
+    repos["contacts"].get_by_email.return_value = {"id": CONTACT_ID, "email": "ops@acme.example"}
+
+    result = service.find_brief_conversion_matches(conn, _brief(), price_cents=20_000)
+
+    assert result["proposal"]["contact_email"] == "ops@acme.example"
+    assert result["company_matches"] == [{"id": COMPANY_ID, "name": "Acme"}]
+    assert result["contact_matches"] == [{"id": CONTACT_ID, "email": "ops@acme.example"}]
+
+
+@pytest.mark.unit
+def test_convert_rejects_invalid_choice_tokens() -> None:
+    service, conn, repos = _service_with_mocks()
+    repos["source_records"].get_by_source.return_value = None
+    repos["companies"].find_by_domain.return_value = []
+    repos["contacts"].get_by_email.return_value = None
+
+    with pytest.raises(BriefConversionValidationError, match="create or link a company"):
+        service.convert_project_brief(
+            conn,
+            brief=_brief(),
+            actor_context=ACTOR,
+            price_cents=20_000,
+            company_choice="maybe",
+            contact_choice="new",
+        )
+
+
+@pytest.mark.unit
+def test_convert_rejects_existing_company_without_match() -> None:
+    service, conn, repos = _service_with_mocks()
+    repos["source_records"].get_by_source.return_value = None
+    repos["companies"].find_by_domain.return_value = []
+    repos["contacts"].get_by_email.return_value = None
+
+    with pytest.raises(BriefConversionValidationError, match="No existing company matches"):
+        service.convert_project_brief(
+            conn,
+            brief=_brief(),
+            actor_context=ACTOR,
+            price_cents=20_000,
+            company_choice="existing",
+            contact_choice="new",
+            selected_company_id=COMPANY_ID,
+        )
+
+
+@pytest.mark.unit
+def test_convert_rejects_missing_selected_company() -> None:
+    service, conn, repos = _service_with_mocks()
+    repos["source_records"].get_by_source.return_value = None
+    repos["companies"].find_by_domain.return_value = [{"id": COMPANY_ID, "name": "Acme"}]
+    repos["contacts"].get_by_email.return_value = None
+
+    with pytest.raises(BriefConversionValidationError, match="Select an existing company"):
+        service.convert_project_brief(
+            conn,
+            brief=_brief(),
+            actor_context=ACTOR,
+            price_cents=20_000,
+            company_choice="existing",
+            contact_choice="new",
+        )
+
+
+@pytest.mark.unit
+def test_convert_rejects_selected_company_not_in_matches() -> None:
+    service, conn, repos = _service_with_mocks()
+    repos["source_records"].get_by_source.return_value = None
+    repos["companies"].find_by_domain.return_value = [{"id": COMPANY_ID, "name": "Acme"}]
+    repos["contacts"].get_by_email.return_value = None
+
+    with pytest.raises(BriefConversionValidationError, match="does not match the brief domain"):
+        service.convert_project_brief(
+            conn,
+            brief=_brief(),
+            actor_context=ACTOR,
+            price_cents=20_000,
+            company_choice="existing",
+            contact_choice="new",
+            selected_company_id=OTHER_COMPANY_ID,
+        )
+
+
+@pytest.mark.unit
+def test_convert_rejects_missing_selected_contact() -> None:
+    service, conn, repos = _service_with_mocks()
+    repos["source_records"].get_by_source.return_value = None
+    repos["companies"].find_by_domain.return_value = []
+    repos["contacts"].get_by_email.return_value = {
+        "id": CONTACT_ID,
+        "email": "ops@acme.example",
+        "company_id": None,
+    }
+
+    with pytest.raises(BriefConversionValidationError, match="Select the existing contact"):
+        service.convert_project_brief(
+            conn,
+            brief=_brief(),
+            actor_context=ACTOR,
+            price_cents=20_000,
+            company_choice="new",
+            contact_choice="existing",
+        )
+
+
+@pytest.mark.unit
+def test_convert_rejects_selected_contact_not_found_in_storage() -> None:
+    service, conn, repos = _service_with_mocks()
+    repos["source_records"].get_by_source.return_value = None
+    repos["companies"].find_by_domain.return_value = [{"id": COMPANY_ID, "name": "Acme"}]
+    repos["contacts"].get_by_email.return_value = {
+        "id": CONTACT_ID,
+        "email": "ops@acme.example",
+        "company_id": COMPANY_ID,
+    }
+    repos["companies"].get_by_id.return_value = {"id": COMPANY_ID, "pipeline_stage": "researching"}
+    repos["contacts"].get_by_id.return_value = None
+
+    with pytest.raises(BriefConversionValidationError, match="Selected contact was not found"):
+        service.convert_project_brief(
+            conn,
+            brief=_brief(),
+            actor_context=ACTOR,
+            price_cents=20_000,
+            company_choice="existing",
+            contact_choice="existing",
+            selected_company_id=COMPANY_ID,
+            selected_contact_id=CONTACT_ID,
+        )
+
+
+@pytest.mark.unit
+def test_convert_returns_idempotent_result_on_race_inside_transaction() -> None:
+    service, conn, repos = _service_with_mocks()
+    race_source = {
+        "external_id": "42",
+        "company_id": COMPANY_ID,
+        "contact_id": CONTACT_ID,
+        "payload": {"pipeline_stage": "diagnostic_paid"},
+    }
+    repos["source_records"].get_by_source.side_effect = [None, race_source]
+    repos["companies"].find_by_domain.return_value = []
+    repos["contacts"].get_by_email.return_value = None
+    repos["companies"].get_by_id.return_value = {"id": COMPANY_ID, "name": "Acme"}
+    repos["contacts"].get_by_id.return_value = {"id": CONTACT_ID, "email": "ops@acme.example"}
+
+    result = service.convert_project_brief(
+        conn,
+        brief=_brief(),
+        actor_context=ACTOR,
+        price_cents=20_000,
+        company_choice="new",
+        contact_choice="new",
+    )
+
+    assert result["idempotent"] is True
+    repos["companies"].create.assert_not_called()
+
+
+@pytest.mark.unit
+def test_convert_rejects_selected_company_not_found_in_storage() -> None:
+    service, conn, repos = _service_with_mocks()
+    repos["source_records"].get_by_source.return_value = None
+    repos["companies"].find_by_domain.return_value = [{"id": COMPANY_ID, "name": "Acme"}]
+    repos["contacts"].get_by_email.return_value = None
+    repos["companies"].get_by_id.return_value = None
+
+    with pytest.raises(BriefConversionValidationError, match="Selected company was not found"):
+        service.convert_project_brief(
+            conn,
+            brief=_brief(),
+            actor_context=ACTOR,
+            price_cents=20_000,
+            company_choice="existing",
+            contact_choice="new",
+            selected_company_id=COMPANY_ID,
+        )
+
+
+@pytest.mark.unit
+def test_convert_rejects_existing_contact_without_email_match() -> None:
+    service, conn, repos = _service_with_mocks()
+    repos["source_records"].get_by_source.return_value = None
+    repos["companies"].find_by_domain.return_value = []
+    repos["contacts"].get_by_email.return_value = None
+
+    with pytest.raises(BriefConversionValidationError, match="No existing contact matches"):
+        service.convert_project_brief(
+            conn,
+            brief=_brief(),
+            actor_context=ACTOR,
+            price_cents=20_000,
+            company_choice="new",
+            contact_choice="existing",
+            selected_contact_id=CONTACT_ID,
+        )
+
+
+@pytest.mark.unit
+def test_convert_rejects_mismatched_contact_id_for_email() -> None:
+    service, conn, repos = _service_with_mocks()
+    repos["source_records"].get_by_source.return_value = None
+    repos["companies"].find_by_domain.return_value = []
+    repos["contacts"].get_by_email.return_value = {
+        "id": CONTACT_ID,
+        "email": "ops@acme.example",
+        "company_id": None,
+    }
+
+    with pytest.raises(BriefConversionValidationError, match="does not match the brief email"):
+        service.convert_project_brief(
+            conn,
+            brief=_brief(),
+            actor_context=ACTOR,
+            price_cents=20_000,
+            company_choice="new",
+            contact_choice="existing",
+            selected_contact_id=OTHER_COMPANY_ID,
+        )
+
+
+@pytest.mark.unit
+def test_convert_rejects_invalid_contact_choice_token() -> None:
+    service, conn, repos = _service_with_mocks()
+    repos["source_records"].get_by_source.return_value = None
+    repos["companies"].find_by_domain.return_value = []
+    repos["contacts"].get_by_email.return_value = None
+
+    with pytest.raises(BriefConversionValidationError, match="create or link a contact"):
+        service.convert_project_brief(
+            conn,
+            brief=_brief(),
+            actor_context=ACTOR,
+            price_cents=20_000,
+            company_choice="new",
+            contact_choice="maybe",
+        )
+
+
+@pytest.mark.unit
+def test_convert_skips_stage_history_when_stage_unchanged() -> None:
+    service, conn, repos = _service_with_mocks()
+    repos["source_records"].get_by_source.return_value = None
+    repos["companies"].find_by_domain.return_value = [{"id": COMPANY_ID, "name": "Acme", "pipeline_stage": "diagnostic_paid"}]
+    repos["contacts"].get_by_email.return_value = {
+        "id": CONTACT_ID,
+        "email": "ops@acme.example",
+        "company_id": COMPANY_ID,
+    }
+    repos["companies"].get_by_id.return_value = {"id": COMPANY_ID, "name": "Acme", "pipeline_stage": "diagnostic_paid"}
+    repos["companies"].set_pipeline_stage.return_value = {"id": COMPANY_ID, "pipeline_stage": "diagnostic_paid"}
+    repos["contacts"].get_by_id.return_value = {"id": CONTACT_ID, "email": "ops@acme.example", "company_id": COMPANY_ID}
+    repos["source_records"].create.return_value = {"id": SOURCE_RECORD_ID, "external_id": "42"}
+
+    with patch("app.crm_service.audit_service.record_brief_convert"):
+        service.convert_project_brief(
+            conn,
+            brief=_brief(status="paid"),
+            actor_context=ACTOR,
+            price_cents=20_000,
+            company_choice="existing",
+            contact_choice="existing",
+            selected_company_id=COMPANY_ID,
+            selected_contact_id=CONTACT_ID,
+        )
+
+    repos["stage_history"].record.assert_not_called()
 
 
 @pytest.mark.unit

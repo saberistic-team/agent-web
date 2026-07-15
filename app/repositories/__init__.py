@@ -1,6 +1,7 @@
 """CRM repository package."""
 
 from app.repositories.postgres import (
+    PostgresAcquisitionDashboardRepository,
     PostgresActivityRepository,
     PostgresAdminUserRepository,
     PostgresAuditEventRepository,
@@ -15,6 +16,7 @@ from app.repositories.postgres import (
     get_repositories,
 )
 from app.repositories.protocols import (
+    AcquisitionDashboardRepository,
     ActivityRepository,
     AdminUserRepository,
     AuditEventRepository,
@@ -27,6 +29,7 @@ from app.repositories.protocols import (
 )
 
 __all__ = [
+    "AcquisitionDashboardRepository",
     "ActivityRepository",
     "AdminUserRepository",
     "AuditEventRepository",
@@ -36,6 +39,7 @@ __all__ = [
     "ProjectBriefRepository",
     "ResearchRecordRepository",
     "SourceRecordRepository",
+    "PostgresAcquisitionDashboardRepository",
     "PostgresActivityRepository",
     "PostgresAdminUserRepository",
     "PostgresAuditEventRepository",

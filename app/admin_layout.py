@@ -90,6 +90,7 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/3",
     "/admin/briefs/4",
     "/admin/briefs/4/convert",
+    "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
 )
 

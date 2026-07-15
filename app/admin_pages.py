@@ -565,6 +565,15 @@ def render_admin_brief_detail_page(
         stage = conversion.get("pipeline_stage") or company.get("pipeline_stage")
         stage_label = html.escape(pipeline_stage_label(str(stage)) if stage else "—")
         company_href = html.escape(f"/admin/companies/{company.get('id')}", quote=True)
+        contact_id = contact.get("id")
+        contact_href = (
+            html.escape(f"/admin/contacts/{contact_id}", quote=True) if contact_id else ""
+        )
+        contact_email = html.escape(str(contact.get("email", "—")))
+        contact_cell = (
+            f'<a href="{contact_href}">{contact_email}</a>' if contact_href else contact_email
+        )
+        pipeline_href = html.escape("/admin/pipeline", quote=True)
         pipeline_section = f"""
           <section class="brief-detail-section" aria-labelledby="brief-pipeline-linked-title">
             <h2 class="brief-detail-heading" id="brief-pipeline-linked-title">Pipeline linkage</h2>
@@ -576,11 +585,11 @@ def render_admin_brief_detail_page(
               </div>
               <div class="brief-detail-row">
                 <dt>Contact</dt>
-                <dd>{html.escape(str(contact.get("email", "—")))}</dd>
+                <dd>{contact_cell}</dd>
               </div>
               <div class="brief-detail-row">
                 <dt>Pipeline stage</dt>
-                <dd>{stage_label}</dd>
+                <dd><a href="{pipeline_href}">{stage_label}</a></dd>
               </div>
             </dl>
           </section>"""

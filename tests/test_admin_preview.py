@@ -163,13 +163,27 @@ def test_admin_preview_briefs_list_and_detail_have_mock_data(
 
 
 @pytest.mark.unit
+def test_preview_acquisition_dashboard_data_is_populated() -> None:
+    from app.admin_preview import build_preview_acquisition_dashboard_data
+
+    data = build_preview_acquisition_dashboard_data()
+    assert data.company_counts_by_stage
+    assert data.overdue_actions
+    assert data.recent_evidence
+    assert data.without_decision_maker
+
+
+@pytest.mark.unit
 def test_preview_brief_conversion_states() -> None:
     from app.admin_preview import (
         PREVIEW_BRIEF_CONVERTED_ID,
+        PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR,
         preview_brief_conversion_state,
         preview_brief_convert_matches,
         preview_pipeline_available,
     )
+
+    assert PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR
 
     assert preview_pipeline_available() is True
     assert preview_brief_conversion_state(1) is None

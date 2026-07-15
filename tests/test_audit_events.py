@@ -663,6 +663,20 @@ def test_redact_value_truncates_long_strings() -> None:
 
 
 @pytest.mark.unit
+def test_redact_value_handles_nested_and_scalar_types() -> None:
+    assert audit_service.redact_value(None) is None
+    assert audit_service.redact_value([{"email": "a@b.co"}]) == [{"email": REDACTED_VALUE}]
+    assert audit_service.redact_value(42) == 42
+    assert audit_service.redact_value(True) is True
+
+    class _Token:
+        def __str__(self) -> str:
+            return "token"
+
+    assert audit_service.redact_value(_Token()) == "token"
+
+
+@pytest.mark.unit
 def test_list_events_clamps_page_size() -> None:
     conn = MagicMock()
     repo = MagicMock()
