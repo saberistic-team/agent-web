@@ -141,6 +141,17 @@ helpers while implementing an unrelated feature, request changes for
 **regression of landed CRM** — Builder must restore those surfaces on the same
 PR head, not “fix forward” by inventing replacements.
 
+**Anti-loop (screenshot filenames with `?`, learned from #182 / #183):**
+`screenshot_basename` must strip query strings (e.g.
+`/admin/briefs/4/convert?error=validation` → `…-convert.png`). Filenames
+containing `?` break Actions artifact upload after an otherwise-complete
+review and leave orchestration labels stuck.
+
+**Anti-loop (review-decision race, learned from #182):**
+`scripts/review_decision.py` must retry briefly for the submitted PR review
+before failing; a one-shot miss after `REQUEST_CHANGES`/`APPROVE` leaves the
+issue on `agent:reviewer` forever.
+
 When posting `### acceptance_checklist`, mark a criterion **not_done** if
 screenshot evidence contradicts it (e.g. empty desktop sidebar while claiming
 “desktop navigation unchanged”). Do not set `all_done: true` while any

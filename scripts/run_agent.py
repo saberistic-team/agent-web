@@ -14,6 +14,7 @@ import re
 import subprocess
 import sys
 import textwrap
+import time
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -896,8 +897,35 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
         post_issue_comment(repo, issue, body)
         return
 
-    # Hard fails from commit status / check runs when available
+    # Hard fails from commit status / check runs when available.
+    # Wait briefly for in-flight required checks — reviewing a SHA whose CI is
+    # still running (or briefly red before a Builder fix push) produced
+    # changes-requested + stuck labels while AI/acceptance already passed
+    # (#182 / #188).
     sha = pr["head"]["sha"]
+    deadline = time.time() + 300
+    while time.time() < deadline:
+        checks = api(
+            "GET",
+            f"/repos/{owner}/{name}/commits/{sha}/check-runs",
+        )
+        runs = checks.get("check_runs") or []
+        pending = [
+            r
+            for r in runs
+            if (r.get("status") or "").lower() in {"queued", "in_progress", "pending"}
+            or (
+                (r.get("name") or "").lower() == "test"
+                and (r.get("conclusion") or "").lower() == ""
+            )
+        ]
+        if not pending:
+            break
+        time.sleep(15)
+    # Refresh PR head in case Builder pushed a CI fix during the wait.
+    pr = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}") or pr
+    sha = pr["head"]["sha"]
+
     status = api("GET", f"/repos/{owner}/{name}/commits/{sha}/status")
     combined = (status.get("state") or "pending").lower()
     if combined == "failure":

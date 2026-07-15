@@ -127,3 +127,25 @@ def test_resolve_approved() -> None:
         )
         == "approved"
     )
+
+
+def test_latest_submitted_review_retries_until_present(monkeypatch) -> None:
+    from review_decision import latest_submitted_review
+
+    calls = {"n": 0}
+
+    def fake_api(method, path, **kwargs):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            return []
+        return [
+            {"state": "COMMENTED", "body": "note"},
+            {"state": "CHANGES_REQUESTED", "body": "fix me", "id": 9},
+        ]
+
+    monkeypatch.setattr("review_decision.api", fake_api)
+    monkeypatch.setattr("review_decision.time.sleep", lambda *_: None)
+    review = latest_submitted_review("o/r", 1, attempts=5, delay_sec=0)
+    assert review is not None
+    assert review["id"] == 9
+    assert calls["n"] == 3
