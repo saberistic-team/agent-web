@@ -373,6 +373,48 @@ def test_claim_database_failure_does_not_verify_or_set_session_cookie(
     assert LOGIN_FLOW_COOKIE_NAME not in response.cookies
 
 
+def test_rate_limit_burn_failure_redirects_without_verify(
+    rate_limit_store: Any,
+) -> None:
+    csrf_token, cookies = _fetch_flow()
+
+    with shared_rate_limiter(rate_limit_store):
+        with mock_db_connection():
+            with patch("app.admin_auth.is_login_throttled", return_value=True):
+                with patch(
+                    "app.admin_routes._try_burn_login_flow_cookie",
+                    side_effect=RuntimeError("burn failed"),
+                ):
+                    with patch("app.admin_auth.verify_admin_credentials") as verify:
+                        response = _login_post(csrf_token=csrf_token, cookies=cookies)
+
+    verify.assert_not_called()
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/admin/login")
+    assert SESSION_COOKIE_NAME not in response.cookies
+
+
+def test_failed_claim_burn_failure_redirects_without_verify(
+    rate_limit_store: Any,
+) -> None:
+    csrf_token, cookies = _fetch_flow()
+
+    with shared_rate_limiter(rate_limit_store):
+        with mock_db_connection():
+            with patch("app.admin_routes.db.claim_admin_login_flow", return_value=None):
+                with patch(
+                    "app.admin_routes._try_burn_login_flow_cookie",
+                    side_effect=RuntimeError("burn failed"),
+                ):
+                    with patch("app.admin_auth.verify_admin_credentials") as verify:
+                        response = _login_post(csrf_token=csrf_token, cookies=cookies)
+
+    verify.assert_not_called()
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/admin/login")
+    assert SESSION_COOKIE_NAME not in response.cookies
+
+
 def test_cleanup_during_concurrent_claim_cannot_delete_active_flow(
     rate_limit_store: Any,
 ) -> None:
