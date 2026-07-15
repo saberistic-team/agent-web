@@ -11,6 +11,8 @@ import random
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
+from app.pipeline import PIPELINE_STAGE_LABELS, PIPELINE_STAGES
+
 
 COMPANY_NAMES = (
     "Northwind Labs",
@@ -50,34 +52,11 @@ CONTACT_LAST = (
 STATUSES = ("new", "paid", "follow-up", "closed")
 SOURCES = ("brief", "referral", "inbound", "partner")
 SIGNAL_TYPES = ("hiring", "funding", "tech-stack", "intent", "news")
-PIPELINE_STAGES = (
-    "researching",
-    "qualified",
-    "ready_for_outreach",
-    "contacted",
-    "replied",
-    "discovery_scheduled",
-    "diagnostic_proposed",
-    "diagnostic_paid",
-    "larger_engagement",
-    "won",
-    "lost",
-    "nurture",
+PIPELINE_STAGES_PREVIEW = tuple(
+    PIPELINE_STAGE_LABELS[stage]
+    for stage in PIPELINE_STAGES
+    if stage not in {"won", "lost", "nurture"}
 )
-PIPELINE_STAGE_LABELS = {
-    "researching": "Researching",
-    "qualified": "Qualified",
-    "ready_for_outreach": "Ready for outreach",
-    "contacted": "Contacted",
-    "replied": "Replied",
-    "discovery_scheduled": "Discovery scheduled",
-    "diagnostic_proposed": "Diagnostic proposed",
-    "diagnostic_paid": "Diagnostic paid",
-    "larger_engagement": "Larger engagement",
-    "won": "Won",
-    "lost": "Lost",
-    "nurture": "Nurture",
-}
 IMPORT_STATUSES = ("queued", "running", "complete", "failed")
 CONTENT_KINDS = ("insight", "case-study", "landing", "brief copy")
 BRIEF_PAYMENT_STATUSES = ("pending_payment", "paid", "abandoned")
@@ -102,7 +81,7 @@ _SECTION_COLUMNS: dict[str, tuple[str, ...]] = {
     "/admin/companies": ("Company", "Category", "Stage", "Target", "Verified"),
     "/admin/contacts": ("Name", "Title", "Company", "Email", "Last touch"),
     "/admin/signals": ("Signal", "Company", "Score", "Source", "Seen"),
-    "/admin/pipeline": ("Company", "Stage", "Next action", "Due", "Owner"),
+    "/admin/pipeline": ("Company", "Stage", "Owner", "Value", "Next action"),
     "/admin/imports": ("Job", "Rows", "Status", "Source", "Started"),
     "/admin/discovery": ("List", "Prospects", "Filter", "Owner", "Refreshed"),
     "/admin/analytics": ("Metric", "Period", "Value", "Delta", "Segment"),
@@ -329,22 +308,23 @@ def build_preview_section_rows(
                 )
             )
         elif active_path == "/admin/pipeline":
-            stage = rng.choice(PIPELINE_STAGES)
-            next_action = rng.choice(
-                ("Send intro email", "Schedule discovery call", "Follow up on proposal", None)
-            )
-            due = (
-                (now + timedelta(days=rng.randint(-3, 10))).strftime("%Y-%m-%d")
-                if next_action
-                else "—"
-            )
+            stage_key = rng.choice(PIPELINE_STAGES_PREVIEW)
             rows.append(
                 (
                     company,
-                    PIPELINE_STAGE_LABELS.get(stage, stage),
-                    next_action or "—",
-                    due,
+                    stage_key,
                     person,
+                    _format_amount(rng.choice((20_000, 35_000, 50_000, 75_000))),
+                    rng.choice(
+                        (
+                            "Send intro email",
+                            "Schedule discovery call",
+                            "Follow up on proposal",
+                            "Confirm diagnostic scope",
+                            None,
+                        )
+                    )
+                    or "—",
                 )
             )
         elif active_path == "/admin/imports":
@@ -502,11 +482,13 @@ def build_preview_brief_detail(
 
 
 AUDIT_ACTIONS = (
-    "admin.login.success",
-    "admin.logout",
+    "auth.login.success",
+    "auth.logout",
     "import.batch",
     "entity.delete",
     "pipeline.update",
+    "pipeline.stage_change",
+    "pipeline.next_action_updated",
 )
 
 
@@ -535,8 +517,8 @@ def build_preview_audit_events(
                 "entity_id": str(rng.randint(10, 99)) if "pipeline" in action else None,
                 "correlation_id": f"corr-preview-{rng.randint(1000, 9999)}",
                 "summary_before": {"name": company} if "update" in action else None,
-                "summary_after": {"status": rng.choice(PIPELINE_STAGES)}
-                if "update" in action
+                "summary_after": {"pipeline_stage": rng.choice(PIPELINE_STAGES_PREVIEW)}
+                if "pipeline" in action
                 else {"ok": True},
             }
         )

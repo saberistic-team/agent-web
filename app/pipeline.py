@@ -19,6 +19,21 @@ PIPELINE_STAGES: Final[tuple[str, ...]] = (
     "nurture",
 )
 
+PIPELINE_STAGE_LABELS: Final[dict[str, str]] = {
+    "researching": "Researching",
+    "qualified": "Qualified",
+    "ready_for_outreach": "Ready for outreach",
+    "contacted": "Contacted",
+    "replied": "Replied",
+    "discovery_scheduled": "Discovery scheduled",
+    "diagnostic_proposed": "Diagnostic proposed",
+    "diagnostic_paid": "Diagnostic paid",
+    "larger_engagement": "Larger engagement",
+    "won": "Won",
+    "lost": "Lost",
+    "nurture": "Nurture",
+}
+
 MAIN_PATH: Final[tuple[str, ...]] = (
     "researching",
     "qualified",

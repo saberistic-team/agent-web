@@ -76,7 +76,7 @@ def test_brief_migrations_remain_idempotent() -> None:
 def test_pending_migrations_skips_applied_versions() -> None:
     applied = {"001", "002"}
     pending = pending_migrations(applied_versions=applied)
-    assert [m.version for m in pending] == ["003", "004", "005", "006", "007", "008", "009", "010"]
+    assert [m.version for m in pending] == ["003", "004", "005", "006", "007", "008", "009", "010", "011"]
 
 
 @pytest.mark.unit
@@ -86,7 +86,7 @@ def test_apply_migrations_runs_only_pending_steps() -> None:
 
     applied = apply_migrations(conn, migrations=MIGRATIONS)
 
-    assert applied == ["003", "004", "005", "006", "007", "008", "009", "010"]
+    assert applied == ["003", "004", "005", "006", "007", "008", "009", "010", "011"]
     execute_calls = [str(call.args[0]) for call in cur.execute.call_args_list]
     assert execute_calls[0] == ADVISORY_LOCK_SQL
     assert cur.execute.call_args_list[0].args[1] == (
@@ -132,7 +132,7 @@ def test_apply_migrations_on_empty_database_applies_all() -> None:
 
     applied = apply_migrations(conn, migrations=MIGRATIONS)
 
-    assert applied == ["001", "002", "003", "004", "005", "006", "007", "008", "009", "010"]
+    assert applied == ["001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011"]
     conn.commit.assert_called_once()
 
 
@@ -188,12 +188,23 @@ def test_admin_login_flows_cleanup_indexes_migration_is_idempotent() -> None:
     assert cleanup.version == "009"
     assert "admin_login_flows_expires_at_idx" in cleanup.up_sql
     assert "admin_login_flows_consumed_at_idx" in cleanup.up_sql
+    assert "WHERE consumed_at IS NULL" in cleanup.up_sql
+    assert "WHERE consumed_at IS NOT NULL" in cleanup.up_sql
+
+
+@pytest.mark.unit
+def test_company_records_migration_is_idempotent() -> None:
+    company_records = next(m for m in MIGRATIONS if m.name == "company_records")
+    assert company_records.version == "010"
+    assert "domain TEXT" in company_records.up_sql
+    assert "archived_at TIMESTAMPTZ" in company_records.up_sql
+    assert "idx_companies_domain" in company_records.up_sql
 
 
 @pytest.mark.unit
 def test_acquisition_pipeline_migration_is_idempotent() -> None:
     pipeline = next(m for m in MIGRATIONS if m.name == "acquisition_pipeline")
-    assert pipeline.version == "010"
+    assert pipeline.version == "011"
     assert "pipeline_stage" in pipeline.up_sql
     assert "company_stage_history" in pipeline.up_sql
     assert "task_completion" in pipeline.up_sql
@@ -292,18 +303,7 @@ def test_concurrent_initializers_apply_each_migration_once(
         thread.join()
 
     assert errors == []
-    assert shared_db._applied_versions == {
-        "001",
-        "002",
-        "003",
-        "004",
-        "005",
-        "006",
-        "007",
-        "008",
-        "009",
-        "010",
-    }
+    assert shared_db._applied_versions == {"001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011"}
     assert all(count == 1 for count in shared_db._up_sql_runs.values())
     assert len(shared_db._up_sql_runs) == len(MIGRATIONS)
 

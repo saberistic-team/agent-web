@@ -87,8 +87,8 @@ def test_audit_migration_present_and_ordered() -> None:
 @pytest.mark.unit
 def test_pending_migrations_includes_audit_after_sessions() -> None:
     pending = pending_migrations(applied_versions={"001", "002", "003", "004", "005", "006"})
-    assert len(pending) == 4
-    assert [m.version for m in pending] == ["007", "008", "009", "010"]
+    assert len(pending) == 5
+    assert [m.version for m in pending] == ["007", "008", "009", "010", "011"]
 
 
 @pytest.mark.unit
@@ -363,7 +363,7 @@ def test_login_success_uses_single_transaction_for_session_and_audit() -> None:
                                 },
                             )
                             assert login.status_code == 303
-                            tx.assert_called()
+                            tx.assert_called_once()
                             create_session.assert_called_once()
                             success_audit.assert_called_once()
 

@@ -69,6 +69,24 @@ def test_preview_section_rows_stable_with_seed() -> None:
 
 
 @pytest.mark.unit
+def test_preview_pipeline_section_uses_acquisition_stages() -> None:
+    rows = build_preview_section_rows("/admin/pipeline", rng=random.Random(21))
+    assert 4 <= len(rows) <= 8
+    for row in rows:
+        assert row[1] in {
+            "Researching",
+            "Qualified",
+            "Ready for outreach",
+            "Contacted",
+            "Replied",
+            "Discovery scheduled",
+            "Diagnostic proposed",
+            "Diagnostic paid",
+            "Larger engagement",
+        }
+
+
+@pytest.mark.unit
 def test_preview_section_main_html_includes_mock_table() -> None:
     html = render_preview_section_main(
         label="Companies",
@@ -80,19 +98,6 @@ def test_preview_section_main_html_includes_mock_table() -> None:
     assert "Companies" in html
     assert "admin-table" in html
     assert "Category" in html
-
-
-@pytest.mark.unit
-def test_preview_pipeline_section_uses_acquisition_stages() -> None:
-    html = render_preview_section_main(
-        label="Pipeline",
-        summary="Acquisition pipeline stages and next actions",
-        active_path="/admin/pipeline",
-        rng=random.Random(17),
-    )
-    assert "Preview data — not production" in html
-    assert "Pipeline" in html
-    assert "Ready for outreach" in html or "Discovery scheduled" in html
 
 
 @pytest.mark.unit

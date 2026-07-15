@@ -293,6 +293,28 @@ CREATE INDEX IF NOT EXISTS admin_login_flows_consumed_at_idx
     ),
     Migration(
         version="010",
+        name="company_records",
+        up_sql="""
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS domain TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS category TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS stage TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS headcount_estimate INTEGER;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS funding_summary TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS target_status TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS last_verified_at DATE;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS idx_companies_domain ON companies (domain);
+CREATE INDEX IF NOT EXISTS idx_companies_category ON companies (category);
+CREATE INDEX IF NOT EXISTS idx_companies_stage ON companies (stage);
+CREATE INDEX IF NOT EXISTS idx_companies_target_status ON companies (target_status);
+CREATE INDEX IF NOT EXISTS idx_companies_archived_at ON companies (archived_at);
+CREATE INDEX IF NOT EXISTS idx_companies_last_verified_at ON companies (last_verified_at);
+""",
+    ),
+    Migration(
+        version="011",
         name="acquisition_pipeline",
         up_sql="""
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS pipeline_stage TEXT;
