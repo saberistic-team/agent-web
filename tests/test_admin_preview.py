@@ -195,6 +195,29 @@ def test_preview_audit_events_seed_stable() -> None:
 
 
 @pytest.mark.unit
+def test_preview_linkedin_import_seed_stable() -> None:
+    from app.admin_preview import build_preview_linkedin_import_data
+
+    a = build_preview_linkedin_import_data(rng=random.Random(42))
+    b = build_preview_linkedin_import_data(rng=random.Random(42))
+    assert a == b
+    assert a.connection_count >= 120
+
+
+@pytest.mark.unit
+def test_preview_imports_main_html_includes_populated_preview() -> None:
+    from app.admin_preview import render_preview_imports_main
+
+    html = render_preview_imports_main(rng=random.Random(99))
+    assert "LinkedIn export preview" in html
+    assert "Import preview" in html
+    assert "Proposed changes (preview only)" in html
+    assert "Recognized files" in html
+    assert "Ignored archive entries" in html
+    assert "connections.csv" in html
+
+
+@pytest.mark.unit
 @pytest.mark.integration
 def test_admin_preview_briefs_list_and_detail_have_mock_data(
     monkeypatch: pytest.MonkeyPatch,
