@@ -98,6 +98,7 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/contacts/cccccccc-cccc-cccc-cccc-cccccccccccc",
     "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd",
     "/admin/contacts/cccccccc-cccc-cccc-cccc-cccccccccccc/edit",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd/edit",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
@@ -108,11 +109,11 @@ ADMIN_SCREENSHOT_EXPECTED_STATUS: dict[str, int] = {
 }
 
 
-def archive_action_button_class(*, archived: bool) -> str:
-    """CSS classes for CRM archive/restore form actions (not top-bar exit links)."""
-    if archived:
-        return "admin-btn admin-btn--secondary"
-    return "admin-btn admin-btn--destructive"
+def archive_action_button_class(*, is_archived: bool) -> str:
+    """Semantic classes for archive (destructive) vs restore (secondary) form actions."""
+    if is_archived:
+        return "admin-action admin-action--restore"
+    return "admin-action admin-action--destructive"
 
 
 def _active_nav_label(active_path: str) -> str:
