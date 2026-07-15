@@ -121,6 +121,12 @@ a dirty PR as unfinished Builder work.
    + `test_*pipeline*_unit.py`). Delete orphan alternate domains (`app/pipeline.py`)
    and stale test files that still import the old names — do not leave both
    generations in the tree.
+   **Auth helpers after merges:** when `main` renames admin CSRF helpers
+   (e.g. `_issue_session_csrf` → `_session_csrf_for_forms` / session-bound
+   tokens on #179), feature routers added on this PR (`admin_pipeline_routes`,
+   brief convert) must be updated in the **same** conflict commit — smoke
+   import alone will not catch route-local `ImportError`s that only fire on
+   request (learned from #107 / #145).
    **Circular routers:** mount feature routers from `app.main` only — never
    `include_router` a module that imports `require_admin_session` from
    `admin_routes` back into `admin_routes` (ImportError loop on #107).
