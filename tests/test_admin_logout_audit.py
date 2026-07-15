@@ -82,17 +82,16 @@ def _reset_public_schema(conn: psycopg.Connection) -> None:
 
 @pytest.fixture
 def pg_conn(database_url: str) -> Iterator[psycopg.Connection]:
-    with _connect(database_url) as conn:
-        _reset_public_schema(conn)
-        apply_migrations(conn)
-        # apply_migrations needs tuple rows; app helpers expect dict rows.
-        conn.row_factory = dict_row
+    with psycopg.connect(database_url, autocommit=False) as bootstrap:
+        _reset_public_schema(bootstrap)
+        apply_migrations(bootstrap)
+    with psycopg.connect(database_url, row_factory=dict_row, autocommit=False) as conn:
         try:
             yield conn
         finally:
             conn.rollback()
-            conn.row_factory = None
-            _reset_public_schema(conn)
+            with psycopg.connect(database_url, autocommit=False) as cleanup:
+                _reset_public_schema(cleanup)
 
 
 def _session_row(
