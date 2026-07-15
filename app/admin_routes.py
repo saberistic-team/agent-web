@@ -40,9 +40,6 @@ from app.admin_preview import (
     PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR,
     PREVIEW_BRIEF_DATABASE_ERROR_ID,
     PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID,
-    preview_company_detail,
-    preview_contact_detail,
-    preview_contact_edit,
     preview_contact_restore_conflict,
 )
 from app.config import Settings, get_settings
@@ -707,7 +704,9 @@ def admin_company_research(
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
-        preview = preview_company_detail(company_id)
+        from app.admin_preview import build_preview_company_research
+
+        preview = build_preview_company_research(company_id)
         if preview is None:
             raise HTTPException(status_code=404, detail="Company not found")
         company, contacts, records = preview
@@ -997,7 +996,9 @@ def admin_contact_edit(
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
-        preview = preview_contact_edit(contact_id)
+        from app.admin_preview import build_preview_contact_edit
+
+        preview = build_preview_contact_edit(contact_id)
         if preview is None:
             raise HTTPException(status_code=404, detail="Contact not found")
         contact, companies = preview
@@ -1159,7 +1160,9 @@ def admin_contact_research(
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
-        preview = preview_contact_detail(contact_id)
+        from app.admin_preview import build_preview_contact_research
+
+        preview = build_preview_contact_research(contact_id)
         if preview is None:
             raise HTTPException(status_code=404, detail="Contact not found")
         contact, company, records = preview

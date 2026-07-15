@@ -92,13 +92,13 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert",
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
+    "/admin/companies/a101aaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    "/admin/companies/a102aaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    "/admin/contacts/b101bbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    "/admin/contacts/b102bbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    "/admin/contacts/b101bbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/edit",
+    "/admin/contacts/b102bbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/edit",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
-    "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-    "/admin/companies/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
-    "/admin/contacts/cccccccc-cccc-cccc-cccc-cccccccccccc",
-    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd",
-    "/admin/contacts/cccccccc-cccc-cccc-cccc-cccccccccccc/edit",
-    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd/edit",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
@@ -107,6 +107,12 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
 ADMIN_SCREENSHOT_EXPECTED_STATUS: dict[str, int] = {
     "/admin/briefs/503": 503,
 }
+
+
+def admin_archive_action_classes(*, is_archived: bool) -> str:
+    """CSS classes for Archive (destructive) or Restore (secondary) form actions."""
+    variant = "secondary" if is_archived else "destructive"
+    return f"admin-action admin-action--{variant}"
 
 
 def _active_nav_label(active_path: str) -> str:
@@ -152,16 +158,6 @@ def render_admin_nav(active_path: str) -> str:
             </ul>
           </details>
         </nav>"""
-
-
-def render_admin_archive_button(*, label: str, archived_at: object) -> str:
-    """Return themed Archive/Restore submit button markup."""
-    if archived_at:
-        variant = "admin-action-btn--secondary"
-    else:
-        variant = "admin-action-btn--destructive"
-    safe_label = html.escape(str(label))
-    return f'<button class="admin-action-btn {variant}" type="submit">{safe_label}</button>'
 
 
 def render_admin_shell(
