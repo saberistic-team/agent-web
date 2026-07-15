@@ -92,6 +92,12 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert",
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
+    "/admin/companies/dddddddd-dddd-dddd-dddd-dddddddddd01",
+    "/admin/companies/dddddddd-dddd-dddd-dddd-dddddddddd02",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd03",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd04",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd03/edit",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd04/edit",
     "/admin/companies?archived=1",
     "/admin/contacts?archived=1",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
@@ -116,6 +122,15 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
 ADMIN_SCREENSHOT_EXPECTED_STATUS: dict[str, int] = {
     "/admin/briefs/503": 503,
 }
+
+
+def render_admin_archive_action_button(*, label: str, archived: bool) -> str:
+    """Return a themed Archive/Restore submit button for admin detail/edit forms."""
+    modifier = "admin-action--secondary" if archived else "admin-action--destructive"
+    return (
+        f'<button class="admin-action {modifier}" type="submit">'
+        f"{html.escape(label)}</button>"
+    )
 
 
 def _active_nav_label(active_path: str) -> str:
