@@ -11,7 +11,7 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import ValidationError
 
-from app import admin, admin_auth, admin_companies as company_pages, admin_contacts as contact_pages, admin_dashboard_pages, admin_imports as import_pages, admin_pages, admin_research_pages, audit_service, brief_service, db
+from app import admin, admin_auth, admin_companies as company_pages, admin_contacts as contact_pages, admin_dashboard_pages, admin_pages, admin_research_pages, audit_service, brief_service, db
 from app.acquisition_dashboard import AcquisitionDashboardData, load_acquisition_dashboard
 from app.companies import (
     COMPANY_CATEGORIES,
@@ -21,11 +21,20 @@ from app.companies import (
     CompanyCreate,
     CompanyUpdate,
 )
-from app.contacts import BUYING_ROLES, ContactCreate, ContactUpdate
+from app.brief_conversion import (
+    BriefConversionValidationError,
+    pipeline_capabilities_available,
+)
+from app.contacts import BUYING_ROLES, ContactCreate, ContactSafeSummary, ContactUpdate
 from app.crm_uow import crm_transaction
 from app.actor_context import actor_context_from_request, anonymous_actor_context, correlation_id_from_request
 from app.admin_layout import ADMIN_NAV_LINKS, render_admin_shell
-from app.admin_preview import PREVIEW_BRIEF_DATABASE_ERROR_ID
+from app.admin_preview import (
+    PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR,
+    PREVIEW_BRIEF_DATABASE_ERROR_ID,
+    PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID,
+    preview_contact_restore_conflict,
+)
 from app.config import Settings, get_settings
 from app.crm_service import CrmService
 from app.research_records import ResearchRecordCreate
@@ -39,9 +48,21 @@ _crm = CrmService()
 PREVIEW_SESSION_TOKEN = "preview-screenshot-session"
 
 
-def _verify_session_csrf(session: admin_auth.AdminSession, csrf_token: str) -> None:
-    if not admin_auth.verify_csrf_value(csrf_token, session.csrf_token_hash):
+def _verify_session_csrf(
+    request: Request,
+    session: admin_auth.AdminSession,
+    csrf_token: str,
+) -> None:
+    settings = get_settings()
+    if not admin_auth.verify_session_csrf_request(request, csrf_token, settings):
         raise HTTPException(status_code=400, detail=admin_auth.INVALID_REQUEST_MESSAGE)
+
+
+def _session_csrf_for_forms(request: Request, settings: Settings) -> str:
+    """Return the stable session-bound CSRF token for authenticated HTML forms."""
+    if settings.admin_preview_enabled:
+        return ""
+    return admin_auth.session_csrf_for_request(request, settings)
 
 
 def _parse_research_form(
@@ -154,6 +175,36 @@ def _contact_form_payload(**values: object) -> dict[str, object]:
     elif isinstance(roles, str):
         payload["buying_roles"] = [roles]
     return payload
+
+
+def _parse_link_choice(raw: str | None) -> tuple[str, UUID | None]:
+    """Parse ``new`` or ``existing:{uuid}`` form values."""
+    if not raw or raw.strip() == "new":
+        return "new", None
+    text = raw.strip()
+    if text.startswith("existing:"):
+        try:
+            return "existing", UUID(text.split(":", 1)[1])
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid selection.") from exc
+    if text == "existing":
+        return "existing", None
+    raise HTTPException(status_code=400, detail="Invalid selection.")
+
+
+def _brief_detail_context(
+    conn,
+    *,
+    brief: dict,
+    settings: Settings,
+) -> tuple[bool, dict | None]:
+    if not pipeline_capabilities_available(settings):
+        return False, None
+    source = _crm.get_project_brief_source(conn, int(brief["id"]))
+    if source is None:
+        return True, None
+    result = _crm.get_brief_conversion_state(conn, int(brief["id"]))
+    return True, result
 
 
 def _require_admin_auth_configured(settings: Settings) -> None:
@@ -302,19 +353,6 @@ def _consume_login_flow(request: Request, settings: Settings) -> None:
         db.consume_admin_login_flow(conn, flow_token_hash=flow_hash)
 
 
-def _issue_session_csrf(settings: Settings, session_id: int) -> str:
-    """Rotate the synchronizer token for an authenticated session."""
-    raw_csrf_token = admin_auth.generate_csrf_value()
-    csrf_hash = admin_auth.hash_csrf_token(raw_csrf_token)
-    with db.db_connection(settings.database_url) as conn:
-        db.update_admin_session_csrf(
-            conn,
-            session_id=session_id,
-            csrf_token_hash=csrf_hash,
-        )
-    return raw_csrf_token
-
-
 def _issue_session(
     *,
     request: Request,
@@ -326,8 +364,8 @@ def _issue_session(
     raw_token = admin_auth.generate_session_token()
     token_hash = admin_auth.hash_session_token(raw_token)
     expires_at = admin_auth.session_expires_at(settings)
-    initial_csrf = admin_auth.generate_csrf_value()
-    csrf_hash = admin_auth.hash_csrf_token(initial_csrf)
+    derived_csrf = admin_auth.derive_session_csrf_token(raw_token, settings)
+    csrf_hash = admin_auth.hash_csrf_token(derived_csrf)
     with db.db_connection(settings.database_url) as conn:
         with crm_transaction(conn):
             if prior_raw_token:
@@ -460,7 +498,7 @@ def admin_logout(
     _require_admin_auth_configured(settings)
     session = _load_valid_session(request, settings)
     if session is not None:
-        if not admin_auth.verify_csrf_value(csrf_token, session.csrf_token_hash):
+        if not admin_auth.verify_session_csrf_request(request, csrf_token, settings):
             raise HTTPException(status_code=400, detail=admin_auth.INVALID_REQUEST_MESSAGE)
         raw_token = admin_auth.read_session_token(request)
         if raw_token is not None:
@@ -504,9 +542,7 @@ def admin_companies(
 ) -> HTMLResponse:
     session = require_admin_session(request)
     settings = get_settings()
-    csrf_token = ""
-    if session.id:
-        csrf_token = _issue_session_csrf(settings, session.id)
+    csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
         from app.admin_preview import render_preview_section_main
 
@@ -555,7 +591,7 @@ def admin_companies(
 @router.get("/companies/new", response_class=HTMLResponse)
 def admin_company_new(request: Request) -> HTMLResponse:
     session = require_admin_session(request)
-    csrf_token = _issue_session_csrf(get_settings(), session.id) if session.id else ""
+    csrf_token = _session_csrf_for_forms(request, get_settings())
     return HTMLResponse(
         company_pages.render_company_form_page(
             csrf_token=csrf_token, admin_username=session.admin_username
@@ -579,7 +615,7 @@ def admin_company_create(
     notes: str | None = Form(default=None),
 ) -> Response:
     session = require_admin_session(request)
-    _verify_session_csrf(session, csrf_token)
+    _verify_session_csrf(request, session, csrf_token)
     try:
         company = CompanyCreate(**_company_form_payload(**locals()))
     except (ValueError, TypeError, ValidationError) as exc:
@@ -602,9 +638,7 @@ def admin_company_research(
 ) -> HTMLResponse:
     session = require_admin_session(request)
     settings = get_settings()
-    csrf_token = ""
-    if session.id:
-        csrf_token = _issue_session_csrf(settings, session.id)
+    csrf_token = _session_csrf_for_forms(request, settings)
     with db.db_connection(settings.database_url) as conn:
         company = _crm.get_company(conn, company_id)
         if company is None:
@@ -628,7 +662,7 @@ def admin_company_edit(
     request: Request, company_id: UUID, error: str | None = None, warning: str | None = None
 ) -> HTMLResponse:
     session = require_admin_session(request)
-    csrf_token = _issue_session_csrf(get_settings(), session.id) if session.id else ""
+    csrf_token = _session_csrf_for_forms(request, get_settings())
     with db.db_connection(get_settings().database_url) as conn:
         company = _crm.get_company(conn, company_id)
     if company is None:
@@ -660,7 +694,7 @@ def admin_company_update(
     notes: str | None = Form(default=None),
 ) -> Response:
     session = require_admin_session(request)
-    _verify_session_csrf(session, csrf_token)
+    _verify_session_csrf(request, session, csrf_token)
     try:
         company = CompanyUpdate(**_company_form_payload(**locals()))
     except (ValueError, TypeError, ValidationError) as exc:
@@ -679,7 +713,7 @@ def admin_company_update(
 @router.post("/companies/{company_id}/archive", response_model=None)
 def admin_company_archive(request: Request, company_id: UUID, csrf_token: str = Form(...)) -> Response:
     session = require_admin_session(request)
-    _verify_session_csrf(session, csrf_token)
+    _verify_session_csrf(request, session, csrf_token)
     with db.db_connection(get_settings().database_url) as conn:
         if _crm.archive_company(conn, company_id) is None:
             raise HTTPException(status_code=404, detail="Company not found")
@@ -689,7 +723,7 @@ def admin_company_archive(request: Request, company_id: UUID, csrf_token: str = 
 @router.post("/companies/{company_id}/restore", response_model=None)
 def admin_company_restore(request: Request, company_id: UUID, csrf_token: str = Form(...)) -> Response:
     session = require_admin_session(request)
-    _verify_session_csrf(session, csrf_token)
+    _verify_session_csrf(request, session, csrf_token)
     with db.db_connection(get_settings().database_url) as conn:
         if _crm.restore_company(conn, company_id) is None:
             raise HTTPException(status_code=404, detail="Company not found")
@@ -714,7 +748,7 @@ def admin_company_research_create(
 ) -> Response:
     session = require_admin_session(request)
     settings = get_settings()
-    _verify_session_csrf(session, csrf_token)
+    _verify_session_csrf(request, session, csrf_token)
     try:
         payload = _parse_research_form(
             record_type=record_type,
@@ -774,9 +808,7 @@ def admin_contacts(
 ) -> HTMLResponse:
     session = require_admin_session(request)
     settings = get_settings()
-    csrf_token = ""
-    if session.id:
-        csrf_token = _issue_session_csrf(settings, session.id)
+    csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
         from app.admin_preview import render_preview_section_main
 
@@ -829,7 +861,7 @@ def admin_contacts(
 @router.get("/contacts/new", response_class=HTMLResponse)
 def admin_contact_new(request: Request) -> HTMLResponse:
     session = require_admin_session(request)
-    csrf_token = _issue_session_csrf(get_settings(), session.id) if session.id else ""
+    csrf_token = _session_csrf_for_forms(request, get_settings())
     with db.db_connection(get_settings().database_url) as conn:
         companies = _crm.list_companies(conn, limit=500)
     return HTMLResponse(
@@ -857,7 +889,7 @@ def admin_contact_create(
     buying_roles: list[str] = Form(default=[]),
 ) -> Response:
     session = require_admin_session(request)
-    _verify_session_csrf(session, csrf_token)
+    _verify_session_csrf(request, session, csrf_token)
     try:
         contact = ContactCreate(**_contact_form_payload(**locals()))
     except (ValueError, TypeError, ValidationError) as exc:
@@ -877,7 +909,7 @@ def admin_contact_edit(
     request: Request, contact_id: UUID, error: str | None = None, warning: str | None = None
 ) -> HTMLResponse:
     session = require_admin_session(request)
-    csrf_token = _issue_session_csrf(get_settings(), session.id) if session.id else ""
+    csrf_token = _session_csrf_for_forms(request, get_settings())
     with db.db_connection(get_settings().database_url) as conn:
         contact = _crm.get_contact(conn, contact_id)
         companies = _crm.list_companies(conn, limit=500)
@@ -911,7 +943,7 @@ def admin_contact_update(
     buying_roles: list[str] = Form(default=[]),
 ) -> Response:
     session = require_admin_session(request)
-    _verify_session_csrf(session, csrf_token)
+    _verify_session_csrf(request, session, csrf_token)
     try:
         contact = ContactUpdate(**_contact_form_payload(**locals()))
     except (ValueError, TypeError, ValidationError) as exc:
@@ -930,7 +962,7 @@ def admin_contact_update(
 @router.post("/contacts/{contact_id}/archive", response_model=None)
 def admin_contact_archive(request: Request, contact_id: UUID, csrf_token: str = Form(...)) -> Response:
     session = require_admin_session(request)
-    _verify_session_csrf(session, csrf_token)
+    _verify_session_csrf(request, session, csrf_token)
     with db.db_connection(get_settings().database_url) as conn:
         if _crm.archive_contact(conn, contact_id) is None:
             raise HTTPException(status_code=404, detail="Contact not found")
@@ -940,11 +972,76 @@ def admin_contact_archive(request: Request, contact_id: UUID, csrf_token: str = 
 @router.post("/contacts/{contact_id}/restore", response_model=None)
 def admin_contact_restore(request: Request, contact_id: UUID, csrf_token: str = Form(...)) -> Response:
     session = require_admin_session(request)
-    _verify_session_csrf(session, csrf_token)
-    with db.db_connection(get_settings().database_url) as conn:
-        if _crm.restore_contact(conn, contact_id) is None:
+    _verify_session_csrf(request, session, csrf_token)
+    settings = get_settings()
+    actor_context = actor_context_from_request(request, actor=session.admin_username)
+    csrf_token_for_forms = _session_csrf_for_forms(request, settings)
+
+    if settings.admin_preview_enabled and contact_id == PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID:
+        preview = preview_contact_restore_conflict()
+        conflicting = ContactSafeSummary(**preview["conflicting_contact"])  # type: ignore[arg-type]
+        return HTMLResponse(
+            contact_pages.render_contact_restore_conflict_page(
+                csrf_token=csrf_token_for_forms,
+                admin_username=session.admin_username,
+                archived_contact=preview["archived_contact"],  # type: ignore[arg-type]
+                conflicting_contact=conflicting,
+                company_name=str(preview["archived_contact"].get("company_name")),  # type: ignore[union-attr]
+            )
+        )
+
+    with db.db_connection(settings.database_url) as conn:
+        result = _crm.restore_contact(conn, contact_id, actor_context=actor_context)
+        if result.outcome == "not_found":
             raise HTTPException(status_code=404, detail="Contact not found")
+        if result.outcome == "conflict":
+            return RedirectResponse(
+                url=f"/admin/contacts/{contact_id}/restore-conflict",
+                status_code=303,
+            )
     return RedirectResponse(url=f"/admin/contacts/{contact_id}/edit", status_code=303)
+
+
+@router.get("/contacts/{contact_id}/restore-conflict", response_class=HTMLResponse)
+def admin_contact_restore_conflict(request: Request, contact_id: UUID) -> HTMLResponse:
+    session = require_admin_session(request)
+    settings = get_settings()
+    csrf_token = _session_csrf_for_forms(request, settings)
+
+    if settings.admin_preview_enabled and contact_id == PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID:
+        preview = preview_contact_restore_conflict()
+        conflicting = ContactSafeSummary(**preview["conflicting_contact"])  # type: ignore[arg-type]
+        return HTMLResponse(
+            contact_pages.render_contact_restore_conflict_page(
+                csrf_token=csrf_token,
+                admin_username=session.admin_username,
+                archived_contact=preview["archived_contact"],  # type: ignore[arg-type]
+                conflicting_contact=conflicting,
+                company_name=str(preview["archived_contact"].get("company_name")),  # type: ignore[union-attr]
+            )
+        )
+
+    with db.db_connection(settings.database_url) as conn:
+        result = _crm.get_contact_restore_conflict(conn, contact_id)
+        if result is None:
+            raise HTTPException(status_code=404, detail="Contact not found or no email conflict")
+        company_name = None
+        company_id = result.archived_contact.get("company_id") if result.archived_contact else None
+        if company_id is not None:
+            company = _crm.get_company(conn, UUID(str(company_id)))
+            if company is not None:
+                company_name = company.get("name")
+        assert result.conflicting_contact is not None
+        assert result.archived_contact is not None
+        return HTMLResponse(
+            contact_pages.render_contact_restore_conflict_page(
+                csrf_token=csrf_token,
+                admin_username=session.admin_username,
+                archived_contact=result.archived_contact,
+                conflicting_contact=result.conflicting_contact,
+                company_name=company_name,
+            )
+        )
 
 
 @router.get("/contacts/{contact_id}", response_class=HTMLResponse)
@@ -955,9 +1052,7 @@ def admin_contact_research(
 ) -> HTMLResponse:
     session = require_admin_session(request)
     settings = get_settings()
-    csrf_token = ""
-    if session.id:
-        csrf_token = _issue_session_csrf(settings, session.id)
+    csrf_token = _session_csrf_for_forms(request, settings)
     with db.db_connection(settings.database_url) as conn:
         contact = _crm.get_contact(conn, contact_id)
         if contact is None:
@@ -995,7 +1090,7 @@ def admin_contact_research_create(
 ) -> Response:
     session = require_admin_session(request)
     settings = get_settings()
-    _verify_session_csrf(session, csrf_token)
+    _verify_session_csrf(request, session, csrf_token)
     try:
         payload = _parse_research_form(
             record_type=record_type,
@@ -1044,9 +1139,7 @@ def _render_admin_shell_page(request: Request, active_path: str) -> HTMLResponse
     """Authenticate and render the shared admin shell for a nav path."""
     session = require_admin_session(request)
     settings = get_settings()
-    csrf_token = ""
-    if session.id:
-        csrf_token = _issue_session_csrf(settings, session.id)
+    csrf_token = _session_csrf_for_forms(request, settings)
     kwargs = dict(admin_username=session.admin_username, csrf_token=csrf_token)
     if not admin.is_admin_path(active_path):
         return HTMLResponse(admin.render_admin_not_found(active_path, **kwargs), status_code=404)
@@ -1064,9 +1157,7 @@ def admin_briefs_list(
 ) -> HTMLResponse:
     session = require_admin_session(request)
     settings = get_settings()
-    csrf_token = ""
-    if session.id:
-        csrf_token = _issue_session_csrf(settings, session.id)
+    csrf_token = _session_csrf_for_forms(request, settings)
     briefs: list[dict] = []
     total = 0
     filters = brief_service.normalize_filters(
@@ -1133,9 +1224,7 @@ def admin_brief_detail(
 ) -> HTMLResponse:
     session = require_admin_session(request)
     settings = get_settings()
-    csrf_token = ""
-    if session.id:
-        csrf_token = _issue_session_csrf(settings, session.id)
+    csrf_token = _session_csrf_for_forms(request, settings)
     back_filters = brief_service.normalize_list_back_params(
         page=page,
         q=q,
@@ -1181,6 +1270,11 @@ def admin_brief_detail(
                 ),
                 status_code=404,
             )
+        from app.admin_preview import preview_brief_conversion_state, preview_pipeline_available
+
+        pipeline_available = preview_pipeline_available()
+        conversion = preview_brief_conversion_state(parsed_brief_id)
+        converted = request.query_params.get("converted") == "1"
         return HTMLResponse(
             admin_pages.render_admin_brief_detail_page(
                 admin_username=session.admin_username,
@@ -1188,6 +1282,9 @@ def admin_brief_detail(
                 back_filters=back_filters,
                 price_cents=settings.brief_price_cents,
                 csrf_token=csrf_token,
+                pipeline_available=pipeline_available and conversion is None,
+                conversion=conversion,
+                converted=converted,
             )
         )
     if not settings.database_url:
@@ -1233,6 +1330,13 @@ def admin_brief_detail(
             ),
             status_code=404,
         )
+    converted = request.query_params.get("converted") == "1"
+    with db.db_connection(settings.database_url) as conn:
+        pipeline_available, conversion = _brief_detail_context(
+            conn,
+            brief=brief,
+            settings=settings,
+        )
     return HTMLResponse(
         admin_pages.render_admin_brief_detail_page(
             admin_username=session.admin_username,
@@ -1240,17 +1344,191 @@ def admin_brief_detail(
             back_filters=back_filters,
             price_cents=settings.brief_price_cents,
             csrf_token=csrf_token,
+            pipeline_available=pipeline_available and conversion is None,
+            conversion=conversion,
+            converted=converted,
         )
     )
+
+
+@router.get("/briefs/{brief_id}/convert", response_class=HTMLResponse)
+def admin_brief_convert_preview(
+    request: Request,
+    brief_id: str,
+    page: int = 1,
+    q: str | None = None,
+    status: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> HTMLResponse:
+    session = require_admin_session(request)
+    settings = get_settings()
+    csrf_token = _session_csrf_for_forms(request, settings)
+    back_filters = brief_service.normalize_list_back_params(
+        page=page,
+        q=q,
+        status=status,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    parsed_brief_id = brief_service.parse_brief_id(brief_id)
+    if parsed_brief_id is None:
+        return HTMLResponse(
+            admin_pages.render_admin_brief_not_found(
+                brief_id=brief_id,
+                admin_username=session.admin_username,
+                back_filters=back_filters,
+                csrf_token=csrf_token,
+            ),
+            status_code=404,
+        )
+    if not pipeline_capabilities_available(settings) and not settings.admin_preview_enabled:
+        raise HTTPException(status_code=503, detail="Pipeline conversion is unavailable.")
+
+    if settings.admin_preview_enabled:
+        from app.admin_preview import preview_brief_convert_matches
+
+        brief = brief_service.preview_brief_detail(parsed_brief_id)
+        if brief is None:
+            return HTMLResponse(
+                admin_pages.render_admin_brief_not_found(
+                    brief_id=parsed_brief_id,
+                    admin_username=session.admin_username,
+                    back_filters=back_filters,
+                    csrf_token=csrf_token,
+                ),
+                status_code=404,
+            )
+        preview = preview_brief_convert_matches(
+            parsed_brief_id,
+            price_cents=settings.brief_price_cents,
+        )
+        error_message = request.query_params.get("error")
+        if error_message == "validation":
+            error_message = PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR
+        return HTMLResponse(
+            admin_pages.render_admin_brief_convert_page(
+                admin_username=session.admin_username,
+                brief=brief,
+                back_filters=back_filters,
+                preview=preview,
+                csrf_token=csrf_token,
+                error_message=error_message,
+            )
+        )
+
+    if not settings.database_url:
+        raise HTTPException(status_code=503, detail="Pipeline conversion is unavailable.")
+
+    with db.db_connection(settings.database_url) as conn:
+        brief = brief_service.get_brief(conn, parsed_brief_id)
+        if brief is None:
+            return HTMLResponse(
+                admin_pages.render_admin_brief_not_found(
+                    brief_id=parsed_brief_id,
+                    admin_username=session.admin_username,
+                    back_filters=back_filters,
+                    csrf_token=csrf_token,
+                ),
+                status_code=404,
+            )
+        if _crm.get_project_brief_source(conn, parsed_brief_id) is not None:
+            return RedirectResponse(
+                url=f"/admin/briefs/{parsed_brief_id}?converted=1",
+                status_code=303,
+            )
+        preview = _crm.find_brief_conversion_matches(
+            conn,
+            brief,
+            price_cents=settings.brief_price_cents,
+        )
+    return HTMLResponse(
+        admin_pages.render_admin_brief_convert_page(
+            admin_username=session.admin_username,
+            brief=brief,
+            back_filters=back_filters,
+            preview=preview,
+            csrf_token=csrf_token,
+            error_message=request.query_params.get("error"),
+        )
+    )
+
+
+@router.post("/briefs/{brief_id}/convert")
+def admin_brief_convert_confirm(
+    request: Request,
+    brief_id: str,
+    csrf_token: str = Form(...),
+    company_choice: str = Form(default="new"),
+    contact_choice: str = Form(default="new"),
+    page: int = 1,
+    q: str | None = Form(default=None),
+    status: str | None = Form(default=None),
+    date_from: str | None = Form(default=None),
+    date_to: str | None = Form(default=None),
+) -> RedirectResponse:
+    session = require_admin_session(request)
+    _verify_session_csrf(request, session, csrf_token)
+    settings = get_settings()
+    parsed_brief_id = brief_service.parse_brief_id(brief_id)
+    if parsed_brief_id is None:
+        raise HTTPException(status_code=404, detail="Brief not found.")
+    if not pipeline_capabilities_available(settings) and not settings.admin_preview_enabled:
+        raise HTTPException(status_code=503, detail="Pipeline conversion is unavailable.")
+
+    company_mode, selected_company_id = _parse_link_choice(company_choice)
+    contact_mode, selected_contact_id = _parse_link_choice(contact_choice)
+    detail_url = f"/admin/briefs/{parsed_brief_id}?converted=1"
+
+    if settings.admin_preview_enabled:
+        from app.admin_preview import preview_brief_convert_post
+
+        error = preview_brief_convert_post(
+            parsed_brief_id,
+            company_mode=company_mode,
+            contact_mode=contact_mode,
+            selected_company_id=selected_company_id,
+            selected_contact_id=selected_contact_id,
+        )
+        if error:
+            return RedirectResponse(
+                url=f"/admin/briefs/{parsed_brief_id}/convert?error={quote(error)}",
+                status_code=303,
+            )
+        return RedirectResponse(url=detail_url, status_code=303)
+
+    if not settings.database_url:
+        raise HTTPException(status_code=503, detail="Pipeline conversion is unavailable.")
+
+    actor_context = actor_context_from_request(request, actor=session.admin_username)
+    try:
+        with db.db_connection(settings.database_url) as conn:
+            brief = brief_service.get_brief(conn, parsed_brief_id)
+            if brief is None:
+                raise HTTPException(status_code=404, detail="Brief not found.")
+            _crm.convert_project_brief(
+                conn,
+                brief=brief,
+                actor_context=actor_context,
+                price_cents=settings.brief_price_cents,
+                company_choice=company_mode,
+                contact_choice=contact_mode,
+                selected_company_id=selected_company_id,
+                selected_contact_id=selected_contact_id,
+            )
+    except BriefConversionValidationError as exc:
+        return RedirectResponse(
+            url=f"/admin/briefs/{parsed_brief_id}/convert?error={quote(str(exc))}",
+            status_code=303,
+        )
+    return RedirectResponse(url=detail_url, status_code=303)
 
 
 @router.get("/audit", response_class=HTMLResponse)
 def admin_audit_list(request: Request, page: int = 1) -> HTMLResponse:
     session = require_admin_session(request)
     settings = get_settings()
-    csrf_token = ""
-    if session.id:
-        csrf_token = _issue_session_csrf(settings, session.id)
+    csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
         from app.admin_preview import build_preview_audit_events
 
@@ -1282,33 +1560,6 @@ def admin_audit_list(request: Request, page: int = 1) -> HTMLResponse:
     )
 
 
-@router.get("/imports", response_class=HTMLResponse)
-def admin_imports(request: Request) -> HTMLResponse:
-    session = require_admin_session(request)
-    settings = get_settings()
-    csrf_token = ""
-    if session.id:
-        csrf_token = _issue_session_csrf(settings, session.id)
-    if settings.admin_preview_enabled:
-        from app.admin_preview import render_preview_imports_main
-
-        return HTMLResponse(
-            render_admin_shell(
-                title="Imports",
-                main=render_preview_imports_main(),
-                active_path="/admin/imports",
-                admin_username=session.admin_username,
-                csrf_token=csrf_token,
-            )
-        )
-    return HTMLResponse(
-        import_pages.render_imports_page(
-            admin_username=session.admin_username,
-            csrf_token=csrf_token,
-        )
-    )
-
-
 for _link in ADMIN_NAV_LINKS:
     if _link["href"] in {
         "/admin",
@@ -1316,6 +1567,7 @@ for _link in ADMIN_NAV_LINKS:
         "/admin/briefs",
         "/admin/companies",
         "/admin/contacts",
+        "/admin/pipeline",
         "/admin/imports",
     }:
         continue
@@ -1341,9 +1593,7 @@ for _link in ADMIN_NAV_LINKS:
 def admin_dashboard(request: Request) -> HTMLResponse:
     session = require_admin_session(request)
     settings = get_settings()
-    csrf_token = ""
-    if session.id:
-        csrf_token = _issue_session_csrf(settings, session.id)
+    csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
         from app.admin_preview import build_preview_acquisition_dashboard_data
 
@@ -1400,9 +1650,7 @@ def admin_protected_fallback(request: Request, full_path: str) -> Response:
         raise HTTPException(status_code=404, detail="Not found")
     session = require_admin_session(request)
     settings = get_settings()
-    csrf_token = ""
-    if session.id:
-        csrf_token = _issue_session_csrf(settings, session.id)
+    csrf_token = _session_csrf_for_forms(request, settings)
     path = f"/admin/{full_path.rstrip('/')}"
     return HTMLResponse(
         admin.render_admin_not_found(

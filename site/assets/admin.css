@@ -212,6 +212,9 @@ body.admin-app {
   overflow-wrap: anywhere;
   word-break: break-word;
   max-width: 100%;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .admin-lede {
@@ -230,100 +233,9 @@ body.admin-app {
   color: var(--ink);
 }
 
-.admin-stat-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
-  gap: 0.75rem 1rem;
-  margin: 0 0 1.5rem;
-  padding: 0;
-}
-
-.admin-stat-row > div {
-  border: 1px solid var(--line);
-  padding: 0.75rem 0.85rem;
-  background: color-mix(in srgb, var(--surface) 75%, transparent);
-}
-
-.admin-stat-row dt {
-  margin: 0 0 0.35rem;
-  font-size: 0.68rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.admin-stat-row dd {
-  margin: 0;
-  font-family: var(--display);
-  font-size: 1.35rem;
-  color: var(--ink);
-}
-
-.admin-section-title {
-  margin: 0 0 0.65rem;
-  font-family: var(--display);
-  font-size: 1rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.admin-preview-banner {
-  margin: 0 0 1rem;
-  padding: 0.55rem 0.75rem;
-  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  font-family: var(--mono);
-  font-size: 0.75rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--accent);
-}
-
-.dashboard-grid {
-  display: grid;
-  gap: 1.25rem;
-  margin: 0 0 1.5rem;
-}
-
-.dashboard-panel {
-  margin: 0 0 1.75rem;
-}
-
-.dashboard-metric-def {
-  margin: 0 0 0.75rem;
-  font-size: 0.78rem;
-  color: var(--muted);
-  max-width: 44rem;
-}
-
-.dashboard-count-table td:last-child {
-  font-family: var(--mono);
-  text-align: right;
-  width: 4rem;
-}
-
-.dashboard-empty {
-  margin: 0 0 1.5rem;
-  padding: 1rem 1.1rem;
-  border: 1px solid var(--line);
-  background: color-mix(in srgb, var(--surface) 70%, transparent);
-}
-
-.dashboard-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem 1rem;
-  align-items: center;
-  margin: 0 0 0.75rem;
-}
-
-.dashboard-secondary-link {
-  font-size: 0.85rem;
-  color: var(--ink);
-}
-
-.dashboard-footnote {
-  margin-top: 0.65rem;
+.admin-empty {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .admin-empty code {
@@ -753,13 +665,16 @@ body.admin-app {
 
   .admin-title {
     font-family: var(--mono), "IBM Plex Mono", ui-monospace, monospace;
-    font-size: 1.2rem;
+    font-size: clamp(1rem, 6vw, 1.2rem);
     line-height: 1.25;
     text-transform: none;
     letter-spacing: 0;
     overflow-wrap: anywhere;
     word-break: break-word;
+    hyphens: auto;
     max-width: 100%;
+    min-width: 0;
+    width: 100%;
   }
 
   .admin-main {
@@ -809,83 +724,132 @@ body.admin-app {
   }
 }
 
-.linkedin-import-privacy {
-  margin: 0 0 1.5rem;
-  padding: 1rem 1.1rem;
-  border: 1px solid var(--line);
-  background: color-mix(in srgb, var(--surface) 70%, transparent);
+.admin-preview-banner {
+  margin: 0 0 1rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-ink);
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+  border-left: 3px solid var(--accent);
 }
 
-.linkedin-import-privacy-grid {
+.admin-subtitle {
+  font-family: var(--mono), "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: 1.5rem 0 0.75rem;
+}
+
+.admin-import-privacy,
+.admin-import-upload,
+.admin-import-preview {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.admin-import-policy {
   display: grid;
-  gap: 0.85rem 1.25rem;
+  gap: 1rem;
   margin: 0;
-  padding: 0;
 }
 
-@media (min-width: 48rem) {
-  .linkedin-import-privacy-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.admin-import-policy dt {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 0.25rem;
 }
 
-.linkedin-import-privacy-grid dt {
-  margin: 0 0 0.25rem;
-  font-size: 0.68rem;
+.admin-import-policy dd {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.admin-import-status {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.admin-import-status-ok {
+  color: var(--accent);
+}
+
+.admin-import-status-error {
+  color: #e07070;
+}
+
+.admin-import-summary {
+  margin: 1rem 0;
+}
+
+.admin-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem 1rem;
+  margin: 0;
+}
+
+.admin-stat-grid dt {
+  font-size: 0.65rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);
 }
 
-.linkedin-import-privacy-grid dd {
-  margin: 0;
-  font-size: 0.88rem;
-  color: var(--ink);
+.admin-stat-grid dd {
+  margin: 0.15rem 0 0;
+  font-size: 1.1rem;
+  font-weight: 600;
 }
 
-.linkedin-import-form {
-  margin-bottom: 1rem;
-}
-
-.linkedin-import-status {
-  margin: 0 0 1rem;
-  padding: 0.65rem 0.85rem;
-  border: 1px solid var(--line);
-  font-family: var(--mono);
-  font-size: 0.78rem;
-}
-
-.linkedin-import-status--busy {
-  border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
-}
-
-.linkedin-import-status--ok {
-  border-color: color-mix(in srgb, #4caf7d 45%, var(--line));
-}
-
-.linkedin-import-status--error {
-  border-color: color-mix(in srgb, #e05a5a 45%, var(--line));
-  color: #ffb4b4;
-}
-
-.linkedin-import-preview {
-  margin-top: 0.5rem;
-}
-
-.linkedin-import-proposed-list,
-.linkedin-import-warnings,
-.linkedin-import-duplicates,
-.linkedin-import-ignored {
-  margin: 0 0 1rem;
+.admin-import-file-list {
+  margin: 0.5rem 0 0;
   padding-left: 1.25rem;
   color: var(--muted);
   font-size: 0.88rem;
 }
 
-.linkedin-import-warnings li {
-  color: var(--accent);
+.admin-import-file-list code {
+  font-size: 0.82rem;
 }
 
-.linkedin-import-stats {
-  margin-bottom: 1.25rem;
+.admin-import-muted {
+  opacity: 0.85;
+}
+
+.admin-alert {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border-left: 3px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+
+.admin-alert-title {
+  margin: 0 0 0.35rem;
+  font-weight: 600;
+}
+
+.admin-alert-ok {
+  border-left-color: var(--accent);
+}
+
+.admin-alert-warn {
+  border-left-color: #d88730;
+}
+
+.admin-alert-error {
+  border-left-color: #e07070;
+}
+
+.admin-alert ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1.25rem;
 }

@@ -6,16 +6,21 @@ import random
 from datetime import datetime, timezone
 
 import pytest
+from fastapi.testclient import TestClient
 
 from app.admin_preview import (
     COMPANY_NAMES,
+    PREVIEW_PIPELINE_COMPANY_IDS,
     build_preview_acquisition_dashboard_data,
     build_preview_dashboard_data,
+    build_preview_pipeline_companies,
+    build_preview_pipeline_detail,
     build_preview_section_rows,
     render_preview_dashboard_main,
     render_preview_section_main,
 )
 from app.admin_dashboard_pages import render_acquisition_dashboard_page
+from app.main import app
 
 
 @pytest.mark.unit
@@ -39,7 +44,11 @@ def test_preview_acquisition_dashboard_html_includes_sections() -> None:
     assert "Preview data — not production" in html
     assert "Overdue next actions" in html
     assert data.overdue_actions[0].company_name in html
-    assert "Companies by stage" in html
+    assert "Companies by funding stage" in html
+    assert "/admin/pipeline/" in html
+    assert "Missing decision-maker" in html
+    assert "qualifying" in html.lower()
+    assert data.without_decision_maker[0].company_name in html
 
 
 @pytest.mark.unit
@@ -105,6 +114,25 @@ def test_preview_contacts_rows_stable_with_seed() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/admin/signals",
+        "/admin/pipeline",
+        "/admin/imports",
+        "/admin/discovery",
+        "/admin/analytics",
+        "/admin/content",
+        "/admin/settings",
+    ],
+)
+def test_preview_section_rows_cover_admin_paths(path: str) -> None:
+    rows = build_preview_section_rows(path, rng=random.Random(7))
+    assert 4 <= len(rows) <= 8
+    assert all(len(row) == 5 for row in rows)
+
+
+@pytest.mark.unit
 def test_preview_section_main_html_includes_mock_table() -> None:
     html = render_preview_section_main(
         label="Companies",
@@ -167,30 +195,51 @@ def test_preview_audit_events_seed_stable() -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.integration
 def test_preview_linkedin_import_seed_stable() -> None:
-    from app.admin_preview import build_preview_linkedin_import_data
+    import random
 
-    a = build_preview_linkedin_import_data(rng=random.Random(42))
-    b = build_preview_linkedin_import_data(rng=random.Random(42))
+    from app.admin_preview import build_preview_linkedin_import
+
+    a = build_preview_linkedin_import(rng=random.Random(109))
+    b = build_preview_linkedin_import(rng=random.Random(109))
     assert a == b
-    assert a.connection_count >= 120
+    assert a["counts"]["connections"] >= 120
+
+
+@pytest.mark.unit
+def test_preview_linkedin_import_html_via_import_page() -> None:
+    import random
+
+    from app.admin_import_pages import render_linkedin_import_page
+    from app.admin_preview import build_preview_linkedin_import
+
+    html = render_linkedin_import_page(
+        admin_username="preview",
+        preview_banner="Preview data — not production",
+        preview_data=build_preview_linkedin_import(rng=random.Random(109)),
+        include_scripts=False,
+    )
+    assert "Preview data — not production" in html
+    assert "Recognized files" in html
+    assert "Proposed import preview" in html
+    data = build_preview_linkedin_import(rng=random.Random(109))
+    assert data["proposed_changes"][0]["name"] in html
 
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_preview_imports_main_html_includes_populated_preview() -> None:
-    from app.admin_preview import render_preview_imports_main
+def test_admin_preview_imports_route_has_mock_data(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "109")
+    monkeypatch.setenv("BASE_URL", "http://localhost:8000")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    response = TestClient(app).get("/admin/imports")
+    assert response.status_code == 200
+    assert "Connections.csv" in response.text
+    assert "Proposed import preview" in response.text
 
-    html = render_preview_imports_main(rng=random.Random(99))
-    assert "LinkedIn export preview" in html
-    assert "Import preview" in html
-    assert "Proposed changes (preview only)" in html
-    assert "Recognized files" in html
-    assert "Ignored archive entries" in html
-    assert "connections.csv" in html
 
-
+@pytest.mark.unit
 @pytest.mark.integration
 def test_admin_preview_briefs_list_and_detail_have_mock_data(
     monkeypatch: pytest.MonkeyPatch,
@@ -234,3 +283,88 @@ def test_admin_preview_briefs_list_and_detail_have_mock_data(
     assert audit.status_code == 200
     assert "No audit events recorded yet." not in audit.text
     assert "audit-table" in audit.text
+
+
+@pytest.mark.unit
+def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytest.MonkeyPatch) -> None:
+    import random
+
+    from argon2 import PasswordHasher
+
+    from app.admin_preview import (
+        PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID,
+        preview_contact_restore_conflict,
+    )
+
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "7")
+    monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
+    monkeypatch.setenv(
+        "ADMIN_PASSWORD_HASH",
+        PasswordHasher().hash("preview"),
+    )
+    monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
+    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    preview = preview_contact_restore_conflict(rng=random.Random(7))
+    client = TestClient(app, follow_redirects=False)
+    response = client.get(
+        f"/admin/contacts/{PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID}/restore-conflict"
+    )
+    assert response.status_code == 200
+    assert preview["archived_contact"]["full_name"] in response.text
+    assert preview["conflicting_contact"]["full_name"] in response.text
+    assert "Restore blocked" in response.text
+
+
+@pytest.mark.unit
+def test_preview_pipeline_companies_seed_stable() -> None:
+    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
+    a = build_preview_pipeline_companies(rng=random.Random(42), now=now)
+    b = build_preview_pipeline_companies(rng=random.Random(42), now=now)
+    assert a == b
+    assert len(a) == len(PREVIEW_PIPELINE_COMPANY_IDS)
+    assert a[0]["name"] in COMPANY_NAMES
+
+
+@pytest.mark.unit
+def test_preview_pipeline_detail_nullable_fields() -> None:
+    detail = build_preview_pipeline_detail(PREVIEW_PIPELINE_COMPANY_IDS[1])
+    assert detail is not None
+    company, history, activities = detail
+    assert company["next_action"] is None
+    assert len(history) >= 2
+    assert len(activities) >= 2
+
+
+@pytest.mark.unit
+def test_preview_acquisition_dashboard_data_is_populated() -> None:
+    data = build_preview_acquisition_dashboard_data()
+    assert data.company_counts_by_stage
+    assert data.overdue_actions
+    assert data.recent_evidence
+    assert data.without_decision_maker
+    assert data.without_decision_maker[0].company_name == "Meridian Stack"
+
+
+@pytest.mark.unit
+def test_preview_brief_conversion_states() -> None:
+    from app.admin_preview import (
+        PREVIEW_BRIEF_CONVERTED_ID,
+        PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR,
+        preview_brief_conversion_state,
+        preview_brief_convert_matches,
+        preview_pipeline_available,
+    )
+
+    assert PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR
+
+    assert preview_pipeline_available() is True
+    assert preview_brief_conversion_state(1) is None
+    linked = preview_brief_conversion_state(PREVIEW_BRIEF_CONVERTED_ID)
+    assert linked is not None
+    assert linked["pipeline_stage"] == "diagnostic_paid"
+    matches = preview_brief_convert_matches(4, price_cents=20_000)
+    assert matches["company_matches"]
+    assert matches["contact_matches"]
+    assert matches["proposal"]["pipeline_stage"] in {"qualified", "diagnostic_paid"}
