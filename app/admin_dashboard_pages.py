@@ -15,6 +15,7 @@ from app.acquisition_dashboard import (
     UPCOMING_ACTION_WINDOW_DAYS,
     dashboard_is_empty,
 )
+from app.acquisition_pipeline import pipeline_stage_label
 from app.admin_layout import render_admin_shell
 from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES, TARGET_STATUSES
 from app.research_records import RECORD_TYPE_LABELS
@@ -62,10 +63,10 @@ def _render_next_action_rows(rows: tuple[NextActionRow, ...]) -> str:
         return '<tr><td colspan="4" class="audit-empty">Nothing scheduled.</td></tr>'
     return "".join(
         f"""<tr>
-          <td><a href="/admin/companies/{_esc(row.company_id)}">{_esc(row.company_name)}</a></td>
-          <td>{_esc(row.contact_name or "—")}</td>
-          <td>{_esc(row.body[:120] + ("…" if len(row.body) > 120 else ""))}</td>
-          <td><time datetime="{_esc(row.review_at.isoformat())}">{_format_timestamp(row.review_at)}</time></td>
+          <td><a href="/admin/pipeline/{_esc(row.company_id)}">{_esc(row.company_name)}</a></td>
+          <td>{_esc(row.pipeline_owner or "—")}</td>
+          <td>{_esc(row.next_action[:120] + ("…" if len(row.next_action) > 120 else ""))}</td>
+          <td><time datetime="{_esc(row.next_action_due_at.isoformat())}">{_format_timestamp(row.next_action_due_at)}</time></td>
         </tr>"""
         for row in rows
     )
@@ -98,16 +99,27 @@ def _company_label(row: Any) -> str:
     return f"{category} · {stage} · {target}"
 
 
-def _render_attention_rows(rows: tuple[Any, ...], *, empty_message: str) -> str:
+def _render_attention_rows(
+    rows: tuple[Any, ...],
+    *,
+    empty_message: str,
+    use_pipeline_stage: bool = False,
+) -> str:
     if not rows:
         return f'<tr><td colspan="2" class="audit-empty">{_esc(empty_message)}</td></tr>'
     return "".join(
         f"""<tr>
-          <td><a href="/admin/companies/{_esc(row.company_id)}">{_esc(row.company_name)}</a></td>
-          <td>{_esc(_company_label(row))}</td>
+          <td><a href="/admin/pipeline/{_esc(row.company_id)}">{_esc(row.company_name)}</a></td>
+          <td>{_esc(_attention_label(row, use_pipeline_stage=use_pipeline_stage))}</td>
         </tr>"""
         for row in rows
     )
+
+
+def _attention_label(row: Any, *, use_pipeline_stage: bool) -> str:
+    if use_pipeline_stage and getattr(row, "pipeline_stage", None):
+        return pipeline_stage_label(row.pipeline_stage)
+    return _company_label(row)
 
 
 def render_acquisition_dashboard_page(
@@ -159,9 +171,9 @@ def render_acquisition_dashboard_page(
       </p>
       {empty_block}
       <div class="dashboard-grid">
-        {_render_count_table(title="Companies by stage", buckets=data.company_counts_by_stage, definition=definitions["company_count_by_stage"], section_id="dash-companies-stage")}
+        {_render_count_table(title="Companies by funding stage", buckets=data.company_counts_by_stage, definition=definitions["company_count_by_stage"], section_id="dash-companies-stage")}
         {_render_count_table(title="Companies by category", buckets=data.company_counts_by_category, definition=definitions["company_count_by_category"], section_id="dash-companies-category")}
-        {_render_count_table(title="Contacts by company stage", buckets=data.contact_counts_by_stage, definition=definitions["contact_count_by_stage"], section_id="dash-contacts-stage")}
+        {_render_count_table(title="Contacts by company funding stage", buckets=data.contact_counts_by_stage, definition=definitions["contact_count_by_stage"], section_id="dash-contacts-stage")}
         {_render_count_table(title="Contacts by company category", buckets=data.contact_counts_by_category, definition=definitions["contact_count_by_category"], section_id="dash-contacts-category")}
       </div>
       <section class="dashboard-panel" aria-labelledby="dash-overdue-title">
@@ -169,7 +181,7 @@ def render_acquisition_dashboard_page(
         <p class="dashboard-metric-def">{_esc(definitions["overdue_next_action"])}</p>
         <div class="admin-table-wrap">
           <table class="admin-table">
-            <thead><tr><th>Company</th><th>Contact</th><th>Follow-up</th><th>Due</th></tr></thead>
+            <thead><tr><th>Company</th><th>Owner</th><th>Next action</th><th>Due</th></tr></thead>
             <tbody>{_render_next_action_rows(data.overdue_actions)}</tbody>
           </table>
         </div>
@@ -179,7 +191,7 @@ def render_acquisition_dashboard_page(
         <p class="dashboard-metric-def">{_esc(definitions["upcoming_next_action"])}</p>
         <div class="admin-table-wrap">
           <table class="admin-table">
-            <thead><tr><th>Company</th><th>Contact</th><th>Follow-up</th><th>Due</th></tr></thead>
+            <thead><tr><th>Company</th><th>Owner</th><th>Next action</th><th>Due</th></tr></thead>
             <tbody>{_render_next_action_rows(data.upcoming_actions)}</tbody>
           </table>
         </div>
@@ -223,11 +235,12 @@ def render_acquisition_dashboard_page(
         <div class="admin-table-wrap">
           <table class="admin-table">
             <thead><tr><th>Company</th><th>Profile</th></tr></thead>
-            <tbody>{_render_attention_rows(data.without_next_action, empty_message="Every target has a scheduled follow-up.")}</tbody>
+            <tbody>{_render_attention_rows(data.without_next_action, empty_message="Every pipeline company has a scheduled next action.", use_pipeline_stage=True)}</tbody>
           </table>
         </div>
         <p class="admin-note dashboard-footnote">
-          Schedule follow-ups from a company&apos;s research panel as a follow-up note with a review date.
+          Set the canonical next action from the company&apos;s
+          <a href="/admin/pipeline">pipeline detail</a> page.
         </p>
       </section>
     </section>"""

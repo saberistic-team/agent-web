@@ -44,9 +44,10 @@ def test_preview_acquisition_dashboard_html_includes_sections() -> None:
     assert "Preview data — not production" in html
     assert "Overdue next actions" in html
     assert data.overdue_actions[0].company_name in html
-    assert "Companies by stage" in html
+    assert "Companies by funding stage" in html
+    assert "/admin/pipeline/" in html
     assert "Missing decision-maker" in html
-    assert "qualifying decision-maker" in html
+    assert "qualifying" in html.lower()
     assert data.without_decision_maker[0].company_name in html
 
 

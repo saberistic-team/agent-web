@@ -14,11 +14,12 @@ from app.repositories.protocols import AcquisitionDashboardRepository
 # Bounded list sizes for dashboard sections (indexed queries + LIMIT).
 DEFAULT_LIST_LIMIT = 20
 UPCOMING_ACTION_WINDOW_DAYS = 14
+DASHBOARD_REFERENCE_TIMEZONE = "UTC"
 
 # Non-archived companies included in rollups unless noted otherwise.
 METRIC_COMPANY_COUNT_BY_STAGE = (
-    "Count of non-archived companies grouped by companies.stage; "
-    "NULL stage is reported as unspecified."
+    "Count of non-archived companies grouped by funding/lifecycle stage "
+    "(companies.stage — not pipeline_stage); NULL stage is reported as unspecified."
 )
 METRIC_COMPANY_COUNT_BY_CATEGORY = (
     "Count of non-archived companies grouped by companies.category; "
@@ -26,19 +27,26 @@ METRIC_COMPANY_COUNT_BY_CATEGORY = (
 )
 METRIC_CONTACT_COUNT_BY_STAGE = (
     "Count of active (non-archived) contacts whose linked company is non-archived, "
-    "grouped by that company's stage; NULL stage is unspecified."
+    "grouped by that company's funding/lifecycle stage (companies.stage); "
+    "NULL stage is unspecified."
 )
 METRIC_CONTACT_COUNT_BY_CATEGORY = (
     "Count of active (non-archived) contacts whose linked company is non-archived, "
     "grouped by that company's category; NULL category is unspecified."
 )
 METRIC_OVERDUE_NEXT_ACTION = (
-    "Follow-up notes (research_records.record_type = follow_up_note) with a "
-    "non-null review_at before the reference time, for non-archived companies."
+    "Non-archived pipeline companies (companies.pipeline_stage IS NOT NULL) with "
+    "non-empty companies.next_action and companies.next_action_due_at strictly "
+    f"before the dashboard reference time ({DASHBOARD_REFERENCE_TIMEZONE}). "
+    "Uses idx_companies_next_action_due_at; research follow_up_note rows are "
+    "historical evidence only."
 )
 METRIC_UPCOMING_NEXT_ACTION = (
-    "Follow-up notes with review_at on or after the reference time and within "
-    f"{UPCOMING_ACTION_WINDOW_DAYS} days, for non-archived companies."
+    "Same pipeline inclusion as overdue: non-archived companies with "
+    "pipeline_stage, non-empty next_action, and next_action_due_at on or after "
+    f"the reference time ({DASHBOARD_REFERENCE_TIMEZONE}) and within "
+    f"{UPCOMING_ACTION_WINDOW_DAYS} calendar days (inclusive window end). "
+    "Uses idx_companies_next_action_due_at."
 )
 METRIC_RECENT_EVIDENCE = (
     "Public evidence (verified_fact or public_signal) ordered by created_at "
@@ -54,8 +62,10 @@ METRIC_WITHOUT_DECISION_MAKER = (
     "(founder, technical buyer, or executive buyer)."
 )
 METRIC_WITHOUT_NEXT_ACTION = (
-    "Non-archived companies with target_status target or watching that have "
-    "no follow_up_note with a scheduled review_at."
+    "Non-archived pipeline companies (companies.pipeline_stage IS NOT NULL) "
+    "missing a canonical next action: companies.next_action is null/blank or "
+    "companies.next_action_due_at is null. Research follow_up_note rows do not "
+    "satisfy this metric."
 )
 
 CompanyDimension = Literal["stage", "category"]
@@ -76,12 +86,12 @@ class CountBucket:
 
 @dataclass(frozen=True)
 class NextActionRow:
-    record_id: str
     company_id: str
     company_name: str
-    contact_name: str | None
-    body: str
-    review_at: datetime
+    pipeline_stage: str | None
+    pipeline_owner: str | None
+    next_action: str
+    next_action_due_at: datetime
 
 
 @dataclass(frozen=True)
@@ -102,6 +112,7 @@ class CompanyAttentionRow:
     target_status: str | None
     category: str | None
     stage: str | None
+    pipeline_stage: str | None = None
 
 
 @dataclass(frozen=True)
@@ -149,18 +160,18 @@ def _to_buckets(
 
 
 def _parse_next_action(row: dict[str, Any]) -> NextActionRow:
-    review_at = row["review_at"]
-    if isinstance(review_at, str):
-        review_at = datetime.fromisoformat(review_at.replace("Z", "+00:00"))
-    if review_at.tzinfo is None:
-        review_at = review_at.replace(tzinfo=timezone.utc)
+    due_at = row["next_action_due_at"]
+    if isinstance(due_at, str):
+        due_at = datetime.fromisoformat(due_at.replace("Z", "+00:00"))
+    if due_at.tzinfo is None:
+        due_at = due_at.replace(tzinfo=timezone.utc)
     return NextActionRow(
-        record_id=str(row["id"]),
-        company_id=str(row["company_id"]),
-        company_name=str(row.get("company_name") or ""),
-        contact_name=row.get("contact_name"),
-        body=str(row.get("body") or ""),
-        review_at=review_at,
+        company_id=str(row["id"]),
+        company_name=str(row.get("name") or row.get("company_name") or ""),
+        pipeline_stage=row.get("pipeline_stage"),
+        pipeline_owner=row.get("pipeline_owner"),
+        next_action=str(row.get("next_action") or ""),
+        next_action_due_at=due_at,
     )
 
 
@@ -193,6 +204,7 @@ def _parse_attention(row: dict[str, Any]) -> CompanyAttentionRow:
         target_status=row.get("target_status"),
         category=row.get("category"),
         stage=row.get("stage"),
+        pipeline_stage=row.get("pipeline_stage"),
     )
 
 
