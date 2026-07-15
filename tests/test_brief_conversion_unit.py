@@ -34,6 +34,24 @@ SOURCE_RECORD_ID = UUID("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")
 ACTOR = ActorContext(actor="operator", correlation_id="corr-1")
 
 
+def _unique_violation(
+    message: str,
+    *,
+    constraint_name: str,
+    table_name: str,
+) -> Exception:
+    from psycopg import errors as pg_errors
+
+    diag = MagicMock(constraint_name=constraint_name, table_name=table_name)
+
+    class _WithDiag(pg_errors.UniqueViolation):
+        @property
+        def diag(self) -> MagicMock:
+            return diag
+
+    return _WithDiag(message)
+
+
 def _brief(*, status: str = "paid") -> dict:
     return {
         "id": 42,
@@ -274,17 +292,60 @@ def test_convert_returns_idempotent_result_on_race_inside_transaction() -> None:
     repos["companies"].get_by_id.return_value = {"id": COMPANY_ID, "name": "Acme"}
     repos["contacts"].get_by_id.return_value = {"id": CONTACT_ID, "email": "ops@acme.example"}
 
-    result = service.convert_project_brief(
-        conn,
-        brief=_brief(),
-        actor_context=ACTOR,
-        price_cents=20_000,
-        company_choice="new",
-        contact_choice="new",
-    )
+    with patch("app.crm_service.acquire_brief_conversion_lock"):
+        result = service.convert_project_brief(
+            conn,
+            brief=_brief(),
+            actor_context=ACTOR,
+            price_cents=20_000,
+            company_choice="new",
+            contact_choice="new",
+        )
 
     assert result["idempotent"] is True
     repos["companies"].create.assert_not_called()
+
+
+def test_convert_returns_idempotent_result_on_source_unique_violation() -> None:
+    service, conn, repos = _service_with_mocks()
+    winner = {
+        "external_id": "42",
+        "company_id": COMPANY_ID,
+        "contact_id": CONTACT_ID,
+        "payload": {"pipeline_stage": "diagnostic_paid"},
+    }
+    repos["source_records"].get_by_source.side_effect = [None, None, winner]
+    repos["companies"].find_by_domain.return_value = []
+    repos["contacts"].get_by_email.return_value = None
+    repos["companies"].create.return_value = {"id": COMPANY_ID, "name": "Acme", "pipeline_stage": "researching"}
+    repos["pipeline"].update_pipeline_fields.return_value = {
+        "id": COMPANY_ID,
+        "pipeline_stage": "diagnostic_paid",
+    }
+    repos["contacts"].create.return_value = {"id": CONTACT_ID, "email": "ops@acme.example"}
+    repos["companies"].get_by_id.return_value = {"id": COMPANY_ID, "name": "Acme"}
+    repos["contacts"].get_by_id.return_value = {"id": CONTACT_ID, "email": "ops@acme.example"}
+
+    repos["source_records"].create.side_effect = _unique_violation(
+        "duplicate source link",
+        constraint_name="source_records_type_external_unique",
+        table_name="source_records",
+    )
+
+    with patch("app.crm_service.acquire_brief_conversion_lock"):
+        result = service.convert_project_brief(
+            conn,
+            brief=_brief(),
+            actor_context=ACTOR,
+            price_cents=20_000,
+            company_choice="new",
+            contact_choice="new",
+        )
+
+    assert result["idempotent"] is True
+    assert result["source_record"] == winner
+    conn.rollback.assert_called_once()
+    conn.commit.assert_not_called()
 
 
 def test_convert_rejects_selected_company_not_found_in_storage() -> None:

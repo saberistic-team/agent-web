@@ -123,6 +123,17 @@ normalized profile URL, email, and name/company combinations are non-blocking.
 
 Unique: `(source_type, external_id)`. Indexes on FK columns and `source_type`.
 
+**Brief conversion idempotency:** `CrmService.convert_project_brief()` serializes
+concurrent confirms for the same brief with a transaction-scoped Postgres advisory
+lock (`pg_advisory_xact_lock`) keyed by `(BRIEF_CONVERSION_ADVISORY_LOCK_KEY1,
+project_briefs.id)` — see `app/brief_conversion_lock.py`. Inside the lock, a
+second lookup on `source_records (source_type='project_brief', external_id)` runs
+before any CRM writes. The unique constraint
+`source_records_type_external_unique` on `(source_type, external_id)` is the
+durability backstop: if a losing transaction still reaches the source insert, the
+`UniqueViolation` rolls back company, contact, pipeline, activity, history, and
+audit writes for that attempt and the service reloads the committed winner.
+
 ### `activities`
 
 | Column | Type | Notes |
@@ -277,6 +288,23 @@ A second initializer **retries** lock acquisition every 250ms for up to **120 se
 If the lock is still held after that budget, startup fails with
 `MigrationLockTimeoutError` and an actionable log message — investigate a stuck peer
 or retry once the other instance finishes.
+
+### Brief conversion idempotency
+
+Concurrent admin confirms of the same project brief use a separate advisory-lock
+namespace from schema migrations:
+
+| Constant | Value | Meaning |
+|----------|-------|---------|
+| `BRIEF_CONVERSION_ADVISORY_LOCK_KEY1` | `0x42524643` (`"BRFC"`) | brief-conversion namespace |
+| key2 | `project_briefs.id` | one lock per brief row |
+
+`CrmService.convert_project_brief()` acquires `pg_advisory_xact_lock(key1, key2)`
+at the start of its `crm_transaction()` boundary, re-reads
+`source_records ('project_brief', brief_id)`, then performs company/contact/pipeline
+writes. The unique constraint `source_records_type_external_unique` remains the
+committed ownership record; a losing insert raises `UniqueViolation`, the
+transaction rolls back, and the handler returns the existing conversion result.
 
 If a migration statement fails, the transaction rolls back: no new `schema_migrations`
 row is committed and the lock is released. A later startup retries from the last
