@@ -20,10 +20,7 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.client_source import (
-    record_client_source_telemetry,
-    resolve_admin_login_client_source,
-)
+from app.client_source import resolve_admin_login_client_source
 from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
@@ -242,26 +239,19 @@ def client_ip(request: Request, settings: Settings) -> str:
     """Resolve the client source IP for rate limiting.
 
     Forwarding headers are honored only when the immediate peer matches
-    :data:`~app.config.Settings.admin_trusted_proxy_cidrs` (or the legacy
-    ``ADMIN_TRUST_PROXY_HEADERS`` Render defaults). The resolver walks trusted
-    proxy hops right-to-left and never trusts a left-most ``X-Forwarded-For``
-    value from an unverified peer.
-
-    Production runs Uvicorn with ``--proxy-headers`` and a matching
-    ``--forwarded-allow-ips`` boundary so ``request.client`` is already the
-    resolved public client when the request reaches this helper.
+    ``ADMIN_TRUSTED_PROXY_IPS``. The left-most raw ``X-Forwarded-For`` value is
+    never trusted directly; see :func:`resolve_admin_login_client_source`.
 
     Source identity notes:
 
-    * **IPv4 / IPv6** — normalized before hashing (including IPv4-mapped IPv6).
+    * **IPv4 / IPv6** — normalized deterministically and stored only as keyed
+      digests (e.g. ``203.0.113.1``, ``2001:db8::1``).
     * **Missing peer** — falls back to ``unknown`` so attempts still share one
       bucket instead of creating an unbounded namespace.
-    * **Untrusted peer** — spoofed ``X-Forwarded-For``, ``Forwarded``, and
-      ``CF-Connecting-IP`` values are ignored; the direct peer is used.
+    * **Trusted proxy chain** — Cloudflare → Render → Uvicorn; see
+      ``docs/ADMIN_AUTH.md``.
     """
-    resolution = resolve_admin_login_client_source(request, settings)
-    record_client_source_telemetry(resolution)
-    return resolution.source
+    return resolve_admin_login_client_source(request, settings).address
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:

@@ -24,6 +24,7 @@ from app.admin_auth import AdminLoginRequired, login_redirect_url
 from app.admin_pipeline_routes import router as admin_pipeline_router
 from app.admin_routes import router as admin_router
 from app.actor_context import CORRELATION_HEADER
+from app.client_source import admin_proxy_trust_configured
 from app.config import get_settings
 from app.models import BriefCreateRequest, BriefCreateResponse
 from app.seo import (
@@ -119,10 +120,9 @@ def health() -> dict:
     """
     payload: dict = {"status": "ok"}
     settings = get_settings()
-    if settings.admin_proxy_trust_configured:
-        payload["admin_proxy_trust"] = "configured"
-    else:
-        payload["admin_proxy_trust"] = "disabled"
+    payload["admin_proxy_trust"] = {
+        "configured": admin_proxy_trust_configured(settings),
+    }
     if not settings.database_configured:
         return payload
     try:

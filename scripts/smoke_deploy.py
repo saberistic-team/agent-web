@@ -40,20 +40,22 @@ def main(argv: list[str] | None = None) -> int:
             print(f"FAIL {url}: got {payload!r}, expected {key}={expected!r}", file=sys.stderr)
             return 1
         print(f"PASS {url} → {payload}")
-        if path == "/health":
-            trust = payload.get("admin_client_source_trust")
-            if not isinstance(trust, dict):
-                print(
-                    f"FAIL {url}: missing admin_client_source_trust verification metadata",
-                    file=sys.stderr,
-                )
-                return 1
-            if trust.get("resolution_model") != "verified_hop":
-                print(
-                    f"FAIL {url}: unexpected admin_client_source_trust model: {trust!r}",
-                    file=sys.stderr,
-                )
-                return 1
+
+    health_url = f"{base}/health"
+    try:
+        health_payload = get_json(health_url)
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        print(f"FAIL {health_url}: {exc}", file=sys.stderr)
+        return 1
+    proxy_trust = health_payload.get("admin_proxy_trust")
+    if not isinstance(proxy_trust, dict) or proxy_trust.get("configured") is not True:
+        print(
+            f"FAIL {health_url}: admin_proxy_trust.configured must be true in production, "
+            f"got {proxy_trust!r}",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"PASS {health_url} → admin_proxy_trust configured")
     return 0
 
 
