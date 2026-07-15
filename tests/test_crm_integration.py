@@ -112,10 +112,11 @@ def test_apply_migrations_records_schema_versions() -> None:
         "009",
         "010",
         "011",
+        "012",
     ]
     insert_calls = [
         call
         for call in cur.execute.call_args_list
         if "schema_migrations" in str(call.args[0]) and "INSERT" in str(call.args[0])
     ]
-    assert len(insert_calls) == 11
+    assert len(insert_calls) == 12

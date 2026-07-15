@@ -74,14 +74,49 @@ class ContactRepository(Protocol):
         self,
         conn: psycopg.Connection,
         *,
-        email: str,
-        full_name: str | None = None,
+        full_name: str,
+        email: str | None = None,
+        title: str | None = None,
+        profile_url: str | None = None,
+        email_permission: str | None = None,
         company_id: UUID | None = None,
+        last_interaction_at: date | None = None,
+        relationship_strength: str | None = None,
+        notes: str | None = None,
+        buying_roles: list[str] | None = None,
     ) -> dict[str, Any]: ...
 
     def get_by_id(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None: ...
 
     def get_by_email(self, conn: psycopg.Connection, email: str) -> dict[str, Any] | None: ...
+
+    def find_by_profile_url(
+        self,
+        conn: psycopg.Connection,
+        profile_url: str,
+        *,
+        exclude_contact_id: UUID | None = None,
+    ) -> list[dict[str, Any]]: ...
+
+    def find_by_name_company(
+        self,
+        conn: psycopg.Connection,
+        *,
+        full_name: str,
+        company_id: UUID,
+        exclude_contact_id: UUID | None = None,
+    ) -> list[dict[str, Any]]: ...
+
+    def list_all(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int = 100,
+        query: str | None = None,
+        company_id: UUID | None = None,
+        buying_role: str | None = None,
+        include_archived: bool = False,
+    ) -> list[dict[str, Any]]: ...
 
     def list_for_company(
         self,
@@ -89,7 +124,29 @@ class ContactRepository(Protocol):
         company_id: UUID,
         *,
         limit: int = 100,
+        include_archived: bool = False,
     ) -> list[dict[str, Any]]: ...
+
+    def update(
+        self,
+        conn: psycopg.Connection,
+        contact_id: UUID,
+        *,
+        full_name: str | None = None,
+        email: str | None = None,
+        title: str | None = None,
+        profile_url: str | None = None,
+        email_permission: str | None = None,
+        company_id: UUID | None = None,
+        last_interaction_at: date | None = None,
+        relationship_strength: str | None = None,
+        notes: str | None = None,
+        buying_roles: list[str] | None = None,
+    ) -> dict[str, Any] | None: ...
+
+    def archive(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None: ...
+
+    def restore(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None: ...
 
 
 class SourceRecordRepository(Protocol):

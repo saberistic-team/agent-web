@@ -1,4 +1,4 @@
-"""CRM repository package."""
+"""CRM repository exports."""
 
 from app.repositories.postgres import (
     PostgresAcquisitionDashboardRepository,
