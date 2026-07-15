@@ -261,7 +261,7 @@ def render_admin_company_research_page(
           </ul>
           <h2 class="admin-section-heading">Attach record</h2>
           {error_html}
-          <form class="admin-form research-form" method="post" action="/admin/companies/{company_id}/research">
+          <form class="admin-form admin-form--editor research-form" method="post" action="/admin/companies/{company_id}/research">
             {form_body}
           </form>
           <h2 class="admin-section-heading">Records</h2>
@@ -354,7 +354,7 @@ def render_admin_contact_research_page(
           </form>
           <h2 class="admin-section-heading">Attach record</h2>
           {error_html}
-          <form class="admin-form research-form" method="post" action="/admin/contacts/{contact_id}/research">
+          <form class="admin-form admin-form--editor research-form" method="post" action="/admin/contacts/{contact_id}/research">
             {form_body}
           </form>
           <h2 class="admin-section-heading">Records</h2>
