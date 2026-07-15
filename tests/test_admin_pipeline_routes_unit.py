@@ -23,7 +23,7 @@ client = TestClient(app, follow_redirects=False)
 TEST_USERNAME = "operator"
 TEST_HASH = PasswordHasher().hash("correct-horse-battery-staple")
 TEST_SECRET = "test-session-secret-32chars-minimum"
-TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!"
+TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!!"
 COMPANY_ID = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 
 _session_store: dict[str, dict[str, Any]] = {}

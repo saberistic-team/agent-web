@@ -18,6 +18,20 @@ from app.migrations.runner import apply_migrations
 
 _REQUIRED = (os.environ.get("REQUIRE_TEST_DATABASE") or "").strip() in {"1", "true", "yes"}
 _DATABASE_URL = (os.environ.get("TEST_DATABASE_URL") or "").strip()
+_TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!!"
+
+
+@pytest.fixture(autouse=True)
+def integration_limiter_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", _TEST_LIMITER_SECRET)
+    monkeypatch.delenv("ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS", raising=False)
+    monkeypatch.setenv("ADMIN_USERNAME", "operator")
+    monkeypatch.setenv(
+        "ADMIN_PASSWORD_HASH",
+        "$argon2id$v=19$m=65536,t=3,p=4$aaaaaaaaaaaaaaaaaaaaaa$bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    )
+    monkeypatch.setenv("ADMIN_SESSION_SECRET", "test-session-secret-32chars-minimum")
+    monkeypatch.setenv("BASE_URL", "http://testserver")
 
 
 def _require_database_url() -> str:
@@ -26,11 +40,6 @@ def _require_database_url() -> str:
     if _REQUIRED:
         pytest.fail("REQUIRE_TEST_DATABASE=1 but TEST_DATABASE_URL is unset")
     pytest.skip("TEST_DATABASE_URL not set; skipping live Postgres login limiter tests")
-
-
-@pytest.fixture(autouse=True)
-def limiter_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "test-limiter-secret-32chars-minimum")
 
 
 @pytest.fixture(scope="module")
@@ -173,9 +182,7 @@ def test_account_bucket_limits_configured_admin_across_sources(
     now = datetime(2026, 3, 1, 8, 0, tzinfo=timezone.utc)
 
     for index in range(5):
-        source_key = admin_auth.build_source_rate_limit_key(
-            f"203.0.113.{index + 1}", settings
-        )
+        source_key = admin_auth.build_source_rate_limit_key(f"203.0.113.{index + 1}", settings)
         admission = _admit(
             pg_conn,
             keys=(source_key, account_key),

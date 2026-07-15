@@ -53,6 +53,21 @@ both commit or roll back together.
 | Logout (authenticated) | `admin_routes.admin_logout` | Revocation + required audit atomically when the session row transitions to revoked |
 | Login failure | `admin_routes` | Best-effort audit (`required=False`); actor is always `anonymous` |
 
+Unauthenticated login failures (`auth.login.failure`) always record `actor =
+anonymous`. Submitted username candidates, client source addresses, and limiter
+digest inputs are never stored in audit rows, metadata, or failure reasons. Only
+server-defined reason codes (`invalid_credentials`, `invalid_csrf`, `rate_limited`)
+are persisted.
+
+### Historical login-failure actors
+
+Rows written before keyed limiter identifiers and anonymous failure actors shipped
+([#242](https://github.com/saberistic-team/agent-web/issues/242)) may contain
+attacker-supplied strings in the `actor` column for `auth.login.failure` events.
+Those rows remain append-only; this forward fix prevents new occurrences. Remediating
+historical immutable rows requires an explicit data-governance decision outside
+normal application code.
+
 `record_event(..., required=True)` propagates persistence errors. Security-sensitive
 mutations must not return success when a required audit event could not be stored.
 
@@ -106,7 +121,7 @@ or rolled-back logins never emit a new session cookie.
 | Action | When recorded |
 |--------|----------------|
 | `auth.login.success` | Valid admin login creates a server-side session |
-| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting (actor always `anonymous`) |
+| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting |
 | `auth.logout` | Authenticated session revocation (live session → revoked) |
 | `import.batch` | Data import batches via `CrmService.commit_linkedin_import` / `import_batch` |
 | `import.batch.rollback` | Rollback of committed import batches via `CrmService.rollback_import_batch` |
@@ -117,19 +132,6 @@ or rolled-back logins never emit a new session cookie.
 | `export.request` | Export requests via `CrmService.request_export` |
 
 Auth events are wired in `app/admin_routes.py`. Other mutations record audit events through `CrmService` methods that future admin UI routes will call.
-
-### Login failure actor policy
-
-Unauthenticated login failures (`auth.login.failure`) always persist
-`actor = anonymous`. Submitted username candidates must not appear in the actor
-column, metadata, reason text, or correlation identifiers. This prevents
-attacker-supplied strings from becoming permanent security-ledger identities.
-
-**Historical note:** Deployments that recorded login failures before issue #242
-may have attacker-supplied values in the `actor` column for some
-`auth.login.failure` rows. Those rows remain append-only; remediation requires an
-explicit data-governance decision (for example, archival annotation or offline
-reporting filters). The forward fix prevents all new occurrences.
 
 ## Admin UI
 
