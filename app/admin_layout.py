@@ -93,12 +93,12 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
-    "/admin/companies/12121212-1212-1212-1212-121212121212",
-    "/admin/companies/23232323-2323-2323-2323-232323232323",
-    "/admin/contacts/34343434-3434-3434-3434-343434343434",
-    "/admin/contacts/45454545-4545-4545-4545-454545454545",
-    "/admin/contacts/34343434-3434-3434-3434-343434343434/edit",
-    "/admin/contacts/45454545-4545-4545-4545-454545454545/edit",
+    "/admin/companies/10101010-1010-1010-1010-101010101010",
+    "/admin/companies/20202020-2020-2020-2020-202020202020",
+    "/admin/contacts/30303030-3030-3030-3030-303030303030",
+    "/admin/contacts/40404040-4040-4040-4040-404040404040",
+    "/admin/contacts/30303030-3030-3030-3030-303030303030/edit",
+    "/admin/contacts/40404040-4040-4040-4040-404040404040/edit",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
@@ -109,15 +109,17 @@ ADMIN_SCREENSHOT_EXPECTED_STATUS: dict[str, int] = {
 }
 
 
-def render_admin_archive_action_button(*, label: str, archived: bool) -> str:
-    """Return a themed archive/restore submit button (not link-like ``.admin-exit``)."""
-    modifier = (
-        "admin-action-btn--secondary" if archived else "admin-action-btn--destructive"
-    )
-    return (
-        f'<button class="admin-action-btn {modifier}" type="submit">'
-        f"{html.escape(label)}</button>"
-    )
+def archive_restore_button_class(*, archived: bool) -> str:
+    """Return semantic classes for Archive (destructive) or Restore (secondary) actions."""
+    if archived:
+        return "admin-action-btn admin-action-btn--restore"
+    return "admin-action-btn admin-action-btn--destructive"
+
+
+def render_archive_restore_button(*, label: str, archived: bool) -> str:
+    """Return a themed submit button for archive/restore form actions."""
+    classes = archive_restore_button_class(archived=archived)
+    return f'<button class="{classes}" type="submit">{html.escape(label)}</button>'
 
 
 def _active_nav_label(active_path: str) -> str:

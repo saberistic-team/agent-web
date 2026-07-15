@@ -704,15 +704,23 @@ def admin_company_research(
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
-        from app.admin_preview import preview_company_detail, preview_research_record
+        from app.admin_preview import (
+            PREVIEW_COMPANY_ARCHIVE_DETAIL_ID,
+            PREVIEW_COMPANY_RESTORE_DETAIL_ID,
+            preview_company_research_detail,
+        )
 
-        preview_company = preview_company_detail(company_id)
-        if preview_company is not None:
+        if company_id in (PREVIEW_COMPANY_ARCHIVE_DETAIL_ID, PREVIEW_COMPANY_RESTORE_DETAIL_ID):
+            archived = company_id == PREVIEW_COMPANY_RESTORE_DETAIL_ID
+            preview = preview_company_research_detail(
+                company_id=company_id,
+                archived=archived,
+            )
             return HTMLResponse(
                 admin_research_pages.render_admin_company_research_page(
-                    company=preview_company,
-                    contacts=[],
-                    records=[preview_research_record()],
+                    company=preview["company"],  # type: ignore[arg-type]
+                    contacts=preview["contacts"],  # type: ignore[arg-type]
+                    records=preview["records"],  # type: ignore[arg-type]
                     csrf_token=csrf_token,
                     admin_username=session.admin_username,
                     error_message=error,
@@ -994,17 +1002,21 @@ def admin_contact_edit(
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
-        from app.admin_preview import preview_companies_for_forms, preview_contact_detail
+        from app.admin_preview import (
+            PREVIEW_CONTACT_ARCHIVE_DETAIL_ID,
+            PREVIEW_CONTACT_RESTORE_DETAIL_ID,
+            preview_contact_edit_detail,
+        )
 
-        preview = preview_contact_detail(contact_id)
-        if preview is not None:
-            contact, _company = preview
+        if contact_id in (PREVIEW_CONTACT_ARCHIVE_DETAIL_ID, PREVIEW_CONTACT_RESTORE_DETAIL_ID):
+            archived = contact_id == PREVIEW_CONTACT_RESTORE_DETAIL_ID
+            preview = preview_contact_edit_detail(contact_id=contact_id, archived=archived)
             return HTMLResponse(
                 contact_pages.render_contact_form_page(
                     csrf_token=csrf_token,
                     admin_username=session.admin_username,
-                    companies=preview_companies_for_forms(),
-                    contact=contact,
+                    companies=preview["companies"],  # type: ignore[arg-type]
+                    contact=preview["contact"],  # type: ignore[arg-type]
                     error_message=error or warning,
                 )
             )
@@ -1157,16 +1169,23 @@ def admin_contact_research(
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
-        from app.admin_preview import preview_contact_detail, preview_research_record
+        from app.admin_preview import (
+            PREVIEW_CONTACT_ARCHIVE_DETAIL_ID,
+            PREVIEW_CONTACT_RESTORE_DETAIL_ID,
+            preview_contact_research_detail,
+        )
 
-        preview = preview_contact_detail(contact_id)
-        if preview is not None:
-            contact, company = preview
+        if contact_id in (PREVIEW_CONTACT_ARCHIVE_DETAIL_ID, PREVIEW_CONTACT_RESTORE_DETAIL_ID):
+            archived = contact_id == PREVIEW_CONTACT_RESTORE_DETAIL_ID
+            preview = preview_contact_research_detail(
+                contact_id=contact_id,
+                archived=archived,
+            )
             return HTMLResponse(
                 admin_research_pages.render_admin_contact_research_page(
-                    contact=contact,
-                    company=company,
-                    records=[preview_research_record()],
+                    contact=preview["contact"],  # type: ignore[arg-type]
+                    company=preview["company"],  # type: ignore[arg-type]
+                    records=preview["records"],  # type: ignore[arg-type]
                     csrf_token=csrf_token,
                     admin_username=session.admin_username,
                     error_message=error,
