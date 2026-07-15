@@ -161,7 +161,8 @@ jobs:
               for label in status:new status:in-progress status:blocked status:needs-review status:done status:failed agent:builder agent:docs agent:reviewer agent:planner; do
                 gh issue edit "${ISSUE}" --repo "${{ github.repository }}" --remove-label "${label}" 2>/dev/null || true
               done
-              # Re-enter priority queue; dispatcher applies agent:builder when free.
+              # Re-enter priority queue; dispatcher applies agent:builder or
+              # agent:docs from type:* when free.
               gh issue edit "${ISSUE}" \
                 --repo "${{ github.repository }}" \
                 --add-label "review:changes-requested" \
@@ -174,7 +175,7 @@ jobs:
               gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
           ### reviewer_labels
           - decision: \`changes-requested\` (from GitHub PR review API + Cursor/OpenAI/Models)
-          - next: \`status:queued\` (dispatcher will apply \`agent:builder\` by priority)
+          - next: \`status:queued\` (dispatcher will apply \`agent:builder\` or \`agent:docs\` from \`type:*\` by priority)
           - pr_labels: mirrored \`review:changes-requested\`
           EOF
           )"

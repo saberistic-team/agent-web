@@ -23,7 +23,8 @@ _FIXABLE_RE = re.compile(
     r"overflow|clipped|pytest|test_|"
     r"admin preview empty data|empty shell|mock rows|ADMIN_PREVIEW|"
     r"admin desktop nav invisible|admin-nav-desktop|admin-nav-link|"
-    r"merge conflict|mergeable|mergeability|return to Builder",
+    r"merge conflict|mergeable|mergeability|return to Builder|"
+    r"return to Docs|agent-updates stub|docs PR|type:docs PR",
     re.I,
 )
 _TERMINAL_RE = re.compile(r"terminal:\s*true|worklog-only", re.I)

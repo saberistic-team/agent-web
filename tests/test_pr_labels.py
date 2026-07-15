@@ -46,7 +46,15 @@ def test_desired_pr_labels_review_override() -> None:
 
 
 @pytest.mark.unit
-def test_desired_pr_labels_docs_skips_review_by_default() -> None:
+def test_desired_pr_labels_docs_gets_needs_review_by_default() -> None:
+    assert desired_pr_labels(
+        {"type:docs", "priority:normal"},
+        default_review="review:needs-review",
+    ) == ["type:docs", "priority:normal", "review:needs-review"]
+
+
+@pytest.mark.unit
+def test_desired_pr_labels_omits_review_when_default_none() -> None:
     assert desired_pr_labels(
         {"type:docs", "priority:normal"},
         default_review=None,

@@ -355,13 +355,16 @@ def linked_pr_conflict_status(repo: str, issue: int) -> dict[str, Any]:
     }
 
 
-def format_merge_conflict_hard_fail(status: dict[str, Any]) -> str:
+def format_merge_conflict_hard_fail(
+    status: dict[str, Any], *, implementer: str = "Builder"
+) -> str:
     """Reviewer hard-fail line for a conflicted linked PR."""
+    who = implementer if implementer in {"Builder", "Docs"} else "Builder"
     return (
         "PR has merge conflicts with base "
         f"(mergeable=`{status.get('mergeable')}`, "
         f"mergeable_state=`{status.get('mergeable_state')}`) — "
-        "return to Builder to resolve on the same PR head"
+        f"return to {who} to resolve on the same PR head"
     )
 
 
