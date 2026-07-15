@@ -15,21 +15,6 @@ def get_json(url: str) -> dict:
         return json.loads(resp.read().decode())
 
 
-def verify_admin_login_source_trust(health_payload: dict, base_url: str) -> bool:
-    """Return True when production health reports an active proxy trust boundary."""
-    if not isinstance(health_payload, dict) or health_payload.get("status") != "ok":
-        return False
-
-    origin = base_url.rstrip("/")
-    if not (origin.endswith("saberistic.com") or "onrender.com" in origin):
-        return True
-
-    trust = health_payload.get("admin_proxy_trust")
-    if not isinstance(trust, dict):
-        return False
-    return bool(trust.get("enabled")) and int(trust.get("trusted_proxy_entry_count", 0)) > 0
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -56,21 +41,19 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(f"PASS {url} → {payload}")
 
-    health_url = f"{base}/health"
-    try:
-        health_payload = get_json(health_url)
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-        print(f"FAIL {health_url}: {exc}", file=sys.stderr)
-        return 1
-
-    if not verify_admin_login_source_trust(health_payload, base):
-        print(
-            f"FAIL {health_url}: expected admin_proxy_trust enabled with trusted proxies",
-            file=sys.stderr,
-        )
-        return 1
-    if base.endswith("saberistic.com") or "onrender.com" in base:
-        print(f"PASS {health_url} → admin_proxy_trust boundary active")
+    if base.rstrip("/").endswith("saberistic.com"):
+        try:
+            health = get_json(f"{base}/health")
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            print(f"FAIL {base}/health proxy trust: {exc}", file=sys.stderr)
+            return 1
+        if health.get("admin_proxy_trust") != "configured":
+            print(
+                f"FAIL {base}/health: expected admin_proxy_trust='configured', got {health!r}",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"PASS {base}/health → admin_proxy_trust configured")
     return 0
 
 
