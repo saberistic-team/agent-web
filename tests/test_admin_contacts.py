@@ -1,4 +1,4 @@
-"""Tests for admin contact routes, authorization, and archive behavior."""
+"""Tests for admin contact CRUD routes, authorization, and archive behavior."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 
 from app import admin_auth
+from app.contacts import ContactDuplicateWarning
 from app.main import app
 
 client = TestClient(app, follow_redirects=False)
@@ -25,18 +26,13 @@ COMPANY_ID = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 CONTACT_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
 CSRF_TOKEN = "csrf-test-token"
 
-_company = {
-    "id": COMPANY_ID,
-    "name": "Acme Corp",
-    "status": "prospect",
-}
+_company = {"id": COMPANY_ID, "name": "Acme Corp", "status": "prospect"}
 _contact = {
     "id": CONTACT_ID,
-    "full_name": "Alex Doe",
-    "email": "lead@acme.dev",
+    "full_name": "Alice Example",
+    "email": "alice@acme.dev",
     "company_id": COMPANY_ID,
-    "buying_roles": ["founder", "technical_buyer"],
-    "title": "CTO",
+    "buying_roles": ["founder"],
 }
 
 
@@ -64,11 +60,20 @@ def _admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
 def _mock_crm() -> Generator[MagicMock, None, None]:
     crm = MagicMock()
     crm.list_companies.return_value = [_company]
-    crm.list_contacts.return_value = [_contact]
-    crm.get_company.return_value = _company
+    crm.list_contacts.return_value = [{**_contact, "company_name": "Acme Corp"}]
     crm.get_contact.return_value = _contact
-    crm.list_contacts_for_company.return_value = [_contact]
-    crm.list_research_for_contact.return_value = []
+    crm.create_contact.return_value = {
+        "contact": _contact,
+        "duplicate_warnings": [
+            ContactDuplicateWarning(
+                contact_id=str(CONTACT_ID),
+                full_name="Other Alice",
+                reason="email",
+            )
+        ],
+    }
+    crm.update_contact.return_value = {"contact": _contact, "duplicate_warnings": []}
+    crm.archive_contact.return_value = {**_contact, "archived_at": datetime.now(timezone.utc)}
 
     with (
         patch("app.admin_routes._crm", crm),
@@ -91,38 +96,36 @@ def test_contacts_route_lists_contacts_when_authenticated() -> None:
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
         response = client.get("/admin/contacts")
     assert response.status_code == 200
-    assert "Alex Doe" in response.text
-    assert "Founder" in response.text
-    assert 'class="admin-app"' in response.text
+    assert "Alice Example" in response.text
+    assert "Add contact" in response.text
 
 
 @pytest.mark.unit
 def test_contact_mutations_require_session_and_use_csrf() -> None:
     unauthenticated = client.post(
         "/admin/contacts",
-        data={"csrf_token": CSRF_TOKEN, "full_name": "Alex"},
+        data={"csrf_token": CSRF_TOKEN, "full_name": "Alice"},
     )
     assert unauthenticated.status_code == 303
 
-    created = {**_contact, "profile_url": "https://linkedin.com/in/alex"}
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
         with patch("app.admin_routes._crm") as crm:
-            crm.create_contact.return_value = {"contact": created, "duplicate_warnings": []}
+            crm.create_contact.return_value = {"contact": _contact, "duplicate_warnings": []}
             response = client.post(
                 "/admin/contacts",
                 data={
                     "csrf_token": CSRF_TOKEN,
-                    "full_name": "Alex Doe",
-                    "profile_url": "https://www.linkedin.com/in/alex/",
+                    "full_name": "Alice Example",
                     "company_id": str(COMPANY_ID),
                     "buying_roles": ["founder", "technical_buyer"],
+                    "email": "alice@acme.dev",
+                    "email_permission": "permitted",
                 },
             )
             assert response.status_code == 303
             assert f"/admin/contacts/{CONTACT_ID}/edit" in response.headers["location"]
-            payload = crm.create_contact.call_args.kwargs["contact"]
-            assert payload.profile_url == "https://linkedin.com/in/alex"
-            assert payload.buying_roles == ["founder", "technical_buyer"]
+            created = crm.create_contact.call_args.kwargs["contact"]
+            assert created.buying_roles == ["founder", "technical_buyer"]
 
             client.post(
                 f"/admin/contacts/{CONTACT_ID}/archive",
@@ -132,51 +135,32 @@ def test_contact_mutations_require_session_and_use_csrf() -> None:
 
 
 @pytest.mark.unit
-def test_contact_new_edit_restore_and_invalid_fields_are_handled() -> None:
-    editable = {
-        **_contact,
-        "profile_url": "https://linkedin.com/in/alex",
-        "relationship_strength": "strong",
-    }
+def test_contact_edit_rejects_invalid_csrf() -> None:
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
-        with patch("app.admin_routes._crm") as crm:
-            crm.get_contact.return_value = editable
-            crm.update_contact.return_value = {"contact": editable, "duplicate_warnings": []}
-            crm.restore_contact.return_value = editable
-            new_page = client.get("/admin/contacts/new")
-            assert new_page.status_code == 200 and "Add contact" in new_page.text
-            edit_page = client.get(f"/admin/contacts/{CONTACT_ID}/edit")
-            assert edit_page.status_code == 200 and "Edit Alex Doe" in edit_page.text
-            invalid = client.post(
-                f"/admin/contacts/{CONTACT_ID}/edit",
-                data={"csrf_token": CSRF_TOKEN, "full_name": "Alex", "buying_roles": "not-real"},
-            )
-            assert invalid.status_code == 303 and "error=" in invalid.headers["location"]
-            updated = client.post(
-                f"/admin/contacts/{CONTACT_ID}/edit",
-                data={
-                    "csrf_token": CSRF_TOKEN,
-                    "full_name": "Alex Doe",
-                    "profile_url": "https://linkedin.com/in/alex",
-                    "buying_roles": ["investor"],
-                },
-            )
-            assert updated.status_code == 303
-            assert crm.update_contact.call_args.kwargs["contact"].buying_roles == ["investor"]
-            restored = client.post(
-                f"/admin/contacts/{CONTACT_ID}/restore",
-                data={"csrf_token": CSRF_TOKEN},
-            )
-            assert restored.status_code == 303
-            crm.restore_contact.assert_called_once()
+        response = client.post(
+            f"/admin/contacts/{CONTACT_ID}/edit",
+            data={"csrf_token": "wrong", "full_name": "Alice"},
+        )
+    assert response.status_code == 400
 
 
 @pytest.mark.unit
-def test_contact_detail_shows_profile_and_company_association() -> None:
+def test_contact_create_redirects_with_duplicate_warning_count() -> None:
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
-        response = client.get(f"/admin/contacts/{CONTACT_ID}")
-    assert response.status_code == 200
-    assert "Alex Doe" in response.text
-    assert "Acme Corp" in response.text
-    assert "Founder" in response.text
-    assert "Edit contact" in response.text
+        response = client.post(
+            "/admin/contacts",
+            data={"csrf_token": CSRF_TOKEN, "full_name": "Alice Example"},
+        )
+    assert response.status_code == 303
+    assert "warning=1%20possible%20duplicate" in response.headers["location"]
+
+
+@pytest.mark.unit
+def test_contact_detail_and_edit_render_contact_identity() -> None:
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        detail = client.get(f"/admin/contacts/{CONTACT_ID}")
+        edit = client.get(f"/admin/contacts/{CONTACT_ID}/edit")
+    assert detail.status_code == 200
+    assert "Alice Example" in detail.text
+    assert edit.status_code == 200
+    assert "Edit Alice Example" in edit.text

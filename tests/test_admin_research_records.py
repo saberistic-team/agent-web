@@ -32,8 +32,10 @@ _company = {
 }
 _contact = {
     "id": CONTACT_ID,
+    "full_name": "Alice Example",
     "email": "lead@acme.dev",
     "company_id": COMPANY_ID,
+    "buying_roles": ["founder"],
 }
 _records: list[dict[str, Any]] = []
 
@@ -70,9 +72,8 @@ def _mock_crm() -> Generator[MagicMock, None, None]:
     crm = MagicMock()
     crm.list_companies.return_value = [_company]
     crm.get_company.return_value = _company
-    crm.list_contacts_for_company_with_roles.return_value = [_contact]
+    crm.list_contacts_for_company.return_value = [_contact]
     crm.get_contact.return_value = _contact
-    crm.get_contact_with_roles.return_value = _contact
     crm.list_research_for_company.side_effect = lambda conn, company_id, **kw: list(_records)
     crm.list_research_for_contact.side_effect = lambda conn, contact_id, **kw: list(_records)
 
@@ -119,6 +120,73 @@ def test_companies_route_lists_companies_when_authenticated() -> None:
     assert response.status_code == 200
     assert "Acme Corp" in response.text
     assert 'class="admin-app"' in response.text
+
+
+@pytest.mark.unit
+def test_company_record_mutations_require_session_and_use_csrf() -> None:
+    unauthenticated = client.post("/admin/companies", data={"csrf_token": CSRF_TOKEN, "name": "Acme"})
+    assert unauthenticated.status_code == 303
+
+    created = {**_company, "domain": "acme.dev"}
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        with patch("app.admin_routes._crm") as crm:
+            crm.create_company.return_value = {"company": created, "duplicate_warnings": []}
+            response = client.post(
+                "/admin/companies",
+                data={
+                    "csrf_token": CSRF_TOKEN,
+                    "name": "Acme Corp",
+                    "domain": "https://www.acme.dev/team",
+                    "category": "fintech",
+                    "stage": "seed",
+                    "target_status": "target",
+                },
+            )
+            assert response.status_code == 303
+            assert f"/admin/companies/{COMPANY_ID}/edit" in response.headers["location"]
+            assert crm.create_company.call_args.kwargs["company"].domain == "acme.dev"
+
+            client.post(
+                f"/admin/companies/{COMPANY_ID}/archive",
+                data={"csrf_token": CSRF_TOKEN},
+            )
+            crm.archive_company.assert_called_once()
+
+
+@pytest.mark.unit
+def test_company_new_edit_restore_and_invalid_fields_are_handled() -> None:
+    editable = {
+        **_company,
+        "domain": "acme.dev",
+        "category": "fintech",
+        "stage": "seed",
+        "target_status": "target",
+    }
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        with patch("app.admin_routes._crm") as crm:
+            crm.get_company.return_value = editable
+            crm.update_company.return_value = {"company": editable, "duplicate_warnings": []}
+            crm.restore_company.return_value = editable
+            new_page = client.get("/admin/companies/new")
+            assert new_page.status_code == 200 and "Add company" in new_page.text
+            edit_page = client.get(f"/admin/companies/{COMPANY_ID}/edit")
+            assert edit_page.status_code == 200 and "Edit Acme Corp" in edit_page.text
+            invalid = client.post(
+                f"/admin/companies/{COMPANY_ID}/edit",
+                data={"csrf_token": CSRF_TOKEN, "name": "Acme", "category": "not-real"},
+            )
+            assert invalid.status_code == 303 and "error=" in invalid.headers["location"]
+            updated = client.post(
+                f"/admin/companies/{COMPANY_ID}/edit",
+                data={"csrf_token": CSRF_TOKEN, "name": "Acme", "domain": "www.acme.dev"},
+            )
+            assert updated.status_code == 303
+            assert crm.update_company.call_args.kwargs["company"].domain == "acme.dev"
+            restored = client.post(
+                f"/admin/companies/{COMPANY_ID}/restore", data={"csrf_token": CSRF_TOKEN}
+            )
+            assert restored.status_code == 303
+            crm.restore_company.assert_called_once()
 
 
 @pytest.mark.unit

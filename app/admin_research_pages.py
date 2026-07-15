@@ -7,7 +7,7 @@ from typing import Any
 
 from app.admin_layout import render_admin_shell
 from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES, TARGET_STATUSES
-from app.contacts import BUYING_ROLES, RELATIONSHIP_STRENGTHS, format_last_interaction
+from app.contacts import RELATIONSHIP_STRENGTHS, format_buying_roles
 from app.research_records import (
     RECORD_TYPE_LABELS,
     RESEARCH_RECORD_TYPES,
@@ -211,23 +211,31 @@ def render_admin_company_research_page(
         error_html = (
             f'<p class="form-error" role="alert">{html.escape(error_message)}</p>'
         )
-    contact_links = ""
+    contact_rows = ""
     for contact in contacts:
         contact_id = html.escape(str(contact["id"]), quote=True)
-        name = html.escape(str(contact.get("full_name") or contact.get("email") or contact["id"]))
-        title = html.escape(str(contact.get("title") or ""))
-        roles = ", ".join(
-            BUYING_ROLES.get(role, role) for role in (contact.get("buying_roles") or [])
+        display_name = html.escape(
+            str(contact.get("full_name") or contact.get("email") or contact["id"])
         )
-        roles_text = html.escape(roles) if roles else "—"
-        email = html.escape(str(contact.get("email") or "—"))
-        last_touch = html.escape(format_last_interaction(contact.get("last_interaction_at")))
-        contact_links += (
-            f'<li><a href="/admin/contacts/{contact_id}">{name}</a>'
-            f" — {title or 'No title'} · {roles_text} · {email} · Last: {last_touch}</li>"
+        title = html.escape(str(contact.get("title") or "—"))
+        roles = html.escape(format_buying_roles(contact.get("buying_roles")))
+        strength = html.escape(
+            str(
+                RELATIONSHIP_STRENGTHS.get(
+                    str(contact.get("relationship_strength")),
+                    contact.get("relationship_strength") or "—",
+                )
+            )
         )
-    if not contact_links:
-        contact_links = "<li>No contacts linked.</li>"
+        contact_rows += (
+            f"<tr><td><a href=\"/admin/contacts/{contact_id}\">{display_name}</a></td>"
+            f"<td>{title}</td><td>{roles}</td><td>{strength}</td></tr>"
+        )
+    if not contact_rows:
+        contact_rows = '<tr><td colspan="4">No contacts linked.</td></tr>'
+    contacts_table = f"""<div class="admin-table-wrap"><table class="admin-table">
+            <thead><tr><th>Name</th><th>Title</th><th>Roles</th><th>Relationship</th></tr></thead>
+            <tbody>{contact_rows}</tbody></table></div>"""
     contact_options = "\n".join(
         f'              <option value="{html.escape(str(contact["id"]), quote=True)}">'
         f'{html.escape(str(contact.get("full_name") or contact.get("email") or contact["id"]))}</option>'
@@ -254,8 +262,7 @@ def render_admin_company_research_page(
           </form>
           <h2 class="admin-section-heading">Contacts</h2>
           <p><a class="cta" href="/admin/contacts/new">Add contact</a></p>
-          <ul class="admin-list">{contact_links}
-          </ul>
+          {contacts_table}
           <h2 class="admin-section-heading">Attach record</h2>
           {error_html}
           <form class="admin-form research-form" method="post" action="/admin/companies/{company_id}/research">
@@ -296,31 +303,6 @@ def render_admin_contact_research_page(
             f'<p class="admin-lede">Company: '
             f'<a href="/admin/companies/{company_id}">{company_name}</a></p>'
         )
-    roles = ", ".join(
-        BUYING_ROLES.get(role, role) for role in (contact.get("buying_roles") or [])
-    )
-    profile_fields = (
-        ("Title", contact.get("title")),
-        ("Profile URL", contact.get("profile_url")),
-        ("Email", contact.get("email")),
-        ("Email permitted", "Yes" if contact.get("email_permitted") else "No"),
-        ("Email provenance", contact.get("email_provenance")),
-        ("Last interaction", format_last_interaction(contact.get("last_interaction_at"))),
-        (
-            "Relationship",
-            RELATIONSHIP_STRENGTHS.get(
-                str(contact.get("relationship_strength")),
-                contact.get("relationship_strength"),
-            ),
-        ),
-        ("Buying roles", roles or "—"),
-    )
-    facts_html = "".join(
-        f"<div><dt>{html.escape(label)}</dt><dd>{html.escape(str(value or '—'))}</dd></div>"
-        for label, value in profile_fields
-    )
-    archive_action = "restore" if contact.get("archived_at") else "archive"
-    archive_label = "Restore contact" if contact.get("archived_at") else "Archive contact"
     error_html = ""
     if error_message:
         error_html = (
@@ -333,16 +315,10 @@ def render_admin_contact_research_page(
         records_html = '<p class="admin-note">No research records yet.</p>'
     form_body = _research_form_body(csrf_token=csrf_token)
     main = f"""        <section class="admin-research" aria-labelledby="contact-research-title">
-          <p class="admin-breadcrumb"><a href="/admin/contacts">Contacts</a></p>
           <h1 class="admin-title" id="contact-research-title">{display_name}</h1>
           {company_link}
-          <p class="admin-lede">Research records for contact <code>{contact_id}</code>.</p>
           <p><a class="cta" href="/admin/contacts/{contact_id}/edit">Edit contact</a></p>
-          <dl class="research-provenance">{facts_html}</dl>
-          <form method="post" action="/admin/contacts/{contact_id}/{archive_action}">
-            <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}" />
-            <button class="admin-exit" type="submit">{archive_label}</button>
-          </form>
+          <p class="admin-lede">Research records for contact <code>{contact_id}</code>.</p>
           <h2 class="admin-section-heading">Attach record</h2>
           {error_html}
           <form class="admin-form research-form" method="post" action="/admin/contacts/{contact_id}/research">

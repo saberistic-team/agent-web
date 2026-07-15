@@ -73,7 +73,7 @@ UTM_CAMPAIGNS = ("spring-launch", "architecture-diagnostic", "inbound-q3", None)
 # Section path → short column labels for preview tables.
 _SECTION_COLUMNS: dict[str, tuple[str, ...]] = {
     "/admin/companies": ("Company", "Category", "Stage", "Target", "Verified"),
-    "/admin/contacts": ("Name", "Title", "Company", "Roles", "Email", "Last touch"),
+    "/admin/contacts": ("Name", "Title", "Company", "Email", "Roles", "Last touch"),
     "/admin/signals": ("Signal", "Company", "Score", "Source", "Seen"),
     "/admin/pipeline": ("Deal", "Company", "Stage", "Value", "Next step"),
     "/admin/imports": ("Job", "Rows", "Status", "Source", "Started"),
@@ -282,19 +282,13 @@ def build_preview_section_rows(
                 )
             )
         elif active_path == "/admin/contacts":
-            roles = ", ".join(
-                rng.sample(
-                    ("Founder", "Technical buyer", "Executive buyer", "Influencer"),
-                    k=rng.randint(1, 2),
-                )
-            )
             rows.append(
                 (
                     person,
                     rng.choice(("CTO", "VP Eng", "Founder", "Ops lead")),
                     company,
-                    roles,
                     _slug_email(first, last, company, rng),
+                    rng.choice(("Founder", "Technical buyer", "Executive buyer")),
                     stamp,
                 )
             )

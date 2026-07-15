@@ -66,6 +66,8 @@ def test_preview_section_rows_stable_with_seed() -> None:
     assert a == b
     assert 4 <= len(a) <= 8
     assert all(len(row) == 5 for row in a)
+    contacts = build_preview_section_rows("/admin/contacts", rng=random.Random(11))
+    assert all(len(row) == 6 for row in contacts)
 
 
 @pytest.mark.unit
@@ -80,20 +82,6 @@ def test_preview_section_main_html_includes_mock_table() -> None:
     assert "Companies" in html
     assert "admin-table" in html
     assert "Category" in html
-
-
-@pytest.mark.unit
-def test_preview_contacts_section_includes_roles_column() -> None:
-    rows = build_preview_section_rows("/admin/contacts", rng=random.Random(11))
-    assert all(len(row) == 6 for row in rows)
-    html = render_preview_section_main(
-        label="Contacts",
-        summary="People, roles, and outreach history",
-        active_path="/admin/contacts",
-        rng=random.Random(11),
-    )
-    assert "Roles" in html
-    assert rows[0][0] in html
 
 
 @pytest.mark.unit

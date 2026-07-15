@@ -73,20 +73,6 @@ def test_brief_migrations_remain_idempotent() -> None:
 
 
 @pytest.mark.unit
-def test_contact_records_migration_adds_fields_roles_and_partial_email_unique() -> None:
-    migration = next(m for m in MIGRATIONS if m.name == "contact_records")
-    sql = migration.up_sql
-    assert migration.version == "011"
-    assert "ALTER TABLE contacts ADD COLUMN IF NOT EXISTS title TEXT" in sql
-    assert "ALTER TABLE contacts ADD COLUMN IF NOT EXISTS profile_url TEXT" in sql
-    assert "ALTER TABLE contacts ALTER COLUMN email DROP NOT NULL" in sql
-    assert "idx_contacts_email_active_unique" in sql
-    assert "CREATE TABLE IF NOT EXISTS contact_buying_roles" in sql
-    assert "'technical_buyer'" in sql
-    assert "archived_at TIMESTAMPTZ" in sql
-
-
-@pytest.mark.unit
 def test_pending_migrations_skips_applied_versions() -> None:
     applied = {"001", "002"}
     pending = pending_migrations(applied_versions=applied)
@@ -351,6 +337,17 @@ def test_apply_migrations_raises_when_lock_times_out(monkeypatch: pytest.MonkeyP
 
     conn.rollback.assert_called_once()
     conn.commit.assert_not_called()
+
+@pytest.mark.unit
+def test_contact_records_migration_adds_roles_and_optional_email() -> None:
+    migration = next(m for m in MIGRATIONS if m.name == "contact_records")
+    assert migration.version == "011"
+    assert "ALTER TABLE contacts ALTER COLUMN email DROP NOT NULL" in migration.up_sql
+    assert "buying_roles JSONB" in migration.up_sql
+    assert "profile_url_normalized" in migration.up_sql
+    assert "archived_at TIMESTAMPTZ" in migration.up_sql
+    assert "idx_contacts_email_unique" in migration.up_sql
+
 
 @pytest.mark.unit
 def test_audit_events_migration_is_append_only() -> None:
