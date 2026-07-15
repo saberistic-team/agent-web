@@ -20,11 +20,8 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.admin_client_source import (
-    log_client_source_telemetry,
-    resolve_admin_login_client_source,
-)
 from app.config import Settings
+from app.proxy_trust import ClientSourceResolution, resolve_admin_login_client_source
 
 SESSION_COOKIE_NAME = "admin_session"
 LOGIN_FLOW_COOKIE_NAME = "admin_login_flow"
@@ -239,15 +236,31 @@ def read_login_flow_token(request: Request) -> str | None:
 
 
 def client_ip(request: Request, settings: Settings) -> str:
-    """Resolve the client source IP for admin login rate limiting.
+    """Resolve the client source IP for rate limiting.
 
-    Delegates to :func:`resolve_admin_login_client_source`, which only trusts
-    forwarding headers after verifying the immediate peer against
-    ``ADMIN_TRUSTED_PROXY_CIDRS`` and walking the documented hop order.
+    Forwarding headers are honored only when the immediate TCP peer matches
+    ``ADMIN_TRUSTED_PROXY_CIDRS`` and ``ADMIN_TRUST_PROXY_HEADERS`` is enabled.
+    The resolver walks ``X-Forwarded-For`` right-to-left through trusted hops;
+    spoofed leftmost values from untrusted peers are ignored.
+
+    Source identity notes:
+
+    * **IPv4 / IPv6** — stored only as keyed digests; normalized literals are
+      passed into the source bucket (e.g. ``203.0.113.1``, ``2001:db8::1``).
+    * **Missing peer** — falls back to ``unknown`` so attempts still share one
+      bucket instead of creating an unbounded namespace.
+    * **Trusted proxy** — production chain is Cloudflare -> Render LB -> Uvicorn
+      with application-level trusted-hop parsing (Uvicorn proxy rewrite disabled).
     """
-    resolution = resolve_admin_login_client_source(request, settings)
-    log_client_source_telemetry(resolution)
-    return resolution.source
+    return resolve_admin_login_client_source(request, settings).source
+
+
+def resolve_admin_login_client_source_for_telemetry(
+    request: Request,
+    settings: Settings,
+) -> ClientSourceResolution:
+    """Return resolved source plus a bounded resolution-path label for telemetry."""
+    return resolve_admin_login_client_source(request, settings)
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
@@ -371,7 +384,8 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    source = client_ip(request, settings)
+    source_resolution = resolve_admin_login_client_source_for_telemetry(request, settings)
+    source = source_resolution.source
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,
@@ -423,6 +437,7 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "lockout_transition": admission.lockout_transition,
+                "source_resolution_path": source_resolution.path.value,
             },
         )
     elif admission.already_locked:
