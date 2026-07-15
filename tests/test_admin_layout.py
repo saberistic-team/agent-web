@@ -13,7 +13,7 @@ from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 
 from app.admin_auth import SESSION_COOKIE_NAME
-from app.admin_layout import ADMIN_NAV_LINKS, render_admin_nav
+from app.admin_layout import ADMIN_NAV_LINKS, render_admin_nav, render_admin_shell
 from app.main import app
 
 client = TestClient(app, follow_redirects=False)
@@ -195,6 +195,117 @@ def test_admin_css_desktop_nav_list_visible_when_collapsed() -> None:
     # Desktop list must not live inside closed details (UA hide trap).
     assert "display: flex !important" not in desktop_block
     assert "details.admin-nav-toggle:not([open])" not in desktop_block
+
+
+@pytest.mark.unit
+def test_admin_shell_keeps_exit_actions_grouped_and_unshrinkable() -> None:
+    """Regression (#237): Public site / Sign out must never be clipped."""
+    body = render_admin_shell(
+        title="Dashboard",
+        main="<p>ok</p>",
+        active_path="/admin",
+        admin_username="operator",
+        csrf_token="token123",
+    )
+    assert 'class="admin-exit-group"' in body
+    assert 'class="admin-signout-form"' in body
+    exit_group = body.split('class="admin-exit-group"', 1)[1].split("</div>", 1)[0]
+    assert 'href="/">Public site</a>' in exit_group
+    assert 'class="admin-exit admin-signout" type="submit">Sign out</button>' in exit_group
+
+
+@pytest.mark.unit
+def test_admin_shell_long_username_is_never_truncated_from_dom() -> None:
+    """A long/unbroken username must stay in the DOM and be exposed via title=."""
+    long_username = "operator." + ("x" * 80) + "@example.com"
+    body = render_admin_shell(
+        title="Dashboard",
+        main="<p>ok</p>",
+        active_path="/admin",
+        admin_username=long_username,
+        csrf_token="",
+    )
+    assert long_username in body
+    assert f'title="{long_username}"' in body
+    # Exit actions must render regardless of identity length.
+    assert 'class="admin-exit-group"' in body
+    assert 'Public site</a>' in body
+    assert 'Sign out</button>' in body
+
+
+@pytest.mark.unit
+def test_admin_shell_escapes_username_in_title_attribute() -> None:
+    """title= must be attribute-escaped, not just text-escaped."""
+    body = render_admin_shell(
+        title="Dashboard",
+        main="<p>ok</p>",
+        active_path="/admin",
+        admin_username='weird"user<script>',
+        csrf_token="",
+    )
+    assert 'title="weird&quot;user&lt;script&gt;"' in body
+    assert "<script>" not in body
+
+
+@pytest.mark.unit
+def test_admin_css_exit_actions_never_shrink_or_wrap_away() -> None:
+    css = ADMIN_CSS.read_text(encoding="utf-8")
+    actions_block = css.split(".admin-top-actions {", 1)[1].split("}", 1)[0]
+    assert "flex-wrap: nowrap" in actions_block
+    assert "min-width: 0" in actions_block
+    exit_group_block = css.split(".admin-exit-group {", 1)[1].split("}", 1)[0]
+    assert "flex-shrink: 0" in exit_group_block
+    exit_block = css.split(".admin-exit {", 1)[1].split("}", 1)[0]
+    assert "flex-shrink: 0" in exit_block
+
+
+@pytest.mark.unit
+def test_admin_css_user_identity_has_shrink_and_wrap_strategy() -> None:
+    css = ADMIN_CSS.read_text(encoding="utf-8")
+    user_block = css.split(".admin-user {", 1)[1].split("}", 1)[0]
+    assert "min-width: 0" in user_block
+    assert "overflow-wrap: anywhere" in user_block
+    # Root cause fix must not depend on the ancestor overflow-x: clip to
+    # hide clipped controls — the header block itself must never overflow.
+    assert "overflow: hidden" not in user_block
+    assert "text-overflow: ellipsis" not in user_block
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_admin_dashboard_long_username_keeps_exit_actions_reachable() -> None:
+    """End-to-end: a real request with a long username still exposes exit actions."""
+    from app import admin_auth
+
+    long_username = "operator-" + ("a" * 60)
+    raw_token = admin_auth.generate_session_token()
+    token_hash = admin_auth.hash_session_token(raw_token)
+    row = {
+        "id": 1,
+        "token_hash": token_hash,
+        "admin_username": long_username,
+        "created_at": datetime.now(timezone.utc),
+        "expires_at": datetime.now(timezone.utc) + timedelta(hours=1),
+        "revoked_at": None,
+    }
+    with mock_db_connection():
+        with (
+            patch(
+                "app.admin_routes.db.get_admin_session_by_token_hash",
+                return_value=row,
+            ),
+            patch(
+                "app.admin_routes.load_acquisition_dashboard",
+                return_value=_empty_dashboard_for_layout(),
+            ),
+        ):
+            response = client.get("/admin", cookies={SESSION_COOKIE_NAME: raw_token})
+    assert response.status_code == 200
+    body = response.text
+    assert long_username in body
+    assert 'class="admin-exit-group"' in body
+    assert "Public site</a>" in body
+    assert "Sign out</button>" in body
 
 
 @pytest.mark.unit

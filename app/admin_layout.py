@@ -161,9 +161,13 @@ def render_admin_shell(
     nav = render_admin_nav(active_path)
     user_chip = ""
     if admin_username:
+        # title= exposes the untruncated value to hover/AT when the wrap
+        # strategy below still leaves the identity visually tight.
+        safe_username_attr = html.escape(admin_username, quote=True)
+        safe_username = html.escape(admin_username)
         user_chip = (
             f'<span class="admin-user">Signed in as '
-            f"<strong>{html.escape(admin_username)}</strong></span>"
+            f'<strong title="{safe_username_attr}">{safe_username}</strong></span>'
         )
     csrf_input = ""
     if csrf_token:
@@ -202,11 +206,13 @@ def render_admin_shell(
       </a>
       <div class="admin-top-actions">
         {user_chip}
-        <a class="admin-exit" href="/">Public site</a>
-        <form method="post" action="/admin/logout">
-          {csrf_input}
-          <button class="admin-exit admin-signout" type="submit">Sign out</button>
-        </form>
+        <div class="admin-exit-group">
+          <a class="admin-exit" href="/">Public site</a>
+          <form class="admin-signout-form" method="post" action="/admin/logout">
+            {csrf_input}
+            <button class="admin-exit admin-signout" type="submit">Sign out</button>
+          </form>
+        </div>
       </div>
     </header>
     <div class="admin-layout">
