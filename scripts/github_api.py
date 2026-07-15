@@ -6,11 +6,20 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any
+
+# Intentional PR↔issue links only. Bare ``#N`` in prose (e.g. “preview #109”
+# on a dependent PR) must NOT bind Builder to that head — learned from
+# milestone 4 thrash (#109 commits landing on PR #181 for #110).
+_CLOSES_ISSUE_RE = re.compile(
+    r"(?i)\b(?:closes|fixes|resolves)\s+#(\d+)\b"
+)
+_TITLE_ISSUE_RE = re.compile(r"\(#(\d+)\)")
 
 # Transient GitHub / network failures Builder (and other roles) hit during codegen.
 # Retry a few times with exponential backoff before escalating to @human-review.
@@ -41,6 +50,60 @@ def split_repo(repo: str) -> tuple[str, str]:
         raise GitHubError(f"repo must be owner/name, got {repo!r}")
     owner, name = repo.split("/", 1)
     return owner, name
+
+
+def pr_head_ref(pr: dict[str, Any]) -> str:
+    return str(((pr.get("head") or {}).get("ref") or "")).strip()
+
+
+def pr_links_issue(pr: dict[str, Any], issue: int) -> bool:
+    """True when the PR intentionally targets ``issue``.
+
+    Counts:
+    - head branch ``builder/{issue}-…`` (or exact ``builder/{issue}``)
+    - title marker ``(#issue)``
+    - ``Closes`` / ``Fixes`` / ``Resolves #issue`` in the body
+
+    Does **not** count casual ``#issue`` mentions in the body (those caused
+    Builder to push onto the wrong open PR when dependents referenced an
+    earlier issue number).
+    """
+    n = int(issue)
+    head = pr_head_ref(pr)
+    if head == f"builder/{n}" or head.startswith(f"builder/{n}-"):
+        return True
+    title = pr.get("title") or ""
+    if any(int(match) == n for match in _TITLE_ISSUE_RE.findall(title)):
+        return True
+    body = pr.get("body") or ""
+    if any(int(match) == n for match in _CLOSES_ISSUE_RE.findall(body)):
+        return True
+    return False
+
+
+def _linked_pr_rank(pr: dict[str, Any], issue: int) -> tuple[int, int]:
+    """Sort key: stronger intentional links first, then lower PR number."""
+    n = int(issue)
+    head = pr_head_ref(pr)
+    title = pr.get("title") or ""
+    body = pr.get("body") or ""
+    score = 0
+    if head == f"builder/{n}" or head.startswith(f"builder/{n}-"):
+        score += 100
+    if any(int(match) == n for match in _CLOSES_ISSUE_RE.findall(body)):
+        score += 50
+    if any(int(match) == n for match in _TITLE_ISSUE_RE.findall(title)):
+        score += 25
+    return (-score, int(pr.get("number") or 0))
+
+
+def linked_open_prs(repo: str, issue: int) -> list[dict[str, Any]]:
+    """Open PRs that intentionally link ``issue``, strongest binding first."""
+    owner, name = split_repo(repo)
+    prs = api("GET", f"/repos/{owner}/{name}/pulls?state=open&per_page=100") or []
+    matched = [pr for pr in prs if pr_links_issue(pr, issue)]
+    matched.sort(key=lambda pr: _linked_pr_rank(pr, issue))
+    return matched
 
 
 def _retry_delay_s(attempt: int, *, retry_after: str | None = None) -> float:

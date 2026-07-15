@@ -84,6 +84,18 @@ def test_resolve_builder_branch_falls_back_to_slug(monkeypatch) -> None:
     assert linked is None
 
 
+def test_resolve_builder_branch_ignores_casual_hash_mention(monkeypatch) -> None:
+    """Dependent PR body mentioning #109 must not steal Builder(#109) commits."""
+    monkeypatch.setattr("codegen_models.linked_open_prs", lambda repo, issue: [])
+    branch, linked = resolve_builder_branch(
+        "saberistic-team/agent-web",
+        109,
+        "Add safe browser-side LinkedIn export parsing and import preview",
+    )
+    assert branch.startswith("builder/109-")
+    assert linked is None
+    assert "110" not in branch
+
 def test_select_provider_prefers_cursor_when_key_set(monkeypatch) -> None:
     monkeypatch.setenv("CURSOR_API_KEY", "cursor_test")
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")

@@ -186,3 +186,76 @@ def test_put_files_rejects_unsafe_path(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(github_api, "api", fake_api)
     with pytest.raises(github_api.GitHubError, match="unsafe path"):
         github_api.put_files("o/n", "main", [("../etc/passwd", b"x")], "bad")
+
+
+def test_pr_links_issue_requires_intentional_markers() -> None:
+    own = {
+        "number": 180,
+        "title": "builder: LinkedIn ZIP preview (#109)",
+        "body": "Closes #109\n\nBrowser-local parse.",
+        "head": {"ref": "builder/109-add-safe-browser-side-linkedin-export-pa"},
+    }
+    dependent = {
+        "number": 181,
+        "title": "builder: Persist import batches (#110)",
+        "body": (
+            "Closes #110\n\n"
+            "Accepts normalized connections from browser preview #109"
+        ),
+        "head": {"ref": "builder/110-persist-idempotent-linkedin-import-batch"},
+    }
+    assert github_api.pr_links_issue(own, 109) is True
+    assert github_api.pr_links_issue(own, 110) is False
+    assert github_api.pr_links_issue(dependent, 110) is True
+    # Casual "#109" in dependent body must not bind issue 109 (milestone 4 thrash).
+    assert github_api.pr_links_issue(dependent, 109) is False
+
+
+def test_linked_open_prs_prefers_builder_branch_over_prose_mention(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    own = {
+        "number": 180,
+        "title": "builder: LinkedIn ZIP preview (#109)",
+        "body": "Closes #109",
+        "head": {"ref": "builder/109-add-safe-browser-side-linkedin-export-pa"},
+    }
+    dependent = {
+        "number": 181,
+        "title": "builder: Persist import batches (#110)",
+        "body": "Closes #110\n\nbuilds on preview #109",
+        "head": {"ref": "builder/110-persist-idempotent-linkedin-import-batch"},
+    }
+    # Newest-first like the GitHub pulls API — wrong code used to pick 181.
+    monkeypatch.setattr(
+        github_api,
+        "api",
+        lambda *_a, **_k: [dependent, own],
+    )
+    linked = github_api.linked_open_prs("saberistic-team/agent-web", 109)
+    assert [pr["number"] for pr in linked] == [180]
+    assert linked[0]["head"]["ref"].startswith("builder/109-")
+
+
+def test_linked_open_prs_ranks_builder_head_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    by_title = {
+        "number": 200,
+        "title": "builder: feature (#88)",
+        "body": "See notes",
+        "head": {"ref": "feature/odd-name"},
+    }
+    by_branch = {
+        "number": 199,
+        "title": "wip",
+        "body": "",
+        "head": {"ref": "builder/88-real-head"},
+    }
+    monkeypatch.setattr(
+        github_api,
+        "api",
+        lambda *_a, **_k: [by_title, by_branch],
+    )
+    linked = github_api.linked_open_prs("o/r", 88)
+    assert [pr["number"] for pr in linked] == [199, 200]

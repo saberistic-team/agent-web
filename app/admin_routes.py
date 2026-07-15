@@ -11,7 +11,7 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import ValidationError
 
-from app import admin, admin_auth, admin_companies as company_pages, admin_contacts as contact_pages, admin_dashboard_pages, admin_pages, admin_research_pages, audit_service, brief_service, db
+from app import admin, admin_auth, admin_companies as company_pages, admin_contacts as contact_pages, admin_dashboard_pages, admin_imports as import_pages, admin_pages, admin_research_pages, audit_service, brief_service, db
 from app.acquisition_dashboard import AcquisitionDashboardData, load_acquisition_dashboard
 from app.companies import (
     COMPANY_CATEGORIES,
@@ -1560,8 +1560,41 @@ def admin_audit_list(request: Request, page: int = 1) -> HTMLResponse:
     )
 
 
+@router.get("/imports", response_class=HTMLResponse)
+def admin_imports(request: Request) -> HTMLResponse:
+    session = require_admin_session(request)
+    settings = get_settings()
+    csrf_token = _session_csrf_for_forms(request, settings)
+    if settings.admin_preview_enabled:
+        from app.admin_preview import render_preview_imports_main
+
+        return HTMLResponse(
+            render_admin_shell(
+                title="Imports",
+                main=render_preview_imports_main(),
+                active_path="/admin/imports",
+                admin_username=session.admin_username,
+                csrf_token=csrf_token,
+            )
+        )
+    return HTMLResponse(
+        import_pages.render_imports_page(
+            admin_username=session.admin_username,
+            csrf_token=csrf_token,
+        )
+    )
+
+
 for _link in ADMIN_NAV_LINKS:
-    if _link["href"] in {"/admin", "/admin/audit", "/admin/briefs", "/admin/companies", "/admin/contacts", "/admin/pipeline"}:
+    if _link["href"] in {
+        "/admin",
+        "/admin/audit",
+        "/admin/briefs",
+        "/admin/companies",
+        "/admin/contacts",
+        "/admin/imports",
+        "/admin/pipeline",
+    }:
         continue
     _section = _link["href"].removeprefix("/admin/")
 

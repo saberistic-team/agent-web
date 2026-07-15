@@ -854,6 +854,124 @@ def build_preview_audit_events(
     return events
 
 
+@dataclass(frozen=True)
+class PreviewLinkedInImportData:
+    connection_count: int
+    message_thread_count: int
+    invitation_count: int
+    company_follow_count: int
+    duplicate_urls: tuple[str, ...]
+    ignored_samples: tuple[str, ...]
+    warnings: tuple[str, ...]
+
+
+def build_preview_linkedin_import_data(
+    *,
+    rng: random.Random | None = None,
+) -> PreviewLinkedInImportData:
+    """Randomized LinkedIn import preview stats for ADMIN_PREVIEW_MODE."""
+    rng = rng or _preview_rng()
+    return PreviewLinkedInImportData(
+        connection_count=rng.randint(120, 840),
+        message_thread_count=rng.randint(8, 64),
+        invitation_count=rng.randint(3, 40),
+        company_follow_count=rng.randint(5, 55),
+        duplicate_urls=tuple(
+            f"https://linkedin.com/in/{rng.choice(CONTACT_FIRST).lower()}-{rng.choice(CONTACT_LAST).lower()}"
+            for _ in range(rng.randint(1, 3))
+        ),
+        ignored_samples=(
+            "Logins.csv",
+            "PhoneNumbers.csv",
+            "Security_Challenges.csv",
+            "Ads Clicked.csv",
+        ),
+        warnings=(
+            "Connections.csv: 2 rows missing profile URL",
+            "messages.csv: 1 row without conversation id",
+        ),
+    )
+
+
+def render_preview_imports_main(
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> str:
+    """HTML main fragment for /admin/imports in preview mode (populated preview)."""
+    rng = rng or _preview_rng()
+    now = now or datetime.now(timezone.utc)
+    data = build_preview_linkedin_import_data(rng=rng)
+    generated = now.strftime("%Y-%m-%d %H:%M:%S UTC")
+    dup_rows = "".join(
+        f"<li>{html.escape(url)}</li>" for url in data.duplicate_urls
+    )
+    ignored_rows = "".join(
+        f"<li><code>{html.escape(name)}</code></li>" for name in data.ignored_samples
+    )
+    warning_rows = "".join(
+        f"<li>{html.escape(warning)}</li>" for warning in data.warnings
+    )
+    return f"""        <section class="admin-section linkedin-import" aria-labelledby="imports-title">
+          <p class="admin-preview-banner" role="status">Preview data — not production</p>
+          <div class="admin-section-head">
+            <div>
+              <p class="admin-eyebrow">Data import</p>
+              <h1 class="admin-title" id="imports-title">LinkedIn export preview</h1>
+            </div>
+          </div>
+          <p class="admin-lede">
+            Mock parsed export for screenshots
+            (<time datetime="{html.escape(generated)}">{html.escape(generated)}</time>).
+            Parsing runs locally; nothing is uploaded.
+          </p>
+          <div class="linkedin-import-privacy" role="note">
+            <h2 class="admin-section-title">Privacy &amp; retention</h2>
+            <dl class="linkedin-import-privacy-grid">
+              <div><dt>Processed locally</dt><dd><code>Connections.csv</code>, <code>messages.csv</code>, <code>Invitations.csv</code>, <code>Company Follows.csv</code></dd></div>
+              <div><dt>Ignored in archive</dt><dd>Logins, phones, security challenges, ads, receipts, and all other files</dd></div>
+              <div><dt>Transmitted</dt><dd>Nothing in this preview step</dd></div>
+              <div><dt>Retained</dt><dd>Nothing server-side until a future import-batch step</dd></div>
+            </dl>
+          </div>
+          <div class="linkedin-import-status linkedin-import-status--ok" role="status">Preview ready — nothing uploaded.</div>
+          <div class="linkedin-import-preview">
+            <h2 class="admin-section-title">Import preview</h2>
+            <dl class="admin-stat-row linkedin-import-stats">
+              <div><dt>Connections</dt><dd>{data.connection_count}</dd></div>
+              <div><dt>Message threads</dt><dd>{data.message_thread_count}</dd></div>
+              <div><dt>Invitations</dt><dd>{data.invitation_count}</dd></div>
+              <div><dt>Company follows</dt><dd>{data.company_follow_count}</dd></div>
+            </dl>
+            <h3 class="admin-section-title">Proposed changes (preview only)</h3>
+            <ul class="linkedin-import-proposed-list">
+              <li><strong>New connections:</strong> {data.connection_count}</li>
+              <li><strong>Message threads:</strong> {data.message_thread_count}</li>
+              <li><strong>Invitations:</strong> {data.invitation_count}</li>
+              <li><strong>Company follows:</strong> {data.company_follow_count}</li>
+            </ul>
+            <h3 class="admin-section-title">Validation warnings</h3>
+            <ul class="linkedin-import-warnings">{warning_rows}</ul>
+            <h3 class="admin-section-title">Duplicate profile URLs in export</h3>
+            <ul class="linkedin-import-duplicates">{dup_rows}</ul>
+            <h3 class="admin-section-title">Recognized files</h3>
+            <div class="admin-table-wrap">
+              <table class="admin-table">
+                <thead><tr><th>File</th><th>Rows</th><th>Valid</th><th>Skipped</th><th>Path in archive</th></tr></thead>
+                <tbody>
+                  <tr><td>connections.csv</td><td>{data.connection_count + 2}</td><td>{data.connection_count}</td><td>2</td><td>LinkedIn Export/Connections.csv</td></tr>
+                  <tr><td>messages.csv</td><td>{data.message_thread_count * 4}</td><td>{data.message_thread_count * 4 - 1}</td><td>1</td><td>LinkedIn Export/messages.csv</td></tr>
+                  <tr><td>Invitations.csv</td><td>{data.invitation_count}</td><td>{data.invitation_count}</td><td>0</td><td>LinkedIn Export/Invitations.csv</td></tr>
+                  <tr><td>company follows.csv</td><td>{data.company_follow_count}</td><td>{data.company_follow_count}</td><td>0</td><td>LinkedIn Export/Company Follows.csv</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <h3 class="admin-section-title">Ignored archive entries</h3>
+            <ul class="linkedin-import-ignored">{ignored_rows}</ul>
+          </div>
+        </section>"""
+
+
 def render_preview_section_main(
     *,
     label: str,

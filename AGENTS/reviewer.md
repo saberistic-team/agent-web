@@ -141,6 +141,12 @@ helpers while implementing an unrelated feature, request changes for
 **regression of landed CRM** — Builder must restore those surfaces on the same
 PR head, not “fix forward” by inventing replacements.
 
+**Anti-loop (false PR↔issue link via bare `#N`, learned from #109/#181):**
+If Builder commits for issue A appear on issue B’s PR because B’s body casually
+mentions `#A`, request changes citing the linking bug — permanent fix is
+intentional-only `linked_open_prs` (`Closes`/`(#N)`/`builder/{N}-`), not more
+codegen on the wrong head.
+
 **Anti-loop (screenshot filenames with `?`, learned from #182 / #183):**
 `screenshot_basename` must strip query strings (e.g.
 `/admin/briefs/4/convert?error=validation` → `…-convert.png`). Filenames
