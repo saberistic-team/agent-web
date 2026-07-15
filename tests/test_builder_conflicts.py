@@ -161,6 +161,9 @@ def test_linked_pr_conflict_status_dirty(monkeypatch) -> None:
     assert status["status"] == "dirty"
     assert status["pr"] == 80
     assert "return to Builder" in format_merge_conflict_hard_fail(status)
+    assert "return to Docs" in format_merge_conflict_hard_fail(
+        status, implementer="Docs"
+    )
 
 
 def test_merge_fetch_uses_explicit_refspec_for_single_branch_clone(monkeypatch) -> None:

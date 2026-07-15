@@ -76,7 +76,8 @@ without re-planning. The parent is then marked done by the workflow.
   exists. You only label issues.
 - Do not assign `agent:reviewer` as the first owner of new work; route to
   `builder` or `docs` via the dispatcher (keep `agent:planner` only while
-  still planning).
+  still planning). Both Builder and Docs hand off to Reviewer after their
+  PR is ready (`type:docs` uses the docs checklist, not screenshots/coverage).
 - Do not apply `status:queued` until the gate (`release-plan`) has passed
   (single-issue path). Children may be created already queued.
 - Prefer an existing human-set `priority:*` (including `priority:medium`);
