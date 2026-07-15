@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from functools import cached_property
 
 from app.proxy_trust import parse_trusted_proxy_networks
 
@@ -29,9 +30,7 @@ class Settings:
     admin_login_rate_limit: int = 5
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
-    admin_trust_proxy_headers: bool = False
     admin_trusted_proxy_cidrs: str = ""
-    admin_trusted_proxy_networks: tuple = field(default_factory=tuple)
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -46,6 +45,13 @@ class Settings:
     @property
     def email_configured(self) -> bool:
         return bool(self.resend_api_key)
+
+    @cached_property
+    def admin_trusted_proxy_networks(
+        self,
+    ) -> tuple:
+        """Parsed trusted proxy networks for admin login source resolution."""
+        return parse_trusted_proxy_networks(self.admin_trusted_proxy_cidrs)
 
     @property
     def admin_preview_mode(self) -> bool:
@@ -87,7 +93,6 @@ class Settings:
 
 
 def get_settings() -> Settings:
-    admin_trusted_proxy_cidrs = os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "").strip()
     return Settings(
         database_url=os.environ.get("DATABASE_URL", ""),
         stripe_secret_key=os.environ.get("STRIPE_SECRET_KEY", ""),
@@ -114,12 +119,7 @@ def get_settings() -> Settings:
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
         brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
-        admin_trust_proxy_headers=os.environ.get(
-            "ADMIN_TRUST_PROXY_HEADERS", ""
-        ).lower()
-        in ("1", "true", "yes"),
-        admin_trusted_proxy_cidrs=admin_trusted_proxy_cidrs,
-        admin_trusted_proxy_networks=parse_trusted_proxy_networks(
-            admin_trusted_proxy_cidrs
-        ),
+        admin_trusted_proxy_cidrs=os.environ.get(
+            "ADMIN_TRUSTED_PROXY_CIDRS", ""
+        ).strip(),
     )

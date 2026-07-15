@@ -50,7 +50,6 @@ def admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "5")
     monkeypatch.setenv("ADMIN_LOGIN_RATE_WINDOW_SECONDS", "900")
     monkeypatch.setenv("ADMIN_LOGIN_LOCKOUT_SECONDS", "900")
-    monkeypatch.delenv("ADMIN_TRUST_PROXY_HEADERS", raising=False)
     monkeypatch.delenv("ADMIN_TRUSTED_PROXY_CIDRS", raising=False)
     admin_auth.reset_login_rate_limiter()
     _login_flows.clear()

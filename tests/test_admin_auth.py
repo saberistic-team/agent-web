@@ -26,6 +26,20 @@ from app.main import app
 
 client = TestClient(app, follow_redirects=False)
 
+
+class _PeerOverrideMiddleware:
+    """Pin the immediate TCP peer for trusted-proxy integration tests."""
+
+    def __init__(self, inner_app: Any, peer_host: str) -> None:
+        self._inner_app = inner_app
+        self._peer_host = peer_host
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope.get("type") == "http":
+            scope = dict(scope)
+            scope["client"] = (self._peer_host, 12345)
+        await self._inner_app(scope, receive, send)
+
 TEST_USERNAME = "operator"
 TEST_PASSWORD = "correct-horse-battery-staple"
 TEST_HASH = PasswordHasher().hash(TEST_PASSWORD)
@@ -237,7 +251,7 @@ def admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "5")
     monkeypatch.setenv("ADMIN_LOGIN_RATE_WINDOW_SECONDS", "900")
     monkeypatch.setenv("ADMIN_LOGIN_LOCKOUT_SECONDS", "900")
-    monkeypatch.delenv("ADMIN_TRUST_PROXY_HEADERS", raising=False)
+    monkeypatch.delenv("ADMIN_TRUSTED_PROXY_CIDRS", raising=False)
     admin_auth.reset_login_rate_limiter()
     _login_flows.clear()
     _session_store.clear()
@@ -651,7 +665,7 @@ def test_build_rate_limit_key_hashes_username_and_source() -> None:
 def test_client_ip_ignores_forwarded_without_trusted_proxy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("ADMIN_TRUST_PROXY_HEADERS", raising=False)
+    monkeypatch.delenv("ADMIN_TRUSTED_PROXY_CIDRS", raising=False)
     settings = get_settings()
     request = _request_with_client("198.51.100.10")
     request.headers.__dict__["_list"].append((b"x-forwarded-for", b"203.0.113.99"))
@@ -659,17 +673,16 @@ def test_client_ip_ignores_forwarded_without_trusted_proxy(
 
 
 @pytest.mark.unit
-def test_client_ip_uses_forwarded_when_trusted_proxy_enabled(
+def test_client_ip_uses_rightmost_untrusted_xff_when_trusted_proxy_peer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_TRUST_PROXY_HEADERS", "true")
     monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
     settings = get_settings()
     request = _request_with_client("10.0.0.1")
     request.headers.__dict__["_list"].append(
-        (b"x-forwarded-for", b"203.0.113.50, 10.0.0.1")
+        (b"x-forwarded-for", b"203.0.113.50, 198.51.100.10")
     )
-    assert admin_auth.client_ip(request, settings) == "203.0.113.50"
+    assert admin_auth.client_ip(request, settings) == "198.51.100.10"
 
 
 @pytest.mark.unit
@@ -1019,41 +1032,37 @@ def test_rate_limit_uses_forwarded_ip_when_trusted(
     rate_limit_store: FakeRateLimitStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from tests.test_admin_proxy_trust import TRUSTED_RENDER_PEER, _login_with_peer
-
-    monkeypatch.setenv("ADMIN_TRUST_PROXY_HEADERS", "true")
     monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
-    with shared_rate_limiter(rate_limit_store):
-        headers = {
-            "CF-Connecting-IP": "203.0.113.77",
-            "X-Forwarded-For": "203.0.113.77, 10.0.0.1",
-        }
-        assert _login_with_peer(
-            TRUSTED_RENDER_PEER,
-            username="ghost",
-            headers=headers,
-        ).status_code == 401
-        assert _login_with_peer(
-            TRUSTED_RENDER_PEER,
-            username="ghost",
-            headers=headers,
-        ).status_code == 401
-        assert _login_with_peer(
-            TRUSTED_RENDER_PEER,
-            username="ghost",
-            headers=headers,
-        ).status_code == 429
+    proxy_client = TestClient(
+        _PeerOverrideMiddleware(app, "10.0.0.1"),
+        follow_redirects=False,
+    )
 
-        other_ip_headers = {
-            "CF-Connecting-IP": "203.0.113.88",
-            "X-Forwarded-For": "203.0.113.88, 10.0.0.1",
-        }
-        assert _login_with_peer(
-            TRUSTED_RENDER_PEER,
-            username="ghost",
-            headers=other_ip_headers,
-        ).status_code == 401
+    def _trusted_login(**kwargs: Any) -> Any:
+        headers = kwargs.pop("headers", None)
+        with mock_db_connection():
+            csrf_token, cookies = _parse_login_form(proxy_client.get("/admin/login"))
+            data = {
+                "username": kwargs.get("username", TEST_USERNAME),
+                "password": kwargs.get("password", TEST_PASSWORD),
+                "csrf_token": csrf_token,
+            }
+            return proxy_client.post(
+                "/admin/login",
+                data=data,
+                cookies=cookies,
+                headers=headers or {},
+            )
+
+    with shared_rate_limiter(rate_limit_store):
+        headers = {"X-Forwarded-For": "203.0.113.77"}
+        assert _trusted_login(username="ghost", password="wrong", headers=headers).status_code == 401
+        assert _trusted_login(username="ghost", password="wrong", headers=headers).status_code == 401
+        assert _trusted_login(username="ghost", password="wrong", headers=headers).status_code == 429
+
+        other_ip_headers = {"X-Forwarded-For": "203.0.113.88"}
+        assert _trusted_login(username="ghost", password="wrong", headers=other_ip_headers).status_code == 401
 
 
 @pytest.mark.unit
@@ -1062,7 +1071,7 @@ def test_rate_limit_ignores_spoofed_forwarded_without_trust(
     rate_limit_store: FakeRateLimitStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("ADMIN_TRUST_PROXY_HEADERS", raising=False)
+    monkeypatch.delenv("ADMIN_TRUSTED_PROXY_CIDRS", raising=False)
     with shared_rate_limiter(rate_limit_store):
         for i in range(5):
             forwarded = f"203.0.113.{i}"
@@ -1260,24 +1269,31 @@ def test_account_rate_limit_blocks_configured_username_across_sources(
     rate_limit_store: FakeRateLimitStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from tests.test_admin_proxy_trust import TRUSTED_RENDER_PEER, _login_with_peer
-
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
-    monkeypatch.setenv("ADMIN_TRUST_PROXY_HEADERS", "true")
     monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
-    with shared_rate_limiter(rate_limit_store):
-        for index in (1, 2, 3):
-            response = _login_with_peer(
-                TRUSTED_RENDER_PEER,
-                headers={
-                    "CF-Connecting-IP": f"203.0.113.{index}",
-                    "X-Forwarded-For": f"203.0.113.{index}, 10.0.0.1",
+    proxy_client = TestClient(
+        _PeerOverrideMiddleware(app, "10.0.0.1"),
+        follow_redirects=False,
+    )
+
+    def _trusted_login(headers: dict[str, str]) -> Any:
+        with mock_db_connection():
+            csrf_token, cookies = _parse_login_form(proxy_client.get("/admin/login"))
+            return proxy_client.post(
+                "/admin/login",
+                data={
+                    "username": TEST_USERNAME,
+                    "password": "wrong",
+                    "csrf_token": csrf_token,
                 },
+                cookies=cookies,
+                headers=headers,
             )
-            if index < 3:
-                assert response.status_code == 401
-            else:
-                blocked = response
+
+    with shared_rate_limiter(rate_limit_store):
+        assert _trusted_login({"X-Forwarded-For": "203.0.113.1"}).status_code == 401
+        assert _trusted_login({"X-Forwarded-For": "203.0.113.2"}).status_code == 401
+        blocked = _trusted_login({"X-Forwarded-For": "203.0.113.3"})
     assert blocked.status_code == 429
 
 
