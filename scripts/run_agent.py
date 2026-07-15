@@ -289,8 +289,8 @@ def handoff_builder_when_mergeable(repo: str, issue: int) -> None:
                     f"- smoke_error: `{smoke.get('smoke_error')}`\n"
                     f"- repairs: `{smoke.get('repairs')}`\n"
                     "- note: not handing off to Reviewer; re-entering "
-                    "`status:queued` until `from app.main import app` and "
-                    "`pytest --collect-only` succeed.\n"
+                    "`status:queued` until `from app.main import app`, "
+                    "`pytest --collect-only`, and full `pytest -q` succeed.\n"
                 ),
             )
             write_builder_handoff("waiting")
