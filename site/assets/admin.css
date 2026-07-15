@@ -68,73 +68,70 @@ body.admin-app {
   padding: 0;
 }
 
-/* Form action buttons (Archive / Restore) — distinct from top-bar .admin-exit links. */
-.admin-action-btn {
+/* Form action buttons — distinct from link-like .admin-exit top-bar controls. */
+.admin-action {
   display: inline-block;
   margin: 0;
+  padding: 0.5rem 0.85rem;
   font-family: inherit;
   font-size: 0.72rem;
+  font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  font-weight: 500;
-  padding: 0.5rem 0.85rem;
-  border-radius: 2px;
-  border: 1px solid var(--line);
-  background: color-mix(in srgb, var(--surface) 75%, transparent);
-  color: var(--ink);
+  text-decoration: none;
+  line-height: 1.2;
   cursor: pointer;
-  transition:
-    background 0.15s ease,
-    border-color 0.15s ease,
-    color 0.15s ease,
-    transform 0.15s ease;
-}
-
-.admin-action-btn:hover:not(:disabled) {
-  border-color: var(--muted);
-  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  border-radius: 2px;
+  border: 1px solid transparent;
+  background: transparent;
   color: var(--ink);
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease;
 }
 
-.admin-action-btn:focus-visible {
+.admin-action--secondary {
+  border-color: var(--line);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+}
+
+.admin-action--secondary:hover,
+.admin-action--secondary:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.admin-action-btn:active:not(:disabled) {
-  transform: translateY(1px);
+.admin-action--secondary:active:not(:disabled) {
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
 }
 
-.admin-action-btn:disabled {
+.admin-action--destructive {
+  border-color: color-mix(in srgb, #e05a5a 55%, var(--line));
+  color: #e88a6a;
+  background: color-mix(in srgb, #e05a5a 10%, transparent);
+}
+
+.admin-action--destructive:hover,
+.admin-action--destructive:focus-visible {
+  border-color: #e88a6a;
+  color: #ffb4b4;
+  background: color-mix(in srgb, #e05a5a 20%, transparent);
+  outline: 2px solid #e88a6a;
+  outline-offset: 2px;
+}
+
+.admin-action--destructive:active:not(:disabled) {
+  background: color-mix(in srgb, #e05a5a 28%, transparent);
+}
+
+.admin-action:disabled,
+.admin-action[aria-disabled="true"] {
   opacity: 0.45;
   cursor: not-allowed;
-  border-color: var(--line);
-  background: color-mix(in srgb, var(--surface) 55%, transparent);
-  color: var(--muted);
-}
-
-.admin-action-btn--destructive {
-  border-color: color-mix(in srgb, #e05a5a 55%, var(--line));
-  background: color-mix(in srgb, #e05a5a 12%, var(--surface));
-  color: #ffb4b4;
-}
-
-.admin-action-btn--destructive:hover:not(:disabled) {
-  border-color: #e05a5a;
-  background: color-mix(in srgb, #e05a5a 20%, transparent);
-  color: #ffd4d4;
-}
-
-.admin-action-btn--restore {
-  border-color: color-mix(in srgb, #4caf7d 45%, var(--line));
-  background: color-mix(in srgb, #4caf7d 12%, var(--surface));
-  color: #b8e6cc;
-}
-
-.admin-action-btn--restore:hover:not(:disabled) {
-  border-color: #4caf7d;
-  background: color-mix(in srgb, #4caf7d 20%, transparent);
-  color: #d4f5e3;
 }
 
 .admin-layout {

@@ -10,8 +10,15 @@ from fastapi.testclient import TestClient
 
 from app.admin_preview import (
     COMPANY_NAMES,
+    PREVIEW_COMPANY_DETAIL_ARCHIVE_ID,
+    PREVIEW_COMPANY_DETAIL_RESTORE_ID,
+    PREVIEW_CONTACT_DETAIL_ARCHIVE_ID,
+    PREVIEW_CONTACT_DETAIL_RESTORE_ID,
     PREVIEW_PIPELINE_COMPANY_IDS,
     build_preview_acquisition_dashboard_data,
+    build_preview_company_research_context,
+    build_preview_contact_form_context,
+    build_preview_contact_research_context,
     build_preview_dashboard_data,
     build_preview_pipeline_companies,
     build_preview_pipeline_detail,
@@ -290,6 +297,120 @@ def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytes
 
 
 @pytest.mark.unit
+def test_preview_company_archive_restore_contexts_stable_with_seed() -> None:
+    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
+    archive_a = build_preview_company_research_context(
+        PREVIEW_COMPANY_DETAIL_ARCHIVE_ID, rng=random.Random(42), now=now
+    )
+    archive_b = build_preview_company_research_context(
+        PREVIEW_COMPANY_DETAIL_ARCHIVE_ID, rng=random.Random(42), now=now
+    )
+    restore_a = build_preview_company_research_context(
+        PREVIEW_COMPANY_DETAIL_RESTORE_ID, rng=random.Random(42), now=now
+    )
+    restore_b = build_preview_company_research_context(
+        PREVIEW_COMPANY_DETAIL_RESTORE_ID, rng=random.Random(42), now=now
+    )
+    assert archive_a == archive_b
+    assert restore_a == restore_b
+    assert archive_a is not None and restore_a is not None
+    assert "archived_at" not in archive_a[0]
+    assert restore_a[0].get("archived_at")
+
+
+@pytest.mark.unit
+def test_preview_contact_archive_restore_detail_and_edit_html(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from argon2 import PasswordHasher
+
+    from app.admin_auth import SESSION_COOKIE_NAME
+
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
+    monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
+    monkeypatch.setenv(
+        "ADMIN_PASSWORD_HASH",
+        PasswordHasher().hash("preview"),
+    )
+    monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
+    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    preview_contact = build_preview_contact_research_context(
+        PREVIEW_CONTACT_DETAIL_ARCHIVE_ID, rng=random.Random(42)
+    )
+    assert preview_contact is not None
+    contact, company, records = preview_contact
+    assert company is not None
+    assert records
+
+    client = TestClient(app, follow_redirects=False)
+    cookie = {SESSION_COOKIE_NAME: "preview-screenshot-session"}
+
+    archive_detail = client.get(
+        f"/admin/contacts/{PREVIEW_CONTACT_DETAIL_ARCHIVE_ID}",
+        cookies=cookie,
+    )
+    assert archive_detail.status_code == 200
+    assert contact["full_name"] in archive_detail.text
+    assert 'class="admin-action admin-action--destructive"' in archive_detail.text
+    assert "Archive contact" in archive_detail.text
+
+    restore_detail = client.get(
+        f"/admin/contacts/{PREVIEW_CONTACT_DETAIL_RESTORE_ID}",
+        cookies=cookie,
+    )
+    assert restore_detail.status_code == 200
+    assert 'class="admin-action admin-action--secondary"' in restore_detail.text
+    assert "Restore contact" in restore_detail.text
+
+    archive_edit = client.get(
+        f"/admin/contacts/{PREVIEW_CONTACT_DETAIL_ARCHIVE_ID}/edit",
+        cookies=cookie,
+    )
+    assert archive_edit.status_code == 200
+    assert 'class="admin-action admin-action--destructive"' in archive_edit.text
+
+    restore_edit = client.get(
+        f"/admin/contacts/{PREVIEW_CONTACT_DETAIL_RESTORE_ID}/edit",
+        cookies=cookie,
+    )
+    assert restore_edit.status_code == 200
+    assert 'class="admin-action admin-action--secondary"' in restore_edit.text
+
+    archive_company = client.get(
+        f"/admin/companies/{PREVIEW_COMPANY_DETAIL_ARCHIVE_ID}",
+        cookies=cookie,
+    )
+    assert archive_company.status_code == 200
+    assert 'class="admin-action admin-action--destructive"' in archive_company.text
+    assert "Archive company" in archive_company.text
+
+    restore_company = client.get(
+        f"/admin/companies/{PREVIEW_COMPANY_DETAIL_RESTORE_ID}",
+        cookies=cookie,
+    )
+    assert restore_company.status_code == 200
+    assert 'class="admin-action admin-action--secondary"' in restore_company.text
+    assert "Restore company" in restore_company.text
+
+
+@pytest.mark.unit
+def test_preview_contact_form_context_matches_detail_seed() -> None:
+    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
+    detail = build_preview_contact_research_context(
+        PREVIEW_CONTACT_DETAIL_ARCHIVE_ID, rng=random.Random(11), now=now
+    )
+    form = build_preview_contact_form_context(
+        PREVIEW_CONTACT_DETAIL_ARCHIVE_ID, rng=random.Random(11), now=now
+    )
+    assert detail is not None and form is not None
+    assert detail[0] == form[0]
+    assert form[1][0]["name"] == detail[1]["name"]  # type: ignore[index]
+
+
+@pytest.mark.unit
 def test_preview_pipeline_companies_seed_stable() -> None:
     now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
     a = build_preview_pipeline_companies(rng=random.Random(42), now=now)
@@ -366,31 +487,3 @@ def test_preview_brief_conversion_states() -> None:
     assert matches["company_matches"]
     assert matches["contact_matches"]
     assert matches["proposal"]["pipeline_stage"] in {"qualified", "diagnostic_paid"}
-
-
-@pytest.mark.unit
-def test_preview_archive_restore_detail_builders() -> None:
-    from app.admin_preview import (
-        PREVIEW_COMPANY_DETAIL_ARCHIVE_ID,
-        PREVIEW_COMPANY_DETAIL_RESTORE_ID,
-        PREVIEW_CONTACT_DETAIL_ARCHIVE_ID,
-        PREVIEW_CONTACT_DETAIL_RESTORE_ID,
-        preview_company_research_detail,
-        preview_contact_edit_detail,
-        preview_contact_research_detail,
-    )
-
-    company_archive = preview_company_research_detail(PREVIEW_COMPANY_DETAIL_ARCHIVE_ID)
-    company_restore = preview_company_research_detail(PREVIEW_COMPANY_DETAIL_RESTORE_ID)
-    contact_archive = preview_contact_research_detail(PREVIEW_CONTACT_DETAIL_ARCHIVE_ID)
-    contact_restore = preview_contact_edit_detail(PREVIEW_CONTACT_DETAIL_RESTORE_ID)
-    assert company_archive is not None
-    assert company_restore is not None
-    assert contact_archive is not None
-    assert contact_restore is not None
-    assert company_archive[0]["archived_at"] is None
-    assert company_restore[0]["archived_at"] is not None
-    assert contact_archive[0]["archived_at"] is None
-    assert contact_restore[0]["archived_at"] is not None
-    assert len(company_archive[1]) >= 1
-    assert len(company_archive[2]) >= 1

@@ -81,6 +81,13 @@ ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
 
 ADMIN_PATHS: frozenset[str] = frozenset(link["href"] for link in ADMIN_NAV_LINKS)
 
+
+def archive_restore_action_classes(*, archived: bool) -> str:
+    """CSS classes for archive (destructive) vs restore (secondary) form actions."""
+    if archived:
+        return "admin-action admin-action--secondary"
+    return "admin-action admin-action--destructive"
+
 # Pre-merge Playwright capture targets (shell pages + login). Never production.
 ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     *(link["href"] for link in ADMIN_NAV_LINKS),
@@ -92,12 +99,13 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert",
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
-    "/admin/companies/a1111111-1111-1111-1111-111111111111",
-    "/admin/companies/a2222222-2222-2222-2222-222222222222",
-    "/admin/contacts/a3333333-3333-3333-3333-333333333333",
-    "/admin/contacts/a4444444-4444-4444-4444-444444444444",
-    "/admin/contacts/a3333333-3333-3333-3333-333333333333/edit",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
+    "/admin/companies/cccccccc-cccc-cccc-cccc-cccccccccc01",
+    "/admin/companies/cccccccc-cccc-cccc-cccc-cccccccccc02",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd01",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd02",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd01/edit",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd02/edit",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
@@ -106,15 +114,6 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
 ADMIN_SCREENSHOT_EXPECTED_STATUS: dict[str, int] = {
     "/admin/briefs/503": 503,
 }
-
-
-def render_admin_archive_action_button(*, label: str, is_archived: bool) -> str:
-    """Return themed Archive/Restore submit button markup."""
-    variant = "restore" if is_archived else "destructive"
-    return (
-        f'<button class="admin-action-btn admin-action-btn--{variant}" '
-        f'type="submit">{html.escape(label)}</button>'
-    )
 
 
 def _active_nav_label(active_path: str) -> str:

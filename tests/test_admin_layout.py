@@ -136,11 +136,40 @@ def test_render_admin_nav_unknown_path_uses_admin_label() -> None:
 
 
 @pytest.mark.unit
-def test_admin_css_archive_restore_action_buttons_use_intentional_states() -> None:
+def test_admin_css_archive_restore_action_buttons_reset_native_appearance() -> None:
     css = ADMIN_CSS.read_text(encoding="utf-8")
-    assert ".admin-action-btn--destructive" in css
-    assert ".admin-action-btn--restore" in css
-    assert ".admin-action-btn:focus-visible" in css
+    action_block = css.split(".admin-action {", 1)[1].split("}", 1)[0]
+    assert "background: transparent" in action_block
+    assert "border: 1px solid transparent" in action_block
+    assert "cursor: pointer" in action_block
+    assert "font-family: inherit" in action_block
+    assert "border-radius: 2px" in action_block
+    assert "padding:" in action_block
+
+    destructive_block = css.split(".admin-action--destructive {", 1)[1].split("}", 1)[0]
+    secondary_block = css.split(".admin-action--secondary {", 1)[1].split("}", 1)[0]
+    assert "#e88a6a" in destructive_block
+    assert "var(--line)" in secondary_block
+    assert "var(--accent)" not in destructive_block.split("background")[0]
+
+    assert ".admin-action--destructive:hover" in css
+    assert ".admin-action--destructive:focus-visible" in css
+    assert ".admin-action--secondary:hover" in css
+    assert ".admin-action--secondary:focus-visible" in css
+    assert ".admin-action:disabled" in css
+    assert "cursor: not-allowed" in css.split(".admin-action:disabled", 1)[1]
+
+
+@pytest.mark.unit
+def test_archive_restore_action_classes_map_to_semantic_modifiers() -> None:
+    from app.admin_layout import archive_restore_action_classes
+
+    assert archive_restore_action_classes(archived=False) == (
+        "admin-action admin-action--destructive"
+    )
+    assert archive_restore_action_classes(archived=True) == (
+        "admin-action admin-action--secondary"
+    )
 
 
 @pytest.mark.unit
