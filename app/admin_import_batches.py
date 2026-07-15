@@ -115,7 +115,7 @@ def render_import_batch_detail_page(
 
     rollback_form = ""
     if batch.get("status") == "committed":
-        rollback_form = f"""<form class="admin-form" method="post" action="/admin/imports/batches/{_esc(batch["id"])}/rollback">
+        rollback_form = f"""<form class="admin-form admin-form--compact" method="post" action="/admin/imports/batches/{_esc(batch["id"])}/rollback">
           <input type="hidden" name="csrf_token" value="{_esc(csrf_token)}" />
           <button class="cta admin-submit" type="submit">Rollback batch</button>
           <p class="admin-note">Reverts batch-owned inserts and updates when records were not edited later.</p>

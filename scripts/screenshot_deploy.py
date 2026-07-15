@@ -87,6 +87,14 @@ ADMIN_SCREENSHOT_ROUTES: tuple[str, ...] = (
     "/admin/briefs/4/convert",
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
+    "/admin/companies/dddddddd-dddd-dddd-dddd-dddddddddd01",
+    "/admin/companies/dddddddd-dddd-dddd-dddd-dddddddddd02",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd03",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd04",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd03/edit",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd04/edit",
+    "/admin/companies?archived=1",
+    "/admin/contacts?archived=1",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
     "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
     "/admin/companies/new",
@@ -141,7 +149,9 @@ ADMIN_EXTRA_VIEWPORTS: tuple[tuple[str, int, int], ...] = (
 )
 
 # Elements that must stay readable inside the viewport (esp. mobile).
-OVERFLOW_SELECTORS = ("h1", ".lede", ".cta-row", ".hero")
+# .admin-exit-group covers Public site + Sign out (#237): they must never
+# be pushed outside the viewport by a long admin identity value.
+OVERFLOW_SELECTORS = ("h1", ".lede", ".cta-row", ".hero", ".admin-exit-group")
 
 # Legacy production-pre basename helper (post-deploy compare now uses branch-*).
 PRE_PROD_PHASE = "pre"
@@ -1116,7 +1126,7 @@ def format_overflow_hard_fail(overflows: list[dict[str, Any]]) -> str | None:
         "visual readability: text overflows mobile viewport (out of frame) — "
         f"{sample.get('route')} {sample.get('selector')} "
         f"right={sample.get('right')} vw={sample.get('viewport_width')} "
-        f"text={text!r}; builder must fix CSS/typography so hero copy fits"
+        f"text={text!r}; builder must fix CSS/layout so this element fits"
     )
 
 

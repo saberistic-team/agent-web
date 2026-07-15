@@ -39,13 +39,19 @@ from app.admin_layout import ADMIN_NAV_LINKS, render_admin_shell
 from app.admin_preview import (
     PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR,
     PREVIEW_BRIEF_DATABASE_ERROR_ID,
+    PREVIEW_COMPANY_DETAIL_ARCHIVE_ID,
+    PREVIEW_COMPANY_DETAIL_RESTORE_ID,
     PREVIEW_COMPANY_VALIDATION_ERROR,
+    PREVIEW_CONTACT_DETAIL_ARCHIVE_ID,
+    PREVIEW_CONTACT_DETAIL_RESTORE_ID,
     PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID,
     build_preview_companies_for_select,
     build_preview_company,
     build_preview_company_contacts,
+    build_preview_company_detail,
     build_preview_company_research,
     build_preview_contact,
+    build_preview_contact_detail,
     build_preview_contact_research,
     preview_contact_restore_conflict,
 )
@@ -721,14 +727,22 @@ def admin_company_research(
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
-        company = build_preview_company(company_id)
-        if company is None:
-            raise HTTPException(status_code=404, detail="Company not found")
+        if company_id in (
+            PREVIEW_COMPANY_DETAIL_ARCHIVE_ID,
+            PREVIEW_COMPANY_DETAIL_RESTORE_ID,
+        ):
+            company, contacts, records = build_preview_company_detail(company_id)
+        else:
+            company = build_preview_company(company_id)
+            if company is None:
+                raise HTTPException(status_code=404, detail="Company not found")
+            contacts = build_preview_company_contacts(company_id)
+            records = build_preview_company_research(company_id)
         return HTMLResponse(
             admin_research_pages.render_admin_company_research_page(
                 company=company,
-                contacts=build_preview_company_contacts(company_id),
-                records=build_preview_company_research(company_id),
+                contacts=contacts,
+                records=records,
                 csrf_token=csrf_token,
                 admin_username=session.admin_username,
                 error_message=error,
@@ -1049,19 +1063,27 @@ def admin_contact_edit(
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
-        contact = build_preview_contact(contact_id)
-        if contact is None:
-            raise HTTPException(status_code=404, detail="Contact not found")
+        if contact_id in (
+            PREVIEW_CONTACT_DETAIL_ARCHIVE_ID,
+            PREVIEW_CONTACT_DETAIL_RESTORE_ID,
+        ):
+            contact, company, _records = build_preview_contact_detail(contact_id)
+            companies = [company] if company is not None else []
+        else:
+            contact = build_preview_contact(contact_id)
+            if contact is None:
+                raise HTTPException(status_code=404, detail="Contact not found")
+            companies = build_preview_companies_for_select()
         return HTMLResponse(
             contact_pages.render_contact_form_page(
                 csrf_token=csrf_token,
                 admin_username=session.admin_username,
-                companies=build_preview_companies_for_select(),
+                companies=companies,
                 contact=contact,
                 error_message=error or warning,
             )
         )
-    with db.db_connection(get_settings().database_url) as conn:
+    with db.db_connection(settings.database_url) as conn:
         contact = _crm.get_contact(conn, contact_id)
         companies = _crm.list_companies(conn, limit=500)
     if contact is None:
@@ -1210,18 +1232,25 @@ def admin_contact_research(
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
-        contact = build_preview_contact(contact_id)
-        if contact is None:
-            raise HTTPException(status_code=404, detail="Contact not found")
-        company = None
-        company_id = contact.get("company_id")
-        if company_id is not None:
-            company = build_preview_company(UUID(str(company_id)))
+        if contact_id in (
+            PREVIEW_CONTACT_DETAIL_ARCHIVE_ID,
+            PREVIEW_CONTACT_DETAIL_RESTORE_ID,
+        ):
+            contact, company, records = build_preview_contact_detail(contact_id)
+        else:
+            contact = build_preview_contact(contact_id)
+            if contact is None:
+                raise HTTPException(status_code=404, detail="Contact not found")
+            company = None
+            company_id = contact.get("company_id")
+            if company_id is not None:
+                company = build_preview_company(UUID(str(company_id)))
+            records = build_preview_contact_research(contact_id)
         return HTMLResponse(
             admin_research_pages.render_admin_contact_research_page(
                 contact=contact,
                 company=company,
-                records=build_preview_contact_research(contact_id),
+                records=records,
                 csrf_token=csrf_token,
                 admin_username=session.admin_username,
                 error_message=error,

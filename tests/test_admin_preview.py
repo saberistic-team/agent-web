@@ -12,10 +12,16 @@ from fastapi.testclient import TestClient
 from app.admin_preview import (
     COMPANY_NAMES,
     PREVIEW_COMPANY_ARCHIVED_ID,
+    PREVIEW_COMPANY_DETAIL_ARCHIVE_ID,
+    PREVIEW_COMPANY_DETAIL_RESTORE_ID,
     PREVIEW_COMPANY_POPULATED_ID,
     PREVIEW_CONTACT_ARCHIVED_ID,
+    PREVIEW_CONTACT_DETAIL_ARCHIVE_ID,
+    PREVIEW_CONTACT_DETAIL_RESTORE_ID,
     PREVIEW_CONTACT_POPULATED_ID,
     PREVIEW_PIPELINE_COMPANY_IDS,
+    build_preview_company_detail,
+    build_preview_contact_detail,
     build_preview_acquisition_dashboard_data,
     build_preview_companies,
     build_preview_company,
@@ -303,6 +309,155 @@ def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytes
 
 
 @pytest.mark.unit
+def test_preview_company_detail_archive_and_restore_actions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from argon2 import PasswordHasher
+
+    from app.admin_auth import SESSION_COOKIE_NAME
+
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "11")
+    monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
+    monkeypatch.setenv(
+        "ADMIN_PASSWORD_HASH",
+        PasswordHasher().hash("preview"),
+    )
+    monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
+    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    company, _contacts, _records = build_preview_company_detail(
+        PREVIEW_COMPANY_DETAIL_ARCHIVE_ID,
+        rng=random.Random(11),
+    )
+    archived_company, _contacts2, _records2 = build_preview_company_detail(
+        PREVIEW_COMPANY_DETAIL_RESTORE_ID,
+        rng=random.Random(11),
+    )
+    client = TestClient(app, follow_redirects=False)
+    cookies = {SESSION_COOKIE_NAME: "preview-screenshot-session"}
+    archive_response = client.get(
+        f"/admin/companies/{PREVIEW_COMPANY_DETAIL_ARCHIVE_ID}",
+        cookies=cookies,
+    )
+    restore_response = client.get(
+        f"/admin/companies/{PREVIEW_COMPANY_DETAIL_RESTORE_ID}",
+        cookies=cookies,
+    )
+    assert archive_response.status_code == 200
+    assert restore_response.status_code == 200
+    assert company["name"] in archive_response.text
+    assert archived_company["name"] in restore_response.text
+    assert (
+        'class="admin-action admin-action--destructive" type="submit">Archive company'
+        in archive_response.text
+    )
+    assert (
+        'class="admin-action admin-action--secondary" type="submit">Restore company'
+        in restore_response.text
+    )
+
+
+@pytest.mark.unit
+def test_preview_contact_detail_and_edit_archive_restore_actions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from argon2 import PasswordHasher
+
+    from app.admin_auth import SESSION_COOKIE_NAME
+
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "12")
+    monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
+    monkeypatch.setenv(
+        "ADMIN_PASSWORD_HASH",
+        PasswordHasher().hash("preview"),
+    )
+    monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
+    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    contact, _company, _records = build_preview_contact_detail(
+        PREVIEW_CONTACT_DETAIL_ARCHIVE_ID,
+        rng=random.Random(12),
+    )
+    archived_contact, _company2, _records2 = build_preview_contact_detail(
+        PREVIEW_CONTACT_DETAIL_RESTORE_ID,
+        rng=random.Random(12),
+    )
+    client = TestClient(app, follow_redirects=False)
+    cookies = {SESSION_COOKIE_NAME: "preview-screenshot-session"}
+    detail_archive = client.get(
+        f"/admin/contacts/{PREVIEW_CONTACT_DETAIL_ARCHIVE_ID}",
+        cookies=cookies,
+    )
+    detail_restore = client.get(
+        f"/admin/contacts/{PREVIEW_CONTACT_DETAIL_RESTORE_ID}",
+        cookies=cookies,
+    )
+    edit_archive = client.get(
+        f"/admin/contacts/{PREVIEW_CONTACT_DETAIL_ARCHIVE_ID}/edit",
+        cookies=cookies,
+    )
+    edit_restore = client.get(
+        f"/admin/contacts/{PREVIEW_CONTACT_DETAIL_RESTORE_ID}/edit",
+        cookies=cookies,
+    )
+    assert detail_archive.status_code == 200
+    assert detail_restore.status_code == 200
+    assert edit_archive.status_code == 200
+    assert edit_restore.status_code == 200
+    assert contact["full_name"] in detail_archive.text
+    assert archived_contact["full_name"] in detail_restore.text
+    assert (
+        'class="admin-action admin-action--destructive" type="submit">Archive contact'
+        in detail_archive.text
+    )
+    assert (
+        'class="admin-action admin-action--secondary" type="submit">Restore contact'
+        in detail_restore.text
+    )
+    assert (
+        'class="admin-action admin-action--destructive" type="submit">Archive contact'
+        in edit_archive.text
+    )
+    assert (
+        'class="admin-action admin-action--secondary" type="submit">Restore contact'
+        in edit_restore.text
+    )
+
+
+@pytest.mark.unit
+def test_preview_company_and_contact_detail_seed_stable() -> None:
+    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
+    company_a, contacts_a, records_a = build_preview_company_detail(
+        PREVIEW_COMPANY_DETAIL_ARCHIVE_ID,
+        rng=random.Random(21),
+        now=now,
+    )
+    company_b, contacts_b, records_b = build_preview_company_detail(
+        PREVIEW_COMPANY_DETAIL_ARCHIVE_ID,
+        rng=random.Random(21),
+        now=now,
+    )
+    assert company_a == company_b
+    assert contacts_a == contacts_b
+    assert records_a == records_b
+
+    contact_a, company_link_a, records_ca = build_preview_contact_detail(
+        PREVIEW_CONTACT_DETAIL_RESTORE_ID,
+        rng=random.Random(22),
+        now=now,
+    )
+    contact_b, company_link_b, records_cb = build_preview_contact_detail(
+        PREVIEW_CONTACT_DETAIL_RESTORE_ID,
+        rng=random.Random(22),
+        now=now,
+    )
+    assert contact_a == contact_b
+    assert company_link_a == company_link_b
+    assert records_ca == records_cb
+    assert contact_a.get("archived_at") is not None
+
 def test_preview_companies_seed_stable() -> None:
     now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
     a = build_preview_companies(rng=random.Random(42), now=now)

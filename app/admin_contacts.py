@@ -5,7 +5,7 @@ from __future__ import annotations
 import html
 from typing import Any
 
-from app.admin_layout import render_admin_shell
+from app.admin_layout import render_admin_archive_action_button, render_admin_shell
 from app.contacts import (
     BUYING_ROLES,
     EMAIL_PERMISSIONS,
@@ -56,7 +56,7 @@ def _contact_form(
 ) -> str:
     contact = contact or {}
     roles = contact.get("buying_roles") or []
-    return f"""<form class="admin-form" method="post" action="{_esc(action)}">
+    return f"""<form class="admin-form admin-form--editor" method="post" action="{_esc(action)}">
       <input type="hidden" name="csrf_token" value="{_esc(csrf_token)}" />
       <div class="field"><label for="full_name">Name</label><input id="full_name" name="full_name" required maxlength="500" value="{_esc(contact.get("full_name"))}" /></div>
       <div class="field"><label for="title">Title</label><input id="title" name="title" maxlength="500" value="{_esc(contact.get("title"))}" /></div>
@@ -101,7 +101,7 @@ def render_contacts_list_page(
     main = f"""<section class="admin-section" aria-labelledby="contacts-title">
       {banner_html}
       <div class="admin-section-head"><div><p class="admin-eyebrow">CRM</p><h1 class="admin-title" id="contacts-title">Contacts</h1></div><a class="cta" href="/admin/contacts/new">Add contact</a></div>
-      <form class="admin-form" method="get" action="/admin/contacts">
+      <form class="admin-form admin-form--compact" method="get" action="/admin/contacts">
         <div class="field"><label for="q">Search</label><input id="q" name="q" value="{_esc(filters.get("q"))}" placeholder="Name, email, title, or profile URL" /></div>
         <div class="field"><label for="company-filter">Company</label><select id="company-filter" name="company_id">{_company_options(companies, filters.get("company_id"))}</select></div>
         <div class="field"><label for="role-filter">Buying role</label><select id="role-filter" name="buying_role">{_options(BUYING_ROLES, filters.get("buying_role"))}</select></div>
@@ -134,9 +134,13 @@ def render_contact_form_page(
     if contact is not None:
         archive_action = "restore" if contact.get("archived_at") else "archive"
         archive_label = "Restore contact" if contact.get("archived_at") else "Archive contact"
+        archive_button = render_admin_archive_action_button(
+            label=archive_label,
+            archived=bool(contact.get("archived_at")),
+        )
         archive_html = f"""<form method="post" action="/admin/contacts/{_esc(contact["id"])}/{archive_action}">
         <input type="hidden" name="csrf_token" value="{_esc(csrf_token)}" />
-        <button class="admin-exit" type="submit">{archive_label}</button>
+        {archive_button}
       </form>"""
     main = f"""<section class="admin-section" aria-labelledby="contact-form-title">
       <p class="admin-breadcrumb"><a href="/admin/contacts">Contacts</a></p>
