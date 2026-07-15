@@ -11,17 +11,19 @@ from scripts.smoke_deploy import verify_admin_login_source_trust
 def test_verify_admin_login_source_trust_accepts_render_config() -> None:
     payload = {
         "status": "ok",
-        "admin_login_source_trust": {
-            "trusted_proxies_configured": True,
-            "trust_wildcard": True,
-            "uvicorn_proxy_headers": True,
-            "uvicorn_forwarded_allow_ips": "*",
-            "resolution_mode": "trusted_hop_chain",
+        "admin_proxy_trust": {
+            "enabled": True,
+            "trusted_proxy_entry_count": 3,
         },
     }
-    assert verify_admin_login_source_trust(payload, "https://saberistic.com/health")
+    assert verify_admin_login_source_trust(payload, "https://saberistic.com")
 
 
 @pytest.mark.unit
 def test_verify_admin_login_source_trust_rejects_missing_block() -> None:
-    assert not verify_admin_login_source_trust({"status": "ok"}, "https://example.com/health")
+    assert not verify_admin_login_source_trust({"status": "ok"}, "https://saberistic.com")
+
+
+@pytest.mark.unit
+def test_verify_admin_login_source_trust_skips_non_production_origin() -> None:
+    assert verify_admin_login_source_trust({"status": "ok"}, "http://localhost:8000")

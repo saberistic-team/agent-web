@@ -15,6 +15,21 @@ def get_json(url: str) -> dict:
         return json.loads(resp.read().decode())
 
 
+def verify_admin_login_source_trust(health_payload: dict, base_url: str) -> bool:
+    """Return True when production health reports an active proxy trust boundary."""
+    if not isinstance(health_payload, dict) or health_payload.get("status") != "ok":
+        return False
+
+    origin = base_url.rstrip("/")
+    if not (origin.endswith("saberistic.com") or "onrender.com" in origin):
+        return True
+
+    trust = health_payload.get("admin_proxy_trust")
+    if not isinstance(trust, dict):
+        return False
+    return bool(trust.get("enabled")) and int(trust.get("trusted_proxy_entry_count", 0)) > 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -47,15 +62,15 @@ def main(argv: list[str] | None = None) -> int:
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
         print(f"FAIL {health_url}: {exc}", file=sys.stderr)
         return 1
-    admin_source = health_payload.get("admin_client_source") if isinstance(health_payload, dict) else None
-    if base.endswith("saberistic.com") or base.endswith("onrender.com"):
-        if not isinstance(admin_source, dict) or not admin_source.get("trusted_proxy_boundary"):
-            print(
-                f"FAIL {health_url}: expected admin_client_source.trusted_proxy_boundary on production",
-                file=sys.stderr,
-            )
-            return 1
-        print(f"PASS {health_url} → admin_client_source boundary active")
+
+    if not verify_admin_login_source_trust(health_payload, base):
+        print(
+            f"FAIL {health_url}: expected admin_proxy_trust enabled with trusted proxies",
+            file=sys.stderr,
+        )
+        return 1
+    if base.endswith("saberistic.com") or "onrender.com" in base:
+        print(f"PASS {health_url} → admin_proxy_trust boundary active")
     return 0
 
 
