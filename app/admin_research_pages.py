@@ -5,7 +5,7 @@ from __future__ import annotations
 import html
 from typing import Any
 
-from app.admin_layout import render_admin_shell
+from app.admin_layout import archive_action_button_class, render_admin_shell
 from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES, TARGET_STATUSES
 from app.contacts import EMAIL_PERMISSIONS, RELATIONSHIP_STRENGTHS, format_buying_roles
 from app.research_records import (
@@ -204,13 +204,10 @@ def render_admin_company_research_page(
         f"<div><dt>{html.escape(label)}</dt><dd>{html.escape(str(value or '—'))}</dd></div>"
         for label, value in company_fields
     )
-    archive_action = "restore" if company.get("archived_at") else "archive"
-    archive_label = "Restore company" if company.get("archived_at") else "Archive company"
-    archive_button_class = (
-        "admin-action admin-action--secondary"
-        if company.get("archived_at")
-        else "admin-action admin-action--destructive"
-    )
+    is_archived = bool(company.get("archived_at"))
+    archive_action = "restore" if is_archived else "archive"
+    archive_label = "Restore company" if is_archived else "Archive company"
+    archive_button_class = archive_action_button_class(archived=is_archived)
     error_html = ""
     if error_message:
         error_html = (
@@ -335,13 +332,10 @@ def render_admin_contact_research_page(
     else:
         records_html = '<p class="admin-note">No research records yet.</p>'
     form_body = _research_form_body(csrf_token=csrf_token)
-    archive_action = "restore" if contact.get("archived_at") else "archive"
-    archive_label = "Restore contact" if contact.get("archived_at") else "Archive contact"
-    archive_button_class = (
-        "admin-action admin-action--secondary"
-        if contact.get("archived_at")
-        else "admin-action admin-action--destructive"
-    )
+    is_archived = bool(contact.get("archived_at"))
+    archive_action = "restore" if is_archived else "archive"
+    archive_label = "Restore contact" if is_archived else "Archive contact"
+    archive_button_class = archive_action_button_class(archived=is_archived)
     main = f"""        <section class="admin-research" aria-labelledby="contact-research-title">
           <p class="admin-breadcrumb"><a href="/admin/contacts">Contacts</a></p>
           <h1 class="admin-title" id="contact-research-title">{display_name}</h1>
