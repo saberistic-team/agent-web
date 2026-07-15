@@ -7,7 +7,7 @@ from typing import Any
 
 from app.admin_layout import render_admin_shell
 from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES, TARGET_STATUSES
-from app.contacts import RELATIONSHIP_STRENGTHS, format_buying_roles
+from app.contacts import EMAIL_PERMISSIONS, RELATIONSHIP_STRENGTHS, format_buying_roles
 from app.research_records import (
     RECORD_TYPE_LABELS,
     RESEARCH_RECORD_TYPES,
@@ -215,14 +215,14 @@ def render_admin_company_research_page(
     for contact in contacts:
         contact_id = html.escape(str(contact["id"]), quote=True)
         label = html.escape(
-            str(contact.get("full_name") or contact.get("email") or contact["id"])
+            str(contact.get("full_name") or contact.get("email") or contact.get("profile_url") or contact["id"])
         )
         title = html.escape(str(contact.get("title") or ""))
         roles = html.escape(format_buying_roles(contact.get("buying_roles")))
         meta = " · ".join(part for part in (title, roles) if part and part != "—")
         contact_links += (
             f'<li><a href="/admin/contacts/{contact_id}">{label}</a>'
-            f'{f" <span class=\"admin-meta\">{meta}</span>" if meta else ""}</li>'
+            f'{f" <span class=\"admin-meta\">({meta})</span>" if meta else ""}</li>'
         )
     if not contact_links:
         contact_links = "<li>No contacts linked.</li>"
@@ -251,7 +251,7 @@ def render_admin_company_research_page(
             <button class="admin-exit" type="submit">{archive_label}</button>
           </form>
           <h2 class="admin-section-heading">Contacts</h2>
-          <p><a class="cta" href="/admin/contacts/new?company_id={company_id}">Add contact</a></p>
+          <p><a class="cta" href="/admin/contacts/new">Add contact</a></p>
           <ul class="admin-list">{contact_links}
           </ul>
           <h2 class="admin-section-heading">Attach record</h2>
@@ -283,24 +283,25 @@ def render_admin_contact_research_page(
     error_message: str | None = None,
 ) -> str:
     display_name = html.escape(
-        str(contact.get("full_name") or contact.get("email") or contact["id"])
+        str(contact.get("full_name") or contact.get("email") or contact.get("profile_url") or contact["id"])
     )
     contact_id = html.escape(str(contact["id"]), quote=True)
     contact_fields = (
         ("Title", contact.get("title")),
+        ("Profile", contact.get("profile_url")),
         ("Email", contact.get("email")),
         (
-            "Email permitted",
-            "Yes" if contact.get("email_permitted") else ("No" if contact.get("email") else "—"),
+            "Email permission",
+            EMAIL_PERMISSIONS.get(str(contact.get("email_permission")), contact.get("email_permission")),
         ),
-        ("Email source", contact.get("email_source")),
-        ("Profile URL", contact.get("profile_url")),
-        ("Buying roles", format_buying_roles(contact.get("buying_roles"))),
+        (
+            "Buying roles",
+            format_buying_roles(contact.get("buying_roles")),
+        ),
         (
             "Relationship",
             RELATIONSHIP_STRENGTHS.get(
-                str(contact.get("relationship_strength")),
-                contact.get("relationship_strength"),
+                str(contact.get("relationship_strength")), contact.get("relationship_strength")
             ),
         ),
         ("Last interaction", contact.get("last_interaction_at")),
@@ -310,8 +311,6 @@ def render_admin_contact_research_page(
         f"<div><dt>{html.escape(label)}</dt><dd>{html.escape(str(value or '—'))}</dd></div>"
         for label, value in contact_fields
     )
-    archive_action = "restore" if contact.get("archived_at") else "archive"
-    archive_label = "Restore contact" if contact.get("archived_at") else "Archive contact"
     company_link = ""
     if company is not None:
         company_id = html.escape(str(company["id"]), quote=True)
@@ -331,6 +330,8 @@ def render_admin_contact_research_page(
     else:
         records_html = '<p class="admin-note">No research records yet.</p>'
     form_body = _research_form_body(csrf_token=csrf_token)
+    archive_action = "restore" if contact.get("archived_at") else "archive"
+    archive_label = "Restore contact" if contact.get("archived_at") else "Archive contact"
     main = f"""        <section class="admin-research" aria-labelledby="contact-research-title">
           <p class="admin-breadcrumb"><a href="/admin/contacts">Contacts</a></p>
           <h1 class="admin-title" id="contact-research-title">{display_name}</h1>

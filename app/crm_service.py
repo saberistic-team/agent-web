@@ -11,7 +11,13 @@ import psycopg
 from app import audit_service
 from app.actor_context import ActorContext
 from app.companies import CompanyCreate, CompanyUpdate, find_domain_duplicate_warnings
-from app.contacts import ContactCreate, ContactUpdate, collect_contact_duplicate_warnings
+from app.contacts import (
+    ContactCreate,
+    ContactUpdate,
+    find_email_duplicate_warnings,
+    find_name_company_duplicate_warnings,
+    find_profile_url_duplicate_warnings,
+)
 from app.crm_uow import crm_transaction
 from app.repositories import (
     ActivityRepository,
@@ -73,8 +79,8 @@ class CrmService:
             )
             contact = self._repos.contacts.create(
                 conn,
+                full_name=contact_name or contact_email.split("@", 1)[0],
                 email=contact_email,
-                full_name=contact_name or contact_email,
                 company_id=UUID(str(company["id"])),
             )
         return {"company": company, "contact": contact}
@@ -232,7 +238,6 @@ class CrmService:
         query: str | None = None,
         company_id: UUID | None = None,
         buying_role: str | None = None,
-        relationship_strength: str | None = None,
         include_archived: bool = False,
     ) -> list[dict[str, Any]]:
         return self._repos.contacts.list_all(
@@ -241,14 +246,8 @@ class CrmService:
             query=query,
             company_id=company_id,
             buying_role=buying_role,
-            relationship_strength=relationship_strength,
             include_archived=include_archived,
         )
-
-
-    def search_contacts(self, *args, **kwargs):
-        """Compat alias used by admin_crm_routes / older tests."""
-        return self.list_contacts(*args, **kwargs)
 
     def get_contact(
         self,
@@ -264,24 +263,36 @@ class CrmService:
         contact: ContactCreate,
     ) -> dict[str, Any]:
         with crm_transaction(conn):
-            duplicates = self._repos.contacts.find_duplicates(
-                conn,
-                profile_url=contact.profile_url,
-                email=contact.email,
-                full_name=contact.full_name,
-                company_id=contact.company_id,
+            profile_matches = (
+                self._repos.contacts.find_by_profile_url(conn, contact.profile_url)
+                if contact.profile_url
+                else []
+            )
+            email_matches = (
+                [existing]
+                if contact.email and (existing := self._repos.contacts.get_by_email(conn, contact.email))
+                else []
+            )
+            name_company_matches = (
+                self._repos.contacts.find_by_name_company(
+                    conn,
+                    full_name=contact.full_name,
+                    company_id=contact.company_id,
+                )
+                if contact.company_id
+                else []
             )
             created = self._repos.contacts.create(conn, **contact.model_dump())
-        return {
-            "contact": created,
-            "duplicate_warnings": collect_contact_duplicate_warnings(
-                duplicates,
+        duplicate_warnings = [
+            *find_profile_url_duplicate_warnings(profile_matches, profile_url=contact.profile_url),
+            *find_email_duplicate_warnings(email_matches, email=contact.email),
+            *find_name_company_duplicate_warnings(
+                name_company_matches,
                 full_name=contact.full_name,
-                profile_url=contact.profile_url,
-                email=contact.email,
                 company_id=contact.company_id,
             ),
-        }
+        ]
+        return {"contact": created, "duplicate_warnings": duplicate_warnings}
 
     def update_contact(
         self,
@@ -291,30 +302,48 @@ class CrmService:
         contact: ContactUpdate,
     ) -> dict[str, Any] | None:
         with crm_transaction(conn):
-            duplicates = self._repos.contacts.find_duplicates(
-                conn,
-                profile_url=contact.profile_url,
-                email=contact.email,
-                full_name=contact.full_name,
-                company_id=contact.company_id,
-                exclude_contact_id=contact_id,
+            profile_matches = (
+                self._repos.contacts.find_by_profile_url(
+                    conn, contact.profile_url, exclude_contact_id=contact_id
+                )
+                if contact.profile_url
+                else []
+            )
+            email_matches: list[dict[str, Any]] = []
+            if contact.email:
+                existing = self._repos.contacts.get_by_email(conn, contact.email)
+                if existing is not None and str(existing.get("id")) != str(contact_id):
+                    email_matches.append(existing)
+            name_company_matches = (
+                self._repos.contacts.find_by_name_company(
+                    conn,
+                    full_name=contact.full_name,
+                    company_id=contact.company_id,
+                    exclude_contact_id=contact_id,
+                )
+                if contact.company_id
+                else []
             )
             updated = self._repos.contacts.update(
                 conn, contact_id, **contact.model_dump()
             )
         if updated is None:
             return None
-        return {
-            "contact": updated,
-            "duplicate_warnings": collect_contact_duplicate_warnings(
-                duplicates,
+        duplicate_warnings = [
+            *find_profile_url_duplicate_warnings(
+                profile_matches, profile_url=contact.profile_url, exclude_contact_id=contact_id
+            ),
+            *find_email_duplicate_warnings(
+                email_matches, email=contact.email, exclude_contact_id=contact_id
+            ),
+            *find_name_company_duplicate_warnings(
+                name_company_matches,
                 full_name=contact.full_name,
-                profile_url=contact.profile_url,
-                email=contact.email,
                 company_id=contact.company_id,
                 exclude_contact_id=contact_id,
             ),
-        }
+        ]
+        return {"contact": updated, "duplicate_warnings": duplicate_warnings}
 
     def archive_contact(
         self, conn: psycopg.Connection, contact_id: UUID

@@ -295,61 +295,6 @@ def test_crm_service_research_record_helpers() -> None:
 
 
 @pytest.mark.unit
-def test_contact_crud_helpers_commit_and_return_nonblocking_duplicate_warnings() -> None:
-    contact_repo = MagicMock()
-    contact_repo.find_duplicates.return_value = [
-        {
-            "id": CONTACT_ID,
-            "full_name": "Existing",
-            "email": "ada@example.com",
-            "profile_url": "https://linkedin.com/in/ada",
-            "company_id": COMPANY_ID,
-        }
-    ]
-    contact_repo.create.return_value = {
-        "id": CONTACT_ID,
-        "full_name": "Ada",
-        "email": "ada@example.com",
-        "buying_roles": ["founder"],
-    }
-    contact_repo.update.return_value = {
-        "id": CONTACT_ID,
-        "full_name": "Ada Updated",
-        "email": "ada@example.com",
-        "buying_roles": ["technical_buyer"],
-    }
-    contact_repo.archive.return_value = {"id": CONTACT_ID, "archived_at": "now"}
-    contact_repo.restore.return_value = {"id": CONTACT_ID, "archived_at": None}
-    service, conn, _ = _service_with_mocks(contact_repo=contact_repo)
-
-    created = service.create_contact(
-        conn,
-        contact=ContactCreate(
-            full_name="Ada",
-            email="ada@example.com",
-            profile_url="https://www.linkedin.com/in/ada",
-            company_id=COMPANY_ID,
-            buying_roles=["founder"],
-        ),
-    )
-    assert created["contact"]["full_name"] == "Ada"
-    assert len(created["duplicate_warnings"]) == 1
-    updated = service.update_contact(
-        conn,
-        CONTACT_ID,
-        contact=ContactUpdate(
-            full_name="Ada Updated",
-            email="ada@example.com",
-            buying_roles=["technical_buyer"],
-        ),
-    )
-    assert updated is not None and updated["contact"]["full_name"] == "Ada Updated"
-    assert service.archive_contact(conn, CONTACT_ID)["archived_at"] == "now"
-    assert service.restore_contact(conn, CONTACT_ID)["archived_at"] is None
-    assert conn.commit.call_count == 4
-
-
-@pytest.mark.unit
 def test_company_crud_helpers_commit_and_return_nonblocking_domain_warnings() -> None:
     company_repo = MagicMock()
     company_repo.find_by_domain.return_value = [{"id": COMPANY_ID, "name": "Existing", "domain": "acme.dev"}]
@@ -368,4 +313,58 @@ def test_company_crud_helpers_commit_and_return_nonblocking_domain_warnings() ->
     assert updated is not None and updated["company"]["name"] == "Acme Updated"
     assert service.archive_company(conn, COMPANY_ID)["archived_at"] == "now"
     assert service.restore_company(conn, COMPANY_ID)["archived_at"] is None
+    assert conn.commit.call_count == 4
+
+
+@pytest.mark.unit
+def test_contact_crud_helpers_commit_and_return_nonblocking_duplicate_warnings() -> None:
+    contact_repo = MagicMock()
+    contact_repo.find_by_profile_url.return_value = [
+        {"id": CONTACT_ID, "full_name": "Ada", "profile_url": "https://linkedin.com/in/ada"}
+    ]
+    contact_repo.get_by_email.return_value = {"id": CONTACT_ID, "full_name": "Ada", "email": "ada@example.com"}
+    contact_repo.find_by_name_company.return_value = [
+        {"id": CONTACT_ID, "full_name": "Ada", "company_id": COMPANY_ID}
+    ]
+    contact_repo.create.return_value = {
+        "id": CONTACT_ID,
+        "full_name": "Ada",
+        "buying_roles": ["founder", "technical_buyer"],
+    }
+    contact_repo.update.return_value = {
+        "id": CONTACT_ID,
+        "full_name": "Ada Updated",
+        "buying_roles": ["executive_buyer"],
+    }
+    contact_repo.archive.return_value = {"id": CONTACT_ID, "archived_at": "now"}
+    contact_repo.restore.return_value = {"id": CONTACT_ID, "archived_at": None}
+    service, conn, _ = _service_with_mocks(contact_repo=contact_repo)
+
+    created = service.create_contact(
+        conn,
+        contact=ContactCreate(
+            full_name="Ada",
+            profile_url="https://www.linkedin.com/in/ada",
+            email="ada@example.com",
+            company_id=COMPANY_ID,
+            buying_roles=["founder"],
+        ),
+    )
+    assert created["contact"]["full_name"] == "Ada"
+    assert len(created["duplicate_warnings"]) == 3
+
+    updated = service.update_contact(
+        conn,
+        CONTACT_ID,
+        contact=ContactUpdate(
+            full_name="Ada Updated",
+            profile_url="https://linkedin.com/in/ada",
+            email="ada@example.com",
+            company_id=COMPANY_ID,
+            buying_roles=["executive_buyer"],
+        ),
+    )
+    assert updated is not None and updated["contact"]["full_name"] == "Ada Updated"
+    assert service.archive_contact(conn, CONTACT_ID)["archived_at"] == "now"
+    assert service.restore_contact(conn, CONTACT_ID)["archived_at"] is None
     assert conn.commit.call_count == 4

@@ -76,12 +76,11 @@ class ContactRepository(Protocol):
         *,
         full_name: str,
         email: str | None = None,
-        company_id: UUID | None = None,
         title: str | None = None,
         profile_url: str | None = None,
-        email_permitted: bool | None = None,
-        email_source: str | None = None,
-        last_interaction_at: datetime | None = None,
+        email_permission: str | None = None,
+        company_id: UUID | None = None,
+        last_interaction_at: date | None = None,
         relationship_strength: str | None = None,
         notes: str | None = None,
         buying_roles: list[str] | None = None,
@@ -91,13 +90,21 @@ class ContactRepository(Protocol):
 
     def get_by_email(self, conn: psycopg.Connection, email: str) -> dict[str, Any] | None: ...
 
-    def list_for_company(
+    def find_by_profile_url(
         self,
         conn: psycopg.Connection,
-        company_id: UUID,
+        profile_url: str,
         *,
-        limit: int = 100,
-        include_archived: bool = False,
+        exclude_contact_id: UUID | None = None,
+    ) -> list[dict[str, Any]]: ...
+
+    def find_by_name_company(
+        self,
+        conn: psycopg.Connection,
+        *,
+        full_name: str,
+        company_id: UUID,
+        exclude_contact_id: UUID | None = None,
     ) -> list[dict[str, Any]]: ...
 
     def list_all(
@@ -108,19 +115,16 @@ class ContactRepository(Protocol):
         query: str | None = None,
         company_id: UUID | None = None,
         buying_role: str | None = None,
-        relationship_strength: str | None = None,
         include_archived: bool = False,
     ) -> list[dict[str, Any]]: ...
 
-    def find_duplicates(
+    def list_for_company(
         self,
         conn: psycopg.Connection,
+        company_id: UUID,
         *,
-        profile_url: str | None = None,
-        email: str | None = None,
-        full_name: str | None = None,
-        company_id: UUID | None = None,
-        exclude_contact_id: UUID | None = None,
+        limit: int = 100,
+        include_archived: bool = False,
     ) -> list[dict[str, Any]]: ...
 
     def update(
@@ -128,14 +132,13 @@ class ContactRepository(Protocol):
         conn: psycopg.Connection,
         contact_id: UUID,
         *,
-        full_name: str,
+        full_name: str | None = None,
         email: str | None = None,
-        company_id: UUID | None = None,
         title: str | None = None,
         profile_url: str | None = None,
-        email_permitted: bool | None = None,
-        email_source: str | None = None,
-        last_interaction_at: datetime | None = None,
+        email_permission: str | None = None,
+        company_id: UUID | None = None,
+        last_interaction_at: date | None = None,
         relationship_strength: str | None = None,
         notes: str | None = None,
         buying_roles: list[str] | None = None,

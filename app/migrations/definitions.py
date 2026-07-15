@@ -317,21 +317,27 @@ CREATE INDEX IF NOT EXISTS idx_companies_last_verified_at ON companies (last_ver
         version="011",
         name="contact_records",
         up_sql="""
+ALTER TABLE contacts ALTER COLUMN email DROP NOT NULL;
+ALTER TABLE contacts DROP CONSTRAINT IF EXISTS contacts_email_unique;
+
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS title TEXT;
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS profile_url TEXT;
-ALTER TABLE contacts ADD COLUMN IF NOT EXISTS email_permitted BOOLEAN;
-ALTER TABLE contacts ADD COLUMN IF NOT EXISTS email_source TEXT;
-ALTER TABLE contacts ADD COLUMN IF NOT EXISTS last_interaction_at TIMESTAMPTZ;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS email_permission TEXT;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS last_interaction_at DATE;
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS relationship_strength TEXT;
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS notes TEXT;
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS buying_roles TEXT[];
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
-ALTER TABLE contacts ALTER COLUMN email DROP NOT NULL;
 
-CREATE INDEX IF NOT EXISTS idx_contacts_profile_url ON contacts (profile_url);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_email_unique
+    ON contacts (LOWER(email))
+    WHERE email IS NOT NULL AND archived_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_contacts_profile_url ON contacts (profile_url)
+    WHERE profile_url IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_contacts_archived_at ON contacts (archived_at);
 CREATE INDEX IF NOT EXISTS idx_contacts_last_interaction_at ON contacts (last_interaction_at);
-CREATE INDEX IF NOT EXISTS idx_contacts_relationship_strength ON contacts (relationship_strength);
+CREATE INDEX IF NOT EXISTS idx_contacts_buying_roles ON contacts USING GIN (buying_roles);
 """,
     ),
 

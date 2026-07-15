@@ -20,12 +20,7 @@ from app.companies import (
     CompanyCreate,
     CompanyUpdate,
 )
-from app.contacts import (
-    BUYING_ROLES,
-    RELATIONSHIP_STRENGTHS,
-    ContactCreate,
-    ContactUpdate,
-)
+from app.contacts import BUYING_ROLES, ContactCreate, ContactUpdate
 from app.crm_uow import crm_transaction
 from app.actor_context import actor_context_from_request, anonymous_actor_context, correlation_id_from_request
 from app.admin_layout import ADMIN_NAV_LINKS, render_admin_shell
@@ -117,14 +112,13 @@ def _company_form_payload(**values: object) -> dict[str, object]:
 
 
 def _contact_form_payload(**values: object) -> dict[str, object]:
-    """Map blank optional contact form fields to null before domain-model validation."""
+    """Map blank optional contact form fields to null before validation."""
     allowed = {
         "full_name",
         "title",
         "profile_url",
         "email",
-        "email_permitted",
-        "email_source",
+        "email_permission",
         "company_id",
         "last_interaction_at",
         "relationship_strength",
@@ -140,44 +134,24 @@ def _contact_form_payload(**values: object) -> dict[str, object]:
         "title",
         "profile_url",
         "email",
-        "email_source",
+        "email_permission",
         "last_interaction_at",
         "relationship_strength",
         "notes",
     ):
         if not payload.get(field):
             payload[field] = None
-    raw_company_id = payload.get("company_id")
-    if raw_company_id in (None, ""):
+    raw_company = payload.get("company_id")
+    if raw_company in (None, ""):
         payload["company_id"] = None
     else:
-        payload["company_id"] = UUID(str(raw_company_id))
-    payload["email_permitted"] = payload.get("email_permitted") == "1"
-    if not payload.get("email"):
-        payload["email_permitted"] = None
-        payload["email_source"] = None
+        payload["company_id"] = UUID(str(raw_company))
     roles = payload.get("buying_roles")
     if roles is None:
         payload["buying_roles"] = []
     elif isinstance(roles, str):
         payload["buying_roles"] = [roles]
-    raw_last = payload.get("last_interaction_at")
-    if raw_last:
-        parsed = datetime.fromisoformat(str(raw_last))
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
-        payload["last_interaction_at"] = parsed
-    else:
-        payload["last_interaction_at"] = None
     return payload
-
-
-def _format_contact_for_form(contact: dict[str, object]) -> dict[str, object]:
-    formatted = dict(contact)
-    last = formatted.get("last_interaction_at")
-    if isinstance(last, datetime):
-        formatted["last_interaction_at"] = last.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M")
-    return formatted
 
 
 def _require_admin_auth_configured(settings: Settings) -> None:
@@ -792,8 +766,8 @@ def admin_company_research_create(
 def admin_contacts(
     request: Request,
     q: str | None = None,
+    company_id: str | None = None,
     buying_role: str | None = None,
-    relationship_strength: str | None = None,
     archived: bool = False,
 ) -> HTMLResponse:
     session = require_admin_session(request)
@@ -818,27 +792,31 @@ def admin_contacts(
                 csrf_token=csrf_token,
             )
         )
+    parsed_company_id: UUID | None = None
+    if company_id:
+        try:
+            parsed_company_id = UUID(company_id)
+        except ValueError:
+            parsed_company_id = None
     filters = {
         "q": q,
+        "company_id": company_id if parsed_company_id else None,
         "buying_role": buying_role if buying_role in BUYING_ROLES else None,
-        "relationship_strength": (
-            relationship_strength if relationship_strength in RELATIONSHIP_STRENGTHS else None
-        ),
         "archived": "1" if archived else None,
     }
-    if not settings.database_url:
-        raise HTTPException(status_code=503, detail="Database not configured")
     with db.db_connection(settings.database_url) as conn:
         contacts = _crm.list_contacts(
             conn,
             query=filters["q"],
+            company_id=parsed_company_id,
             buying_role=filters["buying_role"],
-            relationship_strength=filters["relationship_strength"],
             include_archived=archived,
         )
+        companies = _crm.list_companies(conn, limit=500)
     return HTMLResponse(
         contact_pages.render_contacts_list_page(
             contacts=contacts,
+            companies=companies,
             filters=filters,
             csrf_token=csrf_token,
             admin_username=session.admin_username,
@@ -847,23 +825,16 @@ def admin_contacts(
 
 
 @router.get("/contacts/new", response_class=HTMLResponse)
-def admin_contact_new(
-    request: Request,
-    company_id: UUID | None = None,
-    error: str | None = None,
-) -> HTMLResponse:
+def admin_contact_new(request: Request) -> HTMLResponse:
     session = require_admin_session(request)
     csrf_token = _issue_session_csrf(get_settings(), session.id) if session.id else ""
     with db.db_connection(get_settings().database_url) as conn:
         companies = _crm.list_companies(conn, limit=500)
-    preset = {"company_id": company_id} if company_id else None
     return HTMLResponse(
         contact_pages.render_contact_form_page(
             csrf_token=csrf_token,
             admin_username=session.admin_username,
-            contact=preset,
             companies=companies,
-            error_message=error,
         )
     )
 
@@ -876,8 +847,7 @@ def admin_contact_create(
     title: str | None = Form(default=None),
     profile_url: str | None = Form(default=None),
     email: str | None = Form(default=None),
-    email_permitted: str | None = Form(default=None),
-    email_source: str | None = Form(default=None),
+    email_permission: str | None = Form(default=None),
     company_id: str | None = Form(default=None),
     last_interaction_at: str | None = Form(default=None),
     relationship_strength: str | None = Form(default=None),
@@ -902,10 +872,7 @@ def admin_contact_create(
 
 @router.get("/contacts/{contact_id}/edit", response_class=HTMLResponse)
 def admin_contact_edit(
-    request: Request,
-    contact_id: UUID,
-    error: str | None = None,
-    warning: str | None = None,
+    request: Request, contact_id: UUID, error: str | None = None, warning: str | None = None
 ) -> HTMLResponse:
     session = require_admin_session(request)
     csrf_token = _issue_session_csrf(get_settings(), session.id) if session.id else ""
@@ -918,8 +885,8 @@ def admin_contact_edit(
         contact_pages.render_contact_form_page(
             csrf_token=csrf_token,
             admin_username=session.admin_username,
-            contact=_format_contact_for_form(contact),
             companies=companies,
+            contact=contact,
             error_message=error or warning,
         )
     )
@@ -934,8 +901,7 @@ def admin_contact_update(
     title: str | None = Form(default=None),
     profile_url: str | None = Form(default=None),
     email: str | None = Form(default=None),
-    email_permitted: str | None = Form(default=None),
-    email_source: str | None = Form(default=None),
+    email_permission: str | None = Form(default=None),
     company_id: str | None = Form(default=None),
     last_interaction_at: str | None = Form(default=None),
     relationship_strength: str | None = Form(default=None),
@@ -948,8 +914,7 @@ def admin_contact_update(
         contact = ContactUpdate(**_contact_form_payload(**locals()))
     except (ValueError, TypeError, ValidationError) as exc:
         return RedirectResponse(
-            url=f"/admin/contacts/{contact_id}/edit?error={quote(str(exc))}",
-            status_code=303,
+            url=f"/admin/contacts/{contact_id}/edit?error={quote(str(exc))}", status_code=303
         )
     with db.db_connection(get_settings().database_url) as conn:
         result = _crm.update_contact(conn, contact_id, contact=contact)
@@ -961,9 +926,7 @@ def admin_contact_update(
 
 
 @router.post("/contacts/{contact_id}/archive", response_model=None)
-def admin_contact_archive(
-    request: Request, contact_id: UUID, csrf_token: str = Form(...)
-) -> Response:
+def admin_contact_archive(request: Request, contact_id: UUID, csrf_token: str = Form(...)) -> Response:
     session = require_admin_session(request)
     _verify_session_csrf(session, csrf_token)
     with db.db_connection(get_settings().database_url) as conn:
@@ -973,9 +936,7 @@ def admin_contact_archive(
 
 
 @router.post("/contacts/{contact_id}/restore", response_model=None)
-def admin_contact_restore(
-    request: Request, contact_id: UUID, csrf_token: str = Form(...)
-) -> Response:
+def admin_contact_restore(request: Request, contact_id: UUID, csrf_token: str = Form(...)) -> Response:
     session = require_admin_session(request)
     _verify_session_csrf(session, csrf_token)
     with db.db_connection(get_settings().database_url) as conn:
@@ -1320,13 +1281,7 @@ def admin_audit_list(request: Request, page: int = 1) -> HTMLResponse:
 
 
 for _link in ADMIN_NAV_LINKS:
-    if _link["href"] in {
-        "/admin",
-        "/admin/audit",
-        "/admin/briefs",
-        "/admin/companies",
-        "/admin/contacts",
-    }:
+    if _link["href"] in {"/admin", "/admin/audit", "/admin/briefs", "/admin/companies", "/admin/contacts"}:
         continue
     _section = _link["href"].removeprefix("/admin/")
 
