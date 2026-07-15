@@ -82,10 +82,14 @@ ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
 ADMIN_PATHS: frozenset[str] = frozenset(link["href"] for link in ADMIN_NAV_LINKS)
 
 
-def admin_archive_action_button_class(*, archived: bool) -> str:
-    """Return semantic classes for Archive/Restore form-action buttons."""
-    variant = "restore" if archived else "archive"
-    return f"admin-action-btn admin-action-btn--{variant}"
+def render_archive_action_button(*, label: str, is_restore: bool) -> str:
+    """Return a themed Archive/Restore submit button for admin detail/edit forms."""
+    variant = "restore" if is_restore else "destructive"
+    safe_label = html.escape(label)
+    return (
+        f'<button class="admin-action-btn admin-action-btn--{variant}" '
+        f'type="submit">{safe_label}</button>'
+    )
 
 # Pre-merge Playwright capture targets (shell pages + login). Never production.
 ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
@@ -99,12 +103,11 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
-    "/admin/companies/12121212-1212-1212-1212-121212121212",
-    "/admin/companies/21212121-2121-2121-2121-212121212121",
-    "/admin/contacts/31313131-3131-3131-3131-313131313131",
-    "/admin/contacts/41414141-4141-4141-4141-414141414141",
-    "/admin/contacts/31313131-3131-3131-3131-313131313131/edit",
-    "/admin/contacts/41414141-4141-4141-4141-414141414141/edit",
+    "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    "/admin/companies/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    "/admin/contacts/cccccccc-cccc-cccc-cccc-cccccccccccc",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd/edit",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
