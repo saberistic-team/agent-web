@@ -1313,6 +1313,193 @@ class PostgresAuditEventRepository:
         return dict(row)
 
 
+class PostgresImportBatchRepository:
+    def create(
+        self,
+        conn: psycopg.Connection,
+        *,
+        source_type: str,
+        schema_version: str,
+        checksum: str,
+        actor: str,
+        status: str,
+        correlation_id: str,
+        export_date: date | None = None,
+        summary_counts: dict[str, Any] | None = None,
+        error_message: str | None = None,
+    ) -> dict[str, Any]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO import_batches (
+                    source_type, export_date, schema_version, checksum, actor,
+                    status, summary_counts, error_message, correlation_id
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+                RETURNING *
+                """,
+                (
+                    source_type,
+                    export_date,
+                    schema_version,
+                    checksum,
+                    actor,
+                    status,
+                    json.dumps(summary_counts or {}),
+                    error_message,
+                    correlation_id,
+                ),
+            )
+            row = cur.fetchone()
+        return dict(row)
+
+    def get_by_id(self, conn: psycopg.Connection, batch_id: UUID) -> dict[str, Any] | None:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM import_batches WHERE id = %s", (batch_id,))
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def get_committed_by_checksum(
+        self, conn: psycopg.Connection, checksum: str
+    ) -> dict[str, Any] | None:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT * FROM import_batches
+                WHERE checksum = %s AND status = 'committed'
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (checksum,),
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def list_page(
+        self,
+        conn: psycopg.Connection,
+        *,
+        page: int = 1,
+        per_page: int = 50,
+    ) -> tuple[list[dict[str, Any]], int]:
+        safe_page = max(page, 1)
+        safe_per_page = max(min(per_page, 100), 1)
+        offset = (safe_page - 1) * safe_per_page
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) AS total FROM import_batches")
+            total_row = cur.fetchone()
+            total = int(total_row["total"]) if total_row else 0
+            cur.execute(
+                """
+                SELECT * FROM import_batches
+                ORDER BY created_at DESC
+                LIMIT %s OFFSET %s
+                """,
+                (safe_per_page, offset),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows], total
+
+    def update_status(
+        self,
+        conn: psycopg.Connection,
+        batch_id: UUID,
+        *,
+        status: str,
+        summary_counts: dict[str, Any] | None = None,
+        error_message: str | None = None,
+    ) -> dict[str, Any] | None:
+        fields = ["status = %s", "updated_at = %s"]
+        values: list[Any] = [status, _now()]
+        if summary_counts is not None:
+            fields.append("summary_counts = %s::jsonb")
+            values.append(json.dumps(summary_counts))
+        if error_message is not None:
+            fields.append("error_message = %s")
+            values.append(error_message)
+        values.append(batch_id)
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                UPDATE import_batches
+                SET {", ".join(fields)}
+                WHERE id = %s
+                RETURNING *
+                """,
+                values,
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def create_row(
+        self,
+        conn: psycopg.Connection,
+        *,
+        batch_id: UUID,
+        row_index: int,
+        source_kind: str,
+        source_identity: dict[str, Any],
+        outcome: str,
+        entity_type: str | None = None,
+        entity_id: UUID | None = None,
+        prior_snapshot: dict[str, Any] | None = None,
+        applied_snapshot: dict[str, Any] | None = None,
+        detail: str | None = None,
+    ) -> dict[str, Any]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO import_batch_rows (
+                    batch_id, row_index, source_kind, source_identity, outcome,
+                    entity_type, entity_id, prior_snapshot, applied_snapshot, detail
+                )
+                VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s, %s::jsonb, %s::jsonb, %s)
+                RETURNING *
+                """,
+                (
+                    batch_id,
+                    row_index,
+                    source_kind,
+                    json.dumps(source_identity),
+                    outcome,
+                    entity_type,
+                    entity_id,
+                    json.dumps(prior_snapshot) if prior_snapshot is not None else None,
+                    json.dumps(applied_snapshot) if applied_snapshot is not None else None,
+                    detail,
+                ),
+            )
+            row = cur.fetchone()
+        return dict(row)
+
+    def list_rows_for_batch(
+        self,
+        conn: psycopg.Connection,
+        batch_id: UUID,
+        *,
+        outcome: str | None = None,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        conditions = ["batch_id = %s"]
+        params: list[Any] = [batch_id]
+        if outcome:
+            conditions.append("outcome = %s")
+            params.append(outcome)
+        params.append(limit)
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT * FROM import_batch_rows
+                WHERE {' AND '.join(conditions)}
+                ORDER BY row_index ASC
+                LIMIT %s
+                """,
+                params,
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+
 class PostgresRepositories:
     """Bundle of Postgres repository implementations including CRM + audit."""
 
@@ -1327,6 +1514,7 @@ class PostgresRepositories:
         self.project_briefs = PostgresProjectBriefRepository()
         self.acquisition_dashboard = PostgresAcquisitionDashboardRepository()
         self.pipeline = PostgresPipelineRepository()
+        self.import_batches = PostgresImportBatchRepository()
 
 
 _default_repositories = PostgresRepositories()
@@ -1349,6 +1537,7 @@ def default_repositories() -> dict[str, Any]:
         "project_briefs": repos.project_briefs,
         "acquisition_dashboard": repos.acquisition_dashboard,
         "pipeline": repos.pipeline,
+        "import_batches": repos.import_batches,
     }
 
 

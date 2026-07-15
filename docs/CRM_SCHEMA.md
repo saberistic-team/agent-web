@@ -189,6 +189,29 @@ and expired evidence can be marked stale without overwriting history.
 Indexes: `company_id`, `contact_id`, `record_type`, `expires_at`, `observed_at`.
 Records are append-only (INSERT) so conflicting observations coexist.
 
+### `import_batches` / `import_batch_rows`
+
+LinkedIn import batch persistence ([#110](https://github.com/saberistic-team/agent-web/issues/110)).
+Each committed export stores checksum, schema version, actor, status, and summary
+counts. Row outcomes (`inserted`, `updated`, `unchanged`, `skipped`, `conflicted`)
+retain normalized source identity without the raw ZIP.
+
+| `import_batches` column | Type | Notes |
+|-------------------------|------|-------|
+| `id` | `UUID` | Batch id |
+| `source_type` | `TEXT` | `linkedin` |
+| `export_date` | `DATE` | Optional export date from client |
+| `schema_version` | `TEXT` | e.g. `linkedin_export_v1` |
+| `checksum` | `TEXT` | SHA-256 of normalized connection identities |
+| `actor` | `TEXT` | Committing admin username |
+| `status` | `TEXT` | `committed`, `failed`, `rolled_back` |
+| `summary_counts` | `JSONB` | Insert/update/unchanged/skipped/conflicted totals |
+| `correlation_id` | `TEXT` | Request correlation id |
+
+Partial unique index on `checksum` where `status = 'committed'` prevents duplicate
+commits of the same export. Rollback marks the batch `rolled_back` and reverts
+batch-owned contact changes when records were not edited later.
+
 ### `admin_users`
 
 | Column | Type | Notes |
@@ -263,7 +286,10 @@ Migrations live in `app/migrations/definitions.py` and are applied at startup vi
 | `006` | `admin_csrf_binding` | Login-flow CSRF rows and session CSRF column |
 | `007` | `research_records` | Typed research records with provenance and expiry |
 | `010` | `company_records` | Company firmographics, normalized domain, and soft archival |
-| `011` | `acquisition_pipeline` | Pipeline stage, next actions, stage history, extended activity types |
+| `011` | `acquisition_dashboard_indexes` | Research-record indexes for the acquisition dashboard |
+| `012` | `contact_records` | Contact roles, relationship context, optional email, soft archival |
+| `013` | `acquisition_pipeline` | Pipeline stages, stage history, expanded activity types |
+| `014` | `import_batches` | LinkedIn import batch metadata and per-row outcomes |
 
 Applied versions are recorded in `schema_migrations`. Steps are **idempotent**
 (`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`) so empty and existing Render Postgres

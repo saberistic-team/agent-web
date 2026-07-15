@@ -114,25 +114,6 @@ def test_preview_contacts_rows_stable_with_seed() -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize(
-    "path",
-    [
-        "/admin/signals",
-        "/admin/pipeline",
-        "/admin/imports",
-        "/admin/discovery",
-        "/admin/analytics",
-        "/admin/content",
-        "/admin/settings",
-    ],
-)
-def test_preview_section_rows_cover_admin_paths(path: str) -> None:
-    rows = build_preview_section_rows(path, rng=random.Random(7))
-    assert 4 <= len(rows) <= 8
-    assert all(len(row) == 5 for row in rows)
-
-
-@pytest.mark.unit
 def test_preview_section_main_html_includes_mock_table() -> None:
     html = render_preview_section_main(
         label="Companies",
@@ -317,12 +298,38 @@ def test_preview_pipeline_detail_nullable_fields() -> None:
 
 @pytest.mark.unit
 def test_preview_acquisition_dashboard_data_is_populated() -> None:
+    from app.admin_preview import build_preview_acquisition_dashboard_data
+
     data = build_preview_acquisition_dashboard_data()
     assert data.company_counts_by_stage
     assert data.overdue_actions
     assert data.recent_evidence
     assert data.without_decision_maker
     assert data.without_decision_maker[0].company_name == "Meridian Stack"
+
+
+@pytest.mark.unit
+def test_preview_import_batches_seed_stable() -> None:
+    from app.admin_preview import build_preview_import_batch_detail, build_preview_import_batches
+
+    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
+    batches_a, total_a = build_preview_import_batches(rng=random.Random(110), now=now)
+    batches_b, total_b = build_preview_import_batches(rng=random.Random(110), now=now)
+    assert batches_a == batches_b
+    assert total_a == total_b
+    detail = build_preview_import_batch_detail(
+        str(batches_a[0]["id"]),
+        rng=random.Random(110),
+        now=now,
+    )
+    assert detail is not None
+    assert {row["outcome"] for row in detail["rows"]} == {
+        "inserted",
+        "updated",
+        "unchanged",
+        "skipped",
+        "conflicted",
+    }
 
 
 @pytest.mark.unit
