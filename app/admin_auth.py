@@ -20,7 +20,7 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.admin_client_source import client_ip, resolve_admin_login_client_source
+from app.admin_client_source import resolve_admin_login_client_source
 from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
@@ -235,6 +235,16 @@ def read_login_flow_token(request: Request) -> str | None:
     return token.strip() or None
 
 
+def client_ip(request: Request, settings: Settings) -> str:
+    """Resolve the client source IP for admin login rate limiting.
+
+    Delegates to :func:`resolve_admin_login_client_source`, which accepts
+    forwarded identity only when the immediate peer is a configured trusted
+    proxy and applies right-to-left trusted-hop parsing on ``X-Forwarded-For``.
+    """
+    return resolve_admin_login_client_source(request, settings).source
+
+
 def _digest_limiter_key(prefix: str, material: str) -> str:
     payload = f"{prefix}:{material}"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -356,10 +366,10 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    resolution = resolve_admin_login_client_source(request, settings)
+    source = client_ip(request, settings)
     limiter_keys = login_limiter_keys(
         submitted_username=username,
-        client_source=resolution.source,
+        client_source=source,
         configured_admin_username=settings.admin_username,
     )
     now = datetime.now(timezone.utc)
@@ -408,7 +418,6 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "lockout_transition": admission.lockout_transition,
-                "source_resolution_path": resolution.path.value,
             },
         )
     elif admission.already_locked:

@@ -9,8 +9,6 @@ import sys
 import urllib.error
 import urllib.request
 
-from app.admin_client_source import uvicorn_forwarded_allow_ips_arg
-
 
 def get_json(url: str) -> dict:
     with urllib.request.urlopen(url, timeout=30) as resp:
@@ -42,29 +40,20 @@ def main(argv: list[str] | None = None) -> int:
             print(f"FAIL {url}: got {payload!r}, expected {key}={expected!r}", file=sys.stderr)
             return 1
         print(f"PASS {url} → {payload}")
-
     health_url = f"{base}/health"
     try:
-        health = get_json(health_url)
+        health_payload = get_json(health_url)
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
         print(f"FAIL {health_url}: {exc}", file=sys.stderr)
         return 1
-    proxy_trust = health.get("admin_proxy_trust")
-    if not isinstance(proxy_trust, dict) or not proxy_trust.get("configured"):
+    if health_payload.get("admin_client_source_trust") != "configured":
         print(
-            f"FAIL {health_url}: expected admin_proxy_trust.configured=true in production",
+            f"FAIL {health_url}: admin_client_source_trust="
+            f"{health_payload.get('admin_client_source_trust')!r}, expected 'configured'",
             file=sys.stderr,
         )
         return 1
-    expected_ips = uvicorn_forwarded_allow_ips_arg()
-    if proxy_trust.get("forwarded_allow_ips") != expected_ips:
-        print(
-            f"FAIL {health_url}: forwarded_allow_ips mismatch "
-            f"(got {proxy_trust.get('forwarded_allow_ips')!r}, expected {expected_ips!r})",
-            file=sys.stderr,
-        )
-        return 1
-    print(f"PASS {health_url} → admin_proxy_trust configured")
+    print(f"PASS {health_url} → admin_client_source_trust=configured")
     return 0
 
 
