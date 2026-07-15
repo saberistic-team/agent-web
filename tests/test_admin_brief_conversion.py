@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Any, Generator
@@ -23,7 +24,7 @@ TEST_USERNAME = "operator"
 TEST_PASSWORD = "correct-horse-battery-staple"
 TEST_HASH = PasswordHasher().hash(TEST_PASSWORD)
 TEST_SECRET = "test-session-secret-32chars-minimum"
-TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum"
+TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!"
 CSRF_TOKEN = "csrf-convert-token"
 
 COMPANY_ID = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
@@ -36,7 +37,7 @@ def admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_USERNAME", TEST_USERNAME)
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_HASH)
     monkeypatch.setenv("ADMIN_SESSION_SECRET", TEST_SECRET)
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "test-limiter-secret-32chars-minimum!")
     monkeypatch.setenv("BASE_URL", "http://testserver")
     admin_auth.reset_login_rate_limiter()
 
@@ -349,6 +350,69 @@ def test_preview_mode_convert_pages_use_mock_data(monkeypatch: pytest.MonkeyPatc
     assert "Pipeline linkage" in converted.text
     assert 'href="/admin/contacts/' in converted.text
     assert 'href="/admin/pipeline"' in converted.text
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_convert_post_accepts_existing_match_selection() -> None:
+    """Radio groups submit existing-match values the same way keyboard selection would."""
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        with patch("app.admin_routes._verify_session_csrf"):
+            with mock_db_connection():
+                with patch("app.admin_routes.brief_service.get_brief", return_value=_detail_brief()):
+                    with patch("app.admin_routes._crm") as crm:
+                        crm.convert_project_brief.return_value = {"idempotent": False}
+                        response = client.post(
+                            "/admin/briefs/42/convert",
+                            data={
+                                "csrf_token": CSRF_TOKEN,
+                                "company_choice": f"existing:{COMPANY_ID}",
+                                "contact_choice": "new",
+                            },
+                        )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/admin/briefs/42?converted=1"
+    crm.convert_project_brief.assert_called_once()
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_convert_preview_radio_labels_wrap_inputs_for_keyboard() -> None:
+    token_hash = admin_auth.hash_session_token("convert-keyboard")
+    row = _session_row(token_hash=token_hash)
+    preview = {
+        "proposal": {"company_name": "Acme", "pipeline_stage_label": "Diagnostic paid"},
+        "company_matches": [{"id": COMPANY_ID, "name": "Acme Existing", "domain": "acme.example"}],
+        "contact_matches": [{"id": CONTACT_ID, "email": "ops@acme.example"}],
+    }
+    with mock_db_connection():
+        with patch("app.admin_routes.db.get_admin_session_by_token_hash", return_value=row):
+            with patch("app.admin_routes.brief_service.get_brief", return_value=_detail_brief()):
+                with patch("app.admin_routes._crm") as crm:
+                    crm.get_project_brief_source.return_value = None
+                    crm.find_brief_conversion_matches.return_value = preview
+                    with patch(
+                        "app.admin_routes._session_csrf_for_forms",
+                        return_value=CSRF_TOKEN,
+                    ):
+                        response = client.get(
+                            "/admin/briefs/42/convert",
+                            cookies={SESSION_COOKIE_NAME: "convert-keyboard"},
+                        )
+    assert response.status_code == 200
+    body = response.text
+    assert re.search(
+        r'<label class="brief-convert-choice">\s*<input type="radio" name="company_choice"',
+        body,
+    )
+    assert re.search(
+        r'<label class="brief-convert-match">\s*<input type="radio" name="company_choice"',
+        body,
+    )
+    assert re.search(
+        r'<label class="brief-convert-match">\s*<input type="radio" name="contact_choice"',
+        body,
+    )
 
 
 @pytest.mark.unit

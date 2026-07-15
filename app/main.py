@@ -20,8 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import analytics_service, case_studies, db, email_service, insights, page_service, stripe_service
-from app.admin_auth import AdminLoginLimiterSecretError, AdminLoginRequired, login_redirect_url
-from app.admin_auth import validate_admin_login_limiter_config
+from app.admin_auth import AdminLoginRequired, login_redirect_url
 from app.admin_pipeline_routes import router as admin_pipeline_router
 from app.admin_routes import router as admin_router
 from app.actor_context import CORRELATION_HEADER
@@ -46,13 +45,13 @@ ASSETS_DIR = SITE_DIR / "assets"
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     if settings.database_configured:
-        try:
-            validate_admin_login_limiter_config(settings)
-        except AdminLoginLimiterSecretError as exc:
-            logger.error("Admin login limiter secret invalid: %s", exc)
-            raise
         db.init_db(settings.database_url)
         logger.info("database schema ready")
+    if settings.admin_auth_configured:
+        from app import admin_auth
+
+        admin_auth.validate_admin_login_limiter_secrets(settings)
+        logger.info("admin login limiter secrets validated")
     else:
         logger.warning("DATABASE_URL not set — brief persistence disabled")
     yield

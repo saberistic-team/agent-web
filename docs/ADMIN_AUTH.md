@@ -165,8 +165,8 @@ access logs or metrics for operational visibility if needed.
 | `ADMIN_USERNAME` | Yes | Operator username (plain text identifier) |
 | `ADMIN_PASSWORD_HASH` | Yes | Argon2id hash of the operator password |
 | `ADMIN_SESSION_SECRET` | Yes | Retained for configuration parity (≥ 32 random bytes); CSRF is session-bound, not HMAC-signed with this secret |
-| `ADMIN_LOGIN_LIMITER_SECRET` | Yes | HMAC key for privacy-preserving login rate-limiter identifiers (≥ 32 random bytes; environment-specific) |
-| `ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS` | Optional | Previous limiter secret during a bounded rotation window (see [Limiter secret rotation](#limiter-secret-rotation)) |
+| `ADMIN_LOGIN_LIMITER_SECRET` | Yes | Key material for HMAC-SHA256 login limiter identifiers (≥ 32 random bytes; independent from session secret) |
+| `ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS` | Optional | Previous limiter secret during rotation (see [Limiter secret rotation](#limiter-secret-rotation)) |
 | `ADMIN_SESSION_TTL_SECONDS` | Optional | Session lifetime in seconds (default `86400`) |
 | `ADMIN_LOGIN_RATE_LIMIT` | Optional | Failed login attempts allowed per window (default `5`) |
 | `ADMIN_LOGIN_RATE_WINDOW_SECONDS` | Optional | Rate-limit counting window in seconds (default `900`) |
@@ -198,12 +198,21 @@ print(secrets.token_urlsafe(48))
 PY
 ```
 
+Generate a **separate** login limiter secret (do not reuse the session secret):
+
+```bash
+python - <<'PY'
+import secrets
+print(secrets.token_urlsafe(48))
+PY
+```
+
 On Render, add:
 
 1. `ADMIN_USERNAME` — e.g. `operator`
 2. `ADMIN_PASSWORD_HASH` — output from the Argon2 command
 3. `ADMIN_SESSION_SECRET` — output from the secrets command
-4. `ADMIN_LOGIN_LIMITER_SECRET` — generate the same way; use a **different** value per environment (test, preview, production)
+4. `ADMIN_LOGIN_LIMITER_SECRET` — output from a second secrets command
 
 Redeploy after changing any of the above.
 
@@ -216,36 +225,6 @@ Redeploy after changing any of the above.
 3. Redeploy the web service.
 4. Existing sessions remain valid until they expire or the operator signs out.
    To invalidate immediately, revoke rows in `admin_sessions` (see below).
-
-### Limiter secret rotation
-
-Login rate-limit rows store only HMAC-SHA-256 digests keyed by
-``ADMIN_LOGIN_LIMITER_SECRET``. Rotating the limiter secret changes every stored
-``limiter_key``; rows written under the old secret are no longer reachable unless
-the previous key is still configured.
-
-**Bounded rotation (recommended):**
-
-1. Generate a new ``ADMIN_LOGIN_LIMITER_SECRET``.
-2. Move the current value to ``ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS``.
-3. Set the new value as ``ADMIN_LOGIN_LIMITER_SECRET``.
-4. Redeploy. While both variables are set, admission and throttling consult
-   buckets derived from **both** secrets so active lockouts continue to apply.
-5. After ``max(ADMIN_LOGIN_RATE_WINDOW_SECONDS, ADMIN_LOGIN_LOCKOUT_SECONDS) × 2``
-   (the automatic cleanup retention), remove ``ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS``
-   and redeploy again.
-
-**Effect:** Existing limiter history under the old secret stops applying once the
-previous variable is removed. Rate-limit counters effectively reset for all
-clients at that point — plan rotations during low-traffic windows.
-
-**Controlled reset (alternative):** Update ``ADMIN_LOGIN_LIMITER_SECRET`` without
-setting ``ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS``. Protection may gap until new
-attempts populate fresh rows. Manually prune stale rows if needed (see
-[Manual cleanup](#manual-cleanup)).
-
-Never commit limiter secrets to the repository. Preview, CI, and production must
-use independent values.
 
 ### Session secret rotation
 
@@ -289,14 +268,13 @@ limits apply consistently across web processes, instances, and deployments.
 
 ### Limiter key strategy
 
-Each attempt consults one or two privacy-preserving HMAC-SHA-256 buckets (only
-the digest is stored as ``limiter_key``). Key material comes from
-``ADMIN_LOGIN_LIMITER_SECRET`` (and optionally
-``ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS`` during rotation). Plain SHA-256 of the
-source or username is never stored.
+Each attempt consults one or two privacy-preserving **HMAC-SHA256** buckets (only the
+64-character hex digest is stored as ``limiter_key``). Key material comes from
+``ADMIN_LOGIN_LIMITER_SECRET``; identifiers use explicit domain separation so
+source and account families cannot collide.
 
-| Bucket | HMAC domain | Key material | Purpose |
-|--------|-------------|--------------|---------|
+| Bucket | Domain prefix | Key material | Purpose |
+|--------|---------------|--------------|---------|
 | **Source-wide** | ``src`` | ``<normalized_client_source>`` | Stops username rotation from one client source |
 | **Account-wide** | ``acct`` | ``<normalized_configured_admin_username>`` | Limits distributed attempts against the configured admin account |
 
@@ -304,9 +282,42 @@ The submitted username is normalized (lowercased/stripped) only to decide whethe
 account bucket applies. Unknown usernames still share the source bucket for their
 client source; responses remain generic.
 
+A database reader **without** the limiter secret cannot verify guessed IP addresses or
+usernames by hashing them directly. Plain SHA-256 of ``src:…`` or ``acct:…`` inputs
+does not match stored identifiers.
+
 Raw usernames, passwords, IP addresses, forwarding headers, CSRF tokens, limiter
-secrets, and digest inputs are never written to limiter rows or limiter
+secrets, and session secrets are never written to limiter rows or limiter
 observability logs.
+
+### Limiter secret rotation
+
+``ADMIN_LOGIN_LIMITER_SECRET`` is validated at application startup (fail-fast when
+missing, weak, or placeholder). Keep it **independent** across test, preview, and
+production environments.
+
+Rotating the limiter secret changes every stored ``limiter_key`` digest. Rows written
+under the previous secret are not automatically migrated.
+
+**Controlled rotation (recommended):**
+
+1. Generate a new ``ADMIN_LOGIN_LIMITER_SECRET``.
+2. Set the outgoing value on ``ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS``.
+3. Set the new value on ``ADMIN_LOGIN_LIMITER_SECRET``.
+4. Redeploy. During the overlap window, admission consults **both** current and
+   previous keyed identifiers so active rate-limit history remains enforceable.
+5. After ``2 × max(window, lockout)`` seconds (or manual cleanup), remove
+   ``ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS`` and redeploy again.
+
+**Immediate rotation (accepts reset):**
+
+1. Replace ``ADMIN_LOGIN_LIMITER_SECRET`` and redeploy without setting
+   ``ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS``.
+2. Existing ``admin_login_rate_limits`` rows become unreachable; effective
+   rate-limit history resets until new failures accumulate.
+3. Run manual cleanup (below) to prune stale rows from the old key epoch.
+
+Expired rows under either key epoch remain eligible for bounded opportunistic cleanup.
 
 ### Client source resolution
 

@@ -51,7 +51,7 @@ PREVIEW_ADMIN_PASSWORD_HASH = (
     "$argon2id$v=19$m=65536,t=3,p=4$preview-screenshot-salt$preview-screenshot-hash"
 )
 PREVIEW_ADMIN_SESSION_SECRET = "preview-session-secret-32chars-minimum"
-PREVIEW_ADMIN_LIMITER_SECRET = "preview-limiter-secret-32chars-minimum!!"
+PREVIEW_ADMIN_LOGIN_LIMITER_SECRET = "preview-limiter-secret-32chars-minimum!"
 PREVIEW_SESSION_TOKEN = "preview-screenshot-session"
 ADMIN_SESSION_COOKIE = "admin_session"
 
@@ -88,6 +88,14 @@ ADMIN_SCREENSHOT_ROUTES: tuple[str, ...] = (
     "/admin/briefs/4/convert",
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
+    "/admin/companies/dddddddd-dddd-dddd-dddd-dddddddddd01",
+    "/admin/companies/dddddddd-dddd-dddd-dddd-dddddddddd02",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd03",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd04",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd03/edit",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd04/edit",
+    "/admin/companies?archived=1",
+    "/admin/contacts?archived=1",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
     "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
     "/admin/companies/new",
@@ -732,7 +740,7 @@ def local_preview_server(
         "ADMIN_SESSION_SECRET": os.environ.get("ADMIN_SESSION_SECRET")
         or PREVIEW_ADMIN_SESSION_SECRET,
         "ADMIN_LOGIN_LIMITER_SECRET": os.environ.get("ADMIN_LOGIN_LIMITER_SECRET")
-        or PREVIEW_ADMIN_LIMITER_SECRET,
+        or PREVIEW_ADMIN_LOGIN_LIMITER_SECRET,
     }
     proc = subprocess.Popen(
         [
