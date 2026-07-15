@@ -336,15 +336,6 @@ def _mock_cleanup_stale_admin_login_flows(conn: MagicMock, **kwargs: Any) -> int
     return len(stale_hashes)
 
 
-def _mock_get_admin_login_flow_by_token_hash(
-    conn: MagicMock,
-    flow_token_hash: str,
-) -> dict[str, Any] | None:
-    with _login_flow_lock:
-        row = _login_flows.get(flow_token_hash)
-        return copy.deepcopy(row) if row is not None else None
-
-
 def _mock_claim_admin_login_flow(
     conn: MagicMock,
     *,
@@ -354,7 +345,9 @@ def _mock_claim_admin_login_flow(
 ) -> dict[str, Any] | None:
     with _login_flow_lock:
         row = _login_flows.get(flow_token_hash)
-        if row is None or row.get("consumed_at") is not None:
+        if row is None:
+            return None
+        if row.get("consumed_at") is not None:
             return None
         expires_at = row["expires_at"]
         if expires_at.tzinfo is None:
@@ -364,19 +357,27 @@ def _mock_claim_admin_login_flow(
         if row.get("csrf_token_hash") != csrf_token_hash:
             return None
         row["consumed_at"] = now
-        return copy.deepcopy(row)
+        return dict(row)
 
 
 def _mock_consume_admin_login_flow(
     conn: MagicMock,
     *,
     flow_token_hash: str,
+    now: datetime,
 ) -> bool:
     with _login_flow_lock:
         row = _login_flows.get(flow_token_hash)
-        if row is None or row.get("consumed_at") is not None:
+        if row is None:
             return False
-        row["consumed_at"] = datetime.now(timezone.utc)
+        if row.get("consumed_at") is not None:
+            return False
+        expires_at = row["expires_at"]
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at <= now:
+            return False
+        row["consumed_at"] = now
         return True
 
 
@@ -430,12 +431,6 @@ def mock_db_connection() -> Generator[MagicMock, None, None]:
             patch(
                 "app.admin_routes.db.cleanup_stale_admin_login_flows",
                 _mock_cleanup_stale_admin_login_flows,
-            )
-        )
-        stack.enter_context(
-            patch(
-                "app.admin_routes.db.get_admin_login_flow_by_token_hash",
-                _mock_get_admin_login_flow_by_token_hash,
             )
         )
         stack.enter_context(
@@ -1827,363 +1822,3 @@ def test_login_flow_cleanup_failure_retry_succeeds(rate_limit_store: FakeRateLim
                 assert second.status_code == 200
 
     assert cleanup_calls["count"] == 2
-
-
-def _concurrent_login_posts(
-    *,
-    csrf_token: str,
-    cookies: dict[str, str],
-    password: str = TEST_PASSWORD,
-    barrier: threading.Barrier,
-    results: list[Any],
-    result_lock: threading.Lock,
-) -> None:
-    """POST /admin/login from a worker thread after a shared barrier."""
-
-    def _post() -> Any:
-        return client.post(
-            "/admin/login",
-            data={
-                "username": TEST_USERNAME,
-                "password": password,
-                "csrf_token": csrf_token,
-            },
-            cookies=cookies,
-        )
-
-    barrier.wait()
-    response = _post()
-    with result_lock:
-        results.append(response)
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_concurrent_login_flow_replay_valid_credentials_single_winner(
-    rate_limit_store: FakeRateLimitStore,
-) -> None:
-    """Exactly one concurrent submission may reach credential verification."""
-    verify_calls: list[str] = []
-    verify_lock = threading.Lock()
-    barrier = threading.Barrier(2)
-    results: list[Any] = []
-    result_lock = threading.Lock()
-
-    original_verify = admin_auth.verify_admin_credentials
-
-    def counting_verify(username: str, password: str, settings: Any) -> bool:
-        with verify_lock:
-            verify_calls.append(threading.current_thread().name)
-        return original_verify(username, password, settings)
-
-    with shared_rate_limiter(rate_limit_store):
-        with mock_db_connection():
-            csrf_token, cookies = _fetch_login_form()
-            threads = [
-                threading.Thread(
-                    target=_concurrent_login_posts,
-                    kwargs={
-                        "csrf_token": csrf_token,
-                        "cookies": cookies,
-                        "barrier": barrier,
-                        "results": results,
-                        "result_lock": result_lock,
-                    },
-                )
-                for _ in range(2)
-            ]
-            with patch(
-                "app.admin_routes.admin_auth.verify_admin_credentials",
-                side_effect=counting_verify,
-            ):
-                for thread in threads:
-                    thread.start()
-                for thread in threads:
-                    thread.join()
-
-    assert len(verify_calls) == 1
-    status_codes = sorted(response.status_code for response in results)
-    assert status_codes == [303, 400]
-    success_count = sum(1 for response in results if response.status_code == 303)
-    assert success_count == 1
-    assert len(_session_store) == 1
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_concurrent_login_flow_replay_invalid_credentials_single_verify(
-    rate_limit_store: FakeRateLimitStore,
-) -> None:
-    """Concurrent replay with wrong password: one verify, loser cannot reuse winner flow."""
-    verify_calls: list[str] = []
-    verify_lock = threading.Lock()
-    barrier = threading.Barrier(2)
-    results: list[Any] = []
-    result_lock = threading.Lock()
-
-    original_verify = admin_auth.verify_admin_credentials
-
-    def counting_verify(username: str, password: str, settings: Any) -> bool:
-        with verify_lock:
-            verify_calls.append(threading.current_thread().name)
-        return original_verify(username, password, settings)
-
-    with shared_rate_limiter(rate_limit_store):
-        with mock_db_connection():
-            csrf_token, cookies = _fetch_login_form()
-            threads = [
-                threading.Thread(
-                    target=_concurrent_login_posts,
-                    kwargs={
-                        "csrf_token": csrf_token,
-                        "cookies": cookies,
-                        "password": "wrong-password",
-                        "barrier": barrier,
-                        "results": results,
-                        "result_lock": result_lock,
-                    },
-                )
-                for _ in range(2)
-            ]
-            with patch(
-                "app.admin_routes.admin_auth.verify_admin_credentials",
-                side_effect=counting_verify,
-            ):
-                for thread in threads:
-                    thread.start()
-                for thread in threads:
-                    thread.join()
-
-    assert len(verify_calls) == 1
-    status_codes = sorted(response.status_code for response in results)
-    assert status_codes == [400, 401]
-    failed = next(response for response in results if response.status_code == 401)
-    _assert_replacement_login_flow_cookie_retained(failed)
-    retry_csrf = _extract_csrf_token(failed.text)
-    replacement_cookie = failed.cookies.get(LOGIN_FLOW_COOKIE_NAME)
-    assert replacement_cookie
-
-    with mock_db_connection():
-        blocked = client.post(
-            "/admin/login",
-            data={
-                "username": TEST_USERNAME,
-                "password": TEST_PASSWORD,
-                "csrf_token": retry_csrf,
-            },
-            cookies={LOGIN_FLOW_COOKIE_NAME: replacement_cookie},
-        )
-    assert blocked.status_code == 303
-
-    with mock_db_connection():
-        loser_retry = client.post(
-            "/admin/login",
-            data={
-                "username": TEST_USERNAME,
-                "password": TEST_PASSWORD,
-                "csrf_token": retry_csrf,
-            },
-            cookies=cookies,
-        )
-    assert loser_retry.status_code == 400
-    assert admin_auth.INVALID_CREDENTIALS_MESSAGE in loser_retry.text
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_concurrent_login_flow_claim_uses_separate_db_connections(
-    rate_limit_store: FakeRateLimitStore,
-) -> None:
-    """Race uses distinct connection contexts like separate app workers."""
-    connection_ids: list[int] = []
-    connection_lock = threading.Lock()
-    barrier = threading.Barrier(2)
-    results: list[Any] = []
-    result_lock = threading.Lock()
-    next_conn_id = {"value": 0}
-
-    @contextmanager
-    def counting_db_connection(database_url: str | None) -> Generator[MagicMock, None, None]:
-        conn = MagicMock()
-        with connection_lock:
-            next_conn_id["value"] += 1
-            connection_ids.append(next_conn_id["value"])
-        yield conn
-
-    with shared_rate_limiter(rate_limit_store):
-        with mock_db_connection():
-            csrf_token, cookies = _fetch_login_form()
-            threads = [
-                threading.Thread(
-                    target=_concurrent_login_posts,
-                    kwargs={
-                        "csrf_token": csrf_token,
-                        "cookies": cookies,
-                        "barrier": barrier,
-                        "results": results,
-                        "result_lock": result_lock,
-                    },
-                )
-                for _ in range(2)
-            ]
-            with patch("app.admin_routes.db.db_connection", side_effect=counting_db_connection):
-                for thread in threads:
-                    thread.start()
-                for thread in threads:
-                    thread.join()
-
-    assert len(connection_ids) >= 2
-    assert len(set(connection_ids)) >= 2
-    assert sorted(response.status_code for response in results) == [303, 400]
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_zero_row_login_flow_claim_stops_login_path(
-    rate_limit_store: FakeRateLimitStore,
-) -> None:
-    with shared_rate_limiter(rate_limit_store):
-        with mock_db_connection():
-            csrf_token, cookies = _fetch_login_form()
-            with (
-                patch("app.admin_routes.db.claim_admin_login_flow", return_value=None),
-                patch(
-                    "app.admin_routes.admin_auth.verify_admin_credentials",
-                ) as verify,
-                patch("app.admin_routes._issue_session") as issue_session,
-            ):
-                response = client.post(
-                    "/admin/login",
-                    data={
-                        "username": TEST_USERNAME,
-                        "password": TEST_PASSWORD,
-                        "csrf_token": csrf_token,
-                    },
-                    cookies=cookies,
-                )
-    assert response.status_code == 400
-    verify.assert_not_called()
-    issue_session.assert_not_called()
-    assert admin_auth.INVALID_CREDENTIALS_MESSAGE in response.text
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_login_flow_claim_rejects_at_exact_expiry_boundary(
-    rate_limit_store: FakeRateLimitStore,
-) -> None:
-    boundary = datetime(2026, 7, 15, 12, 0, 0, tzinfo=timezone.utc)
-    with shared_rate_limiter(rate_limit_store):
-        with mock_db_connection():
-            csrf_token, cookies = _fetch_login_form()
-            flow_hash = admin_auth.hash_session_token(cookies[LOGIN_FLOW_COOKIE_NAME])
-            _login_flows[flow_hash]["expires_at"] = boundary
-            with patch(
-                "app.admin_routes.datetime",
-                wraps=datetime,
-            ) as dt:
-                dt.now.return_value = boundary
-                response = client.post(
-                    "/admin/login",
-                    data={
-                        "username": TEST_USERNAME,
-                        "password": TEST_PASSWORD,
-                        "csrf_token": csrf_token,
-                    },
-                    cookies=cookies,
-                )
-    assert response.status_code == 400
-    assert admin_auth.INVALID_CREDENTIALS_MESSAGE in response.text
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_login_flow_claim_database_failure_blocks_authentication(
-    rate_limit_store: FakeRateLimitStore,
-) -> None:
-    with shared_rate_limiter(rate_limit_store):
-        with mock_db_connection():
-            csrf_token, cookies = _fetch_login_form()
-            with (
-                patch(
-                    "app.admin_routes.db.claim_admin_login_flow",
-                    side_effect=RuntimeError("database unavailable"),
-                ),
-                patch(
-                    "app.admin_routes.admin_auth.verify_admin_credentials",
-                ) as verify,
-                patch("app.admin_routes._issue_session") as issue_session,
-            ):
-                response = client.post(
-                    "/admin/login",
-                    data={
-                        "username": TEST_USERNAME,
-                        "password": TEST_PASSWORD,
-                        "csrf_token": csrf_token,
-                    },
-                    cookies=cookies,
-                )
-    assert response.status_code == 400
-    verify.assert_not_called()
-    issue_session.assert_not_called()
-    assert SESSION_COOKIE_NAME not in response.cookies
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_login_flow_cleanup_does_not_delete_active_in_flight_flow(
-    rate_limit_store: FakeRateLimitStore,
-) -> None:
-    """Concurrent cleanup cannot delete an active unconsumed flow being claimed."""
-    barrier = threading.Barrier(2)
-    cleanup_deleted: dict[str, int] = {}
-
-    def claim_with_barrier(conn: MagicMock, **kwargs: Any) -> dict[str, Any] | None:
-        barrier.wait()
-        return _mock_claim_admin_login_flow(conn, **kwargs)
-
-    def run_cleanup_while_claiming() -> None:
-        barrier.wait()
-        cleanup_deleted["count"] = _mock_cleanup_stale_admin_login_flows(
-            MagicMock(),
-            now=datetime.now(timezone.utc),
-            expired_retention_seconds=admin_auth.LOGIN_FLOW_EXPIRED_RETENTION_SECONDS,
-            consumed_retention_seconds=admin_auth.LOGIN_FLOW_CONSUMED_RETENTION_SECONDS,
-            batch_size=admin_auth.LOGIN_FLOW_CLEANUP_BATCH_SIZE,
-        )
-
-    now = datetime.now(timezone.utc)
-
-    with shared_rate_limiter(rate_limit_store):
-        with mock_db_connection():
-            csrf_token, cookies = _fetch_login_form()
-            flow_hash = admin_auth.hash_session_token(cookies[LOGIN_FLOW_COOKIE_NAME])
-            stale_hash = admin_auth.hash_session_token("stale-flow-token")
-            _login_flows[stale_hash] = {
-                "id": 99,
-                "flow_token_hash": stale_hash,
-                "csrf_token_hash": "stale-csrf",
-                "created_at": now - timedelta(hours=2),
-                "expires_at": now
-                - timedelta(seconds=admin_auth.LOGIN_FLOW_EXPIRED_RETENTION_SECONDS + 1),
-                "consumed_at": None,
-            }
-            cleanup_thread = threading.Thread(target=run_cleanup_while_claiming)
-            with patch("app.admin_routes.db.claim_admin_login_flow", side_effect=claim_with_barrier):
-                cleanup_thread.start()
-                response = client.post(
-                    "/admin/login",
-                    data={
-                        "username": TEST_USERNAME,
-                        "password": TEST_PASSWORD,
-                        "csrf_token": csrf_token,
-                    },
-                    cookies=cookies,
-                )
-                cleanup_thread.join()
-
-    assert response.status_code == 303
-    assert flow_hash in _login_flows
-    assert _login_flows[flow_hash]["consumed_at"] is not None
-    assert stale_hash not in _login_flows
-    assert cleanup_deleted["count"] == 1

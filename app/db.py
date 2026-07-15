@@ -246,11 +246,10 @@ def claim_admin_login_flow(
     csrf_token_hash: str,
     now: datetime,
 ) -> dict[str, Any] | None:
-    """Atomically claim a login flow when all pre-auth conditions match.
+    """Atomically validate and consume a login flow for credential verification.
 
-    A single concurrent request can succeed; others receive ``None`` (zero-row
-    update). The flow is marked consumed on successful claim, before credential
-    verification.
+    Exactly one concurrent caller can claim a matching unconsumed, unexpired row.
+    A zero-row update returns ``None`` (failed claim).
     """
     consumed_at = now
     with conn.cursor() as cur:
@@ -271,25 +270,32 @@ def claim_admin_login_flow(
     return row
 
 
-def consume_admin_login_flow(conn: psycopg.Connection, *, flow_token_hash: str) -> bool:
-    """Mark an unconsumed login flow as used without validating CSRF.
+def consume_admin_login_flow(
+    conn: psycopg.Connection,
+    *,
+    flow_token_hash: str,
+    now: datetime,
+) -> bool:
+    """Consume an unconsumed flow by cookie identity only (throttle / invalid CSRF).
 
-    Used when throttling or burning a flow after a failed atomic claim (e.g.
-    wrong CSRF). Returns ``True`` when a row was updated.
+    Returns ``True`` when a row was updated, ``False`` on a zero-row claim.
     """
-    consumed_at = datetime.now(timezone.utc)
+    consumed_at = now
     with conn.cursor() as cur:
         cur.execute(
             """
             UPDATE admin_login_flows
             SET consumed_at = %s
-            WHERE flow_token_hash = %s AND consumed_at IS NULL
+            WHERE flow_token_hash = %s
+              AND consumed_at IS NULL
+              AND expires_at > %s
+            RETURNING id
             """,
-            (consumed_at, flow_token_hash),
+            (consumed_at, flow_token_hash, now),
         )
-        updated = cur.rowcount > 0
+        row = cur.fetchone()
         conn.commit()
-    return updated
+    return row is not None
 
 
 def cleanup_stale_admin_login_flows(
