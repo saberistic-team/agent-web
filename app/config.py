@@ -22,7 +22,7 @@ class Settings:
     admin_username: str
     admin_password_hash: str
     admin_session_secret: str
-    admin_login_limiter_secret: str
+    admin_login_limiter_secret: str = ""
     admin_login_limiter_secret_previous: str = ""
     brief_price_cents: int = 20_000
     admin_session_ttl_seconds: int = 86_400
@@ -58,11 +58,11 @@ class Settings:
             self.admin_username
             and self.admin_password_hash
             and self.admin_session_secret
-            and self.admin_login_limiter_secret
         )
         if self.admin_preview_mode:
             return creds
-        return bool(self.database_url and creds)
+        limiter_ready = bool(self.admin_login_limiter_secret) if self.database_url else True
+        return bool(self.database_url and creds and limiter_ready)
 
     @property
     def admin_preview_enabled(self) -> bool:
