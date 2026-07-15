@@ -15,6 +15,8 @@ from spike.worldgraph.corpus import load_corpus, load_queries
 from spike.worldgraph.deterministic_extractor import DeterministicExtractor
 from spike.worldgraph.fetcher import (
     FetchError,
+    enforce_content_type,
+    enforce_size,
     fetch_fixture,
     strip_html_to_text,
     validate_public_url,
@@ -22,7 +24,7 @@ from spike.worldgraph.fetcher import (
 from spike.worldgraph.manifest_schema import ManifestValidationError, validate_manifest_v0
 from spike.worldgraph.model_assisted_extractor import ModelAssistedExtractor
 from spike.worldgraph.prompt_injection import detect_injection_phrases, sanitize_model_field
-from spike.worldgraph.run_benchmarks import run_ingestion_benchmark
+from spike.worldgraph.run_benchmarks import run_ingestion_benchmark, write_results
 from spike.worldgraph.search_benchmark import rank_fts, run_search_benchmark
 from spike.worldgraph.verification import (
     issue_dns_txt_challenge,
@@ -375,6 +377,27 @@ def test_no_production_routes_or_migrations_added() -> None:
     main = (REPO_ROOT / "app" / "main.py").read_text(encoding="utf-8")
     assert "worldgraph" not in main.lower()
     assert not (REPO_ROOT / "app" / "worldgraph_spike").exists()
+
+
+@pytest.mark.unit
+def test_fetcher_enforces_content_type_and_size() -> None:
+    with pytest.raises(FetchError, match="content type"):
+        enforce_content_type("application/octet-stream")
+    with pytest.raises(FetchError, match="exceeds"):
+        enforce_size(b"x" * 600_000, max_bytes=512_000)
+
+
+@pytest.mark.unit
+def test_write_results_produces_anonymized_artifact(tmp_path: Path) -> None:
+    import json
+
+    output = tmp_path / "benchmark_results.json"
+    write_results(output)
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["ingestion"]["sources_tested"] >= 15
+    assert "search" in payload
+    assert "recommendation" in payload
+    assert payload["recommendation"]["phase_1_pgvector_justified"] is False
 
 
 @pytest.mark.unit
