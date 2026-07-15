@@ -172,6 +172,8 @@ def test_render_populated_dashboard_includes_metric_sections() -> None:
     assert "Recently added evidence" in html
     assert "Stale evidence" in html
     assert "Missing decision-maker" in html
+    assert "qualifying decision-maker" in html
+    assert "Meridian Stack" in html
     assert "Schedule architecture review" in html
 
 

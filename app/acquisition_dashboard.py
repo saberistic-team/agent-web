@@ -25,12 +25,12 @@ METRIC_COMPANY_COUNT_BY_CATEGORY = (
     "NULL category is reported as unspecified."
 )
 METRIC_CONTACT_COUNT_BY_STAGE = (
-    "Count of contacts whose linked company is non-archived, grouped by "
-    "that company's stage; NULL stage is unspecified."
+    "Count of active (non-archived) contacts whose linked company is non-archived, "
+    "grouped by that company's stage; NULL stage is unspecified."
 )
 METRIC_CONTACT_COUNT_BY_CATEGORY = (
-    "Count of contacts whose linked company is non-archived, grouped by "
-    "that company's category; NULL category is unspecified."
+    "Count of active (non-archived) contacts whose linked company is non-archived, "
+    "grouped by that company's category; NULL category is unspecified."
 )
 METRIC_OVERDUE_NEXT_ACTION = (
     "Follow-up notes (research_records.record_type = follow_up_note) with a "
@@ -49,8 +49,9 @@ METRIC_STALE_EVIDENCE = (
     "requires operator re-verification."
 )
 METRIC_WITHOUT_DECISION_MAKER = (
-    "Non-archived companies with target_status target or watching that have "
-    "zero linked contacts (no identified decision-maker on file)."
+    "Non-archived companies with target_status target or watching that lack "
+    "an active contact in a qualifying decision-maker buying role "
+    "(founder, technical buyer, or executive buyer)."
 )
 METRIC_WITHOUT_NEXT_ACTION = (
     "Non-archived companies with target_status target or watching that have "
