@@ -19,6 +19,24 @@ def init_db(database_url: str) -> None:
         apply_migrations(conn)
 
 
+def latest_schema_version(database_url: str) -> str | None:
+    """Return the highest applied ``schema_migrations.version``, or None."""
+    with psycopg.connect(database_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT version
+                FROM schema_migrations
+                ORDER BY version DESC
+                LIMIT 1
+                """
+            )
+            row = cur.fetchone()
+    if row is None:
+        return None
+    return str(row[0])
+
+
 @contextmanager
 def db_connection(database_url: str) -> Generator[psycopg.Connection, None, None]:
     with psycopg.connect(database_url, row_factory=dict_row) as conn:
@@ -225,13 +243,14 @@ def claim_admin_login_flow(
     conn: psycopg.Connection,
     *,
     flow_token_hash: str,
+    csrf_token_hash: str,
     now: datetime,
 ) -> dict[str, Any] | None:
-    """Atomically mark one unconsumed, unexpired login flow as consumed.
+    """Atomically claim a login flow when all pre-auth conditions match.
 
-    Returns the claimed row on success. A ``None`` result means the flow was
-    missing, expired, already consumed, or lost a concurrent claim — callers
-    must treat that as a failed security claim, never as success.
+    A single concurrent request can succeed; others receive ``None`` (zero-row
+    update). The flow is marked consumed on successful claim, before credential
+    verification.
     """
     consumed_at = now
     with conn.cursor() as cur:
@@ -240,15 +259,37 @@ def claim_admin_login_flow(
             UPDATE admin_login_flows
             SET consumed_at = %s
             WHERE flow_token_hash = %s
+              AND csrf_token_hash = %s
               AND consumed_at IS NULL
               AND expires_at > %s
             RETURNING id, flow_token_hash, csrf_token_hash, created_at, expires_at, consumed_at
             """,
-            (consumed_at, flow_token_hash, now),
+            (consumed_at, flow_token_hash, csrf_token_hash, now),
         )
         row = cur.fetchone()
         conn.commit()
     return row
+
+
+def consume_admin_login_flow(conn: psycopg.Connection, *, flow_token_hash: str) -> bool:
+    """Mark an unconsumed login flow as used without validating CSRF.
+
+    Used when throttling or burning a flow after a failed atomic claim (e.g.
+    wrong CSRF). Returns ``True`` when a row was updated.
+    """
+    consumed_at = datetime.now(timezone.utc)
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE admin_login_flows
+            SET consumed_at = %s
+            WHERE flow_token_hash = %s AND consumed_at IS NULL
+            """,
+            (consumed_at, flow_token_hash),
+        )
+        updated = cur.rowcount > 0
+        conn.commit()
+    return updated
 
 
 def cleanup_stale_admin_login_flows(

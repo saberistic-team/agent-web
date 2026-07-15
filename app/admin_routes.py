@@ -322,31 +322,46 @@ def _issue_login_flow_response(
     return response
 
 
-def _claim_login_flow(request: Request, settings: Settings) -> dict[str, Any] | None:
-    """Atomically claim the browser-bound pre-auth login flow from the request."""
+def _try_claim_login_flow(
+    request: Request,
+    settings: Settings,
+    csrf_token: str,
+) -> bool:
+    """Atomically claim the browser-bound pre-auth flow for this POST."""
+    raw_flow_token = admin_auth.read_login_flow_token(request)
+    if raw_flow_token is None or not csrf_token:
+        return False
+    try:
+        flow_hash = admin_auth.hash_session_token(raw_flow_token)
+        csrf_hash = admin_auth.hash_csrf_token(csrf_token)
+    except (UnicodeEncodeError, ValueError):
+        return False
+    now = datetime.now(timezone.utc)
+    try:
+        with db.db_connection(settings.database_url) as conn:
+            row = db.claim_admin_login_flow(
+                conn,
+                flow_token_hash=flow_hash,
+                csrf_token_hash=csrf_hash,
+                now=now,
+            )
+        return row is not None
+    except Exception:
+        logger.exception("Failed to claim admin login flow")
+        return False
+
+
+def _consume_login_flow(request: Request, settings: Settings) -> None:
+    """Burn an unconsumed flow without CSRF validation (throttle / wrong CSRF)."""
     raw_flow_token = admin_auth.read_login_flow_token(request)
     if raw_flow_token is None:
-        return None
+        return
     flow_hash = admin_auth.hash_session_token(raw_flow_token)
-    now = datetime.now(timezone.utc)
-    with db.db_connection(settings.database_url) as conn:
-        return db.claim_admin_login_flow(conn, flow_token_hash=flow_hash, now=now)
-
-
-def _login_flow_claim_db_error_response(
-    *,
-    settings: Settings,
-    next_path: str | None,
-) -> HTMLResponse:
-    """Fail closed when durable login-flow claim storage is unavailable."""
-    return HTMLResponse(
-        admin_pages.render_admin_login_page(
-            csrf_token="",
-            error_message=admin_auth.INVALID_CREDENTIALS_MESSAGE,
-            next_path=next_path,
-        ),
-        status_code=503,
-    )
+    try:
+        with db.db_connection(settings.database_url) as conn:
+            db.consume_admin_login_flow(conn, flow_token_hash=flow_hash)
+    except Exception:
+        logger.exception("Failed to consume admin login flow")
 
 
 def _issue_session(
@@ -420,16 +435,13 @@ def admin_login_submit(
 
     Login-flow cookie lifecycle (``admin_login_flow``):
 
-    * **Claim** — every POST first attempts one atomic claim of the browser flow
-      row (``consumed_at`` set before credential verification). Exactly one
-      concurrent request can claim a flow; losers fail with the same generic
-      response as other invalid submissions.
-    * **Invalid CSRF** — after a successful claim, mismatched CSRF fails closed;
-      the flow is already consumed and a replacement flow cookie is issued.
-    * **Invalid credentials** — same as invalid CSRF: the claimed flow is not
+    * **Invalid CSRF / replay / concurrent loss** — atomic claim fails; any
+      remaining unconsumed flow is burned, a fresh form is rendered, and the
+      replacement flow cookie is retained.
+    * **Invalid credentials** — same as invalid CSRF: consumed flow is not
       replayable; the replacement flow binds the returned CSRF token.
-    * **Rate limited** — claim the submitted flow when possible and retain a
-      replacement so the operator can retry after lockout without refreshing.
+    * **Rate limited** — consume the submitted flow and retain a replacement so
+      the operator can retry after lockout without refreshing.
     * **Success** — clear the pre-auth flow cookie and issue the session cookie.
     """
     settings = get_settings()
@@ -440,11 +452,7 @@ def admin_login_submit(
         _record_login_failure(
             request, reason="rate_limited", attempted_username=normalized_username
         )
-        try:
-            _claim_login_flow(request, settings)
-        except Exception:
-            logger.exception("Failed to claim admin login flow during rate limit")
-            return _login_flow_claim_db_error_response(settings=settings, next_path=next)
+        _consume_login_flow(request, settings)
         return _issue_login_flow_response(
             settings=settings,
             error_message=admin_auth.LOGIN_THROTTLED_MESSAGE,
@@ -452,32 +460,8 @@ def admin_login_submit(
             status_code=429,
         )
 
-    try:
-        claimed_flow = _claim_login_flow(request, settings)
-    except Exception:
-        logger.exception("Failed to claim admin login flow")
-        _record_login_failure(
-            request, reason="invalid_csrf", attempted_username=normalized_username
-        )
-        return _login_flow_claim_db_error_response(settings=settings, next_path=next)
-
-    if claimed_flow is None:
-        admin_auth.record_failed_login(request, settings, username=normalized_username)
-        _record_login_failure(
-            request, reason="invalid_csrf", attempted_username=normalized_username
-        )
-        return _issue_login_flow_response(
-            settings=settings,
-            error_message=admin_auth.INVALID_CREDENTIALS_MESSAGE,
-            next_path=next,
-            status_code=400,
-        )
-
-    csrf_valid = admin_auth.verify_csrf_value(
-        csrf_token, claimed_flow.get("csrf_token_hash")
-    )
-
-    if not csrf_valid:
+    if not _try_claim_login_flow(request, settings, csrf_token):
+        _consume_login_flow(request, settings)
         admin_auth.record_failed_login(request, settings, username=normalized_username)
         _record_login_failure(
             request, reason="invalid_csrf", attempted_username=normalized_username
