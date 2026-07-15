@@ -198,14 +198,28 @@ def test_admin_css_desktop_nav_list_visible_when_collapsed() -> None:
 
 
 @pytest.mark.unit
-def test_admin_css_archive_action_button_states() -> None:
+def test_admin_css_archive_action_buttons_reset_native_appearance() -> None:
     css = ADMIN_CSS.read_text(encoding="utf-8")
-    assert ".admin-action {" in css
-    assert ".admin-action--destructive" in css
-    assert ".admin-action--restore" in css
+    action_block = css.split(".admin-action {", 1)[1].split("}", 1)[0]
+    assert "appearance: none" in action_block
+    assert "-webkit-appearance: none" in action_block
+    assert "background:" in action_block
+    assert "border:" in action_block
+    assert "padding:" in action_block
+    assert "cursor: pointer" in action_block
+    assert "border-radius:" in action_block
     assert ".admin-action:focus-visible" in css
     assert ".admin-action:disabled" in css
-    assert ".admin-action:active:not(:disabled)" in css
+    assert ".admin-action--destructive" in css
+    assert ".admin-action--secondary" in css
+    destructive_block = css.split(".admin-action--destructive {", 1)[1].split("}", 1)[0]
+    secondary_block = css.split(".admin-action--secondary {", 1)[1].split("}", 1)[0]
+    assert "background:" in destructive_block
+    assert "border-color:" in destructive_block
+    assert "background:" in secondary_block
+    assert "border-color:" in secondary_block
+    assert "#fff" not in destructive_block.lower()
+    assert "#ffffff" not in destructive_block.lower()
 
 
 @pytest.mark.unit
