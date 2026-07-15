@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 import psycopg
 import pytest
 from fastapi.testclient import TestClient
+from psycopg.rows import dict_row
 
 from app import analytics_ingest
 from app.analytics_event_schema import ConsentState
@@ -292,7 +293,7 @@ def pg_conn(database_url: str) -> Iterator[psycopg.Connection]:
     with psycopg.connect(database_url, autocommit=False) as bootstrap:
         _reset_public_schema(bootstrap)
         apply_migrations(bootstrap)
-    conn = psycopg.connect(database_url, autocommit=False)
+    conn = psycopg.connect(database_url, row_factory=dict_row, autocommit=False)
     try:
         yield conn
     finally:
