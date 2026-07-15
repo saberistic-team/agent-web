@@ -20,8 +20,8 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
+from app.admin_client_source import resolve_admin_login_client_source
 from app.config import Settings
-from app.proxy_trust import ClientSourceResult, resolve_admin_login_client_source
 
 SESSION_COOKIE_NAME = "admin_session"
 LOGIN_FLOW_COOKIE_NAME = "admin_login_flow"
@@ -235,17 +235,25 @@ def read_login_flow_token(request: Request) -> str | None:
     return token.strip() or None
 
 
-def resolve_admin_login_client_source_for_limiter(
-    request: Request,
-    settings: Settings,
-) -> ClientSourceResult:
-    """Resolve limiter source identity with trusted-proxy verification."""
-    return resolve_admin_login_client_source(request, settings)
-
-
 def client_ip(request: Request, settings: Settings) -> str:
-    """Return the normalized admin-login limiter source for ``request``."""
-    return resolve_admin_login_client_source_for_limiter(request, settings).source
+    """Resolve the client source IP for rate limiting.
+
+    Forwarding headers are honored only when the immediate TCP peer is a member
+    of ``ADMIN_TRUSTED_PROXY_IPS`` and ``ADMIN_TRUST_PROXY_HEADERS`` is enabled.
+    The resolver walks ``X-Forwarded-For`` from right to left, skipping trusted
+    proxy hops, instead of trusting a client-supplied leftmost value.
+
+    Source identity notes:
+
+    * **IPv4 / IPv6** — stored only as keyed digests; the resolved string is
+      passed verbatim into the source bucket (e.g. ``203.0.113.1``,
+      ``2001:db8::1``).
+    * **Missing peer** — falls back to ``unknown`` so attempts still share one
+      bucket instead of creating an unbounded namespace.
+    * **Untrusted peer** — forwarding headers are ignored; the direct peer
+      address is used so spoofed ``X-Forwarded-For`` cannot rotate buckets.
+    """
+    return resolve_admin_login_client_source(request, settings).source
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
@@ -369,8 +377,7 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    source_result = resolve_admin_login_client_source_for_limiter(request, settings)
-    source = source_result.source
+    source = client_ip(request, settings)
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,
@@ -422,7 +429,6 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "lockout_transition": admission.lockout_transition,
-                "source_resolution_path": source_result.path.value,
             },
         )
     elif admission.already_locked:
@@ -431,7 +437,6 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "already_locked": True,
-                "source_resolution_path": source_result.path.value,
             },
         )
     return LoginAdmissionResult(

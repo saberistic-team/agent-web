@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from ipaddress import IPv4Network, IPv6Network
 
-from app.proxy_trust import RENDER_TRUSTED_PROXY_CIDRS, parse_trusted_proxy_cidrs
+from app.admin_client_source import DEFAULT_TRUSTED_PROXY_IPS
 
 
 @dataclass(frozen=True)
@@ -31,8 +30,9 @@ class Settings:
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
     admin_trust_proxy_headers: bool = False
-    admin_trusted_proxy_cidrs: tuple[IPv4Network | IPv6Network, ...] = ()
-    uvicorn_forwarded_allow_ips: str = ""
+    admin_trusted_proxy_ips: str = ""
+    admin_trust_cloudflare_headers: bool = False
+    admin_cloudflare_proxy_cidrs: str = ""
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -88,6 +88,15 @@ class Settings:
 
 
 def get_settings() -> Settings:
+    trust_proxy_headers = os.environ.get("ADMIN_TRUST_PROXY_HEADERS", "").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    trusted_proxy_ips = os.environ.get("ADMIN_TRUSTED_PROXY_IPS", "").strip()
+    if trust_proxy_headers and not trusted_proxy_ips:
+        trusted_proxy_ips = DEFAULT_TRUSTED_PROXY_IPS
+
     return Settings(
         database_url=os.environ.get("DATABASE_URL", ""),
         stripe_secret_key=os.environ.get("STRIPE_SECRET_KEY", ""),
@@ -114,17 +123,13 @@ def get_settings() -> Settings:
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
         brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
-        admin_trust_proxy_headers=os.environ.get(
-            "ADMIN_TRUST_PROXY_HEADERS", ""
+        admin_trust_proxy_headers=trust_proxy_headers,
+        admin_trusted_proxy_ips=trusted_proxy_ips,
+        admin_trust_cloudflare_headers=os.environ.get(
+            "ADMIN_TRUST_CLOUDFLARE_HEADERS", ""
         ).lower()
         in ("1", "true", "yes"),
-        admin_trusted_proxy_cidrs=parse_trusted_proxy_cidrs(
-            os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", RENDER_TRUSTED_PROXY_CIDRS)
-            if os.environ.get("ADMIN_TRUST_PROXY_HEADERS", "").lower()
-            in ("1", "true", "yes")
-            else os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "")
-        ),
-        uvicorn_forwarded_allow_ips=os.environ.get(
-            "UVICORN_FORWARDED_ALLOW_IPS", RENDER_TRUSTED_PROXY_CIDRS
+        admin_cloudflare_proxy_cidrs=os.environ.get(
+            "ADMIN_CLOUDFLARE_PROXY_CIDRS", ""
         ).strip(),
     )
