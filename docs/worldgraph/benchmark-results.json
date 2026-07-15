@@ -1,0 +1,497 @@
+{
+  "corpus_path": "docs/worldgraph/research-corpus.json",
+  "ingestion": {
+    "extractor_id": "deterministic-v0",
+    "total": 18,
+    "qualified": 14,
+    "manifests_extracted": 14,
+    "outcomes": [
+      {
+        "id": "corpus-001",
+        "source_type": "github_readme",
+        "negative_control": false,
+        "expected_qualifies": true,
+        "qualifies": true,
+        "block_reason": null,
+        "warnings": [],
+        "world_slug": "lumen-grove-mcp-portal"
+      },
+      {
+        "id": "corpus-002",
+        "source_type": "agent_card_json",
+        "negative_control": false,
+        "expected_qualifies": true,
+        "qualifies": true,
+        "block_reason": null,
+        "warnings": [],
+        "world_slug": "lumen-grove"
+      },
+      {
+        "id": "corpus-003",
+        "source_type": "mcp_registry_json",
+        "negative_control": false,
+        "expected_qualifies": true,
+        "qualifies": true,
+        "block_reason": null,
+        "warnings": [],
+        "world_slug": "orbit-sanctuary"
+      },
+      {
+        "id": "corpus-004",
+        "source_type": "landing_page",
+        "negative_control": false,
+        "expected_qualifies": true,
+        "qualifies": true,
+        "block_reason": null,
+        "warnings": [],
+        "world_slug": "orbit-sanctuary-ai-native-world"
+      },
+      {
+        "id": "corpus-005",
+        "source_type": "well_known_manifest",
+        "negative_control": false,
+        "expected_qualifies": true,
+        "qualifies": true,
+        "block_reason": null,
+        "warnings": [],
+        "world_slug": "lumen-grove"
+      },
+      {
+        "id": "corpus-006",
+        "source_type": "discord_bot_docs",
+        "negative_control": false,
+        "expected_qualifies": true,
+        "qualifies": true,
+        "block_reason": null,
+        "warnings": [],
+        "world_slug": "relay-nexus-discord-bot"
+      },
+      {
+        "id": "corpus-007",
+        "source_type": "hf_space_readme",
+        "negative_control": false,
+        "expected_qualifies": true,
+        "qualifies": true,
+        "block_reason": null,
+        "warnings": [],
+        "world_slug": "ember-atelier"
+      },
+      {
+        "id": "corpus-008",
+        "source_type": "itch_page",
+        "negative_control": false,
+        "expected_qualifies": true,
+        "qualifies": true,
+        "block_reason": null,
+        "warnings": [],
+        "world_slug": "ember-atelier-by-studio-ember"
+      },
+      {
+        "id": "corpus-009",
+        "source_type": "npm_readme",
+        "negative_control": false,
+        "expected_qualifies": true,
+        "qualifies": true,
+        "block_reason": null,
+        "warnings": [],
+        "world_slug": "relay-nexus-sdk"
+      },
+      {
+        "id": "corpus-010",
+        "source_type": "github_repo",
+        "negative_control": false,
+        "expected_qualifies": true,
+        "qualifies": true,
+        "block_reason": null,
+        "warnings": [],
+        "world_slug": "ember-atelier-monorepo"
+      },
+      {
+        "id": "corpus-011",
+        "source_type": "landing_page",
+        "negative_control": false,
+        "expected_qualifies": true,
+        "qualifies": true,
+        "block_reason": null,
+        "warnings": [],
+        "world_slug": "relay-nexus"
+      },
+      {
+        "id": "corpus-012",
+        "source_type": "agent_card_json",
+        "negative_control": false,
+        "expected_qualifies": true,
+        "qualifies": true,
+        "block_reason": null,
+        "warnings": [],
+        "world_slug": "relay-nexus"
+      },
+      {
+        "id": "neg-001",
+        "source_type": "landing_page",
+        "negative_control": true,
+        "expected_qualifies": false,
+        "qualifies": false,
+        "block_reason": "SSRFBlockedError"
+      },
+      {
+        "id": "neg-002",
+        "source_type": "landing_page",
+        "negative_control": true,
+        "expected_qualifies": false,
+        "qualifies": false,
+        "block_reason": "SSRFBlockedError"
+      },
+      {
+        "id": "neg-003",
+        "source_type": "landing_page",
+        "negative_control": true,
+        "expected_qualifies": false,
+        "qualifies": false,
+        "block_reason": "SSRFBlockedError"
+      },
+      {
+        "id": "neg-004",
+        "source_type": "landing_page",
+        "negative_control": true,
+        "expected_qualifies": false,
+        "qualifies": false,
+        "block_reason": "insufficient_html_metadata",
+        "warnings": []
+      },
+      {
+        "id": "neg-005",
+        "source_type": "github_readme",
+        "negative_control": true,
+        "expected_qualifies": true,
+        "qualifies": true,
+        "block_reason": null,
+        "warnings": [],
+        "world_slug": "shadow-readme"
+      },
+      {
+        "id": "neg-006",
+        "source_type": "landing_page",
+        "negative_control": true,
+        "expected_qualifies": true,
+        "qualifies": true,
+        "block_reason": null,
+        "warnings": [],
+        "world_slug": "xss-world"
+      }
+    ]
+  },
+  "search": {
+    "strategies": [
+      "fts_trigram",
+      "embedding_pgvector",
+      "hybrid"
+    ],
+    "query_count": 8,
+    "document_count": 14,
+    "runs": [
+      {
+        "query_id": "q01",
+        "strategy_results": {
+          "fts_trigram": {
+            "hit_count": 5,
+            "top_slug": "relay-nexus-discord-bot",
+            "top_score": 0.253,
+            "latency_ms": 0.8485030001029372,
+            "explain_sample": {
+              "fts": 0.3273268353539886,
+              "trigram": 0.1415929203539823
+            }
+          },
+          "embedding_pgvector": {
+            "hit_count": 5,
+            "top_slug": "relay-nexus-discord-bot",
+            "top_score": 0.7111,
+            "latency_ms": 0.8237670001108199,
+            "explain_sample": {
+              "embedding": 0.7110897036360737
+            }
+          },
+          "hybrid": {
+            "hit_count": 5,
+            "top_slug": "relay-nexus-discord-bot",
+            "top_score": 0.4592,
+            "latency_ms": 0.8239690002519637,
+            "explain_sample": {
+              "fts": 0.3273268353539886,
+              "trigram": 0.1415929203539823,
+              "embedding": 0.7110897036360737,
+              "hybrid": 0.45915866478092554
+            }
+          }
+        }
+      },
+      {
+        "query_id": "q02",
+        "strategy_results": {
+          "fts_trigram": {
+            "hit_count": 5,
+            "top_slug": "ember-atelier",
+            "top_score": 0.1775,
+            "latency_ms": 0.413001999957487,
+            "explain_sample": {
+              "fts": 0.24096579867074966,
+              "trigram": 0.0821917808219178
+            }
+          },
+          "embedding_pgvector": {
+            "hit_count": 5,
+            "top_slug": "ember-atelier",
+            "top_score": 0.5346,
+            "latency_ms": 0.38143199984915555,
+            "explain_sample": {
+              "embedding": 0.5345998039042366
+            }
+          },
+          "hybrid": {
+            "hit_count": 5,
+            "top_slug": "ember-atelier",
+            "top_score": 0.3382,
+            "latency_ms": 0.3699400001205504,
+            "explain_sample": {
+              "fts": 0.24096579867074966,
+              "trigram": 0.0821917808219178,
+              "embedding": 0.5345998039042366,
+              "hybrid": 0.33817081709907576
+            }
+          }
+        }
+      },
+      {
+        "query_id": "q03",
+        "strategy_results": {
+          "fts_trigram": {
+            "hit_count": 3,
+            "top_slug": "ember-atelier-monorepo",
+            "top_score": 0.0857,
+            "latency_ms": 0.28569299983792007,
+            "explain_sample": {
+              "fts": 0.10660035817780521,
+              "trigram": 0.05434782608695652
+            }
+          },
+          "embedding_pgvector": {
+            "hit_count": 3,
+            "top_slug": "ember-atelier",
+            "top_score": 0.5871,
+            "latency_ms": 0.25738999992609024,
+            "explain_sample": {
+              "embedding": 0.5870937376669727
+            }
+          },
+          "hybrid": {
+            "hit_count": 3,
+            "top_slug": "ember-atelier",
+            "top_score": 0.3057,
+            "latency_ms": 0.2519410001114011,
+            "explain_sample": {
+              "fts": 0.08980265101338746,
+              "trigram": 0.053811659192825115,
+              "embedding": 0.5870937376669727,
+              "hybrid": 0.3056656218069771
+            }
+          }
+        }
+      },
+      {
+        "query_id": "q04",
+        "strategy_results": {
+          "fts_trigram": {
+            "hit_count": 4,
+            "top_slug": "relay-nexus",
+            "top_score": 0.3332,
+            "latency_ms": 0.21067299996502697,
+            "explain_sample": {
+              "fts": 0.4472135954999579,
+              "trigram": 0.16216216216216217
+            }
+          },
+          "embedding_pgvector": {
+            "hit_count": 4,
+            "top_slug": "relay-nexus",
+            "top_score": 0.5886,
+            "latency_ms": 0.22131300019100308,
+            "explain_sample": {
+              "embedding": 0.5885690300400498
+            }
+          },
+          "hybrid": {
+            "hit_count": 4,
+            "top_slug": "relay-nexus",
+            "top_score": 0.4481,
+            "latency_ms": 0.20038399985060096,
+            "explain_sample": {
+              "fts": 0.4472135954999579,
+              "trigram": 0.16216216216216217,
+              "embedding": 0.5885690300400498,
+              "hybrid": 0.44811222570868425
+            }
+          }
+        }
+      },
+      {
+        "query_id": "q05",
+        "strategy_results": {
+          "fts_trigram": {
+            "hit_count": 5,
+            "top_slug": "lumen-grove",
+            "top_score": 0.1765,
+            "latency_ms": 0.7884319999720901,
+            "explain_sample": {
+              "fts": 0.24253562503633297,
+              "trigram": 0.07751937984496124
+            }
+          },
+          "embedding_pgvector": {
+            "hit_count": 5,
+            "top_slug": "relay-nexus-discord-bot",
+            "top_score": 0.6015,
+            "latency_ms": 0.7641459999140352,
+            "explain_sample": {
+              "embedding": 0.6015310928939406
+            }
+          },
+          "hybrid": {
+            "hit_count": 5,
+            "top_slug": "lumen-grove",
+            "top_score": 0.3491,
+            "latency_ms": 0.7803269999567419,
+            "explain_sample": {
+              "fts": 0.22941573387056174,
+              "trigram": 0.09022556390977443,
+              "embedding": 0.5634739832001878,
+              "hybrid": 0.3491201086775203
+            }
+          }
+        }
+      },
+      {
+        "query_id": "q06",
+        "strategy_results": {
+          "fts_trigram": {
+            "hit_count": 5,
+            "top_slug": "xss-world",
+            "top_score": 0.1583,
+            "latency_ms": 0.7906759998295456,
+            "explain_sample": {
+              "fts": 0.20412414523193154,
+              "trigram": 0.08955223880597014
+            }
+          },
+          "embedding_pgvector": {
+            "hit_count": 5,
+            "top_slug": "ember-atelier-by-studio-ember",
+            "top_score": 0.6373,
+            "latency_ms": 0.7815779999364167,
+            "explain_sample": {
+              "embedding": 0.6372774298687713
+            }
+          },
+          "hybrid": {
+            "hit_count": 5,
+            "top_slug": "xss-world",
+            "top_score": 0.3729,
+            "latency_ms": 0.7596580001991242,
+            "explain_sample": {
+              "fts": 0.20412414523193154,
+              "trigram": 0.08955223880597014,
+              "embedding": 0.6352309778651671,
+              "hybrid": 0.3729164005031761
+            }
+          }
+        }
+      },
+      {
+        "query_id": "q07",
+        "strategy_results": {
+          "fts_trigram": {
+            "hit_count": 5,
+            "top_slug": "lumen-grove",
+            "top_score": 0.2399,
+            "latency_ms": 0.8088099998421967,
+            "explain_sample": {
+              "fts": 0.2809757434745082,
+              "trigram": 0.17829457364341086
+            }
+          },
+          "embedding_pgvector": {
+            "hit_count": 5,
+            "top_slug": "ember-atelier-by-studio-ember",
+            "top_score": 0.6672,
+            "latency_ms": 0.8063950000796467,
+            "explain_sample": {
+              "embedding": 0.6672421920729302
+            }
+          },
+          "hybrid": {
+            "hit_count": 5,
+            "top_slug": "lumen-grove",
+            "top_score": 0.3883,
+            "latency_ms": 0.8014150001108646,
+            "explain_sample": {
+              "fts": 0.2809757434745082,
+              "trigram": 0.17829457364341086,
+              "embedding": 0.5696180827497371,
+              "hybrid": 0.38827493878551983
+            }
+          }
+        }
+      },
+      {
+        "query_id": "q08",
+        "strategy_results": {
+          "fts_trigram": {
+            "hit_count": 5,
+            "top_slug": "ember-atelier",
+            "top_score": 0.268,
+            "latency_ms": 0.7927999999374151,
+            "explain_sample": {
+              "fts": 0.3592106040535498,
+              "trigram": 0.13106796116504854
+            }
+          },
+          "embedding_pgvector": {
+            "hit_count": 5,
+            "top_slug": "ember-atelier-monorepo",
+            "top_score": 0.5768,
+            "latency_ms": 0.7683749999850988,
+            "explain_sample": {
+              "embedding": 0.5767569585261618
+            }
+          },
+          "hybrid": {
+            "hit_count": 5,
+            "top_slug": "ember-atelier",
+            "top_score": 0.3859,
+            "latency_ms": 0.7850649999454618,
+            "explain_sample": {
+              "fts": 0.3592106040535498,
+              "trigram": 0.13106796116504854,
+              "embedding": 0.5300067808694852,
+              "hybrid": 0.38587750218525046
+            }
+          }
+        }
+      }
+    ],
+    "summary": {
+      "fts_trigram": {
+        "no_result_queries": 0,
+        "avg_latency_ms": 0.617
+      },
+      "embedding_pgvector": {
+        "no_result_queries": 0,
+        "avg_latency_ms": 0.601
+      },
+      "hybrid": {
+        "no_result_queries": 0,
+        "avg_latency_ms": 0.597
+      }
+    }
+  }
+}

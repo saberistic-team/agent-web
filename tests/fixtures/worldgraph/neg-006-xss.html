@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>XSS World</title>
+  <meta name="description" content="Sanitization control for stored XSS.">
+</head>
+<body>
+  <h1>XSS World</h1>
+  <script>alert('xss')</script>
+  <img src=x onerror="alert(1)">
+</body>
+</html>

@@ -1,0 +1,40 @@
+{
+  "version": "0",
+  "queries": [
+    {
+      "query_id": "q01",
+      "text": "mcp interactive narrative world discord bot"
+    },
+    {
+      "query_id": "q02",
+      "text": "ember atelier spatial ai experience",
+      "runtime_filter": "web-embed"
+    },
+    {
+      "query_id": "q03",
+      "text": "orbit sanctuary licensing apache",
+      "license_filter": "Apache-2.0"
+    },
+    {
+      "query_id": "q04",
+      "text": "relay nexus agent sdk integration",
+      "public_only": true
+    },
+    {
+      "query_id": "q05",
+      "text": "lumen grove character roleplay"
+    },
+    {
+      "query_id": "q06",
+      "text": "nonexistent phantom world xyz123"
+    },
+    {
+      "query_id": "q07",
+      "text": "open source world manifest well-known"
+    },
+    {
+      "query_id": "q08",
+      "text": "huggingface space generative scene"
+    }
+  ]
+}

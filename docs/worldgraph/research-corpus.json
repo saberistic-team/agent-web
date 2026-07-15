@@ -1,0 +1,160 @@
+{
+  "version": "0",
+  "description": "Bounded research corpus for WorldGraph spike #204. URLs are representative public patterns; fixture bodies are anonymized.",
+  "entries": [
+    {
+      "id": "corpus-001",
+      "label": "MCP portal README",
+      "source_type": "github_readme",
+      "url": "https://github.com/example-world-alpha/mcp-portal",
+      "fixture": "tests/fixtures/worldgraph/corpus-001-readme.md",
+      "expected_qualifies": true,
+      "notes": "Structured README with runtime and entry points."
+    },
+    {
+      "id": "corpus-002",
+      "label": "A2A-style agent card JSON",
+      "source_type": "agent_card_json",
+      "url": "https://worlds.example.net/agents/lumen-grove/card.json",
+      "fixture": "tests/fixtures/worldgraph/corpus-002-agent-card.json",
+      "expected_qualifies": true
+    },
+    {
+      "id": "corpus-003",
+      "label": "MCP registry entry JSON",
+      "source_type": "mcp_registry_json",
+      "url": "https://registry.example.org/servers/orbit-sanctuary",
+      "fixture": "tests/fixtures/worldgraph/corpus-003-mcp-registry.json",
+      "expected_qualifies": true
+    },
+    {
+      "id": "corpus-004",
+      "label": "Creator landing page",
+      "source_type": "landing_page",
+      "url": "https://orbit-sanctuary.example.com/",
+      "fixture": "tests/fixtures/worldgraph/corpus-004-landing.html",
+      "expected_qualifies": true
+    },
+    {
+      "id": "corpus-005",
+      "label": "Well-known manifest JSON",
+      "source_type": "well_known_manifest",
+      "url": "https://lumen-grove.example.io/.well-known/world-manifest.json",
+      "fixture": "tests/fixtures/worldgraph/corpus-005-well-known.json",
+      "expected_qualifies": true
+    },
+    {
+      "id": "corpus-006",
+      "label": "Discord bot docs page",
+      "source_type": "discord_bot_docs",
+      "url": "https://docs.example.chat/bots/relay-nexus",
+      "fixture": "tests/fixtures/worldgraph/corpus-006-discord-docs.html",
+      "expected_qualifies": true
+    },
+    {
+      "id": "corpus-007",
+      "label": "Hugging Face space README",
+      "source_type": "hf_space_readme",
+      "url": "https://huggingface.co/spaces/studio-ember/ember-atelier",
+      "fixture": "tests/fixtures/worldgraph/corpus-007-hf-readme.md",
+      "expected_qualifies": true
+    },
+    {
+      "id": "corpus-008",
+      "label": "itch.io world page",
+      "source_type": "itch_page",
+      "url": "https://studio-ember.itch.io/ember-atelier",
+      "fixture": "tests/fixtures/worldgraph/corpus-008-itch.html",
+      "expected_qualifies": true
+    },
+    {
+      "id": "corpus-009",
+      "label": "npm package README",
+      "source_type": "npm_readme",
+      "url": "https://www.npmjs.com/package/@relay-nexus/sdk",
+      "fixture": "tests/fixtures/worldgraph/corpus-009-npm-readme.md",
+      "expected_qualifies": true
+    },
+    {
+      "id": "corpus-010",
+      "label": "GitHub monorepo README",
+      "source_type": "github_repo",
+      "url": "https://github.com/studio-ember/ember-atelier",
+      "fixture": "tests/fixtures/worldgraph/corpus-010-repo-readme.md",
+      "expected_qualifies": true
+    },
+    {
+      "id": "corpus-011",
+      "label": "Landing page with JSON-LD",
+      "source_type": "landing_page",
+      "url": "https://relay-nexus.example.dev/",
+      "fixture": "tests/fixtures/worldgraph/corpus-011-jsonld.html",
+      "expected_qualifies": true
+    },
+    {
+      "id": "corpus-012",
+      "label": "Agent card with capabilities",
+      "source_type": "agent_card_json",
+      "url": "https://api.example.worlds/v1/cards/relay-nexus",
+      "fixture": "tests/fixtures/worldgraph/corpus-012-agent-card.json",
+      "expected_qualifies": true
+    },
+    {
+      "id": "neg-001",
+      "label": "SSRF localhost control",
+      "source_type": "landing_page",
+      "url": "http://localhost/admin",
+      "expected_qualifies": false,
+      "negative_control": true,
+      "expected_block_reason": "ssrf_private_host"
+    },
+    {
+      "id": "neg-002",
+      "label": "SSRF loopback IP control",
+      "source_type": "landing_page",
+      "url": "http://127.0.0.1:8080/metadata",
+      "expected_qualifies": false,
+      "negative_control": true,
+      "expected_block_reason": "ssrf_private_host"
+    },
+    {
+      "id": "neg-003",
+      "label": "Unsafe javascript scheme",
+      "source_type": "landing_page",
+      "url": "javascript:alert(1)",
+      "expected_qualifies": false,
+      "negative_control": true,
+      "expected_block_reason": "unsafe_scheme"
+    },
+    {
+      "id": "neg-004",
+      "label": "Empty HTML shell",
+      "source_type": "landing_page",
+      "url": "https://empty-shell.example.com/",
+      "fixture": "tests/fixtures/worldgraph/neg-004-empty.html",
+      "expected_qualifies": false,
+      "negative_control": true,
+      "expected_block_reason": "insufficient_html_metadata"
+    },
+    {
+      "id": "neg-005",
+      "label": "Prompt injection README",
+      "source_type": "github_readme",
+      "url": "https://github.com/malicious-world/injected-readme",
+      "fixture": "tests/fixtures/worldgraph/neg-005-injection-readme.md",
+      "expected_qualifies": true,
+      "negative_control": true,
+      "notes": "Qualifies structurally but must strip injection markers before model path."
+    },
+    {
+      "id": "neg-006",
+      "label": "Stored XSS HTML",
+      "source_type": "landing_page",
+      "url": "https://xss-world.example.com/",
+      "fixture": "tests/fixtures/worldgraph/neg-006-xss.html",
+      "expected_qualifies": true,
+      "negative_control": true,
+      "notes": "Qualifies after HTML sanitization; script must not persist."
+    }
+  ]
+}
