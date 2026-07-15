@@ -6,10 +6,11 @@ import os
 
 import pytest
 
-TEST_LIMITER_SECRET = "test-login-limiter-secret-32bytes-min!!"
+TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!!"
 
 
 @pytest.fixture(autouse=True)
-def _admin_login_limiter_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+def default_admin_login_limiter_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Provide a strong default limiter secret unless a test overrides it."""
     if not os.environ.get("ADMIN_LOGIN_LIMITER_SECRET"):
         monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)

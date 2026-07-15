@@ -53,21 +53,20 @@ both commit or roll back together.
 | Logout (authenticated) | `admin_routes.admin_logout` | Revocation + required audit atomically when the session row transitions to revoked |
 | Login failure | `admin_routes` | Best-effort audit (`required=False`); actor is always `anonymous` before authentication |
 
-Unauthenticated login failures (`auth.login.failure`) always record `actor =
-anonymous`. Submitted usernames, email addresses, and other login-form candidates
-are never persisted in `actor`, metadata, reason text, or correlation fields.
-Failure reasons are a small server-defined enum (`invalid_credentials`,
-`invalid_csrf`, `rate_limited`).
+Unauthenticated login failures never place submitted username candidates in the
+immutable ``actor`` column, metadata, or reason text. Failure reasons are a small
+server-defined enum (`invalid_credentials`, `invalid_csrf`, `rate_limited`). Only
+events recorded after successful authentication retain the configured administrator
+identity.
 
-### Historical login-failure actors (pre-#242)
+### Historical login-failure actors
 
-Append-only `audit_events` rows written before keyed limiter identifiers and
-anonymous failure actors shipped may have attacker-supplied strings in the
-`actor` column for `auth.login.failure` events. Those rows are immutable; this
-codebase does not rewrite or delete historical audit history. Operational
-queries should treat pre-migration failure actors as untrusted candidate labels,
-not authenticated administrator identities. Data-governance remediation of
-historical rows, if required, is an explicit out-of-band decision.
+Rows written before keyed limiter identifiers and anonymous failure actors shipped may
+still contain attacker-supplied strings in ``audit_events.actor`` for
+``auth.login.failure`` events. Those rows are append-only; remediation requires an
+explicit data-governance decision (for example, archival annotation or offline
+reporting filters). Forward fixes prevent all new occurrences regardless of how
+historical rows are handled.
 
 `record_event(..., required=True)` propagates persistence errors. Security-sensitive
 mutations must not return success when a required audit event could not be stored.
@@ -122,7 +121,7 @@ or rolled-back logins never emit a new session cookie.
 | Action | When recorded |
 |--------|----------------|
 | `auth.login.success` | Valid admin login creates a server-side session |
-| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting |
+| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting (actor is always `anonymous`) |
 | `auth.logout` | Authenticated session revocation (live session → revoked) |
 | `import.batch` | Data import batches via `CrmService.commit_linkedin_import` / `import_batch` |
 | `import.batch.rollback` | Rollback of committed import batches via `CrmService.rollback_import_batch` |
