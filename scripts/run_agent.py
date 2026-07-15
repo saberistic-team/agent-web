@@ -975,6 +975,7 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
     screenshot_note = ""
     try:
         from screenshot_deploy import (
+            ScreenshotTarget,
             comment_markdown_pre_dual,
             comment_on_issue_or_pr,
             capture_pre_dual,
@@ -982,18 +983,18 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
             format_admin_nav_hard_fail,
             format_empty_data_hard_fail,
             format_overflow_hard_fail,
-            resolve_screenshot_targets,
+            resolve_screenshot_routes,
             upload_to_branch,
         )
 
         out_dir = Path("trace/screenshots")
         changed = fetch_pr_changed_paths(repo, pr_number)
-        targets = resolve_screenshot_targets(
+        routes = resolve_screenshot_routes(
             changed_files=changed, include_admin=True
         )
         branch = pr["head"]["ref"]
         prefix = f".agent/screenshots/pr-{pr_number}"
-        if not targets:
+        if not routes:
             body_shots = (
                 "### reviewer_screenshots_pre\n"
                 "- production: skipped pre-merge "
@@ -1009,25 +1010,20 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
                 "- visual_readability: `n/a`\n"
             )
         else:
-            dual = capture_pre_dual(out_dir, targets=targets)
+            dual = capture_pre_dual(out_dir, routes=routes)
             branch_urls = upload_to_branch(repo, branch, dual.branch_paths, prefix)
             body_shots = comment_markdown_pre_dual(
                 branch_url=dual.branch_url,
                 branch_urls=branch_urls,
-                targets=targets,
-                captured=dual.branch_captured,
+                routes=routes,
             )
             comment_on_issue_or_pr(repo, pr_number, body_shots)
             comment_on_issue_or_pr(repo, issue, body_shots)
-            route_labels = [
-                f"`{t.route}`"
-                + (f" (HTTP {t.expected_status})" if t.expected_status != 200 else "")
-                for t in targets
-            ]
             screenshot_note = (
                 f"- screenshots_pre: {len(branch_urls)} branch posted on PR + issue "
                 "(no saberistic.com pre-merge shots)\n"
-                f"- screenshots_routes: {', '.join(route_labels)}\n"
+                f"- screenshots_routes: "
+                f"{', '.join(f'`{ScreenshotTarget.from_any(r).format_route()}`' for r in routes)}\n"
                 f"- screenshots_branch: `{dual.branch_url}`\n"
             )
             overflow_fail = format_overflow_hard_fail(dual.overflows)

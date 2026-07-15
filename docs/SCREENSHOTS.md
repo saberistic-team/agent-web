@@ -33,13 +33,44 @@ Playwright can open admin pages **without login**.
 | Route kind | Examples | Behavior |
 |------------|----------|----------|
 | **Admin (pre-merge)** | `/admin`, `/admin/companies`, …, `/admin/login` | Captured on PR head under `ADMIN_PREVIEW_MODE` when affected |
-| **Admin error fixtures (pre-merge)** | `/admin/briefs/503` (expected HTTP 503) | Declared in `ADMIN_SCREENSHOT_EXPECTED_STATUS`; probe accepts HTML only when status matches |
+| **Admin error fixtures (pre-merge)** | `/admin/briefs/503` (HTTP 503) | Declared expected status; probe + Playwright must match |
 | **Admin (post-deploy)** | `/admin/*` | **Never** screenshotted on saberistic.com |
 | **Health** | `/health` | Polled as **JSON evidence only** (never a PNG) |
 | **JSON APIs** | `/hello`, `/api/*`, `/webhooks/*` | Skipped |
 | **Meta / static** | `/robots.txt`, `/sitemap.xml`, `/assets/*`, OpenAPI docs | Skipped |
 | **Legacy redirects** | `/what-we-do.html`, … | Skipped |
 | **Unaffected pages** | Routes not implied by the PR diff | Skipped |
+
+### Expected-status visual fixtures
+
+Some admin pages intentionally return non-200 HTML (authenticated error
+states). Register them as structured targets — route **plus** expected HTTP
+status — in `app/admin_layout.py`:
+
+```python
+ADMIN_SCREENSHOT_TARGETS: tuple[tuple[str, int], ...] = (
+    # ...
+    ("/admin/briefs/503", 503),  # brief detail database-unavailable shell
+)
+```
+
+Rules:
+
+- Default status is **200** when omitted from the tuple (all public pages and
+  normal admin shells).
+- The capture probe (`scripts/screenshot_deploy.py`) accepts a target only
+  when the response status **exactly matches** the declared status **and** the
+  body is HTML (not JSON).
+- Unexpected 4xx/5xx on ordinary 200 routes is a **hard failure** (never
+  silently skipped).
+- Missing PNGs for declared error fixtures also **hard-fail** Reviewer.
+- Pre-merge admin targets (including error fixtures) use the same
+  `ADMIN_PREVIEW_MODE` session cookie as other admin screenshots.
+- Post-deploy production capture never opens `/admin/*`.
+
+Reviewer comments list each target with its expected status and generated
+filenames (`branch-admin-briefs-503.png`, `branch-admin-briefs-503-mobile.png`,
+etc.) under `### reviewer_screenshots_pre`.
 
 ### How “affected” is decided
 
@@ -49,26 +80,6 @@ Playwright can open admin pages **without login**.
 | `site/assets/*`, shared layout | All public (+ all admin pre-merge) | All public |
 | `app/admin_*` | All admin nav pages + `/admin/login` | None (skip) |
 | `tests/` / `docs/` / `scripts/` only | None | None |
-
-### Expected-status visual fixtures
-
-Some admin pages intentionally render **authenticated HTML error states** (for
-example brief detail database outage). Register them in two places:
-
-1. `ADMIN_SCREENSHOT_PATHS` in `app/admin_layout.py` (route list for discovery)
-2. `ADMIN_SCREENSHOT_EXPECTED_STATUS` in the same file (route → HTTP status,
-   default **200** when omitted)
-
-Keep the fallback map in `scripts/screenshot_deploy.py` in sync. The capture
-probe accepts a page only when:
-
-- the response status equals the declared expected status, and
-- the body is HTML (not JSON)
-
-Unexpected 4xx/5xx on ordinary 200 routes **fail capture** instead of being
-silently skipped. Missing expected error-state PNGs also fail. Reviewer PR
-comments list each route, expected status, and generated filenames
-(`branch-admin-briefs-503.png`, `branch-admin-briefs-503-mobile.png`, …).
 
 ## Pre-merge (Reviewer)
 

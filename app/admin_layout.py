@@ -82,19 +82,17 @@ ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
 ADMIN_PATHS: frozenset[str] = frozenset(link["href"] for link in ADMIN_NAV_LINKS)
 
 # Pre-merge Playwright capture targets (shell pages + login). Never production.
-ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
-    *(link["href"] for link in ADMIN_NAV_LINKS),
-    "/admin/login",
-    "/admin/briefs/1",
-    "/admin/briefs/2",
-    "/admin/briefs/503",
+# Each entry is ``(route, expected_http_status)`` — error fixtures use non-200.
+ADMIN_SCREENSHOT_TARGETS: tuple[tuple[str, int], ...] = (
+    *((link["href"], 200) for link in ADMIN_NAV_LINKS),
+    ("/admin/login", 200),
+    ("/admin/briefs/1", 200),
+    ("/admin/briefs/2", 200),
+    ("/admin/briefs/503", 503),
 )
-
-# Non-200 HTML error fixtures for Reviewer evidence (route → expected HTTP status).
-# Default for paths omitted here is 200. Keep in sync with scripts/screenshot_deploy.py.
-ADMIN_SCREENSHOT_EXPECTED_STATUS: dict[str, int] = {
-    "/admin/briefs/503": 503,
-}
+ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = tuple(
+    route for route, _status in ADMIN_SCREENSHOT_TARGETS
+)
 
 
 def _active_nav_label(active_path: str) -> str:
