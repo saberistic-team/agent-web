@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from functools import lru_cache
 
 
 @dataclass(frozen=True)
@@ -27,9 +28,8 @@ class Settings:
     admin_login_rate_limit: int = 5
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
-    admin_trust_proxy_headers: bool = False
-    admin_trusted_proxy_cidrs: str = ""
-    admin_trusted_edge_cidrs: str = ""
+    admin_trusted_proxy_cidrs: tuple[str, ...] = ()
+    admin_trusted_edge_cidrs: tuple[str, ...] = ()
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -76,12 +76,31 @@ class Settings:
         return True
 
     @property
+    def admin_trusted_proxy_networks(self) -> tuple:
+        from app.admin_client_source import trusted_networks_for_cidrs
+
+        return trusted_networks_for_cidrs(self.admin_trusted_proxy_cidrs)
+
+    @property
+    def admin_trusted_edge_networks(self) -> tuple:
+        from app.admin_client_source import trusted_networks_for_cidrs
+
+        return trusted_networks_for_cidrs(self.admin_trusted_edge_cidrs)
+
+    @property
     def analytics_enabled(self) -> bool:
         """True only when explicitly enabled and a Plausible domain is set."""
         flag = os.environ.get("ANALYTICS_ENABLED", "").lower()
         if flag not in ("1", "true", "yes"):
             return False
         return bool(self.plausible_domain)
+
+
+def _split_csv_env(name: str) -> tuple[str, ...]:
+    raw = os.environ.get(name, "")
+    if not raw.strip():
+        return ()
+    return tuple(part.strip() for part in raw.split(",") if part.strip())
 
 
 def get_settings() -> Settings:
@@ -111,10 +130,6 @@ def get_settings() -> Settings:
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
         brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
-        admin_trust_proxy_headers=os.environ.get(
-            "ADMIN_TRUST_PROXY_HEADERS", ""
-        ).lower()
-        in ("1", "true", "yes"),
-        admin_trusted_proxy_cidrs=os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "").strip(),
-        admin_trusted_edge_cidrs=os.environ.get("ADMIN_TRUSTED_EDGE_CIDRS", "").strip(),
+        admin_trusted_proxy_cidrs=_split_csv_env("ADMIN_TRUSTED_PROXY_CIDRS"),
+        admin_trusted_edge_cidrs=_split_csv_env("ADMIN_TRUSTED_EDGE_CIDRS"),
     )
