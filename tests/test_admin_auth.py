@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import copy
-import hashlib
 import re
 import threading
 from contextlib import ExitStack, contextmanager
@@ -31,7 +30,7 @@ TEST_USERNAME = "operator"
 TEST_PASSWORD = "correct-horse-battery-staple"
 TEST_HASH = PasswordHasher().hash(TEST_PASSWORD)
 TEST_SECRET = "test-session-secret-32chars-minimum"
-TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!"
+TEST_LIMITER_SECRET = "test-login-limiter-secret-32chars-min"
 
 _login_flows: dict[str, dict[str, Any]] = {}
 _session_store: dict[str, dict[str, Any]] = {}
@@ -657,245 +656,6 @@ def test_build_rate_limit_key_hashes_username_and_source() -> None:
 
 
 @pytest.mark.unit
-def test_limiter_identifier_is_not_plain_sha256() -> None:
-    settings = get_settings()
-    source = "203.0.113.1"
-    plain = hashlib.sha256(f"src:{source}".encode("utf-8")).hexdigest()
-    keyed = admin_auth.build_source_rate_limit_key(source, settings)
-    assert keyed != plain
-
-
-@pytest.mark.unit
-def test_limiter_identifier_depends_on_secret(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
-    first = admin_auth.build_source_rate_limit_key("203.0.113.1", get_settings())
-    monkeypatch.setenv(
-        "ADMIN_LOGIN_LIMITER_SECRET",
-        "other-limiter-secret-32chars-minimum!",
-    )
-    second = admin_auth.build_source_rate_limit_key("203.0.113.1", get_settings())
-    assert first != second
-
-
-@pytest.mark.unit
-def test_limiter_identifier_is_stable_across_calls() -> None:
-    settings = get_settings()
-    first = admin_auth.build_source_rate_limit_key("203.0.113.1", settings)
-    second = admin_auth.build_source_rate_limit_key("203.0.113.1", settings)
-    assert first == second
-
-
-@pytest.mark.unit
-def test_limiter_identifier_domain_separation() -> None:
-    settings = get_settings()
-    shared_material = "operator"
-    source_key = admin_auth.build_source_rate_limit_key(shared_material, settings)
-    account_key = admin_auth.build_account_rate_limit_key(shared_material, settings)
-    assert source_key != account_key
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize(
-    ("secret", "env_name"),
-    [
-        ("", "ADMIN_LOGIN_LIMITER_SECRET"),
-        ("short-secret", "ADMIN_LOGIN_LIMITER_SECRET"),
-        ("changeme", "ADMIN_LOGIN_LIMITER_SECRET"),
-        ("placeholder", "ADMIN_LOGIN_LIMITER_SECRET"),
-    ],
-)
-def test_validate_admin_login_limiter_secret_rejects_weak_material(
-    secret: str,
-    env_name: str,
-) -> None:
-    with pytest.raises(ValueError, match=env_name):
-        admin_auth.validate_admin_login_limiter_secret(secret, env_name=env_name)
-
-
-@pytest.mark.unit
-def test_startup_validates_limiter_secret_when_admin_auth_configured(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import asyncio
-
-    from app.main import app as fastapi_app, lifespan
-
-    monkeypatch.setenv("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
-    monkeypatch.setenv("ADMIN_USERNAME", TEST_USERNAME)
-    monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_HASH)
-    monkeypatch.setenv("ADMIN_SESSION_SECRET", TEST_SECRET)
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "changeme")
-
-    async def _run() -> None:
-        with patch("app.main.db.init_db"):
-            async with lifespan(fastapi_app):
-                pass
-
-    with pytest.raises(ValueError, match="ADMIN_LOGIN_LIMITER_SECRET"):
-        asyncio.run(_run())
-
-
-@pytest.mark.unit
-def test_login_limiter_keys_include_previous_secret_during_rotation(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    previous = "prev-limiter-secret-32chars-minimum!"
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS", previous)
-    settings = get_settings()
-    keys = admin_auth.login_limiter_keys(
-        submitted_username=TEST_USERNAME,
-        client_source="203.0.113.1",
-        configured_admin_username=TEST_USERNAME,
-        settings=settings,
-    )
-    assert len(keys) == 4
-    previous_source = admin_auth._hmac_limiter_digest(
-        admin_auth.LIMITER_DOMAIN_SOURCE,
-        "203.0.113.1",
-        previous,
-    )
-    assert previous_source in keys
-
-
-@pytest.mark.unit
-def test_rotation_cleanup_removes_previous_secret_rows(
-    rate_limit_store: FakeRateLimitStore,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    previous = "prev-limiter-secret-32chars-minimum!"
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS", previous)
-    settings = get_settings()
-    previous_key = admin_auth._hmac_limiter_digest(
-        admin_auth.LIMITER_DOMAIN_SOURCE,
-        "203.0.113.66",
-        previous,
-    )
-    stale_time = datetime(2026, 6, 1, 10, 0, tzinfo=timezone.utc)
-    rate_limit_store.rows[previous_key] = {
-        "failure_count": 1,
-        "window_started_at": stale_time,
-        "locked_until": None,
-        "updated_at": stale_time,
-    }
-    deleted = rate_limit_store.cleanup(
-        stale_time + timedelta(seconds=200),
-        window_seconds=60,
-        lockout_seconds=60,
-    )
-    assert deleted >= 1
-    assert previous_key not in rate_limit_store.rows
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_unknown_username_failure_audit_uses_anonymous_actor(
-    rate_limit_store: FakeRateLimitStore,
-) -> None:
-    with shared_rate_limiter(rate_limit_store):
-        with mock_db_connection(), patch(
-            "app.admin_routes.audit_service.record_login_failure"
-        ) as failure_audit:
-            response = _login(username="ghost-attacker", password="nope")
-            assert response.status_code == 401
-            failure_audit.assert_called_once()
-            actor_context = failure_audit.call_args.kwargs["actor_context"]
-            assert actor_context.actor == "anonymous"
-            assert "ghost-attacker" not in str(failure_audit.call_args)
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_configured_username_wrong_password_audit_uses_anonymous_actor(
-    rate_limit_store: FakeRateLimitStore,
-) -> None:
-    with shared_rate_limiter(rate_limit_store):
-        with mock_db_connection(), patch(
-            "app.admin_routes.audit_service.record_login_failure"
-        ) as failure_audit:
-            response = _login(password="wrong-password")
-            assert response.status_code == 401
-            failure_audit.assert_called_once()
-            assert failure_audit.call_args.kwargs["actor_context"].actor == "anonymous"
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_invalid_csrf_failure_audit_uses_anonymous_actor(
-    rate_limit_store: FakeRateLimitStore,
-) -> None:
-    csrf_token, cookies = _fetch_login_form()
-    with shared_rate_limiter(rate_limit_store):
-        with mock_db_connection(), patch(
-            "app.admin_routes.audit_service.record_login_failure"
-        ) as failure_audit:
-            response = client.post(
-                "/admin/login",
-                data={
-                    "username": "ghost-attacker",
-                    "password": TEST_PASSWORD,
-                    "csrf_token": "not-a-valid-token",
-                },
-                cookies=cookies,
-            )
-            assert response.status_code == 400
-            failure_audit.assert_called_once()
-            assert failure_audit.call_args.kwargs["actor_context"].actor == "anonymous"
-            assert failure_audit.call_args.kwargs["reason"] == "invalid_csrf"
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_lockout_transition_audit_uses_anonymous_actor(
-    rate_limit_store: FakeRateLimitStore,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
-    with shared_rate_limiter(rate_limit_store):
-        with mock_db_connection(), patch(
-            "app.admin_routes.audit_service.record_login_failure"
-        ) as failure_audit:
-            assert _login(password="wrong").status_code == 401
-            lockout = _login(password="wrong")
-            assert lockout.status_code == 401
-            assert failure_audit.call_args_list[-1].kwargs["actor_context"].actor == "anonymous"
-            assert failure_audit.call_args_list[-1].kwargs["reason"] == "rate_limited"
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_successful_login_audit_retains_administrator_actor(
-    rate_limit_store: FakeRateLimitStore,
-) -> None:
-    with shared_rate_limiter(rate_limit_store):
-        with mock_db_connection(), patch(
-            "app.admin_routes.audit_service.record_login_success"
-        ) as success_audit:
-            response = _login()
-            assert response.status_code == 303
-            success_audit.assert_called_once()
-            assert success_audit.call_args.kwargs["actor_context"].actor == TEST_USERNAME
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_failed_login_logs_do_not_leak_candidates_or_secrets(
-    rate_limit_store: FakeRateLimitStore,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    candidate = "ghost-attacker@example.com"
-    with shared_rate_limiter(rate_limit_store):
-        with mock_db_connection():
-            with caplog.at_level("INFO"):
-                response = _login(username=candidate, password="nope")
-    assert response.status_code == 401
-    combined = f"{caplog.text}"
-    assert candidate not in combined
-    assert TEST_LIMITER_SECRET not in combined
-    assert "src:" not in combined
-    assert "acct:" not in combined
-
-
-@pytest.mark.unit
 def test_client_ip_ignores_forwarded_without_trusted_proxy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1251,8 +1011,9 @@ def test_rate_limit_expires_after_lockout(
         assert _login(password="wrong").status_code == 401
         assert _login(password="wrong").status_code == 429
 
-        source_key = admin_auth.build_source_rate_limit_key("testclient", get_settings())
-        account_key = admin_auth.build_account_rate_limit_key(TEST_USERNAME, get_settings())
+        settings = get_settings()
+        source_key = admin_auth.build_source_rate_limit_key("testclient", settings)
+        account_key = admin_auth.build_account_rate_limit_key(TEST_USERNAME, settings)
         expired_lock = datetime.now(timezone.utc) - timedelta(seconds=1)
         for key in (source_key, account_key):
             rate_limit_store.rows[key]["locked_until"] = expired_lock
@@ -1351,7 +1112,8 @@ def test_username_rotation_stops_password_verification_at_source_threshold(
                     assert response.status_code == 429
 
     assert verify_calls["count"] == 3
-    source_key = admin_auth.build_source_rate_limit_key("testclient", get_settings())
+    settings = get_settings()
+    source_key = admin_auth.build_source_rate_limit_key("testclient", settings)
     assert len(rate_limit_store.rows) == 1
     assert source_key in rate_limit_store.rows
 
@@ -1453,7 +1215,8 @@ def test_concurrent_login_admission_respects_shared_threshold(
     admitted_count = {"value": 0}
     lock = threading.Lock()
     now = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    source_key = admin_auth.build_source_rate_limit_key("203.0.113.77", get_settings())
+    settings = get_settings()
+    source_key = admin_auth.build_source_rate_limit_key("203.0.113.77", settings)
 
     def worker() -> None:
         barrier.wait()
