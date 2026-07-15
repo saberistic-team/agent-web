@@ -20,8 +20,8 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
+from app.admin_client_source import resolve_client_source
 from app.config import Settings
-from app.proxy_trust import resolve_admin_login_client_source
 
 SESSION_COOKIE_NAME = "admin_session"
 LOGIN_FLOW_COOKIE_NAME = "admin_login_flow"
@@ -238,12 +238,22 @@ def read_login_flow_token(request: Request) -> str | None:
 def client_ip(request: Request, settings: Settings) -> str:
     """Resolve the client source IP for rate limiting.
 
-    Delegates to :func:`app.proxy_trust.resolve_admin_login_client_source`, which
-    trusts forwarding headers only after the immediate peer matches
-    ``ADMIN_TRUSTED_PROXY_CIDRS``. Raw addresses are never logged; only keyed
-    digests are stored in shared limiter rows.
+    Forwarding headers are honored only when ``ADMIN_TRUST_PROXY_HEADERS`` is
+    enabled **and** the immediate peer matches ``ADMIN_TRUSTED_PROXY_CIDRS``.
+    The resolver walks the documented Cloudflare → Render → Uvicorn chain from
+    the right, skipping trusted proxy hops, and never trusts a client-supplied
+    left-most ``X-Forwarded-For`` value from an unverified peer.
+
+    Source identity notes:
+
+    * **IPv4 / IPv6** — stored only as keyed digests; the resolved string is
+      normalized before entering the source bucket.
+    * **Missing peer** — falls back to ``unknown`` so attempts still share one
+      bucket instead of creating an unbounded namespace.
+    * **Trusted proxy** — right-to-left parsing after the immediate peer is
+      verified; spoofed headers from direct clients are ignored.
     """
-    return resolve_admin_login_client_source(request, settings).source_material
+    return resolve_client_source(request, settings)
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:

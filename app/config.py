@@ -29,6 +29,7 @@ class Settings:
     admin_login_lockout_seconds: int = 900
     admin_trust_proxy_headers: bool = False
     admin_trusted_proxy_cidrs: str = ""
+    admin_cloudflare_proxy_cidrs: str = ""
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -75,6 +76,22 @@ class Settings:
         return True
 
     @property
+    def admin_trusted_proxy_networks(
+        self,
+    ) -> tuple:
+        from app.admin_client_source import parse_trusted_networks
+
+        return parse_trusted_networks(self.admin_trusted_proxy_cidrs)
+
+    @property
+    def admin_cloudflare_proxy_networks(
+        self,
+    ) -> tuple:
+        from app.admin_client_source import parse_trusted_networks
+
+        return parse_trusted_networks(self.admin_cloudflare_proxy_cidrs)
+
+    @property
     def analytics_enabled(self) -> bool:
         """True only when explicitly enabled and a Plausible domain is set."""
         flag = os.environ.get("ANALYTICS_ENABLED", "").lower()
@@ -114,7 +131,8 @@ def get_settings() -> Settings:
             "ADMIN_TRUST_PROXY_HEADERS", ""
         ).lower()
         in ("1", "true", "yes"),
-        admin_trusted_proxy_cidrs=os.environ.get(
-            "ADMIN_TRUSTED_PROXY_CIDRS", ""
+        admin_trusted_proxy_cidrs=os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "").strip(),
+        admin_cloudflare_proxy_cidrs=os.environ.get(
+            "ADMIN_CLOUDFLARE_PROXY_CIDRS", ""
         ).strip(),
     )
