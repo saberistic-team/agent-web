@@ -37,12 +37,14 @@ from app.crm_uow import crm_transaction
 from app.actor_context import actor_context_from_request, correlation_id_from_request
 from app.admin_layout import ADMIN_NAV_LINKS, render_admin_shell
 from app.admin_preview import (
+    PREVIEW_ARCHIVE_RESTORE_COMPANY_IDS,
+    PREVIEW_ARCHIVE_RESTORE_CONTACT_IDS,
     PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR,
     PREVIEW_BRIEF_DATABASE_ERROR_ID,
     PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID,
-    preview_company_research_page,
-    preview_contact_edit_page,
-    preview_contact_research_page,
+    preview_company_detail_state,
+    preview_contact_detail_state,
+    preview_contact_edit_state,
     preview_contact_restore_conflict,
 )
 from app.config import Settings, get_settings
@@ -706,19 +708,18 @@ def admin_company_research(
     session = require_admin_session(request)
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
-    if settings.admin_preview_enabled:
-        preview = preview_company_research_page(company_id)
-        if preview is not None:
-            return HTMLResponse(
-                admin_research_pages.render_admin_company_research_page(
-                    company=preview["company"],  # type: ignore[arg-type]
-                    contacts=preview["contacts"],  # type: ignore[arg-type]
-                    records=preview["records"],  # type: ignore[arg-type]
-                    csrf_token=csrf_token,
-                    admin_username=session.admin_username,
-                    error_message=error,
-                )
+    if settings.admin_preview_enabled and company_id in PREVIEW_ARCHIVE_RESTORE_COMPANY_IDS:
+        company, contacts, records = preview_company_detail_state(company_id)
+        return HTMLResponse(
+            admin_research_pages.render_admin_company_research_page(
+                company=company,
+                contacts=contacts,
+                records=records,
+                csrf_token=csrf_token,
+                admin_username=session.admin_username,
+                error_message=error,
             )
+        )
     with db.db_connection(settings.database_url) as conn:
         company = _crm.get_company(conn, company_id)
         if company is None:
@@ -992,20 +993,19 @@ def admin_contact_edit(
     request: Request, contact_id: UUID, error: str | None = None, warning: str | None = None
 ) -> HTMLResponse:
     session = require_admin_session(request)
+    csrf_token = _session_csrf_for_forms(request, get_settings())
     settings = get_settings()
-    csrf_token = _session_csrf_for_forms(request, settings)
-    if settings.admin_preview_enabled:
-        preview = preview_contact_edit_page(contact_id)
-        if preview is not None:
-            return HTMLResponse(
-                contact_pages.render_contact_form_page(
-                    csrf_token=csrf_token,
-                    admin_username=session.admin_username,
-                    companies=preview["companies"],  # type: ignore[arg-type]
-                    contact=preview["contact"],  # type: ignore[arg-type]
-                    error_message=error or warning,
-                )
+    if settings.admin_preview_enabled and contact_id in PREVIEW_ARCHIVE_RESTORE_CONTACT_IDS:
+        contact, companies = preview_contact_edit_state(contact_id)
+        return HTMLResponse(
+            contact_pages.render_contact_form_page(
+                csrf_token=csrf_token,
+                admin_username=session.admin_username,
+                companies=companies,
+                contact=contact,
+                error_message=error or warning,
             )
+        )
     with db.db_connection(settings.database_url) as conn:
         contact = _crm.get_contact(conn, contact_id)
         companies = _crm.list_companies(conn, limit=500)
@@ -1154,19 +1154,18 @@ def admin_contact_research(
     session = require_admin_session(request)
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
-    if settings.admin_preview_enabled:
-        preview = preview_contact_research_page(contact_id)
-        if preview is not None:
-            return HTMLResponse(
-                admin_research_pages.render_admin_contact_research_page(
-                    contact=preview["contact"],  # type: ignore[arg-type]
-                    company=preview["company"],  # type: ignore[arg-type]
-                    records=preview["records"],  # type: ignore[arg-type]
-                    csrf_token=csrf_token,
-                    admin_username=session.admin_username,
-                    error_message=error,
-                )
+    if settings.admin_preview_enabled and contact_id in PREVIEW_ARCHIVE_RESTORE_CONTACT_IDS:
+        contact, company, records = preview_contact_detail_state(contact_id)
+        return HTMLResponse(
+            admin_research_pages.render_admin_contact_research_page(
+                contact=contact,
+                company=company,
+                records=records,
+                csrf_token=csrf_token,
+                admin_username=session.admin_username,
+                error_message=error,
             )
+        )
     with db.db_connection(settings.database_url) as conn:
         contact = _crm.get_contact(conn, contact_id)
         if contact is None:

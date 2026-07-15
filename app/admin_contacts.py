@@ -5,7 +5,7 @@ from __future__ import annotations
 import html
 from typing import Any
 
-from app.admin_layout import render_admin_archive_form, render_admin_shell
+from app.admin_layout import render_admin_shell
 from app.contacts import (
     BUYING_ROLES,
     EMAIL_PERMISSIONS,
@@ -125,12 +125,17 @@ def render_contact_form_page(
     )
     archive_html = ""
     if contact is not None:
-        archive_html = render_admin_archive_form(
-            entity_base_path=f"/admin/contacts/{contact['id']}",
-            entity_label="contact",
-            archived_at=contact.get("archived_at"),
-            csrf_token=csrf_token,
+        archive_action = "restore" if contact.get("archived_at") else "archive"
+        archive_label = "Restore contact" if contact.get("archived_at") else "Archive contact"
+        archive_button_class = (
+            "admin-action admin-action--restore"
+            if contact.get("archived_at")
+            else "admin-action admin-action--destructive"
         )
+        archive_html = f"""<form method="post" action="/admin/contacts/{_esc(contact["id"])}/{archive_action}">
+        <input type="hidden" name="csrf_token" value="{_esc(csrf_token)}" />
+        <button class="{archive_button_class}" type="submit">{archive_label}</button>
+      </form>"""
     main = f"""<section class="admin-section" aria-labelledby="contact-form-title">
       <p class="admin-breadcrumb"><a href="/admin/contacts">Contacts</a></p>
       <h1 class="admin-title" id="contact-form-title">{_esc(title)}</h1>

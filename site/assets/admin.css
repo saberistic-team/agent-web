@@ -68,82 +68,71 @@ body.admin-app {
   padding: 0;
 }
 
-.admin-archive-form {
-  margin: 1.25rem 0;
-}
-
 /* Form action buttons — distinct from link-like .admin-exit top-bar controls. */
-.admin-action-btn {
+.admin-action {
   display: inline-block;
   margin: 0;
-  padding: 0.55rem 0.95rem;
   font-family: inherit;
-  font-size: 0.72rem;
-  font-weight: 500;
-  letter-spacing: 0.08em;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  line-height: 1.3;
-  color: var(--ink);
-  background: color-mix(in srgb, var(--surface) 80%, transparent);
-  border: 1px solid var(--line);
+  font-weight: 500;
+  padding: 0.5rem 0.85rem;
   border-radius: 2px;
   cursor: pointer;
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  border: 1px solid var(--line);
+  color: var(--ink);
   transition:
     background 0.15s ease,
-    color 0.15s ease,
     border-color 0.15s ease,
+    color 0.15s ease,
     transform 0.15s ease;
 }
 
-.admin-action-btn:hover {
-  color: var(--accent);
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--surface) 90%, transparent);
-}
-
-.admin-action-btn:focus-visible {
+.admin-action:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.admin-action-btn:active:not(:disabled) {
+.admin-action:active:not(:disabled) {
   transform: translateY(1px);
 }
 
-.admin-action-btn:disabled {
+.admin-action:disabled {
   opacity: 0.45;
   cursor: not-allowed;
-  color: var(--muted);
   border-color: var(--line);
-  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  color: var(--muted);
+  background: color-mix(in srgb, var(--surface) 50%, transparent);
 }
 
-.admin-action-btn--destructive {
-  color: #ffb4b4;
+.admin-action--destructive {
+  background: color-mix(in srgb, #e05a5a 12%, var(--surface));
   border-color: color-mix(in srgb, #e05a5a 55%, var(--line));
-  background: color-mix(in srgb, #e05a5a 10%, transparent);
+  color: #ffb4b4;
 }
 
-.admin-action-btn--destructive:hover:not(:disabled) {
-  color: #ffd4d4;
+.admin-action--destructive:hover:not(:disabled) {
+  background: color-mix(in srgb, #e05a5a 22%, var(--surface));
   border-color: #e05a5a;
-  background: color-mix(in srgb, #e05a5a 18%, transparent);
+  color: #ffd4d4;
 }
 
-.admin-action-btn--destructive:focus-visible {
+.admin-action--destructive:focus-visible {
   outline-color: #e05a5a;
 }
 
-.admin-action-btn--restore {
-  color: var(--ink);
-  border-color: var(--line);
+.admin-action--restore {
   background: color-mix(in srgb, var(--surface) 80%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
+  color: var(--ink);
 }
 
-.admin-action-btn--restore:hover:not(:disabled) {
-  color: var(--accent);
+.admin-action--restore:hover:not(:disabled) {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .admin-layout {
