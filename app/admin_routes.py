@@ -8,10 +8,10 @@ from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from pydantic import ValidationError
 
-from app import admin, admin_auth, admin_companies as company_pages, admin_contacts as contact_pages, admin_dashboard_pages, admin_imports as import_pages, admin_pages, admin_research_pages, audit_service, brief_service, db
+from app import admin, admin_auth, admin_companies as company_pages, admin_contacts as contact_pages, admin_dashboard_pages, admin_import_batches, admin_imports as import_pages, admin_pages, admin_research_pages, audit_service, brief_service, db
 from app.acquisition_dashboard import AcquisitionDashboardData, load_acquisition_dashboard
 from app.companies import (
     COMPANY_CATEGORIES,
@@ -1522,6 +1522,202 @@ def admin_brief_convert_confirm(
             status_code=303,
         )
     return RedirectResponse(url=detail_url, status_code=303)
+
+
+@router.get("/audit", response_class=HTMLResponse)
+def admin_audit_list(request: Request, page: int = 1) -> HTMLResponse:
+    session = require_admin_session(request)
+    settings = get_settings()
+    csrf_token = _session_csrf_for_forms(request, settings)
+    if settings.admin_preview_enabled:
+        from app.admin_preview import build_preview_audit_events
+
+        all_events = build_preview_audit_events()
+        total = len(all_events)
+        safe_page = max(page, 1)
+        per_page = settings.audit_page_size
+        start = (safe_page - 1) * per_page
+        events = all_events[start : start + per_page]
+        page = safe_page
+    elif not settings.database_url:
+        events, total = [], 0
+    else:
+        with db.db_connection(settings.database_url) as conn:
+            events, total = audit_service.list_events(
+                conn,
+                page=page,
+                per_page=settings.audit_page_size,
+            )
+    return HTMLResponse(
+        admin_pages.render_admin_audit_page(
+            admin_username=session.admin_username,
+            events=events,
+            page=max(page, 1),
+            per_page=settings.audit_page_size,
+            total=total,
+            csrf_token=csrf_token,
+        )
+    )
+
+
+@router.get("/imports/batches", response_class=HTMLResponse)
+def admin_import_batches_list(request: Request, page: int = 1) -> HTMLResponse:
+    session = require_admin_session(request)
+    settings = get_settings()
+    csrf_token = _session_csrf_for_forms(request, settings)
+    per_page = 50
+    if settings.admin_preview_enabled:
+        from app.admin_preview import build_preview_import_batches
+
+        batches, total = build_preview_import_batches()
+        return HTMLResponse(
+            admin_import_batches.render_import_batches_page(
+                batches=batches,
+                page=max(page, 1),
+                per_page=per_page,
+                total=total,
+                admin_username=session.admin_username,
+                csrf_token=csrf_token,
+                preview_banner="Preview data — not production",
+            )
+        )
+    if not settings.database_url:
+        batches, total = [], 0
+    else:
+        with db.db_connection(settings.database_url) as conn:
+            batches, total = _crm.list_import_batches(conn, page=page, per_page=per_page)
+    return HTMLResponse(
+        admin_import_batches.render_import_batches_page(
+            batches=batches,
+            page=max(page, 1),
+            per_page=per_page,
+            total=total,
+            admin_username=session.admin_username,
+            csrf_token=csrf_token,
+        )
+    )
+
+
+@router.get("/imports/batches/{batch_id}", response_class=HTMLResponse)
+def admin_import_batch_detail(request: Request, batch_id: UUID) -> HTMLResponse:
+    session = require_admin_session(request)
+    settings = get_settings()
+    csrf_token = _session_csrf_for_forms(request, settings)
+    if settings.admin_preview_enabled:
+        from app.admin_preview import build_preview_import_batch_detail
+
+        state = build_preview_import_batch_detail(str(batch_id))
+        if state is None:
+            return HTMLResponse(
+                admin.render_admin_not_found(
+                    f"/admin/imports/batches/{batch_id}",
+                    admin_username=session.admin_username,
+                    csrf_token=csrf_token,
+                ),
+                status_code=404,
+            )
+        return HTMLResponse(
+            admin_import_batches.render_import_batch_detail_page(
+                batch=state["batch"],
+                rows=state["rows"],
+                admin_username=session.admin_username,
+                csrf_token=csrf_token,
+                preview_banner="Preview data — not production",
+            )
+        )
+    if not settings.database_url:
+        return HTMLResponse(
+            admin.render_admin_not_found(
+                f"/admin/imports/batches/{batch_id}",
+                admin_username=session.admin_username,
+                csrf_token=csrf_token,
+            ),
+            status_code=404,
+        )
+    with db.db_connection(settings.database_url) as conn:
+        state = _crm.get_import_batch(conn, batch_id)
+    if state is None:
+        return HTMLResponse(
+            admin.render_admin_not_found(
+                f"/admin/imports/batches/{batch_id}",
+                admin_username=session.admin_username,
+                csrf_token=csrf_token,
+            ),
+            status_code=404,
+        )
+    return HTMLResponse(
+        admin_import_batches.render_import_batch_detail_page(
+            batch=state["batch"],
+            rows=state["rows"],
+            admin_username=session.admin_username,
+            csrf_token=csrf_token,
+        )
+    )
+
+
+@router.post("/imports/batches/{batch_id}/rollback")
+def admin_import_batch_rollback(
+    request: Request,
+    batch_id: UUID,
+    csrf_token: str = Form(...),
+) -> Response:
+    session = require_admin_session(request)
+    settings = get_settings()
+    _verify_session_csrf(request, session, csrf_token)
+    detail_url = f"/admin/imports/batches/{batch_id}"
+    if settings.admin_preview_enabled:
+        return RedirectResponse(url=detail_url, status_code=303)
+    if not settings.database_url:
+        return RedirectResponse(
+            url=f"{detail_url}?error={quote('Database unavailable')}",
+            status_code=303,
+        )
+    try:
+        with db.db_connection(settings.database_url) as conn:
+            _crm.rollback_import_batch(
+                conn,
+                actor_context=actor_context_from_request(request, actor=session.admin_username),
+                batch_id=batch_id,
+            )
+    except ValueError as exc:
+        return RedirectResponse(
+            url=f"{detail_url}?error={quote(str(exc))}",
+            status_code=303,
+        )
+    return RedirectResponse(url=detail_url, status_code=303)
+
+
+@router.post("/api/imports/linkedin/commit")
+async def admin_linkedin_import_commit(request: Request) -> JSONResponse:
+    session = require_admin_session(request)
+    settings = get_settings()
+    if not settings.database_url:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    try:
+        payload = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
+    connections = payload.get("connections")
+    if not isinstance(connections, list):
+        raise HTTPException(status_code=400, detail="connections must be a list")
+    with db.db_connection(settings.database_url) as conn:
+        result = _crm.commit_linkedin_import(
+            conn,
+            actor_context=actor_context_from_request(request, actor=session.admin_username),
+            connections=connections,
+            export_date=payload.get("export_date"),
+            checksum=payload.get("checksum"),
+        )
+    batch = result["batch"]
+    return JSONResponse(
+        {
+            "batch_id": str(batch["id"]),
+            "idempotent": result["idempotent"],
+            "status": batch.get("status"),
+            "summary_counts": result.get("summary_counts"),
+            "checksum": batch.get("checksum"),
+        }
+    )
 
 
 @router.get("/audit", response_class=HTMLResponse)

@@ -8,10 +8,12 @@ jobs:
   docs:
     if: github.event.label.name == 'agent:docs'
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     permissions:
       contents: write
       issues: write
       pull-requests: write
+      models: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,11 +24,21 @@ jobs:
         with:
           app-id: ${{ secrets.DOCS_APP_ID }}
           private-key: ${{ secrets.DOCS_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Install agent dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-agents.txt
 
       - name: Mark in progress
         env:
@@ -48,6 +60,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.docs.outputs.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          CURSOR_MODEL: ${{ vars.CURSOR_MODEL }}
+          CURSOR_RUNTIME: ${{ vars.CURSOR_RUNTIME }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          MODELS_TOKEN: ${{ secrets.MODELS_TOKEN || github.token }}
+          GITHUB_MODELS_MODEL: ${{ vars.GITHUB_MODELS_MODEL }}
+          CODEGEN_PROVIDER: ${{ vars.CODEGEN_PROVIDER }}
         run: |
           python scripts/run_agent.py \
             --role docs \
@@ -60,18 +80,59 @@ jobs:
         run: |
           set -euo pipefail
           ISSUE="${{ github.event.issue.number }}"
-          for label in status:new status:queued status:in-progress status:blocked status:needs-review status:failed; do
+          HANDOFF="reviewer"
+          if [[ -f trace/docs-handoff.txt ]]; then
+            HANDOFF="$(tr -d '[:space:]' < trace/docs-handoff.txt)"
+          fi
+          for label in status:new status:queued status:in-progress status:blocked status:done status:failed status:needs-review; do
             gh issue edit "${ISSUE}" --repo "${{ github.repository }}" --remove-label "${label}" 2>/dev/null || true
           done
-          gh issue edit "${ISSUE}" \
-            --repo "${{ github.repository }}" \
-            --add-label "status:done" \
-            --remove-label "agent:docs"
-          gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
+          for label in review:needs-review review:approved review:changes-requested agent:reviewer agent:builder agent:docs agent:planner; do
+            gh issue edit "${ISSUE}" --repo "${{ github.repository }}" --remove-label "${label}" 2>/dev/null || true
+          done
+
+          case "${HANDOFF}" in
+            blocked)
+              gh issue edit "${ISSUE}" \
+                --repo "${{ github.repository }}" \
+                --add-label "status:blocked"
+              gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
           ### docs_handoff
-          - status: \`status:done\`
+          - status: \`status:blocked\`
+          - next: \`@human-review\`
           EOF
           )"
+              ;;
+            waiting)
+              gh issue edit "${ISSUE}" \
+                --repo "${{ github.repository }}" \
+                --add-label "status:queued"
+              gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
+          ### docs_handoff
+          - status: \`status:queued\`
+          - next: dispatcher will re-apply \`agent:docs\` (retryable codegen / unfinished)
+          EOF
+          )"
+              ;;
+            reviewer|*)
+              gh issue edit "${ISSUE}" \
+                --repo "${{ github.repository }}" \
+                --add-label "status:needs-review" \
+                --add-label "review:needs-review" \
+                --add-label "agent:reviewer"
+              GITHUB_TOKEN="${GH_TOKEN}" python scripts/pr_labels.py \
+                --repo "${{ github.repository }}" \
+                --issue "${ISSUE}" \
+                --review review:needs-review || true
+              gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
+          ### docs_handoff
+          - status: \`status:needs-review\`
+          - next: \`agent:reviewer\` (docs checklist — objectives / acceptance)
+          - pr_labels: mirrored \`type:*\` \`priority:*\` \`review:needs-review\`
+          EOF
+          )"
+              ;;
+          esac
 
       - name: Dispatch next queued work
         if: always()
@@ -101,5 +162,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: agent-trace-docs-${{ github.event.issue.number }}-${{ github.run_id }}
-          path: trace/agent-trace.jsonl
+          path: |
+            trace/agent-trace.jsonl
+            trace/docs-handoff.txt
+            trace/docs-model.txt
           if-no-files-found: ignore

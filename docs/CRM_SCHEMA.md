@@ -76,12 +76,20 @@ See [AUDIT_EVENTS.md](AUDIT_EVENTS.md) for append-only audit semantics.
 | `pipeline_stage` | `TEXT` | Acquisition stage (default `researching`); see `app/pipeline_stages.py` |
 | `next_action` | `TEXT` | Operator next step |
 | `next_action_due_at` | `TIMESTAMPTZ` | Due date for next action |
-| `owner` | `TEXT` | Assigned operator |
-| `expected_value` | `NUMERIC(12,2)` | Expected deal value |
-| `stage_reason` | `TEXT` | Required context when stage is `lost` or `nurture` |
+| `pipeline_owner` | `TEXT` | Assigned operator |
+| `expected_value_cents` | `INTEGER` | Expected deal value in cents |
+| `pipeline_loss_reason` | `TEXT` | Required context when stage is `lost` |
+| `pipeline_nurture_reason` | `TEXT` | Required context when stage is `nurture` |
 
 Indexes: `status`, `website`, `domain`, `category`, `stage`, `target_status`,
-`archived_at`, `last_verified_at`, `pipeline_stage`, `next_action_due_at`, `owner`.
+`archived_at`, `last_verified_at`, partial `pipeline_stage`, partial
+`next_action_due_at`.
+
+Databases that applied an earlier incompatible form of migration `013` may still
+have legacy columns (`owner`, `expected_value`, `stage_reason`) and
+`company_stage_history`. Migration `015` backfills the canonical fields from
+those values and copies history into `pipeline_stage_history` without dropping
+the legacy storage (destructive cleanup requires a separate reviewed migration).
 
 `app/companies.py` owns the category/stage/target registries and normalizes domains
 before storage. Unknown registry values are validation errors; blank optional values
@@ -189,6 +197,29 @@ and expired evidence can be marked stale without overwriting history.
 Indexes: `company_id`, `contact_id`, `record_type`, `expires_at`, `observed_at`.
 Records are append-only (INSERT) so conflicting observations coexist.
 
+### `import_batches` / `import_batch_rows`
+
+LinkedIn import batch persistence ([#110](https://github.com/saberistic-team/agent-web/issues/110)).
+Each committed export stores checksum, schema version, actor, status, and summary
+counts. Row outcomes (`inserted`, `updated`, `unchanged`, `skipped`, `conflicted`)
+retain normalized source identity without the raw ZIP.
+
+| `import_batches` column | Type | Notes |
+|-------------------------|------|-------|
+| `id` | `UUID` | Batch id |
+| `source_type` | `TEXT` | `linkedin` |
+| `export_date` | `DATE` | Optional export date from client |
+| `schema_version` | `TEXT` | e.g. `linkedin_export_v1` |
+| `checksum` | `TEXT` | SHA-256 of normalized connection identities |
+| `actor` | `TEXT` | Committing admin username |
+| `status` | `TEXT` | `committed`, `failed`, `rolled_back` |
+| `summary_counts` | `JSONB` | Insert/update/unchanged/skipped/conflicted totals |
+| `correlation_id` | `TEXT` | Request correlation id |
+
+Partial unique index on `checksum` where `status = 'committed'` prevents duplicate
+commits of the same export. Rollback marks the batch `rolled_back` and reverts
+batch-owned contact changes when records were not edited later.
+
 ### `admin_users`
 
 | Column | Type | Notes |
@@ -263,11 +294,29 @@ Migrations live in `app/migrations/definitions.py` and are applied at startup vi
 | `006` | `admin_csrf_binding` | Login-flow CSRF rows and session CSRF column |
 | `007` | `research_records` | Typed research records with provenance and expiry |
 | `010` | `company_records` | Company firmographics, normalized domain, and soft archival |
-| `011` | `acquisition_pipeline` | Pipeline stage, next actions, stage history, extended activity types |
+| `011` | `acquisition_dashboard_indexes` | Research-record indexes for the acquisition dashboard |
+| `012` | `contact_records` | Contact roles, relationship context, optional email, soft archival |
+| `013` | `acquisition_pipeline` | Pipeline stages, stage history, expanded activity types |
+| `014` | `import_batches` | LinkedIn import batch metadata and per-row outcomes |
+| `015` | `reconcile_acquisition_pipeline_schema` | Forward-only reconcile of legacy `013` columns/history to the canonical pipeline schema ([#210](https://github.com/saberistic-team/agent-web/issues/210)) |
+
+**Legacy `013` divergence:** an earlier deployed form of `013` created
+`owner` / `expected_value` / `stage_reason` and `company_stage_history`. A later
+revision reused version `013` for the canonical
+`pipeline_owner` / `expected_value_cents` / `pipeline_loss_reason` /
+`pipeline_nurture_reason` and `pipeline_stage_history`. The runner keys pending
+work by version, so migration `015` performs the additive reconciliation.
+Versions that have shipped to production are frozen via
+`FROZEN_MIGRATION_DIGESTS` so an existing migration cannot be silently
+redefined again. After each healthy production deploy, the CI job
+**Freeze shipped migrations** runs `scripts/freeze_shipped_migrations.py
+--commit --wait-healthy` and commits any still-unfrozen digests with a
+`deploy: freeze …` meta commit (skipped by the Deploy job so Render is not
+retriggered).
 
 Applied versions are recorded in `schema_migrations`. Steps are **idempotent**
-(`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`) so empty and existing Render Postgres
-databases both converge safely.
+(`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, conditional legacy backfills) so
+empty and existing Render Postgres databases both converge safely.
 
 ### Concurrent startup
 

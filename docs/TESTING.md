@@ -26,6 +26,13 @@ Optional overrides:
   In-process `TestClient` and direct handler calls are fine.
 - **Integration:** broader service flows (HTTP paths, mocked Stripe/DB/email).
   Still no live paid APIs in CI.
+- **Live Postgres (optional locally, required in CI):** schema reconcile tests in
+  `tests/test_pipeline_schema_reconcile.py` use `TEST_DATABASE_URL`. CI sets
+  `REQUIRE_TEST_DATABASE=1` so those tests fail closed when the URL is missing.
+- **Migration digest freeze:** after a healthy production deploy, the CI job
+  **Freeze shipped migrations** runs `scripts/freeze_shipped_migrations.py` and
+  commits any unfrozen digests with `deploy: freeze …` (skipped by Deploy so
+  Render is not retriggered).
 - Agent/orchestration scripts under `scripts/` are **not** measured by these
   gates (they have their own tests without `app/` coverage requirements).
 

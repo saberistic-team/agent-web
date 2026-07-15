@@ -10,7 +10,7 @@ client = TestClient(app)
 
 @pytest.mark.unit
 def test_health_handler_unit() -> None:
-    assert health() == {"status": "ok"}
+    assert health()["status"] == "ok"
 
 
 @pytest.mark.unit
@@ -57,7 +57,7 @@ def test_brief_handlers_return_pages(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_health() -> None:
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json()["status"] == "ok"
 
 
 @pytest.mark.unit

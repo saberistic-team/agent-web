@@ -170,11 +170,11 @@ at intake; otherwise the Planner infers or defaults to `priority:normal`.
 - Within the same priority, older issue numbers run first (FIFO).
 - Reviewer `changes-requested` re-enters `status:queued` (same priority) and
   waits for the dispatcher — it does not skip the queue by re-applying
-  `agent:builder` immediately. Merge conflicts are always Builder-fixable
-  (including when another PR merges after handoff).
-- Builder that cannot leave a clean PR (still `mergeable_state: dirty` after
-  conflict resolution) uses the `waiting` handoff → `status:queued` and does
-  **not** apply `agent:reviewer` until the PR merges cleanly.
+  `agent:builder` / `agent:docs` immediately. Merge conflicts are always
+  implementing-agent fixable (including when another PR merges after handoff).
+- Builder/Docs that cannot leave a clean PR (still `mergeable_state: dirty`
+  after conflict resolution) use the `waiting` handoff → `status:queued` and
+  do **not** apply `agent:reviewer` until the PR merges cleanly.
 - Manual `agent:builder` / `agent:docs` still starts a run immediately
   (emergency override); prefer the queue for normal work.
 
@@ -218,7 +218,7 @@ typically used when `status:needs-review` (or after a review cycle).
 |-------|---------|
 | `review:needs-review` | Awaiting a review decision. |
 | `review:approved` | Review passed; ready to merge or mark done. |
-| `review:changes-requested` | Review found required changes; return to builder via the priority queue. |
+| `review:changes-requested` | Review found required changes; return to the implementing agent (`agent:builder` or `agent:docs` from `type:*`) via the priority queue. |
 
 ---
 
@@ -232,13 +232,13 @@ PRs — those are issue ownership / pipeline state and runtime triggers.
 |-----------|--------|-------|
 | `type:*` | Copied from the linked issue | Set when Builder/Docs open (or refresh) the PR |
 | `priority:*` | Copied from the linked issue | Preserved across review cycles |
-| `review:*` | Kept in sync with the issue review axis | Builder → `needs-review`; Reviewer/Gate update on decision/merge |
+| `review:*` | Kept in sync with the issue review axis | Builder/Docs → `needs-review`; Reviewer/Gate update on decision/merge |
 | Milestone | Copied from the linked issue | Same GitHub milestone as the issue when set; skipped for critical/no-milestone work |
 | `agent:*` | **Never on PRs** | Issue-only |
 | `status:*` | **Never on PRs** | Issue-only |
 
-Implementation: `scripts/pr_labels.py` (also invoked from Builder / Reviewer /
-Gate workflows). Label mutations use the Issues Labels API
+Implementation: `scripts/pr_labels.py` (also invoked from Builder / Docs /
+Reviewer / Gate workflows). Label mutations use the Issues Labels API
 (`POST/DELETE .../issues/{number}/labels`), which works for PR numbers.
 Milestone assignment uses `PATCH .../issues/{number}` with `milestone` (also
 works for PR numbers).
@@ -249,7 +249,7 @@ works for PR numbers).
 |------|------------------|
 | **Planner** | None. Labels the **issue** only (`type:*`, `priority:*`, `status:queued`) and sets an open milestone. No `pull_requests` scope; no PR exists yet for new work. |
 | **Builder** | On create/reuse of a code PR: mirror `type:*` + `priority:*`, set `review:needs-review`, and copy the issue milestone onto the PR. On handoff to Reviewer, workflows re-apply the same mirror. |
-| **Docs** | On create/reuse: mirror `type:*` + `priority:*` and the issue milestone (Docs usually skips Reviewer, so no `review:*`). |
+| **Docs** | On create/reuse: mirror `type:*` + `priority:*`, set `review:needs-review`, and copy the issue milestone onto the PR (same review handoff as Builder; Reviewer uses the docs checklist). |
 | **Reviewer** | After the PR review API decision, set the matching `review:*` on the PR (`approved` / `changes-requested`) while updating the issue. |
 | **Gate** | On squash merge (`review-approved`): ensure the PR has `review:approved`. Issue still receives `status:done` + `review:approved`. |
 
