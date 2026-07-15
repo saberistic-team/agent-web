@@ -92,13 +92,13 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert",
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
-    "/admin/companies/12121212-1212-1212-1212-121212121212",
-    "/admin/companies/13131313-1313-1313-1313-131313131313",
-    "/admin/contacts/14141414-1414-1414-1414-141414141414",
-    "/admin/contacts/15151515-1515-1515-1515-151515151515",
-    "/admin/contacts/14141414-1414-1414-1414-141414141414/edit",
-    "/admin/contacts/15151515-1515-1515-1515-151515151515/edit",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
+    "/admin/companies/a1a1a1a1-a1a1-a1a1-a1a1-a1a1a1a1a101",
+    "/admin/companies/a1a1a1a1-a1a1-a1a1-a1a1-a1a1a1a1a102",
+    "/admin/contacts/b2b2b2b2-b2b2-b2b2-b2b2-b2b2b2b2b201",
+    "/admin/contacts/b2b2b2b2-b2b2-b2b2-b2b2-b2b2b2b2b202",
+    "/admin/contacts/b2b2b2b2-b2b2-b2b2-b2b2-b2b2b2b2b201/edit",
+    "/admin/contacts/b2b2b2b2-b2b2-b2b2-b2b2-b2b2b2b2b202/edit",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
@@ -109,26 +109,10 @@ ADMIN_SCREENSHOT_EXPECTED_STATUS: dict[str, int] = {
 }
 
 
-def render_admin_archive_form(
-    *,
-    action_url: str,
-    label: str,
-    is_archived: bool,
-    csrf_token: str,
-) -> str:
-    """POST form for archive/restore with themed admin action button."""
-    modifier = (
-        "admin-action-btn--secondary" if is_archived else "admin-action-btn--destructive"
-    )
-    safe_url = html.escape(action_url, quote=True)
-    safe_token = html.escape(csrf_token, quote=True)
-    safe_label = html.escape(label)
-    return (
-        f'<form method="post" action="{safe_url}">'
-        f'<input type="hidden" name="csrf_token" value="{safe_token}" />'
-        f'<button class="admin-action-btn {modifier}" type="submit">{safe_label}</button>'
-        f"</form>"
-    )
+def admin_archive_action_classes(*, archived: bool) -> str:
+    """CSS classes for company/contact archive or restore form buttons."""
+    modifier = "admin-action--secondary" if archived else "admin-action--destructive"
+    return f"admin-action {modifier}"
 
 
 def _active_nav_label(active_path: str) -> str:
