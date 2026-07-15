@@ -18,6 +18,7 @@ from app import admin_auth, audit_service, db
 from app.actor_context import ActorContext
 from app.admin_auth import SESSION_COOKIE_NAME
 from app.audit_service import REDACTED_VALUE
+from app.config import get_settings
 from app.crm_service import CrmRepositories, CrmService
 from app.crm_uow import crm_transaction
 from app.main import app
@@ -414,8 +415,9 @@ def test_login_success_and_failure_create_audit_events() -> None:
 @pytest.mark.unit
 @pytest.mark.integration
 def test_logout_records_audit_event() -> None:
-    raw_csrf = "logout-csrf"
-    token_hash = admin_auth.hash_session_token("session-token")
+    raw_session_token = "session-token"
+    raw_csrf = admin_auth.derive_session_csrf_token(raw_session_token, get_settings())
+    token_hash = admin_auth.hash_session_token(raw_session_token)
     row = _session_row(
         token_hash=token_hash,
         csrf_token_hash=admin_auth.hash_csrf_token(raw_csrf),
@@ -427,7 +429,7 @@ def test_logout_records_audit_event() -> None:
                     response = client.post(
                         "/admin/logout",
                         data={"csrf_token": raw_csrf},
-                        cookies={SESSION_COOKIE_NAME: "session-token"},
+                        cookies={SESSION_COOKIE_NAME: raw_session_token},
                     )
                     assert response.status_code == 303
                     revoke_session.assert_called_once()
