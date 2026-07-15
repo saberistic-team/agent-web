@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
-import ipaddress
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from functools import cached_property
+
+from app.proxy_networks import (
+    DEFAULT_TRUSTED_FORWARDER_IPS,
+    DEFAULT_TRUSTED_PROXY_IPS,
+    parse_network_list,
+)
 
 
 @dataclass(frozen=True)
@@ -28,11 +34,9 @@ class Settings:
     admin_login_rate_limit: int = 5
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
-    admin_trusted_proxy_ips: str = ""
-    admin_trusted_proxy_networks: tuple[
-        ipaddress.IPv4Network | ipaddress.IPv6Network, ...
-    ] = field(default_factory=tuple)
-    uvicorn_forwarded_allow_ips: str = ""
+    admin_trusted_proxy_ips: tuple[str, ...] = ()
+    admin_trusted_forwarder_ips: tuple[str, ...] = ()
+    admin_trust_proxy_headers: bool = False
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -78,6 +82,24 @@ class Settings:
             return False
         return True
 
+    @cached_property
+    def admin_trusted_proxy_networks(self):
+        if self.admin_trusted_proxy_ips:
+            return parse_network_list(self.admin_trusted_proxy_ips)
+        return ()
+
+    @cached_property
+    def admin_trusted_forwarder_networks(self):
+        if self.admin_trusted_forwarder_ips:
+            return parse_network_list(self.admin_trusted_forwarder_ips)
+        return ()
+
+    @property
+    def admin_client_source_trust_mode(self) -> str:
+        if self.admin_trusted_proxy_networks:
+            return "verified_proxy_chain"
+        return "direct_peer"
+
     @property
     def analytics_enabled(self) -> bool:
         """True only when explicitly enabled and a Plausible domain is set."""
@@ -85,26 +107,6 @@ class Settings:
         if flag not in ("1", "true", "yes"):
             return False
         return bool(self.plausible_domain)
-
-
-def _parse_trusted_proxy_networks(
-    raw: str,
-) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
-    networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
-    for part in raw.split(","):
-        token = part.strip()
-        if not token:
-            continue
-        try:
-            if "/" in token:
-                networks.append(ipaddress.ip_network(token, strict=False))
-            elif ":" in token:
-                networks.append(ipaddress.ip_network(f"{token}/128", strict=False))
-            else:
-                networks.append(ipaddress.ip_network(f"{token}/32", strict=False))
-        except ValueError:
-            continue
-    return tuple(networks)
 
 
 def get_settings() -> Settings:
@@ -134,11 +136,40 @@ def get_settings() -> Settings:
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
         brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
-        admin_trusted_proxy_ips=os.environ.get("ADMIN_TRUSTED_PROXY_IPS", "").strip(),
-        admin_trusted_proxy_networks=_parse_trusted_proxy_networks(
-            os.environ.get("ADMIN_TRUSTED_PROXY_IPS", "")
-        ),
-        uvicorn_forwarded_allow_ips=os.environ.get(
-            "UVICORN_FORWARDED_ALLOW_IPS", ""
-        ).strip(),
+        admin_trusted_proxy_ips=_parse_admin_trusted_proxy_ips(),
+        admin_trusted_forwarder_ips=_parse_admin_trusted_forwarder_ips(),
+        admin_trust_proxy_headers=os.environ.get(
+            "ADMIN_TRUST_PROXY_HEADERS", ""
+        ).lower()
+        in ("1", "true", "yes"),
     )
+
+
+def _parse_csv_env(name: str) -> tuple[str, ...]:
+    raw = os.environ.get(name, "")
+    if not raw.strip():
+        return ()
+    return tuple(part.strip() for part in raw.split(",") if part.strip())
+
+
+def _parse_admin_trusted_proxy_ips() -> tuple[str, ...]:
+    explicit = _parse_csv_env("ADMIN_TRUSTED_PROXY_IPS")
+    if explicit:
+        return explicit
+    legacy = os.environ.get("ADMIN_TRUST_PROXY_HEADERS", "").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    if legacy:
+        return DEFAULT_TRUSTED_PROXY_IPS
+    return ()
+
+
+def _parse_admin_trusted_forwarder_ips() -> tuple[str, ...]:
+    explicit = _parse_csv_env("ADMIN_TRUSTED_FORWARDER_IPS")
+    if explicit:
+        return explicit
+    if _parse_admin_trusted_proxy_ips():
+        return DEFAULT_TRUSTED_FORWARDER_IPS
+    return ()

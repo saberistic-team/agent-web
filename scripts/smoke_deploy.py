@@ -40,6 +40,16 @@ def main(argv: list[str] | None = None) -> int:
             print(f"FAIL {url}: got {payload!r}, expected {key}={expected!r}", file=sys.stderr)
             return 1
         print(f"PASS {url} → {payload}")
+    health = get_json(f"{base}/health")
+    trust_mode = health.get("admin_client_source_trust")
+    if trust_mode != "verified_proxy_chain":
+        print(
+            f"FAIL {base}/health: admin_client_source_trust={trust_mode!r}, "
+            "expected 'verified_proxy_chain'",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"PASS {base}/health admin_client_source_trust=verified_proxy_chain")
     return 0
 
 

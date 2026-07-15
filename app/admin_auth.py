@@ -20,7 +20,7 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.admin_client_source import resolve_admin_login_client_source
+from app.client_source import client_ip, resolve_admin_login_client_source
 from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
@@ -235,27 +235,11 @@ def read_login_flow_token(request: Request) -> str | None:
     return token.strip() or None
 
 
-def client_ip(request: Request, settings: Settings) -> str:
-    """Resolve the client source IP for rate limiting.
-
-    Forwarding headers are honored only when the immediate TCP peer matches
-    ``ADMIN_TRUSTED_PROXY_IPS`` (see :func:`resolve_admin_login_client_source`).
-    Untrusted peers always use the direct connection address so clients cannot
-    spoof ``X-Forwarded-For``, ``Forwarded``, or ``CF-Connecting-IP``.
-
-    Source identity notes:
-
-    * **IPv4 / IPv6** — stored only as keyed digests; the resolved string is
-      passed verbatim into the source bucket (e.g. ``203.0.113.1``,
-      ``2001:db8::1``).
-    * **Missing peer** — falls back to ``unknown`` so attempts still share one
-      bucket instead of creating an unbounded namespace.
-    * **Trusted proxy** — production uses Cloudflare → Render → Uvicorn; when
-      the Render load balancer is the verified peer, ``CF-Connecting-IP`` or a
-      right-to-left ``X-Forwarded-For`` walk selects the client address.
-    """
-    return resolve_admin_login_client_source(request, settings).source
-
+# Re-exported for tests and route modules that patch ``app.admin_auth.client_ip``.
+__all__ = [
+    "client_ip",
+    "resolve_admin_login_client_source",
+]
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
     payload = f"{prefix}:{material}"
@@ -431,7 +415,7 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "lockout_transition": admission.lockout_transition,
-                "source_resolution_path": resolution.path,
+                "client_source_path": resolution.path,
             },
         )
     elif admission.already_locked:

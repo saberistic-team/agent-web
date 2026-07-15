@@ -119,10 +119,7 @@ def health() -> dict:
     """
     payload: dict = {"status": "ok"}
     settings = get_settings()
-    payload["admin_source_trust"] = {
-        "trusted_proxies_configured": bool(settings.admin_trusted_proxy_networks),
-        "forwarded_allow_ips_configured": bool(settings.uvicorn_forwarded_allow_ips),
-    }
+    payload["admin_client_source_trust"] = settings.admin_client_source_trust_mode
     if not settings.database_configured:
         return payload
     try:
