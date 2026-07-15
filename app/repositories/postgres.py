@@ -292,10 +292,10 @@ class PostgresContactRepository:
         exclude_contact_id: UUID | None = None,
     ) -> dict[str, Any] | None:
         normalized = email.strip().lower()
-        conditions = ["LOWER(email) = %s", "archived_at IS NULL"]
+        conditions = ["LOWER(c.email) = %s", "c.archived_at IS NULL"]
         params: list[Any] = [normalized]
         if exclude_contact_id is not None:
-            conditions.append("id <> %s")
+            conditions.append("c.id <> %s")
             params.append(exclude_contact_id)
         with conn.cursor() as cur:
             cur.execute(
@@ -304,6 +304,7 @@ class PostgresContactRepository:
                 FROM contacts c
                 LEFT JOIN companies co ON co.id = c.company_id
                 WHERE {' AND '.join(conditions)}
+                ORDER BY c.id ASC
                 LIMIT 1
                 """,
                 params,

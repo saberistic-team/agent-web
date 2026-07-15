@@ -94,7 +94,9 @@ def test_contact_repository_create_and_lookup() -> None:
     conn3 = _mock_conn(row)
     assert repo.get_active_by_email(conn3, "lead@example.com")["id"] == CONTACT_ID
     active_sql = str(conn3.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
-    assert "archived_at IS NULL" in active_sql
+    assert "c.archived_at IS NULL" in active_sql
+    assert "LOWER(c.email)" in active_sql
+    assert "ORDER BY c.id ASC" in active_sql
 
     conn4 = _mock_conn([row])
     contacts = repo.list_for_company(conn4, COMPANY_ID, limit=10)
