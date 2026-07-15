@@ -137,6 +137,7 @@ def test_admin_css_nav_sizes_to_content_not_grid_stretch() -> None:
     assert "align-self: start" in nav_block
     assert "display: block" in nav_block
     layout_block = css.split(".admin-layout {", 1)[1].split("}", 1)[0]
+    assert "align-items: start" in layout_block
     assert "min-height:" not in layout_block
 
 
