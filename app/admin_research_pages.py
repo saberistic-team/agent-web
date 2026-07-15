@@ -5,7 +5,7 @@ from __future__ import annotations
 import html
 from typing import Any
 
-from app.admin_layout import admin_archive_button_class, render_admin_shell
+from app.admin_layout import archive_action_button_class, render_admin_shell
 from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES, TARGET_STATUSES
 from app.contacts import EMAIL_PERMISSIONS, RELATIONSHIP_STRENGTHS, format_buying_roles
 from app.research_records import (
@@ -207,7 +207,7 @@ def render_admin_company_research_page(
     is_archived = bool(company.get("archived_at"))
     archive_action = "restore" if is_archived else "archive"
     archive_label = "Restore company" if is_archived else "Archive company"
-    archive_button_class = admin_archive_button_class(is_archived=is_archived)
+    archive_button_class = archive_action_button_class(is_archived=is_archived)
     error_html = ""
     if error_message:
         error_html = (
@@ -335,7 +335,7 @@ def render_admin_contact_research_page(
     is_archived = bool(contact.get("archived_at"))
     archive_action = "restore" if is_archived else "archive"
     archive_label = "Restore contact" if is_archived else "Archive contact"
-    archive_button_class = admin_archive_button_class(is_archived=is_archived)
+    archive_button_class = archive_action_button_class(is_archived=is_archived)
     main = f"""        <section class="admin-research" aria-labelledby="contact-research-title">
           <p class="admin-breadcrumb"><a href="/admin/contacts">Contacts</a></p>
           <h1 class="admin-title" id="contact-research-title">{display_name}</h1>
