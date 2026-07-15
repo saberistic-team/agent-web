@@ -99,9 +99,9 @@ comparison; full manifest payloads omitted from the saved artifact).
 
 | Strategy | Avg latency (offline) | No-result rate | Relevance proxy | Est. cost / 1k queries |
 |----------|----------------------|----------------|-----------------|------------------------|
-| `postgres_fts_trigram` | 0.96 ms | 0% | 1.0 | $0.02 |
-| `pgvector_embedding` | 0.46 ms | 0% | 1.0 | $0.18 |
-| `hybrid` | 1.44 ms | 0% | 1.0 | $0.22 |
+| `postgres_fts_trigram` | 1.17 ms | 0% | 1.0 | $0.02 |
+| `pgvector_embedding` | 0.59 ms | 0% | 1.0 | $0.18 |
+| `hybrid` | 1.75 ms | 0% | 1.0 | $0.22 |
 
 Full per-query scores: `docs/worldgraph/spike/benchmark_results.json`.
 

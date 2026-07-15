@@ -130,10 +130,10 @@ and no-result metrics — not by default.
 
 | Signal | FTS + trigram | Embedding (pseudo) | Hybrid |
 |--------|---------------|-------------------|--------|
-| Top-1 on filtered queries (q02–q04, q08) | Correct | Mixed | Correct |
-| q05 (character roleplay) | Correct top-1 | Wrong top-1 | Correct top-1 |
-| q06 (nonsense query) | Weak matches | False positives | Weak matches |
-| Avg offline latency | 0.63 ms | 0.63 ms | 0.61 ms |
+| Qualifying queries (10 discovery intents) | Top-1 in expected category | Top-1 in expected category | Top-1 in expected category |
+| `q-no-match-engine` (negative intent) | Weak matches (fts≈3) | Fewer hits, low cosine | Weak matches |
+| `q-no-match-chatbot` (negative intent) | Weak matches (fts≈3) | False positives (cosine≈0.56) | Weak matches |
+| Avg offline latency | 1.17 ms | 0.59 ms | 1.75 ms |
 | Ops complexity | Low (SQL only) | Medium (embed pipeline + HNSW) | High |
 
 At MVP scale (~500 worlds), lexical search with explainable `ts_rank` + trigram scores
