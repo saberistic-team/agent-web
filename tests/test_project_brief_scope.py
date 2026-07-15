@@ -49,6 +49,7 @@ def test_project_brief_doc_lists_deferred_scope() -> None:
     assert "## Intentionally deferred" in body
     for heading in DEFERRED_HEADINGS:
         assert heading in body, f"missing deferred item: {heading}"
+    assert "Variable pricing / coupons" not in body
 
 
 def test_readme_links_project_brief_doc() -> None:

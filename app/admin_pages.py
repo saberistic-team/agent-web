@@ -193,24 +193,82 @@ def _format_amount(cents: int) -> str:
     return f"${cents / 100:.0f}"
 
 
-def _brief_paid_total_cents(brief: dict[str, Any], fallback_price_cents: int) -> int:
-    stored = brief.get("payment_total_cents")
+def _brief_paid_amount_cents(brief: dict[str, Any], list_price_cents: int) -> int:
+    stored = brief.get("payment_amount_cents")
     if stored is not None:
         return int(stored)
-    return fallback_price_cents
+    return list_price_cents
 
 
-def _format_paid_amount_lines(brief: dict[str, Any], fallback_price_cents: int) -> list[str]:
-    total_cents = _brief_paid_total_cents(brief, fallback_price_cents)
+def _brief_has_payment_breakdown(brief: dict[str, Any]) -> bool:
     discount = brief.get("payment_discount_cents")
+    if discount is not None and int(discount) > 0:
+        return True
     subtotal = brief.get("payment_subtotal_cents")
-    if discount is not None and int(discount) > 0 and subtotal is not None:
-        return [
-            f"Subtotal {_format_amount(int(subtotal))}",
-            f"Discount −{_format_amount(int(discount))}",
-            f"Total {_format_amount(total_cents)}",
-        ]
-    return [_format_amount(total_cents)]
+    amount = brief.get("payment_amount_cents")
+    return (
+        subtotal is not None
+        and amount is not None
+        and int(subtotal) != int(amount)
+    )
+
+
+def _format_brief_payment_cell(brief: dict[str, Any], list_price_cents: int) -> str:
+    status = str(brief.get("status", ""))
+    if status != "paid":
+        status_label = _format_brief_status(status)
+        status_class = html.escape(status, quote=True)
+        return (
+            f'<span class="admin-status admin-status-{status_class}">'
+            f"{html.escape(status_label)}</span>"
+        )
+    parts = [_format_amount(_brief_paid_amount_cents(brief, list_price_cents))]
+    if _brief_has_payment_breakdown(brief):
+        subtotal = int(brief.get("payment_subtotal_cents") or list_price_cents)
+        discount = int(brief.get("payment_discount_cents") or 0)
+        parts.append(f"List {_format_amount(subtotal)}")
+        parts.append(f"Discount −{_format_amount(discount)}")
+        currency = str(brief.get("payment_currency") or "usd").upper()
+        parts.append(currency)
+    paid_at = brief.get("paid_at")
+    if paid_at:
+        parts.append(_format_timestamp(paid_at))
+    return "<br>".join(parts)
+
+
+def _format_brief_payment_detail_lines(
+    brief: dict[str, Any],
+    list_price_cents: int,
+) -> list[str]:
+    status = str(brief.get("status", ""))
+    status_label = _format_brief_status(status)
+    status_class = html.escape(status, quote=True)
+    lines = [
+        (
+            f'<span class="admin-status admin-status-{status_class}">'
+            f"{html.escape(status_label)}</span>"
+        )
+    ]
+    if status != "paid":
+        return lines
+    if _brief_has_payment_breakdown(brief):
+        subtotal = int(brief.get("payment_subtotal_cents") or list_price_cents)
+        discount = int(brief.get("payment_discount_cents") or 0)
+        amount = _brief_paid_amount_cents(brief, list_price_cents)
+        currency = html.escape(str(brief.get("payment_currency") or "usd").upper())
+        lines.extend(
+            [
+                f"Subtotal {html.escape(_format_amount(subtotal))}",
+                f"Discount −{html.escape(_format_amount(discount))}",
+                f"Total {html.escape(_format_amount(amount))} {currency}",
+            ]
+        )
+    else:
+        lines.append(html.escape(_format_amount(_brief_paid_amount_cents(brief, list_price_cents))))
+    paid_at = brief.get("paid_at")
+    if paid_at:
+        lines.append(_format_timestamp(paid_at))
+    return lines
 
 
 def _format_utm(source: str | None, campaign: str | None) -> str:
@@ -265,15 +323,7 @@ def render_admin_briefs_page(
     for brief in briefs:
         brief_id = brief.get("id", "")
         status = str(brief.get("status", ""))
-        status_label = _format_brief_status(status)
-        status_class = html.escape(status, quote=True)
-        payment_cell = f'<span class="admin-status admin-status-{status_class}">{html.escape(status_label)}</span>'
-        paid_at = brief.get("paid_at")
-        if status == "paid":
-            paid_parts = _format_paid_amount_lines(brief, price_cents)
-            if paid_at:
-                paid_parts.append(_format_timestamp(paid_at))
-            payment_cell = "<br>".join(html.escape(part) for part in paid_parts)
+        payment_cell = _format_brief_payment_cell(brief, price_cents)
         website = html.escape(str(brief.get("website", "")))
         email = html.escape(str(brief.get("contact_value", "")))
         back_params = _briefs_query_params(filters)
@@ -538,32 +588,21 @@ def render_admin_brief_detail_page(
     converted: bool = False,
 ) -> str:
     brief_id = brief.get("id", "")
-    status = str(brief.get("status", ""))
-    status_label = _format_brief_status(status)
-    status_class = html.escape(status, quote=True)
-    status_html = (
-        f'<span class="admin-status admin-status-{status_class}">'
-        f"{html.escape(status_label)}</span>"
-    )
-    payment_lines = [status_html]
-    if status == "paid":
-        payment_lines.extend(
-            html.escape(part) for part in _format_paid_amount_lines(brief, price_cents)
-        )
-        paid_at = brief.get("paid_at")
-        if paid_at:
-            payment_lines.append(_format_timestamp(paid_at))
+    payment_lines = _format_brief_payment_detail_lines(brief, price_cents)
     payment_html = "<br>".join(payment_lines)
 
     stripe_refs = _brief_stripe_references(brief)
     stripe_section = ""
     if stripe_refs is not None:
         session_cell, intent_cell = stripe_refs
-        promo_cell = _format_stripe_reference(brief.get("stripe_promotion_code_id"))
-        coupon_cell = _format_stripe_reference(brief.get("stripe_coupon_id"))
-        currency_cell = _format_optional_text(
-            str(brief.get("payment_currency", "")).upper() or None
-        )
+        discount_id = brief.get("stripe_discount_id")
+        discount_row = ""
+        if discount_id and str(discount_id).strip():
+            discount_row = f"""
+              <div class="brief-detail-row">
+                <dt>Stripe discount</dt>
+                <dd>{_format_stripe_reference(str(discount_id))}</dd>
+              </div>"""
         stripe_section = f"""
           <section class="brief-detail-section" aria-labelledby="brief-stripe-title">
             <h2 class="brief-detail-heading" id="brief-stripe-title">Stripe references</h2>
@@ -576,19 +615,7 @@ def render_admin_brief_detail_page(
               <div class="brief-detail-row">
                 <dt>Payment intent</dt>
                 <dd>{intent_cell}</dd>
-              </div>
-              <div class="brief-detail-row">
-                <dt>Currency</dt>
-                <dd>{currency_cell}</dd>
-              </div>
-              <div class="brief-detail-row">
-                <dt>Promotion code</dt>
-                <dd>{promo_cell}</dd>
-              </div>
-              <div class="brief-detail-row">
-                <dt>Coupon</dt>
-                <dd>{coupon_cell}</dd>
-              </div>
+              </div>{discount_row}
             </dl>
           </section>"""
 

@@ -10,14 +10,13 @@ import stripe
 
 @dataclass(frozen=True)
 class BriefCheckoutPayment:
-    """Amounts and discount identifiers from a completed Checkout Session."""
+    """Amounts from a completed Stripe Checkout Session."""
 
     subtotal_cents: int
     discount_cents: int
-    total_cents: int
+    amount_cents: int
     currency: str
-    stripe_coupon_id: str | None
-    stripe_promotion_code_id: str | None
+    stripe_discount_id: str | None
 
 
 def create_checkout_session(
@@ -70,52 +69,39 @@ def extract_brief_id_from_session(session: dict[str, Any]) -> int | None:
 
 def _stripe_object_id(value: Any) -> str | None:
     if isinstance(value, str) and value.strip():
-        return value
+        return value.strip()
     if isinstance(value, dict):
         raw_id = value.get("id")
-        if isinstance(raw_id, str) and raw_id.strip():
-            return raw_id
+        if raw_id is not None and str(raw_id).strip():
+            return str(raw_id).strip()
     return None
 
 
-def extract_payment_from_session(
-    session: dict[str, Any],
-    *,
-    list_price_cents: int,
-) -> BriefCheckoutPayment:
-    """Read Stripe-completed session totals; fall back to list price when absent."""
-    total_raw = session.get("amount_total")
-    if total_raw is None:
-        return BriefCheckoutPayment(
-            subtotal_cents=list_price_cents,
-            discount_cents=0,
-            total_cents=list_price_cents,
-            currency=str(session.get("currency") or "usd"),
-            stripe_coupon_id=None,
-            stripe_promotion_code_id=None,
-        )
+def extract_stripe_discount_id(session: dict[str, Any]) -> str | None:
+    """Return Stripe promotion-code or coupon id when a discount was applied."""
+    discounts = session.get("discounts") or []
+    if not discounts:
+        return None
+    entry = discounts[0]
+    if not isinstance(entry, dict):
+        return None
+    promo_id = _stripe_object_id(entry.get("promotion_code"))
+    if promo_id:
+        return promo_id
+    return _stripe_object_id(entry.get("coupon"))
 
-    total_cents = int(total_raw)
-    subtotal_cents = int(session.get("amount_subtotal") or total_cents)
+
+def extract_payment_from_session(session: dict[str, Any]) -> BriefCheckoutPayment:
+    """Read subtotal, discount, total, and currency from a completed session."""
     total_details = session.get("total_details") or {}
     discount_cents = int(total_details.get("amount_discount") or 0)
-    currency = str(session.get("currency") or "usd")
-
-    stripe_coupon_id: str | None = None
-    stripe_promotion_code_id: str | None = None
-    breakdown = total_details.get("breakdown") or {}
-    for item in breakdown.get("discounts") or []:
-        discount_obj = item.get("discount") or {}
-        stripe_coupon_id = _stripe_object_id(discount_obj.get("coupon"))
-        stripe_promotion_code_id = _stripe_object_id(discount_obj.get("promotion_code"))
-        if stripe_coupon_id or stripe_promotion_code_id:
-            break
-
+    amount_cents = int(session.get("amount_total") or 0)
+    subtotal_cents = int(session.get("amount_subtotal") or amount_cents)
+    currency = str(session.get("currency") or "usd").lower()
     return BriefCheckoutPayment(
         subtotal_cents=subtotal_cents,
         discount_cents=discount_cents,
-        total_cents=total_cents,
+        amount_cents=amount_cents,
         currency=currency,
-        stripe_coupon_id=stripe_coupon_id,
-        stripe_promotion_code_id=stripe_promotion_code_id,
+        stripe_discount_id=extract_stripe_discount_id(session),
     )

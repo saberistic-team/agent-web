@@ -148,6 +148,18 @@ def _migrations_through(version: str) -> tuple[Migration, ...]:
     return tuple(selected)
 
 
+def _brief_columns(conn: psycopg.Connection) -> set[str]:
+    rows = _fetch_dicts(
+        conn,
+        """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'project_briefs'
+        """,
+    )
+    return {str(row["column_name"]) for row in rows}
+
+
 def _company_columns(conn: psycopg.Connection) -> set[str]:
     rows = _fetch_dicts(
         conn,
@@ -359,7 +371,7 @@ def test_legacy_013_upgrades_through_015(pg_conn: psycopg.Connection) -> None:
     assert not _table_exists(pg_conn, "pipeline_stage_history")
 
     upgraded = apply_migrations(pg_conn)
-    assert upgraded == ["014", "015"]
+    assert upgraded == ["014", "015", "016"]
 
     columns = _company_columns(pg_conn)
     for name in (
@@ -479,12 +491,22 @@ def test_legacy_013_upgrades_through_015(pg_conn: psycopg.Connection) -> None:
 
 
 @pytest.mark.integration
-def test_fresh_database_applies_001_through_015_idempotently(
+def test_fresh_database_applies_001_through_016_idempotently(
     pg_conn: psycopg.Connection,
 ) -> None:
     first = apply_migrations(pg_conn)
     assert first == [m.version for m in MIGRATIONS]
-    assert first[-1] == "015"
+    assert first[-1] == "016"
+
+    brief_columns = _brief_columns(pg_conn)
+    for name in (
+        "payment_subtotal_cents",
+        "payment_discount_cents",
+        "payment_amount_cents",
+        "payment_currency",
+        "stripe_discount_id",
+    ):
+        assert name in brief_columns
 
     columns = _company_columns(pg_conn)
     for name in (
@@ -543,7 +565,7 @@ def _upgrade_legacy_013(conn: psycopg.Connection) -> None:
         ON CONFLICT (version) DO NOTHING
         """
     )
-    assert apply_migrations(conn) == ["014", "015"]
+    assert apply_migrations(conn) == ["014", "015", "016"]
 
 
 def _insert_brief(

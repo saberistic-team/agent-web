@@ -65,10 +65,6 @@ def _sample_brief() -> dict[str, Any]:
         "contact_value": "ops@acme.example",
         "status": "paid",
         "paid_at": datetime(2026, 7, 14, 10, 45, tzinfo=timezone.utc),
-        "payment_subtotal_cents": 20_000,
-        "payment_discount_cents": 0,
-        "payment_total_cents": 20_000,
-        "payment_currency": "usd",
         "utm_source": "linkedin",
         "utm_campaign": "spring-launch",
     }
@@ -144,6 +140,7 @@ def test_postgres_project_brief_repository_list_page_orders_newest_first() -> No
     assert "COUNT(*)" in count_sql
     assert "contact_value ILIKE" in count_sql
     assert "ORDER BY created_at DESC, id DESC" in list_sql
+    assert "payment_amount_cents" in list_sql
     assert " brief" not in list_sql.lower()
 
 
@@ -337,10 +334,16 @@ def test_render_admin_briefs_page_preserves_filter_params_in_pager() -> None:
 
 
 @pytest.mark.unit
-def test_render_admin_briefs_page_shows_discounted_payment_breakdown() -> None:
+def test_render_admin_briefs_page_shows_discounted_payment_amount() -> None:
     brief = _sample_brief()
-    brief["payment_discount_cents"] = 5_000
-    brief["payment_total_cents"] = 15_000
+    brief.update(
+        {
+            "payment_subtotal_cents": 20_000,
+            "payment_discount_cents": 5_000,
+            "payment_amount_cents": 15_000,
+            "payment_currency": "usd",
+        }
+    )
     html_out = render_admin_briefs_page(
         admin_username=TEST_USERNAME,
         briefs=[brief],
@@ -357,9 +360,9 @@ def test_render_admin_briefs_page_shows_discounted_payment_breakdown() -> None:
         total=1,
         price_cents=20_000,
     )
-    assert "Subtotal $200" in html_out
+    assert "$150" in html_out
     assert "Discount −$50" in html_out
-    assert "Total $150" in html_out
+    assert "List $200" in html_out
 
 
 @pytest.mark.unit

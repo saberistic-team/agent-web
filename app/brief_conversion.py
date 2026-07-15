@@ -54,9 +54,11 @@ def build_conversion_proposal(
     pipeline_stage = initial_pipeline_stage_for_brief_status(brief_status)
     expected_value: float | None = None
     if brief_status == "paid":
-        amount_cents = brief.get("payment_amount_cents")
-        revenue_cents = int(amount_cents) if amount_cents is not None else price_cents
-        expected_value = round(revenue_cents / 100, 2)
+        paid_cents = brief.get("payment_amount_cents")
+        if paid_cents is not None:
+            expected_value = round(int(paid_cents) / 100, 2)
+        else:
+            expected_value = round(price_cents / 100, 2)
     return {
         "company_name": derive_company_name(website=str(brief.get("website", "")), domain=domain),
         "website": str(brief.get("website", "")),
