@@ -20,7 +20,7 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.client_source import client_ip, resolve_admin_login_client_source
+from app.admin_client_source import resolve_admin_login_client_source
 from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
@@ -235,11 +235,17 @@ def read_login_flow_token(request: Request) -> str | None:
     return token.strip() or None
 
 
-# Re-exported for tests and route modules that patch ``app.admin_auth.client_ip``.
-__all__ = [
-    "client_ip",
-    "resolve_admin_login_client_source",
-]
+def client_ip(request: Request, settings: Settings) -> str:
+    """Resolve the client source IP for rate limiting.
+
+    Delegates to :func:`app.admin_client_source.resolve_admin_login_client_source`
+    which enforces the configured trusted-proxy boundary before honoring
+    forwarding headers. Resolved values are normalized IPv4/IPv6 strings used
+    only as keyed digests; raw addresses and header chains are never logged or
+    persisted.
+    """
+    return resolve_admin_login_client_source(request, settings).source
+
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
     payload = f"{prefix}:{material}"
@@ -409,13 +415,11 @@ def try_admit_login_attempt(
         )
 
     if admission.admitted:
-        resolution = resolve_admin_login_client_source(request, settings)
         _logger.info(
             "Admin login attempt admitted",
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "lockout_transition": admission.lockout_transition,
-                "client_source_path": resolution.path,
             },
         )
     elif admission.already_locked:
