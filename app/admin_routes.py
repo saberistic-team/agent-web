@@ -517,7 +517,9 @@ def admin_login_submit(
                 reason="rate_limited",
             )
         else:
-            _record_login_failure(request, reason="invalid_csrf")
+            _record_login_failure(
+                request, reason="invalid_csrf"
+            )
         return _issue_login_flow_response(
             settings=settings,
             error_message=admin_auth.INVALID_CREDENTIALS_MESSAGE,
