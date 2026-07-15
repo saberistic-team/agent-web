@@ -92,13 +92,13 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert",
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
+    "/admin/companies/cccccccc-cccc-cccc-cccc-cccccccccc01",
+    "/admin/companies/cccccccc-cccc-cccc-cccc-cccccccccc02",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd01",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd02",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd01/edit",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd02/edit",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
-    "/admin/companies/aaaa1111-1111-1111-1111-111111111111",
-    "/admin/companies/aaaa2222-2222-2222-2222-222222222222",
-    "/admin/contacts/bbbb1111-1111-1111-1111-111111111111",
-    "/admin/contacts/bbbb2222-2222-2222-2222-222222222222",
-    "/admin/contacts/bbbb1111-1111-1111-1111-111111111111/edit",
-    "/admin/contacts/bbbb2222-2222-2222-2222-222222222222/edit",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
@@ -115,6 +115,15 @@ def _active_nav_label(active_path: str) -> str:
         if link["href"] == active_path:
             return link["label"]
     return "Admin"
+
+
+def render_archive_action_button(*, label: str, archived: bool) -> str:
+    """Return a themed submit button for archive (destructive) or restore (secondary)."""
+    modifier = "admin-action--secondary" if archived else "admin-action--destructive"
+    return (
+        f'<button class="admin-action {modifier}" type="submit">'
+        f"{html.escape(label)}</button>"
+    )
 
 
 def render_admin_nav(active_path: str) -> str:
@@ -152,23 +161,6 @@ def render_admin_nav(active_path: str) -> str:
             </ul>
           </details>
         </nav>"""
-
-
-def render_admin_archive_action_form(
-    *,
-    form_action: str,
-    csrf_token: str,
-    label: str,
-    archived: bool,
-) -> str:
-    """Archive/restore POST form with themed action button styling (#233)."""
-    variant = "admin-action-btn--restore" if archived else "admin-action-btn--destructive"
-    return (
-        f'<form class="admin-action-form" method="post" action="{html.escape(form_action, quote=True)}">\n'
-        f'            <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}" />\n'
-        f'            <button class="admin-action-btn {variant}" type="submit">{html.escape(label)}</button>\n'
-        f"          </form>"
-    )
 
 
 def render_admin_shell(

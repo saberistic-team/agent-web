@@ -221,18 +221,18 @@ def test_admin_research_page_renderers_cover_company_and_contact(
     )
     assert "research-type-badge--fact" in company_html
     assert "bad input" in company_html
-    assert 'class="admin-action-btn admin-action-btn--destructive"' in company_html
+    assert 'class="admin-action admin-action--destructive"' in company_html
     assert "Archive company" in company_html
 
-    archived_company = {**company, "archived_at": now.isoformat()}
-    archived_company_html = render_admin_company_research_page(
+    archived_company = {**company, "archived_at": "2026-01-01"}
+    restored_company_html = render_admin_company_research_page(
         company=archived_company,
         contacts=[contact],
         records=[record],
         csrf_token="csrf",
     )
-    assert 'class="admin-action-btn admin-action-btn--restore"' in archived_company_html
-    assert "Restore company" in archived_company_html
+    assert 'class="admin-action admin-action--secondary"' in restored_company_html
+    assert "Restore company" in restored_company_html
 
     contact_html = render_admin_contact_research_page(
         contact=contact,
@@ -241,15 +241,15 @@ def test_admin_research_page_renderers_cover_company_and_contact(
         csrf_token="csrf",
     )
     assert "research-type-badge--fact" in contact_html
-    assert 'class="admin-action-btn admin-action-btn--destructive"' in contact_html
+    assert 'class="admin-action admin-action--destructive"' in contact_html
     assert "Archive contact" in contact_html
 
-    archived_contact = {**contact, "archived_at": now.isoformat()}
-    archived_contact_html = render_admin_contact_research_page(
+    archived_contact = {**contact, "archived_at": "2026-01-01"}
+    restored_contact_html = render_admin_contact_research_page(
         contact=archived_contact,
         company=company,
         records=[record],
         csrf_token="csrf",
     )
-    assert 'class="admin-action-btn admin-action-btn--restore"' in archived_contact_html
-    assert "Restore contact" in archived_contact_html
+    assert 'class="admin-action admin-action--secondary"' in restored_contact_html
+    assert "Restore contact" in restored_contact_html

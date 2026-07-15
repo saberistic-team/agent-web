@@ -136,6 +136,34 @@ def test_render_admin_nav_unknown_path_uses_admin_label() -> None:
 
 
 @pytest.mark.unit
+def test_admin_css_archive_restore_action_buttons_reset_native_appearance() -> None:
+    css = ADMIN_CSS.read_text(encoding="utf-8")
+    base_block = css.split(".admin-action {", 1)[1].split("}", 1)[0]
+    assert "appearance: none" in base_block
+    assert "background:" not in base_block
+    assert "cursor: pointer" in base_block
+    assert "border-radius:" in base_block
+    assert "padding:" in base_block
+    assert "font-family: inherit" in base_block
+
+    destructive_block = css.split(".admin-action--destructive {", 1)[1].split("}", 1)[0]
+    assert "background:" in destructive_block
+    assert "border-color:" in destructive_block
+    assert "color:" in destructive_block
+    assert ".admin-action--destructive:focus-visible" in css
+    assert ".admin-action--destructive:disabled" in css
+    assert ".admin-action--destructive:active" in css
+
+    secondary_block = css.split(".admin-action--secondary {", 1)[1].split("}", 1)[0]
+    assert "background:" in secondary_block
+    assert "border-color:" in secondary_block
+    assert "color:" in secondary_block
+    assert ".admin-action--secondary:focus-visible" in css
+    assert ".admin-action--secondary:disabled" in css
+    assert ".admin-action--secondary:active" in css
+
+
+@pytest.mark.unit
 def test_admin_css_mobile_nav_and_table_scroll_guardrails() -> None:
     css = ADMIN_CSS.read_text(encoding="utf-8")
     assert "@media (min-width: 769px)" in css
@@ -146,52 +174,6 @@ def test_admin_css_mobile_nav_and_table_scroll_guardrails() -> None:
     assert ".admin-table-wrap::before" in css
     assert "overflow-x: auto" in css
     assert "Scroll horizontally for more columns" in css
-
-
-def _admin_css_rule_block(css: str, selector_fragment: str) -> str:
-    start = css.index(selector_fragment)
-    brace_start = css.index("{", start)
-    depth = 0
-    for index, char in enumerate(css[brace_start:], start=brace_start):
-        if char == "{":
-            depth += 1
-        elif char == "}":
-            depth -= 1
-            if depth == 0:
-                return css[start : index + 1]
-    raise AssertionError(f"Unclosed rule for {selector_fragment!r}")
-
-
-@pytest.mark.unit
-def test_admin_action_button_css_resets_native_appearance() -> None:
-    css = ADMIN_CSS.read_text(encoding="utf-8")
-    base = _admin_css_rule_block(css, ".admin-action {")
-    assert "appearance: none" in base
-    assert "background:" in base
-    assert "border:" in base
-    assert "border-radius:" in base
-    assert "padding:" in base
-    assert "cursor: pointer" in base
-    assert "font-family: inherit" in base
-    assert "color:" in base
-
-    destructive = _admin_css_rule_block(css, ".admin-action--destructive {")
-    assert "background:" in destructive
-    assert "#ffb4b4" in destructive
-
-    secondary = _admin_css_rule_block(css, ".admin-action--secondary {")
-    assert "background:" in secondary
-
-    disabled = _admin_css_rule_block(css, ".admin-action:disabled,")
-    assert "cursor: not-allowed" in disabled
-    assert "opacity:" in disabled
-
-    focus = _admin_css_rule_block(css, ".admin-action:focus-visible {")
-    assert "outline:" in focus
-
-    exit_rule = _admin_css_rule_block(css, ".admin-exit {")
-    assert "background:" not in exit_rule
-    assert "border-radius:" not in exit_rule
 
 
 @pytest.mark.unit
