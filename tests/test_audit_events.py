@@ -369,13 +369,20 @@ def test_anonymous_logout_audit_is_best_effort() -> None:
     assert result is None
 
 
+def _claimed_flow_for_csrf(raw_csrf: str) -> dict[str, str]:
+    return {"csrf_token_hash": admin_auth.hash_csrf_token(raw_csrf)}
+
+
 @pytest.mark.unit
 @pytest.mark.integration
 def test_login_success_uses_single_transaction_for_session_and_audit() -> None:
+    flow_csrf = "flow-csrf"
     with mock_db_connection() as conn:
-        with patch("app.admin_routes._verify_login_flow_csrf", return_value=True):
-            with patch("app.admin_routes._consume_login_flow"):
-                with patch("app.admin_routes.crm_transaction", wraps=crm_transaction) as tx:
+        with patch(
+            "app.admin_routes._claim_login_flow",
+            return_value=_claimed_flow_for_csrf(flow_csrf),
+        ):
+            with patch("app.admin_routes.crm_transaction", wraps=crm_transaction) as tx:
                     with patch(
                         "app.admin_routes.db.create_admin_session", return_value=42
                     ) as create_session:
@@ -387,7 +394,7 @@ def test_login_success_uses_single_transaction_for_session_and_audit() -> None:
                                 data={
                                     "username": TEST_USERNAME,
                                     "password": TEST_PASSWORD,
-                                    "csrf_token": "flow-csrf",
+                                    "csrf_token": flow_csrf,
                                 },
                             )
                             assert login.status_code == 303
@@ -399,12 +406,15 @@ def test_login_success_uses_single_transaction_for_session_and_audit() -> None:
 @pytest.mark.unit
 @pytest.mark.integration
 def test_login_success_and_failure_create_audit_events() -> None:
+    flow_csrf = "flow-csrf"
     with mock_db_connection() as conn:
-        with patch("app.admin_routes._verify_login_flow_csrf", return_value=True):
-            with patch("app.admin_routes._consume_login_flow"):
-                with patch(
-                    "app.admin_routes.db.create_admin_session", return_value=42
-                ) as create_session:
+        with patch(
+            "app.admin_routes._claim_login_flow",
+            return_value=_claimed_flow_for_csrf(flow_csrf),
+        ):
+            with patch(
+                "app.admin_routes.db.create_admin_session", return_value=42
+            ) as create_session:
                     with patch(
                         "app.admin_routes.audit_service.record_login_success"
                     ) as success_audit:
@@ -416,7 +426,7 @@ def test_login_success_and_failure_create_audit_events() -> None:
                                 data={
                                     "username": TEST_USERNAME,
                                     "password": TEST_PASSWORD,
-                                    "csrf_token": "flow-csrf",
+                                    "csrf_token": flow_csrf,
                                 },
                             )
                             assert login.status_code == 303
@@ -429,7 +439,7 @@ def test_login_success_and_failure_create_audit_events() -> None:
                                 data={
                                     "username": TEST_USERNAME,
                                     "password": "wrong-password",
-                                    "csrf_token": "flow-csrf",
+                                    "csrf_token": flow_csrf,
                                 },
                             )
                             assert bad_login.status_code == 401

@@ -322,35 +322,31 @@ def _issue_login_flow_response(
     return response
 
 
-def _verify_login_flow_csrf(
-    request: Request,
+def _claim_login_flow(request: Request, settings: Settings) -> dict[str, Any] | None:
+    """Atomically claim the browser-bound pre-auth login flow from the request."""
+    raw_flow_token = admin_auth.read_login_flow_token(request)
+    if raw_flow_token is None:
+        return None
+    flow_hash = admin_auth.hash_session_token(raw_flow_token)
+    now = datetime.now(timezone.utc)
+    with db.db_connection(settings.database_url) as conn:
+        return db.claim_admin_login_flow(conn, flow_token_hash=flow_hash, now=now)
+
+
+def _login_flow_claim_db_error_response(
+    *,
     settings: Settings,
-    csrf_token: str,
-) -> bool:
-    """Validate a login CSRF token against the initiating browser flow."""
-    raw_flow_token = admin_auth.read_login_flow_token(request)
-    if raw_flow_token is None:
-        return False
-    flow_hash = admin_auth.hash_session_token(raw_flow_token)
-    with db.db_connection(settings.database_url) as conn:
-        row = db.get_admin_login_flow_by_token_hash(conn, flow_hash)
-    if row is None or row.get("consumed_at") is not None:
-        return False
-    expires_at = row["expires_at"]
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if expires_at <= datetime.now(timezone.utc):
-        return False
-    return admin_auth.verify_csrf_value(csrf_token, row.get("csrf_token_hash"))
-
-
-def _consume_login_flow(request: Request, settings: Settings) -> None:
-    raw_flow_token = admin_auth.read_login_flow_token(request)
-    if raw_flow_token is None:
-        return
-    flow_hash = admin_auth.hash_session_token(raw_flow_token)
-    with db.db_connection(settings.database_url) as conn:
-        db.consume_admin_login_flow(conn, flow_token_hash=flow_hash)
+    next_path: str | None,
+) -> HTMLResponse:
+    """Fail closed when durable login-flow claim storage is unavailable."""
+    return HTMLResponse(
+        admin_pages.render_admin_login_page(
+            csrf_token="",
+            error_message=admin_auth.INVALID_CREDENTIALS_MESSAGE,
+            next_path=next_path,
+        ),
+        status_code=503,
+    )
 
 
 def _issue_session(
@@ -424,12 +420,16 @@ def admin_login_submit(
 
     Login-flow cookie lifecycle (``admin_login_flow``):
 
-    * **Invalid CSRF** — consume the submitted flow (single-use), render a fresh
-      form with a new CSRF token, and retain the replacement flow cookie.
-    * **Invalid credentials** — same as invalid CSRF: consumed flow is not
+    * **Claim** — every POST first attempts one atomic claim of the browser flow
+      row (``consumed_at`` set before credential verification). Exactly one
+      concurrent request can claim a flow; losers fail with the same generic
+      response as other invalid submissions.
+    * **Invalid CSRF** — after a successful claim, mismatched CSRF fails closed;
+      the flow is already consumed and a replacement flow cookie is issued.
+    * **Invalid credentials** — same as invalid CSRF: the claimed flow is not
       replayable; the replacement flow binds the returned CSRF token.
-    * **Rate limited** — consume the submitted flow and retain a replacement so
-      the operator can retry after lockout without refreshing.
+    * **Rate limited** — claim the submitted flow when possible and retain a
+      replacement so the operator can retry after lockout without refreshing.
     * **Success** — clear the pre-auth flow cookie and issue the session cookie.
     """
     settings = get_settings()
@@ -440,7 +440,11 @@ def admin_login_submit(
         _record_login_failure(
             request, reason="rate_limited", attempted_username=normalized_username
         )
-        _consume_login_flow(request, settings)
+        try:
+            _claim_login_flow(request, settings)
+        except Exception:
+            logger.exception("Failed to claim admin login flow during rate limit")
+            return _login_flow_claim_db_error_response(settings=settings, next_path=next)
         return _issue_login_flow_response(
             settings=settings,
             error_message=admin_auth.LOGIN_THROTTLED_MESSAGE,
@@ -448,8 +452,30 @@ def admin_login_submit(
             status_code=429,
         )
 
-    csrf_valid = _verify_login_flow_csrf(request, settings, csrf_token)
-    _consume_login_flow(request, settings)
+    try:
+        claimed_flow = _claim_login_flow(request, settings)
+    except Exception:
+        logger.exception("Failed to claim admin login flow")
+        _record_login_failure(
+            request, reason="invalid_csrf", attempted_username=normalized_username
+        )
+        return _login_flow_claim_db_error_response(settings=settings, next_path=next)
+
+    if claimed_flow is None:
+        admin_auth.record_failed_login(request, settings, username=normalized_username)
+        _record_login_failure(
+            request, reason="invalid_csrf", attempted_username=normalized_username
+        )
+        return _issue_login_flow_response(
+            settings=settings,
+            error_message=admin_auth.INVALID_CREDENTIALS_MESSAGE,
+            next_path=next,
+            status_code=400,
+        )
+
+    csrf_valid = admin_auth.verify_csrf_value(
+        csrf_token, claimed_flow.get("csrf_token_hash")
+    )
 
     if not csrf_valid:
         admin_auth.record_failed_login(request, settings, username=normalized_username)

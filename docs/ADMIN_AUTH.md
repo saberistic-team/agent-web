@@ -43,10 +43,23 @@ server-side; raw tokens appear in HTML forms only and are never logged.
    cookie (`HttpOnly`, `SameSite=strict`, path `/admin`, 15-minute TTL).
 2. The login form embeds the raw CSRF token in a hidden field.
 3. `POST /admin/login` requires both the flow cookie and matching CSRF field.
-   The flow row is consumed (one-time use) on every POST attempt.
+   The server **atomically claims** the flow row (sets `consumed_at`) in one
+   conditional `UPDATE … RETURNING` before credential verification. Exactly one
+   concurrent POST can claim a given flow; a zero-row update is a failed claim
+   and must not proceed to password verification or session creation. CSRF is
+   checked against the returned row after a successful claim.
 4. On failure or throttle, a fresh flow and CSRF token are issued.
 5. On success, the flow cookie is cleared and a new authenticated session is
    minted (session fixation resistance).
+
+### Flow consumption point
+
+A flow is considered **consumed at claim time** — immediately when the atomic
+update succeeds and **before** Argon2 password verification. This closes the
+time-of-check/time-of-use race: concurrent replays cannot both read an
+unconsumed row. Invalid credentials after a successful claim still receive a
+replacement flow (#153) because consumption happens first; the operator retries
+with the new browser-bound flow rather than replaying the spent one.
 
 Stale flows are removed opportunistically when minting a new flow
 (see [Login flow retention](#login-flow-retention)). Only hashed tokens are
@@ -252,7 +265,7 @@ expired and consumed flows would accumulate indefinitely.
 |-------|--------------|-----------|
 | **Active** (unexpired, unconsumed) | Never | Required for in-flight sign-in |
 | **Expired** (past `expires_at`, never consumed) | `expires_at` + **30 minutes** | Allows clock skew; matches `2 ×` flow TTL (15 min) |
-| **Consumed** (one-time POST used) | `consumed_at` + **15 minutes** | Replay is already blocked at consume time; brief grace for concurrent requests |
+| **Consumed** (one-time POST used) | `consumed_at` + **15 minutes** | Replay is blocked at atomic claim time; brief grace for concurrent requests |
 
 Constants: `LOGIN_FLOW_EXPIRED_RETENTION_SECONDS` (1800), `LOGIN_FLOW_CONSUMED_RETENTION_SECONDS` (900), aligned with `CSRF_MAX_AGE_SECONDS` (900).
 
@@ -284,6 +297,12 @@ WHERE (
 ## Security notes
 
 - Authentication failures return a generic *Invalid username or password* message.
+- Login POST performs an **atomic login-flow claim** (`UPDATE … RETURNING`) before
+  password verification. Concurrent replays of the same browser-bound flow cannot
+  both proceed: a zero-row update is a failed claim and stops the login path
+  without Argon2 work, session creation, or successful-login audit events.
+- A flow is marked consumed at claim time (before credential checks). Invalid
+  credentials after a successful claim still receive a replacement flow (#153).
 - Login always mints a fresh session ID and revokes any prior session cookie
   presented during sign-in (session fixation resistance).
 - Submitted briefs are listed at `/admin/briefs` (read-only; requires admin session).
