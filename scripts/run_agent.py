@@ -1018,6 +1018,7 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
         format_empty_data_hard_fail = screenshot_deploy.format_empty_data_hard_fail
         format_overflow_hard_fail = screenshot_deploy.format_overflow_hard_fail
         resolve_screenshot_routes = screenshot_deploy.resolve_screenshot_routes
+        format_screenshot_targets = screenshot_deploy.format_screenshot_targets
         upload_to_branch = screenshot_deploy.upload_to_branch
 
         out_dir = Path("trace/screenshots")
@@ -1048,14 +1049,14 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
             body_shots = comment_markdown_pre_dual(
                 branch_url=dual.branch_url,
                 branch_urls=branch_urls,
-                routes=routes,
+                targets=routes,
             )
             comment_on_issue_or_pr(repo, pr_number, body_shots)
             comment_on_issue_or_pr(repo, issue, body_shots)
             screenshot_note = (
                 f"- screenshots_pre: {len(branch_urls)} branch posted on PR + issue "
                 "(no saberistic.com pre-merge shots)\n"
-                f"- screenshots_routes: {', '.join(f'`{r}`' for r in routes)}\n"
+                f"- screenshots_routes: {format_screenshot_targets(routes)}\n"
                 f"- screenshots_branch: `{dual.branch_url}`\n"
             )
             overflow_fail = format_overflow_hard_fail(dual.overflows)

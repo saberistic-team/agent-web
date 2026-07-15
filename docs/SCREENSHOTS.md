@@ -30,9 +30,39 @@ Playwright can open admin pages **without login**.
   `app/admin_preview.py` whenever it adds a page (see `AGENTS/builder.md`).
 - See [ADMIN_AUTH.md](ADMIN_AUTH.md).
 
+### Expected-status visual fixtures
+
+Some admin routes intentionally return non-200 **HTML** error pages (for example
+brief detail database-unavailable at `/admin/briefs/503`). Register them as
+structured screenshot targets with an explicit expected HTTP status — the
+capture probe accepts the page only when the actual status matches **and** the
+body is HTML. Ordinary routes default to expected `200`; unexpected 4xx/5xx on
+those routes is a hard failure (not a silent skip). Missing expected error-state
+PNGs also hard-fail Reviewer acceptance.
+
+1. Add the route to `ADMIN_SCREENSHOT_PATHS` in `app/admin_layout.py`.
+2. Map the route → expected status in `ADMIN_SCREENSHOT_EXPECTED_STATUS`
+   (same file). Keep `scripts/screenshot_deploy.py::ADMIN_EXPECTED_STATUS_OVERRIDES`
+   in sync as the import fallback.
+3. Ship `ADMIN_PREVIEW_MODE` mock data in `app/admin_preview.py` so the error
+   shell is populated (never JSON, never an empty placeholder).
+4. Reviewer comments list each target as `` `route` (expected HTTP N) → filenames ``.
+
+Example:
+
+```python
+# app/admin_layout.py
+ADMIN_SCREENSHOT_PATHS = (..., "/admin/briefs/503")
+ADMIN_SCREENSHOT_EXPECTED_STATUS = {"/admin/briefs/503": 503}
+```
+
+Generates `branch-admin-briefs-503.png` and `branch-admin-briefs-503-mobile.png`
+on the PR-head preview server.
+
 | Route kind | Examples | Behavior |
 |------------|----------|----------|
 | **Admin (pre-merge)** | `/admin`, `/admin/companies`, …, `/admin/login` | Captured on PR head under `ADMIN_PREVIEW_MODE` when affected |
+| **Admin error fixtures (pre-merge)** | `/admin/briefs/503` (HTTP 503) | Declared expected status; must render HTML under preview auth |
 | **Admin (post-deploy)** | `/admin/*` | **Never** screenshotted on saberistic.com |
 | **Health** | `/health` | Polled as **JSON evidence only** (never a PNG) |
 | **JSON APIs** | `/hello`, `/api/*`, `/webhooks/*` | Skipped |
