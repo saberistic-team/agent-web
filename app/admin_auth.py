@@ -20,7 +20,7 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.client_source import resolve_client_source
+from app.admin_proxy_trust import resolve_admin_login_client_source
 from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
@@ -235,23 +235,18 @@ def read_login_flow_token(request: Request) -> str | None:
     return token.strip() or None
 
 
-def resolve_admin_login_client_source(request: Request, settings: Settings) -> str:
-    """Resolve the effective client source for admin login rate limiting.
-
-    Forwarding headers are honored only when the immediate peer matches
-    ``ADMIN_TRUSTED_PROXY_CIDRS`` / ``ADMIN_TRUSTED_EDGE_CIDRS``. Untrusted
-    peers always use the direct connection address so clients cannot spoof
-    ``X-Forwarded-For``, ``Forwarded``, or ``CF-Connecting-IP``.
-
-    Resolved sources are normalized IPv4/IPv6 strings, digested before storage,
-    and never logged in raw form.
-    """
-    return resolve_client_source(request, settings).source
-
-
 def client_ip(request: Request, settings: Settings) -> str:
-    """Backward-compatible alias for :func:`resolve_admin_login_client_source`."""
-    return resolve_admin_login_client_source(request, settings)
+    """Resolve the client source IP for admin login rate limiting.
+
+    Delegates to :func:`resolve_admin_login_client_source`, which trusts
+    forwarding headers only when the immediate peer is in
+    ``ADMIN_TRUSTED_PROXY_CIDRS`` and applies a right-to-left trusted-hop
+    parser (never the raw left-most ``X-Forwarded-For`` value).
+
+    Resolved addresses are stored only as keyed digests; missing peers fall back
+    to ``unknown`` so attempts still share one bucket.
+    """
+    return resolve_admin_login_client_source(request, settings).address
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:

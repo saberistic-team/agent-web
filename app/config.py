@@ -29,7 +29,7 @@ class Settings:
     admin_login_lockout_seconds: int = 900
     admin_trust_proxy_headers: bool = False
     admin_trusted_proxy_cidrs: str = ""
-    admin_trusted_edge_cidrs: str = ""
+    admin_cloudflare_trust_cidrs: str = ""
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -116,5 +116,7 @@ def get_settings() -> Settings:
         ).lower()
         in ("1", "true", "yes"),
         admin_trusted_proxy_cidrs=os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "").strip(),
-        admin_trusted_edge_cidrs=os.environ.get("ADMIN_TRUSTED_EDGE_CIDRS", "").strip(),
+        admin_cloudflare_trust_cidrs=os.environ.get(
+            "ADMIN_CLOUDFLARE_TRUST_CIDRS", ""
+        ).strip(),
     )
