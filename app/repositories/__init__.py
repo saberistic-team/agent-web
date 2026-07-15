@@ -1,4 +1,4 @@
-"""CRM repository package."""
+"""CRM repository exports."""
 
 from app.repositories.postgres import (
     PostgresAcquisitionDashboardRepository,
@@ -7,11 +7,11 @@ from app.repositories.postgres import (
     PostgresAuditEventRepository,
     PostgresCompanyRepository,
     PostgresContactRepository,
+    PostgresPipelineRepository,
     PostgresProjectBriefRepository,
     PostgresRepositories,
     PostgresResearchRecordRepository,
     PostgresSourceRecordRepository,
-    PostgresStageHistoryRepository,
     default_repositories,
     get_repositories,
 )
@@ -22,10 +22,10 @@ from app.repositories.protocols import (
     AuditEventRepository,
     CompanyRepository,
     ContactRepository,
+    PipelineRepository,
     ProjectBriefRepository,
     ResearchRecordRepository,
     SourceRecordRepository,
-    StageHistoryRepository,
 )
 
 __all__ = [
@@ -35,21 +35,21 @@ __all__ = [
     "AuditEventRepository",
     "CompanyRepository",
     "ContactRepository",
+    "PipelineRepository",
     "ProjectBriefRepository",
     "ResearchRecordRepository",
     "SourceRecordRepository",
-    "StageHistoryRepository",
     "PostgresAcquisitionDashboardRepository",
     "PostgresActivityRepository",
     "PostgresAdminUserRepository",
     "PostgresAuditEventRepository",
     "PostgresCompanyRepository",
     "PostgresContactRepository",
+    "PostgresPipelineRepository",
     "PostgresProjectBriefRepository",
     "PostgresRepositories",
     "PostgresResearchRecordRepository",
     "PostgresSourceRecordRepository",
-    "PostgresStageHistoryRepository",
     "default_repositories",
     "get_repositories",
 ]

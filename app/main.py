@@ -54,7 +54,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="agent-web", version="0.3.0", lifespan=lifespan)
 app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
-app.include_router(admin_pipeline_router, prefix="/admin")
+app.include_router(admin_pipeline_router)
 app.include_router(admin_router)
 
 

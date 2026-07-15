@@ -46,7 +46,11 @@ def _mock_conn(row: dict | list | None = None) -> MagicMock:
         ),
         (
             PostgresContactRepository,
-            {"email": "lead@example.com", "company_id": COMPANY_ID},
+            {
+                "full_name": "Lead",
+                "email": "lead@example.com",
+                "company_id": COMPANY_ID,
+            },
         ),
         (
             PostgresSourceRecordRepository,
@@ -127,9 +131,9 @@ def test_record_company_with_contact_commits_once_on_success() -> None:
             contacts=contact_repo,
             source_records=MagicMock(),
             activities=MagicMock(),
-            stage_history=MagicMock(),
             research_records=MagicMock(),
             admin_users=MagicMock(),
+            pipeline=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -159,9 +163,9 @@ def test_record_company_with_contact_rolls_back_when_contact_fails() -> None:
             contacts=contact_repo,
             source_records=MagicMock(),
             activities=MagicMock(),
-            stage_history=MagicMock(),
             research_records=MagicMock(),
             admin_users=MagicMock(),
+            pipeline=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -193,9 +197,9 @@ def test_single_record_service_operations_commit_once() -> None:
             contacts=MagicMock(),
             source_records=source_repo,
             activities=activity_repo,
-            stage_history=MagicMock(),
             research_records=MagicMock(),
             admin_users=MagicMock(),
+            pipeline=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -227,9 +231,9 @@ def test_read_methods_do_not_change_transaction_state() -> None:
             contacts=MagicMock(),
             source_records=MagicMock(),
             activities=MagicMock(),
-            stage_history=MagicMock(),
             research_records=MagicMock(),
             admin_users=admin_repo,
+            pipeline=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -271,9 +275,9 @@ def test_import_batch_commits_once_with_audit() -> None:
             contacts=MagicMock(),
             source_records=source_repo,
             activities=MagicMock(),
-            stage_history=MagicMock(),
             research_records=MagicMock(),
             admin_users=MagicMock(),
+            pipeline=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -308,9 +312,9 @@ def test_import_batch_rolls_back_business_writes_when_audit_fails() -> None:
             contacts=MagicMock(),
             source_records=source_repo,
             activities=MagicMock(),
-            stage_history=MagicMock(),
             research_records=MagicMock(),
             admin_users=MagicMock(),
+            pipeline=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -345,9 +349,9 @@ def test_import_batch_rolls_back_when_business_write_fails() -> None:
             contacts=MagicMock(),
             source_records=source_repo,
             activities=MagicMock(),
-            stage_history=MagicMock(),
             research_records=MagicMock(),
             admin_users=MagicMock(),
+            pipeline=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -383,9 +387,9 @@ def test_import_batch_retry_after_rollback() -> None:
             contacts=MagicMock(),
             source_records=source_repo,
             activities=MagicMock(),
-            stage_history=MagicMock(),
             research_records=MagicMock(),
             admin_users=MagicMock(),
+            pipeline=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -425,9 +429,9 @@ def test_delete_entity_rolls_back_when_audit_fails() -> None:
             contacts=MagicMock(),
             source_records=MagicMock(),
             activities=MagicMock(),
-            stage_history=MagicMock(),
             research_records=MagicMock(),
             admin_users=MagicMock(),
+            pipeline=MagicMock(),
         )
     )
     conn = MagicMock()

@@ -1,208 +1,265 @@
-"""Authenticated admin JSON routes for acquisition pipeline operations."""
+"""Acquisition pipeline admin routes."""
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
-from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, Request
-from pydantic import BaseModel
+from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from pydantic import ValidationError
 
 from app import db
-from app.admin_routes import require_admin_session
-from app.actor_context import correlation_id_from_request
-from app.config import get_settings
-from app.crm_service import (
-    ConfirmRequiredError,
-    CrmService,
-    InvalidStageError,
-    InvalidTransitionError,
-    ReasonRequiredError,
+from app.acquisition_pipeline import (
+    PipelineActivityCreate,
+    PipelineNextActionUpdate,
+    PipelineStageChange,
+    PipelineTransitionError,
 )
-from app.pipeline import PIPELINE_ACTIVITY_TYPES, PIPELINE_STAGES
+from app.admin_pipeline_pages import render_pipeline_detail_page, render_pipeline_list_page
+from app.actor_context import actor_context_from_request
+from app.config import get_settings
+from app.crm_service import CrmService
 
-router = APIRouter(prefix="/api/pipeline", tags=["admin-pipeline"])
+logger = logging.getLogger(__name__)
 
-
-class StageTransitionRequest(BaseModel):
-    to_stage: str
-    reason: str | None = None
-    confirm: bool = False
-
-
-class NextActionUpdateRequest(BaseModel):
-    next_action: str | None = None
-    due_at: datetime | None = None
-    owner: str | None = None
-    expected_value: float | None = None
-    clear_due_at: bool = False
+router = APIRouter(prefix="/admin/pipeline", tags=["admin-pipeline"])
+_crm = CrmService()
 
 
-class ActivityCreateRequest(BaseModel):
-    activity_type: str
-    summary: str
-    contact_id: UUID | None = None
-    metadata: dict[str, Any] | None = None
+def _parse_due_at(raw: str | None) -> datetime | None:
+    if not raw or not raw.strip():
+        return None
+    parsed = datetime.fromisoformat(raw.strip())
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
 
 
-def _crm_service() -> CrmService:
-    return CrmService()
+@router.get("", response_class=HTMLResponse)
+@router.get("/", response_class=HTMLResponse)
+def admin_pipeline_list(request: Request, stage: str | None = None) -> HTMLResponse:
+    from app.admin_routes import _issue_session_csrf, _verify_session_csrf, require_admin_session
 
-
-def _with_db_conn():
+    session = require_admin_session(request)
     settings = get_settings()
-    return db.db_connection(settings.database_url)
+    csrf_token = _issue_session_csrf(settings, session.id) if session.id else ""
 
+    if settings.admin_preview_enabled:
+        from app.admin_preview import build_preview_pipeline_companies
 
-@router.get("/stages")
-def list_pipeline_stages(request: Request) -> dict[str, Any]:
-    require_admin_session(request)
-    return {"stages": list(PIPELINE_STAGES)}
-
-
-@router.get("/activity-types")
-def list_activity_types(request: Request) -> dict[str, Any]:
-    require_admin_session(request)
-    return {"activity_types": list(PIPELINE_ACTIVITY_TYPES)}
-
-
-@router.get("/companies")
-def list_companies(
-    request: Request,
-    stage: str | None = Query(default=None),
-    limit: int = Query(default=100, ge=1, le=500),
-) -> dict[str, Any]:
-    require_admin_session(request)
-    with _with_db_conn() as conn:
-        companies = _crm_service().list_companies_by_stage(
-            conn,
-            pipeline_stage=stage,
-            limit=limit,
+        return HTMLResponse(
+            render_pipeline_list_page(
+                companies=build_preview_pipeline_companies(stage_filter=stage),
+                stage_filter=stage,
+                csrf_token=csrf_token,
+                admin_username=session.admin_username,
+                preview_banner="Preview data — not production",
+            )
         )
-    return {"companies": companies}
 
+    companies: list[dict] = []
+    if settings.database_url:
+        try:
+            with db.db_connection(settings.database_url) as conn:
+                companies = _crm.list_pipeline_companies(
+                    conn, pipeline_stage=stage or None
+                )
+        except Exception:
+            logger.exception("Failed to load pipeline companies")
 
-@router.get("/companies/{company_id}")
-def get_company_detail(request: Request, company_id: UUID) -> dict[str, Any]:
-    require_admin_session(request)
-    with _with_db_conn() as conn:
-        detail = _crm_service().get_company_pipeline_detail(conn, company_id)
-    if detail is None:
-        raise HTTPException(status_code=404, detail="Company not found")
-    return detail
-
-
-@router.post("/companies/{company_id}/stage")
-def transition_stage(
-    request: Request,
-    company_id: UUID,
-    body: StageTransitionRequest,
-) -> dict[str, Any]:
-    session = require_admin_session(request)
-    correlation_id = correlation_id_from_request(request)
-    try:
-        with _with_db_conn() as conn:
-            result = _crm_service().transition_company_stage(
-                conn,
-                company_id=company_id,
-                to_stage=body.to_stage,
-                actor=session.admin_username,
-                reason=body.reason,
-                confirm=body.confirm,
-                correlation_id=correlation_id,
-            )
-    except ReasonRequiredError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except ConfirmRequiredError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except (InvalidTransitionError, InvalidStageError) as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return result
-
-
-@router.patch("/companies/{company_id}/next-action")
-def update_next_action(
-    request: Request,
-    company_id: UUID,
-    body: NextActionUpdateRequest,
-) -> dict[str, Any]:
-    session = require_admin_session(request)
-    correlation_id = correlation_id_from_request(request)
-    try:
-        with _with_db_conn() as conn:
-            company = _crm_service().update_company_next_action(
-                conn,
-                company_id=company_id,
-                actor=session.admin_username,
-                next_action=body.next_action,
-                due_at=body.due_at,
-                owner=body.owner,
-                expected_value=body.expected_value,
-                clear_due_at=body.clear_due_at,
-                correlation_id=correlation_id,
-            )
-    except InvalidStageError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return {"company": company}
-
-
-@router.post("/companies/{company_id}/activities")
-def record_activity(
-    request: Request,
-    company_id: UUID,
-    body: ActivityCreateRequest,
-) -> dict[str, Any]:
-    session = require_admin_session(request)
-    correlation_id = correlation_id_from_request(request)
-    try:
-        with _with_db_conn() as conn:
-            activity = _crm_service().record_activity_for_company(
-                conn,
-                company_id=company_id,
-                activity_type=body.activity_type,
-                summary=body.summary,
-                contact_id=body.contact_id,
-                metadata=body.metadata,
-                actor=session.admin_username,
-                correlation_id=correlation_id,
-            )
-    except InvalidStageError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return {"activity": activity}
-
-
-@router.get("/actions/overdue")
-def list_overdue_actions(
-    request: Request,
-    as_of: datetime | None = Query(default=None),
-    limit: int = Query(default=100, ge=1, le=500),
-) -> dict[str, Any]:
-    require_admin_session(request)
-    reference = as_of or datetime.now(timezone.utc)
-    with _with_db_conn() as conn:
-        companies = _crm_service().list_overdue_actions(conn, as_of=reference, limit=limit)
-    return {"as_of": reference.isoformat(), "companies": companies}
-
-
-@router.get("/actions/upcoming")
-def list_upcoming_actions(
-    request: Request,
-    as_of: datetime | None = Query(default=None),
-    within_days: int = Query(default=7, ge=1, le=90),
-    limit: int = Query(default=100, ge=1, le=500),
-) -> dict[str, Any]:
-    require_admin_session(request)
-    reference = as_of or datetime.now(timezone.utc)
-    with _with_db_conn() as conn:
-        companies = _crm_service().list_upcoming_actions(
-            conn,
-            as_of=reference,
-            within_days=within_days,
-            limit=limit,
+    return HTMLResponse(
+        render_pipeline_list_page(
+            companies=companies,
+            stage_filter=stage,
+            csrf_token=csrf_token,
+            admin_username=session.admin_username,
         )
-    return {
-        "as_of": reference.isoformat(),
-        "within_days": within_days,
-        "companies": companies,
-    }
+    )
+
+
+@router.get("/{company_id}", response_class=HTMLResponse)
+def admin_pipeline_detail(request: Request, company_id: UUID) -> HTMLResponse:
+    from app.admin_routes import _issue_session_csrf, _verify_session_csrf, require_admin_session
+
+    session = require_admin_session(request)
+    settings = get_settings()
+    csrf_token = _issue_session_csrf(settings, session.id) if session.id else ""
+
+    if settings.admin_preview_enabled:
+        from app.admin_preview import build_preview_pipeline_detail
+
+        detail = build_preview_pipeline_detail(company_id)
+        if detail is None:
+            raise HTTPException(status_code=404, detail="Company not found")
+        company, history, activities = detail
+        return HTMLResponse(
+            render_pipeline_detail_page(
+                company=company,
+                history=history,
+                activities=activities,
+                csrf_token=csrf_token,
+                admin_username=session.admin_username,
+                preview_banner="Preview data — not production",
+            )
+        )
+
+    if not settings.database_url:
+        raise HTTPException(status_code=503, detail="Database not configured")
+
+    with db.db_connection(settings.database_url) as conn:
+        company = _crm.get_pipeline_company(conn, company_id)
+        if company is None or not company.get("pipeline_stage"):
+            raise HTTPException(status_code=404, detail="Company not in pipeline")
+        history = _crm.list_pipeline_stage_history(conn, company_id)
+        activities = _crm._repos.activities.list_for_company(conn, company_id)
+
+    return HTMLResponse(
+        render_pipeline_detail_page(
+            company=company,
+            history=history,
+            activities=activities,
+            csrf_token=csrf_token,
+            admin_username=session.admin_username,
+        )
+    )
+
+
+@router.post("/{company_id}/stage")
+def admin_pipeline_stage_change(
+    request: Request,
+    company_id: UUID,
+    csrf_token: str = Form(...),
+    to_stage: str = Form(...),
+    loss_reason: str | None = Form(None),
+    nurture_reason: str | None = Form(None),
+    confirm: str | None = Form(None),
+) -> RedirectResponse:
+    from app.admin_routes import _issue_session_csrf, _verify_session_csrf, require_admin_session
+
+    session = require_admin_session(request)
+    _verify_session_csrf(session, csrf_token)
+    settings = get_settings()
+    if settings.admin_preview_enabled:
+        return RedirectResponse(url=f"/admin/pipeline/{company_id}", status_code=303)
+    if not settings.database_url:
+        raise HTTPException(status_code=503, detail="Database not configured")
+
+    try:
+        change = PipelineStageChange(
+            to_stage=to_stage,
+            confirm=confirm == "1",
+            loss_reason=loss_reason,
+            nurture_reason=nurture_reason,
+        )
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc.errors()[0]["msg"])) from exc
+
+    actor = actor_context_from_request(request, actor=session.admin_username)
+    try:
+        with db.db_connection(settings.database_url) as conn:
+            _crm.transition_pipeline_stage(
+                conn,
+                actor_context=actor,
+                company_id=company_id,
+                change=change,
+            )
+    except PipelineTransitionError as exc:
+        with db.db_connection(settings.database_url) as conn:
+            company = _crm.get_pipeline_company(conn, company_id)
+            history = _crm.list_pipeline_stage_history(conn, company_id)
+            activities = _crm._repos.activities.list_for_company(conn, company_id)
+        if company is None:
+            raise HTTPException(status_code=404, detail="Company not found") from exc
+        csrf = ""
+        if session.id:
+            from app.admin_routes import _issue_session_csrf
+
+            csrf = _issue_session_csrf(settings, session.id)
+        return HTMLResponse(
+            render_pipeline_detail_page(
+                company=company,
+                history=history,
+                activities=activities,
+                csrf_token=csrf,
+                admin_username=session.admin_username,
+                error_message=str(exc),
+            ),
+            status_code=400,
+        )
+
+    return RedirectResponse(url=f"/admin/pipeline/{company_id}", status_code=303)
+
+
+@router.post("/{company_id}/next-action")
+def admin_pipeline_next_action(
+    request: Request,
+    company_id: UUID,
+    csrf_token: str = Form(...),
+    next_action: str | None = Form(None),
+    next_action_due_at: str | None = Form(None),
+    pipeline_owner: str | None = Form(None),
+    expected_value_cents: str | None = Form(None),
+) -> RedirectResponse:
+    from app.admin_routes import _verify_session_csrf, require_admin_session
+
+    session = require_admin_session(request)
+    _verify_session_csrf(session, csrf_token)
+    settings = get_settings()
+    if settings.admin_preview_enabled:
+        return RedirectResponse(url=f"/admin/pipeline/{company_id}", status_code=303)
+    if not settings.database_url:
+        raise HTTPException(status_code=503, detail="Database not configured")
+
+    parsed_value: int | None = None
+    if expected_value_cents and expected_value_cents.strip():
+        parsed_value = int(expected_value_cents.strip())
+
+    try:
+        update = PipelineNextActionUpdate(
+            next_action=next_action,
+            next_action_due_at=_parse_due_at(next_action_due_at),
+            pipeline_owner=pipeline_owner,
+            expected_value_cents=parsed_value,
+        )
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc.errors()[0]["msg"])) from exc
+
+    actor = actor_context_from_request(request, actor=session.admin_username)
+    with db.db_connection(settings.database_url) as conn:
+        _crm.update_pipeline_next_action(
+            conn,
+            actor_context=actor,
+            company_id=company_id,
+            update=update,
+        )
+    return RedirectResponse(url=f"/admin/pipeline/{company_id}", status_code=303)
+
+
+@router.post("/{company_id}/activities")
+def admin_pipeline_activity(
+    request: Request,
+    company_id: UUID,
+    csrf_token: str = Form(...),
+    activity_type: str = Form(...),
+    summary: str = Form(...),
+) -> RedirectResponse:
+    from app.admin_routes import _verify_session_csrf, require_admin_session
+
+    session = require_admin_session(request)
+    _verify_session_csrf(session, csrf_token)
+    settings = get_settings()
+    if settings.admin_preview_enabled:
+        return RedirectResponse(url=f"/admin/pipeline/{company_id}", status_code=303)
+    if not settings.database_url:
+        raise HTTPException(status_code=503, detail="Database not configured")
+
+    try:
+        activity = PipelineActivityCreate(activity_type=activity_type, summary=summary)
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc.errors()[0]["msg"])) from exc
+
+    with db.db_connection(settings.database_url) as conn:
+        _crm.record_pipeline_activity(conn, company_id=company_id, activity=activity)
+    return RedirectResponse(url=f"/admin/pipeline/{company_id}", status_code=303)

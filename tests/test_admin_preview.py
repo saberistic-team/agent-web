@@ -9,8 +9,11 @@ import pytest
 
 from app.admin_preview import (
     COMPANY_NAMES,
+    PREVIEW_PIPELINE_COMPANY_IDS,
     build_preview_acquisition_dashboard_data,
     build_preview_dashboard_data,
+    build_preview_pipeline_companies,
+    build_preview_pipeline_detail,
     build_preview_section_rows,
     render_preview_dashboard_main,
     render_preview_section_main,
@@ -95,21 +98,13 @@ def test_preview_section_rows_stable_with_seed() -> None:
 
 
 @pytest.mark.unit
-def test_preview_pipeline_section_uses_acquisition_stages() -> None:
-    rows = build_preview_section_rows("/admin/pipeline", rng=random.Random(21))
-    assert 4 <= len(rows) <= 8
-    for row in rows:
-        assert row[1] in {
-            "Researching",
-            "Qualified",
-            "Ready for outreach",
-            "Contacted",
-            "Replied",
-            "Discovery scheduled",
-            "Diagnostic proposed",
-            "Diagnostic paid",
-            "Larger engagement",
-        }
+def test_preview_contacts_rows_stable_with_seed() -> None:
+    a = build_preview_section_rows("/admin/contacts", rng=random.Random(11))
+    b = build_preview_section_rows("/admin/contacts", rng=random.Random(11))
+    assert a == b
+    assert 4 <= len(a) <= 8
+    assert all(len(row) == 5 for row in a)
+    assert any("buyer" in row[1].lower() or "founder" in row[1].lower() for row in a)
 
 
 @pytest.mark.unit
@@ -124,6 +119,20 @@ def test_preview_section_main_html_includes_mock_table() -> None:
     assert "Companies" in html
     assert "admin-table" in html
     assert "Category" in html
+
+
+@pytest.mark.unit
+def test_preview_contacts_section_main_html_includes_roles_column() -> None:
+    html = render_preview_section_main(
+        label="Contacts",
+        summary="People, roles, and outreach history",
+        active_path="/admin/contacts",
+        rng=random.Random(3),
+    )
+    assert "Preview data — not production" in html
+    assert "Contacts" in html
+    assert "Roles" in html
+    assert "admin-table" in html
 
 
 @pytest.mark.unit
@@ -204,3 +213,23 @@ def test_admin_preview_briefs_list_and_detail_have_mock_data(
     assert audit.status_code == 200
     assert "No audit events recorded yet." not in audit.text
     assert "audit-table" in audit.text
+
+
+@pytest.mark.unit
+def test_preview_pipeline_companies_seed_stable() -> None:
+    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
+    a = build_preview_pipeline_companies(rng=random.Random(42), now=now)
+    b = build_preview_pipeline_companies(rng=random.Random(42), now=now)
+    assert a == b
+    assert len(a) == len(PREVIEW_PIPELINE_COMPANY_IDS)
+    assert a[0]["name"] in COMPANY_NAMES
+
+
+@pytest.mark.unit
+def test_preview_pipeline_detail_nullable_fields() -> None:
+    detail = build_preview_pipeline_detail(PREVIEW_PIPELINE_COMPANY_IDS[1])
+    assert detail is not None
+    company, history, activities = detail
+    assert company["next_action"] is None
+    assert len(history) >= 2
+    assert len(activities) >= 2

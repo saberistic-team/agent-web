@@ -331,52 +331,68 @@ CREATE INDEX IF NOT EXISTS idx_research_records_stale_evidence
     ),
     Migration(
         version="012",
+        name="contact_records",
+        up_sql="""
+ALTER TABLE contacts ALTER COLUMN email DROP NOT NULL;
+ALTER TABLE contacts DROP CONSTRAINT IF EXISTS contacts_email_unique;
+
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS title TEXT;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS profile_url TEXT;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS email_permission TEXT;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS last_interaction_at DATE;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS relationship_strength TEXT;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS buying_roles TEXT[];
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_email_unique
+    ON contacts (LOWER(email))
+    WHERE email IS NOT NULL AND archived_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_contacts_profile_url ON contacts (profile_url)
+    WHERE profile_url IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_contacts_archived_at ON contacts (archived_at);
+CREATE INDEX IF NOT EXISTS idx_contacts_last_interaction_at ON contacts (last_interaction_at);
+CREATE INDEX IF NOT EXISTS idx_contacts_buying_roles ON contacts USING GIN (buying_roles);
+""",
+    ),
+    Migration(
+        version="013",
         name="acquisition_pipeline",
         up_sql="""
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS pipeline_stage TEXT;
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS next_action TEXT;
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS next_action_due_at TIMESTAMPTZ;
-ALTER TABLE companies ADD COLUMN IF NOT EXISTS owner TEXT;
-ALTER TABLE companies ADD COLUMN IF NOT EXISTS expected_value NUMERIC(12, 2);
-ALTER TABLE companies ADD COLUMN IF NOT EXISTS stage_reason TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS pipeline_owner TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS expected_value_cents INTEGER;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS pipeline_loss_reason TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS pipeline_nurture_reason TEXT;
 
-UPDATE companies SET pipeline_stage = 'researching' WHERE pipeline_stage IS NULL;
-ALTER TABLE companies ALTER COLUMN pipeline_stage SET DEFAULT 'researching';
-ALTER TABLE companies ALTER COLUMN pipeline_stage SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_companies_pipeline_stage
+    ON companies (pipeline_stage)
+    WHERE pipeline_stage IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_companies_next_action_due_at
+    ON companies (next_action_due_at)
+    WHERE next_action_due_at IS NOT NULL AND archived_at IS NULL;
 
-ALTER TABLE companies DROP CONSTRAINT IF EXISTS companies_pipeline_stage_check;
-ALTER TABLE companies ADD CONSTRAINT companies_pipeline_stage_check
-    CHECK (pipeline_stage IN (
-        'researching', 'qualified', 'ready_for_outreach', 'contacted', 'replied',
-        'discovery_scheduled', 'diagnostic_proposed', 'diagnostic_paid',
-        'larger_engagement', 'won', 'lost', 'nurture'
-    ));
-
-CREATE INDEX IF NOT EXISTS idx_companies_pipeline_stage ON companies (pipeline_stage);
-CREATE INDEX IF NOT EXISTS idx_companies_next_action_due_at ON companies (next_action_due_at);
-CREATE INDEX IF NOT EXISTS idx_companies_owner ON companies (owner);
-
-CREATE TABLE IF NOT EXISTS company_stage_history (
+CREATE TABLE IF NOT EXISTS pipeline_stage_history (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL REFERENCES companies (id) ON DELETE CASCADE,
-    from_stage TEXT NOT NULL,
+    from_stage TEXT,
     to_stage TEXT NOT NULL,
     changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     changed_by TEXT NOT NULL,
-    reason TEXT,
     metadata JSONB
 );
 
-CREATE INDEX IF NOT EXISTS idx_company_stage_history_company_id
-    ON company_stage_history (company_id);
-CREATE INDEX IF NOT EXISTS idx_company_stage_history_changed_at
-    ON company_stage_history (changed_at);
+CREATE INDEX IF NOT EXISTS idx_pipeline_stage_history_company_id
+    ON pipeline_stage_history (company_id, changed_at DESC);
 
 ALTER TABLE activities DROP CONSTRAINT IF EXISTS activities_activity_type_check;
 ALTER TABLE activities ADD CONSTRAINT activities_activity_type_check
     CHECK (activity_type IN (
-        'note', 'outreach', 'reply', 'meeting', 'proposal', 'payment',
-        'task_completion', 'email', 'call', 'status_change'
+        'note', 'email', 'call', 'meeting', 'status_change', 'payment',
+        'outreach', 'reply', 'proposal', 'task_completion'
     ));
 """,
     ),

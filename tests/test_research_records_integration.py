@@ -96,9 +96,9 @@ def test_crm_service_attach_research_record_commits() -> None:
             contacts=MagicMock(),
             source_records=MagicMock(),
             activities=MagicMock(),
-            stage_history=MagicMock(),
             research_records=research_repo,
             admin_users=MagicMock(),
+            pipeline=MagicMock(),
         )
     )
     conn = MagicMock()

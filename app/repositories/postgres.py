@@ -17,7 +17,6 @@ from app.repositories.protocols import (
     ContactRepository,
     ResearchRecordRepository,
     SourceRecordRepository,
-    StageHistoryRepository,
 )
 
 
@@ -41,9 +40,6 @@ class PostgresCompanyRepository:
         target_status: str | None = None,
         last_verified_at: date | None = None,
         notes: str | None = None,
-        pipeline_stage: str = "researching",
-        owner: str | None = None,
-        expected_value: float | None = None,
     ) -> dict[str, Any]:
         with conn.cursor() as cur:
             cur.execute(
@@ -51,15 +47,15 @@ class PostgresCompanyRepository:
                 INSERT INTO companies (
                     name, website, status, domain, category, stage,
                     headcount_estimate, funding_summary, target_status,
-                    last_verified_at, notes, pipeline_stage, owner, expected_value
+                    last_verified_at, notes
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING *
                 """,
                 (
                     name, website, status, domain, category, stage,
                     headcount_estimate, funding_summary, target_status,
-                    last_verified_at, notes, pipeline_stage, owner, expected_value,
+                    last_verified_at, notes,
                 ),
             )
             row = cur.fetchone()
@@ -157,14 +153,6 @@ class PostgresCompanyRepository:
         target_status: str | None = None,
         last_verified_at: date | None = None,
         notes: str | None = None,
-        pipeline_stage: str | None = None,
-        next_action: str | None = None,
-        next_action_due_at: datetime | None = None,
-        clear_next_action_due_at: bool = False,
-        owner: str | None = None,
-        expected_value: float | None = None,
-        stage_reason: str | None = None,
-        clear_stage_reason: bool = False,
     ) -> dict[str, Any] | None:
         fields: list[str] = []
         values: list[Any] = []
@@ -190,28 +178,6 @@ class PostgresCompanyRepository:
             if value is not None:
                 fields.append(f"{column} = %s")
                 values.append(value)
-        if pipeline_stage is not None:
-            fields.append("pipeline_stage = %s")
-            values.append(pipeline_stage)
-        if next_action is not None:
-            fields.append("next_action = %s")
-            values.append(next_action)
-        if next_action_due_at is not None:
-            fields.append("next_action_due_at = %s")
-            values.append(next_action_due_at)
-        elif clear_next_action_due_at:
-            fields.append("next_action_due_at = NULL")
-        if owner is not None:
-            fields.append("owner = %s")
-            values.append(owner)
-        if expected_value is not None:
-            fields.append("expected_value = %s")
-            values.append(expected_value)
-        if stage_reason is not None:
-            fields.append("stage_reason = %s")
-            values.append(stage_reason)
-        elif clear_stage_reason:
-            fields.append("stage_reason = NULL")
         if not fields:
             return self.get_by_id(conn, company_id)
 
@@ -257,102 +223,46 @@ class PostgresCompanyRepository:
             row = cur.fetchone()
         return dict(row) if row else None
 
-    def list_by_pipeline_stage(
-        self,
-        conn: psycopg.Connection,
-        *,
-        pipeline_stage: str | None = None,
-        limit: int = 100,
-    ) -> list[dict[str, Any]]:
-        with conn.cursor() as cur:
-            if pipeline_stage is None:
-                cur.execute(
-                    """
-                    SELECT * FROM companies
-                    ORDER BY updated_at DESC
-                    LIMIT %s
-                    """,
-                    (limit,),
-                )
-            else:
-                cur.execute(
-                    """
-                    SELECT * FROM companies
-                    WHERE pipeline_stage = %s
-                    ORDER BY updated_at DESC
-                    LIMIT %s
-                    """,
-                    (pipeline_stage, limit),
-                )
-            rows = cur.fetchall()
-        return [dict(row) for row in rows]
-
-    def list_overdue_actions(
-        self,
-        conn: psycopg.Connection,
-        *,
-        as_of: datetime,
-        limit: int = 100,
-    ) -> list[dict[str, Any]]:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT * FROM companies
-                WHERE next_action IS NOT NULL
-                  AND next_action_due_at IS NOT NULL
-                  AND next_action_due_at < %s
-                  AND pipeline_stage NOT IN ('won', 'lost')
-                ORDER BY next_action_due_at ASC
-                LIMIT %s
-                """,
-                (as_of, limit),
-            )
-            rows = cur.fetchall()
-        return [dict(row) for row in rows]
-
-    def list_upcoming_actions(
-        self,
-        conn: psycopg.Connection,
-        *,
-        as_of: datetime,
-        until: datetime,
-        limit: int = 100,
-    ) -> list[dict[str, Any]]:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT * FROM companies
-                WHERE next_action IS NOT NULL
-                  AND next_action_due_at IS NOT NULL
-                  AND next_action_due_at >= %s
-                  AND next_action_due_at <= %s
-                  AND pipeline_stage NOT IN ('won', 'lost')
-                ORDER BY next_action_due_at ASC
-                LIMIT %s
-                """,
-                (as_of, until, limit),
-            )
-            rows = cur.fetchall()
-        return [dict(row) for row in rows]
-
 
 class PostgresContactRepository:
     def create(
         self,
         conn: psycopg.Connection,
         *,
-        email: str,
-        full_name: str | None = None,
+        full_name: str,
+        email: str | None = None,
+        title: str | None = None,
+        profile_url: str | None = None,
+        email_permission: str | None = None,
         company_id: UUID | None = None,
+        last_interaction_at: date | None = None,
+        relationship_strength: str | None = None,
+        notes: str | None = None,
+        buying_roles: list[str] | None = None,
     ) -> dict[str, Any]:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO contacts (email, full_name, company_id)
-                VALUES (%s, %s, %s)
+                INSERT INTO contacts (
+                    full_name, email, title, profile_url, email_permission,
+                    company_id, last_interaction_at, relationship_strength,
+                    notes, buying_roles
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING *
                 """,
-                (email, full_name, company_id),
+                (
+                    full_name,
+                    email,
+                    title,
+                    profile_url,
+                    email_permission,
+                    company_id,
+                    last_interaction_at,
+                    relationship_strength,
+                    notes,
+                    buying_roles or [],
+                ),
             )
             row = cur.fetchone()
         return dict(row)
@@ -365,9 +275,110 @@ class PostgresContactRepository:
 
     def get_by_email(self, conn: psycopg.Connection, email: str) -> dict[str, Any] | None:
         with conn.cursor() as cur:
-            cur.execute("SELECT * FROM contacts WHERE email = %s", (email,))
+            cur.execute(
+                """
+                SELECT * FROM contacts
+                WHERE LOWER(email) = LOWER(%s) AND archived_at IS NULL
+                """,
+                (email,),
+            )
             row = cur.fetchone()
         return dict(row) if row else None
+
+    def find_by_profile_url(
+        self,
+        conn: psycopg.Connection,
+        profile_url: str,
+        *,
+        exclude_contact_id: UUID | None = None,
+    ) -> list[dict[str, Any]]:
+        conditions = ["profile_url = %s", "archived_at IS NULL"]
+        params: list[Any] = [profile_url]
+        if exclude_contact_id is not None:
+            conditions.append("id <> %s")
+            params.append(exclude_contact_id)
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT * FROM contacts
+                WHERE {' AND '.join(conditions)}
+                ORDER BY full_name ASC
+                """,
+                params,
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def find_by_name_company(
+        self,
+        conn: psycopg.Connection,
+        *,
+        full_name: str,
+        company_id: UUID,
+        exclude_contact_id: UUID | None = None,
+    ) -> list[dict[str, Any]]:
+        conditions = [
+            "company_id = %s",
+            "LOWER(full_name) = LOWER(%s)",
+            "archived_at IS NULL",
+        ]
+        params: list[Any] = [company_id, full_name]
+        if exclude_contact_id is not None:
+            conditions.append("id <> %s")
+            params.append(exclude_contact_id)
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT * FROM contacts
+                WHERE {' AND '.join(conditions)}
+                ORDER BY full_name ASC
+                """,
+                params,
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def list_all(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int = 100,
+        query: str | None = None,
+        company_id: UUID | None = None,
+        buying_role: str | None = None,
+        include_archived: bool = False,
+    ) -> list[dict[str, Any]]:
+        conditions: list[str] = []
+        params: list[Any] = []
+        if not include_archived:
+            conditions.append("c.archived_at IS NULL")
+        if query:
+            pattern = f"%{query.strip()}%"
+            conditions.append(
+                "(c.full_name ILIKE %s OR c.email ILIKE %s OR c.title ILIKE %s OR c.profile_url ILIKE %s)"
+            )
+            params.extend((pattern, pattern, pattern, pattern))
+        if company_id is not None:
+            conditions.append("c.company_id = %s")
+            params.append(company_id)
+        if buying_role:
+            conditions.append("%s = ANY(c.buying_roles)")
+            params.append(buying_role)
+        where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT c.*, co.name AS company_name
+                FROM contacts c
+                LEFT JOIN companies co ON co.id = c.company_id
+                {where_sql}
+                ORDER BY c.full_name ASC NULLS LAST, c.email ASC NULLS LAST
+                LIMIT %s
+                """,
+                [*params, limit],
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
 
     def list_for_company(
         self,
@@ -375,19 +386,104 @@ class PostgresContactRepository:
         company_id: UUID,
         *,
         limit: int = 100,
+        include_archived: bool = False,
     ) -> list[dict[str, Any]]:
+        conditions = ["company_id = %s"]
+        params: list[Any] = [company_id]
+        if not include_archived:
+            conditions.append("archived_at IS NULL")
         with conn.cursor() as cur:
             cur.execute(
-                """
+                f"""
                 SELECT * FROM contacts
-                WHERE company_id = %s
-                ORDER BY email ASC
+                WHERE {' AND '.join(conditions)}
+                ORDER BY full_name ASC NULLS LAST, email ASC NULLS LAST
                 LIMIT %s
                 """,
-                (company_id, limit),
+                [*params, limit],
             )
             rows = cur.fetchall()
         return [dict(row) for row in rows]
+
+    def update(
+        self,
+        conn: psycopg.Connection,
+        contact_id: UUID,
+        *,
+        full_name: str | None = None,
+        email: str | None = None,
+        title: str | None = None,
+        profile_url: str | None = None,
+        email_permission: str | None = None,
+        company_id: UUID | None = None,
+        last_interaction_at: date | None = None,
+        relationship_strength: str | None = None,
+        notes: str | None = None,
+        buying_roles: list[str] | None = None,
+    ) -> dict[str, Any] | None:
+        fields: list[str] = []
+        values: list[Any] = []
+        for column, value in (
+            ("full_name", full_name),
+            ("email", email),
+            ("title", title),
+            ("profile_url", profile_url),
+            ("email_permission", email_permission),
+            ("company_id", company_id),
+            ("last_interaction_at", last_interaction_at),
+            ("relationship_strength", relationship_strength),
+            ("notes", notes),
+        ):
+            if value is not None:
+                fields.append(f"{column} = %s")
+                values.append(value)
+        if buying_roles is not None:
+            fields.append("buying_roles = %s")
+            values.append(buying_roles)
+        if not fields:
+            return self.get_by_id(conn, contact_id)
+
+        fields.append("updated_at = %s")
+        values.append(_now())
+        values.append(contact_id)
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                UPDATE contacts
+                SET {", ".join(fields)}
+                WHERE id = %s
+                RETURNING *
+                """,
+                values,
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def archive(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE contacts SET archived_at = %s, updated_at = %s
+                WHERE id = %s AND archived_at IS NULL
+                RETURNING *
+                """,
+                (_now(), _now(), contact_id),
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def restore(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE contacts SET archived_at = NULL, updated_at = %s
+                WHERE id = %s AND archived_at IS NOT NULL
+                RETURNING *
+                """,
+                (_now(), contact_id),
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
 
 
 class PostgresSourceRecordRepository:
@@ -495,60 +591,6 @@ class PostgresActivityRepository:
         return [dict(row) for row in rows]
 
 
-class PostgresStageHistoryRepository:
-    def create(
-        self,
-        conn: psycopg.Connection,
-        *,
-        company_id: UUID,
-        from_stage: str,
-        to_stage: str,
-        changed_by: str,
-        reason: str | None = None,
-        metadata: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO company_stage_history (
-                    company_id, from_stage, to_stage, changed_by, reason, metadata
-                )
-                VALUES (%s, %s, %s, %s, %s, %s)
-                RETURNING *
-                """,
-                (
-                    company_id,
-                    from_stage,
-                    to_stage,
-                    changed_by,
-                    reason,
-                    json.dumps(metadata) if metadata is not None else None,
-                ),
-            )
-            row = cur.fetchone()
-        return dict(row)
-
-    def list_for_company(
-        self,
-        conn: psycopg.Connection,
-        company_id: UUID,
-        *,
-        limit: int = 50,
-    ) -> list[dict[str, Any]]:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT * FROM company_stage_history
-                WHERE company_id = %s
-                ORDER BY changed_at DESC
-                LIMIT %s
-                """,
-                (company_id, limit),
-            )
-            rows = cur.fetchall()
-        return [dict(row) for row in rows]
-
-
 class PostgresResearchRecordRepository:
     def create(
         self,
@@ -635,6 +677,219 @@ class PostgresResearchRecordRepository:
             )
             rows = cur.fetchall()
         return [dict(row) for row in rows]
+
+
+class PostgresPipelineRepository:
+    def list_companies(
+        self,
+        conn: psycopg.Connection,
+        *,
+        pipeline_stage: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        conditions = ["archived_at IS NULL", "pipeline_stage IS NOT NULL"]
+        params: list[Any] = []
+        if pipeline_stage:
+            conditions.append("pipeline_stage = %s")
+            params.append(pipeline_stage)
+        where_sql = " AND ".join(conditions)
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT *
+                FROM companies
+                WHERE {where_sql}
+                ORDER BY next_action_due_at ASC NULLS LAST, name ASC
+                LIMIT %s
+                """,
+                [*params, limit],
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def get_company_pipeline(
+        self, conn: psycopg.Connection, company_id: UUID
+    ) -> dict[str, Any] | None:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM companies WHERE id = %s AND archived_at IS NULL",
+                (company_id,),
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def update_pipeline_fields(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        pipeline_stage: str | None = None,
+        next_action: str | None = None,
+        next_action_due_at: datetime | None = None,
+        pipeline_owner: str | None = None,
+        expected_value_cents: int | None = None,
+        pipeline_loss_reason: str | None = None,
+        pipeline_nurture_reason: str | None = None,
+        clear_loss_reason: bool = False,
+        clear_nurture_reason: bool = False,
+    ) -> dict[str, Any] | None:
+        fields: list[str] = []
+        values: list[Any] = []
+        for column, value in (
+            ("pipeline_stage", pipeline_stage),
+            ("next_action", next_action),
+            ("next_action_due_at", next_action_due_at),
+            ("pipeline_owner", pipeline_owner),
+            ("expected_value_cents", expected_value_cents),
+            ("pipeline_loss_reason", pipeline_loss_reason),
+            ("pipeline_nurture_reason", pipeline_nurture_reason),
+        ):
+            if value is not None:
+                fields.append(f"{column} = %s")
+                values.append(value)
+        if clear_loss_reason:
+            fields.append("pipeline_loss_reason = NULL")
+        if clear_nurture_reason:
+            fields.append("pipeline_nurture_reason = NULL")
+        if not fields:
+            return self.get_company_pipeline(conn, company_id)
+
+        fields.append("updated_at = %s")
+        values.append(_now())
+        values.append(company_id)
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                UPDATE companies
+                SET {", ".join(fields)}
+                WHERE id = %s AND archived_at IS NULL
+                RETURNING *
+                """,
+                values,
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def record_stage_history(
+        self,
+        conn: psycopg.Connection,
+        *,
+        company_id: UUID,
+        from_stage: str | None,
+        to_stage: str,
+        changed_by: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO pipeline_stage_history (
+                    company_id, from_stage, to_stage, changed_by, metadata
+                )
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING *
+                """,
+                (
+                    company_id,
+                    from_stage,
+                    to_stage,
+                    changed_by,
+                    json.dumps(metadata) if metadata is not None else None,
+                ),
+            )
+            row = cur.fetchone()
+        return dict(row)
+
+    def list_stage_history(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT *
+                FROM pipeline_stage_history
+                WHERE company_id = %s
+                ORDER BY changed_at DESC
+                LIMIT %s
+                """,
+                (company_id, limit),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def list_overdue_next_actions(
+        self,
+        conn: psycopg.Connection,
+        *,
+        reference: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, name, pipeline_stage, next_action, next_action_due_at,
+                       pipeline_owner, expected_value_cents
+                FROM companies
+                WHERE archived_at IS NULL
+                  AND pipeline_stage IS NOT NULL
+                  AND next_action IS NOT NULL
+                  AND next_action_due_at IS NOT NULL
+                  AND next_action_due_at < %s
+                ORDER BY next_action_due_at ASC
+                LIMIT %s
+                """,
+                (reference, limit),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def list_upcoming_next_actions(
+        self,
+        conn: psycopg.Connection,
+        *,
+        reference: datetime,
+        window_end: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, name, pipeline_stage, next_action, next_action_due_at,
+                       pipeline_owner, expected_value_cents
+                FROM companies
+                WHERE archived_at IS NULL
+                  AND pipeline_stage IS NOT NULL
+                  AND next_action IS NOT NULL
+                  AND next_action_due_at IS NOT NULL
+                  AND next_action_due_at >= %s
+                  AND next_action_due_at <= %s
+                ORDER BY next_action_due_at ASC
+                LIMIT %s
+                """,
+                (reference, window_end, limit),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def count_by_pipeline_stage(
+        self, conn: psycopg.Connection
+    ) -> list[tuple[str, int]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT pipeline_stage AS bucket, COUNT(*)::int AS total
+                FROM companies
+                WHERE archived_at IS NULL AND pipeline_stage IS NOT NULL
+                GROUP BY pipeline_stage
+                ORDER BY total DESC, bucket ASC
+                """,
+            )
+            rows = cur.fetchall()
+        return [(str(row["bucket"]), int(row["total"])) for row in rows]
 
 
 class PostgresAcquisitionDashboardRepository:
@@ -1040,30 +1295,6 @@ class PostgresAuditEventRepository:
             row = cur.fetchone()
         return dict(row)
 
-    def list_for_entity(
-        self,
-        conn: psycopg.Connection,
-        *,
-        entity_type: str,
-        entity_id: str,
-        limit: int = 50,
-    ) -> list[dict[str, Any]]:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT
-                    id, created_at, actor, action, entity_type, entity_id,
-                    correlation_id, summary_before, summary_after, metadata
-                FROM audit_events
-                WHERE entity_type = %s AND entity_id = %s
-                ORDER BY created_at DESC, id DESC
-                LIMIT %s
-                """,
-                (entity_type, entity_id, limit),
-            )
-            rows = cur.fetchall()
-        return [dict(row) for row in rows]
-
 
 class PostgresRepositories:
     """Bundle of Postgres repository implementations including CRM + audit."""
@@ -1073,12 +1304,12 @@ class PostgresRepositories:
         self.contacts = PostgresContactRepository()
         self.source_records = PostgresSourceRecordRepository()
         self.activities = PostgresActivityRepository()
-        self.stage_history = PostgresStageHistoryRepository()
         self.research_records = PostgresResearchRecordRepository()
         self.admin_users = PostgresAdminUserRepository()
         self.audit_events = PostgresAuditEventRepository()
         self.project_briefs = PostgresProjectBriefRepository()
         self.acquisition_dashboard = PostgresAcquisitionDashboardRepository()
+        self.pipeline = PostgresPipelineRepository()
 
 
 _default_repositories = PostgresRepositories()
@@ -1095,12 +1326,12 @@ def default_repositories() -> dict[str, Any]:
         "contacts": repos.contacts,
         "source_records": repos.source_records,
         "activities": repos.activities,
-        "stage_history": repos.stage_history,
         "research_records": repos.research_records,
         "admin_users": repos.admin_users,
         "audit_events": repos.audit_events,
         "project_briefs": repos.project_briefs,
         "acquisition_dashboard": repos.acquisition_dashboard,
+        "pipeline": repos.pipeline,
     }
 
 
@@ -1109,6 +1340,5 @@ CompanyRepo = PostgresCompanyRepository
 ContactRepo = PostgresContactRepository
 SourceRecordRepo = PostgresSourceRecordRepository
 ActivityRepo = PostgresActivityRepository
-StageHistoryRepo = PostgresStageHistoryRepository
 ResearchRecordRepo = PostgresResearchRecordRepository
 AdminUserRepo = PostgresAdminUserRepository

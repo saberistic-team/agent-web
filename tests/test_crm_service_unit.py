@@ -9,14 +9,15 @@ import pytest
 
 from app.crm_service import CrmRepositories, CrmService
 from app.companies import CompanyCreate, CompanyUpdate
+from app.contacts import ContactCreate, ContactUpdate
 from app.repositories.postgres import (
     PostgresActivityRepository,
     PostgresAdminUserRepository,
     PostgresCompanyRepository,
     PostgresContactRepository,
+    PostgresPipelineRepository,
     PostgresResearchRecordRepository,
     PostgresSourceRecordRepository,
-    PostgresStageHistoryRepository,
 )
 
 
@@ -43,9 +44,9 @@ def test_crm_service_records_company_contact_and_activity() -> None:
             contacts=contact_repo,
             source_records=source_repo,
             activities=activity_repo,
-            stage_history=MagicMock(),
             research_records=research_repo,
             admin_users=admin_repo,
+            pipeline=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -83,9 +84,9 @@ def test_crm_service_links_project_brief_source() -> None:
             contacts=MagicMock(),
             source_records=source_repo,
             activities=MagicMock(),
-            stage_history=MagicMock(),
             research_records=MagicMock(),
             admin_users=MagicMock(),
+            pipeline=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -116,9 +117,9 @@ def test_default_crm_repositories_use_postgres_backends() -> None:
     assert isinstance(service._repos.contacts, PostgresContactRepository)
     assert isinstance(service._repos.source_records, PostgresSourceRecordRepository)
     assert isinstance(service._repos.activities, PostgresActivityRepository)
-    assert isinstance(service._repos.stage_history, PostgresStageHistoryRepository)
     assert isinstance(service._repos.research_records, PostgresResearchRecordRepository)
     assert isinstance(service._repos.admin_users, PostgresAdminUserRepository)
+    assert isinstance(service._repos.pipeline, PostgresPipelineRepository)
 
 
 def _service_with_mocks(
@@ -134,9 +135,9 @@ def _service_with_mocks(
         "contacts": contact_repo or MagicMock(),
         "source_records": source_repo or MagicMock(),
         "activities": activity_repo or MagicMock(),
-        "stage_history": MagicMock(),
         "research_records": MagicMock(),
         "admin_users": admin_repo or MagicMock(),
+        "pipeline": MagicMock(),
     }
     service = CrmService(repos=CrmRepositories(**repos))
     conn = MagicMock()
@@ -318,3 +319,67 @@ def test_company_crud_helpers_commit_and_return_nonblocking_domain_warnings() ->
     assert service.archive_company(conn, COMPANY_ID)["archived_at"] == "now"
     assert service.restore_company(conn, COMPANY_ID)["archived_at"] is None
     assert conn.commit.call_count == 4
+
+
+@pytest.mark.unit
+def test_contact_crud_helpers_commit_and_return_nonblocking_duplicate_warnings() -> None:
+    contact_repo = MagicMock()
+    contact_repo.find_by_profile_url.return_value = [
+        {"id": CONTACT_ID, "full_name": "Ada", "profile_url": "https://linkedin.com/in/ada"}
+    ]
+    contact_repo.get_by_email.return_value = {"id": CONTACT_ID, "full_name": "Ada", "email": "ada@example.com"}
+    contact_repo.find_by_name_company.return_value = [
+        {"id": CONTACT_ID, "full_name": "Ada", "company_id": COMPANY_ID}
+    ]
+    contact_repo.create.return_value = {
+        "id": CONTACT_ID,
+        "full_name": "Ada",
+        "buying_roles": ["founder", "technical_buyer"],
+    }
+    contact_repo.update.return_value = {
+        "id": CONTACT_ID,
+        "full_name": "Ada Updated",
+        "buying_roles": ["executive_buyer"],
+    }
+    contact_repo.archive.return_value = {"id": CONTACT_ID, "archived_at": "now"}
+    contact_repo.restore.return_value = {"id": CONTACT_ID, "archived_at": None}
+    service, conn, _ = _service_with_mocks(contact_repo=contact_repo)
+
+    created = service.create_contact(
+        conn,
+        contact=ContactCreate(
+            full_name="Ada",
+            profile_url="https://www.linkedin.com/in/ada",
+            email="ada@example.com",
+            company_id=COMPANY_ID,
+            buying_roles=["founder"],
+        ),
+    )
+    assert created["contact"]["full_name"] == "Ada"
+    assert len(created["duplicate_warnings"]) == 3
+
+    updated = service.update_contact(
+        conn,
+        CONTACT_ID,
+        contact=ContactUpdate(
+            full_name="Ada Updated",
+            profile_url="https://linkedin.com/in/ada",
+            email="ada@example.com",
+            company_id=COMPANY_ID,
+            buying_roles=["executive_buyer"],
+        ),
+    )
+    assert updated is not None and updated["contact"]["full_name"] == "Ada Updated"
+    assert service.archive_contact(conn, CONTACT_ID)["archived_at"] == "now"
+    assert service.restore_contact(conn, CONTACT_ID)["archived_at"] is None
+    assert conn.commit.call_count == 4
+
+
+@pytest.mark.unit
+def test_search_contacts_aliases_list_contacts() -> None:
+    from unittest.mock import patch
+
+    service, conn, _ = _service_with_mocks()
+    with patch.object(service, "list_contacts", return_value=[{"id": "x"}]) as listed:
+        assert service.search_contacts(conn, query="pat") == [{"id": "x"}]
+        listed.assert_called_once_with(conn, query="pat")

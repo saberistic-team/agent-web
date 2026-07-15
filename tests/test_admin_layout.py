@@ -256,14 +256,25 @@ def test_admin_nav_links_present(path: str) -> None:
     token_hash = admin_auth.hash_session_token(raw_token)
     row = _session_row(token_hash=token_hash)
     with mock_db_connection():
-        with (
+        patchers = [
             patch(
                 "app.admin_routes.db.get_admin_session_by_token_hash",
                 return_value=row,
             ),
             patch("app.admin_routes._crm.list_companies", return_value=[]),
-        ):
-            response = client.get(path, cookies={SESSION_COOKIE_NAME: raw_token})
+        ]
+        if path == "/admin/pipeline":
+            patchers.append(
+                patch("app.admin_pipeline_routes._crm.list_pipeline_companies", return_value=[])
+            )
+        with patchers[0]:
+            for extra in patchers[1:]:
+                extra.start()
+            try:
+                response = client.get(path, cookies={SESSION_COOKIE_NAME: raw_token})
+            finally:
+                for extra in reversed(patchers[1:]):
+                    extra.stop()
     assert response.status_code == 200
     body = response.text
     assert 'aria-label="Admin"' in body
@@ -274,22 +285,22 @@ def test_admin_nav_links_present(path: str) -> None:
 
 
 @pytest.mark.parametrize(
-    ("path", "label"),
+    ("path", "heading", "title_id", "nav_label"),
     [
-        ("/admin", "Dashboard"),
-        ("/admin/contacts", "Contacts"),
-        ("/admin/signals", "Signals"),
-        ("/admin/pipeline", "Pipeline"),
-        ("/admin/imports", "Imports"),
-        ("/admin/discovery", "Discovery"),
-        ("/admin/analytics", "Analytics"),
-        ("/admin/content", "Content"),
-        ("/admin/settings", "Settings"),
+        ("/admin", "Today's attention", "dashboard-title", "Dashboard"),
+        ("/admin/contacts", "Contacts", "contacts-title", "Contacts"),
+        ("/admin/signals", "Signals", "admin-empty-title", "Signals"),
+        ("/admin/pipeline", "Pipeline", "pipeline-title", "Pipeline"),
+        ("/admin/imports", "Imports", "admin-empty-title", "Imports"),
+        ("/admin/discovery", "Discovery", "admin-empty-title", "Discovery"),
+        ("/admin/analytics", "Analytics", "admin-empty-title", "Analytics"),
+        ("/admin/content", "Content", "admin-empty-title", "Content"),
+        ("/admin/settings", "Settings", "admin-empty-title", "Settings"),
     ],
 )
 @pytest.mark.unit
 @pytest.mark.integration
-def test_admin_active_nav(path: str, label: str) -> None:
+def test_admin_active_nav(path: str, heading: str, title_id: str, nav_label: str) -> None:
     from app import admin_auth
 
     raw_token = admin_auth.generate_session_token()
@@ -311,6 +322,11 @@ def test_admin_active_nav(path: str, label: str) -> None:
             )
         if path == "/admin/companies":
             patchers.append(patch("app.admin_routes._crm.list_companies", return_value=[]))
+        if path == "/admin/contacts":
+            patchers.append(patch("app.admin_routes._crm.list_contacts", return_value=[]))
+            patchers.append(patch("app.admin_routes._crm.list_companies", return_value=[]))
+        if path == "/admin/pipeline":
+            patchers.append(patch("app.admin_pipeline_routes._crm.list_pipeline_companies", return_value=[]))
         with patchers[0]:
             for extra in patchers[1:]:
                 extra.start()
@@ -323,13 +339,14 @@ def test_admin_active_nav(path: str, label: str) -> None:
     body = response.text
     if path == "/admin":
         assert 'id="dashboard-title"' in body
+        assert "Today&apos;s attention" in body or "Today's attention" in body
         assert "Start building your pipeline" in body
     else:
-        assert f'id="admin-empty-title">{label}</h1>' in body
+        assert f'id="{title_id}">{heading}</h1>' in body
     assert body.count('aria-current="page"') == 2
     assert f'href="{path}"' in body
     assert 'aria-current="page"' in body
-    assert f'class="admin-nav-link" aria-current="page">{label}</a>' in body
+    assert f'class="admin-nav-link" aria-current="page">{nav_label}</a>' in body
 
 
 @pytest.mark.unit

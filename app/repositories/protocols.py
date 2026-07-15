@@ -25,9 +25,6 @@ class CompanyRepository(Protocol):
         target_status: str | None = None,
         last_verified_at: date | None = None,
         notes: str | None = None,
-        pipeline_stage: str = "researching",
-        owner: str | None = None,
-        expected_value: float | None = None,
     ) -> dict[str, Any]: ...
 
     def get_by_id(self, conn: psycopg.Connection, company_id: UUID) -> dict[str, Any] | None: ...
@@ -49,31 +46,6 @@ class CompanyRepository(Protocol):
         self, conn: psycopg.Connection, domain: str, *, exclude_company_id: UUID | None = None
     ) -> list[dict[str, Any]]: ...
 
-    def list_by_pipeline_stage(
-        self,
-        conn: psycopg.Connection,
-        *,
-        pipeline_stage: str | None = None,
-        limit: int = 100,
-    ) -> list[dict[str, Any]]: ...
-
-    def list_overdue_actions(
-        self,
-        conn: psycopg.Connection,
-        *,
-        as_of: datetime,
-        limit: int = 100,
-    ) -> list[dict[str, Any]]: ...
-
-    def list_upcoming_actions(
-        self,
-        conn: psycopg.Connection,
-        *,
-        as_of: datetime,
-        until: datetime,
-        limit: int = 100,
-    ) -> list[dict[str, Any]]: ...
-
     def update(
         self,
         conn: psycopg.Connection,
@@ -90,14 +62,6 @@ class CompanyRepository(Protocol):
         target_status: str | None = None,
         last_verified_at: date | None = None,
         notes: str | None = None,
-        pipeline_stage: str | None = None,
-        next_action: str | None = None,
-        next_action_due_at: datetime | None = None,
-        clear_next_action_due_at: bool = False,
-        owner: str | None = None,
-        expected_value: float | None = None,
-        stage_reason: str | None = None,
-        clear_stage_reason: bool = False,
     ) -> dict[str, Any] | None: ...
 
     def archive(self, conn: psycopg.Connection, company_id: UUID) -> dict[str, Any] | None: ...
@@ -110,14 +74,49 @@ class ContactRepository(Protocol):
         self,
         conn: psycopg.Connection,
         *,
-        email: str,
-        full_name: str | None = None,
+        full_name: str,
+        email: str | None = None,
+        title: str | None = None,
+        profile_url: str | None = None,
+        email_permission: str | None = None,
         company_id: UUID | None = None,
+        last_interaction_at: date | None = None,
+        relationship_strength: str | None = None,
+        notes: str | None = None,
+        buying_roles: list[str] | None = None,
     ) -> dict[str, Any]: ...
 
     def get_by_id(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None: ...
 
     def get_by_email(self, conn: psycopg.Connection, email: str) -> dict[str, Any] | None: ...
+
+    def find_by_profile_url(
+        self,
+        conn: psycopg.Connection,
+        profile_url: str,
+        *,
+        exclude_contact_id: UUID | None = None,
+    ) -> list[dict[str, Any]]: ...
+
+    def find_by_name_company(
+        self,
+        conn: psycopg.Connection,
+        *,
+        full_name: str,
+        company_id: UUID,
+        exclude_contact_id: UUID | None = None,
+    ) -> list[dict[str, Any]]: ...
+
+    def list_all(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int = 100,
+        query: str | None = None,
+        company_id: UUID | None = None,
+        buying_role: str | None = None,
+        include_archived: bool = False,
+    ) -> list[dict[str, Any]]: ...
 
     def list_for_company(
         self,
@@ -125,7 +124,29 @@ class ContactRepository(Protocol):
         company_id: UUID,
         *,
         limit: int = 100,
+        include_archived: bool = False,
     ) -> list[dict[str, Any]]: ...
+
+    def update(
+        self,
+        conn: psycopg.Connection,
+        contact_id: UUID,
+        *,
+        full_name: str | None = None,
+        email: str | None = None,
+        title: str | None = None,
+        profile_url: str | None = None,
+        email_permission: str | None = None,
+        company_id: UUID | None = None,
+        last_interaction_at: date | None = None,
+        relationship_strength: str | None = None,
+        notes: str | None = None,
+        buying_roles: list[str] | None = None,
+    ) -> dict[str, Any] | None: ...
+
+    def archive(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None: ...
+
+    def restore(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None: ...
 
 
 class SourceRecordRepository(Protocol):
@@ -159,28 +180,6 @@ class ActivityRepository(Protocol):
         company_id: UUID | None = None,
         contact_id: UUID | None = None,
         source_record_id: UUID | None = None,
-        metadata: dict[str, Any] | None = None,
-    ) -> dict[str, Any]: ...
-
-    def list_for_company(
-        self,
-        conn: psycopg.Connection,
-        company_id: UUID,
-        *,
-        limit: int = 50,
-    ) -> list[dict[str, Any]]: ...
-
-
-class StageHistoryRepository(Protocol):
-    def create(
-        self,
-        conn: psycopg.Connection,
-        *,
-        company_id: UUID,
-        from_stage: str,
-        to_stage: str,
-        changed_by: str,
-        reason: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]: ...
 
@@ -243,6 +242,76 @@ class ResearchRecordRepository(Protocol):
         *,
         limit: int = 100,
     ) -> list[dict[str, Any]]: ...
+
+
+class PipelineRepository(Protocol):
+    def list_companies(
+        self,
+        conn: psycopg.Connection,
+        *,
+        pipeline_stage: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]: ...
+
+    def get_company_pipeline(
+        self, conn: psycopg.Connection, company_id: UUID
+    ) -> dict[str, Any] | None: ...
+
+    def update_pipeline_fields(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        pipeline_stage: str | None = None,
+        next_action: str | None = None,
+        next_action_due_at: datetime | None = None,
+        pipeline_owner: str | None = None,
+        expected_value_cents: int | None = None,
+        pipeline_loss_reason: str | None = None,
+        pipeline_nurture_reason: str | None = None,
+        clear_loss_reason: bool = False,
+        clear_nurture_reason: bool = False,
+    ) -> dict[str, Any] | None: ...
+
+    def record_stage_history(
+        self,
+        conn: psycopg.Connection,
+        *,
+        company_id: UUID,
+        from_stage: str | None,
+        to_stage: str,
+        changed_by: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]: ...
+
+    def list_stage_history(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]: ...
+
+    def list_overdue_next_actions(
+        self,
+        conn: psycopg.Connection,
+        *,
+        reference: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]: ...
+
+    def list_upcoming_next_actions(
+        self,
+        conn: psycopg.Connection,
+        *,
+        reference: datetime,
+        window_end: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]: ...
+
+    def count_by_pipeline_stage(
+        self, conn: psycopg.Connection
+    ) -> list[tuple[str, int]]: ...
 
 
 class AcquisitionDashboardRepository(Protocol):
@@ -347,12 +416,3 @@ class AuditEventRepository(Protocol):
         page: int = 1,
         per_page: int = 50,
     ) -> tuple[list[dict[str, Any]], int]: ...
-
-    def list_for_entity(
-        self,
-        conn: psycopg.Connection,
-        *,
-        entity_type: str,
-        entity_id: str,
-        limit: int = 50,
-    ) -> list[dict[str, Any]]: ...
