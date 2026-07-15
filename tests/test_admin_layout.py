@@ -159,6 +159,7 @@ def test_admin_css_mobile_disclosure_collapsed_sizing() -> None:
         ".admin-nav-toggle:not([open]) {", 1
     )[1].split("}", 1)[0]
     assert "height: fit-content" in collapsed_block
+    assert "min-height: 0" in collapsed_block
     assert ".admin-nav-toggle:not([open]) .admin-nav-mobile-list" in mobile_block
     assert "display: none" in mobile_block.split(
         ".admin-nav-toggle:not([open]) .admin-nav-mobile-list", 1

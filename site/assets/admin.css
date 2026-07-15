@@ -687,6 +687,7 @@ body.admin-app {
 
   .admin-nav-toggle:not([open]) {
     height: fit-content;
+    min-height: 0;
   }
 
   .admin-nav-mobile-list {
