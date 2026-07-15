@@ -194,17 +194,21 @@ def test_admin_login_flows_cleanup_indexes_migration_is_idempotent() -> None:
 
 @pytest.mark.unit
 def test_acquisition_pipeline_migration_is_idempotent() -> None:
-    from app.pipeline_registry import (
-        extract_pipeline_stage_check_values,
-        pipeline_stage_check_constraint_literals,
-    )
-
     pipeline = next(m for m in MIGRATIONS if m.name == "acquisition_pipeline")
     assert pipeline.version == "013"
     assert "pipeline_stage" in pipeline.up_sql
     assert "pipeline_stage_history" in pipeline.up_sql
     assert "diagnostic_paid" in pipeline.up_sql
-    assert extract_pipeline_stage_check_values(pipeline.up_sql) == pipeline_stage_check_constraint_literals()
+
+
+@pytest.mark.unit
+def test_acquisition_pipeline_migration_check_constraint_uses_canonical_stages() -> None:
+    from app.pipeline_stages import parse_pipeline_stage_check_constraint, pipeline_stage_db_check_values
+
+    pipeline = next(m for m in MIGRATIONS if m.name == "acquisition_pipeline")
+    assert parse_pipeline_stage_check_constraint(pipeline.up_sql) == frozenset(
+        pipeline_stage_db_check_values()
+    )
 
 
 @pytest.mark.unit

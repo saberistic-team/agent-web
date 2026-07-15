@@ -7,15 +7,14 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from app.pipeline_registry import (
-    PIPELINE_STAGE_ORDER,
+from app.pipeline_stages import (
+    PIPELINE_STAGES,
+    SIDE_EXIT_STAGES,
+    STAGE_ORDER,
     TERMINAL_STAGES,
-    pipeline_stage_display_label,
-    pipeline_stages_ordered,
+    pipeline_stage_label,
+    validate_pipeline_stage,
 )
-
-PIPELINE_STAGES: dict[str, str] = pipeline_stages_ordered()
-STAGE_ORDER: tuple[str, ...] = PIPELINE_STAGE_ORDER
 
 PIPELINE_ACTIVITY_TYPES: dict[str, str] = {
     "note": "Note",
@@ -33,19 +32,6 @@ LEGACY_ACTIVITY_TYPES = frozenset({"email", "call", "status_change"})
 
 class PipelineTransitionError(ValueError):
     """Raised when a stage change is not allowed."""
-
-
-def pipeline_stage_label(stage: str | None) -> str:
-    if not stage:
-        return "—"
-    return pipeline_stage_display_label(stage)
-
-
-def validate_pipeline_stage(stage: str) -> str:
-    if stage not in PIPELINE_STAGES:
-        allowed = ", ".join(PIPELINE_STAGES)
-        raise ValueError(f"Invalid pipeline stage. Allowed: {allowed}")
-    return stage
 
 
 def validate_pipeline_activity_type(activity_type: str) -> str:

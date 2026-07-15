@@ -19,7 +19,7 @@ from app.acquisition_dashboard import (
     EvidenceRow,
     NextActionRow,
 )
-from app.pipeline_registry import PIPELINE_STAGE_ORDER, pipeline_stages_ordered
+from app.pipeline_stages import PIPELINE_STAGES
 from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES
 
 
@@ -179,7 +179,7 @@ def build_preview_acquisition_dashboard_data(
         )
 
     def _next_actions(*, overdue: bool) -> tuple[NextActionRow, ...]:
-        stage_keys = list(PIPELINE_STAGE_ORDER)
+        stage_keys = list(PIPELINE_STAGES.keys())
         rows: list[NextActionRow] = []
         for i in range(rng.randint(3, 6)):
             company = companies[i % len(companies)]
@@ -237,7 +237,7 @@ def build_preview_acquisition_dashboard_data(
     def _attention(*, pipeline_only: bool = False) -> tuple[CompanyAttentionRow, ...]:
         stage_keys = tuple(COMPANY_STAGES.keys())
         category_keys = tuple(COMPANY_CATEGORIES.keys())
-        pipeline_keys = PIPELINE_STAGE_ORDER
+        pipeline_keys = tuple(PIPELINE_STAGES.keys())
         rows: list[CompanyAttentionRow] = []
         for i in range(rng.randint(2, 4)):
             company = companies[(i + 4) % len(companies)]
@@ -450,12 +450,12 @@ def build_preview_section_rows(
                 )
             )
         elif active_path == "/admin/pipeline":
-            stage_key = rng.choice(list(PIPELINE_STAGE_ORDER))
+            stage_key = rng.choice(list(PIPELINE_STAGES))
             rows.append(
                 (
                     f"{company.split()[0]} pilot",
                     company,
-                    pipeline_stages_ordered()[stage_key],
+                    PIPELINE_STAGES[stage_key],
                     _format_amount(rng.choice((20_000, 35_000, 50_000, 75_000))),
                     stamp,
                 )
@@ -527,7 +527,7 @@ def build_preview_pipeline_companies(
     """Randomized pipeline companies for ADMIN_PREVIEW_MODE."""
     rng = rng or _preview_rng()
     now = now or datetime.now(timezone.utc)
-    stage_keys = list(PIPELINE_STAGE_ORDER)
+    stage_keys = list(PIPELINE_STAGES)
     companies: list[dict[str, object]] = []
     for index, company_id in enumerate(PREVIEW_PIPELINE_COMPANY_IDS):
         stage_key = stage_keys[index % len(stage_keys)]
@@ -846,7 +846,7 @@ def build_preview_audit_events(
                 "entity_id": str(rng.randint(10, 99)) if "pipeline" in action else None,
                 "correlation_id": f"corr-preview-{rng.randint(1000, 9999)}",
                 "summary_before": {"name": company} if "update" in action else None,
-                "summary_after": {"pipeline_stage": rng.choice(list(PIPELINE_STAGE_ORDER))}
+                "summary_after": {"pipeline_stage": rng.choice(list(PIPELINE_STAGES))}
                 if "update" in action
                 else {"ok": True},
             }

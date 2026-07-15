@@ -73,7 +73,7 @@ See [AUDIT_EVENTS.md](AUDIT_EVENTS.md) for append-only audit semantics.
 | `notes` | `TEXT` | Optional operator notes |
 | `archived_at` | `TIMESTAMPTZ` | Soft archive timestamp; related records remain untouched |
 | `status` | `TEXT` | `prospect`, `active`, `inactive` |
-| `pipeline_stage` | `TEXT` | Acquisition stage (default `researching`); see `app/pipeline_registry.py` |
+| `pipeline_stage` | `TEXT` | Acquisition stage (default `researching`); see `app/pipeline_stages.py` |
 | `next_action` | `TEXT` | Operator next step |
 | `next_action_due_at` | `TIMESTAMPTZ` | Due date for next action |
 | `owner` | `TEXT` | Assigned operator |

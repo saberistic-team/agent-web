@@ -1,39 +1,31 @@
-"""Acquisition pipeline stages and brief-to-pipeline mapping."""
+"""Brief-to-pipeline mapping helpers (re-exported from the canonical registry)."""
 
 from __future__ import annotations
 
-from typing import Final
-
-from app.pipeline_registry import (
+from app.pipeline_stages import (
     BRIEF_STATUS_INITIAL_PIPELINE_STAGE,
-    PIPELINE_STAGE_ORDER,
-    pipeline_stage_display_label,
+    InvalidStageError,
+    PIPELINE_STAGE_KEYS,
+    PIPELINE_STAGES,
+    PipelineError,
+    initial_pipeline_stage_for_brief_status,
+    pipeline_stage_label,
+    validate_stage,
 )
 
-PIPELINE_STAGES: Final[tuple[str, ...]] = PIPELINE_STAGE_ORDER
+# Backward-compatible aliases for callers that imported tuple/dict names from here.
+PIPELINE_STAGES_TUPLE = PIPELINE_STAGE_KEYS
+PIPELINE_STAGE_LABELS = PIPELINE_STAGES
 
-
-class PipelineError(Exception):
-    """Base pipeline validation error."""
-
-
-class InvalidStageError(PipelineError):
-    """Raised when a stage name is not in the supported pipeline."""
-
-
-def validate_stage(stage: str) -> None:
-    if stage not in PIPELINE_STAGES:
-        raise InvalidStageError(f"Unsupported pipeline stage: {stage}")
-
-
-def initial_pipeline_stage_for_brief_status(brief_status: str) -> str:
-    """Map Stripe-derived brief payment status to an initial pipeline stage."""
-    stage = BRIEF_STATUS_INITIAL_PIPELINE_STAGE.get(brief_status)
-    if stage is None:
-        raise InvalidStageError(f"Unsupported brief status for pipeline conversion: {brief_status}")
-    validate_stage(stage)
-    return stage
-
-
-def pipeline_stage_label(stage: str) -> str:
-    return pipeline_stage_display_label(stage)
+__all__ = (
+    "BRIEF_STATUS_INITIAL_PIPELINE_STAGE",
+    "InvalidStageError",
+    "PIPELINE_STAGE_KEYS",
+    "PIPELINE_STAGE_LABELS",
+    "PIPELINE_STAGES",
+    "PIPELINE_STAGES_TUPLE",
+    "PipelineError",
+    "initial_pipeline_stage_for_brief_status",
+    "pipeline_stage_label",
+    "validate_stage",
+)
