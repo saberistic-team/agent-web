@@ -101,6 +101,12 @@ PREVIEW_PIPELINE_COMPANY_IDS = (
     UUID("44444444-4444-4444-4444-444444444444"),
     UUID("55555555-5555-5555-5555-555555555555"),
 )
+# Company/contact detail and editor screenshot fixtures (ADMIN_PREVIEW_MODE).
+PREVIEW_COMPANY_POPULATED_ID = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+PREVIEW_COMPANY_ARCHIVED_ID = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa02")
+PREVIEW_CONTACT_POPULATED_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+PREVIEW_CONTACT_ARCHIVED_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbc")
+PREVIEW_COMPANY_VALIDATION_ERROR = "Name must be at least 2 characters."
 _SECTION_COLUMNS: dict[str, tuple[str, ...]] = {
     "/admin/companies": ("Company", "Category", "Stage", "Target", "Verified"),
     "/admin/contacts": ("Name", "Roles", "Company", "Email", "Last touch"),
@@ -604,6 +610,239 @@ def build_preview_pipeline_detail(
             "expected_value_cents": None,
         }
     return company, history, activities
+
+
+def build_preview_company(
+    company_id: UUID,
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> dict[str, object] | None:
+    """Return one preview company row for detail/editor screenshots."""
+    rng = rng or _preview_rng()
+    now = now or datetime.now(timezone.utc)
+    if company_id == PREVIEW_COMPANY_POPULATED_ID:
+        return {
+            "id": company_id,
+            "name": (
+                "Northwind Labs — Enterprise Platform Modernization "
+                "and Multi-Region Payments Advisory"
+            ),
+            "domain": "northwindlabs.io",
+            "website": "https://northwindlabs.io/platform/engineering",
+            "category": "fintech",
+            "stage": "series_b_plus",
+            "headcount_estimate": 240,
+            "funding_summary": "Series B · $48M · 2025",
+            "target_status": "target",
+            "last_verified_at": (now - timedelta(days=12)).date().isoformat(),
+            "notes": (
+                "Primary diagnostic prospect. Long notes field for screenshot "
+                "overflow checks across desktop and mobile viewports."
+            ),
+            "archived_at": None,
+        }
+    if company_id == PREVIEW_COMPANY_ARCHIVED_ID:
+        return {
+            "id": company_id,
+            "name": "Helios Rail (archived)",
+            "domain": "heliosrail.co",
+            "website": "https://heliosrail.co",
+            "category": "other",
+            "stage": "seed",
+            "headcount_estimate": None,
+            "funding_summary": None,
+            "target_status": "not_a_fit",
+            "last_verified_at": None,
+            "notes": None,
+            "archived_at": (now - timedelta(days=21)).isoformat(),
+        }
+    pipeline = build_preview_pipeline_companies(rng=rng, now=now)
+    match = next((row for row in pipeline if row["id"] == company_id), None)
+    if match is not None:
+        return {
+            "id": company_id,
+            "name": match["name"],
+            "domain": None,
+            "website": None,
+            "category": None,
+            "stage": None,
+            "headcount_estimate": None,
+            "funding_summary": None,
+            "target_status": None,
+            "last_verified_at": None,
+            "notes": None,
+            "archived_at": None,
+        }
+    return None
+
+
+def build_preview_companies_for_select(
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> list[dict[str, object]]:
+    """Companies for contact form company pickers in preview mode."""
+    populated = build_preview_company(PREVIEW_COMPANY_POPULATED_ID, rng=rng, now=now)
+    assert populated is not None
+    rows = [populated]
+    for company_id in PREVIEW_PIPELINE_COMPANY_IDS[:2]:
+        row = build_preview_company(company_id, rng=rng, now=now)
+        if row is not None:
+            rows.append(row)
+    return rows
+
+
+def build_preview_company_contacts(
+    company_id: UUID,
+    *,
+    rng: random.Random | None = None,
+) -> list[dict[str, object]]:
+    """Contacts linked to a preview company detail page."""
+    if company_id == PREVIEW_COMPANY_POPULATED_ID:
+        contact = build_preview_contact(PREVIEW_CONTACT_POPULATED_ID, rng=rng)
+        return [contact] if contact is not None else []
+    return []
+
+
+def build_preview_company_research(
+    company_id: UUID,
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> list[dict[str, object]]:
+    """Research records with public-evidence controls for screenshot fixtures."""
+    if company_id != PREVIEW_COMPANY_POPULATED_ID:
+        return []
+    rng = rng or _preview_rng()
+    now = now or datetime.now(timezone.utc)
+    return [
+        {
+            "record_type": "verified_fact",
+            "body": "Raised Series B and hiring senior platform engineers.",
+            "source_name": "TechCrunch",
+            "source_url": "https://techcrunch.com/example/northwind-series-b",
+            "observed_value": "48000000",
+            "observed_at": (now - timedelta(days=30)).isoformat(),
+            "confidence": 0.92,
+            "review_at": (now + timedelta(days=30)).isoformat(),
+            "expires_at": (now + timedelta(days=120)).isoformat(),
+        },
+        {
+            "record_type": "public_signal",
+            "body": "Job postings mention Kubernetes migration and PCI scope reduction.",
+            "source_name": "LinkedIn Jobs",
+            "source_url": "https://www.linkedin.com/jobs/view/1234567890",
+            "observed_value": "12 open roles",
+            "observed_at": (now - timedelta(days=4)).isoformat(),
+            "confidence": 0.78,
+            "review_at": (now + timedelta(days=14)).isoformat(),
+            "expires_at": (now + timedelta(days=60)).isoformat(),
+        },
+        {
+            "record_type": "hypothesis",
+            "body": "Likely evaluating outside architecture review before Q4 platform freeze.",
+            "source_name": None,
+            "source_url": None,
+            "observed_value": None,
+            "observed_at": None,
+            "confidence": None,
+            "review_at": None,
+            "expires_at": None,
+        },
+    ]
+
+
+def build_preview_contact(
+    contact_id: UUID,
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> dict[str, object] | None:
+    """Return one preview contact row for detail/editor screenshots."""
+    rng = rng or _preview_rng()
+    now = now or datetime.now(timezone.utc)
+    if contact_id == PREVIEW_CONTACT_POPULATED_ID:
+        first = rng.choice(CONTACT_FIRST)
+        last = rng.choice(CONTACT_LAST)
+        company = build_preview_company(PREVIEW_COMPANY_POPULATED_ID, rng=rng, now=now)
+        company_name = str(company["name"]) if company else "Northwind Labs"
+        return {
+            "id": contact_id,
+            "full_name": f"{first} {last}",
+            "title": "VP Engineering",
+            "profile_url": f"https://linkedin.com/in/{first.lower()}-{last.lower()}",
+            "email": _slug_email(first, last, company_name.split("—")[0].strip(), rng),
+            "email_permission": "permitted",
+            "company_id": PREVIEW_COMPANY_POPULATED_ID,
+            "company_name": company_name,
+            "buying_roles": ["technical_buyer", "executive_buyer"],
+            "relationship_strength": "warm",
+            "last_interaction_at": (now - timedelta(days=6)).date().isoformat(),
+            "notes": "Primary technical buyer; prefers async email before calls.",
+            "archived_at": None,
+        }
+    if contact_id == PREVIEW_CONTACT_ARCHIVED_ID:
+        return {
+            "id": contact_id,
+            "full_name": "Jordan Ellis (archived)",
+            "title": "Former CTO",
+            "profile_url": "https://linkedin.com/in/jordan-ellis-archived",
+            "email": "jordan.ellis@heliosrail.co",
+            "email_permission": "unknown",
+            "company_id": PREVIEW_COMPANY_ARCHIVED_ID,
+            "company_name": "Helios Rail (archived)",
+            "buying_roles": ["founder"],
+            "relationship_strength": "cold",
+            "last_interaction_at": None,
+            "notes": None,
+            "archived_at": (now - timedelta(days=45)).isoformat(),
+        }
+    return None
+
+
+def build_preview_contact_research(
+    contact_id: UUID,
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> list[dict[str, object]]:
+    """Research records for contact detail screenshots."""
+    if contact_id != PREVIEW_CONTACT_POPULATED_ID:
+        return []
+    now = now or datetime.now(timezone.utc)
+    return [
+        {
+            "record_type": "relationship_context",
+            "body": "Replied to intro email; asked for diagnostic scope and timeline.",
+            "source_name": None,
+            "source_url": None,
+            "observed_value": None,
+            "observed_at": None,
+            "confidence": None,
+            "review_at": None,
+            "expires_at": None,
+        },
+        {
+            "record_type": "follow_up_note",
+            "body": "Schedule follow-up after they review the architecture brief.",
+            "source_name": "CRM",
+            "source_url": None,
+            "observed_value": None,
+            "observed_at": (now - timedelta(days=1)).isoformat(),
+            "confidence": None,
+            "review_at": None,
+            "expires_at": None,
+        },
+    ]
+
+
+def preview_company_fixture_ids() -> frozenset[UUID]:
+    return frozenset({PREVIEW_COMPANY_POPULATED_ID, PREVIEW_COMPANY_ARCHIVED_ID})
+
+
+def preview_contact_fixture_ids() -> frozenset[UUID]:
+    return frozenset({PREVIEW_CONTACT_POPULATED_ID, PREVIEW_CONTACT_ARCHIVED_ID})
 
 
 def _brief_website(company: str, rng: random.Random) -> str:
