@@ -1,37 +1,41 @@
-"""Deployment configuration tests for admin proxy trust settings."""
+"""Deployment configuration consistency for admin proxy trust (#239)."""
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-RENDER_YAML = REPO_ROOT / "render.yaml"
-ADMIN_AUTH_DOC = REPO_ROOT / "docs" / "ADMIN_AUTH.md"
+RENDER_PATH = Path("render.yaml")
+ADMIN_AUTH_DOC = Path("docs/ADMIN_AUTH.md")
 
 
 @pytest.mark.unit
-def test_render_yaml_declares_uvicorn_forwarded_allow_ips() -> None:
-    text = RENDER_YAML.read_text(encoding="utf-8")
-    assert "--proxy-headers" in text
-    assert "--forwarded-allow-ips" in text
-    assert "10.0.0.0/8" in text
+def test_render_yaml_declares_proxy_trust_env_and_uvicorn_flag() -> None:
+    text = RENDER_PATH.read_text(encoding="utf-8")
+    assert re.search(
+        r'startCommand:.*--forwarded-allow-ips="\$UVICORN_FORWARDED_ALLOW_IPS"',
+        text,
+    )
+    for key, expected in (
+        ("ADMIN_TRUST_PROXY_HEADERS", "true"),
+        ("ADMIN_TRUST_CLOUDFLARE_EDGE", "true"),
+    ):
+        assert re.search(rf"key: {key}\n\s+value: \"{expected}\"", text)
+    for key in ("ADMIN_TRUSTED_PROXY_CIDRS", "UVICORN_FORWARDED_ALLOW_IPS"):
+        assert re.search(rf"key: {key}\n\s+value:", text)
 
 
 @pytest.mark.unit
-def test_render_yaml_declares_admin_trusted_proxy_env_vars() -> None:
-    text = RENDER_YAML.read_text(encoding="utf-8")
-    assert "ADMIN_TRUSTED_PROXY_CIDRS" in text
-    assert "ADMIN_TRUSTED_EDGE_CIDRS" in text
-    assert "172.64.0.0/13" in text
-
-
-@pytest.mark.unit
-def test_admin_auth_doc_matches_render_proxy_trust_model() -> None:
+def test_admin_auth_doc_documents_same_trust_model() -> None:
     text = ADMIN_AUTH_DOC.read_text(encoding="utf-8")
-    assert "ADMIN_TRUSTED_PROXY_CIDRS" in text
-    assert "ADMIN_TRUSTED_EDGE_CIDRS" in text
-    assert "--forwarded-allow-ips" in text
-    assert "ADMIN_TRUST_PROXY_HEADERS" in text
-    assert "left-most" not in text
+    for phrase in (
+        "ADMIN_TRUSTED_PROXY_CIDRS",
+        "ADMIN_TRUST_CLOUDFLARE_EDGE",
+        "UVICORN_FORWARDED_ALLOW_IPS",
+        "Right-to-left",
+        "admin_client_source_trust",
+        "Rollback if every request shares one limiter source",
+    ):
+        assert phrase in text
