@@ -3,7 +3,14 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+
+from app.proxy_trust_config import (
+    DEFAULT_TRUSTED_EDGE_CIDRS,
+    DEFAULT_TRUSTED_PROXY_CIDRS,
+    DEFAULT_UVICORN_FORWARDED_ALLOW_IPS,
+    parse_cidr_list,
+)
 
 
 @dataclass(frozen=True)
@@ -27,8 +34,12 @@ class Settings:
     admin_login_rate_limit: int = 5
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
-    admin_trusted_proxy_cidrs: tuple[str, ...] = field(default_factory=tuple)
-    admin_trust_cloudflare_proxy: bool = True
+    admin_trust_proxy_headers: bool = False
+    admin_trusted_proxy_cidrs: tuple[str, ...] = ()
+    admin_trusted_forward_hop_cidrs: tuple[str, ...] = ()
+    admin_trusted_edge_cidrs: tuple[str, ...] = ()
+    uvicorn_proxy_headers: bool = False
+    uvicorn_forwarded_allow_ips: str = ""
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -110,25 +121,25 @@ def get_settings() -> Settings:
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
         brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
-        admin_trusted_proxy_cidrs=_parse_admin_trusted_proxy_cidrs(),
-        admin_trust_cloudflare_proxy=os.environ.get(
-            "ADMIN_TRUST_CLOUDFLARE_PROXY", "true"
+        admin_trust_proxy_headers=os.environ.get(
+            "ADMIN_TRUST_PROXY_HEADERS", ""
         ).lower()
         in ("1", "true", "yes"),
+        admin_trusted_proxy_cidrs=parse_cidr_list(
+            os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS"),
+            default=DEFAULT_TRUSTED_PROXY_CIDRS,
+        ),
+        admin_trusted_forward_hop_cidrs=parse_cidr_list(
+            os.environ.get("ADMIN_TRUSTED_FORWARD_HOP_CIDRS"),
+            default=DEFAULT_TRUSTED_PROXY_CIDRS,
+        ),
+        admin_trusted_edge_cidrs=parse_cidr_list(
+            os.environ.get("ADMIN_TRUSTED_EDGE_CIDRS"),
+            default=DEFAULT_TRUSTED_EDGE_CIDRS,
+        ),
+        uvicorn_proxy_headers=os.environ.get("UVICORN_PROXY_HEADERS", "").lower()
+        in ("1", "true", "yes"),
+        uvicorn_forwarded_allow_ips=os.environ.get(
+            "UVICORN_FORWARDED_ALLOW_IPS", DEFAULT_UVICORN_FORWARDED_ALLOW_IPS
+        ).strip(),
     )
-
-
-def _parse_admin_trusted_proxy_cidrs() -> tuple[str, ...]:
-    explicit = os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "").strip()
-    if explicit:
-        return tuple(
-            part.strip()
-            for part in explicit.split(",")
-            if part.strip()
-        )
-    legacy = os.environ.get("ADMIN_TRUST_PROXY_HEADERS", "").lower()
-    if legacy in ("1", "true", "yes"):
-        from app.admin_client_source import DEFAULT_RENDER_TRUSTED_PROXY_CIDRS
-
-        return DEFAULT_RENDER_TRUSTED_PROXY_CIDRS
-    return ()

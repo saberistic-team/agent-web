@@ -21,6 +21,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import analytics_service, case_studies, db, email_service, insights, page_service, stripe_service
 from app.admin_auth import AdminLoginRequired, login_redirect_url
+from app.admin_client_source import deployment_trust_summary
 from app.admin_pipeline_routes import router as admin_pipeline_router
 from app.admin_routes import router as admin_router
 from app.actor_context import CORRELATION_HEADER
@@ -119,8 +120,7 @@ def health() -> dict:
     """
     payload: dict = {"status": "ok"}
     settings = get_settings()
-    if settings.admin_trust_proxy_headers and settings.admin_trusted_proxy_cidrs:
-        payload["admin_proxy_trust"] = "configured"
+    payload["admin_client_source"] = deployment_trust_summary(settings)
     if not settings.database_configured:
         return payload
     try:

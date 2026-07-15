@@ -236,10 +236,7 @@ def read_login_flow_token(request: Request) -> str | None:
 
 
 def client_ip(request: Request, settings: Settings) -> str:
-    """Resolve the client source IP for admin login rate limiting.
-
-    See :func:`resolve_admin_login_client_source` for the trusted-proxy model.
-    """
+    """Resolve the client source IP for rate limiting (see ``admin_client_source``)."""
     return resolve_admin_login_client_source(request, settings).source
 
 
@@ -364,7 +361,8 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    source = client_ip(request, settings)
+    resolution = resolve_admin_login_client_source(request, settings)
+    source = resolution.source
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,
@@ -416,6 +414,7 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "lockout_transition": admission.lockout_transition,
+                "client_source_path": resolution.path,
             },
         )
     elif admission.already_locked:
@@ -424,6 +423,7 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "already_locked": True,
+                "client_source_path": resolution.path,
             },
         )
     return LoginAdmissionResult(
