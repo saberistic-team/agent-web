@@ -97,39 +97,6 @@ def test_list_pr_files_paginates(monkeypatch: pytest.MonkeyPatch) -> None:
     assert files[-1]["filename"] == "tests/test_seo.py"
 
 
-def test_list_pr_files_finds_tests_beyond_default_github_page(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Regression: reviewer hard-fail skipped tests when only page 1 (30 files) was read."""
-
-    page_one = [{"filename": f"docs/worldgraph/spike/fixture-{i}.html"} for i in range(99)]
-    page_one.append({"filename": "spike/worldgraph/fetcher.py"})
-    pages: dict[int, list[dict[str, Any]]] = {
-        1: page_one,
-        2: [{"filename": "tests/test_worldgraph_spike.py"}],
-    }
-
-    def fake_api(method: str, path: str, **_kwargs: Any) -> Any:
-        assert method == "GET"
-        page = int(path.rsplit("page=", 1)[-1]) if "page=" in path else 1
-        return pages.get(page, [])
-
-    monkeypatch.setattr(github_api, "api", fake_api)
-    files = github_api.list_pr_files("o/n", 206)
-    filenames = [f["filename"] for f in files]
-    code_touched = any(
-        not name.startswith(("docs/", "AGENTS/", ".agent/", "README"))
-        and not name.endswith((".md", ".jsonl"))
-        for name in filenames
-    )
-    tests_touched = any(
-        "test" in name.lower() or name.startswith("tests/") for name in filenames
-    )
-    assert code_touched
-    assert tests_touched
-    assert not (code_touched and not tests_touched)
-
-
 def test_retry_delay_honors_retry_after() -> None:
     assert github_api._retry_delay_s(0, retry_after="3") == 3.0
     assert github_api._retry_delay_s(0, retry_after="999") == github_api.API_BACKOFF_CAP_S

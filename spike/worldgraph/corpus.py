@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 SPIKE_ROOT = Path(__file__).resolve().parents[2] / "docs" / "worldgraph" / "spike"
-FIXTURES_DIR = SPIKE_ROOT / "fixtures" / "sources"
+FIXTURES_PATH = SPIKE_ROOT / "corpus_fixtures.json"
 CORPUS_PATH = SPIKE_ROOT / "corpus_sources.json"
 QUERIES_PATH = SPIKE_ROOT / "queries.json"
 SCHEMA_PATH = Path(__file__).resolve().parents[2] / "docs" / "worldgraph" / "world-manifest-v0.schema.json"
@@ -26,9 +26,14 @@ def load_queries() -> list[dict[str, Any]]:
     return list(payload["queries"])
 
 
-def fixture_path(name: str) -> Path:
-    return FIXTURES_DIR / name
+def _load_fixture_bundle() -> dict[str, str]:
+    with FIXTURES_PATH.open(encoding="utf-8") as handle:
+        payload = json.load(handle)
+    return dict(payload["fixtures"])
 
 
 def read_fixture(name: str) -> str:
-    return fixture_path(name).read_text(encoding="utf-8")
+    fixtures = _load_fixture_bundle()
+    if name not in fixtures:
+        raise KeyError(f"fixture not found in corpus bundle: {name}")
+    return fixtures[name]

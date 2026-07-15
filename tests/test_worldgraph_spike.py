@@ -56,6 +56,14 @@ def test_corpus_has_qualifying_and_negative_controls() -> None:
 
 
 @pytest.mark.unit
+def test_corpus_fixture_bundle_covers_all_sources() -> None:
+    bundle_path = REPO_ROOT / "docs/worldgraph/spike/corpus_fixtures.json"
+    bundle = json.loads(bundle_path.read_text(encoding="utf-8"))["fixtures"]
+    for entry in load_corpus():
+        assert entry["fixture"] in bundle, f"missing bundled fixture: {entry['fixture']}"
+
+
+@pytest.mark.unit
 def test_queries_are_predeclared() -> None:
     queries = load_queries()
     assert len(queries) >= 10
@@ -432,8 +440,8 @@ def test_manifest_v0_schema_file_declares_version() -> None:
 @pytest.mark.unit
 def test_research_corpus_supplementary_fixtures_exist() -> None:
     for entry in load_research_corpus():
-        if fixture := entry.get("fixture"):
-            assert (REPO_ROOT / fixture).is_file(), f"missing fixture: {fixture}"
+        if entry.get("fixture_key"):
+            assert entry.get("fixture_body"), f"missing fixture body: {entry['id']}"
 
 
 @pytest.mark.unit
@@ -450,7 +458,8 @@ def test_research_corpus_ssrf_and_scheme_negative_controls() -> None:
 
 @pytest.mark.unit
 def test_xss_negative_control_sanitizes_scripts() -> None:
-    html = (REPO_ROOT / "tests/fixtures/worldgraph/neg-006-xss.html").read_text(encoding="utf-8")
+    entry = next(e for e in load_research_corpus() if e["id"] == "neg-006")
+    html = entry["fixture_body"]
     text = strip_html_to_text(html)
     assert "alert" not in text
     assert "XSS World" in text
@@ -458,9 +467,8 @@ def test_xss_negative_control_sanitizes_scripts() -> None:
 
 @pytest.mark.unit
 def test_supplementary_injection_readme_does_not_escalate_claim_status() -> None:
-    body = (REPO_ROOT / "tests/fixtures/worldgraph/neg-005-injection-readme.md").read_text(
-        encoding="utf-8"
-    )
+    entry = next(e for e in load_research_corpus() if e["id"] == "neg-005")
+    body = entry["fixture_body"]
     extractor = ModelAssistedExtractor()
     result = extractor.extract(
         source_id="neg-005",

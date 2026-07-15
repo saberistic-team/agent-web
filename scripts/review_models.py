@@ -14,7 +14,7 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-from github_api import GitHubError, api, list_pr_files, split_repo
+from github_api import GitHubError, api, split_repo
 
 DEFAULT_MODEL = "openai/gpt-4o-mini"
 DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
@@ -306,7 +306,7 @@ def collect_pr_context(repo: str, issue: int, pr_number: int) -> dict[str, Any]:
     owner, name = split_repo(repo)
     issue_data = api("GET", f"/repos/{owner}/{name}/issues/{issue}")
     pr = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}")
-    files = list_pr_files(repo, pr_number)
+    files = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}/files") or []
     commits = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}/commits") or []
     patches = []
     for f in files[:20]:

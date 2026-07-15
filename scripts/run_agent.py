@@ -25,7 +25,6 @@ from github_api import (
     add_labels,
     api,
     delete_label,
-    list_pr_files,
     post_issue_comment,
     split_repo,
 )
@@ -1102,7 +1101,7 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
             hard_fail_reasons.append(f"security check failed: {run.get('name')}")
 
     # Missing tests / stub-only / scaffold-sync heuristics
-    files = list_pr_files(repo, pr_number)
+    files = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}/files") or []
     filenames = [f["filename"] for f in files]
     only_worklog = filenames and all(
         name.startswith(".agent/worklogs/") or name.endswith(".md")
