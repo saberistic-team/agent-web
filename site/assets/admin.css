@@ -68,27 +68,26 @@ body.admin-app {
   padding: 0;
 }
 
-/* Form action buttons — distinct from link-like .admin-exit and primary .cta */
+/* Form action buttons — distinct from link-like .admin-exit top-bar actions. */
 .admin-action {
   display: inline-block;
-  margin: 0;
-  padding: 0.65rem 1.1rem;
+  margin: 0.5rem 0 1.25rem;
+  padding: 0.55rem 0.95rem;
   font-family: inherit;
   font-size: 0.72rem;
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   text-decoration: none;
-  line-height: 1.25;
-  border: 1px solid var(--line);
   border-radius: 2px;
-  background: color-mix(in srgb, var(--surface) 80%, transparent);
-  color: var(--ink);
   cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink);
   transition:
-    background 0.2s ease,
-    border-color 0.2s ease,
-    color 0.2s ease,
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
     transform 0.15s ease;
 }
 
@@ -106,52 +105,38 @@ body.admin-app {
   transform: translateY(1px);
 }
 
-.admin-action:disabled {
+.admin-action:disabled,
+.admin-action[aria-disabled="true"] {
   opacity: 0.45;
   cursor: not-allowed;
+  transform: none;
+}
+
+.admin-action--secondary {
   border-color: var(--line);
-  color: var(--muted);
-  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  color: var(--ink);
+}
+
+.admin-action--secondary:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .admin-action--destructive {
   border-color: color-mix(in srgb, #e05a5a 55%, var(--line));
-  background: color-mix(in srgb, #e05a5a 12%, var(--surface));
   color: #ffb4b4;
+  background: color-mix(in srgb, #e05a5a 10%, transparent);
 }
 
-.admin-action--destructive:hover:not(:disabled) {
-  border-color: #e88a6a;
-  background: color-mix(in srgb, #e05a5a 22%, var(--surface));
-  color: #ffd4cc;
+.admin-action--destructive:hover {
+  border-color: #e05a5a;
+  color: #ffd4d4;
+  background: color-mix(in srgb, #e05a5a 18%, transparent);
 }
 
 .admin-action--destructive:focus-visible {
-  outline-color: #e88a6a;
-}
-
-.admin-action--destructive:active:not(:disabled) {
-  background: color-mix(in srgb, #e05a5a 28%, var(--surface));
-}
-
-.admin-action--secondary {
-  border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
-  background: color-mix(in srgb, var(--surface) 85%, transparent);
-  color: var(--ink);
-}
-
-.admin-action--secondary:hover:not(:disabled) {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
-  color: var(--accent);
-}
-
-.admin-action--secondary:focus-visible {
-  outline-color: var(--accent);
-}
-
-.admin-action--secondary:active:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 20%, var(--surface));
+  outline-color: #e05a5a;
 }
 
 .admin-layout {

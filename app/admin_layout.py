@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import html
-from typing import Any
 
 ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
     {
@@ -93,13 +92,13 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert",
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
+    "/admin/companies/cccccccc-cccc-cccc-cccc-cccccccccc01",
+    "/admin/companies/cccccccc-cccc-cccc-cccc-cccccccccc02",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd01",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd01/edit",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd02",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd02/edit",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
-    "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-    "/admin/companies/cccccccc-cccc-cccc-cccc-cccccccccccc",
-    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
-    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd",
-    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/edit",
-    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd/edit",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
@@ -110,32 +109,12 @@ ADMIN_SCREENSHOT_EXPECTED_STATUS: dict[str, int] = {
 }
 
 
-def admin_archive_button_class(*, archived: bool) -> str:
-    """Return semantic action classes for archive vs restore submit buttons."""
-    modifier = "admin-action--secondary" if archived else "admin-action--destructive"
-    return f"admin-action {modifier}"
-
-
-def render_admin_archive_form(
-    *,
-    entity_path: str,
-    entity_label: str,
-    csrf_token: str,
-    archived_at: Any,
-    indent: str = "          ",
-) -> str:
-    """Render POST form with themed Archive/Restore action button."""
-    action = "restore" if archived_at else "archive"
-    label = f"Restore {entity_label}" if archived_at else f"Archive {entity_label}"
-    button_class = admin_archive_button_class(archived=bool(archived_at))
-    token = html.escape(csrf_token, quote=True)
-    path = html.escape(entity_path, quote=True)
+def archive_action_button(*, label: str, archived: bool) -> str:
+    """Return a themed Archive/Restore submit button for CRM detail/edit forms."""
+    modifier = "secondary" if archived else "destructive"
     return (
-        f'{indent}<form method="post" action="{path}/{action}">\n'
-        f'{indent}  <input type="hidden" name="csrf_token" value="{token}" />\n'
-        f'{indent}  <button class="{button_class}" type="submit">'
-        f"{html.escape(label)}</button>\n"
-        f"{indent}</form>"
+        f'<button class="admin-action admin-action--{modifier}" type="submit">'
+        f"{html.escape(label)}</button>"
     )
 
 

@@ -10,13 +10,8 @@ from fastapi.testclient import TestClient
 
 from app.admin_preview import (
     COMPANY_NAMES,
-    PREVIEW_COMPANY_DETAIL_ACTIVE_ID,
-    PREVIEW_COMPANY_DETAIL_ARCHIVED_ID,
-    PREVIEW_CONTACT_DETAIL_ACTIVE_ID,
     PREVIEW_PIPELINE_COMPANY_IDS,
     build_preview_acquisition_dashboard_data,
-    build_preview_company_research_detail,
-    build_preview_contact_research_detail,
     build_preview_dashboard_data,
     build_preview_pipeline_companies,
     build_preview_pipeline_detail,
@@ -315,33 +310,6 @@ def test_preview_pipeline_detail_nullable_fields() -> None:
 
 
 @pytest.mark.unit
-def test_preview_company_and_contact_detail_archive_states() -> None:
-    active = build_preview_company_research_detail(
-        PREVIEW_COMPANY_DETAIL_ACTIVE_ID,
-        rng=random.Random(42),
-    )
-    assert active is not None
-    company, contacts, records = active
-    assert company.get("archived_at") is None
-    assert contacts
-    assert records
-
-    archived = build_preview_company_research_detail(
-        PREVIEW_COMPANY_DETAIL_ARCHIVED_ID,
-        rng=random.Random(42),
-    )
-    assert archived is not None
-    assert archived[0].get("archived_at") is not None
-
-    contact = build_preview_contact_research_detail(
-        PREVIEW_CONTACT_DETAIL_ACTIVE_ID,
-        rng=random.Random(42),
-    )
-    assert contact is not None
-    assert contact[0].get("archived_at") is None
-
-
-@pytest.mark.unit
 def test_preview_acquisition_dashboard_data_is_populated() -> None:
     from app.admin_preview import build_preview_acquisition_dashboard_data
 
@@ -398,3 +366,31 @@ def test_preview_brief_conversion_states() -> None:
     assert matches["company_matches"]
     assert matches["contact_matches"]
     assert matches["proposal"]["pipeline_stage"] in {"qualified", "diagnostic_paid"}
+
+
+@pytest.mark.unit
+def test_preview_archive_restore_detail_builders() -> None:
+    from app.admin_preview import (
+        PREVIEW_COMPANY_DETAIL_ARCHIVE_ID,
+        PREVIEW_COMPANY_DETAIL_RESTORE_ID,
+        PREVIEW_CONTACT_DETAIL_ARCHIVE_ID,
+        PREVIEW_CONTACT_DETAIL_RESTORE_ID,
+        preview_company_research_detail,
+        preview_contact_edit_detail,
+        preview_contact_research_detail,
+    )
+
+    company_archive = preview_company_research_detail(PREVIEW_COMPANY_DETAIL_ARCHIVE_ID)
+    company_restore = preview_company_research_detail(PREVIEW_COMPANY_DETAIL_RESTORE_ID)
+    contact_archive = preview_contact_research_detail(PREVIEW_CONTACT_DETAIL_ARCHIVE_ID)
+    contact_restore = preview_contact_edit_detail(PREVIEW_CONTACT_DETAIL_RESTORE_ID)
+    assert company_archive is not None
+    assert company_restore is not None
+    assert contact_archive is not None
+    assert contact_restore is not None
+    assert company_archive[0]["archived_at"] is None
+    assert company_restore[0]["archived_at"] is not None
+    assert contact_archive[0]["archived_at"] is None
+    assert contact_restore[0]["archived_at"] is not None
+    assert len(company_archive[1]) >= 1
+    assert len(company_archive[2]) >= 1
