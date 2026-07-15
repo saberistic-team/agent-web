@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import os
 from dataclasses import dataclass
 
@@ -27,9 +28,12 @@ class Settings:
     admin_login_rate_limit: int = 5
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
-    admin_trust_proxy_headers: bool = False
-    admin_trusted_proxy_cidrs: tuple[str, ...] = ()
-    admin_cloudflare_edge_cidrs: tuple[str, ...] = ()
+    admin_trusted_proxy_cidrs: tuple[
+        ipaddress.IPv4Network | ipaddress.IPv6Network, ...
+    ] = ()
+    admin_trusted_edge_cidrs: tuple[
+        ipaddress.IPv4Network | ipaddress.IPv6Network, ...
+    ] = ()
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -84,6 +88,20 @@ class Settings:
         return bool(self.plausible_domain)
 
 
+def parse_cidr_list(raw: str) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+    """Parse comma-separated CIDR strings; invalid entries are skipped."""
+    networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
+    for part in raw.split(","):
+        candidate = part.strip()
+        if not candidate:
+            continue
+        try:
+            networks.append(ipaddress.ip_network(candidate, strict=False))
+        except ValueError:
+            continue
+    return tuple(networks)
+
+
 def get_settings() -> Settings:
     return Settings(
         database_url=os.environ.get("DATABASE_URL", ""),
@@ -111,17 +129,10 @@ def get_settings() -> Settings:
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
         brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
-        admin_trust_proxy_headers=os.environ.get(
-            "ADMIN_TRUST_PROXY_HEADERS", ""
-        ).lower()
-        in ("1", "true", "yes"),
-        admin_trusted_proxy_cidrs=_parse_csv_env("ADMIN_TRUSTED_PROXY_CIDRS"),
-        admin_cloudflare_edge_cidrs=_parse_csv_env("ADMIN_CLOUDFLARE_EDGE_CIDRS"),
+        admin_trusted_proxy_cidrs=parse_cidr_list(
+            os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "")
+        ),
+        admin_trusted_edge_cidrs=parse_cidr_list(
+            os.environ.get("ADMIN_TRUSTED_EDGE_CIDRS", "")
+        ),
     )
-
-
-def _parse_csv_env(name: str) -> tuple[str, ...]:
-    raw = os.environ.get(name, "").strip()
-    if not raw:
-        return ()
-    return tuple(item.strip() for item in raw.split(",") if item.strip())

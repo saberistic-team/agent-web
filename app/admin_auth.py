@@ -236,11 +236,11 @@ def read_login_flow_token(request: Request) -> str | None:
 
 
 def client_ip(request: Request, settings: Settings) -> str:
-    """Resolve the client source IP for admin login rate limiting.
+    """Resolve the client source for admin login rate limiting.
 
-    Delegates to :func:`resolve_admin_login_client_source`, which accepts
-    forwarded identity only when the immediate peer is a configured trusted
-    proxy and applies right-to-left trusted-hop parsing on ``X-Forwarded-For``.
+    Delegates to :func:`resolve_admin_login_client_source`, which only trusts
+    forwarding headers when the immediate peer matches
+    ``ADMIN_TRUSTED_PROXY_CIDRS`` and the hop chain validates.
     """
     return resolve_admin_login_client_source(request, settings).source
 
@@ -366,7 +366,8 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    source = client_ip(request, settings)
+    resolution = resolve_admin_login_client_source(request, settings)
+    source = resolution.source
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,
@@ -412,11 +413,16 @@ def try_admit_login_attempt(
             store_unavailable=True,
         )
 
+    telemetry = {
+        "limiter_key_count": len(limiter_keys),
+        "source_resolution_path": resolution.path.value,
+        "invalid_forwarding": resolution.invalid_forwarding,
+    }
     if admission.admitted:
         _logger.info(
             "Admin login attempt admitted",
             extra={
-                "limiter_key_count": len(limiter_keys),
+                **telemetry,
                 "lockout_transition": admission.lockout_transition,
             },
         )
@@ -424,7 +430,7 @@ def try_admit_login_attempt(
         _logger.info(
             "Admin login attempt throttled",
             extra={
-                "limiter_key_count": len(limiter_keys),
+                **telemetry,
                 "already_locked": True,
             },
         )

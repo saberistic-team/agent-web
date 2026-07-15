@@ -40,20 +40,21 @@ def main(argv: list[str] | None = None) -> int:
             print(f"FAIL {url}: got {payload!r}, expected {key}={expected!r}", file=sys.stderr)
             return 1
         print(f"PASS {url} → {payload}")
-    health_url = f"{base}/health"
-    try:
-        health_payload = get_json(health_url)
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-        print(f"FAIL {health_url}: {exc}", file=sys.stderr)
-        return 1
-    if health_payload.get("admin_client_source_trust") != "configured":
-        print(
-            f"FAIL {health_url}: admin_client_source_trust="
-            f"{health_payload.get('admin_client_source_trust')!r}, expected 'configured'",
-            file=sys.stderr,
-        )
-        return 1
-    print(f"PASS {health_url} → admin_client_source_trust=configured")
+
+    if base.rstrip("/").endswith("saberistic.com") or "saberistic.com" in base:
+        try:
+            health = get_json(f"{base.rstrip('/')}/health")
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            print(f"FAIL /health trust check: {exc}", file=sys.stderr)
+            return 1
+        trust = health.get("admin_client_source_trust")
+        if not isinstance(trust, dict) or not trust.get("proxy_cidrs_configured"):
+            print(
+                f"FAIL /health admin_client_source_trust: {trust!r}",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"PASS /health admin_client_source_trust → {trust!r}")
     return 0
 
 
