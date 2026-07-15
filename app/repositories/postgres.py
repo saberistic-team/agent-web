@@ -9,6 +9,7 @@ from uuid import UUID
 
 import psycopg
 
+from app.contacts import DECISION_MAKER_BUYING_ROLES
 from app.repositories.protocols import (
     ActivityRepository,
     AdminUserRepository,
@@ -961,6 +962,7 @@ class PostgresAcquisitionDashboardRepository:
                 FROM contacts ct
                 INNER JOIN companies c ON c.id = ct.company_id
                 WHERE c.archived_at IS NULL
+                  AND ct.archived_at IS NULL
                 GROUP BY bucket
                 ORDER BY total DESC, bucket ASC
                 """,
@@ -1057,12 +1059,16 @@ class PostgresAcquisitionDashboardRepository:
                 WHERE c.archived_at IS NULL
                   AND c.target_status = ANY(%s)
                   AND NOT EXISTS (
-                      SELECT 1 FROM contacts ct WHERE ct.company_id = c.id
+                      SELECT 1
+                      FROM contacts ct
+                      WHERE ct.company_id = c.id
+                        AND ct.archived_at IS NULL
+                        AND ct.buying_roles && %s::text[]
                   )
                 ORDER BY c.name ASC
                 LIMIT %s
                 """,
-                (list(self._TARGET_STATUSES), limit),
+                (list(self._TARGET_STATUSES), list(DECISION_MAKER_BUYING_ROLES), limit),
             )
             rows = cur.fetchall()
         return [dict(row) for row in rows]

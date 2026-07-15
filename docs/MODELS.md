@@ -22,13 +22,15 @@ is set. OpenAI and GitHub Models are backups (OpenAI quota is often exhausted).
    or `git merge origin/main` fails and loops Builder↔Reviewer.
    **Pitfall:** a “resolved” merge that drops imports / router wiring / Protocol
    exports breaks CI (`NameError` / `ImportError`) and also loops — resolution
-   must smoke `from app.main import app` **and** `pytest --collect-only` before
-   push (`broken_after_resolve` → `waiting`, never Reviewer). Collect-only
-   catches stale tests that still import deleted symbols after API
+   must smoke `from app.main import app`, `pytest --collect-only`, **and** full
+   `pytest -q` before push (`broken_after_resolve` → `waiting`, never Reviewer).
+   Collect-only catches stale tests that still import deleted symbols after API
    consolidations (e.g. `PostgresStageHistoryRepository` on #107 / #145) while
-   `app.main` still loads. **Also smoke mergeable/clean PR heads** before
-   handoff; an already-broken remote head can be `mergeable: true` while
-   `admin_router` / `CORRELATION_HEADER` are undefined or collection fails.
+   `app.main` still loads. Full pytest catches renamed UI copy still asserted
+   in untouched modules (e.g. `test_admin_auth.py` on #182 / #188).
+   **Also smoke mergeable/clean PR heads** before handoff; an already-broken
+   remote head can be `mergeable: true` while `admin_router` /
+   `CORRELATION_HEADER` are undefined, collection fails, or CI assertions fail.
    **Pitfall:** Cursor local bridge rejects callback tokens that start with `-`
    (`Missing value for --tool-callback-auth-token`). SDK may mark
    `retryable=False`, but Builder must treat it as `waiting` and patch token

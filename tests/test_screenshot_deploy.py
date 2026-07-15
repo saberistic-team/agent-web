@@ -40,13 +40,19 @@ def test_screenshot_basename_desktop_keeps_legacy_names() -> None:
     )
 
 
-def test_screenshot_basename_mobile_suffix() -> None:
-    assert screenshot_basename("pre", "/", "mobile") == "pre-home-mobile.png"
-    assert screenshot_basename("pre", "/about", "mobile") == "pre-about-mobile.png"
-    assert screenshot_basename("post", "/about", "mobile") == "post-about-mobile.png"
-    assert screenshot_basename("branch", "/", "mobile") == "branch-home-mobile.png"
-    assert screenshot_basename("branch", "/admin", "mobile-open") == (
-        "branch-admin-mobile-open.png"
+def test_screenshot_basename_strips_query_string() -> None:
+    """Query params must be FS-safe and distinct from the no-query route."""
+    assert screenshot_basename(
+        "branch", "/admin/briefs/4/convert?error=validation", "desktop"
+    ) == "branch-admin-briefs-4-convert-error-validation.png"
+    assert screenshot_basename(
+        "branch", "/admin/briefs/4/convert?error=validation", "mobile"
+    ) == "branch-admin-briefs-4-convert-error-validation-mobile.png"
+    assert screenshot_basename(
+        "branch", "/admin/briefs/4/convert", "desktop"
+    ) == "branch-admin-briefs-4-convert.png"
+    assert "?" not in screenshot_basename(
+        "branch", "/admin/x?y=1&z=2", "desktop"
     )
 
 

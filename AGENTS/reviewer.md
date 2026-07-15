@@ -124,9 +124,33 @@ fails only on **pytest collection ImportError** for deleted/renamed symbols
 (e.g. `PostgresStageHistoryRepository`), keep requesting changes — but cite
 the **stale-test / conflict-merge** root cause so Builder deletes orphan
 modules instead of regenerating a second parallel API. Builder smoke now
-includes `pytest --collect-only`; if the same collection error returns after
-a claimed `resolved` merge, escalate `@human-review` rather than inventing
-another domain module.
+includes `pytest --collect-only` **and** full `pytest -q`; if the same
+collection error returns after a claimed `resolved` merge, escalate
+`@human-review` rather than inventing another domain module.
+
+**Anti-loop (stale UI-string asserts, learned from
+[#182](https://github.com/saberistic-team/agent-web/issues/182) / #188):**
+When CI fails because a renamed dashboard/label string still appears in an
+untouched assert (often `tests/test_admin_auth.py`), request changes citing
+“update all `tests/` asserts for the old phrase” — do not treat it as a
+product regression of the rename itself.
+
+**Anti-loop (scoped PR deletes landed CRM, learned from #109/#180, #110/#181):**
+If the PR deletes brief-convert routes, pipeline repositories, or session CSRF
+helpers while implementing an unrelated feature, request changes for
+**regression of landed CRM** — Builder must restore those surfaces on the same
+PR head, not “fix forward” by inventing replacements.
+
+**Anti-loop (screenshot filenames with `?`, learned from #182 / #183):**
+`screenshot_basename` must strip query strings (e.g.
+`/admin/briefs/4/convert?error=validation` → `…-convert.png`). Filenames
+containing `?` break Actions artifact upload after an otherwise-complete
+review and leave orchestration labels stuck.
+
+**Anti-loop (review-decision race, learned from #182):**
+`scripts/review_decision.py` must retry briefly for the submitted PR review
+before failing; a one-shot miss after `REQUEST_CHANGES`/`APPROVE` leaves the
+issue on `agent:reviewer` forever.
 
 When posting `### acceptance_checklist`, mark a criterion **not_done** if
 screenshot evidence contradicts it (e.g. empty desktop sidebar while claiming

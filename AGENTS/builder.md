@@ -102,20 +102,23 @@ a dirty PR as unfinished Builder work.
    Builder↔Reviewer. `builder_conflicts.py` must fetch with an explicit refspec:
    `+refs/heads/{base}:refs/remotes/origin/{base}`.
    **Post-merge smoke (mandatory):** after conflict resolution, `builder_conflicts`
-   must run `from app.main import app` **and** `pytest --collect-only`, and refuse
-   to push / claim `resolved` when markers remain, import fails, or collection
-   fails (typical breaks: dropped `admin_router`, missing Protocol exports,
-   obsolete Basic-auth imports, **stale tests importing deleted symbols** like
+   must run `from app.main import app`, `pytest --collect-only`, **and** full
+   `pytest -q`, and refuse to push / claim `resolved` when markers remain,
+   import fails, collection fails, or any test fails (typical breaks: dropped
+   `admin_router`, missing Protocol exports, obsolete Basic-auth imports,
+   **stale tests importing deleted symbols** like
    `PostgresStageHistoryRepository` after API consolidation — learned from
-   [#107](https://github.com/saberistic-team/agent-web/issues/107) / #145). Status
-   `broken_after_resolve` → `waiting` handoff — never Reviewer.
+   [#107](https://github.com/saberistic-team/agent-web/issues/107) / #145;
+   **stale UI-string asserts** in untouched modules like `test_admin_auth.py`
+   after a dashboard copy rename — [#182](https://github.com/saberistic-team/agent-web/issues/182) / #188).
+   Status `broken_after_resolve` → `waiting` handoff — never Reviewer.
    **Pre-handoff smoke (mandatory even when `mergeable: clean`):** Builder also
-   clones the PR head and runs the same smoke+collect gate before writing
-   `reviewer` handoff. Stale heads with `NameError: admin_router` /
-   `CORRELATION_HEADER` or collection `ImportError`s are mergeable but still
-   break Reviewer / CI — that was a Builder↔Reviewer loop on CRM PRs. Known
-   import gaps may be auto-repaired (`repair_main_wiring`) once; persistent
-   smoke failure stays `waiting`.
+   clones the PR head and runs the same smoke+collect+full-pytest gate before
+   writing `reviewer` handoff. Stale heads with `NameError: admin_router` /
+   `CORRELATION_HEADER`, collection `ImportError`s, or failing CI assertions are
+   mergeable but still break Reviewer / CI — that was a Builder↔Reviewer loop on
+   CRM PRs. Known import gaps may be auto-repaired (`repair_main_wiring`) once;
+   persistent smoke failure stays `waiting`.
    **Conflicted API shapes:** when merging concurrent CRM PRs, keep **one**
    canonical module set (`app/acquisition_pipeline.py` + `PostgresPipelineRepository`
    + `test_*pipeline*_unit.py`). Delete orphan alternate domains (`app/pipeline.py`)
@@ -218,6 +221,31 @@ emit:
    layout and the only hard-fail is “missing `branch-*-mobile-open.png` /
    tablet / narrow-desktop” — that is a capture-matrix gap, not another CSS
    churn (learned from [#167](https://github.com/saberistic-team/agent-web/issues/167)).
+
+## UI copy renames (anti-loop)
+
+When acceptance criteria require renaming user-visible labels/titles (e.g.
+“Companies by stage” → “Companies by funding stage”), **grep the whole
+`tests/` tree** for the old phrase and update every assert — not only the
+“related” dashboard/preview tests. Untouched modules such as
+`tests/test_admin_auth.py` still hit the same HTML under
+`ADMIN_PREVIEW_MODE` and will fail CI (learned from
+[#182](https://github.com/saberistic-team/agent-web/issues/182) / #188).
+Pre-handoff full `pytest -q` is mandatory so this cannot reach Reviewer.
+
+## Do not regress landed CRM surfaces (anti-loop)
+
+Scoped feature work (LinkedIn import, research, etc.) must **never** delete or
+rewrite away already-landed CRM routes/helpers just because codegen touched a
+shared file. Preserve unless the issue explicitly requires removing them:
+
+- `/admin/briefs/{id}/convert` (+ `preview_brief_convert_*`)
+- `admin_pipeline_routes` + `PostgresPipelineRepository` / pipeline APIs
+- Session CSRF helpers (`_session_csrf_for_forms` and successors)
+
+Regressing those surfaces creates screenshot 404/500s and Builder↔Reviewer
+loops on unrelated PRs (learned from #109 / #180 and #110 / #181). Prefer
+surgical edits over rewriting whole `admin_routes.py` / migration files.
 
 ## Constraints
 

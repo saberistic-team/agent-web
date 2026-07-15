@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+import time
 
 from github_api import api, split_repo
 
@@ -77,17 +78,33 @@ def linked_open_prs(repo: str, issue: int) -> list[dict]:
     return linked
 
 
-def latest_submitted_review(repo: str, pr_number: int) -> dict | None:
+def latest_submitted_review(
+    repo: str,
+    pr_number: int,
+    *,
+    attempts: int = 8,
+    delay_sec: float = 2.0,
+) -> dict | None:
+    """Return the latest APPROVED/CHANGES_REQUESTED review, retrying briefly.
+
+    Reviewer Actions posts the PR review then immediately runs this script.
+    GitHub's reviews list can lag a second or two — failing closed with
+    ``no submitted … review`` left issues stuck on ``agent:reviewer`` while
+    the PR already had a decision (#182 / #188).
+    """
     owner, name = split_repo(repo)
-    reviews = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}/reviews") or []
-    submitted = [
-        r
-        for r in reviews
-        if (r.get("state") or "").upper() in {"APPROVED", "CHANGES_REQUESTED"}
-    ]
-    if not submitted:
-        return None
-    return submitted[-1]
+    for attempt in range(max(1, attempts)):
+        reviews = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}/reviews") or []
+        submitted = [
+            r
+            for r in reviews
+            if (r.get("state") or "").upper() in {"APPROVED", "CHANGES_REQUESTED"}
+        ]
+        if submitted:
+            return submitted[-1]
+        if attempt + 1 < attempts:
+            time.sleep(delay_sec)
+    return None
 
 
 def main(argv: list[str] | None = None) -> int:

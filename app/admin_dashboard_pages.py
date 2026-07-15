@@ -222,7 +222,7 @@ def render_acquisition_dashboard_page(
         <div class="admin-table-wrap">
           <table class="admin-table">
             <thead><tr><th>Company</th><th>Profile</th></tr></thead>
-            <tbody>{_render_attention_rows(data.without_decision_maker, empty_message="All targets have at least one contact.")}</tbody>
+            <tbody>{_render_attention_rows(data.without_decision_maker, empty_message="All targets have a qualifying active decision-maker contact.")}</tbody>
           </table>
         </div>
         <p class="admin-note dashboard-footnote">
