@@ -44,7 +44,18 @@ PIPELINE_STAGES: Final[dict[str, str]] = {
     stage: PIPELINE_STAGE_LABELS[stage] for stage in PIPELINE_STAGE_ORDER
 }
 
-STAGE_ORDER: Final[tuple[str, ...]] = PIPELINE_STAGE_ORDER
+STAGE_ORDER: Final[tuple[str, ...]] = (
+    "researching",
+    "qualified",
+    "ready_for_outreach",
+    "contacted",
+    "replied",
+    "discovery_scheduled",
+    "diagnostic_proposed",
+    "diagnostic_paid",
+    "larger_engagement",
+    "won",
+)
 
 TERMINAL_STAGES: Final[frozenset[str]] = frozenset({"won", "lost"})
 SIDE_EXIT_STAGES: Final[frozenset[str]] = frozenset({"lost", "nurture"})

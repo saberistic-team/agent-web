@@ -37,7 +37,10 @@ def test_every_stage_has_one_non_empty_label_in_order() -> None:
 def test_registry_modules_share_same_stage_keys() -> None:
     assert set(PIPELINE_STAGE_ORDER) == set(PIPELINE_STAGE_KEYS)
     assert set(PIPELINE_STAGE_ORDER) == set(ACQUISITION_PIPELINE_STAGES)
-    assert STAGE_ORDER == PIPELINE_STAGE_ORDER
+    # Linear progression order excludes side-exit stages (lost/nurture).
+    assert set(STAGE_ORDER).issubset(set(PIPELINE_STAGE_ORDER))
+    assert not set(SIDE_EXIT_STAGES) & set(STAGE_ORDER) or "won" in STAGE_ORDER
+    assert "lost" not in STAGE_ORDER and "nurture" not in STAGE_ORDER
 
 
 def test_registry_modules_share_same_labels() -> None:
