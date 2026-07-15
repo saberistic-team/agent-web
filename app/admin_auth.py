@@ -357,10 +357,9 @@ def try_admit_login_attempt(
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
     resolution = resolve_admin_login_client_source(request, settings)
-    source = resolution.source
     limiter_keys = login_limiter_keys(
         submitted_username=username,
-        client_source=source,
+        client_source=resolution.source,
         configured_admin_username=settings.admin_username,
     )
     now = datetime.now(timezone.utc)
@@ -410,7 +409,6 @@ def try_admit_login_attempt(
                 "limiter_key_count": len(limiter_keys),
                 "lockout_transition": admission.lockout_transition,
                 "source_resolution_path": resolution.path.value,
-                "had_forwarding_headers": resolution.had_forwarding_headers,
             },
         )
     elif admission.already_locked:
@@ -419,8 +417,6 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "already_locked": True,
-                "source_resolution_path": resolution.path.value,
-                "had_forwarding_headers": resolution.had_forwarding_headers,
             },
         )
     return LoginAdmissionResult(
