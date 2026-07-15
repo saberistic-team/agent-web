@@ -152,6 +152,12 @@ review and leave orchestration labels stuck.
 before failing; a one-shot miss after `REQUEST_CHANGES`/`APPROVE` leaves the
 issue on `agent:reviewer` forever.
 
+**Anti-loop (AI review JSON/prose glitch, learned from #186 / #193):**
+If the Cursor/OpenAI review call returns prose instead of JSON after retries,
+do **not** `REQUEST_CHANGES` solely for that transport failure when CI, coverage,
+and the acceptance checklist are already green — defer and approve. Builder
+cannot fix model formatting.
+
 When posting `### acceptance_checklist`, mark a criterion **not_done** if
 screenshot evidence contradicts it (e.g. empty desktop sidebar while claiming
 “desktop navigation unchanged”). Do not set `all_done: true` while any
