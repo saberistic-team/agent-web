@@ -81,13 +81,6 @@ ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
 
 ADMIN_PATHS: frozenset[str] = frozenset(link["href"] for link in ADMIN_NAV_LINKS)
 
-
-def archive_action_button_class(*, is_archived: bool) -> str:
-    """Semantic classes for CRM archive/restore submit buttons (not top-bar links)."""
-    if is_archived:
-        return "admin-action admin-action--secondary"
-    return "admin-action admin-action--destructive"
-
 # Pre-merge Playwright capture targets (shell pages + login). Never production.
 ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     *(link["href"] for link in ADMIN_NAV_LINKS),
@@ -100,11 +93,12 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
-    "/admin/companies/10101010-1010-1010-1010-101010101010",
-    "/admin/companies/20202020-2020-2020-2020-202020202020",
-    "/admin/contacts/30303030-3030-3030-3030-303030303030",
-    "/admin/contacts/40404040-4040-4040-4040-404040404040",
-    "/admin/contacts/40404040-4040-4040-4040-404040404040/edit",
+    "/admin/companies/cccccccc-cccc-cccc-cccc-cccccccc0001",
+    "/admin/companies/cccccccc-cccc-cccc-cccc-cccccccc0002",
+    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbb001",
+    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbb002",
+    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbb001/edit",
+    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbb002/edit",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
@@ -158,6 +152,15 @@ def render_admin_nav(active_path: str) -> str:
             </ul>
           </details>
         </nav>"""
+
+
+def render_archive_action_button(*, label: str, is_restore: bool) -> str:
+    """Return a themed Archive/Restore submit button (#233)."""
+    variant = "admin-action-btn--restore" if is_restore else "admin-action-btn--destructive"
+    return (
+        f'<button class="admin-action-btn {variant}" type="submit">'
+        f"{html.escape(label)}</button>"
+    )
 
 
 def render_admin_shell(

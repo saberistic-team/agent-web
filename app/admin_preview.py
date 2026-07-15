@@ -80,12 +80,12 @@ PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID = UUID(
 PREVIEW_CONTACT_RESTORE_CONFLICT_ACTIVE_ID = UUID(
     "ffffffff-ffff-ffff-ffff-ffffffffffff"
 )
-# Company detail pages for archive/restore screenshot evidence (#233).
-PREVIEW_COMPANY_DETAIL_ACTIVE_ID = UUID("10101010-1010-1010-1010-101010101010")
-PREVIEW_COMPANY_DETAIL_ARCHIVED_ID = UUID("20202020-2020-2020-2020-202020202020")
-# Contact detail/edit pages for archive/restore screenshot evidence (#233).
-PREVIEW_CONTACT_DETAIL_ACTIVE_ID = UUID("30303030-3030-3030-3030-303030303030")
-PREVIEW_CONTACT_DETAIL_ARCHIVED_ID = UUID("40404040-4040-4040-4040-404040404040")
+# Company detail ids for Archive/Restore screenshot states (#233).
+PREVIEW_COMPANY_ARCHIVE_DETAIL_ID = UUID("cccccccc-cccc-cccc-cccc-cccccccc0001")
+PREVIEW_COMPANY_RESTORE_DETAIL_ID = UUID("cccccccc-cccc-cccc-cccc-cccccccc0002")
+# Contact detail/edit ids for Archive/Restore screenshot states (#233).
+PREVIEW_CONTACT_ARCHIVE_DETAIL_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbb001")
+PREVIEW_CONTACT_RESTORE_DETAIL_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbb002")
 BRIEF_TEXTS = (
     "Need a technical architecture review of our payments platform — "
     "API boundaries, retention, and rollout sequencing.",
@@ -818,69 +818,6 @@ def preview_brief_convert_post(
     return None
 
 
-def build_preview_company_detail(
-    company_id: UUID,
-    *,
-    rng: random.Random | None = None,
-) -> dict[str, object] | None:
-    """Mock company detail for archive/restore screenshot routes (#233)."""
-    if company_id == PREVIEW_COMPANY_DETAIL_ACTIVE_ID:
-        archived_at = None
-    elif company_id == PREVIEW_COMPANY_DETAIL_ARCHIVED_ID:
-        archived_at = datetime(2026, 6, 15, tzinfo=timezone.utc).isoformat()
-    else:
-        return None
-    rng = rng or _preview_rng()
-    name = rng.choice(COMPANY_NAMES)
-    slug = name.lower().replace(" ", "")
-    return {
-        "id": str(company_id),
-        "name": name,
-        "domain": f"{slug}.io",
-        "website": f"https://{slug}.io",
-        "category": rng.choice(tuple(COMPANY_CATEGORIES)),
-        "stage": rng.choice(tuple(COMPANY_STAGES)),
-        "headcount_estimate": rng.randint(12, 480),
-        "funding_summary": f"Series {rng.choice(('A', 'B', 'seed'))}",
-        "target_status": "target",
-        "last_verified_at": "2026-07-01",
-        "archived_at": archived_at,
-    }
-
-
-def build_preview_contact_detail(
-    contact_id: UUID,
-    *,
-    rng: random.Random | None = None,
-) -> dict[str, object] | None:
-    """Mock contact detail for archive/restore screenshot routes (#233)."""
-    if contact_id == PREVIEW_CONTACT_DETAIL_ACTIVE_ID:
-        archived_at = None
-    elif contact_id == PREVIEW_CONTACT_DETAIL_ARCHIVED_ID:
-        archived_at = datetime(2026, 6, 20, tzinfo=timezone.utc).isoformat()
-    else:
-        return None
-    rng = rng or _preview_rng()
-    first = rng.choice(CONTACT_FIRST)
-    last = rng.choice(CONTACT_LAST)
-    company = rng.choice(COMPANY_NAMES)
-    return {
-        "id": str(contact_id),
-        "full_name": f"{first} {last}",
-        "title": rng.choice(("CTO", "VP Engineering", "Founder", "Head of Product")),
-        "profile_url": f"https://linkedin.com/in/{first.lower()}-{last.lower()}",
-        "email": _slug_email(first, last, company, rng),
-        "email_permission": "allowed",
-        "company_id": str(PREVIEW_COMPANY_DETAIL_ACTIVE_ID),
-        "company_name": company,
-        "buying_roles": ["technical_buyer"],
-        "relationship_strength": "warm",
-        "last_interaction_at": "2026-07-10",
-        "notes": "Met at industry meetup; follow up on architecture review.",
-        "archived_at": archived_at,
-    }
-
-
 def preview_contact_restore_conflict(
     *,
     rng: random.Random | None = None,
@@ -910,6 +847,129 @@ def preview_contact_restore_conflict(
             "company_id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
         },
     }
+
+
+def preview_company_detail(company_id: UUID) -> dict[str, object] | None:
+    """Mock company detail rows for Archive/Restore screenshot states (#233)."""
+    if company_id == PREVIEW_COMPANY_ARCHIVE_DETAIL_ID:
+        return {
+            "id": company_id,
+            "name": "Northwind Labs",
+            "domain": "northwind.dev",
+            "website": "https://northwind.dev",
+            "category": "fintech",
+            "stage": "series_a",
+            "target_status": "target",
+            "headcount_estimate": 120,
+            "funding_summary": "Series A — $18M",
+            "last_verified_at": "2026-07-01",
+            "archived_at": None,
+        }
+    if company_id == PREVIEW_COMPANY_RESTORE_DETAIL_ID:
+        return {
+            "id": company_id,
+            "name": "Helios Rail",
+            "domain": "heliosrail.io",
+            "website": "https://heliosrail.io",
+            "category": "other",
+            "stage": "series_b_plus",
+            "target_status": "watching",
+            "headcount_estimate": 340,
+            "funding_summary": "Growth equity",
+            "last_verified_at": "2026-05-15",
+            "archived_at": datetime(2026, 6, 20, tzinfo=timezone.utc).isoformat(),
+        }
+    return None
+
+
+def preview_contacts_for_company_detail(company_id: UUID) -> list[dict[str, object]]:
+    """Linked contacts for preview company detail pages."""
+    if company_id not in (
+        PREVIEW_COMPANY_ARCHIVE_DETAIL_ID,
+        PREVIEW_COMPANY_RESTORE_DETAIL_ID,
+    ):
+        return []
+    return [
+        {
+            "id": PREVIEW_CONTACT_ARCHIVE_DETAIL_ID,
+            "full_name": "Alex Nguyen",
+            "title": "VP Engineering",
+            "email": "alex@northwind.dev",
+            "buying_roles": ["technical_buyer"],
+        }
+    ]
+
+
+def preview_contact_detail(
+    contact_id: UUID,
+) -> tuple[dict[str, object], dict[str, object] | None] | None:
+    """Mock contact detail rows for Archive/Restore screenshot states (#233)."""
+    if contact_id == PREVIEW_CONTACT_ARCHIVE_DETAIL_ID:
+        company = {
+            "id": PREVIEW_COMPANY_ARCHIVE_DETAIL_ID,
+            "name": "Northwind Labs",
+        }
+        return (
+            {
+                "id": contact_id,
+                "full_name": "Alex Nguyen",
+                "title": "VP Engineering",
+                "profile_url": "https://linkedin.com/in/alex-nguyen",
+                "email": "alex@northwind.dev",
+                "email_permission": "permitted",
+                "company_id": PREVIEW_COMPANY_ARCHIVE_DETAIL_ID,
+                "buying_roles": ["technical_buyer"],
+                "relationship_strength": "warm",
+                "last_interaction_at": "2026-07-10",
+                "notes": "Met at SaaStr — interested in architecture review.",
+                "archived_at": None,
+            },
+            company,
+        )
+    if contact_id == PREVIEW_CONTACT_RESTORE_DETAIL_ID:
+        company = {
+            "id": PREVIEW_COMPANY_ARCHIVE_DETAIL_ID,
+            "name": "Northwind Labs",
+        }
+        return (
+            {
+                "id": contact_id,
+                "full_name": "Sam Patel",
+                "title": "Former CTO",
+                "profile_url": "https://linkedin.com/in/sam-patel",
+                "email": "sam@northwind.dev",
+                "email_permission": "permitted",
+                "company_id": PREVIEW_COMPANY_ARCHIVE_DETAIL_ID,
+                "buying_roles": ["executive_buyer"],
+                "relationship_strength": "cold",
+                "last_interaction_at": "2026-01-15",
+                "notes": "Archived after role change.",
+                "archived_at": datetime(2026, 6, 1, tzinfo=timezone.utc).isoformat(),
+            },
+            company,
+        )
+    return None
+
+
+def preview_contact_edit_state(
+    contact_id: UUID,
+) -> tuple[dict[str, object], list[dict[str, object]]] | None:
+    """Mock contact edit form state for Archive/Restore screenshots (#233)."""
+    detail = preview_contact_detail(contact_id)
+    if detail is None:
+        return None
+    contact, company = detail
+    companies = [
+        {
+            "id": company["id"],
+            "name": company["name"],
+        },
+        {
+            "id": PREVIEW_COMPANY_RESTORE_DETAIL_ID,
+            "name": "Helios Rail",
+        },
+    ]
+    return contact, companies
 
 
 AUDIT_ACTIONS = (
