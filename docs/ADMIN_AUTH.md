@@ -58,14 +58,38 @@ browser context.
 
 ### Authenticated session CSRF
 
-1. Session creation stores an initial `csrf_token_hash` on the `admin_sessions`
-   row.
-2. Each protected GET that renders a form (e.g. dashboard) rotates the session
-   CSRF hash and embeds the new raw token.
-3. State-changing POST handlers validate the submitted token with constant-time
-   hash comparison.
-4. CSRF hashes are cleared when the session is revoked, expires, or is replaced
-   during login rotation.
+1. Session creation derives a stable `csrf_token_hash` on the `admin_sessions`
+   row from the new session cookie and `ADMIN_SESSION_SECRET` (HMAC-SHA256).
+2. Protected GET handlers embed the same derived raw token in every form without
+   rotating it on navigation, so multiple tabs keep valid tokens for the session
+   lifetime.
+3. State-changing POST handlers validate the submitted token against the active
+   session cookie with constant-time comparison.
+4. Tokens are invalidated when the session expires, is revoked, or is replaced
+   during login rotation (new session cookie → new derived token). The stored hash
+   is cleared indirectly via session revocation/expiry.
+
+#### Lifetime and storage
+
+| Item | Value |
+|------|-------|
+| **Raw token** | Derived per request from session cookie + secret; never stored or logged |
+| **Stored hash** | `admin_sessions.csrf_token_hash` (audit/parity; validation uses derivation) |
+| **Lifetime** | `ADMIN_SESSION_TTL_SECONDS` (same as session cookie) |
+| **Rotation** | Only on login session replacement, not on ordinary GET navigation |
+
+#### Replay expectations
+
+CSRF tokens prevent **cross-site** request forgery, not duplicate submission
+within the same authenticated session.
+
+| Mutation style | Replay within session lifetime |
+|----------------|--------------------------------|
+| **Idempotent** (e.g. archive already-archived row) | Allowed; outcome unchanged |
+| **Non-idempotent** (e.g. create company) | Allowed by CSRF; operators must avoid double-submit |
+
+Concurrent submissions from multiple tabs may reuse the same valid token until
+the session ends.
 
 ### Failure handling
 

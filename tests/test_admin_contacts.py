@@ -75,7 +75,11 @@ def _mock_crm() -> Generator[MagicMock, None, None]:
     with (
         patch("app.admin_routes._crm", crm),
         patch("app.admin_routes.db.db_connection") as db_conn,
-        patch("app.admin_routes._issue_session_csrf", return_value=CSRF_TOKEN),
+        patch("app.admin_routes._session_csrf_for_forms", return_value=CSRF_TOKEN),
+        patch(
+            "app.admin_auth.verify_session_csrf_request",
+            side_effect=lambda _request, submitted, _settings: submitted == CSRF_TOKEN,
+        ),
     ):
         db_conn.return_value.__enter__.return_value = MagicMock()
         yield crm

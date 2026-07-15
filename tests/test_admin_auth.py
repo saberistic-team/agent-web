@@ -1449,6 +1449,26 @@ def test_login_ignores_external_next_redirect(rate_limit_store: FakeRateLimitSto
 
 
 @pytest.mark.unit
+def test_derive_session_csrf_token_is_stable_for_session() -> None:
+    settings = get_settings()
+    raw = admin_auth.generate_session_token()
+    first = admin_auth.derive_session_csrf_token(raw, settings)
+    second = admin_auth.derive_session_csrf_token(raw, settings)
+    assert first == second
+    assert len(first) >= 32
+
+
+@pytest.mark.unit
+def test_derive_session_csrf_token_differs_across_sessions() -> None:
+    settings = get_settings()
+    token_a = admin_auth.generate_session_token()
+    token_b = admin_auth.generate_session_token()
+    assert admin_auth.derive_session_csrf_token(token_a, settings) != (
+        admin_auth.derive_session_csrf_token(token_b, settings)
+    )
+
+
+@pytest.mark.unit
 @pytest.mark.integration
 def test_logout_rejects_invalid_session_csrf() -> None:
     with mock_db_connection():
@@ -1467,7 +1487,175 @@ def test_logout_rejects_invalid_session_csrf() -> None:
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_logout_rejects_cross_session_csrf_token() -> None:
+def test_session_csrf_stable_across_navigation() -> None:
+    """Opening another admin page must not invalidate forms already open."""
+    with mock_db_connection():
+        login = _login()
+        session_cookie = _extract_session_cookie(login)
+        assert session_cookie
+
+        contacts = client.get("/admin/briefs", cookies={SESSION_COOKIE_NAME: session_cookie})
+        csrf_from_briefs = _extract_csrf_token(contacts.text)
+
+        dashboard = client.get("/admin", cookies={SESSION_COOKIE_NAME: session_cookie})
+        csrf_from_dashboard = _extract_csrf_token(dashboard.text)
+
+    assert csrf_from_briefs == csrf_from_dashboard
+
+    with mock_db_connection():
+        response = client.post(
+            "/admin/logout",
+            data={"csrf_token": csrf_from_briefs},
+            cookies={SESSION_COOKIE_NAME: session_cookie},
+        )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/admin/login"
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_two_tab_form_stays_valid_after_other_tab_navigation(
+    rate_limit_store: FakeRateLimitStore,
+) -> None:
+    """Simulate tab A form left open while tab B navigates elsewhere."""
+    with shared_rate_limiter(rate_limit_store):
+        with mock_db_connection():
+            login = _login()
+            session_cookie = _extract_session_cookie(login)
+            assert session_cookie
+
+            tab_a = client.get("/admin/briefs", cookies={SESSION_COOKIE_NAME: session_cookie})
+            tab_a_csrf = _extract_csrf_token(tab_a.text)
+
+            client.get("/admin", cookies={SESSION_COOKIE_NAME: session_cookie})
+            client.get("/admin/audit", cookies={SESSION_COOKIE_NAME: session_cookie})
+
+            logout = client.post(
+                "/admin/logout",
+                data={"csrf_token": tab_a_csrf},
+                cookies={SESSION_COOKIE_NAME: session_cookie},
+            )
+    assert logout.status_code == 303
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_session_csrf_rejects_cross_session_token() -> None:
+    settings = get_settings()
+    raw_a = admin_auth.generate_session_token()
+    raw_b = admin_auth.generate_session_token()
+    csrf_a = admin_auth.derive_session_csrf_token(raw_a, settings)
+    _session_store[admin_auth.hash_session_token(raw_b)] = _session_row(
+        token_hash=admin_auth.hash_session_token(raw_b),
+        session_id=2,
+    )
+
+    with mock_db_connection():
+        response = client.post(
+            "/admin/logout",
+            data={"csrf_token": csrf_a},
+            cookies={SESSION_COOKIE_NAME: raw_b},
+        )
+    assert response.status_code == 400
+    assert admin_auth.INVALID_REQUEST_MESSAGE in response.json()["detail"]
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_session_csrf_rejects_malformed_token() -> None:
+    with mock_db_connection():
+        login = _login()
+        session_cookie = _extract_session_cookie(login)
+        assert session_cookie
+
+        response = client.post(
+            "/admin/logout",
+            data={"csrf_token": "not-a-valid-token"},
+            cookies={SESSION_COOKIE_NAME: session_cookie},
+        )
+    assert response.status_code == 400
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_expired_session_csrf_rejected_on_protected_get() -> None:
+    raw_token = admin_auth.generate_session_token()
+    token_hash = admin_auth.hash_session_token(raw_token)
+    _session_store[token_hash] = _session_row(
+        token_hash=token_hash,
+        expires_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+    )
+    with mock_db_connection():
+        response = client.get("/admin", cookies={SESSION_COOKIE_NAME: raw_token})
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/admin/login")
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_concurrent_session_csrf_submissions() -> None:
+    """The same valid token may be submitted concurrently until the session ends."""
+    with mock_db_connection():
+        login = _login()
+        session_cookie = _extract_session_cookie(login)
+        assert session_cookie
+
+        dashboard = client.get("/admin", cookies={SESSION_COOKIE_NAME: session_cookie})
+        csrf_token = _extract_csrf_token(dashboard.text)
+
+        first = client.post(
+            "/admin/logout",
+            data={"csrf_token": csrf_token},
+            cookies={SESSION_COOKIE_NAME: session_cookie},
+        )
+        second = client.post(
+            "/admin/logout",
+            data={"csrf_token": csrf_token},
+            cookies={SESSION_COOKIE_NAME: session_cookie},
+        )
+    assert first.status_code == 303
+    assert second.status_code == 303
+    assert second.headers["location"] == "/admin/login"
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_login_replaces_session_csrf_token() -> None:
+    """A new login invalidates CSRF tokens from the replaced session cookie."""
+    settings = get_settings()
+    old_token = admin_auth.generate_session_token()
+    old_csrf = admin_auth.derive_session_csrf_token(old_token, settings)
+    _session_store[admin_auth.hash_session_token(old_token)] = _session_row(
+        token_hash=admin_auth.hash_session_token(old_token),
+    )
+
+    with mock_db_connection():
+        response = client.post(
+            "/admin/logout",
+            data={"csrf_token": old_csrf},
+            cookies={SESSION_COOKIE_NAME: old_token},
+        )
+    assert response.status_code == 303
+
+    with mock_db_connection():
+        login = _login()
+        new_cookie = _extract_session_cookie(login)
+        assert new_cookie
+        assert new_cookie != old_token
+        new_csrf = admin_auth.derive_session_csrf_token(new_cookie, settings)
+        assert new_csrf != old_csrf
+
+        rejected = client.post(
+            "/admin/logout",
+            data={"csrf_token": old_csrf},
+            cookies={SESSION_COOKIE_NAME: new_cookie},
+        )
+    assert rejected.status_code == 400
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_logout_accepts_stable_csrf_after_refresh() -> None:
     with mock_db_connection():
         login = _login()
         session_cookie = _extract_session_cookie(login)
@@ -1477,14 +1665,16 @@ def test_logout_rejects_cross_session_csrf_token() -> None:
         csrf_a = _extract_csrf_token(dashboard_a.text)
 
         dashboard_b = client.get("/admin", cookies={SESSION_COOKIE_NAME: session_cookie})
-        _extract_csrf_token(dashboard_b.text)
+        csrf_b = _extract_csrf_token(dashboard_b.text)
+
+        assert csrf_a == csrf_b
 
         response = client.post(
             "/admin/logout",
             data={"csrf_token": csrf_a},
             cookies={SESSION_COOKIE_NAME: session_cookie},
         )
-    assert response.status_code == 400
+    assert response.status_code == 303
 
 
 @pytest.mark.unit
