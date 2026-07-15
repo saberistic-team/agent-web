@@ -80,16 +80,22 @@ PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID = UUID(
 PREVIEW_CONTACT_RESTORE_CONFLICT_ACTIVE_ID = UUID(
     "ffffffff-ffff-ffff-ffff-ffffffffffff"
 )
-# Company/contact detail ids for archive and restore action screenshots.
-PREVIEW_COMPANY_ARCHIVE_ID = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
-PREVIEW_COMPANY_RESTORE_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
-PREVIEW_CONTACT_ARCHIVE_ID = UUID("cccccccc-cccc-cccc-cccc-cccccccccccc")
-PREVIEW_CONTACT_RESTORE_ID = UUID("dddddddd-dddd-dddd-dddd-dddddddddddd")
+# CRM detail/edit pages for archive/restore button screenshots in ADMIN_PREVIEW_MODE.
+PREVIEW_COMPANY_ARCHIVE_DETAIL_ID = UUID("12121212-1212-1212-1212-121212121212")
+PREVIEW_COMPANY_RESTORE_DETAIL_ID = UUID("13131313-1313-1313-1313-131313131313")
+PREVIEW_CONTACT_ARCHIVE_DETAIL_ID = UUID("14141414-1414-1414-1414-141414141414")
+PREVIEW_CONTACT_RESTORE_DETAIL_ID = UUID("15151515-1515-1515-1515-151515151515")
 _PREVIEW_COMPANY_DETAIL_IDS = frozenset(
-    {PREVIEW_COMPANY_ARCHIVE_ID, PREVIEW_COMPANY_RESTORE_ID}
+    {
+        PREVIEW_COMPANY_ARCHIVE_DETAIL_ID,
+        PREVIEW_COMPANY_RESTORE_DETAIL_ID,
+    }
 )
 _PREVIEW_CONTACT_DETAIL_IDS = frozenset(
-    {PREVIEW_CONTACT_ARCHIVE_ID, PREVIEW_CONTACT_RESTORE_ID}
+    {
+        PREVIEW_CONTACT_ARCHIVE_DETAIL_ID,
+        PREVIEW_CONTACT_RESTORE_DETAIL_ID,
+    }
 )
 BRIEF_TEXTS = (
     "Need a technical architecture review of our payments platform — "
@@ -854,109 +860,117 @@ def preview_contact_restore_conflict(
     }
 
 
-def preview_company_research_detail(
+def build_preview_company_detail_page(
     company_id: UUID,
     *,
     rng: random.Random | None = None,
 ) -> tuple[dict[str, object], list[dict[str, object]], list[dict[str, object]]] | None:
-    """Mock company research detail for archive/restore screenshot routes."""
+    """Return mock company detail data for archive/restore screenshot routes."""
     if company_id not in _PREVIEW_COMPANY_DETAIL_IDS:
         return None
     rng = rng or _preview_rng()
+    now = datetime.now(timezone.utc)
+    archived = company_id == PREVIEW_COMPANY_RESTORE_DETAIL_ID
     name = rng.choice(COMPANY_NAMES)
-    archived = company_id == PREVIEW_COMPANY_RESTORE_ID
-    company: dict[str, object] = {
-        "id": company_id,
+    company = {
+        "id": str(company_id),
         "name": name,
-        "domain": f"{name.lower().replace(' ', '')}.dev",
-        "category": "fintech",
-        "stage": "seed",
+        "domain": name.lower().replace(" ", "") + ".io",
+        "category": rng.choice(tuple(COMPANY_CATEGORIES.keys())),
+        "stage": rng.choice(tuple(COMPANY_STAGES.keys())),
         "target_status": "target",
-        "headcount_estimate": rng.randint(12, 120),
-        "funding_summary": "Seed round closed",
-        "last_verified_at": "2026-07-01",
-        "archived_at": "2026-07-01" if archived else None,
+        "headcount_estimate": rng.randint(20, 500),
+        "funding_summary": f"Series {rng.choice(('A', 'B'))} · ${rng.randint(5, 40)}M",
+        "last_verified_at": (now - timedelta(days=rng.randint(1, 45))).date().isoformat(),
+        "archived_at": (now - timedelta(days=30)).isoformat() if archived else None,
     }
     first = rng.choice(CONTACT_FIRST)
     last = rng.choice(CONTACT_LAST)
     contacts = [
         {
-            "id": PREVIEW_CONTACT_ARCHIVE_ID,
+            "id": str(PREVIEW_CONTACT_ARCHIVE_DETAIL_ID),
             "full_name": f"{first} {last}",
-            "title": "CTO",
-            "buying_roles": ["technical_buyer"],
+            "title": rng.choice(("CTO", "VP Engineering", "Founder")),
             "email": _slug_email(first, last, name, rng),
+            "buying_roles": ["technical_buyer"],
         }
     ]
     records = [
         {
-            "record_type": "fact",
-            "body": f"{name} is expanding engineering headcount this quarter.",
-            "expires_at": None,
-        },
-        {
-            "record_type": "signal",
-            "body": "Recent hiring posts mention platform reliability.",
-            "expires_at": None,
-        },
+            "record_type": "verified_fact",
+            "body": rng.choice(BRIEF_TEXTS)[:120],
+            "source_name": rng.choice(SOURCES).title(),
+            "source_url": "https://example.com/evidence",
+            "observed_value": str(rng.randint(80, 240)),
+            "observed_at": now - timedelta(days=rng.randint(1, 14)),
+            "confidence": 0.85,
+            "review_at": now + timedelta(days=30),
+            "expires_at": now + timedelta(days=90),
+        }
     ]
     return company, contacts, records
 
 
-def preview_contact_research_detail(
+def build_preview_contact_detail_page(
     contact_id: UUID,
     *,
     rng: random.Random | None = None,
 ) -> tuple[dict[str, object], dict[str, object] | None, list[dict[str, object]]] | None:
-    """Mock contact research detail for archive/restore screenshot routes."""
+    """Return mock contact detail data for archive/restore screenshot routes."""
     if contact_id not in _PREVIEW_CONTACT_DETAIL_IDS:
         return None
     rng = rng or _preview_rng()
+    now = datetime.now(timezone.utc)
+    archived = contact_id == PREVIEW_CONTACT_RESTORE_DETAIL_ID
+    company_name = rng.choice(COMPANY_NAMES)
     first = rng.choice(CONTACT_FIRST)
     last = rng.choice(CONTACT_LAST)
-    company_name = rng.choice(COMPANY_NAMES)
-    archived = contact_id == PREVIEW_CONTACT_RESTORE_ID
-    contact: dict[str, object] = {
-        "id": contact_id,
+    company = {
+        "id": str(PREVIEW_COMPANY_ARCHIVE_DETAIL_ID),
+        "name": company_name,
+    }
+    contact = {
+        "id": str(contact_id),
         "full_name": f"{first} {last}",
-        "title": "VP Engineering",
+        "title": rng.choice(("CTO", "VP Engineering", "Founder")),
         "profile_url": f"https://linkedin.com/in/{first.lower()}-{last.lower()}",
         "email": _slug_email(first, last, company_name, rng),
-        "email_permission": "allowed",
-        "buying_roles": ["technical_buyer", "decision_maker"],
+        "email_permission": "unknown",
+        "buying_roles": ["technical_buyer", "founder"],
         "relationship_strength": "warm",
-        "last_interaction_at": "2026-07-10",
-        "notes": "Met at preview conference.",
-        "company_id": PREVIEW_COMPANY_ARCHIVE_ID,
-        "archived_at": "2026-07-01" if archived else None,
-    }
-    company = {
-        "id": PREVIEW_COMPANY_ARCHIVE_ID,
-        "name": company_name,
+        "last_interaction_at": (now - timedelta(days=rng.randint(1, 21))).date().isoformat(),
+        "notes": "Preview contact for archive/restore button screenshots.",
+        "company_id": company["id"],
+        "archived_at": (now - timedelta(days=14)).isoformat() if archived else None,
     }
     records = [
         {
             "record_type": "follow_up_note",
-            "body": "Schedule architecture review follow-up.",
+            "body": rng.choice(BRIEF_TEXTS)[:100],
             "expires_at": None,
         }
     ]
     return contact, company, records
 
 
-def preview_contact_edit(
+def build_preview_contact_edit_page(
     contact_id: UUID,
     *,
     rng: random.Random | None = None,
 ) -> tuple[dict[str, object], list[dict[str, object]]] | None:
-    """Mock archived contact edit page for restore action screenshots."""
-    if contact_id != PREVIEW_CONTACT_RESTORE_ID:
-        return None
-    detail = preview_contact_research_detail(contact_id, rng=rng)
+    """Return mock contact edit data for archive/restore screenshot routes."""
+    detail = build_preview_contact_detail_page(contact_id, rng=rng)
     if detail is None:
         return None
     contact, company, _records = detail
-    companies = [company]
+    picker = rng or _preview_rng()
+    companies = [
+        company,
+        {
+            "id": str(PREVIEW_COMPANY_RESTORE_DETAIL_ID),
+            "name": picker.choice(COMPANY_NAMES),
+        },
+    ]
     return contact, companies
 
 
