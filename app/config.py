@@ -59,8 +59,6 @@ class Settings:
             and self.admin_password_hash
             and self.admin_session_secret
         )
-        if self.database_url:
-            creds = creds and bool(self.admin_login_limiter_secret)
         if self.admin_preview_mode:
             return creds
         return bool(self.database_url and creds)
