@@ -440,6 +440,10 @@ def test_login_success_and_failure_create_audit_events() -> None:
                             failure_audit.call_args.kwargs["reason"]
                             == "invalid_credentials"
                         )
+                        assert (
+                            failure_audit.call_args.kwargs["actor_context"].actor
+                            == "anonymous"
+                        )
 
 
 @pytest.mark.unit

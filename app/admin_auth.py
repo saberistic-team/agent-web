@@ -21,7 +21,7 @@ from fastapi.responses import Response
 
 from app import db
 from app.client_source import resolve_client_source
-from app.config import Settings, get_settings
+from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
 LOGIN_FLOW_COOKIE_NAME = "admin_login_flow"
@@ -254,100 +254,68 @@ def client_ip(request: Request, settings: Settings) -> str:
     return resolve_admin_login_client_source(request, settings)
 
 
-LIMITER_DOMAIN_SOURCE = "src"
-LIMITER_DOMAIN_ACCOUNT = "acct"
-LIMITER_DOMAIN_LEGACY = "legacy"
-
-
 def _limiter_secrets(settings: Settings) -> tuple[str, ...]:
-    """Current and optional previous limiter secrets during rotation."""
-    current = settings.admin_login_limiter_secret
+    """Return current and optional previous limiter secrets for rotation."""
+    secrets = [settings.admin_login_limiter_secret]
     previous = settings.admin_login_limiter_secret_previous.strip()
-    if previous and previous != current:
-        return (current, previous)
-    return (current,)
+    if previous and previous != settings.admin_login_limiter_secret:
+        secrets.append(previous)
+    return tuple(secrets)
 
 
-def digest_limiter_key(secret: str, domain: str, material: str) -> str:
-    """Return a keyed HMAC-SHA256 limiter identifier with domain separation."""
-    payload = f"{domain}:{material}".encode("utf-8")
+def _digest_limiter_key(prefix: str, material: str, secret: str) -> str:
+    payload = f"{prefix}:{material}".encode("utf-8")
     return hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
 
 
-def _digest_limiter_key(settings: Settings, domain: str, material: str) -> str:
-    return digest_limiter_key(settings.admin_login_limiter_secret, domain, material)
-
-
-def build_source_rate_limit_key(
-    client_source: str,
-    settings: Settings | None = None,
-) -> str:
-    """Source-wide bucket keyed by resolved client source (privacy-preserving)."""
-    resolved = settings or get_settings()
+def build_source_rate_limit_keys(client_source: str, settings: Settings) -> tuple[str, ...]:
+    """Source-wide bucket keys keyed by resolved client source (privacy-preserving)."""
     normalized_source = client_source.strip().lower()
-    return _digest_limiter_key(resolved, LIMITER_DOMAIN_SOURCE, normalized_source)
+    return tuple(
+        _digest_limiter_key("src", normalized_source, secret)
+        for secret in _limiter_secrets(settings)
+    )
 
 
-def build_account_rate_limit_key(
-    admin_username: str,
-    settings: Settings | None = None,
-) -> str:
-    """Account-wide bucket for the configured admin username."""
-    resolved = settings or get_settings()
+def build_source_rate_limit_key(client_source: str, settings: Settings) -> str:
+    """Primary (current-secret) source-wide bucket key."""
+    return build_source_rate_limit_keys(client_source, settings)[0]
+
+
+def build_account_rate_limit_keys(admin_username: str, settings: Settings) -> tuple[str, ...]:
+    """Account-wide bucket keys for the configured admin username."""
     normalized_username = admin_username.strip().lower()
-    return _digest_limiter_key(resolved, LIMITER_DOMAIN_ACCOUNT, normalized_username)
+    return tuple(
+        _digest_limiter_key("acct", normalized_username, secret)
+        for secret in _limiter_secrets(settings)
+    )
 
 
-def build_rate_limit_key(
-    username: str,
-    client_source: str,
-    settings: Settings | None = None,
-) -> str:
+def build_account_rate_limit_key(admin_username: str, settings: Settings) -> str:
+    """Primary (current-secret) account-wide bucket key."""
+    return build_account_rate_limit_keys(admin_username, settings)[0]
+
+
+def build_rate_limit_key(username: str, client_source: str) -> str:
     """Deprecated composite key kept for tests migrating to dual-bucket strategy."""
-    resolved = settings or get_settings()
     normalized_username = username.strip().lower()
     material = f"{normalized_username}:{client_source.strip().lower()}"
-    return _digest_limiter_key(resolved, LIMITER_DOMAIN_LEGACY, material)
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
 def login_limiter_keys(
     *,
-    settings: Settings,
     submitted_username: str,
     client_source: str,
+    settings: Settings,
 ) -> tuple[str, ...]:
     """Return the shared limiter buckets consulted for one login attempt."""
-    keys: list[str] = []
-    normalized_source = client_source.strip().lower()
+    keys = list(build_source_rate_limit_keys(client_source, settings))
     normalized_submitted = submitted_username.strip().lower()
     normalized_configured = settings.admin_username.strip().lower()
-    include_account = bool(normalized_configured) and (
-        normalized_submitted == normalized_configured
-    )
-
-    for secret in _limiter_secrets(settings):
-        keys.append(
-            digest_limiter_key(secret, LIMITER_DOMAIN_SOURCE, normalized_source)
-        )
-        if include_account:
-            keys.append(
-                digest_limiter_key(
-                    secret, LIMITER_DOMAIN_ACCOUNT, normalized_configured
-                )
-            )
-    return tuple(dict.fromkeys(keys))
-
-
-def account_limiter_keys_for_clear(settings: Settings) -> tuple[str, ...]:
-    """Account buckets to clear after successful login (includes rotation keys)."""
-    username = settings.admin_username.strip()
-    if not username:
-        return ()
-    normalized = username.lower()
-    keys: list[str] = []
-    for secret in _limiter_secrets(settings):
-        keys.append(digest_limiter_key(secret, LIMITER_DOMAIN_ACCOUNT, normalized))
-    return tuple(dict.fromkeys(keys))
+    if normalized_configured and normalized_submitted == normalized_configured:
+        keys.extend(build_account_rate_limit_keys(settings.admin_username, settings))
+    return tuple(keys)
 
 
 def _is_fallback_throttled(limiter_keys: tuple[str, ...]) -> bool:
@@ -434,9 +402,9 @@ def try_admit_login_attempt(
     """Atomically reserve shared limiter capacity before password verification."""
     source = client_ip(request, settings)
     limiter_keys = login_limiter_keys(
-        settings=settings,
         submitted_username=username,
         client_source=source,
+        settings=settings,
     )
     now = datetime.now(timezone.utc)
     try:
@@ -506,9 +474,9 @@ def is_login_throttled(request: Request, settings: Settings, *, username: str = 
     """Return whether login attempts are currently blocked (read-only helper)."""
     source = client_ip(request, settings)
     limiter_keys = login_limiter_keys(
-        settings=settings,
         submitted_username=username,
         client_source=source,
+        settings=settings,
     )
     now = datetime.now(timezone.utc)
     try:
@@ -535,7 +503,11 @@ def finalize_successful_login(request: Request, settings: Settings, *, username:
     _ = username
     source = client_ip(request, settings)
     source_key = build_source_rate_limit_key(source, settings)
-    account_keys = account_limiter_keys_for_clear(settings)
+    account_keys = (
+        build_account_rate_limit_keys(settings.admin_username, settings)
+        if settings.admin_username.strip()
+        else ()
+    )
     _clear_fallback_failures(account_keys)
     _release_fallback_admission(source_key)
     now = datetime.now(timezone.utc)
