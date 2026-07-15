@@ -199,7 +199,7 @@ def test_acquisition_pipeline_migration_is_idempotent() -> None:
     pipeline = next(m for m in MIGRATIONS if m.name == "acquisition_pipeline")
     assert pipeline.version == "013"
     assert "pipeline_stage" in pipeline.up_sql
-    assert "company_stage_history" in pipeline.up_sql
+    assert "pipeline_stage_history" in pipeline.up_sql
     assert "diagnostic_paid" in pipeline.up_sql
 
 

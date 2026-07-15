@@ -10,8 +10,11 @@ from fastapi.testclient import TestClient
 
 from app.admin_preview import (
     COMPANY_NAMES,
+    PREVIEW_PIPELINE_COMPANY_IDS,
     build_preview_acquisition_dashboard_data,
     build_preview_dashboard_data,
+    build_preview_pipeline_companies,
+    build_preview_pipeline_detail,
     build_preview_section_rows,
     render_preview_dashboard_main,
     render_preview_section_main,

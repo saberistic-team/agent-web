@@ -8,7 +8,7 @@ from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from pydantic import ValidationError
 
 from app import admin, admin_auth, admin_companies as company_pages, admin_contacts as contact_pages, admin_dashboard_pages, admin_import_batches, admin_imports as import_pages, admin_pages, admin_research_pages, audit_service, brief_service, db
