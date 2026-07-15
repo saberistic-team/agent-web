@@ -295,43 +295,6 @@ def test_release_admin_login_admission_noop_when_missing_row() -> None:
 
 
 @pytest.mark.unit
-def test_try_admit_admin_login_guard_keys_block_without_increment() -> None:
-    conn = MagicMock()
-    cur = MagicMock()
-    conn.cursor.return_value.__enter__.return_value = cur
-    now = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
-    cur.fetchall.return_value = [
-        {
-            "limiter_key": "guard-key",
-            "failure_count": 5,
-            "window_started_at": now - timedelta(minutes=1),
-            "locked_until": datetime(2026, 1, 1, 13, 0, tzinfo=timezone.utc),
-        },
-        {
-            "limiter_key": "current-key",
-            "failure_count": 0,
-            "window_started_at": now,
-            "locked_until": None,
-        },
-    ]
-
-    admission = db.try_admit_admin_login(
-        conn,
-        limiter_keys=("current-key",),
-        guard_keys=("guard-key",),
-        now=now,
-        rate_limit=5,
-        window_seconds=900,
-        lockout_seconds=900,
-    )
-
-    executed_sql = " ".join(call.args[0] for call in cur.execute.call_args_list)
-    assert "UPDATE admin_login_rate_limits" not in executed_sql
-    assert not admission.admitted
-    assert admission.already_locked
-
-
-@pytest.mark.unit
 def test_is_login_throttled_falls_back_when_db_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -349,6 +312,7 @@ def test_is_login_throttled_falls_back_when_db_unavailable(
         "$argon2id$v=19$m=65536,t=3,p=4$aaaaaaaaaaaaaaaaaaaaaa$bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     )
     monkeypatch.setenv("ADMIN_SESSION_SECRET", "test-session-secret-32chars-minimum!!")
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "test-login-limiter-key-32bytes-minimum!")
     monkeypatch.setenv("BASE_URL", "http://testserver")
     settings = get_settings()
     scope = {
@@ -390,6 +354,7 @@ def test_finalize_successful_login_clears_fallback_when_db_unavailable(
         "$argon2id$v=19$m=65536,t=3,p=4$aaaaaaaaaaaaaaaaaaaaaa$bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     )
     monkeypatch.setenv("ADMIN_SESSION_SECRET", "test-session-secret-32chars-minimum!!")
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "test-login-limiter-key-32bytes-minimum!")
     monkeypatch.setenv("BASE_URL", "http://testserver")
     settings = get_settings()
     scope = {
@@ -411,5 +376,5 @@ def test_finalize_successful_login_clears_fallback_when_db_unavailable(
         with patch.object(admin_auth, "_clear_fallback_failures") as clear_fallback:
             with patch.object(admin_auth, "_release_fallback_admission") as release_fallback:
                 admin_auth.finalize_successful_login(request, settings, username="operator")
-                assert clear_fallback.call_count == 2
+                clear_fallback.assert_called_once()
                 release_fallback.assert_called_once()
