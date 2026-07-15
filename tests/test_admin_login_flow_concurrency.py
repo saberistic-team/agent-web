@@ -40,7 +40,7 @@ client_b = TestClient(app, follow_redirects=False)
 @pytest.fixture(autouse=True)
 def admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Mirror ``test_admin_auth.admin_env`` so module-local tests share credentials."""
-    from tests.test_admin_auth import TEST_HASH, TEST_SECRET, TEST_USERNAME
+    from tests.test_admin_auth import TEST_HASH, TEST_LIMITER_SECRET, TEST_SECRET, TEST_USERNAME
 
     monkeypatch.setenv("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
     monkeypatch.setenv("ADMIN_USERNAME", TEST_USERNAME)

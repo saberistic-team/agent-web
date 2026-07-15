@@ -87,6 +87,24 @@ admin audit table.
 
 ### Admin login session boundary
 
+Unauthenticated login failures (`auth.login.failure`) always record
+``actor = anonymous``. Submitted username candidates are never stored in the
+audit ``actor`` column, metadata, reason text, logs, or limiter state. Failure
+reasons are a small server-defined enum: ``invalid_credentials``,
+``invalid_csrf``, and ``rate_limited``.
+
+Authenticated login success and subsequent authenticated mutations retain the
+configured administrator username in ``actor``.
+
+#### Historical audit exposure (pre-#242)
+
+Rows appended before keyed limiter identifiers and anonymous failure actors may
+have ``actor`` values copied from submitted login usernames. Those rows are
+immutable; application code does not rewrite or delete them. Security reporting
+should treat non-``anonymous`` actors on ``auth.login.failure`` events as
+potentially attacker-supplied unless corroborated by session linkage. Forward
+fixes prevent new occurrences.
+
 `admin_routes._issue_session` opens one `db_connection` and one `crm_transaction`
 for every successful login — with or without a prior session cookie (e.g. two-tab
 re-login). Inside that unit of work:
@@ -101,24 +119,12 @@ operator is never left without a valid server-side session. The session cookie i
 set on the redirect response only after the transaction exits successfully; failed
 or rolled-back logins never emit a new session cookie.
 
-### Failed-login actor policy (#242)
-
-`auth.login.failure` events recorded before successful authentication always use
-actor `anonymous`. Submitted username candidates must not appear in `actor`,
-`metadata`, `summary_after`, application logs, or metrics. Reasons are a small
-server-defined enum (`invalid_credentials`, `invalid_csrf`, `rate_limited`, …).
-
-**Historical exposure:** Audit rows appended before deployment of #242 may contain
-attacker-supplied strings in `actor` for failed login attempts (the route previously
-forwarded the submitted username). `audit_events` remains append-only; remediation of
-historical rows requires an explicit data-governance decision outside normal app code.
-
 ## Audited actions
 
 | Action | When recorded |
 |--------|----------------|
 | `auth.login.success` | Valid admin login creates a server-side session |
-| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting (actor always `anonymous`; no submitted username persisted) |
+| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting (actor always `anonymous`) |
 | `auth.logout` | Authenticated session revocation (live session → revoked) |
 | `import.batch` | Data import batches via `CrmService.commit_linkedin_import` / `import_batch` |
 | `import.batch.rollback` | Rollback of committed import batches via `CrmService.rollback_import_batch` |

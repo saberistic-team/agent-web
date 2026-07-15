@@ -165,8 +165,8 @@ access logs or metrics for operational visibility if needed.
 | `ADMIN_USERNAME` | Yes | Operator username (plain text identifier) |
 | `ADMIN_PASSWORD_HASH` | Yes | Argon2id hash of the operator password |
 | `ADMIN_SESSION_SECRET` | Yes | Retained for configuration parity (≥ 32 random bytes); CSRF is session-bound, not HMAC-signed with this secret |
-| `ADMIN_LOGIN_LIMITER_SECRET` | Yes | HMAC key for login limiter identifiers (≥ 32 random bytes; environment-specific) |
-| `ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS` | Optional | Prior limiter key during bounded rotation (see [Login rate limiting](#login-rate-limiting)) |
+| `ADMIN_LOGIN_LIMITER_SECRET` | Yes | Key for HMAC-SHA256 limiter identifiers (≥ 32 random bytes; independent from session secret) |
+| `ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET` | Optional | Previous limiter key during rotation (see [Limiter key rotation](#limiter-key-rotation)) |
 | `ADMIN_SESSION_TTL_SECONDS` | Optional | Session lifetime in seconds (default `86400`) |
 | `ADMIN_LOGIN_RATE_LIMIT` | Optional | Failed login attempts allowed per window (default `5`) |
 | `ADMIN_LOGIN_RATE_WINDOW_SECONDS` | Optional | Rate-limit counting window in seconds (default `900`) |
@@ -203,7 +203,7 @@ On Render, add:
 1. `ADMIN_USERNAME` — e.g. `operator`
 2. `ADMIN_PASSWORD_HASH` — output from the Argon2 command
 3. `ADMIN_SESSION_SECRET` — output from the secrets command
-4. `ADMIN_LOGIN_LIMITER_SECRET` — separate random secret (≥ 32 bytes) for login limiter HMAC identifiers
+4. `ADMIN_LOGIN_LIMITER_SECRET` — generate independently (same command as session secret; do not reuse)
 
 Redeploy after changing any of the above.
 
@@ -260,61 +260,48 @@ limits apply consistently across web processes, instances, and deployments.
 ### Limiter key strategy
 
 Each attempt consults one or two privacy-preserving HMAC-SHA256 buckets (only the
-64-character hex digest is stored as ``limiter_key``). Key material comes from
-``ADMIN_LOGIN_LIMITER_SECRET`` (required, environment-specific, validated at
-startup). Identifiers use explicit domain separation:
+64-character hex digest is stored as ``limiter_key``). Identifiers use
+``ADMIN_LOGIN_LIMITER_SECRET`` with explicit domain prefixes so a table reader
+without the secret cannot confirm guessed IP addresses or usernames by hashing
+them directly.
 
-| Domain prefix | Key material | Purpose |
-|---------------|--------------|---------|
-| ``src`` | ``<normalized_client_source>`` | Stops username rotation from one client source |
-| ``acct`` | ``<normalized_configured_admin_username>`` | Limits distributed attempts against the configured admin account |
+| Bucket | Key material | Purpose |
+|--------|--------------|---------|
+| **Source-wide** | ``src:<normalized_client_source>`` | Stops username rotation from one client source |
+| **Account-wide** | ``acct:<normalized_configured_admin_username>`` | Limits distributed attempts against the configured admin account |
 
 The submitted username is normalized (lowercased/stripped) only to decide whether the
 account bucket applies. Unknown usernames still share the source bucket for their
 client source; responses remain generic.
 
-A limiter-table reader **without** the secret cannot confirm guessed IP addresses or
-usernames by hashing them directly — identifiers require the keyed HMAC.
-
 Raw usernames, passwords, IP addresses, forwarding headers, CSRF tokens, limiter
-secrets, and digest inputs are never written to limiter rows, audit events (for
-unauthenticated failures), or limiter observability logs.
+secrets, and session secrets are never written to limiter rows or limiter
+observability logs.
 
-### Limiter secret and rotation
+### Limiter key rotation
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| ``ADMIN_LOGIN_LIMITER_SECRET`` | Yes (when admin auth is configured) | ≥ 32 bytes of random key material; independent per environment |
-| ``ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS`` | Optional | Prior key during a bounded rotation window |
+Rotating ``ADMIN_LOGIN_LIMITER_SECRET`` changes every stored ``limiter_key``.
+Existing rows become unreachable under the new key, so effective rate-limit
+history resets for active buckets unless you use a bounded rotation window.
 
-**Rotation behavior:**
+**Recommended rotation procedure**
 
-1. Generate a new ``ADMIN_LOGIN_LIMITER_SECRET`` and set
-   ``ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS`` to the outgoing key.
-2. Redeploy. New admissions write rows keyed with the current secret only.
-3. While the previous key is set, active lockouts on **previous-key** rows still
-   deny admission (without incrementing current-key counters).
-4. After the longest active lockout/window has elapsed, remove
-   ``ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS``. Orphaned previous-key rows remain until
-   bounded cleanup removes them.
-5. Rotating without setting ``ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS`` resets effective
-   rate-limit history immediately — existing rows become unreachable.
+1. Generate a new ``ADMIN_LOGIN_LIMITER_SECRET``.
+2. Move the current value to ``ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET``.
+3. Set the new value as ``ADMIN_LOGIN_LIMITER_SECRET`` and redeploy.
+4. During the rotation window, active lockouts under the previous key still
+   block admission (read-only check). New counters are written only under the
+   current key.
+5. After lockouts and retention windows expire, unset
+   ``ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET`` and redeploy again.
+6. Stale rows keyed under the previous secret remain eligible for bounded
+   cleanup via ``cleanup_expired_admin_login_rate_limits`` (same retention as
+   current keys).
 
-Never log, return, audit, or include limiter secrets in diagnostic exceptions.
+Use independent limiter secrets in test, preview, and production environments.
 
-### Failed-login audit actors
-
-Every ``auth.login.failure`` event recorded **before** successful authentication uses
-the canonical actor ``anonymous``. Submitted username candidates are not stored in
-``actor``, metadata, reason text, correlation identifiers, logs, or metrics.
-
-Authenticated events (``auth.login.success``, ``auth.logout``, and post-login CRM
-mutations) retain the configured administrator username.
-
-**Historical data (pre-#242):** Immutable audit rows created before this policy may
-still contain attacker-supplied strings in ``actor`` for failed login attempts.
-Append-only protections are unchanged — do not rewrite history without an explicit
-data-governance decision. The forward fix prevents new occurrences.
+Startup validates limiter secret strength (missing, short, or placeholder values
+fail fast when admin auth is configured).
 
 ### Client source resolution
 

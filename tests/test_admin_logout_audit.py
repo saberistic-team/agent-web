@@ -31,7 +31,7 @@ TEST_USERNAME = "operator"
 TEST_PASSWORD = "correct-horse-battery-staple"
 TEST_HASH = PasswordHasher().hash(TEST_PASSWORD)
 TEST_SECRET = "test-session-secret-32chars-minimum"
-TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!!"
+TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum"
 
 _REQUIRED = (os.environ.get("REQUIRE_TEST_DATABASE") or "").strip() in {"1", "true", "yes"}
 _DATABASE_URL = (os.environ.get("TEST_DATABASE_URL") or "").strip()
