@@ -20,7 +20,7 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.admin_client_source import resolve_client_source
+from app.admin_client_source import resolve_admin_login_client_source
 from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
@@ -235,25 +235,23 @@ def read_login_flow_token(request: Request) -> str | None:
     return token.strip() or None
 
 
+def resolve_admin_login_client_source_address(
+    request: Request,
+    settings: Settings,
+) -> str:
+    """Return the normalized client source string for admin login rate limiting."""
+    return resolve_admin_login_client_source(request, settings).source
+
+
 def client_ip(request: Request, settings: Settings) -> str:
     """Resolve the client source IP for rate limiting.
 
-    Forwarding headers are honored only when ``ADMIN_TRUST_PROXY_HEADERS`` is
-    enabled **and** the immediate peer matches ``ADMIN_TRUSTED_PROXY_CIDRS``.
-    The resolver walks the documented Cloudflare → Render → Uvicorn chain from
-    the right, skipping trusted proxy hops, and never trusts a client-supplied
-    left-most ``X-Forwarded-For`` value from an unverified peer.
-
-    Source identity notes:
-
-    * **IPv4 / IPv6** — stored only as keyed digests; the resolved string is
-      normalized before entering the source bucket.
-    * **Missing peer** — falls back to ``unknown`` so attempts still share one
-      bucket instead of creating an unbounded namespace.
-    * **Trusted proxy** — right-to-left parsing after the immediate peer is
-      verified; spoofed headers from direct clients are ignored.
+    Delegates to :func:`resolve_admin_login_client_source_address`, which only
+    trusts forwarding headers when the immediate peer matches
+    ``ADMIN_TRUSTED_PROXY_CIDRS`` and walks ``X-Forwarded-For`` /
+    ``Forwarded`` right-to-left, stripping configured trusted hops.
     """
-    return resolve_client_source(request, settings)
+    return resolve_admin_login_client_source_address(request, settings)
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:

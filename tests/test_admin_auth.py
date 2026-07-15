@@ -659,14 +659,10 @@ def test_client_ip_ignores_forwarded_without_trusted_proxy(
 
 
 @pytest.mark.unit
-def test_client_ip_uses_trusted_chain_when_proxy_enabled(
+def test_client_ip_uses_forwarded_when_trusted_proxy_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ADMIN_TRUST_PROXY_HEADERS", "true")
-    monkeypatch.setenv(
-        "ADMIN_TRUSTED_PROXY_CIDRS",
-        "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16",
-    )
     settings = get_settings()
     request = _request_with_client("10.0.0.1")
     request.headers.__dict__["_list"].append(
@@ -1018,45 +1014,58 @@ def test_rate_limit_expires_after_lockout(
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_rate_limit_uses_distinct_sources_when_trusted_chain_differs(
+def test_rate_limit_ignores_spoofed_xff_when_peer_not_trusted(
     rate_limit_store: FakeRateLimitStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ADMIN_TRUST_PROXY_HEADERS", "true")
-    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
+    with shared_rate_limiter(rate_limit_store):
+        assert _login(username="ghost", password="wrong", headers={"X-Forwarded-For": "203.0.113.77"}).status_code == 401
+        assert _login(username="ghost", password="wrong", headers={"X-Forwarded-For": "203.0.113.88"}).status_code == 401
+        assert _login(username="ghost", password="wrong", headers={"X-Forwarded-For": "203.0.113.99"}).status_code == 429
 
-    def _login_with_chain(chain: str) -> Any:
-        settings = get_settings()
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_rate_limit_uses_resolved_client_with_trusted_peer(
+    rate_limit_store: FakeRateLimitStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_TRUST_PROXY_HEADERS", "true")
+    monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
+    settings = get_settings()
+
+    def _trusted_request(xff: str) -> Request:
         request = _request_with_client("10.0.0.1")
-        request.headers.__dict__["_list"].append(
-            (b"x-forwarded-for", chain.encode("ascii"))
-        )
-        source = admin_auth.client_ip(request, settings)
-        keys = admin_auth.login_limiter_keys(
-            submitted_username="ghost",
-            client_source=source,
-            configured_admin_username=settings.admin_username,
-        )
-        admission = rate_limit_store.try_admit(
-            keys,
-            datetime.now(timezone.utc),
-            rate_limit=2,
-            window_seconds=900,
-            lockout_seconds=900,
-        )
-        return admission, source
+        request.headers.__dict__["_list"].append((b"x-forwarded-for", xff.encode("ascii")))
+        return request
 
     with shared_rate_limiter(rate_limit_store):
-        first, first_source = _login_with_chain("203.0.113.77, 10.0.0.1")
-        second, second_source = _login_with_chain("203.0.113.77, 10.0.0.1")
-        third, _ = _login_with_chain("203.0.113.77, 10.0.0.1")
-        other, other_source = _login_with_chain("203.0.113.88, 10.0.0.1")
+        assert admin_auth.try_admit_login_attempt(
+            _trusted_request("203.0.113.77, 10.0.0.1"),
+            settings,
+            username="ghost",
+        ).admitted
+        assert admin_auth.try_admit_login_attempt(
+            _trusted_request("203.0.113.77, 10.0.0.1"),
+            settings,
+            username="ghost",
+        ).admitted
+        blocked = admin_auth.try_admit_login_attempt(
+            _trusted_request("203.0.113.77, 10.0.0.1"),
+            settings,
+            username="ghost",
+        )
+        assert blocked.admitted is False
+        assert blocked.throttled is True
 
-    assert first.admitted and second.admitted and not third.admitted
-    assert first_source == second_source == "203.0.113.77"
-    assert other_source == "203.0.113.88"
-    assert other.admitted
+        other_client = admin_auth.try_admit_login_attempt(
+            _trusted_request("203.0.113.88, 10.0.0.1"),
+            settings,
+            username="ghost",
+        )
+        assert other_client.admitted is True
 
 
 @pytest.mark.unit
@@ -1265,20 +1274,10 @@ def test_account_rate_limit_blocks_configured_username_across_sources(
 ) -> None:
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
     monkeypatch.setenv("ADMIN_TRUST_PROXY_HEADERS", "true")
-    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
     with shared_rate_limiter(rate_limit_store):
-        assert _login(
-            password="wrong",
-            headers={"X-Forwarded-For": "203.0.113.1, 10.0.0.1"},
-        ).status_code == 401
-        assert _login(
-            password="wrong",
-            headers={"X-Forwarded-For": "203.0.113.2, 10.0.0.1"},
-        ).status_code == 401
-        blocked = _login(
-            password="wrong",
-            headers={"X-Forwarded-For": "203.0.113.3, 10.0.0.1"},
-        )
+        assert _login(password="wrong", headers={"X-Forwarded-For": "203.0.113.1"}).status_code == 401
+        assert _login(password="wrong", headers={"X-Forwarded-For": "203.0.113.2"}).status_code == 401
+        blocked = _login(password="wrong", headers={"X-Forwarded-For": "203.0.113.3"})
     assert blocked.status_code == 429
 
 
