@@ -11,7 +11,15 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import ValidationError
 
-from app import admin, admin_auth, admin_pages, admin_research_pages, audit_service, brief_service, db
+from app import admin, admin_auth, admin_companies as company_pages, admin_pages, admin_research_pages, audit_service, brief_service, db
+from app.companies import (
+    COMPANY_CATEGORIES,
+    COMPANY_STAGES,
+    FRESHNESS_FILTERS,
+    TARGET_STATUSES,
+    CompanyCreate,
+    CompanyUpdate,
+)
 from app.crm_uow import crm_transaction
 from app.actor_context import actor_context_from_request, anonymous_actor_context, correlation_id_from_request
 from app.admin_layout import ADMIN_NAV_LINKS, render_admin_shell
