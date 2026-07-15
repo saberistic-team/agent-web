@@ -163,7 +163,10 @@ GitHub still says clean).
   default in Actions, `cloud` optional). Optional OpenAI / GitHub Models
   backup — [docs/MODELS.md](../docs/MODELS.md), [docs/DESIGN.md](../docs/DESIGN.md).
 - Verify/smoke issues may complete via `scripts/smoke_deploy.py` without a
-  model call; landing scaffolds may also skip codegen.
+  model call; landing scaffolds may also skip codegen. The verify-deploy
+  shortcut requires a deploy-intent **title** (or `smoke_deploy.py`) plus a
+  live target (`onrender.com` or `/health`+`/hello`) — acceptance bullets that
+  merely say “verify …” / “ready to deploy” must still produce a PR (#210).
 - Branch / PR must reference `#issue` (`Closes #N`); follow-ups stay on that
   same PR head (see **Branch and PR reuse**).
 - Tests relevant to the change are added or updated when behavior changes.
