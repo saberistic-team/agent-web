@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import ipaddress
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
-from app.network_utils import parse_trusted_networks
+import ipaddress
+
+from app.ip_networks import parse_trusted_proxy_networks
 
 
 @dataclass(frozen=True)
@@ -30,11 +31,8 @@ class Settings:
     admin_login_rate_limit: int = 5
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
+    admin_trusted_proxy_ips: str = ""
     admin_trust_proxy_headers: bool = False
-    admin_trusted_proxy_cidrs: str = ""
-    admin_trusted_proxy_networks: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...] = field(
-        default_factory=tuple
-    )
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -54,6 +52,16 @@ class Settings:
     def admin_preview_mode(self) -> bool:
         flag = os.environ.get("ADMIN_PREVIEW_MODE", "").lower()
         return flag in ("1", "true", "yes")
+
+    @property
+    def admin_trusted_proxy_networks(
+        self,
+    ) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+        return parse_trusted_proxy_networks(self.admin_trusted_proxy_ips)
+
+    @property
+    def admin_proxy_trust_enabled(self) -> bool:
+        return bool(self.admin_trusted_proxy_networks)
 
     @property
     def admin_auth_configured(self) -> bool:
@@ -90,7 +98,6 @@ class Settings:
 
 
 def get_settings() -> Settings:
-    trusted_cidrs = os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "").strip()
     return Settings(
         database_url=os.environ.get("DATABASE_URL", ""),
         stripe_secret_key=os.environ.get("STRIPE_SECRET_KEY", ""),
@@ -117,10 +124,9 @@ def get_settings() -> Settings:
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
         brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
+        admin_trusted_proxy_ips=os.environ.get("ADMIN_TRUSTED_PROXY_IPS", "").strip(),
         admin_trust_proxy_headers=os.environ.get(
             "ADMIN_TRUST_PROXY_HEADERS", ""
         ).lower()
         in ("1", "true", "yes"),
-        admin_trusted_proxy_cidrs=trusted_cidrs,
-        admin_trusted_proxy_networks=parse_trusted_networks(trusted_cidrs),
     )
