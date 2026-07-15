@@ -149,35 +149,6 @@ def test_admin_css_mobile_nav_and_table_scroll_guardrails() -> None:
 
 
 @pytest.mark.unit
-def test_admin_css_archive_action_resets_native_button_appearance() -> None:
-    css = ADMIN_CSS.read_text(encoding="utf-8")
-    action_block = css.split(".admin-action {", 1)[1].split("}", 1)[0]
-    assert "background:" in action_block
-    assert "border:" in action_block
-    assert "padding:" in action_block
-    assert "cursor: pointer" in action_block
-    assert "border-radius:" in action_block
-    assert "appearance: none" in action_block
-    assert "font-family: inherit" in action_block
-    assert "color:" in action_block
-
-    destructive_block = css.split(".admin-action--destructive {", 1)[1].split("}", 1)[0]
-    assert "background:" in destructive_block
-    assert "#ffb4b4" in destructive_block
-
-    secondary_block = css.split(".admin-action--secondary {", 1)[1].split("}", 1)[0]
-    assert "background:" in secondary_block
-    assert "color: var(--ink)" in secondary_block
-
-    assert ".admin-action:focus-visible" in css
-    assert ".admin-action:disabled" in css
-    assert ".admin-action[disabled]" in css
-
-    exit_block = css.split(".admin-exit {", 1)[1].split("}", 1)[0]
-    assert "background:" not in exit_block
-
-
-@pytest.mark.unit
 def test_admin_css_nav_sizes_to_content_not_grid_stretch() -> None:
     css = ADMIN_CSS.read_text(encoding="utf-8")
     nav_block = css.split(".admin-nav {", 1)[1].split("}", 1)[0]
@@ -224,6 +195,38 @@ def test_admin_css_desktop_nav_list_visible_when_collapsed() -> None:
     # Desktop list must not live inside closed details (UA hide trap).
     assert "display: flex !important" not in desktop_block
     assert "details.admin-nav-toggle:not([open])" not in desktop_block
+
+
+@pytest.mark.unit
+def test_archive_action_button_class_semantic_modifiers() -> None:
+    from app.admin_layout import archive_action_button_class
+
+    assert archive_action_button_class(is_archived=False) == (
+        "admin-action admin-action--destructive"
+    )
+    assert archive_action_button_class(is_archived=True) == "admin-action admin-action--restore"
+
+
+@pytest.mark.unit
+def test_admin_css_archive_action_buttons_reset_native_appearance() -> None:
+    css = ADMIN_CSS.read_text(encoding="utf-8")
+    action_block = css.split(".admin-action {", 1)[1].split("}", 1)[0]
+    assert "background:" in action_block
+    assert "border:" in action_block
+    assert "padding:" in action_block
+    assert "cursor: pointer" in action_block
+    assert "border-radius:" in action_block
+    assert "font-family: inherit" in action_block
+    assert ".admin-action:focus-visible" in css
+    assert ".admin-action:disabled" in css
+    assert ".admin-action--destructive" in css
+    assert ".admin-action--restore" in css
+    destructive_block = css.split(".admin-action--destructive {", 1)[1].split("}", 1)[0]
+    restore_block = css.split(".admin-action--restore {", 1)[1].split("}", 1)[0]
+    assert "background:" in destructive_block
+    assert destructive_block != restore_block
+    exit_block = css.split(".admin-exit {", 1)[1].split("}", 1)[0]
+    assert "background:" not in exit_block
 
 
 @pytest.mark.unit

@@ -92,12 +92,13 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert",
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
-    "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-    "/admin/companies/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
-    "/admin/contacts/cccccccc-cccc-cccc-cccc-cccccccccccc",
-    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd",
-    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd/edit",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
+    "/admin/companies/66666666-6666-6666-6666-666666666666",
+    "/admin/companies/77777777-7777-7777-7777-777777777777",
+    "/admin/contacts/88888888-8888-8888-8888-888888888888",
+    "/admin/contacts/99999999-9999-9999-9999-999999999999",
+    "/admin/contacts/88888888-8888-8888-8888-888888888888/edit",
+    "/admin/contacts/99999999-9999-9999-9999-999999999999/edit",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
@@ -151,6 +152,12 @@ def render_admin_nav(active_path: str) -> str:
             </ul>
           </details>
         </nav>"""
+
+
+def archive_action_button_class(*, is_archived: bool) -> str:
+    """Return semantic admin form-action classes for archive/restore buttons."""
+    modifier = "admin-action--restore" if is_archived else "admin-action--destructive"
+    return f"admin-action {modifier}"
 
 
 def render_admin_shell(
