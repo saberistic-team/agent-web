@@ -20,7 +20,10 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.admin_client_source import resolve_admin_login_client_source
+from app.admin_client_source import (
+    ClientSourceResolution,
+    resolve_admin_login_client_source,
+)
 from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
@@ -235,25 +238,14 @@ def read_login_flow_token(request: Request) -> str | None:
     return token.strip() or None
 
 
+def resolve_login_client_source(request: Request, settings: Settings) -> ClientSourceResolution:
+    """Resolve client source identity and the bounded resolution path used."""
+    return resolve_admin_login_client_source(request, settings)
+
+
 def client_ip(request: Request, settings: Settings) -> str:
-    """Resolve the client source IP for admin login rate limiting.
-
-    Delegates to :func:`resolve_admin_login_client_source`, which verifies the
-    immediate TCP peer against ``ADMIN_TRUSTED_PROXY_CIDRS`` (or the
-    ``cloudflare-render`` preset) before honoring forwarding headers. Untrusted
-    peers always resolve to the direct peer address.
-
-    Source identity notes:
-
-    * **IPv4 / IPv6** — stored only as keyed digests; the resolved string is
-      passed verbatim into the source bucket (e.g. ``203.0.113.1``,
-      ``2001:db8::1``).
-    * **Missing peer** — falls back to ``unknown`` so attempts still share one
-      bucket instead of creating an unbounded namespace.
-    * **Trusted proxy chain** — right-to-left walk or verified
-      ``CF-Connecting-IP`` when the request path includes approved proxy hops.
-    """
-    return resolve_admin_login_client_source(request, settings).source
+    """Return the normalized client source string for rate limiting."""
+    return resolve_login_client_source(request, settings).source
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
@@ -377,10 +369,10 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    source = client_ip(request, settings)
+    resolution = resolve_login_client_source(request, settings)
     limiter_keys = login_limiter_keys(
         submitted_username=username,
-        client_source=source,
+        client_source=resolution.source,
         configured_admin_username=settings.admin_username,
     )
     now = datetime.now(timezone.utc)
@@ -423,11 +415,15 @@ def try_admit_login_attempt(
             store_unavailable=True,
         )
 
+    telemetry = {
+        "limiter_key_count": len(limiter_keys),
+        "source_resolution_path": resolution.path.value,
+    }
     if admission.admitted:
         _logger.info(
             "Admin login attempt admitted",
             extra={
-                "limiter_key_count": len(limiter_keys),
+                **telemetry,
                 "lockout_transition": admission.lockout_transition,
             },
         )
@@ -435,7 +431,7 @@ def try_admit_login_attempt(
         _logger.info(
             "Admin login attempt throttled",
             extra={
-                "limiter_key_count": len(limiter_keys),
+                **telemetry,
                 "already_locked": True,
             },
         )
