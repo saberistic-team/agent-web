@@ -2,75 +2,72 @@
 
 from __future__ import annotations
 
-import hmac
-
 from app.config import Settings
 
-MIN_ADMIN_LIMITER_SECRET_LENGTH = 32
+MIN_ADMIN_SECRET_LENGTH = 32
 
-_WEAK_SECRET_EXACT = frozenset(
+_PLACEHOLDER_SECRETS = frozenset(
     {
-        "",
         "changeme",
+        "changemechangemechangemechangeme",
         "change-me",
-        "replace-me",
+        "change_me",
         "placeholder",
-        "example",
+        "replace-me",
+        "replace_me",
         "secret",
-        "password",
         "admin",
+        "password",
         "test",
         "testing",
-        "development",
         "dev",
+        "development",
+        "local",
+        "example",
+        "your-secret-here",
+        "your_secret_here",
     }
-)
-
-_WEAK_SECRET_SUBSTRINGS = (
-    "changeme",
-    "replace-me",
-    "your-secret",
-    "insert-secret",
-    "placeholder",
 )
 
 
 def validate_admin_login_limiter_secret(
     secret: str,
     *,
-    field_name: str = "ADMIN_LOGIN_LIMITER_SECRET",
+    env_name: str = "ADMIN_LOGIN_LIMITER_SECRET",
 ) -> None:
-    """Reject missing, weak, or placeholder limiter key material."""
-    normalized = (secret or "").strip()
+    """Reject missing, weak, placeholder, or malformed limiter key material."""
+    normalized = secret.strip()
     if not normalized:
-        raise ValueError(f"{field_name} is required")
-    if len(normalized) < MIN_ADMIN_LIMITER_SECRET_LENGTH:
+        raise ValueError(f"{env_name} is required when admin authentication uses Postgres")
+    if len(normalized) < MIN_ADMIN_SECRET_LENGTH:
         raise ValueError(
-            f"{field_name} must be at least {MIN_ADMIN_LIMITER_SECRET_LENGTH} characters"
+            f"{env_name} must be at least {MIN_ADMIN_SECRET_LENGTH} characters of random key material"
         )
-    lowered = normalized.lower()
-    if lowered in _WEAK_SECRET_EXACT:
-        raise ValueError(f"{field_name} must not use a placeholder value")
-    for fragment in _WEAK_SECRET_SUBSTRINGS:
-        if fragment in lowered:
-            raise ValueError(f"{field_name} must not use a placeholder value")
-    if len(set(normalized)) < 8:
-        raise ValueError(f"{field_name} must contain sufficient entropy")
+    if normalized.lower() in _PLACEHOLDER_SECRETS:
+        raise ValueError(f"{env_name} must not use a placeholder or dictionary value")
 
 
-def validate_admin_security_config(settings: Settings) -> None:
-    """Validate admin security secrets before serving authenticated routes."""
-    validate_admin_login_limiter_secret(settings.admin_login_limiter_secret)
-    previous = (settings.admin_login_limiter_previous_secret or "").strip()
-    if not previous:
+def validate_admin_security_at_startup(settings: Settings) -> None:
+    """Validate admin security secrets before serving traffic."""
+    if not settings.database_url:
         return
-    validate_admin_login_limiter_secret(
-        previous,
-        field_name="ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET",
-    )
-    current = settings.admin_login_limiter_secret.strip()
-    if hmac.compare_digest(previous, current):
-        raise ValueError(
-            "ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET must differ from "
-            "ADMIN_LOGIN_LIMITER_SECRET"
+    if settings.admin_preview_enabled:
+        return
+    if not (
+        settings.admin_username
+        and settings.admin_password_hash
+        and settings.admin_session_secret
+    ):
+        return
+
+    validate_admin_login_limiter_secret(settings.admin_login_limiter_secret)
+    previous = settings.admin_login_limiter_secret_previous.strip()
+    if previous:
+        validate_admin_login_limiter_secret(
+            previous,
+            env_name="ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS",
         )
+        if previous == settings.admin_login_limiter_secret.strip():
+            raise ValueError(
+                "ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS must differ from ADMIN_LOGIN_LIMITER_SECRET"
+            )
