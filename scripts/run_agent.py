@@ -113,7 +113,12 @@ def is_retryable_codegen_failure(exc: BaseException) -> bool:
     blockers.
     """
     text = str(exc).lower()
-    if "retryable=true" in text.replace(" ", ""):
+    compact = text.replace(" ", "")
+    if "retryable=true" in compact:
+        return True
+    # Bridge argv bug: token_urlsafe values starting with "-" → SDK reports
+    # retryable=False, but a requeue (or the token patch) recovers.
+    if "tool-callback-auth-token" in text or "bridge exited before discovery" in text:
         return True
     markers = (
         "readtimeout",
@@ -144,11 +149,15 @@ def handoff_builder_when_mergeable(repo: str, issue: int) -> None:
     """Resolve conflicts if needed; hand off to Reviewer only when the PR is clean.
 
     Unresolved conflicts re-enter the priority queue (``waiting``) so Builder
-    runs again — never send a dirty PR to Reviewer.
+    runs again — never send a dirty PR to Reviewer. Even mergeable/clean heads
+    are smoke-imported so stale NameErrors cannot bounce Reviewer↔Builder.
     """
     from builder_conflicts import (
+        linked_open_prs,
         linked_pr_conflict_status,
         maybe_resolve_pr_conflicts,
+        refresh_pr,
+        smoke_pr_head,
     )
 
     HANDOFF_DIR.mkdir(parents=True, exist_ok=True)
@@ -211,6 +220,56 @@ def handoff_builder_when_mergeable(repo: str, issue: int) -> None:
         )
         write_builder_handoff("waiting")
         return
+
+    # Always smoke the PR head — mergeable/clean heads can still NameError.
+    prs = linked_open_prs(repo, issue)
+    if prs:
+        pr = refresh_pr(repo, int(prs[0]["number"]))
+        try:
+            smoke = smoke_pr_head(repo, pr, push_repair=True)
+        except Exception as smoke_exc:
+            post_issue_comment(
+                repo,
+                issue,
+                (
+                    "### builder_smoke_result\n"
+                    f"- status: `failed`\n"
+                    f"- pr: #{pr.get('number')}\n"
+                    f"- error: `{smoke_exc}`\n"
+                    "- note: re-entering `status:queued` (smoke clone/import failed).\n"
+                ),
+            )
+            write_builder_handoff("waiting")
+            return
+        smoke_status = (smoke.get("status") or "").strip()
+        if smoke_status == "smoke_failed":
+            post_issue_comment(
+                repo,
+                issue,
+                (
+                    "### builder_smoke_result\n"
+                    f"- status: `smoke_failed`\n"
+                    f"- pr: #{smoke.get('pr')}\n"
+                    f"- smoke_error: `{smoke.get('smoke_error')}`\n"
+                    f"- repairs: `{smoke.get('repairs')}`\n"
+                    "- note: not handing off to Reviewer; re-entering "
+                    "`status:queued` until `from app.main import app` succeeds.\n"
+                ),
+            )
+            write_builder_handoff("waiting")
+            return
+        if smoke_status == "smoke_repaired":
+            post_issue_comment(
+                repo,
+                issue,
+                (
+                    "### builder_smoke_result\n"
+                    f"- status: `smoke_repaired`\n"
+                    f"- pr: #{smoke.get('pr')}\n"
+                    f"- repairs: `{smoke.get('repairs')}`\n"
+                    "- note: restored missing ``app.main`` wiring; proceeding to Reviewer.\n"
+                ),
+            )
 
     write_builder_handoff("reviewer")
 
@@ -1001,23 +1060,24 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
 
     # OpenAI / Models AI review (required for approve path).
     ai_block = ""
+    ai_verdict: dict[str, Any] = {}
     try:
         from review_models import ai_review
 
-        verdict = ai_review(repo, issue, pr_number)
+        ai_verdict = ai_review(repo, issue, pr_number)
         ai_block += (
                     f"- ai_provider: `cursor-or-openai-or-models`\n"
-            f"- ai_model: `{verdict.get('model')}`\n"
-            f"- ai_decision: `{verdict.get('decision')}`\n"
-            f"- ai_summary: {verdict.get('summary')}\n"
+            f"- ai_model: `{ai_verdict.get('model')}`\n"
+            f"- ai_decision: `{ai_verdict.get('decision')}`\n"
+            f"- ai_summary: {ai_verdict.get('summary')}\n"
             "- ai_reasons:\n"
-            + "\n".join(f"  - {r}" for r in (verdict.get("reasons") or []))
+            + "\n".join(f"  - {r}" for r in (ai_verdict.get("reasons") or []))
             + "\n"
         )
-        if verdict.get("decision") != "approved":
+        if ai_verdict.get("decision") != "approved":
             hard_fail_reasons.append(
                 "AI reviewer rejected: "
-                + "; ".join(verdict.get("reasons") or ["does not meet acceptance"])
+                + "; ".join(ai_verdict.get("reasons") or ["does not meet acceptance"])
             )
     except Exception as exc:
         hard_fail_reasons.append(f"AI reviewer unavailable: {exc}")
@@ -1029,10 +1089,27 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
         from acceptance import post_checklist, update_issue_checkboxes, verify_acceptance
 
         acceptance = verify_acceptance(repo, issue, pr_number, use_ai=True)
+        product_incomplete = any(
+            i.get("status") not in {"done", "n/a"} and i.get("method") != "ai-error"
+            for i in (acceptance.get("items") or [])
+        )
+        infra_only_gap = bool(acceptance.get("ai_infra_failed")) and not product_incomplete
+        if (
+            infra_only_gap
+            and not acceptance.get("all_done")
+            and ai_verdict.get("decision") == "approved"
+        ):
+            # Defer to AI review so Cursor prose/JSON glitches do not bounce Builder.
+            acceptance = dict(acceptance)
+            acceptance["all_done"] = True
+            acceptance_note += (
+                "- acceptance_ai_infra: `deferred_to_ai_review` "
+                "(checklist AI unavailable; AI review approved)\n"
+            )
         checklist_comment = post_checklist(
             repo, issue, acceptance, role="reviewer"
         )
-        acceptance_note = (
+        acceptance_note += (
             f"- acceptance_all_done: `{str(bool(acceptance.get('all_done'))).lower()}`\n"
             f"- acceptance_checklist: {checklist_comment.get('html_url')}\n"
         )
@@ -1041,6 +1118,16 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
                 update_issue_checkboxes(repo, issue, acceptance)
             except Exception as body_exc:
                 acceptance_note += f"- acceptance_body_update: failed (`{body_exc}`)\n"
+        elif product_incomplete:
+            hard_fail_reasons.append(
+                "acceptance criteria incomplete — see acceptance_checklist comment "
+                + (checklist_comment.get("html_url") or "")
+            )
+        elif infra_only_gap:
+            hard_fail_reasons.append(
+                "acceptance AI unavailable and AI review did not approve — see "
+                + (checklist_comment.get("html_url") or "")
+            )
         else:
             hard_fail_reasons.append(
                 "acceptance criteria incomplete — see acceptance_checklist comment "

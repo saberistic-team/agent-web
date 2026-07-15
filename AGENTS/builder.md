@@ -106,6 +106,12 @@ a dirty PR as unfinished Builder work.
    when markers remain or import fails (typical breaks: dropped `admin_router`,
    missing Protocol exports, obsolete Basic-auth imports). Status
    `broken_after_resolve` → `waiting` handoff — never Reviewer.
+   **Pre-handoff smoke (mandatory even when `mergeable: clean`):** Builder also
+   clones the PR head and smoke-imports before writing `reviewer` handoff.
+   Stale heads with `NameError: admin_router` / `CORRELATION_HEADER` are
+   mergeable but still break Reviewer screenshots — that was a Builder↔Reviewer
+   loop on CRM PRs. Known import gaps may be auto-repaired (`repair_main_wiring`)
+   once; persistent smoke failure stays `waiting`.
 4. Comment `### builder_conflict_context` and `### builder_conflict_result` on
    the issue.
 5. **Re-check** `mergeable` / `mergeable_state`. Only when clean → hand off
@@ -200,7 +206,11 @@ and network timeouts (`scripts/github_api.py`). Cursor local SDK retries
 Do **not** escalate / `status:blocked` for:
 
 - Cursor Bridge `ReadTimeout` / `retryable=True` (re-enter `status:queued` via
-  `waiting` handoff — learned from [#104](https://github.com/saberistic-team/agent-web/issues/104))
+  `waiting` handoff — learned from [#104](https://github.com/saberistic-team/agent-web/issues/104)
+  / [#108](https://github.com/saberistic-team/agent-web/issues/108))
+- Bridge argv bug `Missing value for --tool-callback-auth-token` (tokens starting
+  with `-`; SDK may say `retryable=False` but Builder still requeues —
+  `scripts/cursor_sdk_patch.py` patches token minting)
 - Soft “too many files” budgets after a raise of `CURSOR_MAX_FILES` (requeue;
   learned from [#105](https://github.com/saberistic-team/agent-web/issues/105))
 - Single transient Contents API `500` / timeout

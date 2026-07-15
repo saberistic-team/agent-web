@@ -101,7 +101,11 @@ Any of these is an automatic request-changes — do not approve:
   `.admin-nav-link` nodes exist but none are visible (common when nav links live
   inside a closed `<details>` without a separate desktop list) — Builder must
   keep the desktop list **outside** `<details>` (`format_admin_nav_hard_fail`)
-- Acceptance checklist incomplete (`all_done: false` or missing)
+- Acceptance checklist incomplete (`all_done: false` or missing) when criteria
+  are product-failed. **Exception:** acceptance AI infra/parse failures
+  (`method: ai-error`, e.g. Cursor returned prose instead of JSON) are **not**
+  Builder work when the AI PR review already `approved` — defer to that verdict
+  and do not `REQUEST_CHANGES` solely for the checklist transport glitch.
 
 Coverage gaps, missing tests, CI assertion failures, visual overflow, empty
 preview shells, invisible desktop admin nav, and **merge conflicts** are
