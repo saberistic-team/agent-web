@@ -20,8 +20,8 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
+from app.admin_client_source import resolve_admin_login_client_source
 from app.config import Settings
-from app.proxy_trust import ClientSourceResolution, resolve_admin_login_client_source
 
 SESSION_COOKIE_NAME = "admin_session"
 LOGIN_FLOW_COOKIE_NAME = "admin_login_flow"
@@ -236,11 +236,7 @@ def read_login_flow_token(request: Request) -> str | None:
 
 
 def client_ip(request: Request, settings: Settings) -> str:
-    """Return the resolved client source string for rate limiting."""
-    return resolve_admin_login_client_source(request, settings).source
-
-
-def _client_source(request: Request, settings: Settings) -> ClientSourceResolution:
+    """Resolve the client source for rate limiting (see ``resolve_admin_login_client_source``)."""
     return resolve_admin_login_client_source(request, settings)
 
 
@@ -365,8 +361,7 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    resolution = _client_source(request, settings)
-    source = resolution.source
+    source = client_ip(request, settings)
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,
@@ -418,7 +413,6 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "lockout_transition": admission.lockout_transition,
-                "source_resolution_path": resolution.path,
             },
         )
     elif admission.already_locked:
@@ -439,8 +433,7 @@ def try_admit_login_attempt(
 
 def is_login_throttled(request: Request, settings: Settings, *, username: str = "") -> bool:
     """Return whether login attempts are currently blocked (read-only helper)."""
-    resolution = _client_source(request, settings)
-    source = resolution.source
+    source = client_ip(request, settings)
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,
@@ -469,8 +462,7 @@ def record_failed_login(request: Request, settings: Settings, *, username: str =
 def finalize_successful_login(request: Request, settings: Settings, *, username: str = "") -> None:
     """Clear account bucket state and release the current source admission reservation."""
     _ = username
-    resolution = _client_source(request, settings)
-    source = resolution.source
+    source = client_ip(request, settings)
     source_key = build_source_rate_limit_key(source)
     account_keys = (
         (build_account_rate_limit_key(settings.admin_username),)
