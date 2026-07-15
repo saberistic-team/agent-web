@@ -10,18 +10,12 @@ from fastapi.testclient import TestClient
 
 from app.admin_preview import (
     COMPANY_NAMES,
-    PREVIEW_COMPANY_ARCHIVE_ID,
-    PREVIEW_COMPANY_RESTORE_ID,
-    PREVIEW_CONTACT_ARCHIVE_ID,
-    PREVIEW_CONTACT_RESTORE_ID,
     PREVIEW_PIPELINE_COMPANY_IDS,
     build_preview_acquisition_dashboard_data,
     build_preview_dashboard_data,
     build_preview_pipeline_companies,
     build_preview_pipeline_detail,
     build_preview_section_rows,
-    preview_company_detail,
-    preview_contact_detail,
     render_preview_dashboard_main,
     render_preview_section_main,
 )
@@ -264,37 +258,6 @@ def test_admin_preview_briefs_list_and_detail_have_mock_data(
 
 
 @pytest.mark.unit
-def test_preview_crm_detail_archive_and_restore_states_are_stable() -> None:
-    rng = random.Random(42)
-    archive_company, archive_contacts, archive_records = preview_company_detail(
-        PREVIEW_COMPANY_ARCHIVE_ID,
-        rng=rng,
-    )
-    restore_company, _restore_contacts, _restore_records = preview_company_detail(
-        PREVIEW_COMPANY_RESTORE_ID,
-        rng=random.Random(42),
-    )
-    assert archive_company["archived_at"] is None
-    assert restore_company["archived_at"] is not None
-    assert archive_company["name"] in COMPANY_NAMES
-    assert archive_contacts
-    assert archive_records
-
-    archive_contact, archive_company_link, contact_records = preview_contact_detail(
-        PREVIEW_CONTACT_ARCHIVE_ID,
-        rng=random.Random(42),
-    )
-    restore_contact, _restore_company, _restore_contact_records = preview_contact_detail(
-        PREVIEW_CONTACT_RESTORE_ID,
-        rng=random.Random(42),
-    )
-    assert archive_contact["archived_at"] is None
-    assert restore_contact["archived_at"] is not None
-    assert archive_company_link["name"] in COMPANY_NAMES
-    assert contact_records
-
-
-@pytest.mark.unit
 def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytest.MonkeyPatch) -> None:
     import random
 
@@ -324,6 +287,104 @@ def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytes
     assert preview["archived_contact"]["full_name"] in response.text
     assert preview["conflicting_contact"]["full_name"] in response.text
     assert "Restore blocked" in response.text
+
+
+@pytest.mark.unit
+def test_preview_company_detail_archive_and_restore_buttons(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from argon2 import PasswordHasher
+
+    from app.admin_preview import (
+        PREVIEW_COMPANY_ARCHIVE_STATE_ID,
+        PREVIEW_COMPANY_RESTORE_STATE_ID,
+        build_preview_company_detail,
+    )
+
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "11")
+    monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
+    monkeypatch.setenv(
+        "ADMIN_PASSWORD_HASH",
+        PasswordHasher().hash("preview"),
+    )
+    monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
+    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    client = TestClient(app, follow_redirects=False)
+    archive_preview = build_preview_company_detail(
+        PREVIEW_COMPANY_ARCHIVE_STATE_ID,
+        rng=random.Random(11),
+    )
+    restore_preview = build_preview_company_detail(
+        PREVIEW_COMPANY_RESTORE_STATE_ID,
+        rng=random.Random(11),
+    )
+    archive_response = client.get(f"/admin/companies/{PREVIEW_COMPANY_ARCHIVE_STATE_ID}")
+    restore_response = client.get(f"/admin/companies/{PREVIEW_COMPANY_RESTORE_STATE_ID}")
+    assert archive_response.status_code == 200
+    assert restore_response.status_code == 200
+    assert archive_preview is not None
+    assert restore_preview is not None
+    assert archive_preview["company"]["name"] in archive_response.text
+    assert restore_preview["company"]["name"] in restore_response.text
+    assert 'class="admin-action-btn admin-action-btn--destructive"' in archive_response.text
+    assert "Archive company" in archive_response.text
+    assert 'class="admin-action-btn admin-action-btn--restore"' in restore_response.text
+    assert "Restore company" in restore_response.text
+
+
+@pytest.mark.unit
+def test_preview_contact_detail_and_edit_archive_restore_buttons(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from argon2 import PasswordHasher
+
+    from app.admin_preview import (
+        PREVIEW_CONTACT_ARCHIVE_STATE_ID,
+        PREVIEW_CONTACT_RESTORE_STATE_ID,
+        build_preview_contact_detail,
+    )
+
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "11")
+    monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
+    monkeypatch.setenv(
+        "ADMIN_PASSWORD_HASH",
+        PasswordHasher().hash("preview"),
+    )
+    monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
+    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    client = TestClient(app, follow_redirects=False)
+    archive_preview = build_preview_contact_detail(
+        PREVIEW_CONTACT_ARCHIVE_STATE_ID,
+        rng=random.Random(11),
+    )
+    restore_preview = build_preview_contact_detail(
+        PREVIEW_CONTACT_RESTORE_STATE_ID,
+        rng=random.Random(11),
+    )
+    archive_detail = client.get(f"/admin/contacts/{PREVIEW_CONTACT_ARCHIVE_STATE_ID}")
+    restore_detail = client.get(f"/admin/contacts/{PREVIEW_CONTACT_RESTORE_STATE_ID}")
+    archive_edit = client.get(f"/admin/contacts/{PREVIEW_CONTACT_ARCHIVE_STATE_ID}/edit")
+    restore_edit = client.get(f"/admin/contacts/{PREVIEW_CONTACT_RESTORE_STATE_ID}/edit")
+    assert archive_detail.status_code == 200
+    assert restore_detail.status_code == 200
+    assert archive_edit.status_code == 200
+    assert restore_edit.status_code == 200
+    assert archive_preview is not None
+    assert restore_preview is not None
+    assert archive_preview["contact"]["full_name"] in archive_detail.text
+    assert restore_preview["contact"]["full_name"] in restore_detail.text
+    assert 'class="admin-action-btn admin-action-btn--destructive"' in archive_detail.text
+    assert 'class="admin-action-btn admin-action-btn--destructive"' in archive_edit.text
+    assert "Archive contact" in archive_detail.text
+    assert "Archive contact" in archive_edit.text
+    assert 'class="admin-action-btn admin-action-btn--restore"' in restore_detail.text
+    assert 'class="admin-action-btn admin-action-btn--restore"' in restore_edit.text
+    assert "Restore contact" in restore_detail.text
+    assert "Restore contact" in restore_edit.text
 
 
 @pytest.mark.unit

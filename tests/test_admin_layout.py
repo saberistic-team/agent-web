@@ -13,7 +13,7 @@ from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 
 from app.admin_auth import SESSION_COOKIE_NAME
-from app.admin_layout import ADMIN_NAV_LINKS, render_admin_nav
+from app.admin_layout import ADMIN_NAV_LINKS, archive_action_button_class, render_admin_nav
 from app.main import app
 
 client = TestClient(app, follow_redirects=False)
@@ -136,6 +136,42 @@ def test_render_admin_nav_unknown_path_uses_admin_label() -> None:
 
 
 @pytest.mark.unit
+def test_archive_action_button_class_maps_archive_and_restore_states() -> None:
+    assert archive_action_button_class(archived=False) == (
+        "admin-action-btn admin-action-btn--destructive"
+    )
+    assert archive_action_button_class(archived=True) == (
+        "admin-action-btn admin-action-btn--restore"
+    )
+
+
+@pytest.mark.unit
+def test_admin_css_archive_restore_action_buttons_reset_native_appearance() -> None:
+    css = ADMIN_CSS.read_text(encoding="utf-8")
+    assert ".admin-action-btn" in css
+    assert ".admin-action-btn--destructive" in css
+    assert ".admin-action-btn--restore" in css
+    base_block = css.split(".admin-action-btn {", 1)[1].split("}", 1)[0]
+    assert "appearance: none" in base_block
+    assert "cursor: pointer" in base_block
+    assert "border-radius:" in base_block
+    assert "background:" in base_block
+    assert "border:" in base_block
+    assert "padding:" in base_block
+    assert "font-family: inherit" in base_block
+    assert ".admin-action-btn:focus-visible" in css
+    assert ".admin-action-btn:hover" in css
+    assert ".admin-action-btn:active:not(:disabled)" in css
+    assert ".admin-action-btn:disabled" in css
+    destructive_block = css.split(".admin-action-btn--destructive {", 1)[1].split("}", 1)[0]
+    restore_block = css.split(".admin-action-btn--restore {", 1)[1].split("}", 1)[0]
+    assert "background:" in destructive_block
+    assert destructive_block != restore_block
+    assert ".admin-action-btn--destructive:focus-visible" in css
+    assert ".admin-action-btn--restore:hover" in css
+
+
+@pytest.mark.unit
 def test_admin_css_mobile_nav_and_table_scroll_guardrails() -> None:
     css = ADMIN_CSS.read_text(encoding="utf-8")
     assert "@media (min-width: 769px)" in css
@@ -195,38 +231,6 @@ def test_admin_css_desktop_nav_list_visible_when_collapsed() -> None:
     # Desktop list must not live inside closed details (UA hide trap).
     assert "display: flex !important" not in desktop_block
     assert "details.admin-nav-toggle:not([open])" not in desktop_block
-
-
-@pytest.mark.unit
-def test_archive_action_button_class_semantic_modifiers() -> None:
-    from app.admin_layout import archive_action_button_class
-
-    assert archive_action_button_class(is_archived=False) == (
-        "admin-action admin-action--destructive"
-    )
-    assert archive_action_button_class(is_archived=True) == "admin-action admin-action--restore"
-
-
-@pytest.mark.unit
-def test_admin_css_archive_action_buttons_reset_native_appearance() -> None:
-    css = ADMIN_CSS.read_text(encoding="utf-8")
-    action_block = css.split(".admin-action {", 1)[1].split("}", 1)[0]
-    assert "background:" in action_block
-    assert "border:" in action_block
-    assert "padding:" in action_block
-    assert "cursor: pointer" in action_block
-    assert "border-radius:" in action_block
-    assert "font-family: inherit" in action_block
-    assert ".admin-action:focus-visible" in css
-    assert ".admin-action:disabled" in css
-    assert ".admin-action--destructive" in css
-    assert ".admin-action--restore" in css
-    destructive_block = css.split(".admin-action--destructive {", 1)[1].split("}", 1)[0]
-    restore_block = css.split(".admin-action--restore {", 1)[1].split("}", 1)[0]
-    assert "background:" in destructive_block
-    assert destructive_block != restore_block
-    exit_block = css.split(".admin-exit {", 1)[1].split("}", 1)[0]
-    assert "background:" not in exit_block
 
 
 @pytest.mark.unit
