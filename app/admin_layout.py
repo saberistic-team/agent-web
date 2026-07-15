@@ -95,6 +95,18 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/companies?archived=1",
     "/admin/contacts?archived=1",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
+    # Company detail/editor fixtures (see docs/SCREENSHOTS.md).
+    "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    "/admin/companies/new",
+    "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/edit",
+    "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa02",
+    "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/edit?error=validation&focus=name",
+    # Contact detail/editor fixtures.
+    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    "/admin/contacts/new",
+    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/edit",
+    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbc/edit",
+    # Pipeline detail (Next action, Change stage, Log activity, timeline).
     "/admin/pipeline/11111111-1111-1111-1111-111111111111",
 )
 
