@@ -52,10 +52,21 @@ class _ClaimBarrier:
     ) -> Generator[None, None, None]:
         original = _mock_claim_admin_login_flow
 
-        def coordinated(conn: MagicMock, *, flow_token_hash: str, now: datetime) -> Any:
+        def coordinated(
+            conn: MagicMock,
+            *,
+            flow_token_hash: str,
+            csrf_token_hash: str,
+            now: datetime,
+        ) -> Any:
             self._barrier.wait(timeout=5)
             with self._lock:
-                return original(conn, flow_token_hash=flow_token_hash, now=now)
+                return original(
+                    conn,
+                    flow_token_hash=flow_token_hash,
+                    csrf_token_hash=csrf_token_hash,
+                    now=now,
+                )
 
         with patch("app.admin_routes.db.claim_admin_login_flow", side_effect=coordinated):
             yield
@@ -211,11 +222,20 @@ def test_concurrent_claim_uses_distinct_connection_handles(
     barrier = _ClaimBarrier()
     seen_connections: list[int] = []
 
-    def tracking_claim(conn: MagicMock, *, flow_token_hash: str, now: datetime) -> Any:
+    def tracking_claim(
+        conn: MagicMock,
+        *,
+        flow_token_hash: str,
+        csrf_token_hash: str,
+        now: datetime,
+    ) -> Any:
         seen_connections.append(id(conn))
         barrier.wait()
         return _mock_claim_admin_login_flow(
-            conn, flow_token_hash=flow_token_hash, now=now
+            conn,
+            flow_token_hash=flow_token_hash,
+            csrf_token_hash=csrf_token_hash,
+            now=now,
         )
 
     def worker() -> None:
@@ -273,7 +293,10 @@ def test_expiry_boundary_claim_fails_at_exact_expiry() -> None:
     }
 
     claimed = _mock_claim_admin_login_flow(
-        MagicMock(), flow_token_hash=flow_hash, now=boundary
+        MagicMock(),
+        flow_token_hash=flow_hash,
+        csrf_token_hash="csrf",
+        now=boundary,
     )
 
     assert claimed is None
@@ -291,7 +314,7 @@ def test_expiry_boundary_login_rejects_without_password_verification(
     with shared_rate_limiter(rate_limit_store):
         with mock_db_connection():
             with patch(
-                "app.admin_routes._claim_login_flow",
+                "app.admin_routes._try_claim_login_flow",
                 return_value=None,
             ):
                 with patch("app.admin_auth.verify_admin_credentials") as verify:
@@ -337,14 +360,15 @@ def test_claim_database_failure_does_not_verify_or_set_session_cookie(
     with shared_rate_limiter(rate_limit_store):
         with mock_db_connection():
             with patch(
-                "app.admin_routes._claim_login_flow",
+                "app.admin_routes.db.claim_admin_login_flow",
                 side_effect=RuntimeError("database unavailable"),
             ):
                 with patch("app.admin_auth.verify_admin_credentials") as verify:
                     response = _login_post(csrf_token=csrf_token, cookies=cookies)
 
     verify.assert_not_called()
-    assert response.status_code == 503
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/admin/login")
     assert SESSION_COOKIE_NAME not in response.cookies
     assert LOGIN_FLOW_COOKIE_NAME not in response.cookies
 
@@ -358,11 +382,20 @@ def test_cleanup_during_concurrent_claim_cannot_delete_active_flow(
     claim_may_proceed = threading.Event()
     verify_calls = {"count": 0}
 
-    def slow_claim(conn: MagicMock, *, flow_token_hash: str, now: datetime) -> Any:
+    def slow_claim(
+        conn: MagicMock,
+        *,
+        flow_token_hash: str,
+        csrf_token_hash: str,
+        now: datetime,
+    ) -> Any:
         cleanup_started.set()
         claim_may_proceed.wait(timeout=5)
         return _mock_claim_admin_login_flow(
-            conn, flow_token_hash=flow_token_hash, now=now
+            conn,
+            flow_token_hash=flow_token_hash,
+            csrf_token_hash=csrf_token_hash,
+            now=now,
         )
 
     def cleanup_worker() -> None:
@@ -413,13 +446,19 @@ def test_claim_admin_login_flow_sql_unit() -> None:
     cur.fetchone.return_value = {"id": 1}
     now = datetime(2026, 7, 15, 12, 0, tzinfo=timezone.utc)
 
-    row = db.claim_admin_login_flow(conn, flow_token_hash="flow-hash", now=now)
+    row = db.claim_admin_login_flow(
+        conn,
+        flow_token_hash="flow-hash",
+        csrf_token_hash="csrf-hash",
+        now=now,
+    )
 
     sql = cur.execute.call_args.args[0]
     assert "UPDATE admin_login_flows" in sql
+    assert "csrf_token_hash = %s" in sql
     assert "consumed_at IS NULL" in sql
     assert "expires_at > %s" in sql
     assert "RETURNING" in sql
-    assert cur.execute.call_args.args[1] == (now, "flow-hash", now)
+    assert cur.execute.call_args.args[1] == (now, "flow-hash", "csrf-hash", now)
     assert row == {"id": 1}
     conn.commit.assert_called_once()
