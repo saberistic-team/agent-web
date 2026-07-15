@@ -365,4 +365,8 @@ def test_preview_brief_conversion_states() -> None:
     matches = preview_brief_convert_matches(4, price_cents=20_000)
     assert matches["company_matches"]
     assert matches["contact_matches"]
+    assert matches["archived_contact_matches"] == []
+    archived_only = preview_brief_convert_matches(5, price_cents=20_000)
+    assert archived_only["contact_matches"] == []
+    assert archived_only["archived_contact_matches"]
     assert matches["proposal"]["pipeline_stage"] in {"qualified", "diagnostic_paid"}

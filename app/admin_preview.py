@@ -70,6 +70,8 @@ PREVIEW_BRIEF_DATABASE_ERROR_ID = 503
 PREVIEW_BRIEF_CONVERTED_ID = 3
 # Brief convert preview with explicit domain/email matches for Reviewer shots.
 PREVIEW_BRIEF_CONVERT_MATCHES_ID = 4
+# Brief convert preview with archived-only email match (restore/review panel).
+PREVIEW_BRIEF_CONVERT_ARCHIVED_ID = 5
 PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR = (
     "Select an existing company match or choose to create a new company."
 )
@@ -766,10 +768,16 @@ def preview_brief_convert_matches(
 
     brief = build_preview_brief_detail(brief_id)
     if brief is None:
-        return {"proposal": {}, "company_matches": [], "contact_matches": []}
+        return {
+            "proposal": {},
+            "company_matches": [],
+            "contact_matches": [],
+            "archived_contact_matches": [],
+        }
     proposal = build_conversion_proposal(dict(brief), price_cents=price_cents)
     company_matches: list[dict[str, object]] = []
     contact_matches: list[dict[str, object]] = []
+    archived_contact_matches: list[dict[str, object]] = []
     if brief_id in (1, PREVIEW_BRIEF_CONVERT_MATCHES_ID):
         company_matches.append(
             {
@@ -786,10 +794,21 @@ def preview_brief_convert_matches(
                 "company_id": company_matches[0]["id"] if company_matches else None,
             }
         )
+    if brief_id == PREVIEW_BRIEF_CONVERT_ARCHIVED_ID:
+        archived_contact_matches.append(
+            {
+                "id": "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+                "full_name": "Former VP Engineering",
+                "email": proposal.get("contact_email"),
+                "company_name": "Northwind Labs (archived)",
+                "archived_at": "2026-07-01T00:00:00+00:00",
+            }
+        )
     return {
         "proposal": proposal,
         "company_matches": company_matches,
         "contact_matches": contact_matches,
+        "archived_contact_matches": archived_contact_matches,
     }
 
 

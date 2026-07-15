@@ -786,6 +786,32 @@ def _render_match_radios(
     return "\n".join(rows)
 
 
+def _render_archived_contact_review(matches: list[dict[str, Any]]) -> str:
+    if not matches:
+        return ""
+    rows: list[str] = []
+    for match in matches:
+        contact_id = str(match.get("id", ""))
+        safe_id = html.escape(contact_id, quote=True)
+        name = html.escape(str(match.get("full_name") or "Archived contact"))
+        email = html.escape(str(match.get("email") or "—"))
+        company = html.escape(str(match.get("company_name") or "—"))
+        rows.append(
+            f'<div class="brief-convert-archived-review">'
+            f"<p><strong>{name}</strong> · {email} · {company}</p>"
+            f'<p class="admin-note">Archived — not linkable as an active contact. '
+            f'<a href="/admin/contacts/{safe_id}/edit">Review</a> or '
+            f'<a href="/admin/contacts/{safe_id}/restore">restore</a> before linking.</p>'
+            f"</div>"
+        )
+    return (
+        '<section class="brief-detail-section" aria-labelledby="brief-convert-archived-title">'
+        '<h2 class="brief-detail-heading" id="brief-convert-archived-title">Archived email match (review only)</h2>'
+        + "\n".join(rows)
+        + "</section>"
+    )
+
+
 def render_admin_brief_convert_page(
     *,
     admin_username: str,
@@ -801,6 +827,9 @@ def render_admin_brief_convert_page(
     proposal = preview.get("proposal") or {}
     company_matches: list[dict[str, Any]] = list(preview.get("company_matches") or [])
     contact_matches: list[dict[str, Any]] = list(preview.get("contact_matches") or [])
+    archived_contact_matches: list[dict[str, Any]] = list(
+        preview.get("archived_contact_matches") or []
+    )
 
     error_html = ""
     if error_message:
@@ -816,6 +845,7 @@ def render_admin_brief_convert_page(
         choice_name="contact_choice",
         matches=contact_matches,
     )
+    archived_contact_review_html = _render_archived_contact_review(archived_contact_matches)
 
     default_company_choice = "existing" if company_matches else "new"
     default_contact_choice = "existing" if contact_matches else "new"
@@ -883,6 +913,7 @@ def render_admin_brief_convert_page(
               </label>
               {contact_match_html}
             </fieldset>
+            {archived_contact_review_html}
             <button class="cta admin-submit" type="submit">Confirm and add to pipeline</button>
             <p class="admin-note"><a href="{detail_href}">Cancel</a></p>
           </form>

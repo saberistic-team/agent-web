@@ -63,6 +63,18 @@ def normalize_email(value: str | None) -> str | None:
     return email
 
 
+def normalize_contact_lookup_email(email: str) -> str:
+    """Normalize email for identity lookups (create, edit, restore, brief conversion)."""
+    normalized = normalize_email(email)
+    if normalized is None:
+        raise ValueError("email must be a valid address")
+    return normalized
+
+
+class ContactEmailConflictError(ValueError):
+    """Raised when an active contact already owns the normalized email."""
+
+
 def normalize_profile_url(value: str | None) -> str | None:
     """Return a comparable profile URL, or None for an intentionally empty field."""
     if value is None:

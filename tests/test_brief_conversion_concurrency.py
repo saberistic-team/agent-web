@@ -176,7 +176,28 @@ class _SharedBriefConversionDatabase:
     def get_contact_by_email(self, conn: MagicMock, email: str) -> dict[str, Any] | None:
         view = self._view(conn)
         for row in view["contacts"].values():
-            if row.get("email") == email:
+            if row.get("email") == email and row.get("archived_at") is None:
+                return row
+        return None
+
+    def get_active_by_email(
+        self,
+        conn: MagicMock,
+        email: str,
+        *,
+        exclude_contact_id: UUID | None = None,
+    ) -> dict[str, Any] | None:
+        row = self.get_contact_by_email(conn, email)
+        if row is None:
+            return None
+        if exclude_contact_id is not None and row.get("id") == exclude_contact_id:
+            return None
+        return row
+
+    def get_archived_contact_by_email(self, conn: MagicMock, email: str) -> dict[str, Any] | None:
+        view = self._view(conn)
+        for row in view["contacts"].values():
+            if row.get("email") == email and row.get("archived_at") is not None:
                 return row
         return None
 
@@ -348,6 +369,18 @@ class _InMemoryContactRepo:
 
     def get_by_email(self, conn: MagicMock, email: str) -> dict[str, Any] | None:
         return self._db.get_contact_by_email(conn, email)
+
+    def get_active_by_email(
+        self,
+        conn: MagicMock,
+        email: str,
+        *,
+        exclude_contact_id: UUID | None = None,
+    ) -> dict[str, Any] | None:
+        return self._db.get_contact_by_email(conn, email)
+
+    def get_archived_by_email(self, conn: MagicMock, email: str) -> dict[str, Any] | None:
+        return self._db.get_archived_contact_by_email(conn, email)
 
     def get_by_id(self, conn: MagicMock, contact_id: UUID) -> dict[str, Any] | None:
         return self._db.get_contact(conn, contact_id)

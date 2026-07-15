@@ -12,10 +12,12 @@ from pydantic import ValidationError
 from app.admin_contacts import render_contact_form_page, render_contacts_list_page
 from app.contacts import (
     ContactCreate,
+    ContactEmailConflictError,
     DECISION_MAKER_BUYING_ROLES,
     find_email_duplicate_warnings,
     find_name_company_duplicate_warnings,
     find_profile_url_duplicate_warnings,
+    normalize_contact_lookup_email,
     normalize_email,
     normalize_profile_url,
 )
@@ -39,6 +41,7 @@ def test_profile_url_and_email_normalization() -> None:
         "https://linkedin.com/in/ada-lovelace"
     )
     assert normalize_email(" Lead@Example.COM ") == "lead@example.com"
+    assert normalize_contact_lookup_email(" Lead@Example.COM ") == "lead@example.com"
     contact = ContactCreate(
         full_name=" Ada Lovelace ",
         profile_url="linkedin.com/in/ada",
@@ -48,6 +51,11 @@ def test_profile_url_and_email_normalization() -> None:
     assert contact.full_name == "Ada Lovelace"
     assert contact.email is None
     assert contact.buying_roles == ["founder", "technical_buyer"]
+
+
+@pytest.mark.unit
+def test_contact_email_conflict_error_is_value_error() -> None:
+    assert issubclass(ContactEmailConflictError, ValueError)
 
 
 @pytest.mark.unit

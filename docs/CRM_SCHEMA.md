@@ -112,6 +112,24 @@ Indexes: `company_id`, partial unique on `LOWER(email)`, `profile_url`, `archive
 `app/contacts.py` owns buying-role and relationship registries. Duplicate warnings for
 normalized profile URL, email, and name/company combinations are non-blocking.
 
+**Email identity (active vs archived):** `normalize_contact_lookup_email()` in
+`app/contacts.py` is the single normalization policy for create, edit, restore, lookup,
+and brief conversion. Repository lookups are explicit:
+
+- `get_active_by_email()` / `get_by_email()` — active rows only (`archived_at IS NULL`)
+- `get_archived_by_email()` — archived rows only (`archived_at IS NOT NULL`)
+
+When an active and archived contact share an email, active workflows always resolve the
+active row. Archived matches may appear in brief conversion as a restore/review panel
+but are never silently linked. Active duplicate create/update raises
+`ContactEmailConflictError` (mapped from partial unique index `idx_contacts_email_unique`)
+instead of an HTTP 500.
+
+**Brief conversion company association:** when linking an existing active contact, its
+`company_id` must be `NULL` or match the selected/created company for the conversion.
+Creating a new company while linking a contact that already belongs to another company
+is rejected. Brief conversion does not silently reassign contact company affiliation.
+
 ### `source_records`
 
 | Column | Type | Notes |

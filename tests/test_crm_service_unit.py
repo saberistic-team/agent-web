@@ -10,7 +10,7 @@ import pytest
 from app.crm_service import CrmRepositories, CrmService
 from app.companies import CompanyCreate, CompanyUpdate
 from app.actor_context import ActorContext
-from app.contacts import ContactCreate, ContactRestoreResult, ContactUpdate
+from app.contacts import ContactCreate, ContactEmailConflictError, ContactRestoreResult, ContactUpdate
 from app.repositories.postgres import (
     PostgresActivityRepository,
     PostgresAdminUserRepository,
@@ -333,7 +333,7 @@ def test_contact_crud_helpers_commit_and_return_nonblocking_duplicate_warnings()
     contact_repo.find_by_profile_url.return_value = [
         {"id": CONTACT_ID, "full_name": "Ada", "profile_url": "https://linkedin.com/in/ada"}
     ]
-    contact_repo.get_by_email.return_value = {"id": CONTACT_ID, "full_name": "Ada", "email": "ada@example.com"}
+    contact_repo.get_active_by_email.return_value = {"id": CONTACT_ID, "full_name": "Ada", "email": "ada@example.com"}
     contact_repo.find_by_name_company.return_value = [
         {"id": CONTACT_ID, "full_name": "Ada", "company_id": COMPANY_ID}
     ]
@@ -390,6 +390,32 @@ def test_contact_crud_helpers_commit_and_return_nonblocking_duplicate_warnings()
     assert restored.contact is not None
     assert restored.contact["archived_at"] is None
     assert conn.commit.call_count == 4
+
+
+@pytest.mark.unit
+def test_create_contact_maps_email_unique_violation_to_conflict_error() -> None:
+    from psycopg import errors as pg_errors
+    from unittest.mock import MagicMock
+
+    contact_repo = MagicMock()
+    contact_repo.find_by_profile_url.return_value = []
+    contact_repo.get_active_by_email.return_value = None
+    contact_repo.find_by_name_company.return_value = []
+    diag = MagicMock(constraint_name="idx_contacts_email_unique", table_name="contacts")
+
+    class _WithDiag(pg_errors.UniqueViolation):
+        @property
+        def diag(self) -> MagicMock:
+            return diag
+
+    contact_repo.create.side_effect = _WithDiag("duplicate key")
+    service, conn, _ = _service_with_mocks(contact_repo=contact_repo)
+
+    with pytest.raises(ContactEmailConflictError, match="already exists"):
+        service.create_contact(
+            conn,
+            contact=ContactCreate(full_name="Ada", email="ada@example.com"),
+        )
 
 
 @pytest.mark.unit

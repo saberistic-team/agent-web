@@ -90,14 +90,22 @@ def test_contact_repository_create_and_lookup() -> None:
 
     conn2 = _mock_conn(row)
     assert repo.get_by_email(conn2, "lead@example.com")["id"] == CONTACT_ID
+    by_email_sql = str(conn2.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    assert "archived_at IS NULL" in by_email_sql
 
     conn3 = _mock_conn(row)
     assert repo.get_active_by_email(conn3, "lead@example.com")["id"] == CONTACT_ID
     active_sql = str(conn3.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
     assert "archived_at IS NULL" in active_sql
 
-    conn4 = _mock_conn([row])
-    contacts = repo.list_for_company(conn4, COMPANY_ID, limit=10)
+    archived_row = {**row, "archived_at": "2026-01-01", "id": UUID("99999999-9999-9999-9999-999999999999")}
+    conn4 = _mock_conn(archived_row)
+    assert repo.get_archived_by_email(conn4, "lead@example.com")["id"] == archived_row["id"]
+    archived_sql = str(conn4.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    assert "archived_at IS NOT NULL" in archived_sql
+
+    conn5 = _mock_conn([row])
+    contacts = repo.list_for_company(conn5, COMPANY_ID, limit=10)
     assert len(contacts) == 1
 
 

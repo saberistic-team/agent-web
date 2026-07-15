@@ -32,6 +32,7 @@ from app.companies import CompanyCreate, CompanyUpdate, find_domain_duplicate_wa
 from app.contacts import (
     ContactCreate,
     ContactUpdate,
+    ContactEmailConflictError,
     find_email_duplicate_warnings,
     find_name_company_duplicate_warnings,
     find_profile_url_duplicate_warnings,
@@ -218,12 +219,19 @@ class CrmService:
             if domain
             else []
         )
-        contact = self._repos.contacts.get_by_email(conn, email)
-        contacts = [contact] if contact else []
+        active_contact = self._repos.contacts.get_active_by_email(conn, email)
+        archived_contact = (
+            None
+            if active_contact is not None
+            else self._repos.contacts.get_archived_by_email(conn, email)
+        )
+        contact_matches = [active_contact] if active_contact else []
+        archived_contact_matches = [archived_contact] if archived_contact else []
         return {
             "proposal": proposal,
             "company_matches": companies,
-            "contact_matches": contacts,
+            "contact_matches": contact_matches,
+            "archived_contact_matches": archived_contact_matches,
         }
 
     def convert_project_brief(
@@ -254,12 +262,18 @@ class CrmService:
             if domain
             else []
         )
-        contact_match = self._repos.contacts.get_by_email(conn, email)
+        contact_match = self._repos.contacts.get_active_by_email(conn, email)
+        archived_contact_match = (
+            None
+            if contact_match is not None
+            else self._repos.contacts.get_archived_by_email(conn, email)
+        )
         self._validate_conversion_choices(
             company_choice=company_choice,
             contact_choice=contact_choice,
             company_matches=company_matches,
             contact_match=contact_match,
+            archived_contact_match=archived_contact_match,
             selected_company_id=selected_company_id,
             selected_contact_id=selected_contact_id,
         )
@@ -339,6 +353,10 @@ class CrmService:
                 contact = self._repos.contacts.get_by_id(conn, selected_contact_id)
                 if contact is None:
                     raise BriefConversionValidationError("Selected contact was not found.")
+                if contact.get("archived_at") is not None:
+                    raise BriefConversionValidationError(
+                        "Selected contact is archived — restore it from Contacts or create a new active contact."
+                    )
             else:
                 contact = self._repos.contacts.create(
                     conn,
@@ -467,6 +485,7 @@ class CrmService:
         contact_choice: str,
         company_matches: list[dict[str, Any]],
         contact_match: dict[str, Any] | None,
+        archived_contact_match: dict[str, Any] | None,
         selected_company_id: UUID | None,
         selected_contact_id: UUID | None,
     ) -> None:
@@ -488,6 +507,10 @@ class CrmService:
             raise BriefConversionValidationError("No existing company matches this domain.")
 
         if contact_match is None and contact_choice == "existing":
+            if archived_contact_match is not None:
+                raise BriefConversionValidationError(
+                    "An archived contact shares this email — restore it from Contacts or create a new active contact."
+                )
             raise BriefConversionValidationError("No existing contact matches this email.")
 
         if contact_match is not None and contact_choice == "existing":
@@ -507,20 +530,33 @@ class CrmService:
         if contact_choice == "existing" and selected_contact_id is None:
             raise BriefConversionValidationError("A contact selection is required.")
 
-        if (
-            company_choice == "existing"
-            and contact_choice == "existing"
-            and selected_company_id is not None
-            and selected_contact_id is not None
-        ):
-            contact = contact_match
-            if contact is None:
-                raise BriefConversionValidationError("Selected contact was not found.")
-            linked_company = contact.get("company_id")
-            if linked_company is not None and UUID(str(linked_company)) != selected_company_id:
-                raise BriefConversionValidationError(
-                    "Selected contact belongs to a different company — adjust your selection."
-                )
+        if contact_choice == "existing" and contact_match is not None:
+            self._validate_brief_contact_company_association(
+                contact=contact_match,
+                company_choice=company_choice,
+                selected_company_id=selected_company_id,
+            )
+
+    @staticmethod
+    def _validate_brief_contact_company_association(
+        *,
+        contact: dict[str, Any],
+        company_choice: str,
+        selected_company_id: UUID | None,
+    ) -> None:
+        """Enforce documented company-association rule when linking an existing contact."""
+        linked_company = contact.get("company_id")
+        if linked_company is None:
+            return
+        linked_company_id = UUID(str(linked_company))
+        if company_choice == "new":
+            raise BriefConversionValidationError(
+                "Selected contact is already linked to another company — link that company or create a new contact."
+            )
+        if selected_company_id is not None and linked_company_id != selected_company_id:
+            raise BriefConversionValidationError(
+                "Selected contact belongs to a different company — adjust your selection."
+            )
 
     def get_admin_user_by_email(
         self,
@@ -666,7 +702,12 @@ class CrmService:
             )
             email_matches = (
                 [existing]
-                if contact.email and (existing := self._repos.contacts.get_by_email(conn, contact.email))
+                if contact.email
+                and (
+                    existing := self._repos.contacts.get_active_by_email(
+                        conn, contact.email
+                    )
+                )
                 else []
             )
             name_company_matches = (
@@ -678,7 +719,14 @@ class CrmService:
                 if contact.company_id
                 else []
             )
-            created = self._repos.contacts.create(conn, **contact.model_dump())
+            try:
+                created = self._repos.contacts.create(conn, **contact.model_dump())
+            except pg_errors.UniqueViolation as exc:
+                if not _is_contact_email_unique_violation(exc):
+                    raise
+                raise ContactEmailConflictError(
+                    "An active contact with this email already exists."
+                ) from exc
         duplicate_warnings = [
             *find_profile_url_duplicate_warnings(profile_matches, profile_url=contact.profile_url),
             *find_email_duplicate_warnings(email_matches, email=contact.email),
@@ -707,7 +755,7 @@ class CrmService:
             )
             email_matches: list[dict[str, Any]] = []
             if contact.email:
-                existing = self._repos.contacts.get_by_email(conn, contact.email)
+                existing = self._repos.contacts.get_active_by_email(conn, contact.email)
                 if existing is not None and str(existing.get("id")) != str(contact_id):
                     email_matches.append(existing)
             name_company_matches = (
@@ -720,9 +768,16 @@ class CrmService:
                 if contact.company_id
                 else []
             )
-            updated = self._repos.contacts.update(
-                conn, contact_id, **contact.model_dump()
-            )
+            try:
+                updated = self._repos.contacts.update(
+                    conn, contact_id, **contact.model_dump()
+                )
+            except pg_errors.UniqueViolation as exc:
+                if not _is_contact_email_unique_violation(exc):
+                    raise
+                raise ContactEmailConflictError(
+                    "An active contact with this email already exists."
+                ) from exc
         if updated is None:
             return None
         duplicate_warnings = [

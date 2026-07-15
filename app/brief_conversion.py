@@ -6,6 +6,7 @@ from typing import Any
 
 from app.companies import normalize_domain
 from app.config import Settings
+from app.contacts import normalize_contact_lookup_email
 from app.pipeline_stages import initial_pipeline_stage_for_brief_status, pipeline_stage_label
 
 
@@ -26,7 +27,7 @@ class BriefConversionValidationError(BriefConversionError):
 
 
 def normalize_brief_email(value: str) -> str:
-    return value.strip().lower()
+    return normalize_contact_lookup_email(value)
 
 
 def derive_company_name(*, website: str, domain: str | None = None) -> str:

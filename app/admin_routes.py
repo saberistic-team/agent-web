@@ -26,7 +26,13 @@ from app.brief_conversion import (
     effective_brief_price_cents,
     pipeline_capabilities_available,
 )
-from app.contacts import BUYING_ROLES, ContactCreate, ContactSafeSummary, ContactUpdate
+from app.contacts import (
+    BUYING_ROLES,
+    ContactCreate,
+    ContactEmailConflictError,
+    ContactSafeSummary,
+    ContactUpdate,
+)
 from app.crm_uow import crm_transaction
 from app.actor_context import actor_context_from_request, correlation_id_from_request
 from app.admin_layout import ADMIN_NAV_LINKS, render_admin_shell
@@ -953,7 +959,13 @@ def admin_contact_create(
     except (ValueError, TypeError, ValidationError) as exc:
         return RedirectResponse(url=f"/admin/contacts/new?error={quote(str(exc))}", status_code=303)
     with db.db_connection(get_settings().database_url) as conn:
-        result = _crm.create_contact(conn, contact=contact)
+        try:
+            result = _crm.create_contact(conn, contact=contact)
+        except ContactEmailConflictError as exc:
+            return RedirectResponse(
+                url=f"/admin/contacts/new?error={quote(str(exc))}",
+                status_code=303,
+            )
     warnings = result["duplicate_warnings"]
     warning = f"{len(warnings)} possible duplicate(s)" if warnings else ""
     return RedirectResponse(
@@ -1009,7 +1021,13 @@ def admin_contact_update(
             url=f"/admin/contacts/{contact_id}/edit?error={quote(str(exc))}", status_code=303
         )
     with db.db_connection(get_settings().database_url) as conn:
-        result = _crm.update_contact(conn, contact_id, contact=contact)
+        try:
+            result = _crm.update_contact(conn, contact_id, contact=contact)
+        except ContactEmailConflictError as exc:
+            return RedirectResponse(
+                url=f"/admin/contacts/{contact_id}/edit?error={quote(str(exc))}",
+                status_code=303,
+            )
     if result is None:
         raise HTTPException(status_code=404, detail="Contact not found")
     warnings = result["duplicate_warnings"]

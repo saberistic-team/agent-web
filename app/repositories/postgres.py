@@ -9,7 +9,7 @@ from uuid import UUID
 
 import psycopg
 
-from app.contacts import DECISION_MAKER_BUYING_ROLES
+from app.contacts import DECISION_MAKER_BUYING_ROLES, normalize_contact_lookup_email
 from app.repositories.protocols import (
     ActivityRepository,
     AdminUserRepository,
@@ -275,14 +275,8 @@ class PostgresContactRepository:
         return dict(row) if row else None
 
     def get_by_email(self, conn: psycopg.Connection, email: str) -> dict[str, Any] | None:
-        normalized = email.strip().lower()
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT * FROM contacts WHERE lower(email) = %s",
-                (normalized,),
-            )
-            row = cur.fetchone()
-        return dict(row) if row else None
+        """Active-contact lookup by normalized email (archived rows excluded)."""
+        return self.get_active_by_email(conn, email)
 
     def get_active_by_email(
         self,
@@ -291,7 +285,7 @@ class PostgresContactRepository:
         *,
         exclude_contact_id: UUID | None = None,
     ) -> dict[str, Any] | None:
-        normalized = email.strip().lower()
+        normalized = normalize_contact_lookup_email(email)
         conditions = ["LOWER(email) = %s", "archived_at IS NULL"]
         params: list[Any] = [normalized]
         if exclude_contact_id is not None:
@@ -304,9 +298,31 @@ class PostgresContactRepository:
                 FROM contacts c
                 LEFT JOIN companies co ON co.id = c.company_id
                 WHERE {' AND '.join(conditions)}
+                ORDER BY c.id ASC
                 LIMIT 1
                 """,
                 params,
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def get_archived_by_email(
+        self,
+        conn: psycopg.Connection,
+        email: str,
+    ) -> dict[str, Any] | None:
+        normalized = normalize_contact_lookup_email(email)
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT c.*, co.name AS company_name
+                FROM contacts c
+                LEFT JOIN companies co ON co.id = c.company_id
+                WHERE LOWER(email) = %s AND archived_at IS NOT NULL
+                ORDER BY c.archived_at DESC, c.id ASC
+                LIMIT 1
+                """,
+                (normalized,),
             )
             row = cur.fetchone()
         return dict(row) if row else None
