@@ -48,6 +48,10 @@ server-side; raw tokens appear in HTML forms only and are never logged.
 5. On success, the flow cookie is cleared and a new authenticated session is
    minted (session fixation resistance).
 
+Stale flows are removed opportunistically when minting a new flow
+(see [Login flow retention](#login-flow-retention)). Only hashed tokens are
+stored; cleanup never logs or returns raw flow or CSRF values.
+
 A CSRF token copied from one browser cannot be submitted from another: the
 paired `admin_login_flow` cookie is `HttpOnly` and bound to the initiating
 browser context.
@@ -213,9 +217,78 @@ WHERE updated_at < NOW() - INTERVAL '30 minutes'
   AND (locked_until IS NULL OR locked_until < NOW());
 ```
 
+## Login flow retention
+
+Every `GET /admin/login` inserts an `admin_login_flows` row. Without cleanup,
+expired and consumed flows would accumulate indefinitely.
+
+### Retention policy
+
+| State | Removed when | Rationale |
+|-------|--------------|-----------|
+| **Active** (unexpired, unconsumed) | Never | Required for in-flight sign-in |
+| **Expired** (past `expires_at`, never consumed) | `expires_at` + **30 minutes** | Allows clock skew; matches `2 ×` flow TTL (15 min) |
+| **Consumed** (one-time POST used) | `consumed_at` + **15 minutes** | Replay is already blocked at consume time; brief grace for concurrent requests |
+
+Constants: `LOGIN_FLOW_EXPIRED_RETENTION_SECONDS` (1800), `LOGIN_FLOW_CONSUMED_RETENTION_SECONDS` (900), aligned with `CSRF_MAX_AGE_SECONDS` (900).
+
+### Automatic cleanup
+
+When minting a new login flow, the app deletes up to **100** stale rows per
+request (`LOGIN_FLOW_CLEANUP_BATCH_SIZE`). Deletion uses partial indexes on
+`expires_at` (unconsumed) and `consumed_at` (consumed) so normal login traffic
+does not scan the full table. No Redis, cron, or external scheduler is required.
+
+If cleanup fails (database error), the failure is logged and the new flow is
+still created — cleanup errors never expose token values and do not block sign-in.
+
+### Manual cleanup
+
+To prune stale flows manually:
+
+```sql
+DELETE FROM admin_login_flows
+WHERE (
+    consumed_at IS NULL
+    AND expires_at < NOW() - INTERVAL '30 minutes'
+) OR (
+    consumed_at IS NOT NULL
+    AND consumed_at < NOW() - INTERVAL '15 minutes'
+);
+```
+
 ## Security notes
 
 - Authentication failures return a generic *Invalid username or password* message.
 - Login always mints a fresh session ID and revokes any prior session cookie
   presented during sign-in (session fixation resistance).
 - Submitted briefs are listed at `/admin/briefs` (read-only; requires admin session).
+- Brief detail routes authenticate before parsing the `{brief_id}` path segment so
+  malformed, zero, negative, and oversized identifiers never return FastAPI's public
+  `422` JSON validation payload to anonymous callers.
+
+### Brief detail path verification (production-safe)
+
+These read-only `curl` checks confirm admin auth runs before identifier parsing.
+Replace `https://saberistic.com` with your deployment origin. Anonymous requests must
+`303` redirect to `/admin/login` with HTML — never `422 application/json`.
+
+```bash
+ORIGIN="https://saberistic.com"
+
+for path in \
+  "/admin/briefs/42" \
+  "/admin/briefs/999999999" \
+  "/admin/briefs/not-an-id" \
+  "/admin/briefs/0" \
+  "/admin/briefs/-1" \
+  "/admin/briefs/2147483648"
+do
+  curl -sS -o /dev/null -D - "${ORIGIN}${path}" \
+    | awk 'BEGIN{code="";type=""} /^HTTP/{code=$2} /^content-type:/{type=tolower($0)} END{exit !(code==303 && type !~ /json/)}'
+done && echo "anonymous brief detail paths redirect safely"
+```
+
+Authenticated operators with a valid session cookie should see the admin HTML shell
+(`200` detail, `404` not found, or `503` database unavailable) — still never
+`application/json` validation errors for malformed IDs.

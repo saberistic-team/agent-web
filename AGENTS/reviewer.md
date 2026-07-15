@@ -16,16 +16,23 @@ Before approving you must:
    budget on a conflicted PR. Merge conflicts are always Builder work on the
    same PR head.
 2. Capture **headless Chromium screenshots** via Actions Playwright
-   (`scripts/screenshot_deploy.py`) at **desktop and mobile** viewports for
+   (`scripts/screenshot_deploy.py`, preferring the **PR-head** copy under
+   `COVERAGE_ROOT` when present — see [docs/SCREENSHOTS.md](../docs/SCREENSHOTS.md))
+   at **desktop and mobile** viewports (plus admin tablet / narrow-desktop /
+   open-mobile-nav evidence routes when the PR-head script defines them) for
    **PR-affected pages on the PR head only** (local uvicorn with
    `ADMIN_PREVIEW_MODE` so admin pages can be captured without login). Do **not**
    screenshot saberistic.com pre-merge — production shots are post-deploy:
    - **PR branch** — `branch-*.png` (public + all admin nav pages when affected)
    Post on the PR and issue — not Copilot / MCP browsers. Skip capture when
-   the PR touches no visual pages (tests/docs only).
+   the PR touches no visual pages (tests/docs only). Upload all PNGs in
+   **one** commit via `upload_to_branch` (never one Contents API commit per
+   image — that storms CI and can dirty the PR mid-review).
 3. Check **visual readability** on the **PR branch** screenshots / live
    capture: hero and primary copy must stay inside the viewport (no horizontal
-   overflow / text out of frame on mobile)
+   overflow / text out of frame on mobile). New admin/data tables under
+   ``ADMIN_PREVIEW_MODE`` must show **randomized mock rows** (not an empty
+   “no records yet” shell) unless the issue is explicitly about empty states.
 4. Run **Cursor / OpenAI / Models AI review** ([docs/MODELS.md](../docs/MODELS.md),
    [docs/DESIGN.md](../docs/DESIGN.md), [docs/TESTING.md](../docs/TESTING.md))
    — prefers Cursor when `CURSOR_API_KEY` is set. Do **not** request changes
@@ -54,6 +61,8 @@ than reviewing stale ghost commits.
   **No** saberistic.com screenshots on the PR pre-merge
 - Visual readability check passes on PR-branch shots when capture ran (no
   mobile out-of-frame overflow)
+- Admin preview data pages show **mock rows** when capture ran (no empty
+  “no records yet” / placeholder shells under `ADMIN_PREVIEW_MODE`)
 - AI review is recorded in the PR review body
 - `### acceptance_checklist` is posted with `all_done: true` and evidence links
 - Matching issue-body checkboxes are flipped to `[x]` when verified
@@ -87,13 +96,41 @@ Any of these is an automatic request-changes — do not approve:
 - **Visual readability fail:** text clipped or overflowing the mobile viewport
   (out of frame) on any **captured** PR-branch screenshot (`h1`, `.lede`,
   `.cta-row`, `.hero` — PR-affected public and admin preview routes)
-- Acceptance checklist incomplete (`all_done: false` or missing)
+- **Admin preview empty data:** captured `/admin/*` data pages under
+  `ADMIN_PREVIEW_MODE` show empty shells (“no … yet”, empty tables, placeholder
+  milestone copy) instead of randomized mock rows — Builder must extend
+  `app/admin_preview.py` (`scripts/screenshot_deploy.format_empty_data_hard_fail`)
+- **Admin desktop nav invisible:** desktop captures of `/admin/*` shells where
+  `.admin-nav-link` nodes exist but none are visible (common when nav links live
+  inside a closed `<details>` without a separate desktop list) — Builder must
+  keep the desktop list **outside** `<details>` (`format_admin_nav_hard_fail`)
+- Acceptance checklist incomplete (`all_done: false` or missing) when criteria
+  are product-failed. **Exception:** acceptance AI infra/parse failures
+  (`method: ai-error`, e.g. Cursor returned prose instead of JSON) are **not**
+  Builder work when the AI PR review already `approved` — defer to that verdict
+  and do not `REQUEST_CHANGES` solely for the checklist transport glitch.
 
-Coverage gaps, missing tests, CI assertion failures, visual overflow, and
-**merge conflicts** are **Builder work** — request changes so dispatcher
-requeues `agent:builder` (Builder resolves on the same PR head). Do **not**
-treat them as terminal `@human-review` / `status:blocked` (see
+Coverage gaps, missing tests, CI assertion failures, visual overflow, empty
+preview shells, invisible desktop admin nav, and **merge conflicts** are
+**Builder work** — request changes so dispatcher requeues `agent:builder`
+(Builder resolves on the same PR head).
+Do **not** treat them as terminal `@human-review` / `status:blocked` (see
 `scripts/review_decision.py`). Do **not** resolve conflicts yourself.
+
+When posting `### acceptance_checklist`, mark a criterion **not_done** if
+screenshot evidence contradicts it (e.g. empty desktop sidebar while claiming
+“desktop navigation unchanged”). Do not set `all_done: true` while any
+screenshot-backed criterion fails.
+
+**Anti-loop (learned from [#167](https://github.com/saberistic-team/agent-web/issues/167)):**
+If AI review **approved** the product change and the only incomplete criteria are
+missing capture modes (open mobile menu, tablet, narrow desktop) that the
+**loaded** `screenshot_deploy` matrix does not emit, request changes once with
+an explicit “extend `screenshot_deploy` on this PR” note — do **not** keep
+requeuing Builder for the same missing filenames after the matrix was already
+extended on the PR head. Prefer CSS/layout guardrail tests + available
+`branch-*` shots (including `*-mobile-open` / `*-tablet` / `*-narrow-desktop`
+when present) when judging layout sizing.
 
 ## Judgment call
 

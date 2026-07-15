@@ -13,6 +13,15 @@ from app.repositories.protocols import ProjectBriefRepository
 
 VALID_STATUSES = frozenset({"pending_payment", "paid", "abandoned"})
 MAX_QUERY_LENGTH = 100
+# PostgreSQL SERIAL / INTEGER upper bound for project_briefs.id.
+MAX_BRIEF_ID = 2_147_483_647
+
+# Expected failures from brief DB connectivity or query execution — not programming bugs.
+BRIEF_DATABASE_ERRORS: tuple[type[BaseException], ...] = (
+    psycopg.Error,
+    OSError,
+    TimeoutError,
+)
 
 
 @dataclass(frozen=True)
@@ -110,3 +119,101 @@ def list_briefs(
         date_to=filters.date_to,
     )
     return rows, total, filters
+
+
+def normalize_list_back_params(
+    *,
+    page: int = 1,
+    q: str | None = None,
+    status: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> BriefListFilters:
+    """Validate optional list query params carried on a detail-page back link."""
+    return normalize_filters(
+        page=page,
+        per_page=50,
+        query=q,
+        status=status,
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+
+def parse_brief_id(raw: str) -> int | None:
+    """Parse a brief detail path segment after admin auth.
+
+    Returns None for malformed, zero, negative, or oversized identifiers so callers
+    can render a safe admin-shell 404 without touching the database.
+    """
+    if not raw:
+        return None
+    if raw[0] == "-":
+        if len(raw) == 1 or not raw[1:].isdigit():
+            return None
+        return None
+    if not raw.isdigit():
+        return None
+    value = int(raw)
+    if value < 1 or value > MAX_BRIEF_ID:
+        return None
+    return value
+
+
+def get_brief(
+    conn: psycopg.Connection,
+    brief_id: int,
+    *,
+    repository: ProjectBriefRepository | None = None,
+) -> dict[str, Any] | None:
+    """Return one project brief by ID, or None when the ID is invalid or missing."""
+    if brief_id < 1:
+        return None
+    repo = repository or get_repositories().project_briefs
+    return repo.get_by_id(conn, brief_id)
+
+
+def preview_briefs_list(
+    *,
+    page: int = 1,
+    per_page: int = 50,
+    query: str | None = None,
+    status: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> tuple[list[dict[str, Any]], int, BriefListFilters]:
+    """Paginated ADMIN_PREVIEW_MODE brief list (randomized mock rows)."""
+    from app.admin_preview import build_preview_brief_rows
+
+    filters = normalize_filters(
+        page=page,
+        per_page=per_page,
+        query=query,
+        status=status,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    rows = build_preview_brief_rows()
+    if filters.status:
+        rows = [r for r in rows if r.get("status") == filters.status]
+    if filters.query:
+        needle = filters.query.lower()
+        rows = [
+            r
+            for r in rows
+            if needle in str(r.get("id", "")).lower()
+            or needle in str(r.get("website", "")).lower()
+            or needle in str(r.get("contact_value", "")).lower()
+        ]
+    total = len(rows)
+    start = (filters.page - 1) * filters.per_page
+    page_rows = rows[start : start + filters.per_page]
+    return page_rows, total, filters
+
+
+def preview_brief_detail(brief_id: int) -> dict[str, Any] | None:
+    """Synthetic brief rows for ADMIN_PREVIEW_MODE screenshots only."""
+    from app.admin_preview import build_preview_brief_detail
+
+    row = build_preview_brief_detail(brief_id)
+    return dict(row) if row is not None else None

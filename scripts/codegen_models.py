@@ -14,7 +14,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from github_api import GitHubError, api, post_issue_comment, split_repo, token
+from github_api import GitHubError, api, post_issue_comment, put_files, split_repo, token
 from pr_labels import apply_pr_mirror
 
 DEFAULT_MODEL = "openai/gpt-4o-mini"
@@ -371,22 +371,23 @@ def ensure_branch(repo: str, branch: str, base_sha: str) -> None:
 def put_file(
     repo: str, branch: str, path: str, content: str | bytes, message: str
 ) -> None:
-    owner, name = split_repo(repo)
-    # Ensure Contents API always has a GitHub token for mutations.
-    token()
+    """Write one file via a single Git Data commit (see ``put_files``)."""
     raw = content.encode("utf-8") if isinstance(content, str) else content
-    content_b64 = base64.b64encode(raw).decode("ascii")
-    put_body: dict[str, Any] = {
-        "message": message,
-        "content": content_b64,
-        "branch": branch,
-    }
-    try:
-        existing = api("GET", f"/repos/{owner}/{name}/contents/{path}?ref={branch}")
-        put_body["sha"] = existing["sha"]
-    except GitHubError:
-        pass
-    api("PUT", f"/repos/{owner}/{name}/contents/{path}", body=put_body)
+    put_files(repo, branch, [(path, raw)], message)
+
+
+def put_file_batch(
+    repo: str,
+    branch: str,
+    items: list[tuple[str, str | bytes]],
+    message: str,
+) -> None:
+    """Write many files in **one** commit (Builder codegen anti-loop)."""
+    batch: list[tuple[str, bytes]] = []
+    for path, content in items:
+        raw = content.encode("utf-8") if isinstance(content, str) else content
+        batch.append((path, raw))
+    put_files(repo, branch, batch, message)
 
 
 def linked_open_prs(repo: str, issue: int) -> list[dict]:
@@ -417,6 +418,9 @@ def json_system_prompt(*, ui: bool) -> str:
         "- commit_message MUST include the issue id like builder(#123): …\n"
         "- Include full file contents for each touched file.\n"
         "- Add/update tests when behavior changes.\n"
+        "- New admin/UI pages MUST include ADMIN_PREVIEW_MODE randomized mock "
+        "data via app/admin_preview.py builders (and tests) so Reviewer "
+        "screenshots are not empty shells.\n"
         "- Do not invent secrets, credentials, or unrelated refactors.\n"
         "- Do not modify .github/workflows agent orchestration unless required.\n"
         "- Stay within the issue scope.\n"
@@ -612,14 +616,12 @@ def build_with_models(
     pr_summary = str(plan.get("pr_summary") or "Automated Builder change.")
 
     ensure_branch(repo, branch, base_sha)
-    for item in files:
-        put_file(
-            repo,
-            branch,
-            item["path"],
-            item["content"],
-            f"{commit_message} ({item['path']})",
-        )
+    put_file_batch(
+        repo,
+        branch,
+        [(item["path"], item["content"]) for item in files],
+        commit_message,
+    )
 
     if existing_pr:
         pr_number = int(existing_pr["number"])

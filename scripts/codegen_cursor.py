@@ -95,6 +95,9 @@ def build_prompt(
             "- Live site reference: https://saberistic.com/\n"
             "- Do not modify .github/workflows agent orchestration unless required\n"
             "- Binary assets (PNG/JPEG/WebP) must remain valid binary files\n"
+            "- New admin/UI pages MUST include ADMIN_PREVIEW_MODE randomized "
+            "mock data (see app/admin_preview.py + AGENTS/builder.md) so "
+            "Reviewer screenshots are not empty shells\n"
         )
     else:
         ship_rules = (
@@ -109,6 +112,9 @@ def build_prompt(
             "- Follow brutal-minimalist brand rules below for any UI work\n"
             "- Live site reference: https://saberistic.com/\n"
             "- Binary assets (PNG/JPEG/WebP) must remain valid binary files\n"
+            "- New admin/UI pages MUST include ADMIN_PREVIEW_MODE randomized "
+            "mock data (see app/admin_preview.py + AGENTS/builder.md) so "
+            "Reviewer screenshots are not empty shells\n"
         )
     return (
         f"You are the Builder agent for `{repo}`.\n"
@@ -191,7 +197,9 @@ def _collect_changed_files(root: Path) -> list[tuple[str, str | bytes]]:
 
     from codegen_models import MAX_FILE_CHARS, is_binary_path
 
-    max_files = int(os.environ.get("CURSOR_MAX_FILES") or "30")
+    # CRM / admin features routinely touch repos + pages + tests; 30 was
+    # falsely blocking Builder (#105). Override with CURSOR_MAX_FILES if needed.
+    max_files = int(os.environ.get("CURSOR_MAX_FILES") or "60")
     if not unique:
         raise GitHubError("Cursor local agent finished but changed no files")
     if len(unique) > max_files:
@@ -249,22 +257,36 @@ def _build_local(
     )
     agent_id = ""
     run_id = ""
-    try:
-        with Agent.create(
-            model=model,
-            api_key=key,
-            name=f"builder-{issue}",
-            local=LocalAgentOptions(cwd=str(root)),
-        ) as agent:
-            agent_id = str(getattr(agent, "agent_id", "") or "")
-            run = agent.send(prompt)
-            run_id = str(getattr(run, "id", "") or "")
-            result = run.wait()
-    except CursorAgentError as exc:
-        retryable = getattr(exc, "is_retryable", False)
+    result = None
+    attempts = max(1, int(os.environ.get("CURSOR_LOCAL_ATTEMPTS") or "3"))
+    last_exc: BaseException | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            with Agent.create(
+                model=model,
+                api_key=key,
+                name=f"builder-{issue}",
+                local=LocalAgentOptions(cwd=str(root)),
+            ) as agent:
+                agent_id = str(getattr(agent, "agent_id", "") or "")
+                run = agent.send(prompt)
+                run_id = str(getattr(run, "id", "") or "")
+                result = run.wait()
+            last_exc = None
+            break
+        except CursorAgentError as exc:
+            last_exc = exc
+            retryable = bool(getattr(exc, "is_retryable", False))
+            if not retryable or attempt >= attempts:
+                raise GitHubError(
+                    f"Cursor SDK local startup failed (retryable={retryable}): {exc}"
+                ) from exc
+            # Brief pause before Bridge/timeout retry (learned from #104).
+            time.sleep(min(2 ** (attempt - 1), 8))
+    if last_exc is not None or result is None:
         raise GitHubError(
-            f"Cursor SDK local startup failed (retryable={retryable}): {exc}"
-        ) from exc
+            f"Cursor SDK local startup failed (retryable=True): {last_exc}"
+        )
 
     status = getattr(result, "status", None)
     if status != "finished":
@@ -280,13 +302,12 @@ def _build_local(
     default = api("GET", f"/repos/{owner}/{name}").get("default_branch") or "main"
     ref = api("GET", f"/repos/{owner}/{name}/git/ref/heads/{default}")
     base_sha = ref["object"]["sha"]
-    from codegen_models import ensure_branch, put_file, resolve_builder_branch
+    from codegen_models import ensure_branch, put_file_batch, resolve_builder_branch
 
     branch, existing_pr = resolve_builder_branch(repo, issue, title)
     ensure_branch(repo, branch, base_sha)
     commit_message = f"builder(#{issue}): implement via Cursor SDK"
-    for path, content in files:
-        put_file(repo, branch, path, content, f"{commit_message} ({path})")
+    put_file_batch(repo, branch, files, commit_message)
 
     if existing_pr:
         pr_number = int(existing_pr["number"])
@@ -518,6 +539,9 @@ def build_with_cursor(
 
     try:
         import cursor_sdk  # noqa: F401
+        from cursor_sdk_patch import patch_callback_auth_tokens
+
+        patch_callback_auth_tokens()
     except ImportError as exc:
         raise GitHubError(
             "cursor-sdk is not installed; pip install -r requirements-agents.txt"

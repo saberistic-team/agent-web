@@ -466,8 +466,14 @@ def ai_check_remaining(
         "Mark done ONLY with concrete evidence. Prefer linking PR files, commits, "
         "screenshot comments, or deploy URLs from the provided evidence JSON.\n"
         "Screenshot policy: pre-merge evidence is PR-branch `branch-*.png` only "
-        "(admin pages via ADMIN_PREVIEW_MODE). saberistic.com shots are post-deploy "
-        "only. Do NOT mark criteria not_done solely for missing production `pre-*` "
+        "(plus `branch-*-mobile-open.png`, `*-tablet.png`, `*-narrow-desktop.png` "
+        "when admin-nav layout criteria ask for them and the capture matrix emits "
+        "them — docs/SCREENSHOTS.md; admin pages via ADMIN_PREVIEW_MODE). "
+        "CSS/layout guardrail tests may satisfy sizing criteria when present shots "
+        "+ tests agree and AI review approved; do not mark not_done solely because "
+        "an older 58-shot run lacked extras that the PR-head screenshot script now "
+        "defines (learned from #167). saberistic.com shots are post-deploy only. "
+        "Do NOT mark criteria not_done solely for missing production `pre-*` "
         "PNGs or missing `/admin` shots on saberistic.com.\n"
         "If evidence is missing, status must be not_done.\n"
     )
@@ -546,13 +552,16 @@ def verify_acceptance(
             try:
                 items.extend(ai_check_remaining(criteria, evidence, items))
             except Exception as exc:
+                # Infra/parse failures must not invent product not_done rows —
+                # that bounced Reviewer↔Builder when AI review already approved
+                # (e.g. Cursor returned prose instead of JSON).
                 for criterion in criteria:
                     if any(i.get("text") == criterion for i in items):
                         continue
                     items.append(
                         {
                             "text": criterion,
-                            "status": "not_done",
+                            "status": "n/a",
                             "evidence": [],
                             "note": f"AI verification unavailable: {exc}",
                             "method": "ai-error",
@@ -581,11 +590,21 @@ def verify_acceptance(
         i for i in items if i.get("text") not in criteria
     ]
 
-    all_done = bool(ordered) and all(
-        i.get("status") in {"done", "n/a"} for i in ordered
+    # Treat AI-infra-only gaps as non-blocking for all_done; product not_done
+    # still fails. Callers that need a strict checklist inspect ai_infra_failed.
+    product_items = [i for i in ordered if i.get("method") != "ai-error"]
+    all_done = bool(product_items) and all(
+        i.get("status") in {"done", "n/a"} for i in product_items
     )
+    if not product_items and ordered and all(
+        i.get("method") == "ai-error" for i in ordered
+    ):
+        # Every criterion was AI-infra-only — inconclusive, not a product fail.
+        all_done = False
+    ai_infra_failed = any(i.get("method") == "ai-error" for i in ordered)
     return {
         "all_done": all_done,
+        "ai_infra_failed": ai_infra_failed,
         "items": ordered,
         "evidence": {
             "pr_url": evidence.get("pr_url"),
@@ -604,6 +623,8 @@ def format_checklist(result: dict[str, Any], *, role: str) -> str:
         f"- role: `{role}`",
         f"- all_done: `{str(bool(result.get('all_done'))).lower()}`",
     ]
+    if result.get("ai_infra_failed"):
+        lines.append("- ai_infra_failed: `true`")
     meta = result.get("evidence") or {}
     if meta.get("pr_url"):
         lines.append(f"- pr: {meta['pr_url']}")

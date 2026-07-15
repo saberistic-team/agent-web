@@ -141,19 +141,13 @@ def test_admin_research_routes_render_and_attach() -> None:
         {"id": COMPANY_ID, "name": "Acme", "status": "prospect"}
     ]
     crm.get_company.return_value = {"id": COMPANY_ID, "name": "Acme", "status": "prospect"}
-    crm.list_contacts_for_company_with_roles.return_value = [
+    crm.list_contacts_for_company.return_value = [
         {"id": CONTACT_ID, "email": "lead@acme.dev", "company_id": COMPANY_ID}
     ]
     crm.get_contact.return_value = {
         "id": CONTACT_ID,
         "email": "lead@acme.dev",
         "company_id": COMPANY_ID,
-    }
-    crm.get_contact_with_roles.return_value = {
-        "id": CONTACT_ID,
-        "email": "lead@acme.dev",
-        "company_id": COMPANY_ID,
-        "buying_roles": [],
     }
     crm.list_research_for_company.side_effect = lambda *args, **kwargs: list(records)
     crm.list_research_for_contact.side_effect = lambda *args, **kwargs: list(records)

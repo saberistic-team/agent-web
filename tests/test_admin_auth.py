@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import re
 from contextlib import ExitStack, contextmanager
 from datetime import datetime, timedelta, timezone
@@ -11,11 +12,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 from argon2 import PasswordHasher
 from fastapi import Request
+from fastapi.responses import RedirectResponse
 from fastapi.testclient import TestClient
 
-from app import admin_auth, db
+from app import admin_auth
 from app.admin_auth import LOGIN_FLOW_COOKIE_NAME, SESSION_COOKIE_NAME
+from app.admin_routes import _issue_session
 from app.config import get_settings
+from app.crm_uow import crm_transaction
 from app.main import app
 
 client = TestClient(app, follow_redirects=False)
@@ -308,6 +312,28 @@ def _mock_create_admin_login_flow(conn: MagicMock, **kwargs: Any) -> int:
     return int(_login_flows[flow_hash]["id"])
 
 
+def _mock_cleanup_stale_admin_login_flows(conn: MagicMock, **kwargs: Any) -> int:
+    now = kwargs["now"]
+    expired_cutoff = now - timedelta(seconds=kwargs["expired_retention_seconds"])
+    consumed_cutoff = now - timedelta(seconds=kwargs["consumed_retention_seconds"])
+    batch_size = kwargs["batch_size"]
+    stale_hashes = sorted(
+        flow_hash
+        for flow_hash, row in _login_flows.items()
+        if (
+            row["consumed_at"] is None
+            and row["expires_at"] < expired_cutoff
+        )
+        or (
+            row["consumed_at"] is not None
+            and row["consumed_at"] < consumed_cutoff
+        )
+    )[:batch_size]
+    for flow_hash in stale_hashes:
+        del _login_flows[flow_hash]
+    return len(stale_hashes)
+
+
 def _mock_get_admin_login_flow_by_token_hash(
     conn: MagicMock,
     flow_token_hash: str,
@@ -373,6 +399,12 @@ def mock_db_connection() -> Generator[MagicMock, None, None]:
         )
         stack.enter_context(
             patch(
+                "app.admin_routes.db.cleanup_stale_admin_login_flows",
+                _mock_cleanup_stale_admin_login_flows,
+            )
+        )
+        stack.enter_context(
+            patch(
                 "app.admin_routes.db.get_admin_login_flow_by_token_hash",
                 _mock_get_admin_login_flow_by_token_hash,
             )
@@ -400,6 +432,26 @@ def mock_db_connection() -> Generator[MagicMock, None, None]:
         yield conn
 
 
+@contextmanager
+def transactional_mock_db_connection() -> Generator[MagicMock, None, None]:
+    """Mock DB with in-memory session store that rolls back on transaction failure."""
+
+    @contextmanager
+    def _transactional_crm_transaction(conn: MagicMock) -> Generator[None, None, None]:
+        snapshot = copy.deepcopy(_session_store)
+        try:
+            with crm_transaction(conn):
+                yield
+        except Exception:
+            _session_store.clear()
+            _session_store.update(snapshot)
+            raise
+
+    with mock_db_connection() as conn:
+        with patch("app.admin_routes.crm_transaction", _transactional_crm_transaction):
+            yield conn
+
+
 def _extract_csrf_token(html: str) -> str:
     match = re.search(r'name="csrf_token" value="([^"]+)"', html)
     assert match is not None
@@ -407,13 +459,30 @@ def _extract_csrf_token(html: str) -> str:
 
 
 def _parse_login_form(response: Any) -> tuple[str, dict[str, str]]:
-    assert response.status_code == 200
     csrf_token = _extract_csrf_token(response.text)
     cookies: dict[str, str] = {}
     flow_cookie = response.cookies.get(LOGIN_FLOW_COOKIE_NAME)
     if flow_cookie:
         cookies[LOGIN_FLOW_COOKIE_NAME] = flow_cookie
     return csrf_token, cookies
+
+
+def _login_flow_set_cookie_headers(response: Any) -> list[str]:
+    """Return raw Set-Cookie header values for the pre-auth login-flow cookie."""
+    if hasattr(response.headers, "get_list"):
+        raw_headers = response.headers.get_list("set-cookie")
+    else:
+        combined = response.headers.get("set-cookie", "")
+        raw_headers = [combined] if combined else []
+    return [header for header in raw_headers if LOGIN_FLOW_COOKIE_NAME in header]
+
+
+def _assert_replacement_login_flow_cookie_retained(response: Any) -> None:
+    """Failed auth must retain exactly one non-expiring replacement flow cookie."""
+    headers = _login_flow_set_cookie_headers(response)
+    assert len(headers) == 1, headers
+    assert "Max-Age=0" not in headers[0]
+    assert response.cookies.get(LOGIN_FLOW_COOKIE_NAME)
 
 
 def _fetch_login_form() -> tuple[str, dict[str, str]]:
@@ -683,6 +752,84 @@ def test_login_invalid_credentials_use_generic_message(rate_limit_store: FakeRat
         response = _login(password="not-the-password")
     assert response.status_code == 401
     assert admin_auth.INVALID_CREDENTIALS_MESSAGE in response.text
+    _assert_replacement_login_flow_cookie_retained(response)
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_login_retry_after_wrong_password_without_refresh(
+    rate_limit_store: FakeRateLimitStore,
+) -> None:
+    """Wrong password then corrected password on the same client without refresh."""
+    with shared_rate_limiter(rate_limit_store):
+        with mock_db_connection():
+            form = client.get("/admin/login")
+            csrf_token, _ = _parse_login_form(form)
+
+            failed = client.post(
+                "/admin/login",
+                data={
+                    "username": TEST_USERNAME,
+                    "password": "wrong-password",
+                    "csrf_token": csrf_token,
+                },
+            )
+            assert failed.status_code == 401
+            assert admin_auth.INVALID_CREDENTIALS_MESSAGE in failed.text
+            _assert_replacement_login_flow_cookie_retained(failed)
+
+            retry_csrf = _extract_csrf_token(failed.text)
+            assert retry_csrf != csrf_token
+
+            success = client.post(
+                "/admin/login",
+                data={
+                    "username": TEST_USERNAME,
+                    "password": TEST_PASSWORD,
+                    "csrf_token": retry_csrf,
+                },
+            )
+            assert success.status_code == 303
+            assert success.headers["location"] == "/admin"
+            assert _extract_session_cookie(success)
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_login_invalid_csrf_retains_replacement_flow_cookie(
+    rate_limit_store: FakeRateLimitStore,
+) -> None:
+    csrf_token, cookies = _fetch_login_form()
+    with shared_rate_limiter(rate_limit_store):
+        with mock_db_connection():
+            response = client.post(
+                "/admin/login",
+                data={
+                    "username": TEST_USERNAME,
+                    "password": TEST_PASSWORD,
+                    "csrf_token": "not-a-valid-token",
+                },
+                cookies=cookies,
+            )
+    assert response.status_code == 400
+    assert admin_auth.INVALID_CREDENTIALS_MESSAGE in response.text
+    _assert_replacement_login_flow_cookie_retained(response)
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_login_rate_limit_retains_replacement_flow_cookie(
+    rate_limit_store: FakeRateLimitStore,
+) -> None:
+    with shared_rate_limiter(rate_limit_store):
+        for _ in range(5):
+            response = _login(password="wrong")
+            assert response.status_code == 401
+
+        blocked = _login(password="wrong")
+    assert blocked.status_code == 429
+    assert admin_auth.LOGIN_THROTTLED_MESSAGE in blocked.text
+    _assert_replacement_login_flow_cookie_retained(blocked)
 
 
 @pytest.mark.unit
@@ -995,6 +1142,271 @@ def test_login_regenerates_session_and_revokes_prior_cookie(
 
 
 @pytest.mark.unit
+def test_issue_session_uses_single_connection_and_transaction() -> None:
+    conn = MagicMock()
+    db_calls = 0
+
+    @contextmanager
+    def counting_connection(database_url: str | None) -> Generator[MagicMock, None, None]:
+        nonlocal db_calls
+        db_calls += 1
+        yield conn
+
+    request = MagicMock(spec=Request)
+    response = RedirectResponse(url="/admin", status_code=303)
+    settings = get_settings()
+
+    with patch("app.admin_routes.db.db_connection", side_effect=counting_connection):
+        with patch("app.admin_routes.crm_transaction", wraps=crm_transaction) as tx:
+            with patch("app.admin_routes.db.revoke_admin_session") as revoke:
+                with patch("app.admin_routes.db.create_admin_session", return_value=42):
+                    with patch("app.admin_routes.audit_service.record_login_success"):
+                        session_id = _issue_session(
+                            request=request,
+                            response=response,
+                            settings=settings,
+                            admin_username=TEST_USERNAME,
+                            prior_raw_token="prior-session-token",
+                        )
+
+    assert session_id == 42
+    assert db_calls == 1
+    tx.assert_called_once()
+    revoke.assert_called_once()
+
+
+@pytest.mark.unit
+def test_issue_session_without_prior_token_uses_single_transaction() -> None:
+    conn = MagicMock()
+    db_calls = 0
+
+    @contextmanager
+    def counting_connection(database_url: str | None) -> Generator[MagicMock, None, None]:
+        nonlocal db_calls
+        db_calls += 1
+        yield conn
+
+    request = MagicMock(spec=Request)
+    response = RedirectResponse(url="/admin", status_code=303)
+    settings = get_settings()
+
+    with patch("app.admin_routes.db.db_connection", side_effect=counting_connection):
+        with patch("app.admin_routes.crm_transaction", wraps=crm_transaction) as tx:
+            with patch("app.admin_routes.db.revoke_admin_session") as revoke:
+                with patch("app.admin_routes.db.create_admin_session", return_value=7):
+                    with patch("app.admin_routes.audit_service.record_login_success"):
+                        session_id = _issue_session(
+                            request=request,
+                            response=response,
+                            settings=settings,
+                            admin_username=TEST_USERNAME,
+                            prior_raw_token=None,
+                        )
+
+    assert session_id == 7
+    assert db_calls == 1
+    tx.assert_called_once()
+    revoke.assert_not_called()
+
+
+@pytest.mark.unit
+def test_issue_session_does_not_set_cookie_when_transaction_fails() -> None:
+    conn = MagicMock()
+
+    @contextmanager
+    def fake_connection(database_url: str | None) -> Generator[MagicMock, None, None]:
+        yield conn
+
+    request = MagicMock(spec=Request)
+    response = RedirectResponse(url="/admin", status_code=303)
+    settings = get_settings()
+
+    with patch("app.admin_routes.db.db_connection", side_effect=fake_connection):
+        with patch(
+            "app.admin_routes.audit_service.record_login_success",
+            side_effect=RuntimeError("audit insert failed"),
+        ):
+            with pytest.raises(RuntimeError, match="audit insert failed"):
+                _issue_session(
+                    request=request,
+                    response=response,
+                    settings=settings,
+                    admin_username=TEST_USERNAME,
+                    prior_raw_token=None,
+                )
+
+    assert SESSION_COOKIE_NAME not in response.headers.get("set-cookie", "")
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_login_session_create_failure_rolls_back_prior_revocation(
+    rate_limit_store: FakeRateLimitStore,
+) -> None:
+    old_token = admin_auth.generate_session_token()
+    old_hash = admin_auth.hash_session_token(old_token)
+    _session_store[old_hash] = _session_row(token_hash=old_hash, session_id=1)
+    initial_store_size = len(_session_store)
+
+    def failing_create(conn: MagicMock, **kwargs: Any) -> int:
+        raise RuntimeError("session insert failed")
+
+    with shared_rate_limiter(rate_limit_store):
+        with transactional_mock_db_connection():
+            with patch("app.admin_routes.db.create_admin_session", side_effect=failing_create):
+                with pytest.raises(RuntimeError, match="session insert failed"):
+                    csrf_token, flow_cookies = _parse_login_form(client.get("/admin/login"))
+                    flow_cookies[SESSION_COOKIE_NAME] = old_token
+                    response = client.post(
+                        "/admin/login",
+                        data={
+                            "username": TEST_USERNAME,
+                            "password": TEST_PASSWORD,
+                            "csrf_token": csrf_token,
+                        },
+                        cookies=flow_cookies,
+                    )
+                    assert SESSION_COOKIE_NAME not in response.cookies
+
+    assert _session_store[old_hash]["revoked_at"] is None
+    assert len(_session_store) == initial_store_size
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_login_audit_failure_rolls_back_session_and_prior_revocation(
+    rate_limit_store: FakeRateLimitStore,
+) -> None:
+    old_token = admin_auth.generate_session_token()
+    old_hash = admin_auth.hash_session_token(old_token)
+    _session_store[old_hash] = _session_row(token_hash=old_hash, session_id=1)
+    initial_store_size = len(_session_store)
+
+    with shared_rate_limiter(rate_limit_store):
+        with transactional_mock_db_connection():
+            with patch(
+                "app.admin_routes.audit_service.record_login_success",
+                side_effect=RuntimeError("audit insert failed"),
+            ):
+                with pytest.raises(RuntimeError, match="audit insert failed"):
+                    csrf_token, flow_cookies = _parse_login_form(client.get("/admin/login"))
+                    flow_cookies[SESSION_COOKIE_NAME] = old_token
+                    response = client.post(
+                        "/admin/login",
+                        data={
+                            "username": TEST_USERNAME,
+                            "password": TEST_PASSWORD,
+                            "csrf_token": csrf_token,
+                        },
+                        cookies=flow_cookies,
+                    )
+                    assert SESSION_COOKIE_NAME not in response.cookies
+
+    assert _session_store[old_hash]["revoked_at"] is None
+    assert len(_session_store) == initial_store_size
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_login_retry_after_transaction_failure(
+    rate_limit_store: FakeRateLimitStore,
+) -> None:
+    old_token = admin_auth.generate_session_token()
+    old_hash = admin_auth.hash_session_token(old_token)
+    _session_store[old_hash] = _session_row(token_hash=old_hash, session_id=1)
+    attempts = {"count": 0}
+
+    def flaky_create(conn: MagicMock, **kwargs: Any) -> int:
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise RuntimeError("transient session error")
+        return _mock_create_admin_session(conn, **kwargs)
+
+    with shared_rate_limiter(rate_limit_store):
+        with transactional_mock_db_connection():
+            with patch("app.admin_routes.db.create_admin_session", side_effect=flaky_create):
+                with pytest.raises(RuntimeError, match="transient session error"):
+                    csrf_token, flow_cookies = _parse_login_form(client.get("/admin/login"))
+                    flow_cookies[SESSION_COOKIE_NAME] = old_token
+                    client.post(
+                        "/admin/login",
+                        data={
+                            "username": TEST_USERNAME,
+                            "password": TEST_PASSWORD,
+                            "csrf_token": csrf_token,
+                        },
+                        cookies=flow_cookies,
+                    )
+
+                assert _session_store[old_hash]["revoked_at"] is None
+
+                csrf_token, flow_cookies = _parse_login_form(client.get("/admin/login"))
+                flow_cookies[SESSION_COOKIE_NAME] = old_token
+                response = client.post(
+                    "/admin/login",
+                    data={
+                        "username": TEST_USERNAME,
+                        "password": TEST_PASSWORD,
+                        "csrf_token": csrf_token,
+                    },
+                    cookies=flow_cookies,
+                )
+
+    assert response.status_code == 303
+    assert _session_store[old_hash]["revoked_at"] is not None
+    new_cookie = _extract_session_cookie(response)
+    assert new_cookie
+    assert new_cookie != old_token
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_login_two_tab_session_replacement_is_atomic(
+    rate_limit_store: FakeRateLimitStore,
+) -> None:
+    """Two tabs sharing a session cookie: replacement revokes old and issues one new cookie."""
+    shared_token = admin_auth.generate_session_token()
+    shared_hash = admin_auth.hash_session_token(shared_token)
+    _session_store[shared_hash] = _session_row(token_hash=shared_hash, session_id=1)
+
+    with shared_rate_limiter(rate_limit_store):
+        with transactional_mock_db_connection():
+            csrf_a, cookies_a = _parse_login_form(client.get("/admin/login"))
+            cookies_a[SESSION_COOKIE_NAME] = shared_token
+            csrf_b, cookies_b = _parse_login_form(client.get("/admin/login"))
+            cookies_b[SESSION_COOKIE_NAME] = shared_token
+
+            response_a = client.post(
+                "/admin/login",
+                data={
+                    "username": TEST_USERNAME,
+                    "password": TEST_PASSWORD,
+                    "csrf_token": csrf_a,
+                },
+                cookies=cookies_a,
+            )
+            response_b = client.post(
+                "/admin/login",
+                data={
+                    "username": TEST_USERNAME,
+                    "password": TEST_PASSWORD,
+                    "csrf_token": csrf_b,
+                },
+                cookies=cookies_b,
+            )
+
+    assert response_a.status_code == 303
+    assert response_b.status_code == 303
+    assert _session_store[shared_hash]["revoked_at"] is not None
+    cookie_a = _extract_session_cookie(response_a)
+    cookie_b = _extract_session_cookie(response_b)
+    assert cookie_a
+    assert cookie_b
+    assert cookie_a != shared_token
+    assert cookie_b != shared_token
+
+
+@pytest.mark.unit
 @pytest.mark.integration
 def test_session_cookie_flags(rate_limit_store: FakeRateLimitStore) -> None:
     with shared_rate_limiter(rate_limit_store):
@@ -1119,3 +1531,77 @@ def test_admin_unconfigured_returns_service_unavailable(
     monkeypatch.delenv("ADMIN_USERNAME", raising=False)
     response = client.get("/admin/login")
     assert response.status_code == 503
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_login_flow_cleanup_runs_when_minting_new_flow() -> None:
+    now = datetime.now(timezone.utc)
+    stale_hash = admin_auth.hash_session_token("stale-flow-token")
+    _login_flows[stale_hash] = {
+        "id": 99,
+        "flow_token_hash": stale_hash,
+        "csrf_token_hash": "stale-csrf",
+        "created_at": now - timedelta(hours=2),
+        "expires_at": now - timedelta(seconds=admin_auth.LOGIN_FLOW_EXPIRED_RETENTION_SECONDS + 1),
+        "consumed_at": None,
+    }
+    active_hash = admin_auth.hash_session_token("active-flow-token")
+    _login_flows[active_hash] = {
+        "id": 100,
+        "flow_token_hash": active_hash,
+        "csrf_token_hash": "active-csrf",
+        "created_at": now,
+        "expires_at": now + timedelta(minutes=10),
+        "consumed_at": None,
+    }
+
+    with mock_db_connection():
+        response = client.get("/admin/login")
+
+    assert response.status_code == 200
+    assert stale_hash not in _login_flows
+    assert active_hash in _login_flows
+    assert len(_login_flows) == 2
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_login_flow_cleanup_failure_still_mints_flow() -> None:
+    with mock_db_connection():
+        with patch(
+            "app.admin_routes.db.cleanup_stale_admin_login_flows",
+            side_effect=Exception("database unavailable"),
+        ):
+            response = client.get("/admin/login")
+
+    assert response.status_code == 200
+    assert "Admin sign in" in response.text
+    assert response.cookies.get(LOGIN_FLOW_COOKIE_NAME)
+    assert len(_login_flows) == 1
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_login_flow_cleanup_failure_retry_succeeds(rate_limit_store: FakeRateLimitStore) -> None:
+    cleanup_calls = {"count": 0}
+
+    def flaky_cleanup(conn: Any, **kwargs: Any) -> int:
+        cleanup_calls["count"] += 1
+        if cleanup_calls["count"] == 1:
+            raise Exception("transient database error")
+        return _mock_cleanup_stale_admin_login_flows(conn, **kwargs)
+
+    with shared_rate_limiter(rate_limit_store):
+        with mock_db_connection():
+            with patch(
+                "app.admin_routes.db.cleanup_stale_admin_login_flows",
+                side_effect=flaky_cleanup,
+            ):
+                first = client.get("/admin/login")
+                assert first.status_code == 200
+
+                second = client.get("/admin/login")
+                assert second.status_code == 200
+
+    assert cleanup_calls["count"] == 2

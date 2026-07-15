@@ -7,7 +7,6 @@ from typing import Any
 
 from app.admin_layout import render_admin_shell
 from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES, TARGET_STATUSES
-from app.contacts import format_buying_roles
 from app.research_records import (
     RECORD_TYPE_LABELS,
     RESEARCH_RECORD_TYPES,
@@ -214,20 +213,15 @@ def render_admin_company_research_page(
     contact_links = ""
     for contact in contacts:
         contact_id = html.escape(str(contact["id"]), quote=True)
-        label = html.escape(str(contact.get("full_name") or contact.get("email") or contact["id"]))
-        title = html.escape(str(contact.get("title") or ""))
-        roles = html.escape(format_buying_roles(contact.get("buying_roles")))
+        email = html.escape(str(contact.get("email", "")))
         contact_links += (
-            f'<li><a href="/admin/contacts/{contact_id}">{label}</a>'
-            f'{f" — {title}" if title else ""}'
-            f'{f" ({roles})" if roles != "—" else ""}'
-            f' · <a href="/admin/contacts/{contact_id}/edit">Edit</a></li>'
+            f'<li><a href="/admin/contacts/{contact_id}">{email}</a></li>'
         )
     if not contact_links:
-        contact_links = '<li>No contacts linked. <a href="/admin/contacts/new">Add contact</a></li>'
+        contact_links = "<li>No contacts linked.</li>"
     contact_options = "\n".join(
         f'              <option value="{html.escape(str(contact["id"]), quote=True)}">'
-        f'{html.escape(str(contact.get("full_name") or contact.get("email") or contact["id"]))}</option>'
+        f'{html.escape(str(contact.get("email", "")))}</option>'
         for contact in contacts
     )
     records_html = ""

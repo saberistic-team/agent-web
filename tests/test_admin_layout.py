@@ -131,6 +131,42 @@ def test_admin_css_mobile_nav_and_table_scroll_guardrails() -> None:
 
 
 @pytest.mark.unit
+def test_admin_css_nav_sizes_to_content_not_grid_stretch() -> None:
+    css = ADMIN_CSS.read_text(encoding="utf-8")
+    nav_block = css.split(".admin-nav {", 1)[1].split("}", 1)[0]
+    assert "align-self: start" in nav_block
+    assert "display: block" in nav_block
+    layout_block = css.split(".admin-layout {", 1)[1].split("}", 1)[0]
+    assert "align-items: start" in layout_block
+    assert "min-height:" not in layout_block
+
+
+@pytest.mark.unit
+def test_admin_css_desktop_nav_sticky_content_sized() -> None:
+    css = ADMIN_CSS.read_text(encoding="utf-8")
+    desktop_block = css.split("@media (min-width: 769px)")[1].split("@media")[0]
+    nav_rules = desktop_block.split(".admin-nav {", 1)[1].split("}", 1)[0]
+    assert "position: sticky" in nav_rules
+    assert "top: 0" in nav_rules
+    assert "max-height: 100vh" in nav_rules
+
+
+@pytest.mark.unit
+def test_admin_css_mobile_disclosure_collapsed_sizing() -> None:
+    css = ADMIN_CSS.read_text(encoding="utf-8")
+    mobile_block = css.split("@media (max-width: 768px)")[1]
+    collapsed_block = mobile_block.split(
+        ".admin-nav-toggle:not([open]) {", 1
+    )[1].split("}", 1)[0]
+    assert "height: fit-content" in collapsed_block
+    assert "min-height: 0" in collapsed_block
+    assert ".admin-nav-toggle:not([open]) .admin-nav-mobile-list" in mobile_block
+    assert "display: none" in mobile_block.split(
+        ".admin-nav-toggle:not([open]) .admin-nav-mobile-list", 1
+    )[1].split("}", 1)[0]
+
+
+@pytest.mark.unit
 def test_admin_css_desktop_nav_list_visible_when_collapsed() -> None:
     css = ADMIN_CSS.read_text(encoding="utf-8")
     desktop_block = css.split("@media (min-width: 769px)")[1].split("@media")[0]
@@ -217,6 +253,7 @@ def test_admin_nav_links_present(path: str) -> None:
     ("path", "label"),
     [
         ("/admin", "Dashboard"),
+        ("/admin/contacts", "Contacts"),
         ("/admin/signals", "Signals"),
         ("/admin/pipeline", "Pipeline"),
         ("/admin/imports", "Imports"),
@@ -278,37 +315,6 @@ def test_admin_companies_page_renders_research_list() -> None:
     assert 'href="/admin/companies"' in body
     assert 'aria-current="page"' in body
     assert 'class="admin-nav-link" aria-current="page">Companies</a>' in body
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_admin_contacts_page_renders_list() -> None:
-    from app import admin_auth
-
-    raw_token = admin_auth.generate_session_token()
-    token_hash = admin_auth.hash_session_token(raw_token)
-    row = _session_row(token_hash=token_hash)
-    with mock_db_connection():
-        with (
-            patch(
-                "app.admin_routes.db.get_admin_session_by_token_hash",
-                return_value=row,
-            ),
-            patch("app.admin_routes._crm") as crm,
-        ):
-            crm.list_contacts.return_value = []
-            crm.list_companies.return_value = []
-            response = client.get(
-                "/admin/contacts",
-                cookies={SESSION_COOKIE_NAME: raw_token},
-            )
-    assert response.status_code == 200
-    body = response.text
-    assert 'class="admin-app"' in body
-    assert 'id="contacts-title">Contacts</h1>' in body
-    assert body.count('aria-current="page"') == 2
-    assert 'href="/admin/contacts"' in body
-    assert 'class="admin-nav-link" aria-current="page">Contacts</a>' in body
 
 
 @pytest.mark.parametrize(

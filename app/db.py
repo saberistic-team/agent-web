@@ -133,7 +133,6 @@ def create_admin_session(
             (token_hash, admin_username, expires_at, csrf_token_hash),
         )
         row = cur.fetchone()
-        conn.commit()
     return int(row["id"])
 
 
@@ -165,7 +164,6 @@ def revoke_admin_session(conn: psycopg.Connection, *, token_hash: str) -> None:
             """,
             (revoked_at, token_hash),
         )
-        conn.commit()
 
 
 def update_admin_session_csrf(
@@ -235,6 +233,51 @@ def consume_admin_login_flow(conn: psycopg.Connection, *, flow_token_hash: str) 
             (consumed_at, flow_token_hash),
         )
         conn.commit()
+
+
+def cleanup_stale_admin_login_flows(
+    conn: psycopg.Connection,
+    *,
+    now: datetime,
+    expired_retention_seconds: int,
+    consumed_retention_seconds: int,
+    batch_size: int,
+) -> int:
+    """Delete expired and consumed login flows in a bounded batch.
+
+    Active flows (unexpired and unconsumed) are never selected. Uses partial
+    indexes on ``expires_at`` and ``consumed_at`` so normal login traffic does
+    not scan the full table.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            DELETE FROM admin_login_flows
+            WHERE id IN (
+                SELECT id
+                FROM admin_login_flows
+                WHERE (
+                    consumed_at IS NULL
+                    AND expires_at < %s - make_interval(secs => %s)
+                ) OR (
+                    consumed_at IS NOT NULL
+                    AND consumed_at < %s - make_interval(secs => %s)
+                )
+                ORDER BY id
+                LIMIT %s
+            )
+            """,
+            (
+                now,
+                expired_retention_seconds,
+                now,
+                consumed_retention_seconds,
+                batch_size,
+            ),
+        )
+        deleted = cur.rowcount
+        conn.commit()
+    return deleted
 
 
 def is_admin_login_throttled(

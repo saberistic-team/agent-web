@@ -48,6 +48,9 @@ def chat_cursor(system: str, user: str, model: str | None = None) -> tuple[str, 
     model = model or os.environ.get("CURSOR_MODEL") or DEFAULT_CURSOR_MODEL
     try:
         from cursor_sdk import Agent, AgentOptions, LocalAgentOptions
+        from cursor_sdk_patch import patch_callback_auth_tokens
+
+        patch_callback_auth_tokens()
     except ImportError as exc:
         raise GitHubError(
             "cursor-sdk is not installed; pip install -r requirements-agents.txt"
@@ -359,6 +362,9 @@ def ai_review(repo: str, issue: int, pr_number: int) -> dict[str, Any]:
         "or leaves acceptance criteria unmet.\n"
         "Also request changes when mobile screenshots show hero/primary text clipped "
         "or overflowing the viewport (out of frame) — that is a Builder CSS fix.\n"
+        "Also request changes when ADMIN_PREVIEW_MODE admin data pages show empty "
+        "shells (“no … yet”, empty tables, placeholder milestone copy) — Builder "
+        "must ship randomized mock rows in app/admin_preview.py for screenshots.\n"
         "Screenshot policy (docs/SCREENSHOTS.md) — do NOT request changes for:\n"
         "- missing saberistic.com / production `pre-*.png` on the PR (pre-merge captures "
         "PR-head `branch-*.png` only; production shots are post-deploy)\n"

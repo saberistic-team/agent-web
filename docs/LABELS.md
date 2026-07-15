@@ -88,7 +88,7 @@ while the issue is in the orchestration pipeline.
 | `status:new` | **Entry point only.** Fresh work that has not been claimed by any agent. Humans (or intake automation) may apply this; **only the Planner may move an issue out of `status:new`.** |
 | `status:queued` | Accepted by the Planner and waiting in the **priority queue**. The dispatcher applies `agent:builder` or `agent:docs` when that agent is free, highest priority first. |
 | `status:in-progress` | An agent is actively working the issue. |
-| `status:blocked` | Work cannot proceed until an external dependency or decision is resolved. |
+| `status:blocked` | Work cannot proceed until an **external** dependency or decision is resolved. Do **not** use for transient Cursor SDK timeouts, soft file-budget overruns, coverage gaps, or merge conflicts — those re-enter `status:queued` (`waiting` handoff). |
 | `status:needs-review` | Implementation is ready for review (pairs with the `review` axis). |
 | `status:done` | Work is complete and accepted; Gate sets this only after a complete `### acceptance_checklist` and close. |
 | `status:failed` | The run failed or was aborted; needs human or Planner intervention. |

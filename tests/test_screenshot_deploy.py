@@ -1,8 +1,11 @@
 from screenshot_deploy import (
+    ADMIN_EXTRA_VIEWPORTS,
+    ADMIN_NAV_EVIDENCE_ROUTES,
     VIEWPORTS,
     admin_screenshot_session_cookie,
     discover_screenshot_routes,
     format_overflow_hard_fail,
+    is_admin_nav_evidence_route,
     is_admin_screenshot_route,
     is_production_pre_shot,
     is_public_screenshot_route,
@@ -42,6 +45,26 @@ def test_screenshot_basename_mobile_suffix() -> None:
     assert screenshot_basename("pre", "/about", "mobile") == "pre-about-mobile.png"
     assert screenshot_basename("post", "/about", "mobile") == "post-about-mobile.png"
     assert screenshot_basename("branch", "/", "mobile") == "branch-home-mobile.png"
+    assert screenshot_basename("branch", "/admin", "mobile-open") == (
+        "branch-admin-mobile-open.png"
+    )
+
+
+def test_admin_nav_evidence_routes_and_extra_viewports() -> None:
+    assert "/admin" in ADMIN_NAV_EVIDENCE_ROUTES
+    assert "/admin/audit" in ADMIN_NAV_EVIDENCE_ROUTES
+    assert "/admin/briefs" in ADMIN_NAV_EVIDENCE_ROUTES
+    assert is_admin_nav_evidence_route("/admin/audit")
+    assert not is_admin_nav_evidence_route("/admin/companies")
+    extra_names = {name for name, _, _ in ADMIN_EXTRA_VIEWPORTS}
+    assert extra_names == {"tablet", "narrow-desktop"}
+    by_name = {name: (w, h) for name, w, h in ADMIN_EXTRA_VIEWPORTS}
+    assert by_name["tablet"] == (768, 1024)
+    assert by_name["narrow-desktop"] == (1024, 800)
+    assert screenshot_basename("branch", "/admin", "tablet") == "branch-admin-tablet.png"
+    assert screenshot_basename("branch", "/admin", "narrow-desktop") == (
+        "branch-admin-narrow-desktop.png"
+    )
 
 
 def test_is_production_pre_shot() -> None:
@@ -113,14 +136,23 @@ def test_discover_screenshot_routes_include_admin() -> None:
 
 
 def test_admin_screenshot_routes_match_layout() -> None:
-    from app.admin_layout import ADMIN_SCREENSHOT_PATHS
+    from app.admin_layout import (
+        ADMIN_SCREENSHOT_EXPECTED_STATUS,
+        ADMIN_SCREENSHOT_PATHS,
+    )
     from scripts.screenshot_deploy import (
         ADMIN_SCREENSHOT_ROUTES,
         resolved_admin_screenshot_routes,
+        resolved_admin_screenshot_targets,
     )
 
     assert tuple(ADMIN_SCREENSHOT_PATHS) == ADMIN_SCREENSHOT_ROUTES
     assert resolved_admin_screenshot_routes() == ADMIN_SCREENSHOT_ROUTES
+    targets = resolved_admin_screenshot_targets()
+    assert {t.route for t in targets} == set(ADMIN_SCREENSHOT_ROUTES)
+    brief_503 = next(t for t in targets if t.route == "/admin/briefs/503")
+    assert brief_503.expected_status == 503
+    assert ADMIN_SCREENSHOT_EXPECTED_STATUS["/admin/briefs/503"] == 503
 
 
 def test_routes_affected_by_single_html_file() -> None:
@@ -175,8 +207,9 @@ def test_routes_affected_case_studies_data() -> None:
 
 def test_resolve_screenshot_routes_post_excludes_admin() -> None:
     all_public = resolve_screenshot_routes(changed_files=None, include_admin=False)
-    assert "/" in all_public
-    assert not any(r.startswith("/admin") for r in all_public)
+    routes = [t.route for t in all_public]
+    assert "/" in routes
+    assert not any(r.startswith("/admin") for r in routes)
 
 
 def test_format_overflow_hard_fail_mobile_only() -> None:
@@ -212,6 +245,79 @@ def test_format_overflow_hard_fail_mobile_only() -> None:
     assert "visual readability" in msg
     assert "out of frame" in msg
     assert "mobile" in msg or "390" in msg
+
+
+def test_format_empty_data_hard_fail_dedupes_routes() -> None:
+    from screenshot_deploy import format_empty_data_hard_fail
+
+    assert format_empty_data_hard_fail([]) is None
+    msg = format_empty_data_hard_fail(
+        [
+            {
+                "viewport": "desktop",
+                "route": "/admin/briefs",
+                "reason": "empty_table",
+                "phrase": "no project briefs submitted yet",
+            },
+            {
+                "viewport": "mobile",
+                "route": "/admin/briefs",
+                "reason": "empty_table",
+                "phrase": "no project briefs submitted yet",
+            },
+            {
+                "viewport": "desktop",
+                "route": "/admin/audit",
+                "reason": "empty_table",
+                "phrase": "no audit events recorded yet",
+            },
+        ]
+    )
+    assert msg is not None
+    assert "admin preview empty data" in msg
+    assert "`/admin/briefs`" in msg
+    assert "`/admin/audit`" in msg
+    assert "admin_preview.py" in msg
+
+
+def test_format_admin_nav_hard_fail_dedupes_routes() -> None:
+    from screenshot_deploy import format_admin_nav_hard_fail
+
+    assert format_admin_nav_hard_fail([]) is None
+    msg = format_admin_nav_hard_fail(
+        [
+            {
+                "viewport": "desktop",
+                "route": "/admin",
+                "reason": "desktop_nav_invisible",
+                "link_count": 12,
+                "visible_count": 0,
+            },
+            {
+                "viewport": "desktop",
+                "route": "/admin/audit",
+                "reason": "desktop_nav_invisible",
+                "link_count": 12,
+                "visible_count": 0,
+            },
+        ]
+    )
+    assert msg is not None
+    assert "admin desktop nav invisible" in msg
+    assert "`/admin`" in msg
+    assert "`/admin/audit`" in msg
+    assert "admin-nav-desktop" in msg
+    assert "details" in msg
+
+def test_page_empty_data_helper_flags_empty_table_phrases() -> None:
+    """Pure helper parity: empty shell phrases used by Playwright checks."""
+    from screenshot_deploy import ADMIN_EMPTY_SHELL_PHRASES
+
+    body = "Submitted briefs\n0 briefs\nNo project briefs submitted yet."
+    lowered = body.lower()
+    assert any(p in lowered for p in ADMIN_EMPTY_SHELL_PHRASES)
+    preview_ok = "Submitted briefs\n#1\nhttps://acme.example\nPaid"
+    assert not any(p in preview_ok.lower() for p in ADMIN_EMPTY_SHELL_PHRASES)
 
 
 def test_resolve_base_url_ignores_empty(monkeypatch) -> None:
@@ -256,12 +362,15 @@ def test_wait_healthy_builds_absolute_url(monkeypatch) -> None:
 
 
 def test_comment_markdown_pre_branch_only() -> None:
-    from screenshot_deploy import comment_markdown_pre_dual
+    from screenshot_deploy import ScreenshotTarget, comment_markdown_pre_dual
 
     body = comment_markdown_pre_dual(
         branch_url="http://127.0.0.1:8765",
         branch_urls=["https://raw.example/branch-home.png"],
-        routes=["/", "/admin"],
+        targets=[
+            ScreenshotTarget(route="/"),
+            ScreenshotTarget(route="/admin/briefs/503", expected_status=503),
+        ],
     )
     assert "### reviewer_screenshots_pre" in body
     assert "http://127.0.0.1:8765" in body
@@ -270,7 +379,9 @@ def test_comment_markdown_pre_branch_only() -> None:
     assert "branch-home.png" in body
     assert "Production baseline" not in body
     assert "pre-home.png" not in body
-    assert "routes (PR-affected): `/`, `/admin`" in body
+    assert "`/admin/briefs/503` (expected HTTP 503)" in body
+    assert "branch-admin-briefs-503.png" in body
+    assert "branch-admin-briefs-503-mobile.png" in body
     assert "- **branch-home.png**\n      ![branch-home.png](" in body
     assert "branch-home.png: ![" not in body
 
@@ -285,3 +396,246 @@ def test_comment_markdown_title_before_image() -> None:
     )
     assert "- **post-about.png**\n    ![post-about.png](" in body
     assert "post-about.png: ![" not in body
+
+
+def test_upload_to_branch_batches_one_commit(tmp_path, monkeypatch) -> None:
+    from screenshot_deploy import upload_to_branch
+
+    a = tmp_path / "branch-home.png"
+    b = tmp_path / "branch-about.png"
+    a.write_bytes(b"\x89PNG1")
+    b.write_bytes(b"\x89PNG2")
+    seen: dict[str, object] = {}
+
+    def fake_put_files(repo, branch, files, message):  # noqa: ANN001
+        seen["repo"] = repo
+        seen["branch"] = branch
+        seen["files"] = files
+        seen["message"] = message
+        return "sha"
+
+    monkeypatch.setattr("screenshot_deploy.put_files", fake_put_files)
+    urls = upload_to_branch("o/n", "builder/x", [a, b], ".agent/screenshots/pr-1")
+    assert len(seen["files"]) == 2
+    assert seen["files"][0][0].endswith("branch-home.png")
+    assert "2 screenshot" in str(seen["message"])
+    assert urls[0].endswith(".agent/screenshots/pr-1/branch-home.png")
+    assert urls[1].endswith(".agent/screenshots/pr-1/branch-about.png")
+
+
+class _FakeHeaders(dict):
+    def get(self, key, default=None):  # noqa: ANN001
+        return super().get(key.lower(), default)
+
+
+class _FakeResponse:
+    def __init__(self, *, status: int, headers: dict[str, str], body: bytes) -> None:
+        self.status = status
+        self.headers = _FakeHeaders(headers)
+        self._body = body
+
+    def read(self, size: int = -1) -> bytes:
+        if size < 0:
+            return self._body
+        return self._body[:size]
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+
+def _install_fake_urlopen(monkeypatch, responses: dict[str, _FakeResponse]) -> list[str]:
+    import io
+    import urllib.error
+
+    calls: list[str] = []
+
+    def fake_urlopen(req, timeout=30):  # noqa: ANN001
+        del timeout
+        calls.append(req.full_url)
+        payload = responses[req.full_url]
+        if 200 <= payload.status < 300:
+            return payload
+        raise urllib.error.HTTPError(
+            req.full_url,
+            payload.status,
+            "error",
+            payload.headers,
+            io.BytesIO(payload._body),
+        )
+
+    monkeypatch.setattr("screenshot_deploy.urllib.request.urlopen", fake_urlopen)
+    return calls
+
+
+def test_probe_accepts_expected_200_html(monkeypatch) -> None:
+    from screenshot_deploy import ScreenshotTarget, _probe_html_page, probe_accepts_target
+
+    _install_fake_urlopen(
+        monkeypatch,
+        {
+            "https://example.com/about": _FakeResponse(
+                status=200,
+                headers={"Content-Type": "text/html; charset=utf-8"},
+                body=b"<!doctype html><html><body>ok</body></html>",
+            )
+        },
+    )
+    probe = _probe_html_page("https://example.com/about")
+    accepted, reason = probe_accepts_target(
+        probe, ScreenshotTarget(route="/about", expected_status=200)
+    )
+    assert accepted is True
+    assert reason is None
+
+
+def test_probe_accepts_expected_404_html(monkeypatch) -> None:
+    from screenshot_deploy import ScreenshotTarget, _probe_html_page, probe_accepts_target
+
+    _install_fake_urlopen(
+        monkeypatch,
+        {
+            "https://example.com/missing": _FakeResponse(
+                status=404,
+                headers={"Content-Type": "text/html"},
+                body=b"<!doctype html><html><body>not found</body></html>",
+            )
+        },
+    )
+    probe = _probe_html_page("https://example.com/missing")
+    accepted, reason = probe_accepts_target(
+        probe, ScreenshotTarget(route="/missing", expected_status=404)
+    )
+    assert accepted is True
+    assert reason is None
+
+
+def test_probe_accepts_expected_503_html(monkeypatch) -> None:
+    from screenshot_deploy import ScreenshotTarget, _probe_html_page, probe_accepts_target
+
+    _install_fake_urlopen(
+        monkeypatch,
+        {
+            "https://example.com/admin/briefs/503": _FakeResponse(
+                status=503,
+                headers={"Content-Type": "text/html"},
+                body=b"<!doctype html><html><body>temporarily unavailable</body></html>",
+            )
+        },
+    )
+    probe = _probe_html_page("https://example.com/admin/briefs/503", route="/admin/briefs/503")
+    accepted, reason = probe_accepts_target(
+        probe,
+        ScreenshotTarget(route="/admin/briefs/503", expected_status=503),
+    )
+    assert accepted is True
+    assert reason is None
+
+
+def test_probe_rejects_unexpected_500_for_200_route(monkeypatch) -> None:
+    from screenshot_deploy import ScreenshotTarget, _probe_html_page, probe_accepts_target
+
+    _install_fake_urlopen(
+        monkeypatch,
+        {
+            "https://example.com/admin": _FakeResponse(
+                status=500,
+                headers={"Content-Type": "text/html"},
+                body=b"<!doctype html><html><body>error</body></html>",
+            )
+        },
+    )
+    probe = _probe_html_page("https://example.com/admin", route="/admin")
+    accepted, reason = probe_accepts_target(
+        probe, ScreenshotTarget(route="/admin", expected_status=200)
+    )
+    assert accepted is False
+    assert reason is not None
+    assert "HTTP 500 != expected 200" in reason
+
+
+def test_probe_rejects_json_error(monkeypatch) -> None:
+    from screenshot_deploy import ScreenshotTarget, _probe_html_page, probe_accepts_target
+
+    _install_fake_urlopen(
+        monkeypatch,
+        {
+            "https://example.com/api/briefs": _FakeResponse(
+                status=500,
+                headers={"Content-Type": "application/json"},
+                body=b'{"detail":"boom"}',
+            )
+        },
+    )
+    probe = _probe_html_page("https://example.com/api/briefs")
+    accepted, reason = probe_accepts_target(
+        probe, ScreenshotTarget(route="/api/briefs", expected_status=500)
+    )
+    assert accepted is False
+    assert reason is not None
+    assert "JSON" in reason or "non-HTML" in reason
+
+
+def test_probe_rejects_redirect_for_200_route(monkeypatch) -> None:
+    from screenshot_deploy import ScreenshotTarget, _probe_html_page, probe_accepts_target
+
+    _install_fake_urlopen(
+        monkeypatch,
+        {
+            "https://example.com/admin/login": _FakeResponse(
+                status=302,
+                headers={"Content-Type": "text/html"},
+                body=b"",
+            )
+        },
+    )
+    probe = _probe_html_page("https://example.com/admin/login", route="/admin/login")
+    accepted, reason = probe_accepts_target(
+        probe, ScreenshotTarget(route="/admin/login", expected_status=200)
+    )
+    assert accepted is False
+    assert reason is not None
+    assert "HTTP 302 != expected 200" in reason
+
+
+def test_is_html_response_still_requires_200(monkeypatch) -> None:
+    from screenshot_deploy import _is_html_response
+
+    _install_fake_urlopen(
+        monkeypatch,
+        {
+            "https://example.com/admin/briefs/503": _FakeResponse(
+                status=503,
+                headers={"Content-Type": "text/html"},
+                body=b"<!doctype html><html><body>temporarily unavailable</body></html>",
+            )
+        },
+    )
+    assert _is_html_response("https://example.com/admin/briefs/503", route="/admin/briefs/503") is False
+
+
+def test_routes_to_targets_applies_expected_status_overrides() -> None:
+    from screenshot_deploy import ScreenshotTarget, routes_to_targets
+
+    targets = routes_to_targets(
+        ["/", "/admin/briefs/503"],
+        status_overrides={"/admin/briefs/503": 503},
+    )
+    assert targets == [
+        ScreenshotTarget(route="/", expected_status=200),
+        ScreenshotTarget(route="/admin/briefs/503", expected_status=503),
+    ]
+
+
+def test_format_missing_screenshot_fail_lists_expected_files() -> None:
+    from screenshot_deploy import ScreenshotTarget, format_missing_screenshot_fail
+
+    msg = format_missing_screenshot_fail(
+        [ScreenshotTarget(route="/admin/briefs/503", expected_status=503)]
+    )
+    assert "required screenshot missing" in msg
+    assert "`/admin/briefs/503` (expected HTTP 503)" in msg
+    assert "branch-admin-briefs-503.png" in msg
+    assert "branch-admin-briefs-503-mobile.png" in msg

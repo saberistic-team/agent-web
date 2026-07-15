@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import time
@@ -160,3 +161,107 @@ def list_issue_comments(repo: str, issue: int) -> list[dict[str, Any]]:
             break
         page += 1
     return comments
+
+
+def put_files(
+    repo: str,
+    branch: str,
+    files: list[tuple[str, bytes]],
+    message: str,
+) -> str:
+    """Commit many path→bytes updates in **one** Git commit on ``branch``.
+
+    Uses the Git Data API (blobs + tree + commit + ref update) instead of
+    per-path Contents API PUTs. One Contents PUT = one commit; Builder
+    codegen and Reviewer screenshots historically pushed dozens of commits
+    and storm CI while racing other merges into dirty PRs (Builder↔Reviewer
+    thrash).
+
+    Returns the new commit SHA. Empty ``files`` returns the current HEAD SHA.
+    """
+    token()
+    owner, name = split_repo(repo)
+    ref = api("GET", f"/repos/{owner}/{name}/git/ref/heads/{branch}")
+    head_sha = str(ref["object"]["sha"])
+    if not files:
+        return head_sha
+
+    head_commit = api("GET", f"/repos/{owner}/{name}/git/commits/{head_sha}")
+    base_tree = str(head_commit["tree"]["sha"])
+    tree_items: list[dict[str, str]] = []
+    for path, content in files:
+        rel = path.lstrip("/")
+        if not rel or ".." in rel.split("/"):
+            raise GitHubError(f"unsafe path for put_files: {path!r}")
+        blob = api(
+            "POST",
+            f"/repos/{owner}/{name}/git/blobs",
+            body={
+                "content": base64.b64encode(content).decode("ascii"),
+                "encoding": "base64",
+            },
+        )
+        tree_items.append(
+            {
+                "path": rel,
+                "mode": "100644",
+                "type": "blob",
+                "sha": str(blob["sha"]),
+            }
+        )
+
+    tree = api(
+        "POST",
+        f"/repos/{owner}/{name}/git/trees",
+        body={"base_tree": base_tree, "tree": tree_items},
+    )
+    commit = api(
+        "POST",
+        f"/repos/{owner}/{name}/git/commits",
+        body={
+            "message": message,
+            "tree": tree["sha"],
+            "parents": [head_sha],
+        },
+    )
+    new_sha = str(commit["sha"])
+    last_err: Exception | None = None
+    for attempt in range(4):
+        try:
+            # Re-read tip when retrying so a racing push (Builder/Reviewer) does
+            # not strand screenshot uploads on "Update is not a fast forward".
+            if attempt:
+                ref = api("GET", f"/repos/{owner}/{name}/git/ref/heads/{branch}")
+                head_sha = str(ref["object"]["sha"])
+                head_commit = api(
+                    "GET", f"/repos/{owner}/{name}/git/commits/{head_sha}"
+                )
+                base_tree = str(head_commit["tree"]["sha"])
+                tree = api(
+                    "POST",
+                    f"/repos/{owner}/{name}/git/trees",
+                    body={"base_tree": base_tree, "tree": tree_items},
+                )
+                commit = api(
+                    "POST",
+                    f"/repos/{owner}/{name}/git/commits",
+                    body={
+                        "message": message,
+                        "tree": tree["sha"],
+                        "parents": [head_sha],
+                    },
+                )
+                new_sha = str(commit["sha"])
+            api(
+                "PATCH",
+                f"/repos/{owner}/{name}/git/refs/heads/{branch}",
+                body={"sha": new_sha},
+            )
+            return new_sha
+        except GitHubError as exc:
+            last_err = exc
+            if "not a fast forward" not in str(exc).lower() and "422" not in str(exc):
+                raise
+            time.sleep(0.5 * (attempt + 1))
+    assert last_err is not None
+    raise last_err

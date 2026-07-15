@@ -33,10 +33,7 @@ _company = {
 _contact = {
     "id": CONTACT_ID,
     "email": "lead@acme.dev",
-    "full_name": "Ada Lovelace",
-    "title": "CTO",
     "company_id": COMPANY_ID,
-    "buying_roles": ["technical_buyer"],
 }
 _records: list[dict[str, Any]] = []
 

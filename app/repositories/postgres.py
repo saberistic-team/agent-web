@@ -574,7 +574,6 @@ class PostgresContactRepository:
         enriched = self._attach_buying_roles(conn, [dict(row)])
         return enriched[0]
 
-
 class PostgresSourceRecordRepository:
     def create(
         self,

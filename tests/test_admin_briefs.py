@@ -215,6 +215,30 @@ def test_render_admin_briefs_page_escapes_html() -> None:
 
 
 @pytest.mark.unit
+def test_render_admin_briefs_page_detail_link_preserves_filters() -> None:
+    filters = BriefListFilters(
+        page=2,
+        per_page=50,
+        query="acme",
+        status="paid",
+        date_from=None,
+        date_to=None,
+        date_from_raw="2026-07-01",
+        date_to_raw="2026-07-14",
+    )
+    html_out = render_admin_briefs_page(
+        admin_username=TEST_USERNAME,
+        briefs=[_sample_brief()],
+        filters=filters,
+        total=120,
+        price_cents=20_000,
+    )
+    assert "/admin/briefs/42?page=2" in html_out
+    assert "q=acme" in html_out
+    assert "status=paid" in html_out
+
+
+@pytest.mark.unit
 def test_render_admin_briefs_page_empty_and_filtered_states() -> None:
     filters = BriefListFilters(
         page=1,
@@ -389,13 +413,15 @@ def test_admin_briefs_page_passes_search_and_filters() -> None:
 @pytest.mark.unit
 @pytest.mark.integration
 def test_admin_briefs_page_handles_database_errors() -> None:
+    import psycopg
+
     token_hash = admin_auth.hash_session_token("briefs-db-error")
     row = _session_row(token_hash=token_hash)
     with mock_db_connection():
         with patch("app.admin_routes.db.get_admin_session_by_token_hash", return_value=row):
             with patch(
                 "app.admin_routes.brief_service.list_briefs",
-                side_effect=RuntimeError("connection refused"),
+                side_effect=psycopg.OperationalError("connection refused"),
             ):
                 response = client.get(
                     "/admin/briefs",
