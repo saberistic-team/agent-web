@@ -44,6 +44,7 @@ def test_crm_service_records_company_contact_and_activity() -> None:
             activities=activity_repo,
             research_records=research_repo,
             admin_users=admin_repo,
+            stage_history=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -83,6 +84,7 @@ def test_crm_service_links_project_brief_source() -> None:
             activities=MagicMock(),
             research_records=MagicMock(),
             admin_users=MagicMock(),
+            stage_history=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -115,6 +117,9 @@ def test_default_crm_repositories_use_postgres_backends() -> None:
     assert isinstance(service._repos.activities, PostgresActivityRepository)
     assert isinstance(service._repos.research_records, PostgresResearchRecordRepository)
     assert isinstance(service._repos.admin_users, PostgresAdminUserRepository)
+    from app.repositories.postgres import PostgresCompanyStageHistoryRepository
+
+    assert isinstance(service._repos.stage_history, PostgresCompanyStageHistoryRepository)
 
 
 def _service_with_mocks(
@@ -132,6 +137,7 @@ def _service_with_mocks(
         "activities": activity_repo or MagicMock(),
         "research_records": MagicMock(),
         "admin_users": admin_repo or MagicMock(),
+        "stage_history": MagicMock(),
     }
     service = CrmService(repos=CrmRepositories(**repos))
     conn = MagicMock()

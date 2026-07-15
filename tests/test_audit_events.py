@@ -87,8 +87,8 @@ def test_audit_migration_present_and_ordered() -> None:
 @pytest.mark.unit
 def test_pending_migrations_includes_audit_after_sessions() -> None:
     pending = pending_migrations(applied_versions={"001", "002", "003", "004", "005", "006"})
-    assert len(pending) == 4
-    assert [m.version for m in pending] == ["007", "008", "009", "010"]
+    assert len(pending) == 5
+    assert [m.version for m in pending] == ["007", "008", "009", "010", "011"]
 
 
 @pytest.mark.unit
@@ -198,6 +198,32 @@ def test_representative_mutation_helpers_call_record_event() -> None:
 
 
 @pytest.mark.unit
+def test_record_brief_convert_redacts_sensitive_fields() -> None:
+    conn = MagicMock()
+    repo = MagicMock()
+    actor = _actor("corr-brief")
+    audit_service.record_brief_convert(
+        conn,
+        actor_context=actor,
+        brief_id="42",
+        summary_after={
+            "brief_id": 42,
+            "brief_status": "paid",
+            "company_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            "contact_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+            "pipeline_stage": "diagnostic_paid",
+            "email": "hidden@example.com",
+            "brief": "secret text",
+        },
+        repository=repo,
+    )
+    payload = repo.append.call_args.kwargs
+    assert payload["action"] == audit_service.ACTION_BRIEF_CONVERT
+    assert payload["summary_after"]["email"] == audit_service.REDACTED_VALUE
+    assert payload["summary_after"]["brief"] == audit_service.REDACTED_VALUE
+
+
+@pytest.mark.unit
 def test_crm_service_audited_mutations_record_events() -> None:
     conn = MagicMock()
     source_repo = MagicMock()
@@ -213,6 +239,7 @@ def test_crm_service_audited_mutations_record_events() -> None:
             activities=MagicMock(),
             research_records=MagicMock(),
             admin_users=MagicMock(),
+            stage_history=MagicMock(),
         )
     )
 

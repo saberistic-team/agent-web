@@ -14,6 +14,7 @@ from app.repositories.protocols import (
     AdminUserRepository,
     AuditEventRepository,
     CompanyRepository,
+    CompanyStageHistoryRepository,
     ContactRepository,
     ResearchRecordRepository,
     SourceRecordRepository,
@@ -40,6 +41,9 @@ class PostgresCompanyRepository:
         target_status: str | None = None,
         last_verified_at: date | None = None,
         notes: str | None = None,
+        pipeline_stage: str = "researching",
+        expected_value: float | None = None,
+        owner: str | None = None,
     ) -> dict[str, Any]:
         with conn.cursor() as cur:
             cur.execute(
@@ -47,15 +51,15 @@ class PostgresCompanyRepository:
                 INSERT INTO companies (
                     name, website, status, domain, category, stage,
                     headcount_estimate, funding_summary, target_status,
-                    last_verified_at, notes
+                    last_verified_at, notes, pipeline_stage, expected_value, owner
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING *
                 """,
                 (
                     name, website, status, domain, category, stage,
                     headcount_estimate, funding_summary, target_status,
-                    last_verified_at, notes,
+                    last_verified_at, notes, pipeline_stage, expected_value, owner,
                 ),
             )
             row = cur.fetchone()
@@ -223,6 +227,67 @@ class PostgresCompanyRepository:
             row = cur.fetchone()
         return dict(row) if row else None
 
+    def set_pipeline_stage(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        pipeline_stage: str,
+        expected_value: float | None = None,
+    ) -> dict[str, Any] | None:
+        fields = ["pipeline_stage = %s", "updated_at = %s"]
+        values: list[Any] = [pipeline_stage, _now()]
+        if expected_value is not None:
+            fields.append("expected_value = %s")
+            values.append(expected_value)
+        values.append(company_id)
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                UPDATE companies
+                SET {", ".join(fields)}
+                WHERE id = %s
+                RETURNING *
+                """,
+                values,
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+
+class PostgresCompanyStageHistoryRepository:
+    def record(
+        self,
+        conn: psycopg.Connection,
+        *,
+        company_id: UUID,
+        from_stage: str,
+        to_stage: str,
+        changed_by: str,
+        reason: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO company_stage_history (
+                    company_id, from_stage, to_stage, changed_by, reason, metadata
+                )
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING *
+                """,
+                (
+                    company_id,
+                    from_stage,
+                    to_stage,
+                    changed_by,
+                    reason,
+                    json.dumps(metadata) if metadata is not None else None,
+                ),
+            )
+            row = cur.fetchone()
+        return dict(row)
+
 
 class PostgresContactRepository:
     def create(
@@ -252,8 +317,12 @@ class PostgresContactRepository:
         return dict(row) if row else None
 
     def get_by_email(self, conn: psycopg.Connection, email: str) -> dict[str, Any] | None:
+        normalized = email.strip().lower()
         with conn.cursor() as cur:
-            cur.execute("SELECT * FROM contacts WHERE email = %s", (email,))
+            cur.execute(
+                "SELECT * FROM contacts WHERE lower(email) = %s",
+                (normalized,),
+            )
             row = cur.fetchone()
         return dict(row) if row else None
 
@@ -687,6 +756,7 @@ class PostgresRepositories:
         self.admin_users = PostgresAdminUserRepository()
         self.audit_events = PostgresAuditEventRepository()
         self.project_briefs = PostgresProjectBriefRepository()
+        self.stage_history = PostgresCompanyStageHistoryRepository()
 
 
 _default_repositories = PostgresRepositories()
@@ -707,6 +777,7 @@ def default_repositories() -> dict[str, Any]:
         "admin_users": repos.admin_users,
         "audit_events": repos.audit_events,
         "project_briefs": repos.project_briefs,
+        "stage_history": repos.stage_history,
     }
 
 

@@ -160,3 +160,23 @@ def test_admin_preview_briefs_list_and_detail_have_mock_data(
     assert audit.status_code == 200
     assert "No audit events recorded yet." not in audit.text
     assert "audit-table" in audit.text
+
+
+@pytest.mark.unit
+def test_preview_brief_conversion_states() -> None:
+    from app.admin_preview import (
+        PREVIEW_BRIEF_CONVERTED_ID,
+        preview_brief_conversion_state,
+        preview_brief_convert_matches,
+        preview_pipeline_available,
+    )
+
+    assert preview_pipeline_available() is True
+    assert preview_brief_conversion_state(1) is None
+    linked = preview_brief_conversion_state(PREVIEW_BRIEF_CONVERTED_ID)
+    assert linked is not None
+    assert linked["pipeline_stage"] == "diagnostic_paid"
+    matches = preview_brief_convert_matches(4, price_cents=20_000)
+    assert matches["company_matches"]
+    assert matches["contact_matches"]
+    assert matches["proposal"]["pipeline_stage"] in {"qualified", "diagnostic_paid"}

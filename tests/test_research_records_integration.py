@@ -98,6 +98,7 @@ def test_crm_service_attach_research_record_commits() -> None:
             activities=MagicMock(),
             research_records=research_repo,
             admin_users=MagicMock(),
+            stage_history=MagicMock(),
         )
     )
     conn = MagicMock()
