@@ -112,6 +112,9 @@ a dirty PR as unfinished Builder work.
    mergeable but still break Reviewer screenshots — that was a Builder↔Reviewer
    loop on CRM PRs. Known import gaps may be auto-repaired (`repair_main_wiring`)
    once; persistent smoke failure stays `waiting`.
+   **Circular routers:** mount feature routers from `app.main` only — never
+   `include_router` a module that imports `require_admin_session` from
+   `admin_routes` back into `admin_routes` (ImportError loop on #107).
 4. Comment `### builder_conflict_context` and `### builder_conflict_result` on
    the issue.
 5. **Re-check** `mergeable` / `mergeable_state`. Only when clean → hand off
