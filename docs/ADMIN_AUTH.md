@@ -146,9 +146,9 @@ access logs or metrics for operational visibility if needed.
 | `ADMIN_LOGIN_RATE_LIMIT` | Optional | Failed login attempts allowed per window (default `5`) |
 | `ADMIN_LOGIN_RATE_WINDOW_SECONDS` | Optional | Rate-limit counting window in seconds (default `900`) |
 | `ADMIN_LOGIN_LOCKOUT_SECONDS` | Optional | Lockout duration after limit exceeded (default `900`) |
-| `ADMIN_TRUST_PROXY_HEADERS` | Optional | Enable trusted-proxy client source resolution (default off; set `true` on Render) |
-| `ADMIN_TRUSTED_PROXY_CIDRS` | Optional | Comma-separated CIDRs for the immediate proxy boundary (Render internal ranges in production) |
-| `ADMIN_CLOUDFLARE_PROXY_CIDRS` | Optional | Cloudflare published edge CIDRs; required for `CF-Connecting-IP` and for skipping Cloudflare hops in forwarding chains |
+| `ADMIN_TRUSTED_PROXY_CIDRS` | Production | Comma-separated CIDRs for the immediate TCP peer (Render load balancer private space). When the peer matches, forwarding headers are parsed; otherwise the direct peer is used and all forwarding headers are ignored. |
+| `ADMIN_TRUST_CLOUDFLARE_PROXY` | Optional | Treat published Cloudflare proxy ranges as trusted hops when walking ``X-Forwarded-For`` (default `true` on Render). |
+| `ADMIN_TRUST_PROXY_HEADERS` | **Deprecated** | Legacy alias: when `true` and ``ADMIN_TRUSTED_PROXY_CIDRS`` is unset, applies the default Render private-network CIDR list. Prefer ``ADMIN_TRUSTED_PROXY_CIDRS`` explicitly. |
 | `ADMIN_PREVIEW_MODE` | Optional | **CI / local only.** When `1`/`true`, protected `/admin` GET pages render without login and admin pages fill with **randomized mock data** for Playwright screenshots. Hard-disabled if `BASE_URL` contains `saberistic.com`. Never set on production Render. |
 | `ADMIN_PREVIEW_SEED` | Optional | Seed for mock admin randomization (stable screenshots/tests). |
 | `BASE_URL` | Yes | Public site URL; `https://…` enables `Secure` session cookies |
@@ -222,8 +222,9 @@ export ADMIN_USERNAME=operator
 export ADMIN_PASSWORD_HASH='…'
 export ADMIN_SESSION_SECRET='…'
 export BASE_URL=http://localhost:8000
-# Leave ADMIN_TRUST_PROXY_HEADERS unset locally so spoofed X-Forwarded-For is ignored.
-uvicorn app.main:app --reload --port 8000
+# Local dev: leave ADMIN_TRUSTED_PROXY_CIDRS unset so spoofed headers are ignored.
+# The direct peer (127.0.0.1) is used for the source-wide limiter bucket.
+uvicorn app.main:app --reload --port 8000 --forwarded-allow-ips 127.0.0.1
 ```
 
 Visit `http://localhost:8000/admin/login`.
@@ -252,54 +253,76 @@ secrets are never written to limiter rows or limiter observability logs.
 
 ### Client source resolution
 
-Production traffic path:
+Production request chain:
 
 ```text
-Browser → Cloudflare (edge) → Render load balancer → Uvicorn (app process)
+Browser → Cloudflare edge → Render load balancer → Uvicorn (agent-web)
 ```
 
-The admin login limiter resolves client source through
-:func:`resolve_admin_login_client_source` (see ``app/proxy_trust.py``). Raw
-``X-Forwarded-For``, ``Forwarded``, and ``CF-Connecting-IP`` values are **never**
-read from an unverified peer.
+Resolved client source comes from :func:`resolve_admin_login_client_source`
+(used by :func:`client_ip`):
 
-| Environment | Peer trust | Forwarding headers |
-|-------------|------------|--------------------|
-| **Production (Render)** | ``ADMIN_TRUST_PROXY_HEADERS=true`` plus ``ADMIN_TRUSTED_PROXY_CIDRS`` | Right-to-left walk across trusted Render and Cloudflare hops |
-| **Local dev / tests** | Off (default) | Ignored; direct peer address used |
-| **Direct Render origin** (bypassing Cloudflare) | Render CIDRs only | ``CF-Connecting-IP`` ignored without a Cloudflare hop in the chain |
-| **Preview / CI** | Same as tests unless explicitly configured | Same as tests |
-
-Uvicorn is started with an explicit ``--forwarded-allow-ips=127.0.0.1,::1`` so
-the framework does **not** rewrite ``request.client`` from untrusted forwarding
-headers. The application parser is the single source of truth for limiter source
-identity.
-
-**Precedence** when the immediate peer is trusted:
-
-1. ``CF-Connecting-IP`` — only when a hop in the verified chain matches
-   ``ADMIN_CLOUDFLARE_PROXY_CIDRS``.
-2. ``X-Forwarded-For`` — comma-separated chain, parsed right-to-left across
-   trusted hops (Cloudflare append preserves attacker-chosen left-most values;
-   they are skipped).
-3. ``Forwarded`` — used only when ``X-Forwarded-For`` is absent.
-
-Malformed, overlong, or ambiguous chains fail closed (``unknown`` shared bucket
-or direct peer) without exposing details in login responses.
-
-**Rollback:** If a proxy misconfiguration causes every login attempt to share one
-source bucket, set ``ADMIN_TRUST_PROXY_HEADERS=false`` and redeploy. Spoofed
-headers are ignored and each direct peer is rate limited independently until
-CIDRs are corrected.
-
-Structured debug logs record ``resolution_path`` only (no raw addresses or header
-values). Sampled warnings cover ignored forwarding attempts.
-
-Resolved client source notes:
-
-- **IPv4 / IPv6** — normalized (including IPv4-mapped IPv6) before digesting.
+- **Immediate peer verification** — forwarding headers are read only when the
+  TCP peer is in ``ADMIN_TRUSTED_PROXY_CIDRS`` (Render private/link-local space
+  on production). Direct requests, preview, local dev, and tests without a
+  trusted peer ignore ``X-Forwarded-For``, ``Forwarded``, and
+  ``CF-Connecting-IP``.
+- **``X-Forwarded-For``** — parsed **right-to-left**, skipping trusted proxy
+  hops (Render private space and, when ``ADMIN_TRUST_CLOUDFLARE_PROXY=true``,
+  published Cloudflare ranges). The leftmost **untrusted** hop is the client.
+  Attacker-controlled leftmost values appended before Cloudflare are not
+  selected when the real connecting address is present in the chain.
+- **``Forwarded``** — used only when ``X-Forwarded-For`` is absent; conflicting
+  values between the two headers fall back conservatively to the direct peer.
+- **``CF-Connecting-IP``** — accepted only when it matches the derived client
+  from the hop walk. Spoofed Cloudflare headers on direct Render origin access
+  are ignored.
+- **IPv4 / IPv6** — normalized deterministically (including IPv4-mapped IPv6).
+  Malformed, overlong, empty, or ambiguous forwarding data falls back
+  conservatively without changing login error messages.
 - **Missing peer** — ``unknown`` (still one shared bucket).
-- **Untrusted peer** — direct peer address; forwarding headers ignored.
+- **Uvicorn** — production starts with
+  ``--forwarded-allow-ips 127.0.0.1`` so Uvicorn does not rewrite
+  ``request.client`` from external proxies; the application enforces its own
+  trust boundary via ``ADMIN_TRUSTED_PROXY_CIDRS``.
+
+#### Environment differences
+
+| Context | Trusted peer | Forwarding headers | Uvicorn ``forwarded-allow-ips`` |
+|---------|--------------|--------------------|---------------------------------|
+| Production (Render) | Render LB private IP | Parsed when peer trusted | ``127.0.0.1`` (explicit; app parses) |
+| Preview / CI | Usually none | Ignored | ``127.0.0.1`` |
+| Local dev | Usually none | Ignored | ``127.0.0.1`` |
+| Direct Render origin (bypass Cloudflare) | Render LB | Hop walk; CF headers not trusted alone | ``127.0.0.1`` |
+
+#### Rollback if proxy trust is misconfigured
+
+If ``ADMIN_TRUSTED_PROXY_CIDRS`` is too narrow, every request shares the Render
+load-balancer peer address as the source bucket (fail-closed aggregation). To
+recover:
+
+1. Confirm Render env shows ``ADMIN_TRUSTED_PROXY_CIDRS`` matching
+   ``render.yaml`` (private RFC1918 + link-local ranges).
+2. Redeploy; no database migration is required.
+3. Optionally clear stale ``admin_login_rate_limits`` rows if operators were
+   locked out during the misconfiguration.
+
+Structured logs emit ``admin_login_source_resolution_path`` (bounded enum, no raw
+addresses) and sampled ``admin_login_forwarding_event`` warnings for rejected
+header chains.
+
+#### Production verification
+
+After deploy, confirm Render service settings match ``render.yaml``:
+
+1. **Start command** includes ``--forwarded-allow-ips 127.0.0.1``.
+2. **Environment** includes ``ADMIN_TRUSTED_PROXY_CIDRS`` (Render private
+   ranges) and ``ADMIN_TRUST_CLOUDFLARE_PROXY=true``.
+3. **Smoke checks** — ``python scripts/smoke_deploy.py --base-url https://saberistic.com``
+   passes ``/health`` and ``/hello``.
+4. **Proxy-trust regression** — CI runs ``tests/test_admin_proxy_deploy_config.py``
+   and ``tests/test_admin_client_source_integration.py`` on every PR; re-run
+   locally before rollback if login throttling aggregates unexpected traffic.
 
 ### Atomic admission
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -27,9 +27,8 @@ class Settings:
     admin_login_rate_limit: int = 5
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
-    admin_trust_proxy_headers: bool = False
-    admin_trusted_proxy_cidrs: tuple[str, ...] = ()
-    admin_cloudflare_proxy_cidrs: tuple[str, ...] = ()
+    admin_trusted_proxy_cidrs: tuple[str, ...] = field(default_factory=tuple)
+    admin_trust_cloudflare_proxy: bool = True
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -111,17 +110,25 @@ def get_settings() -> Settings:
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
         brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
-        admin_trust_proxy_headers=os.environ.get(
-            "ADMIN_TRUST_PROXY_HEADERS", ""
+        admin_trusted_proxy_cidrs=_parse_admin_trusted_proxy_cidrs(),
+        admin_trust_cloudflare_proxy=os.environ.get(
+            "ADMIN_TRUST_CLOUDFLARE_PROXY", "true"
         ).lower()
         in ("1", "true", "yes"),
-        admin_trusted_proxy_cidrs=_parse_csv_env("ADMIN_TRUSTED_PROXY_CIDRS"),
-        admin_cloudflare_proxy_cidrs=_parse_csv_env("ADMIN_CLOUDFLARE_PROXY_CIDRS"),
     )
 
 
-def _parse_csv_env(name: str) -> tuple[str, ...]:
-    raw = os.environ.get(name, "")
-    if not raw.strip():
-        return ()
-    return tuple(part.strip() for part in raw.split(",") if part.strip())
+def _parse_admin_trusted_proxy_cidrs() -> tuple[str, ...]:
+    explicit = os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "").strip()
+    if explicit:
+        return tuple(
+            part.strip()
+            for part in explicit.split(",")
+            if part.strip()
+        )
+    legacy = os.environ.get("ADMIN_TRUST_PROXY_HEADERS", "").lower()
+    if legacy in ("1", "true", "yes"):
+        from app.admin_client_source import DEFAULT_RENDER_TRUSTED_PROXY_CIDRS
+
+        return DEFAULT_RENDER_TRUSTED_PROXY_CIDRS
+    return ()

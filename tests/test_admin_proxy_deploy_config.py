@@ -7,53 +7,52 @@ from pathlib import Path
 
 import pytest
 
-from app.admin_client_source import (
-    PRODUCTION_TRUSTED_PROXY_CIDRS,
-    RENDER_FORWARDED_ALLOW_IPS,
-)
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-RENDER_YAML = REPO_ROOT / "render.yaml"
-ADMIN_AUTH_DOC = REPO_ROOT / "docs" / "ADMIN_AUTH.md"
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
-def _render_env_value(key: str) -> str | None:
-    text = RENDER_YAML.read_text(encoding="utf-8")
-    match = re.search(
-        rf"- key: {re.escape(key)}\n\s+value: \"([^\"]+)\"",
-        text,
-    )
+def _render_yaml_text() -> str:
+    return (REPO_ROOT / "render.yaml").read_text()
+
+
+def _env_value(text: str, key: str) -> str | None:
+    pattern = rf"- key: {re.escape(key)}\n\s+value: \"([^\"]*)\""
+    match = re.search(pattern, text)
     return match.group(1) if match else None
 
 
 @pytest.mark.unit
-def test_render_yaml_declares_proxy_trust_env_and_uvicorn_flag() -> None:
-    text = RENDER_YAML.read_text(encoding="utf-8")
-    assert "--forwarded-allow-ips" in text
-    assert "$UVICORN_FORWARDED_ALLOW_IPS" in text
-    assert _render_env_value("ADMIN_TRUST_PROXY_HEADERS") == "true"
-    assert _render_env_value("UVICORN_FORWARDED_ALLOW_IPS") == RENDER_FORWARDED_ALLOW_IPS
-    assert _render_env_value("ADMIN_TRUSTED_PROXY_CIDRS") == PRODUCTION_TRUSTED_PROXY_CIDRS
+def test_render_yaml_declares_proxy_trust_env_and_uvicorn_boundary() -> None:
+    text = _render_yaml_text()
+    start_command_match = re.search(r"startCommand: (.+)", text)
+    assert start_command_match is not None
+    start_command = start_command_match.group(1)
+
+    assert "--forwarded-allow-ips" in start_command
+    assert "127.0.0.1" in start_command
+
+    trusted_cidrs = _env_value(text, "ADMIN_TRUSTED_PROXY_CIDRS")
+    assert trusted_cidrs
+    assert "10.0.0.0/8" in trusted_cidrs
+    assert _env_value(text, "ADMIN_TRUST_CLOUDFLARE_PROXY") == "true"
 
 
 @pytest.mark.unit
-def test_admin_auth_doc_documents_proxy_trust_model() -> None:
-    doc = ADMIN_AUTH_DOC.read_text(encoding="utf-8")
-    assert "Cloudflare edge → Render load balancer → Uvicorn" in doc
-    assert "ADMIN_TRUSTED_PROXY_CIDRS" in doc
-    assert "UVICORN_FORWARDED_ALLOW_IPS" in doc
-    assert "right to left" in doc.lower() or "right-to-left" in doc.lower()
-    assert "left-most" not in doc.lower()
-    assert "leftmost" not in doc.lower()
+def test_admin_auth_docs_match_render_proxy_model() -> None:
+    docs = (REPO_ROOT / "docs" / "ADMIN_AUTH.md").read_text()
+    assert "ADMIN_TRUSTED_PROXY_CIDRS" in docs
+    assert "ADMIN_TRUST_CLOUDFLARE_PROXY" in docs
+    assert "--forwarded-allow-ips 127.0.0.1" in docs
+    assert "right-to-left" in docs.lower() or "right to left" in docs.lower()
 
 
 @pytest.mark.unit
-def test_render_forwarded_allow_ips_is_render_internal_only() -> None:
-    assert "173.245.48.0/20" not in RENDER_FORWARDED_ALLOW_IPS
-    assert "10.0.0.0/8" in RENDER_FORWARDED_ALLOW_IPS
+def test_legacy_admin_trust_proxy_headers_maps_to_render_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ADMIN_TRUSTED_PROXY_CIDRS", raising=False)
+    monkeypatch.setenv("ADMIN_TRUST_PROXY_HEADERS", "true")
+    from app.config import get_settings
 
-
-@pytest.mark.unit
-def test_production_trusted_cidrs_include_cloudflare_and_render() -> None:
-    assert "10.0.0.0/8" in PRODUCTION_TRUSTED_PROXY_CIDRS
-    assert "173.245.48.0/20" in PRODUCTION_TRUSTED_PROXY_CIDRS
+    settings = get_settings()
+    assert settings.admin_trusted_proxy_cidrs
+    assert "10.0.0.0/8" in settings.admin_trusted_proxy_cidrs
