@@ -317,42 +317,21 @@ CREATE INDEX IF NOT EXISTS idx_companies_last_verified_at ON companies (last_ver
         version="011",
         name="contact_records",
         up_sql="""
-ALTER TABLE contacts ALTER COLUMN email DROP NOT NULL;
-ALTER TABLE contacts DROP CONSTRAINT IF EXISTS contacts_email_unique;
-CREATE UNIQUE INDEX IF NOT EXISTS contacts_email_unique_nonempty
-    ON contacts (LOWER(email))
-    WHERE email IS NOT NULL AND BTRIM(email) <> '';
-
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS title TEXT;
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS profile_url TEXT;
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS email_permitted BOOLEAN;
-ALTER TABLE contacts ADD COLUMN IF NOT EXISTS email_provenance TEXT;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS email_source TEXT;
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS last_interaction_at TIMESTAMPTZ;
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS relationship_strength TEXT;
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS buying_roles TEXT[];
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
+ALTER TABLE contacts ALTER COLUMN email DROP NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_contacts_profile_url ON contacts (profile_url);
 CREATE INDEX IF NOT EXISTS idx_contacts_archived_at ON contacts (archived_at);
 CREATE INDEX IF NOT EXISTS idx_contacts_last_interaction_at ON contacts (last_interaction_at);
-CREATE INDEX IF NOT EXISTS idx_contacts_full_name ON contacts (full_name);
-
-CREATE TABLE IF NOT EXISTS contact_buying_roles (
-    contact_id UUID NOT NULL REFERENCES contacts (id) ON DELETE CASCADE,
-    role TEXT NOT NULL
-        CHECK (role IN (
-            'founder',
-            'technical_buyer',
-            'executive_buyer',
-            'influencer',
-            'investor',
-            'introducer',
-            'other'
-        )),
-    PRIMARY KEY (contact_id, role)
-);
-
-CREATE INDEX IF NOT EXISTS idx_contact_buying_roles_role ON contact_buying_roles (role);
+CREATE INDEX IF NOT EXISTS idx_contacts_relationship_strength ON contacts (relationship_strength);
 """,
     ),
 

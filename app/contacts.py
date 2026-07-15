@@ -1,4 +1,4 @@
-"""Contact field registries, validation, and duplicate helpers."""
+"""Contact field registries, validation, and duplicate-warning helpers."""
 
 from __future__ import annotations
 
@@ -21,18 +21,16 @@ BUYING_ROLES: dict[str, str] = {
     "other": "Other",
 }
 RELATIONSHIP_STRENGTHS: dict[str, str] = {
-    "strong": "Strong",
-    "warm": "Warm",
-    "neutral": "Neutral",
     "cold": "Cold",
-    "unknown": "Unknown",
+    "warm": "Warm",
+    "strong": "Strong",
+    "trusted": "Trusted",
 }
-EMAIL_PROVENANCES: dict[str, str] = {
+EMAIL_SOURCES: dict[str, str] = {
     "manual": "Manual entry",
+    "enrichment": "Enrichment",
     "introduction": "Introduction",
-    "public_profile": "Public profile",
-    "import": "Import",
-    "event": "Event",
+    "public": "Public source",
     "other": "Other",
 }
 
@@ -62,12 +60,13 @@ def normalize_profile_url(value: str | None) -> str | None:
         return None
     parsed = urlparse(text if "://" in text else f"https://{text}")
     if not parsed.scheme or not parsed.netloc:
-        raise ValueError("profile URL must be a valid URL")
+        raise ValueError("profile URL must be a valid http(s) URL")
     host = parsed.netloc.lower()
     if host.startswith("www."):
         host = host[4:]
-    path = parsed.path.rstrip("/") or "/"
-    return f"{host}{path}"
+    path = parsed.path.rstrip("/") or ""
+    query = f"?{parsed.query}" if parsed.query else ""
+    return f"{parsed.scheme.lower()}://{host}{path}{query}"
 
 
 def _validate_registry(value: str | None, registry: dict[str, str], field: str) -> str | None:
@@ -81,27 +80,25 @@ def _validate_registry(value: str | None, registry: dict[str, str], field: str) 
 def _validate_buying_roles(values: list[str] | None) -> list[str]:
     if not values:
         return []
-    seen: set[str] = set()
     normalized: list[str] = []
     for value in values:
-        role = value.strip()
-        if not role or role in seen:
+        if not value or not value.strip():
             continue
-        if role not in BUYING_ROLES:
-            raise ValueError(f"unknown buying role: {role}")
-        seen.add(role)
-        normalized.append(role)
+        if value not in BUYING_ROLES:
+            raise ValueError(f"unknown buying role: {value}")
+        if value not in normalized:
+            normalized.append(value)
     return normalized
 
 
 class ContactCreate(BaseModel):
     full_name: str = Field(min_length=1, max_length=500)
-    company_id: UUID
     title: str | None = Field(default=None, max_length=500)
     profile_url: str | None = Field(default=None, max_length=2000)
     email: str | None = Field(default=None, max_length=320)
     email_permitted: bool | None = None
-    email_provenance: str | None = None
+    email_source: str | None = None
+    company_id: UUID | None = None
     last_interaction_at: datetime | None = None
     relationship_strength: str | None = None
     notes: str | None = Field(default=None, max_length=10000)
@@ -115,20 +112,25 @@ class ContactCreate(BaseModel):
             raise ValueError("name must not be empty")
         return normalized
 
-    @field_validator("email")
+    @field_validator("title")
     @classmethod
-    def validate_email(cls, value: str | None) -> str | None:
-        return normalize_email(value)
+    def validate_title(cls, value: str | None) -> str | None:
+        return normalize_contact_name(value)
 
     @field_validator("profile_url")
     @classmethod
     def validate_profile_url(cls, value: str | None) -> str | None:
         return normalize_profile_url(value)
 
-    @field_validator("email_provenance")
+    @field_validator("email")
     @classmethod
-    def validate_email_provenance(cls, value: str | None) -> str | None:
-        return _validate_registry(value, EMAIL_PROVENANCES, "email provenance")
+    def validate_email(cls, value: str | None) -> str | None:
+        return normalize_email(value)
+
+    @field_validator("email_source")
+    @classmethod
+    def validate_email_source(cls, value: str | None) -> str | None:
+        return _validate_registry(value, EMAIL_SOURCES, "email source")
 
     @field_validator("relationship_strength")
     @classmethod
@@ -142,7 +144,7 @@ class ContactCreate(BaseModel):
 
     @model_validator(mode="after")
     def email_permission_requires_email(self) -> "ContactCreate":
-        if self.email is None and (self.email_permitted is not None or self.email_provenance):
+        if self.email is None and (self.email_permitted is not None or self.email_source is not None):
             raise ValueError("email provenance requires an email address")
         return self
 
@@ -164,7 +166,7 @@ def find_profile_url_duplicate_warnings(
     profile_url: str | None,
     exclude_contact_id: UUID | None = None,
 ) -> list[ContactDuplicateWarning]:
-    normalized = normalize_profile_url(profile_url)
+    normalized = normalize_profile_url(profile_url) if profile_url else None
     if normalized is None:
         return []
     warnings: list[ContactDuplicateWarning] = []
@@ -219,13 +221,14 @@ def find_name_company_duplicate_warnings(
     contacts: list[dict[str, Any]],
     *,
     full_name: str,
-    company_id: UUID,
+    company_id: UUID | None,
     exclude_contact_id: UUID | None = None,
 ) -> list[ContactDuplicateWarning]:
+    if company_id is None:
+        return []
     normalized_name = normalize_contact_name(full_name)
     if normalized_name is None:
         return []
-    compare_name = normalized_name.casefold()
     warnings: list[ContactDuplicateWarning] = []
     for contact in contacts:
         if contact.get("archived_at") is not None:
@@ -235,28 +238,47 @@ def find_name_company_duplicate_warnings(
         if str(contact.get("company_id")) != str(company_id):
             continue
         other_name = normalize_contact_name(contact.get("full_name"))
-        if other_name and other_name.casefold() == compare_name:
+        if other_name == normalized_name:
             warnings.append(
                 ContactDuplicateWarning(
                     contact_id=str(contact["id"]),
                     full_name=str(contact.get("full_name") or contact["id"]),
-                    reason="name at company",
+                    reason="name and company",
                 )
             )
     return warnings
 
 
-def merge_duplicate_warnings(*groups: list[ContactDuplicateWarning]) -> list[ContactDuplicateWarning]:
-    seen: set[tuple[str, str]] = set()
-    merged: list[ContactDuplicateWarning] = []
-    for group in groups:
-        for warning in group:
-            key = (warning.contact_id, warning.reason)
-            if key in seen:
-                continue
-            seen.add(key)
-            merged.append(warning)
-    return merged
+def collect_contact_duplicate_warnings(
+    contacts: list[dict[str, Any]],
+    *,
+    full_name: str,
+    profile_url: str | None,
+    email: str | None,
+    company_id: UUID | None,
+    exclude_contact_id: UUID | None = None,
+) -> list[ContactDuplicateWarning]:
+    seen: set[str] = set()
+    warnings: list[ContactDuplicateWarning] = []
+    for warning in (
+        find_profile_url_duplicate_warnings(
+            contacts, profile_url=profile_url, exclude_contact_id=exclude_contact_id
+        )
+        + find_email_duplicate_warnings(
+            contacts, email=email, exclude_contact_id=exclude_contact_id
+        )
+        + find_name_company_duplicate_warnings(
+            contacts,
+            full_name=full_name,
+            company_id=company_id,
+            exclude_contact_id=exclude_contact_id,
+        )
+    ):
+        if warning.contact_id in seen:
+            continue
+        seen.add(warning.contact_id)
+        warnings.append(warning)
+    return warnings
 
 
 def format_buying_roles(values: list[str] | None) -> str:

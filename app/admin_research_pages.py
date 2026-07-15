@@ -7,6 +7,7 @@ from typing import Any
 
 from app.admin_layout import render_admin_shell
 from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES, TARGET_STATUSES
+from app.contacts import RELATIONSHIP_STRENGTHS, format_buying_roles
 from app.research_records import (
     RECORD_TYPE_LABELS,
     RESEARCH_RECORD_TYPES,
@@ -213,15 +214,21 @@ def render_admin_company_research_page(
     contact_links = ""
     for contact in contacts:
         contact_id = html.escape(str(contact["id"]), quote=True)
-        email = html.escape(str(contact.get("email", "")))
+        label = html.escape(
+            str(contact.get("full_name") or contact.get("email") or contact["id"])
+        )
+        title = html.escape(str(contact.get("title") or ""))
+        roles = html.escape(format_buying_roles(contact.get("buying_roles")))
+        meta = " · ".join(part for part in (title, roles) if part and part != "—")
         contact_links += (
-            f'<li><a href="/admin/contacts/{contact_id}">{email}</a></li>'
+            f'<li><a href="/admin/contacts/{contact_id}">{label}</a>'
+            f'{f" <span class=\"admin-meta\">{meta}</span>" if meta else ""}</li>'
         )
     if not contact_links:
         contact_links = "<li>No contacts linked.</li>"
     contact_options = "\n".join(
         f'              <option value="{html.escape(str(contact["id"]), quote=True)}">'
-        f'{html.escape(str(contact.get("email", "")))}</option>'
+        f'{html.escape(str(contact.get("full_name") or contact.get("email") or contact["id"]))}</option>'
         for contact in contacts
     )
     records_html = ""
@@ -244,6 +251,7 @@ def render_admin_company_research_page(
             <button class="admin-exit" type="submit">{archive_label}</button>
           </form>
           <h2 class="admin-section-heading">Contacts</h2>
+          <p><a class="cta" href="/admin/contacts/new?company_id={company_id}">Add contact</a></p>
           <ul class="admin-list">{contact_links}
           </ul>
           <h2 class="admin-section-heading">Attach record</h2>
@@ -274,8 +282,36 @@ def render_admin_contact_research_page(
     admin_username: str = "",
     error_message: str | None = None,
 ) -> str:
-    email = html.escape(str(contact.get("email", "")))
+    display_name = html.escape(
+        str(contact.get("full_name") or contact.get("email") or contact["id"])
+    )
     contact_id = html.escape(str(contact["id"]), quote=True)
+    contact_fields = (
+        ("Title", contact.get("title")),
+        ("Email", contact.get("email")),
+        (
+            "Email permitted",
+            "Yes" if contact.get("email_permitted") else ("No" if contact.get("email") else "—"),
+        ),
+        ("Email source", contact.get("email_source")),
+        ("Profile URL", contact.get("profile_url")),
+        ("Buying roles", format_buying_roles(contact.get("buying_roles"))),
+        (
+            "Relationship",
+            RELATIONSHIP_STRENGTHS.get(
+                str(contact.get("relationship_strength")),
+                contact.get("relationship_strength"),
+            ),
+        ),
+        ("Last interaction", contact.get("last_interaction_at")),
+        ("Notes", contact.get("notes")),
+    )
+    facts_html = "".join(
+        f"<div><dt>{html.escape(label)}</dt><dd>{html.escape(str(value or '—'))}</dd></div>"
+        for label, value in contact_fields
+    )
+    archive_action = "restore" if contact.get("archived_at") else "archive"
+    archive_label = "Restore contact" if contact.get("archived_at") else "Archive contact"
     company_link = ""
     if company is not None:
         company_id = html.escape(str(company["id"]), quote=True)
@@ -296,9 +332,16 @@ def render_admin_contact_research_page(
         records_html = '<p class="admin-note">No research records yet.</p>'
     form_body = _research_form_body(csrf_token=csrf_token)
     main = f"""        <section class="admin-research" aria-labelledby="contact-research-title">
-          <h1 class="admin-title" id="contact-research-title">{email}</h1>
+          <p class="admin-breadcrumb"><a href="/admin/contacts">Contacts</a></p>
+          <h1 class="admin-title" id="contact-research-title">{display_name}</h1>
           {company_link}
           <p class="admin-lede">Research records for contact <code>{contact_id}</code>.</p>
+          <p><a class="cta" href="/admin/contacts/{contact_id}/edit">Edit contact</a></p>
+          <dl class="research-provenance">{facts_html}</dl>
+          <form method="post" action="/admin/contacts/{contact_id}/{archive_action}">
+            <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}" />
+            <button class="admin-exit" type="submit">{archive_label}</button>
+          </form>
           <h2 class="admin-section-heading">Attach record</h2>
           {error_html}
           <form class="admin-form research-form" method="post" action="/admin/contacts/{contact_id}/research">
@@ -310,7 +353,7 @@ def render_admin_contact_research_page(
           </div>
         </section>"""
     return render_admin_shell(
-        title=f"Research — {email}",
+        title=f"Research — {display_name}",
         main=main,
         active_path="/admin/contacts",
         admin_username=admin_username,

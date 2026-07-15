@@ -81,9 +81,10 @@ def test_contact_repository_create_and_lookup() -> None:
 
     created = repo.create(
         conn,
-        email="lead@example.com",
         full_name="Lead",
+        email="lead@example.com",
         company_id=COMPANY_ID,
+        buying_roles=["founder"],
     )
     assert created["email"] == "lead@example.com"
     conn.commit.assert_not_called()

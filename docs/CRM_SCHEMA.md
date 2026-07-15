@@ -89,29 +89,24 @@ warning rather than preventing a save.
 | `id` | `UUID` | PK |
 | `company_id` | `UUID` | FK → `companies`, `ON DELETE SET NULL` |
 | `full_name` | `TEXT` | Required display name |
-| `title` | `TEXT` | Optional job title |
-| `profile_url` | `TEXT` | LinkedIn or other profile URL |
-| `email` | `TEXT` | Optional; unique when present (`contacts_email_unique_nonempty`) |
+| `title` | `TEXT` | Optional role/title |
+| `profile_url` | `TEXT` | Optional LinkedIn or profile URL |
+| `email` | `TEXT` | Optional; unique when present |
 | `email_permitted` | `BOOLEAN` | Whether outreach email is permitted |
-| `email_provenance` | `TEXT` | How the email was obtained |
+| `email_source` | `TEXT` | Provenance for the email address |
 | `last_interaction_at` | `TIMESTAMPTZ` | Last touch timestamp |
-| `relationship_strength` | `TEXT` | `strong`, `warm`, `neutral`, `cold`, `unknown` |
-| `notes` | `TEXT` | Free-form notes |
-| `archived_at` | `TIMESTAMPTZ` | Soft-delete marker |
+| `relationship_strength` | `TEXT` | Optional relationship warmth |
+| `notes` | `TEXT` | Operator notes |
+| `buying_roles` | `TEXT[]` | One or more buying-role classifications |
+| `archived_at` | `TIMESTAMPTZ` | Soft archive timestamp |
+| `created_at`, `updated_at` | `TIMESTAMPTZ` | Auto on insert; `updated_at` set on update |
 
-Indexes: `company_id`, `email`, `profile_url`, `archived_at`, `last_interaction_at`, `full_name`.
+Indexes: `company_id`, `email`, `profile_url`, `archived_at`,
+`last_interaction_at`, `relationship_strength`.
 
-`app/contacts.py` owns buying-role, relationship-strength, and email-provenance registries.
-Duplicate profile URL, email, and name/company combinations produce non-blocking warnings.
-
-### `contact_buying_roles`
-
-| Column | Type | Notes |
-|--------|------|-------|
-| `contact_id` | `UUID` | FK → `contacts`, `ON DELETE CASCADE` |
-| `role` | `TEXT` | `founder`, `technical_buyer`, `executive_buyer`, `influencer`, `investor`, `introducer`, `other` |
-
-Primary key: `(contact_id, role)`. Index on `role`.
+`app/contacts.py` owns buying-role and relationship registries, normalizes profile
+URLs and emails, and emits non-blocking duplicate warnings for profile URL, email,
+and name/company combinations.
 
 ### `source_records`
 
@@ -238,6 +233,7 @@ Migrations live in `app/migrations/definitions.py` and are applied at startup vi
 | `006` | `admin_csrf_binding` | Login-flow CSRF rows and session CSRF column |
 | `007` | `research_records` | Typed research records with provenance and expiry |
 | `010` | `company_records` | Company firmographics, normalized domain, and soft archival |
+| `011` | `contact_records` | Contact roles, relationship context, optional email, and soft archival |
 
 Applied versions are recorded in `schema_migrations`. Steps are **idempotent**
 (`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`) so empty and existing Render Postgres

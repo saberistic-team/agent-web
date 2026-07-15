@@ -9,6 +9,7 @@ import pytest
 
 from app.crm_service import CrmRepositories, CrmService
 from app.companies import CompanyCreate, CompanyUpdate
+from app.contacts import ContactCreate, ContactUpdate
 from app.repositories.postgres import (
     PostgresActivityRepository,
     PostgresAdminUserRepository,
@@ -291,6 +292,61 @@ def test_crm_service_research_record_helpers() -> None:
     )
     assert record["body"] == "Series B"
     conn.commit.assert_called_once()
+
+
+@pytest.mark.unit
+def test_contact_crud_helpers_commit_and_return_nonblocking_duplicate_warnings() -> None:
+    contact_repo = MagicMock()
+    contact_repo.find_duplicates.return_value = [
+        {
+            "id": CONTACT_ID,
+            "full_name": "Existing",
+            "email": "ada@example.com",
+            "profile_url": "https://linkedin.com/in/ada",
+            "company_id": COMPANY_ID,
+        }
+    ]
+    contact_repo.create.return_value = {
+        "id": CONTACT_ID,
+        "full_name": "Ada",
+        "email": "ada@example.com",
+        "buying_roles": ["founder"],
+    }
+    contact_repo.update.return_value = {
+        "id": CONTACT_ID,
+        "full_name": "Ada Updated",
+        "email": "ada@example.com",
+        "buying_roles": ["technical_buyer"],
+    }
+    contact_repo.archive.return_value = {"id": CONTACT_ID, "archived_at": "now"}
+    contact_repo.restore.return_value = {"id": CONTACT_ID, "archived_at": None}
+    service, conn, _ = _service_with_mocks(contact_repo=contact_repo)
+
+    created = service.create_contact(
+        conn,
+        contact=ContactCreate(
+            full_name="Ada",
+            email="ada@example.com",
+            profile_url="https://www.linkedin.com/in/ada",
+            company_id=COMPANY_ID,
+            buying_roles=["founder"],
+        ),
+    )
+    assert created["contact"]["full_name"] == "Ada"
+    assert len(created["duplicate_warnings"]) == 1
+    updated = service.update_contact(
+        conn,
+        CONTACT_ID,
+        contact=ContactUpdate(
+            full_name="Ada Updated",
+            email="ada@example.com",
+            buying_roles=["technical_buyer"],
+        ),
+    )
+    assert updated is not None and updated["contact"]["full_name"] == "Ada Updated"
+    assert service.archive_contact(conn, CONTACT_ID)["archived_at"] == "now"
+    assert service.restore_contact(conn, CONTACT_ID)["archived_at"] is None
+    assert conn.commit.call_count == 4
 
 
 @pytest.mark.unit
