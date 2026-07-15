@@ -85,6 +85,35 @@ Anonymous logout traffic is not stored in `audit_events`. Operational visibility
 if needed, should use bounded HTTP access logs or metrics — never the append-only
 admin audit table.
 
+### Unauthenticated login failure actors
+
+`admin_routes._record_login_failure` always builds an `anonymous` actor context.
+Submitted username candidates are excluded from `actor`, metadata, reason text,
+logs, and metrics. Failure reasons remain a small server-defined enum (`invalid_credentials`,
+`invalid_csrf`, `rate_limited`).
+
+### Historical exposure (pre-#242)
+
+Deployments before keyed limiter identifiers and anonymous failure actors may contain:
+
+- `auth.login.failure` rows whose `actor` column holds attacker-supplied username
+  candidates (the separate `attempted_username` metadata field was already excluded).
+- `admin_login_rate_limits.limiter_key` values that are plain SHA-256 digests of
+  prefixed source or account material (dictionary-recoverable without a secret).
+
+These rows are append-only. The forward fix prevents new occurrences; remediating
+historical immutable audit rows requires an explicit data-governance decision and
+must not weaken append-only protections. Inventory example:
+
+```sql
+SELECT created_at, actor, summary_after
+FROM audit_events
+WHERE action = 'auth.login.failure'
+  AND actor <> 'anonymous'
+ORDER BY created_at DESC
+LIMIT 100;
+```
+
 ### Admin login session boundary
 
 `admin_routes._issue_session` opens one `db_connection` and one `crm_transaction`
@@ -101,26 +130,12 @@ operator is never left without a valid server-side session. The session cookie i
 set on the redirect response only after the transaction exits successfully; failed
 or rolled-back logins never emit a new session cookie.
 
-### Unauthenticated login failures
-
-Failed login attempts (invalid credentials, invalid CSRF/flow, or lockout
-transition) record ``auth.login.failure`` with actor ``anonymous``. The audit
-service stores only a server-defined ``reason`` enum in metadata — never a
-submitted username candidate. This prevents attacker-chosen identifiers from
-becoming permanent ledger identities.
-
-**Historical note:** Deployments before keyed limiter identifiers and anonymous
-failure actors (issue #242) may contain ``auth.login.failure`` rows whose
-``actor`` column holds a submitted username candidate. Those rows remain
-append-only; operators should treat such values as unauthenticated probe traffic,
-not authenticated administrator identities. Forward fixes prevent new occurrences.
-
 ## Audited actions
 
 | Action | When recorded |
 |--------|----------------|
 | `auth.login.success` | Valid admin login creates a server-side session |
-| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting |
+| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting (actor is always `anonymous`) |
 | `auth.logout` | Authenticated session revocation (live session → revoked) |
 | `import.batch` | Data import batches via `CrmService.commit_linkedin_import` / `import_batch` |
 | `import.batch.rollback` | Rollback of committed import batches via `CrmService.rollback_import_batch` |

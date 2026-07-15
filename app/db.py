@@ -398,87 +398,6 @@ def _admin_login_window_expired(
     return started < now - timedelta(seconds=window_seconds)
 
 
-def reconcile_rotated_limiter_keys(
-    conn: psycopg.Connection,
-    *,
-    key_pairs: tuple[tuple[str, str], ...],
-    now: datetime,
-) -> None:
-    """Merge rows keyed under a previous rotation secret into current identifiers."""
-    for current_key, previous_key in key_pairs:
-        if current_key == previous_key:
-            continue
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT limiter_key, failure_count, window_started_at, locked_until
-                FROM admin_login_rate_limits
-                WHERE limiter_key = ANY(%s)
-                FOR UPDATE
-                """,
-                ([current_key, previous_key],),
-            )
-            rows = {str(row["limiter_key"]): row for row in cur.fetchall()}
-            previous_row = rows.get(previous_key)
-            if previous_row is None:
-                conn.commit()
-                continue
-
-            current_row = rows.get(current_key)
-            if current_row is None:
-                cur.execute(
-                    """
-                    UPDATE admin_login_rate_limits
-                    SET limiter_key = %s,
-                        updated_at = %s
-                    WHERE limiter_key = %s
-                    """,
-                    (current_key, now, previous_key),
-                )
-                conn.commit()
-                continue
-
-            merged_count = max(
-                int(current_row["failure_count"]),
-                int(previous_row["failure_count"]),
-            )
-            current_window = current_row["window_started_at"]
-            previous_window = previous_row["window_started_at"]
-            if current_window.tzinfo is None:
-                current_window = current_window.replace(tzinfo=timezone.utc)
-            if previous_window.tzinfo is None:
-                previous_window = previous_window.replace(tzinfo=timezone.utc)
-            merged_window = (
-                current_window
-                if int(current_row["failure_count"]) >= int(previous_row["failure_count"])
-                else previous_window
-            )
-            current_locked = _normalize_limiter_locked_until(current_row["locked_until"])
-            previous_locked = _normalize_limiter_locked_until(previous_row["locked_until"])
-            merged_locked: datetime | None = None
-            if current_locked and previous_locked:
-                merged_locked = max(current_locked, previous_locked)
-            else:
-                merged_locked = current_locked or previous_locked
-
-            cur.execute(
-                """
-                UPDATE admin_login_rate_limits
-                SET failure_count = %s,
-                    window_started_at = %s,
-                    locked_until = %s,
-                    updated_at = %s
-                WHERE limiter_key = %s
-                """,
-                (merged_count, merged_window, merged_locked, now, current_key),
-            )
-            cur.execute(
-                "DELETE FROM admin_login_rate_limits WHERE limiter_key = %s",
-                (previous_key,),
-            )
-            conn.commit()
-
-
 def try_admit_admin_login(
     conn: psycopg.Connection,
     *,
@@ -487,12 +406,17 @@ def try_admit_admin_login(
     rate_limit: int,
     window_seconds: int,
     lockout_seconds: int,
+    increment_keys: tuple[str, ...] | None = None,
 ) -> AdminLoginAdmission:
     """Atomically decide whether a login attempt may reach password verification.
 
     All ``limiter_keys`` are locked in sorted order inside one transaction so
     concurrent requests cannot overshoot the configured threshold. When any key
     is actively locked, admission is denied without incrementing counters.
+
+    When ``increment_keys`` is provided, only that subset is incremented after
+    admission succeeds (used during limiter-secret rotation to honor previous-key
+    lockouts without writing new state under retired identifiers).
     """
     if not limiter_keys:
         return AdminLoginAdmission(
@@ -503,6 +427,9 @@ def try_admit_admin_login(
         )
 
     ordered_keys = tuple(sorted(limiter_keys))
+    keys_to_increment = (
+        tuple(sorted(increment_keys)) if increment_keys is not None else ordered_keys
+    )
     with conn.cursor() as cur:
         for limiter_key in ordered_keys:
             cur.execute(
@@ -542,7 +469,7 @@ def try_admit_admin_login(
 
         updates: dict[str, tuple[int, datetime, datetime | None]] = {}
         lockout_transition = False
-        for limiter_key in ordered_keys:
+        for limiter_key in keys_to_increment:
             row = rows[limiter_key]
             window_started_at = row["window_started_at"]
             if window_started_at.tzinfo is None:

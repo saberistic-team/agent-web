@@ -20,7 +20,7 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.config import Settings, get_settings
+from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
 LOGIN_FLOW_COOKIE_NAME = "admin_login_flow"
@@ -44,35 +44,21 @@ LOGIN_CSRF_MAX_LENGTH = 256
 LOGIN_FLOW_TOKEN_MAX_LENGTH = 512
 LOGIN_NEXT_MAX_LENGTH = 2048
 
-LIMITER_KEY_DOMAIN_SOURCE = "src"
-LIMITER_KEY_DOMAIN_ACCOUNT = "acct"
-LIMITER_SECRET_MIN_LENGTH = 32
-_LIMITER_SECRET_PLACEHOLDERS = frozenset(
+_LIMITER_DOMAIN_SOURCE = "src"
+_LIMITER_DOMAIN_ACCOUNT = "acct"
+_MIN_LIMITER_SECRET_LENGTH = 32
+_WEAK_LIMITER_SECRET_VALUES = frozenset(
     {
         "changeme",
-        "change-me",
+        "password",
         "placeholder",
-        "replace-me",
-        "your-secret-here",
-        "admin_login_limiter_secret",
+        "secret",
+        "test",
+        "test-secret",
+        "admin",
+        "admin-login-limiter-secret",
     }
 )
-
-LIMITER_KEY_DOMAIN_SOURCE = "src"
-LIMITER_KEY_DOMAIN_ACCOUNT = "acct"
-LIMITER_SECRET_MIN_LENGTH = 32
-_LIMITER_SECRET_PLACEHOLDERS = frozenset(
-    {
-        "changeme",
-        "change-me",
-        "placeholder",
-        "replace-me",
-        "your-secret-here",
-        "admin_login_limiter_secret",
-    }
-)
-
-# Conservative in-memory fallback when shared Postgres limiter storage is unavailable.
 _FALLBACK_RATE_LIMIT = 2
 _FALLBACK_WINDOW_SECONDS = 60
 
@@ -288,80 +274,66 @@ def client_ip(request: Request, settings: Settings) -> str:
     return "unknown"
 
 
-def _digest_limiter_key(domain: str, material: str, secret: str) -> str:
-    """Return a fixed-length HMAC-SHA256 identifier with explicit domain separation."""
-    payload = f"{domain}:{material}".encode("utf-8")
-    return hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
-
-
-def validate_limiter_secret_value(secret: str, *, env_name: str) -> None:
-    """Fail fast when limiter key material is missing, weak, or placeholder."""
-    if not secret:
-        raise ValueError(f"{env_name} is required when admin authentication is configured")
-    if secret.strip() != secret:
-        raise ValueError(f"{env_name} must not contain leading or trailing whitespace")
-    if len(secret) < LIMITER_SECRET_MIN_LENGTH:
+def validate_admin_login_limiter_secret(
+    secret: str,
+    *,
+    field_name: str = "ADMIN_LOGIN_LIMITER_SECRET",
+) -> None:
+    """Fail fast when limiter secret material is missing, weak, or placeholder."""
+    stripped = secret.strip()
+    if not stripped:
+        raise ValueError(f"{field_name} is required")
+    if len(stripped) < _MIN_LIMITER_SECRET_LENGTH:
         raise ValueError(
-            f"{env_name} must be at least {LIMITER_SECRET_MIN_LENGTH} characters"
+            f"{field_name} must be at least {_MIN_LIMITER_SECRET_LENGTH} characters"
         )
-    if secret.lower() in _LIMITER_SECRET_PLACEHOLDERS:
-        raise ValueError(f"{env_name} must not use a documented placeholder value")
+    if stripped.lower() in _WEAK_LIMITER_SECRET_VALUES:
+        raise ValueError(f"{field_name} must not be a placeholder value")
 
 
-def validate_admin_security_config(settings: Settings) -> None:
-    """Validate admin security secrets at startup before serving traffic."""
-    if not settings.admin_auth_configured:
+def validate_admin_login_limiter_settings(settings: Settings) -> None:
+    """Validate current and optional previous limiter secrets at startup."""
+    validate_admin_login_limiter_secret(settings.admin_login_limiter_secret)
+    previous = settings.admin_login_limiter_previous_secret.strip()
+    if not previous:
         return
-    validate_limiter_secret_value(
-        settings.admin_login_limiter_secret,
-        env_name="ADMIN_LOGIN_LIMITER_SECRET",
+    validate_admin_login_limiter_secret(
+        previous,
+        field_name="ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET",
     )
-    if settings.admin_login_limiter_secret_previous:
-        validate_limiter_secret_value(
-            settings.admin_login_limiter_secret_previous,
-            env_name="ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS",
+    if previous == settings.admin_login_limiter_secret:
+        raise ValueError(
+            "ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET must differ from ADMIN_LOGIN_LIMITER_SECRET"
         )
 
 
-def _limiter_secrets(settings: Settings) -> tuple[str, ...]:
-    secrets = (settings.admin_login_limiter_secret,)
-    previous = settings.admin_login_limiter_secret_previous
-    if previous and previous not in secrets:
-        secrets = secrets + (previous,)
-    return secrets
+def _digest_limiter_key_with_secret(secret: str, domain: str, material: str) -> str:
+    payload = f"{domain}:{material}"
+    return hmac.new(
+        secret.encode("utf-8"),
+        payload.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
 
 
-def _limiter_key_variants(domain: str, material: str, settings: Settings) -> tuple[str, ...]:
-    normalized = material.strip().lower()
-    return tuple(_digest_limiter_key(domain, normalized, secret) for secret in _limiter_secrets(settings))
+def _digest_limiter_key(settings: Settings, domain: str, material: str) -> str:
+    return _digest_limiter_key_with_secret(
+        settings.admin_login_limiter_secret,
+        domain,
+        material,
+    )
 
 
-def build_source_rate_limit_key(
-    client_source: str,
-    settings: Settings | None = None,
-) -> str:
+def build_source_rate_limit_key(settings: Settings, client_source: str) -> str:
     """Source-wide bucket keyed by resolved client source (privacy-preserving)."""
-    resolved = settings or get_settings()
     normalized_source = client_source.strip().lower()
-    return _digest_limiter_key(
-        LIMITER_KEY_DOMAIN_SOURCE,
-        normalized_source,
-        resolved.admin_login_limiter_secret,
-    )
+    return _digest_limiter_key(settings, _LIMITER_DOMAIN_SOURCE, normalized_source)
 
 
-def build_account_rate_limit_key(
-    admin_username: str,
-    settings: Settings | None = None,
-) -> str:
+def build_account_rate_limit_key(settings: Settings, admin_username: str) -> str:
     """Account-wide bucket for the configured admin username."""
-    resolved = settings or get_settings()
     normalized_username = admin_username.strip().lower()
-    return _digest_limiter_key(
-        LIMITER_KEY_DOMAIN_ACCOUNT,
-        normalized_username,
-        resolved.admin_login_limiter_secret,
-    )
+    return _digest_limiter_key(settings, _LIMITER_DOMAIN_ACCOUNT, normalized_username)
 
 
 def build_rate_limit_key(username: str, client_source: str) -> str:
@@ -372,28 +344,67 @@ def build_rate_limit_key(username: str, client_source: str) -> str:
 
 
 def login_limiter_keys(
+    settings: Settings,
     *,
     submitted_username: str,
     client_source: str,
-    configured_admin_username: str,
-    settings: Settings,
 ) -> tuple[str, ...]:
-    """Return the shared limiter buckets consulted for one login attempt."""
-    keys: list[str] = []
-    keys.extend(
-        _limiter_key_variants(LIMITER_KEY_DOMAIN_SOURCE, client_source, settings)
-    )
+    """Return current-secret limiter buckets written for one login attempt."""
+    keys = [build_source_rate_limit_key(settings, client_source)]
     normalized_submitted = submitted_username.strip().lower()
-    normalized_configured = configured_admin_username.strip().lower()
+    normalized_configured = settings.admin_username.strip().lower()
     if normalized_configured and normalized_submitted == normalized_configured:
-        keys.extend(
-            _limiter_key_variants(
-                LIMITER_KEY_DOMAIN_ACCOUNT,
-                configured_admin_username,
-                settings,
+        keys.append(build_account_rate_limit_key(settings, settings.admin_username))
+    return tuple(keys)
+
+
+def _previous_limiter_keys_if_configured(
+    settings: Settings,
+    *,
+    submitted_username: str,
+    client_source: str,
+) -> tuple[str, ...]:
+    previous_secret = settings.admin_login_limiter_previous_secret.strip()
+    if not previous_secret:
+        return ()
+    keys = [
+        _digest_limiter_key_with_secret(
+            previous_secret,
+            _LIMITER_DOMAIN_SOURCE,
+            client_source.strip().lower(),
+        )
+    ]
+    normalized_submitted = submitted_username.strip().lower()
+    normalized_configured = settings.admin_username.strip().lower()
+    if normalized_configured and normalized_submitted == normalized_configured:
+        keys.append(
+            _digest_limiter_key_with_secret(
+                previous_secret,
+                _LIMITER_DOMAIN_ACCOUNT,
+                settings.admin_username.strip().lower(),
             )
         )
     return tuple(keys)
+
+
+def login_limiter_lookup_keys(
+    settings: Settings,
+    *,
+    submitted_username: str,
+    client_source: str,
+) -> tuple[str, ...]:
+    """Current and previous-secret keys consulted during rotation windows."""
+    current = login_limiter_keys(
+        settings,
+        submitted_username=submitted_username,
+        client_source=client_source,
+    )
+    previous = _previous_limiter_keys_if_configured(
+        settings,
+        submitted_username=submitted_username,
+        client_source=client_source,
+    )
+    return current + previous
 
 
 def _is_fallback_throttled(limiter_keys: tuple[str, ...]) -> bool:
@@ -479,18 +490,23 @@ def try_admit_login_attempt(
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
     source = client_ip(request, settings)
-    limiter_keys = login_limiter_keys(
+    write_keys = login_limiter_keys(
+        settings,
         submitted_username=username,
         client_source=source,
-        configured_admin_username=settings.admin_username,
-        settings=settings,
+    )
+    lookup_keys = login_limiter_lookup_keys(
+        settings,
+        submitted_username=username,
+        client_source=source,
     )
     now = datetime.now(timezone.utc)
     try:
         with db.db_connection(settings.database_url) as conn:
             admission = db.try_admit_admin_login(
                 conn,
-                limiter_keys=limiter_keys,
+                limiter_keys=lookup_keys,
+                increment_keys=write_keys,
                 now=now,
                 rate_limit=settings.admin_login_rate_limit,
                 window_seconds=settings.admin_login_rate_window_seconds,
@@ -505,10 +521,10 @@ def try_admit_login_attempt(
     except Exception:
         _logger.warning(
             "Admin login rate limiter unavailable; using conservative fallback",
-            extra={"limiter_key_count": len(limiter_keys)},
+            extra={"limiter_key_count": len(lookup_keys)},
             exc_info=True,
         )
-        if _is_fallback_throttled(limiter_keys):
+        if _is_fallback_throttled(lookup_keys):
             return LoginAdmissionResult(
                 admitted=False,
                 throttled=True,
@@ -516,7 +532,7 @@ def try_admit_login_attempt(
                 lockout_transition=False,
                 store_unavailable=True,
             )
-        fallback = _record_fallback_admission(limiter_keys)
+        fallback = _record_fallback_admission(write_keys)
         return LoginAdmissionResult(
             admitted=fallback.admitted,
             throttled=fallback.throttled,
@@ -529,7 +545,7 @@ def try_admit_login_attempt(
         _logger.info(
             "Admin login attempt admitted",
             extra={
-                "limiter_key_count": len(limiter_keys),
+                "limiter_key_count": len(lookup_keys),
                 "lockout_transition": admission.lockout_transition,
             },
         )
@@ -537,7 +553,7 @@ def try_admit_login_attempt(
         _logger.info(
             "Admin login attempt throttled",
             extra={
-                "limiter_key_count": len(limiter_keys),
+                "limiter_key_count": len(lookup_keys),
                 "already_locked": True,
             },
         )
@@ -552,25 +568,24 @@ def try_admit_login_attempt(
 def is_login_throttled(request: Request, settings: Settings, *, username: str = "") -> bool:
     """Return whether login attempts are currently blocked (read-only helper)."""
     source = client_ip(request, settings)
-    limiter_keys = login_limiter_keys(
+    lookup_keys = login_limiter_lookup_keys(
+        settings,
         submitted_username=username,
         client_source=source,
-        configured_admin_username=settings.admin_username,
-        settings=settings,
     )
     now = datetime.now(timezone.utc)
     try:
         with db.db_connection(settings.database_url) as conn:
             return any(
                 db.is_admin_login_throttled(conn, limiter_key=key, now=now)
-                for key in limiter_keys
+                for key in lookup_keys
             )
     except Exception:
         _logger.warning(
             "Admin login rate limiter unavailable; using conservative fallback",
             exc_info=True,
         )
-        return _is_fallback_throttled(limiter_keys)
+        return _is_fallback_throttled(lookup_keys)
 
 
 def record_failed_login(request: Request, settings: Settings, *, username: str = "") -> None:
@@ -582,29 +597,33 @@ def finalize_successful_login(request: Request, settings: Settings, *, username:
     """Clear account bucket state and release the current source admission reservation."""
     _ = username
     source = client_ip(request, settings)
-    source_keys = _limiter_key_variants(LIMITER_KEY_DOMAIN_SOURCE, source, settings)
-    account_keys: tuple[str, ...] = ()
+    source_key = build_source_rate_limit_key(settings, source)
+    clear_keys: list[str] = []
     if settings.admin_username.strip():
-        account_keys = _limiter_key_variants(
-            LIMITER_KEY_DOMAIN_ACCOUNT,
-            settings.admin_username,
-            settings,
-        )
-    _clear_fallback_failures(account_keys)
-    for source_key in source_keys:
-        _release_fallback_admission(source_key)
+        clear_keys.append(build_account_rate_limit_key(settings, settings.admin_username))
+        previous_secret = settings.admin_login_limiter_previous_secret.strip()
+        if previous_secret:
+            clear_keys.append(
+                _digest_limiter_key_with_secret(
+                    previous_secret,
+                    _LIMITER_DOMAIN_ACCOUNT,
+                    settings.admin_username.strip().lower(),
+                )
+            )
+    clear_keys_tuple = tuple(clear_keys)
+    _clear_fallback_failures(clear_keys_tuple)
+    _release_fallback_admission(source_key)
     now = datetime.now(timezone.utc)
     try:
         with db.db_connection(settings.database_url) as conn:
-            if account_keys:
-                db.clear_admin_login_rate_limits(conn, limiter_keys=account_keys)
-            for source_key in source_keys:
-                db.release_admin_login_admission(
-                    conn,
-                    limiter_key=source_key,
-                    now=now,
-                    rate_limit=settings.admin_login_rate_limit,
-                )
+            if clear_keys_tuple:
+                db.clear_admin_login_rate_limits(conn, limiter_keys=clear_keys_tuple)
+            db.release_admin_login_admission(
+                conn,
+                limiter_key=source_key,
+                now=now,
+                rate_limit=settings.admin_login_rate_limit,
+            )
     except Exception:
         _logger.warning(
             "Admin login rate limiter unavailable; cleared fallback only",

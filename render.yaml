@@ -47,5 +47,7 @@ services:
         sync: false
       - key: ADMIN_LOGIN_LIMITER_SECRET
         sync: false
+      - key: ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET
+        sync: false
       - key: ADMIN_SESSION_TTL_SECONDS
         value: "86400"
