@@ -24,7 +24,6 @@ from app.admin_auth import AdminLoginRequired, login_redirect_url
 from app.admin_pipeline_routes import router as admin_pipeline_router
 from app.admin_routes import router as admin_router
 from app.actor_context import CORRELATION_HEADER
-from app.client_source import admin_proxy_trust_configured
 from app.config import get_settings
 from app.models import BriefCreateRequest, BriefCreateResponse
 from app.seo import (
@@ -120,9 +119,14 @@ def health() -> dict:
     """
     payload: dict = {"status": "ok"}
     settings = get_settings()
-    payload["admin_proxy_trust"] = {
-        "configured": admin_proxy_trust_configured(settings),
-    }
+    if settings.admin_trust_proxy_headers:
+        payload["admin_login_proxy_trust"] = {
+            "enabled": True,
+            "trusted_proxy_cidr_count": len(settings.admin_trusted_proxy_cidrs),
+            "uvicorn_forwarded_allow_ips_configured": bool(
+                settings.uvicorn_forwarded_allow_ips
+            ),
+        }
     if not settings.database_configured:
         return payload
     try:
