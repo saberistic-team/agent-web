@@ -283,6 +283,46 @@ def test_smoke_and_maybe_repair_fails_when_collect_fails(tmp_path, monkeypatch) 
     assert repairs == []
 
 
+def test_smoke_and_maybe_repair_fails_when_pytest_fails(tmp_path, monkeypatch) -> None:
+    """Full pytest must fail closed before Reviewer (anti-loop #182 / #188)."""
+    from builder_conflicts import smoke_and_maybe_repair_app
+
+    monkeypatch.setattr(
+        "builder_conflicts.smoke_import_app", lambda cwd: (True, "ok")
+    )
+    monkeypatch.setattr(
+        "builder_conflicts.smoke_pytest_collect", lambda cwd: (True, "ok")
+    )
+    monkeypatch.setattr(
+        "builder_conflicts.smoke_pytest_run",
+        lambda cwd: (
+            False,
+            "FAILED tests/test_admin_auth.py::test_admin_preview_mode_allows_dashboard_without_login",
+        ),
+    )
+    ok, detail, repairs = smoke_and_maybe_repair_app(tmp_path)
+    assert ok is False
+    assert "pytest failed" in detail
+    assert "test_admin_auth" in detail
+    assert repairs == []
+
+
+def test_smoke_pytest_run_reports_failure(tmp_path, monkeypatch) -> None:
+    from builder_conflicts import smoke_pytest_run
+
+    class FakeProc:
+        returncode = 1
+        stdout = "F\n"
+        stderr = 'assert "Companies by stage" in dash.text'
+
+    monkeypatch.setattr(
+        "builder_conflicts.subprocess.run", lambda *a, **k: FakeProc()
+    )
+    ok, detail = smoke_pytest_run(tmp_path)
+    assert ok is False
+    assert "Companies by stage" in detail
+
+
 def test_repair_main_wiring_adds_missing_imports() -> None:
     from builder_conflicts import repair_main_wiring
 
