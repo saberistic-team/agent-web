@@ -91,7 +91,9 @@ def test_contact_repository_create_and_lookup() -> None:
     conn3 = _mock_conn(row)
     assert repo.get_active_by_email(conn3, "lead@example.com")["id"] == CONTACT_ID
     active_sql = str(conn3.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
-    assert "archived_at IS NULL" in active_sql
+    assert "c.archived_at IS NULL" in active_sql
+    assert "LOWER(c.email)" in active_sql
+    assert "ORDER BY c.id ASC" in active_sql
     assert "LIMIT 1" in active_sql
 
     conn3b = _mock_conn(row)
