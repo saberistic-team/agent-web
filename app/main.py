@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -21,11 +22,11 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import analytics_service, case_studies, db, email_service, insights, page_service, stripe_service
 from app.admin_auth import AdminLoginRequired, login_redirect_url
-from app.admin_client_source import effective_trusted_proxy_cidrs
 from app.admin_pipeline_routes import router as admin_pipeline_router
 from app.admin_routes import router as admin_router
 from app.actor_context import CORRELATION_HEADER
 from app.config import get_settings
+from app.trusted_proxy import default_trusted_proxy_cidrs
 from app.models import BriefCreateRequest, BriefCreateResponse
 from app.seo import (
     PERMANENT_REDIRECTS,
@@ -120,10 +121,11 @@ def health() -> dict:
     """
     payload: dict = {"status": "ok"}
     settings = get_settings()
-    trusted_proxy_cidrs = effective_trusted_proxy_cidrs(settings)
-    payload["proxy_trust"] = {
-        "client_source_trust_configured": bool(trusted_proxy_cidrs.strip()),
-        "forwarded_allow_ips_in_start_command": True,
+    payload["admin_proxy_trust"] = {
+        "enabled": settings.admin_trust_proxy_headers,
+        "forwarded_allow_ips": os.environ.get("FORWARDED_ALLOW_IPS", "127.0.0.1"),
+        "trusted_proxy_cidrs_configured": bool(settings.admin_trusted_proxy_cidrs),
+        "default_trusted_proxy_cidr_count": len(default_trusted_proxy_cidrs()),
     }
     if not settings.database_configured:
         return payload

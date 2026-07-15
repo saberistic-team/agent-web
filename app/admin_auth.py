@@ -20,12 +20,8 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.admin_client_source import (
-    client_ip_from_request,
-    resolution_telemetry_fields,
-    resolve_admin_login_client_source,
-)
 from app.config import Settings
+from app.trusted_proxy import ClientSourceResolution, resolve_client_source
 
 SESSION_COOKIE_NAME = "admin_session"
 LOGIN_FLOW_COOKIE_NAME = "admin_login_flow"
@@ -239,15 +235,45 @@ def read_login_flow_token(request: Request) -> str | None:
     return token.strip() or None
 
 
-def client_ip(request: Request, settings: Settings) -> str:
-    """Resolve the client source IP for rate limiting.
+def resolve_admin_login_client_source(
+    request: Request,
+    settings: Settings,
+) -> ClientSourceResolution:
+    """Resolve the effective admin-login client source for shared rate limiting.
 
-    Delegates to :func:`resolve_admin_login_client_source`, which verifies the
-    immediate TCP peer against ``ADMIN_TRUSTED_PROXY_CIDRS`` before honoring
-    forwarding headers. See ``docs/ADMIN_AUTH.md`` for the production trust
-    model (Cloudflare → Render → Uvicorn).
+    Forwarding headers are honored only when ``ADMIN_TRUST_PROXY_HEADERS`` is
+    enabled **and** the immediate TCP peer is within the configured trusted-proxy
+    boundary. Untrusted peers always use the direct peer address so clients cannot
+    spoof ``X-Forwarded-For``, ``Forwarded``, or ``CF-Connecting-IP``.
+
+    Source identity notes:
+
+    * **IPv4 / IPv6** — normalized deterministically (including IPv4-mapped IPv6)
+      before hashing into the source bucket digest.
+    * **Missing peer** — falls back to ``unknown`` so attempts still share one
+      bucket instead of creating an unbounded namespace.
+    * **Trusted chain** — walks ``X-Forwarded-For`` / ``Forwarded`` right-to-left,
+      skipping configured proxy hops. ``CF-Connecting-IP`` is accepted only when
+      a Cloudflare edge header proves the request transited the public edge.
     """
-    return client_ip_from_request(request, settings)
+    peer_host = request.client.host if request.client is not None else None
+    resolution = resolve_client_source(
+        peer_host=peer_host,
+        headers=request.headers,
+        trust_proxy_headers=settings.admin_trust_proxy_headers,
+        trusted_proxy_cidrs=settings.admin_trusted_proxy_cidrs,
+    )
+    if resolution.rejected_forwarding:
+        _logger.info(
+            "Admin login source resolution used conservative fallback",
+            extra={"source_resolution_path": resolution.path},
+        )
+    return resolution
+
+
+def client_ip(request: Request, settings: Settings) -> str:
+    """Return the resolved client source string for rate limiting."""
+    return resolve_admin_login_client_source(request, settings).source
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
@@ -371,8 +397,7 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    resolution = resolve_admin_login_client_source(request, settings)
-    source = resolution.source
+    source = client_ip(request, settings)
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,
@@ -418,14 +443,12 @@ def try_admit_login_attempt(
             store_unavailable=True,
         )
 
-    telemetry = resolution_telemetry_fields(resolution)
     if admission.admitted:
         _logger.info(
             "Admin login attempt admitted",
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "lockout_transition": admission.lockout_transition,
-                **telemetry,
             },
         )
     elif admission.already_locked:
@@ -434,7 +457,6 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "already_locked": True,
-                **telemetry,
             },
         )
     return LoginAdmissionResult(

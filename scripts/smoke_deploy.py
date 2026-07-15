@@ -47,14 +47,21 @@ def main(argv: list[str] | None = None) -> int:
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
         print(f"FAIL {health_url}: {exc}", file=sys.stderr)
         return 1
-    if health_payload.get("admin_source_trust") != "trusted_proxy_boundary":
+    proxy_trust = health_payload.get("admin_proxy_trust")
+    if not isinstance(proxy_trust, dict):
+        print(f"FAIL {health_url}: missing admin_proxy_trust metadata", file=sys.stderr)
+        return 1
+    if proxy_trust.get("forwarded_allow_ips") != "127.0.0.1":
         print(
-            "FAIL /health: expected admin_source_trust='trusted_proxy_boundary', "
-            f"got {health_payload.get('admin_source_trust')!r}",
+            f"FAIL {health_url}: unexpected forwarded_allow_ips "
+            f"{proxy_trust.get('forwarded_allow_ips')!r}",
             file=sys.stderr,
         )
         return 1
-    print("PASS /health → admin_source_trust=trusted_proxy_boundary")
+    if not proxy_trust.get("trusted_proxy_cidrs_configured"):
+        print(f"FAIL {health_url}: trusted proxy CIDRs not configured", file=sys.stderr)
+        return 1
+    print(f"PASS {health_url} → admin_proxy_trust configured")
     return 0
 
 

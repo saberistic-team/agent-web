@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from app.trusted_proxy import default_trusted_proxy_cidrs
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -28,7 +30,7 @@ class Settings:
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
     admin_trust_proxy_headers: bool = False
-    admin_trusted_proxy_cidrs: str = ""
+    admin_trusted_proxy_cidrs: tuple[str, ...] = ()
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -114,5 +116,16 @@ def get_settings() -> Settings:
             "ADMIN_TRUST_PROXY_HEADERS", ""
         ).lower()
         in ("1", "true", "yes"),
-        admin_trusted_proxy_cidrs=os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "").strip(),
+        admin_trusted_proxy_cidrs=_parse_admin_trusted_proxy_cidrs(),
+    )
+
+
+def _parse_admin_trusted_proxy_cidrs() -> tuple[str, ...]:
+    raw = os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "").strip()
+    if not raw:
+        return default_trusted_proxy_cidrs()
+    return tuple(
+        segment.strip()
+        for segment in raw.split(",")
+        if segment.strip()
     )
