@@ -34,12 +34,13 @@ owns the single commit/rollback boundary via `crm_transaction()` in
 | `CrmService.import_batch` | same | Source-record inserts + `import.batch` audit |
 | `CrmService.link_project_brief_source` | same | Brief-to-CRM source linkage (brief conversion) |
 | Admin login success | `crm_transaction` in `admin_routes._issue_session` | Prior-session revocation (if any) + new session row + `auth.login.success` audit |
-| Admin logout (authenticated) | `crm_transaction` in `admin_logout` | Session revocation + `auth.logout` audit |
+| Admin logout (authenticated) | `crm_transaction` in `admin_logout` | Session revocation + `auth.logout` audit when revocation succeeds |
 | Admin login failure | `crm_transaction` in `_record_login_failure` | `auth.login.failure` audit only (best-effort) |
 
 When auditing is **required** for an operation, a failed audit insert propagates
-and rolls back the related business mutation. Login-failure and anonymous-logout
-audits are best-effort (`required=False`) and do not block the operator flow.
+and rolls back the related business mutation. Login-failure audits are
+best-effort (`required=False`) and do not block the operator flow. Anonymous or
+invalid-session logout requests do not append audit rows.
 
 See [AUDIT_EVENTS.md](AUDIT_EVENTS.md) for append-only audit semantics.
 

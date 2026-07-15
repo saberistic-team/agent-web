@@ -171,7 +171,7 @@ def get_admin_session_by_token_hash(
         return cur.fetchone()
 
 
-def revoke_admin_session(conn: psycopg.Connection, *, token_hash: str) -> None:
+def revoke_admin_session(conn: psycopg.Connection, *, token_hash: str) -> bool:
     revoked_at = datetime.now(timezone.utc)
     with conn.cursor() as cur:
         cur.execute(
@@ -182,6 +182,7 @@ def revoke_admin_session(conn: psycopg.Connection, *, token_hash: str) -> None:
             """,
             (revoked_at, token_hash),
         )
+        return cur.rowcount > 0
 
 
 def update_admin_session_csrf(

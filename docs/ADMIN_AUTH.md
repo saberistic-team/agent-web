@@ -17,7 +17,10 @@ Parent issue: [#101](https://github.com/saberistic-team/agent-web/issues/101).
   to the active server-side session.
 - Login POST requests are rate limited per username-and-source key in shared
   Postgres storage (consistent across instances).
-- Logout revokes the active session server-side and clears the cookie.
+- Logout revokes the active session server-side, records one `auth.logout` audit
+  event in the same transaction, and clears the cookie. Missing, invalid,
+  expired, or already-revoked sessions receive idempotent cookie cleanup with
+  no audit write.
 - Anonymous requests to protected `/admin` routes receive a safe redirect to
   `/admin/login`.
 
@@ -27,7 +30,7 @@ Parent issue: [#101](https://github.com/saberistic-team/agent-web/issues/101).
 |-------|------|---------|
 | `GET /admin/login` | Public | Sign-in form; mints pre-auth flow + CSRF |
 | `POST /admin/login` | Public | Authenticate; flow-bound CSRF + rate limit enforced |
-| `POST /admin/logout` | Session optional | Revoke session; session-bound CSRF when signed in |
+| `POST /admin/logout` | Session optional | Revoke live session + audit when signed in with valid CSRF; otherwise idempotent cookie clear |
 | `GET /admin` | Required | Authenticated operator landing (stub) |
 | Other `GET /admin/*` | Required | Redirect to login when anonymous |
 
@@ -102,6 +105,22 @@ authenticated forms). No token values or validation internals are exposed.
 `SameSite=strict` on session and login-flow cookies is defense-in-depth against
 cross-site cookie delivery; it is **not** the sole CSRF defense. Origin/Referer
 checks are likewise not relied upon for CSRF protection.
+
+### Logout audit policy
+
+`POST /admin/logout` records an immutable `auth.logout` audit event only when a
+**live** authenticated session is revoked in the same database transaction.
+Session-bound CSRF is required for that path.
+
+| Request shape | Audit row | Operator experience |
+|---------------|-----------|---------------------|
+| Valid session + valid CSRF | One `auth.logout` linked to the session id | Session revoked; cookie cleared; redirect to login |
+| Valid session + missing/invalid/cross-session CSRF | None | Session stays active; HTTP 400 *Invalid request* |
+| No cookie, malformed cookie, expired session, or revoked session | None | Idempotent cookie clear + redirect to login |
+
+Repeat logout after revocation does not append additional audit events. Anonymous
+or cross-site-shaped logout traffic is not written to `audit_events`; use HTTP
+access logs or metrics for operational visibility if needed.
 
 ## Environment variables
 
