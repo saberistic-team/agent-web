@@ -25,6 +25,7 @@ from github_api import (
     add_labels,
     api,
     delete_label,
+    list_issue_comments,
     post_issue_comment,
     split_repo,
 )
@@ -133,6 +134,56 @@ def escalate(repo: str, issue: int, reason: str, assignee_hint: str | None = Non
         f"@human-review\n\n{reason}{hint}\n\nAdding `status:blocked` and stopping.",
     )
     replace_status(repo, issue, "status:blocked")
+
+
+# Merge-conflict resolution is expected to need a few passes (a dirty PR is
+# unfinished Builder work, not a failure) — see AGENTS/builder.md "Merge
+# conflicts". But retrying is only useful when each pass makes progress.
+# Requeuing forever on an *identical* smoke failure means Builder's own
+# codegen is reproducing a bug across cycles, not converging (learned from
+# #242: a module split between `app/admin_security.py` / `app/admin_secrets.py`
+# left five test files importing a symbol from the wrong module; the same
+# `ImportError` repeated 54+ times over 7+ hours because nothing counted
+# consecutive identical failures). Escalate once the same signature repeats.
+REPEATED_CONFLICT_FAILURE_LIMIT = 3
+
+
+def repeated_conflict_smoke_signature(
+    repo: str, issue: int, *, threshold: int = REPEATED_CONFLICT_FAILURE_LIMIT
+) -> str | None:
+    """Return the shared smoke-error signature when the last ``threshold``
+    ``builder_conflict_result`` comments all failed with the same error.
+
+    Only the detailed comment posted by ``maybe_resolve_pr_conflicts`` (with a
+    ``smoke_error`` field) counts; the generic duplicate posted right after by
+    ``handoff_builder_when_mergeable`` is skipped so it cannot dilute the
+    signature. Any non-``broken_after_resolve`` status (progress, or a
+    different failure mode) resets the streak.
+    """
+    comments = list_issue_comments(repo, issue)
+    signatures: list[str] = []
+    for comment in reversed(comments):
+        body = comment.get("body") or ""
+        if "### builder_conflict_result" not in body:
+            continue
+        status_match = re.search(r"- status: `([a-z_]+)`", body)
+        if not status_match:
+            continue
+        if status_match.group(1) != "broken_after_resolve":
+            break
+        error_match = re.search(r"- smoke_error: `(.+)", body, re.S)
+        if not error_match:
+            # Generic follow-up comment with no smoke_error field; skip it
+            # without breaking the streak (it belongs to the same cycle as
+            # the detailed comment already counted, or preceded it).
+            continue
+        signature = error_match.group(1).strip().splitlines()[0][:200]
+        signatures.append(signature)
+        if len(signatures) >= threshold:
+            break
+    if len(signatures) < threshold:
+        return None
+    return signatures[0] if len(set(signatures)) == 1 else None
 
 
 def is_retryable_codegen_failure(exc: BaseException) -> bool:
@@ -302,6 +353,24 @@ def handoff_builder_when_mergeable(repo: str, issue: int) -> None:
                     "re-entering `status:queued` (not handing off to Reviewer).\n"
                 ),
             )
+            if conflict_status == "broken_after_resolve":
+                signature = repeated_conflict_smoke_signature(repo, issue)
+                if signature:
+                    escalate(
+                        repo,
+                        issue,
+                        (
+                            f"Merge-conflict resolution on PR #{conflict.get('pr')} has "
+                            f"failed `{REPEATED_CONFLICT_FAILURE_LIMIT}` consecutive times "
+                            "with the identical smoke error below — Builder's own codegen "
+                            "is reproducing the same bug each cycle instead of converging. "
+                            "Stopping automatic retries; see AGENTS/builder.md "
+                            "'Contaminated PR heads (anti-loop)' for the reset playbook.\n\n"
+                            f"```\n{signature}\n```"
+                        ),
+                    )
+                    write_builder_handoff("blocked")
+                    return
             write_builder_handoff("waiting")
             return
     except Exception as conflict_exc:
