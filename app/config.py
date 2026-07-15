@@ -6,12 +6,6 @@ import os
 from dataclasses import dataclass
 
 
-def _parse_cidr_list(raw: str) -> tuple[str, ...]:
-    if not raw.strip():
-        return ()
-    return tuple(token.strip() for token in raw.split(",") if token.strip())
-
-
 @dataclass(frozen=True)
 class Settings:
     database_url: str
@@ -33,9 +27,9 @@ class Settings:
     admin_login_rate_limit: int = 5
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
-    admin_trust_proxy_headers: bool = False
     admin_trusted_proxy_cidrs: tuple[str, ...] = ()
-    admin_cloudflare_proxy_cidrs: tuple[str, ...] = ()
+    admin_trusted_cloudflare_cidrs: tuple[str, ...] = ()
+    uvicorn_forwarded_allow_ips: str = "127.0.0.1"
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -55,6 +49,15 @@ class Settings:
     def admin_preview_mode(self) -> bool:
         flag = os.environ.get("ADMIN_PREVIEW_MODE", "").lower()
         return flag in ("1", "true", "yes")
+
+    @property
+    def admin_proxy_trust_enabled(self) -> bool:
+        return bool(self.admin_trusted_proxy_cidrs)
+
+    @property
+    def admin_trust_proxy_headers(self) -> bool:
+        """Deprecated alias retained for documentation/tests during migration."""
+        return self.admin_proxy_trust_enabled
 
     @property
     def admin_auth_configured(self) -> bool:
@@ -90,7 +93,23 @@ class Settings:
         return bool(self.plausible_domain)
 
 
+def _csv_env(name: str) -> tuple[str, ...]:
+    raw = os.environ.get(name, "")
+    if not raw.strip():
+        return ()
+    return tuple(part.strip() for part in raw.split(",") if part.strip())
+
+
 def get_settings() -> Settings:
+    trusted_proxy_cidrs = _csv_env("ADMIN_TRUSTED_PROXY_CIDRS")
+    legacy_trust = os.environ.get("ADMIN_TRUST_PROXY_HEADERS", "").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    if legacy_trust and not trusted_proxy_cidrs:
+        trusted_proxy_cidrs = ()
+
     return Settings(
         database_url=os.environ.get("DATABASE_URL", ""),
         stripe_secret_key=os.environ.get("STRIPE_SECRET_KEY", ""),
@@ -117,14 +136,10 @@ def get_settings() -> Settings:
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
         brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
-        admin_trust_proxy_headers=os.environ.get(
-            "ADMIN_TRUST_PROXY_HEADERS", ""
-        ).lower()
-        in ("1", "true", "yes"),
-        admin_trusted_proxy_cidrs=_parse_cidr_list(
-            os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "")
-        ),
-        admin_cloudflare_proxy_cidrs=_parse_cidr_list(
-            os.environ.get("ADMIN_CLOUDFLARE_PROXY_CIDRS", "")
-        ),
+        admin_trusted_proxy_cidrs=trusted_proxy_cidrs,
+        admin_trusted_cloudflare_cidrs=_csv_env("ADMIN_TRUSTED_CLOUDFLARE_CIDRS"),
+        uvicorn_forwarded_allow_ips=os.environ.get(
+            "UVICORN_FORWARDED_ALLOW_IPS", "127.0.0.1"
+        ).strip()
+        or "127.0.0.1",
     )
