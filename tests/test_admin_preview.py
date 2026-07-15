@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 import pytest
 from fastapi.testclient import TestClient
 
+from app.admin_auth import SESSION_COOKIE_NAME
 from app.admin_preview import (
     COMPANY_NAMES,
     PREVIEW_PIPELINE_COMPANY_IDS,
@@ -290,46 +291,59 @@ def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytes
 
 
 @pytest.mark.unit
-def test_preview_crm_archive_routes_include_mock_records(monkeypatch: pytest.MonkeyPatch) -> None:
-    from argon2 import PasswordHasher
-
+def test_preview_company_and_contact_detail_include_archive_actions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from app.admin_preview import (
-        PREVIEW_CRM_COMPANY_ACTIVE_ID,
-        PREVIEW_CRM_CONTACT_ACTIVE_ID,
-        preview_company_crm_detail,
-        preview_contact_crm_detail,
+        PREVIEW_COMPANY_ARCHIVE_ID,
+        PREVIEW_COMPANY_RESTORE_ID,
+        PREVIEW_CONTACT_ARCHIVE_ID,
+        PREVIEW_CONTACT_RESTORE_ID,
+        preview_company_detail,
+        preview_contact_detail,
     )
 
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
-    monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
-    monkeypatch.setenv(
-        "ADMIN_PASSWORD_HASH",
-        PasswordHasher().hash("preview"),
-    )
-    monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    company, _contacts, records = preview_company_crm_detail(
-        archived=False,
-        rng=random.Random(42),
-    )
-    contact, _company, contact_records = preview_contact_crm_detail(
-        archived=False,
-        rng=random.Random(42),
-    )
     client = TestClient(app, follow_redirects=False)
-    company_response = client.get(f"/admin/companies/{PREVIEW_CRM_COMPANY_ACTIVE_ID}")
-    assert company_response.status_code == 200
-    assert company["name"] in company_response.text
-    assert records[0]["body"] in company_response.text
-    assert "Archive company" in company_response.text
 
-    contact_response = client.get(f"/admin/contacts/{PREVIEW_CRM_CONTACT_ACTIVE_ID}")
-    assert contact_response.status_code == 200
-    assert contact["full_name"] in contact_response.text
-    assert contact_records[0]["body"] in contact_response.text
-    assert "Archive contact" in contact_response.text
+    company_archive = preview_company_detail(PREVIEW_COMPANY_ARCHIVE_ID, rng=random.Random(42))
+    assert company_archive is not None
+    company, contacts, records = company_archive
+    assert company["archived_at"] is None
+    assert contacts
+    assert records
+
+    company_restore = preview_company_detail(PREVIEW_COMPANY_RESTORE_ID, rng=random.Random(42))
+    assert company_restore is not None
+    assert company_restore[0]["archived_at"] is not None
+
+    contact_archive = preview_contact_detail(PREVIEW_CONTACT_ARCHIVE_ID, rng=random.Random(42))
+    assert contact_archive is not None
+    assert contact_archive[0]["archived_at"] is None
+    assert contact_archive[1] is not None
+
+    contact_restore = preview_contact_detail(PREVIEW_CONTACT_RESTORE_ID, rng=random.Random(42))
+    assert contact_restore is not None
+    assert contact_restore[0]["archived_at"] is not None
+
+    archive_page = client.get(
+        f"/admin/companies/{PREVIEW_COMPANY_ARCHIVE_ID}",
+        cookies={SESSION_COOKIE_NAME: "preview-screenshot-session"},
+    )
+    assert archive_page.status_code == 200
+    assert "Archive company" in archive_page.text
+    assert "admin-action-btn--destructive" in archive_page.text
+    assert "No research records yet" not in archive_page.text
+
+    restore_page = client.get(
+        f"/admin/contacts/{PREVIEW_CONTACT_RESTORE_ID}/edit",
+        cookies={SESSION_COOKIE_NAME: "preview-screenshot-session"},
+    )
+    assert restore_page.status_code == 200
+    assert "Restore contact" in restore_page.text
+    assert "admin-action-btn--secondary" in restore_page.text
 
 
 @pytest.mark.unit

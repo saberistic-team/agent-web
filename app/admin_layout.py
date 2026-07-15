@@ -93,11 +93,12 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
-    "/admin/companies/cccccccc-cccc-cccc-cccc-cccccccccc01",
-    "/admin/companies/cccccccc-cccc-cccc-cccc-cccccccccc02",
-    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd01",
-    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd02",
-    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd01/edit",
+    "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    "/admin/companies/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    "/admin/contacts/cccccccc-cccc-cccc-cccc-cccccccccccc",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd",
+    "/admin/contacts/cccccccc-cccc-cccc-cccc-cccccccccccc/edit",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd/edit",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
@@ -106,25 +107,6 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
 ADMIN_SCREENSHOT_EXPECTED_STATUS: dict[str, int] = {
     "/admin/briefs/503": 503,
 }
-
-
-def render_admin_archive_form(
-    *,
-    form_action: str,
-    label: str,
-    archived_at: object,
-    csrf_token: str,
-) -> str:
-    """Return a CSRF-protected archive/restore form with themed action styling."""
-    action_suffix = "restore" if archived_at else "archive"
-    variant = "admin-action--secondary" if archived_at else "admin-action--destructive"
-    safe_action = html.escape(form_action.rstrip("/") + f"/{action_suffix}", quote=True)
-    safe_label = html.escape(label)
-    safe_csrf = html.escape(csrf_token, quote=True)
-    return f"""<form method="post" action="{safe_action}">
-            <input type="hidden" name="csrf_token" value="{safe_csrf}" />
-            <button class="admin-action {variant}" type="submit">{safe_label}</button>
-          </form>"""
 
 
 def _active_nav_label(active_path: str) -> str:
@@ -170,6 +152,16 @@ def render_admin_nav(active_path: str) -> str:
             </ul>
           </details>
         </nav>"""
+
+
+def render_admin_archive_button(*, label: str, archived_at: object) -> str:
+    """Return themed Archive/Restore submit button markup."""
+    if archived_at:
+        variant = "admin-action-btn--secondary"
+    else:
+        variant = "admin-action-btn--destructive"
+    safe_label = html.escape(str(label))
+    return f'<button class="admin-action-btn {variant}" type="submit">{safe_label}</button>'
 
 
 def render_admin_shell(
