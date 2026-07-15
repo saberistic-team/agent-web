@@ -119,9 +119,6 @@ def pg_env(database_url: str, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_LOGIN_RATE_WINDOW_SECONDS", "900")
     monkeypatch.setenv("ADMIN_LOGIN_LOCKOUT_SECONDS", "900")
     monkeypatch.delenv("ADMIN_TRUST_PROXY_HEADERS", raising=False)
-    monkeypatch.delenv("ADMIN_TRUSTED_PROXY_CIDRS", raising=False)
-    monkeypatch.delenv("ADMIN_TRUSTED_FORWARDING_CIDRS", raising=False)
-    monkeypatch.delenv("ADMIN_TRUST_CLOUDFLARE_FORWARDING", raising=False)
     admin_auth.reset_login_rate_limiter()
 
 

@@ -28,9 +28,8 @@ class Settings:
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
     admin_trust_proxy_headers: bool = False
-    admin_trusted_proxy_cidrs: tuple[str, ...] = ()
-    admin_trusted_forwarding_cidrs: tuple[str, ...] = ()
-    admin_trust_cloudflare_forwarding: bool = True
+    admin_trusted_proxy_cidrs: str = ""
+    admin_trusted_edge_cidrs: str = ""
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -116,17 +115,6 @@ def get_settings() -> Settings:
             "ADMIN_TRUST_PROXY_HEADERS", ""
         ).lower()
         in ("1", "true", "yes"),
-        admin_trusted_proxy_cidrs=_parse_csv_env("ADMIN_TRUSTED_PROXY_CIDRS"),
-        admin_trusted_forwarding_cidrs=_parse_csv_env("ADMIN_TRUSTED_FORWARDING_CIDRS"),
-        admin_trust_cloudflare_forwarding=os.environ.get(
-            "ADMIN_TRUST_CLOUDFLARE_FORWARDING", "true"
-        ).lower()
-        in ("1", "true", "yes"),
+        admin_trusted_proxy_cidrs=os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "").strip(),
+        admin_trusted_edge_cidrs=os.environ.get("ADMIN_TRUSTED_EDGE_CIDRS", "").strip(),
     )
-
-
-def _parse_csv_env(name: str) -> tuple[str, ...]:
-    raw = os.environ.get(name, "").strip()
-    if not raw:
-        return ()
-    return tuple(part.strip() for part in raw.split(",") if part.strip())

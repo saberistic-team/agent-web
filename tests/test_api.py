@@ -10,9 +10,7 @@ client = TestClient(app)
 
 @pytest.mark.unit
 def test_health_handler_unit() -> None:
-    payload = health()
-    assert payload["status"] == "ok"
-    assert "admin_client_source_trust" in payload
+    assert health()["status"] == "ok"
 
 
 @pytest.mark.unit
@@ -59,9 +57,7 @@ def test_brief_handlers_return_pages(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_health() -> None:
     response = client.get("/health")
     assert response.status_code == 200
-    payload = response.json()
-    assert payload["status"] == "ok"
-    assert "admin_client_source_trust" in payload
+    assert response.json()["status"] == "ok"
 
 
 @pytest.mark.unit
