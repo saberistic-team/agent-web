@@ -158,6 +158,7 @@ def test_postgres_project_brief_repository_get_by_id_selects_detail_columns() ->
     assert row == {"id": 3, "brief": "text"}
     sql = cursor.execute.call_args[0][0]
     assert "stripe_session_id" in sql
+    assert "payment_amount_cents" in sql
     assert "utm_term" in sql
     assert "WHERE id = %s" in sql
 

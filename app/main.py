@@ -331,21 +331,29 @@ async def stripe_webhook(request: Request) -> JSONResponse:
         return JSONResponse({"received": True})
 
     with db.db_connection(settings.database_url) as conn:
+        payment_details = stripe_service.extract_payment_details_from_session(session)
         paid_brief = db.mark_brief_paid(
             conn,
             brief_id=brief_id,
             stripe_session_id=session.get("id"),
             stripe_payment_intent_id=session.get("payment_intent"),
+            **payment_details,
         )
 
     if paid_brief is None:
         return JSONResponse({"received": True})
 
+    paid_amount_cents = paid_brief.get("payment_amount_cents")
+    if paid_amount_cents is None:
+        paid_amount_cents = payment_details.get("payment_amount_cents")
+    if paid_amount_cents is None:
+        paid_amount_cents = settings.brief_price_cents
+
     try:
         analytics_service.track_payment_completed(
             settings,
             brief_id=brief_id,
-            price_cents=settings.brief_price_cents,
+            price_cents=int(paid_amount_cents),
             utm={
                 "utm_source": paid_brief.get("utm_source"),
                 "utm_medium": paid_brief.get("utm_medium"),

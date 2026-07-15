@@ -329,6 +329,12 @@ def test_stripe_webhook_marks_paid_and_sends_email() -> None:
         brief_id=1,
         stripe_session_id="cs_test_123",
         stripe_payment_intent_id="pi_test_123",
+        payment_subtotal_cents=None,
+        payment_discount_cents=None,
+        payment_amount_cents=None,
+        payment_currency=None,
+        stripe_promotion_code_id=None,
+        stripe_coupon_id=None,
     )
     notify_team.assert_called_once()
     notify_customer.assert_called_once()

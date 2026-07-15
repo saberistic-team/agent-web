@@ -23,6 +23,7 @@ from app.companies import (
 )
 from app.brief_conversion import (
     BriefConversionValidationError,
+    effective_brief_price_cents,
     pipeline_capabilities_available,
 )
 from app.contacts import BUYING_ROLES, ContactCreate, ContactSafeSummary, ContactUpdate
@@ -1458,7 +1459,10 @@ def admin_brief_convert_preview(
             )
         preview = preview_brief_convert_matches(
             parsed_brief_id,
-            price_cents=settings.brief_price_cents,
+            price_cents=effective_brief_price_cents(
+                brief,
+                list_price_cents=settings.brief_price_cents,
+            ),
         )
         error_message = request.query_params.get("error")
         if error_message == "validation":
@@ -1497,7 +1501,10 @@ def admin_brief_convert_preview(
         preview = _crm.find_brief_conversion_matches(
             conn,
             brief,
-            price_cents=settings.brief_price_cents,
+            price_cents=effective_brief_price_cents(
+                brief,
+                list_price_cents=settings.brief_price_cents,
+            ),
         )
     return HTMLResponse(
         admin_pages.render_admin_brief_convert_page(
@@ -1567,7 +1574,10 @@ def admin_brief_convert_confirm(
                 conn,
                 brief=brief,
                 actor_context=actor_context,
-                price_cents=settings.brief_price_cents,
+                price_cents=effective_brief_price_cents(
+                    brief,
+                    list_price_cents=settings.brief_price_cents,
+                ),
                 company_choice=company_mode,
                 contact_choice=contact_mode,
                 selected_company_id=selected_company_id,

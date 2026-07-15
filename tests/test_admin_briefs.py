@@ -140,6 +140,7 @@ def test_postgres_project_brief_repository_list_page_orders_newest_first() -> No
     assert "COUNT(*)" in count_sql
     assert "contact_value ILIKE" in count_sql
     assert "ORDER BY created_at DESC, id DESC" in list_sql
+    assert "payment_amount_cents" in list_sql
     assert " brief" not in list_sql.lower()
 
 
@@ -330,6 +331,37 @@ def test_render_admin_briefs_page_preserves_filter_params_in_pager() -> None:
     assert "date_to=2026-07-14" in html_out
     assert "$200" in html_out
     assert "linkedin / spring-launch" in html_out
+
+
+@pytest.mark.unit
+def test_render_admin_briefs_page_shows_discounted_payment_amount() -> None:
+    brief = _sample_brief()
+    brief.update(
+        {
+            "payment_subtotal_cents": 20_000,
+            "payment_discount_cents": 5_000,
+            "payment_amount_cents": 15_000,
+            "payment_currency": "usd",
+        }
+    )
+    html_out = render_admin_briefs_page(
+        admin_username=TEST_USERNAME,
+        briefs=[brief],
+        filters=BriefListFilters(
+            page=1,
+            per_page=50,
+            query=None,
+            status=None,
+            date_from=None,
+            date_to=None,
+            date_from_raw=None,
+            date_to_raw=None,
+        ),
+        total=1,
+        price_cents=20_000,
+    )
+    assert "$150" in html_out
+    assert "$200 − $50 = $150 USD" in html_out
 
 
 @pytest.mark.unit

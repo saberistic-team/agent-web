@@ -114,6 +114,12 @@ def mark_brief_paid(
     brief_id: int,
     stripe_session_id: str | None,
     stripe_payment_intent_id: str | None,
+    payment_subtotal_cents: int | None = None,
+    payment_discount_cents: int | None = None,
+    payment_amount_cents: int | None = None,
+    payment_currency: str | None = None,
+    stripe_promotion_code_id: str | None = None,
+    stripe_coupon_id: str | None = None,
 ) -> dict[str, Any] | None:
     paid_at = datetime.now(timezone.utc)
     with conn.cursor() as cur:
@@ -123,11 +129,28 @@ def mark_brief_paid(
             SET status = 'paid',
                 stripe_session_id = COALESCE(%s, stripe_session_id),
                 stripe_payment_intent_id = %s,
-                paid_at = %s
+                paid_at = %s,
+                payment_subtotal_cents = %s,
+                payment_discount_cents = %s,
+                payment_amount_cents = %s,
+                payment_currency = %s,
+                stripe_promotion_code_id = %s,
+                stripe_coupon_id = %s
             WHERE id = %s AND status != 'paid'
             RETURNING *
             """,
-            (stripe_session_id, stripe_payment_intent_id, paid_at, brief_id),
+            (
+                stripe_session_id,
+                stripe_payment_intent_id,
+                paid_at,
+                payment_subtotal_cents,
+                payment_discount_cents,
+                payment_amount_cents,
+                payment_currency,
+                stripe_promotion_code_id,
+                stripe_coupon_id,
+                brief_id,
+            ),
         )
         row = cur.fetchone()
         conn.commit()
