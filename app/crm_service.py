@@ -41,6 +41,19 @@ from app.contacts import (
     normalize_email,
 )
 from app.crm_uow import crm_transaction
+from app.linkedin_import import (
+    LINKEDIN_IMPORT_SCHEMA_VERSION,
+    SOURCE_KIND_CONNECTION,
+    SOURCE_TYPE_LINKEDIN,
+    compute_import_checksum,
+    contact_matches_snapshot,
+    contact_needs_update,
+    empty_summary_counts,
+    increment_summary,
+    normalize_connection_row,
+    parse_export_date,
+    snapshot_contact,
+)
 from app.pipeline_stages import (
     initial_pipeline_stage_for_brief_status,
     pipeline_stage_label,
@@ -51,11 +64,13 @@ from app.repositories import (
     AdminUserRepository,
     CompanyRepository,
     ContactRepository,
+    ImportBatchRepository,
     PipelineRepository,
     PostgresActivityRepository,
     PostgresAdminUserRepository,
     PostgresCompanyRepository,
     PostgresContactRepository,
+    PostgresImportBatchRepository,
     PostgresPipelineRepository,
     PostgresResearchRecordRepository,
     PostgresSourceRecordRepository,
@@ -73,6 +88,7 @@ class CrmRepositories:
     research_records: ResearchRecordRepository
     admin_users: AdminUserRepository
     pipeline: PipelineRepository
+    import_batches: ImportBatchRepository
 
 
 def default_crm_repositories() -> CrmRepositories:
@@ -84,6 +100,7 @@ def default_crm_repositories() -> CrmRepositories:
         research_records=PostgresResearchRecordRepository(),
         admin_users=PostgresAdminUserRepository(),
         pipeline=PostgresPipelineRepository(),
+        import_batches=PostgresImportBatchRepository(),
     )
 
 
@@ -924,6 +941,317 @@ class CrmService:
                 record_count=len(created),
             )
         return {"batch_id": batch_id, "created": created, "record_count": len(created)}
+
+    def commit_linkedin_import(
+        self,
+        conn: psycopg.Connection,
+        *,
+        actor_context: ActorContext,
+        connections: list[dict[str, Any]],
+        export_date: Any | None = None,
+        checksum: str | None = None,
+    ) -> dict[str, Any]:
+        """Persist an approved LinkedIn export preview as an auditable import batch."""
+        resolved_checksum = checksum or compute_import_checksum(connections)
+        existing = self._repos.import_batches.get_committed_by_checksum(conn, resolved_checksum)
+        if existing is not None:
+            rows = self._repos.import_batches.list_rows_for_batch(
+                conn, UUID(str(existing["id"]))
+            )
+            return {
+                "batch": existing,
+                "rows": rows,
+                "idempotent": True,
+                "summary_counts": existing.get("summary_counts") or {},
+            }
+
+        summary = empty_summary_counts()
+        row_records: list[dict[str, Any]] = []
+
+        with crm_transaction(conn):
+            batch = self._repos.import_batches.create(
+                conn,
+                source_type=SOURCE_TYPE_LINKEDIN,
+                schema_version=LINKEDIN_IMPORT_SCHEMA_VERSION,
+                checksum=resolved_checksum,
+                actor=actor_context.actor,
+                status="committed",
+                correlation_id=actor_context.correlation_id,
+                export_date=parse_export_date(export_date),
+                summary_counts=summary,
+            )
+            batch_uuid = UUID(str(batch["id"]))
+
+            for index, raw_row in enumerate(connections):
+                identity = normalize_connection_row(raw_row)
+                profile_url = identity.get("profile_url")
+                if not profile_url:
+                    increment_summary(summary, "skipped")
+                    row_records.append(
+                        {
+                            "row_index": index,
+                            "source_kind": SOURCE_KIND_CONNECTION,
+                            "source_identity": identity,
+                            "outcome": "skipped",
+                            "detail": "Missing or invalid profile URL",
+                        }
+                    )
+                    continue
+
+                matches = self._repos.contacts.find_by_profile_url(conn, profile_url)
+                if len(matches) > 1:
+                    increment_summary(summary, "conflicted")
+                    row_records.append(
+                        {
+                            "row_index": index,
+                            "source_kind": SOURCE_KIND_CONNECTION,
+                            "source_identity": identity,
+                            "outcome": "conflicted",
+                            "detail": "Multiple contacts share this profile URL",
+                        }
+                    )
+                    continue
+
+                if not matches:
+                    contact = self._repos.contacts.create(
+                        conn,
+                        full_name=identity.get("full_name") or profile_url.rsplit("/", 1)[-1],
+                        title=identity.get("title"),
+                        profile_url=profile_url,
+                    )
+                    applied = snapshot_contact(contact)
+                    increment_summary(summary, "inserted")
+                    row_records.append(
+                        {
+                            "row_index": index,
+                            "source_kind": SOURCE_KIND_CONNECTION,
+                            "source_identity": identity,
+                            "outcome": "inserted",
+                            "entity_type": "contact",
+                            "entity_id": UUID(str(contact["id"])),
+                            "prior_snapshot": None,
+                            "applied_snapshot": applied,
+                        }
+                    )
+                    self._repos.source_records.create(
+                        conn,
+                        source_type="import",
+                        external_id=f"{batch_uuid}:{index}",
+                        contact_id=UUID(str(contact["id"])),
+                        payload={"source_kind": SOURCE_KIND_CONNECTION, **identity},
+                    )
+                    continue
+
+                contact = matches[0]
+                if not contact_needs_update(contact, identity):
+                    increment_summary(summary, "unchanged")
+                    row_records.append(
+                        {
+                            "row_index": index,
+                            "source_kind": SOURCE_KIND_CONNECTION,
+                            "source_identity": identity,
+                            "outcome": "unchanged",
+                            "entity_type": "contact",
+                            "entity_id": UUID(str(contact["id"])),
+                            "prior_snapshot": snapshot_contact(contact),
+                            "applied_snapshot": snapshot_contact(contact),
+                        }
+                    )
+                    continue
+
+                prior = snapshot_contact(contact)
+                updated = self._repos.contacts.update(
+                    conn,
+                    UUID(str(contact["id"])),
+                    full_name=identity.get("full_name") or contact.get("full_name"),
+                    title=identity.get("title") or contact.get("title"),
+                    profile_url=profile_url,
+                )
+                if updated is None:
+                    increment_summary(summary, "conflicted")
+                    row_records.append(
+                        {
+                            "row_index": index,
+                            "source_kind": SOURCE_KIND_CONNECTION,
+                            "source_identity": identity,
+                            "outcome": "conflicted",
+                            "entity_type": "contact",
+                            "entity_id": UUID(str(contact["id"])),
+                            "prior_snapshot": prior,
+                            "detail": "Contact update failed",
+                        }
+                    )
+                    continue
+
+                applied = snapshot_contact(updated)
+                increment_summary(summary, "updated")
+                row_records.append(
+                    {
+                        "row_index": index,
+                        "source_kind": SOURCE_KIND_CONNECTION,
+                        "source_identity": identity,
+                        "outcome": "updated",
+                        "entity_type": "contact",
+                        "entity_id": UUID(str(updated["id"])),
+                        "prior_snapshot": prior,
+                        "applied_snapshot": applied,
+                    }
+                )
+                self._repos.source_records.create(
+                    conn,
+                    source_type="import",
+                    external_id=f"{batch_uuid}:{index}",
+                    contact_id=UUID(str(updated["id"])),
+                    payload={"source_kind": SOURCE_KIND_CONNECTION, **identity},
+                )
+
+            persisted_rows: list[dict[str, Any]] = []
+            for record in row_records:
+                persisted_rows.append(
+                    self._repos.import_batches.create_row(
+                        conn,
+                        batch_id=batch_uuid,
+                        row_index=record["row_index"],
+                        source_kind=record["source_kind"],
+                        source_identity=record["source_identity"],
+                        outcome=record["outcome"],
+                        entity_type=record.get("entity_type"),
+                        entity_id=record.get("entity_id"),
+                        prior_snapshot=record.get("prior_snapshot"),
+                        applied_snapshot=record.get("applied_snapshot"),
+                        detail=record.get("detail"),
+                    )
+                )
+
+            batch = self._repos.import_batches.update_status(
+                conn,
+                batch_uuid,
+                status="committed",
+                summary_counts=summary,
+            ) or batch
+
+            audit_service.record_import_batch(
+                conn,
+                actor_context=actor_context,
+                batch_id=str(batch_uuid),
+                source_type=SOURCE_TYPE_LINKEDIN,
+                record_count=len(persisted_rows),
+                schema_version=LINKEDIN_IMPORT_SCHEMA_VERSION,
+                checksum=resolved_checksum,
+                export_date=parse_export_date(export_date),
+                summary_counts=summary,
+            )
+
+        return {
+            "batch": batch,
+            "rows": persisted_rows,
+            "idempotent": False,
+            "summary_counts": summary,
+        }
+
+    def get_import_batch(
+        self,
+        conn: psycopg.Connection,
+        batch_id: UUID,
+    ) -> dict[str, Any] | None:
+        batch = self._repos.import_batches.get_by_id(conn, batch_id)
+        if batch is None:
+            return None
+        rows = self._repos.import_batches.list_rows_for_batch(conn, batch_id)
+        return {"batch": batch, "rows": rows}
+
+    def list_import_batches(
+        self,
+        conn: psycopg.Connection,
+        *,
+        page: int = 1,
+        per_page: int = 50,
+    ) -> tuple[list[dict[str, Any]], int]:
+        return self._repos.import_batches.list_page(conn, page=page, per_page=per_page)
+
+    def rollback_import_batch(
+        self,
+        conn: psycopg.Connection,
+        *,
+        actor_context: ActorContext,
+        batch_id: UUID,
+    ) -> dict[str, Any]:
+        """Reverse batch-owned contact changes without clobbering later edits."""
+        state = self.get_import_batch(conn, batch_id)
+        if state is None:
+            raise ValueError("Import batch was not found.")
+        batch = state["batch"]
+        if batch.get("status") != "committed":
+            raise ValueError("Only committed import batches can be rolled back.")
+
+        rollback_summary = {
+            "reverted_inserts": 0,
+            "reverted_updates": 0,
+            "skipped_later_edits": 0,
+            "skipped_non_reversible": 0,
+        }
+
+        with crm_transaction(conn):
+            for row in state["rows"]:
+                outcome = row.get("outcome")
+                entity_id = row.get("entity_id")
+                if entity_id is None or outcome not in {"inserted", "updated"}:
+                    rollback_summary["skipped_non_reversible"] += 1
+                    continue
+
+                contact = self._repos.contacts.get_by_id(conn, UUID(str(entity_id)))
+                if contact is None:
+                    rollback_summary["skipped_non_reversible"] += 1
+                    continue
+
+                applied = row.get("applied_snapshot")
+                prior = row.get("prior_snapshot")
+                if not contact_matches_snapshot(contact, applied):
+                    rollback_summary["skipped_later_edits"] += 1
+                    continue
+
+                if outcome == "inserted":
+                    archived = self._repos.contacts.archive(conn, UUID(str(entity_id)))
+                    if archived is not None:
+                        rollback_summary["reverted_inserts"] += 1
+                    else:
+                        rollback_summary["skipped_non_reversible"] += 1
+                elif outcome == "updated" and prior is not None:
+                    restored = self._repos.contacts.update(
+                        conn,
+                        UUID(str(entity_id)),
+                        full_name=prior.get("full_name"),
+                        title=prior.get("title"),
+                        profile_url=prior.get("profile_url"),
+                        company_id=UUID(str(prior["company_id"]))
+                        if prior.get("company_id")
+                        else None,
+                    )
+                    if restored is not None:
+                        rollback_summary["reverted_updates"] += 1
+                    else:
+                        rollback_summary["skipped_non_reversible"] += 1
+
+            updated_batch = self._repos.import_batches.update_status(
+                conn,
+                batch_id,
+                status="rolled_back",
+            )
+            audit_service.record_import_batch_rollback(
+                conn,
+                actor_context=actor_context,
+                batch_id=str(batch_id),
+                summary_before={"status": "committed", "summary_counts": batch.get("summary_counts")},
+                summary_after={
+                    "status": "rolled_back",
+                    "rollback_summary": rollback_summary,
+                },
+            )
+
+        return {
+            "batch": updated_batch,
+            "rollback_summary": rollback_summary,
+        }
 
     def delete_entity(
         self,

@@ -79,17 +79,15 @@ or rolled-back logins never emit a new session cookie.
 | `auth.login.success` | Valid admin login creates a server-side session |
 | `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting |
 | `auth.logout` | Session revocation and cookie clear |
-| `import.batch` | Data import batches via `CrmService.import_batch` |
+| `import.batch` | Data import batches via `CrmService.commit_linkedin_import` / `import_batch` |
+| `import.batch.rollback` | Rollback of committed import batches via `CrmService.rollback_import_batch` |
 | `entity.delete` | Hard deletes via `CrmService.delete_entity` |
-| `pipeline.update` | Pipeline field updates via `CrmService.update_pipeline` / `update_pipeline_next_action` / stage transitions |
-| `pipeline.stage_change` | Acquisition stage transitions via `CrmService.transition_pipeline_stage` |
-| `pipeline.activity_recorded` | Pipeline activities via `CrmService.record_pipeline_activity` |
-| `pipeline.next_action_updated` | Next action / due date / owner updates via `CrmService.update_pipeline_next_action` |
+| `pipeline.update` | Pipeline stage changes via `CrmService.update_pipeline` |
 | `scoring_rule.update` | Scoring rule edits via `CrmService.update_scoring_rule` |
 | `analytics.config.update` | Analytics configuration via `CrmService.update_analytics_config` |
 | `export.request` | Export requests via `CrmService.request_export` |
 
-Auth events are wired in `app/admin_routes.py`. Acquisition pipeline mutations are exposed at `/admin/pipeline/*` (HTML form routes) and record audit events through `CrmService` methods.
+Auth events are wired in `app/admin_routes.py`. Other mutations record audit events through `CrmService` methods that future admin UI routes will call.
 
 ## Admin UI
 

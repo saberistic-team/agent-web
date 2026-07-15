@@ -410,4 +410,64 @@ ALTER TABLE activities ADD CONSTRAINT activities_activity_type_check
 """,
     ),
 
+
+    Migration(
+        version="014",
+        name="import_batches",
+        up_sql="""
+CREATE TABLE IF NOT EXISTS import_batches (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    source_type TEXT NOT NULL
+        CHECK (source_type IN ('linkedin')),
+    export_date DATE,
+    schema_version TEXT NOT NULL,
+    checksum TEXT NOT NULL,
+    actor TEXT NOT NULL,
+    status TEXT NOT NULL
+        CHECK (status IN ('committed', 'failed', 'rolled_back')),
+    summary_counts JSONB NOT NULL DEFAULT '{}'::jsonb,
+    error_message TEXT,
+    correlation_id TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_import_batches_checksum_committed
+    ON import_batches (checksum)
+    WHERE status = 'committed';
+
+CREATE INDEX IF NOT EXISTS idx_import_batches_created_at
+    ON import_batches (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_import_batches_status
+    ON import_batches (status);
+CREATE INDEX IF NOT EXISTS idx_import_batches_actor
+    ON import_batches (actor);
+
+CREATE TABLE IF NOT EXISTS import_batch_rows (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    batch_id UUID NOT NULL REFERENCES import_batches (id) ON DELETE CASCADE,
+    row_index INTEGER NOT NULL,
+    source_kind TEXT NOT NULL,
+    source_identity JSONB NOT NULL,
+    outcome TEXT NOT NULL
+        CHECK (outcome IN ('inserted', 'updated', 'unchanged', 'skipped', 'conflicted')),
+    entity_type TEXT,
+    entity_id UUID,
+    prior_snapshot JSONB,
+    applied_snapshot JSONB,
+    detail TEXT,
+    CONSTRAINT import_batch_rows_batch_index_unique UNIQUE (batch_id, row_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_import_batch_rows_batch_id
+    ON import_batch_rows (batch_id);
+CREATE INDEX IF NOT EXISTS idx_import_batch_rows_outcome
+    ON import_batch_rows (outcome);
+CREATE INDEX IF NOT EXISTS idx_import_batch_rows_entity_id
+    ON import_batch_rows (entity_id)
+    WHERE entity_id IS NOT NULL;
+""",
+    ),
+
 )

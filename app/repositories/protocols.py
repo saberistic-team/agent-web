@@ -431,3 +431,68 @@ class AuditEventRepository(Protocol):
         page: int = 1,
         per_page: int = 50,
     ) -> tuple[list[dict[str, Any]], int]: ...
+
+class ImportBatchRepository(Protocol):
+    def create(
+        self,
+        conn: psycopg.Connection,
+        *,
+        source_type: str,
+        schema_version: str,
+        checksum: str,
+        actor: str,
+        status: str,
+        correlation_id: str,
+        export_date: date | None = None,
+        summary_counts: dict[str, Any] | None = None,
+        error_message: str | None = None,
+    ) -> dict[str, Any]: ...
+
+    def get_by_id(self, conn: psycopg.Connection, batch_id: UUID) -> dict[str, Any] | None: ...
+
+    def get_committed_by_checksum(
+        self, conn: psycopg.Connection, checksum: str
+    ) -> dict[str, Any] | None: ...
+
+    def list_page(
+        self,
+        conn: psycopg.Connection,
+        *,
+        page: int = 1,
+        per_page: int = 50,
+    ) -> tuple[list[dict[str, Any]], int]: ...
+
+    def update_status(
+        self,
+        conn: psycopg.Connection,
+        batch_id: UUID,
+        *,
+        status: str,
+        summary_counts: dict[str, Any] | None = None,
+        error_message: str | None = None,
+    ) -> dict[str, Any] | None: ...
+
+    def create_row(
+        self,
+        conn: psycopg.Connection,
+        *,
+        batch_id: UUID,
+        row_index: int,
+        source_kind: str,
+        source_identity: dict[str, Any],
+        outcome: str,
+        entity_type: str | None = None,
+        entity_id: UUID | None = None,
+        prior_snapshot: dict[str, Any] | None = None,
+        applied_snapshot: dict[str, Any] | None = None,
+        detail: str | None = None,
+    ) -> dict[str, Any]: ...
+
+    def list_rows_for_batch(
+        self,
+        conn: psycopg.Connection,
+        batch_id: UUID,
+        *,
+        outcome: str | None = None,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]: ...
