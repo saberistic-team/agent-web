@@ -224,9 +224,10 @@ def render_admin_company_research_page(
         title = html.escape(str(contact.get("title") or ""))
         roles = html.escape(format_buying_roles(contact.get("buying_roles")))
         meta = " · ".join(part for part in (title, roles) if part and part != "—")
+        meta_html = f' <span class="admin-meta">({meta})</span>' if meta else ""
         contact_links += (
             f'<li><a href="/admin/contacts/{contact_id}">{label}</a>'
-            f'{f" <span class=\"admin-meta\">({meta})</span>" if meta else ""}</li>'
+            f"{meta_html}</li>"
         )
     if not contact_links:
         contact_links = "<li>No contacts linked.</li>"
