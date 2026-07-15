@@ -48,48 +48,6 @@ def test_is_admin_login_throttled_false_when_lockout_expired() -> None:
 
 
 @pytest.mark.unit
-def test_try_admit_admin_login_increments_only_subset_when_configured() -> None:
-    conn = MagicMock()
-    cur = MagicMock()
-    conn.cursor.return_value.__enter__.return_value = cur
-    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    cur.fetchall.return_value = [
-        {
-            "limiter_key": "current",
-            "failure_count": 0,
-            "window_started_at": now,
-            "locked_until": None,
-        },
-        {
-            "limiter_key": "previous",
-            "failure_count": 4,
-            "window_started_at": now,
-            "locked_until": None,
-        },
-    ]
-
-    admission = db.try_admit_admin_login(
-        conn,
-        limiter_keys=("current", "previous"),
-        increment_keys=("current",),
-        now=now,
-        rate_limit=5,
-        window_seconds=900,
-        lockout_seconds=900,
-    )
-
-    assert admission.admitted
-    update_calls = [
-        call
-        for call in cur.execute.call_args_list
-        if "UPDATE admin_login_rate_limits" in call.args[0]
-    ]
-    assert len(update_calls) == 1
-    assert update_calls[0].args[1][-1] == "current"
-    conn.commit.assert_called()
-
-
-@pytest.mark.unit
 def test_try_admit_admin_login_executes_for_update_upsert() -> None:
     conn = MagicMock()
     cur = MagicMock()

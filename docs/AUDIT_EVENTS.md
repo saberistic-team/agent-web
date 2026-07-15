@@ -51,26 +51,7 @@ both commit or roll back together.
 | Brief-to-CRM linkage | `CrmService.link_project_brief_source` | Transactional write; audit ships with future routes |
 | Login success | `admin_routes._issue_session` | Prior-session revocation (if any) + new session + required audit atomically |
 | Logout (authenticated) | `admin_routes.admin_logout` | Revocation + required audit atomically when the session row transitions to revoked |
-| Login failure | `admin_routes` | Best-effort audit (`required=False`); actor is always `anonymous` |
-
-Unauthenticated login failures (`auth.login.failure`) always record
-`actor = anonymous`. Submitted username candidates are **not** stored in the
-`actor` column, metadata, reason text, logs, or metrics. Failure `reason` values
-are a small server-defined enum: `invalid_credentials`, `invalid_csrf`, or
-`rate_limited`.
-
-Authenticated `auth.login.success` and `auth.logout` events retain the
-configured administrator username and session linkage.
-
-### Historical `auth.login.failure` actors (pre-#242)
-
-Before keyed limiter identifiers and anonymous-actor enforcement landed
-([#242](https://github.com/saberistic-team/agent-web/issues/242)), some
-`auth.login.failure` rows may have attacker-supplied strings in the immutable
-`actor` column. Append-only protections are unchanged — these rows are not
-silently rewritten or deleted. Security reporting should treat pre-#242
-`actor` values on failure events as **untrusted** unless corroborated by
-authenticated session evidence. The forward fix prevents all new occurrences.
+| Login failure | `admin_routes` | Best-effort audit (`required=False`) |
 
 `record_event(..., required=True)` propagates persistence errors. Security-sensitive
 mutations must not return success when a required audit event could not be stored.
@@ -125,7 +106,7 @@ or rolled-back logins never emit a new session cookie.
 | Action | When recorded |
 |--------|----------------|
 | `auth.login.success` | Valid admin login creates a server-side session |
-| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting |
+| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting (actor is always `anonymous`) |
 | `auth.logout` | Authenticated session revocation (live session → revoked) |
 | `import.batch` | Data import batches via `CrmService.commit_linkedin_import` / `import_batch` |
 | `import.batch.rollback` | Rollback of committed import batches via `CrmService.rollback_import_batch` |
@@ -136,6 +117,36 @@ or rolled-back logins never emit a new session cookie.
 | `export.request` | Export requests via `CrmService.request_export` |
 
 Auth events are wired in `app/admin_routes.py`. Other mutations record audit events through `CrmService` methods that future admin UI routes will call.
+
+### Unauthenticated login failures
+
+Every `auth.login.failure` event recorded before successful authentication uses
+actor `anonymous`. Submitted username candidates must not appear in `actor`,
+`metadata`, `reason` text, correlation identifiers, structured logs, or metrics.
+Failure reasons are a small server-defined enum (`invalid_credentials`,
+`invalid_csrf`, `rate_limited`).
+
+Authenticated `auth.login.success` and `auth.logout` events retain the configured
+administrator username in `actor` with normal session linkage.
+
+### Historical immutable rows (pre-#242)
+
+Deployments that recorded login failures before keyed limiter identifiers and
+anonymous-actor enforcement may contain **attacker-supplied username strings in
+`audit_events.actor`**. These rows are append-only; application code does not
+rewrite or delete them. Operators should treat such actors as unauthenticated
+candidates, not authenticated identities. Remediation of historical rows requires
+an explicit data-governance decision outside normal application code.
+
+Inventory query (read-only):
+
+```sql
+SELECT created_at, actor, action, correlation_id, summary_after
+FROM audit_events
+WHERE action = 'auth.login.failure'
+  AND actor <> 'anonymous'
+ORDER BY created_at DESC;
+```
 
 ## Admin UI
 

@@ -29,7 +29,7 @@ TEST_USERNAME = "operator"
 TEST_PASSWORD = "correct-horse-battery-staple"
 TEST_HASH = PasswordHasher().hash(TEST_PASSWORD)
 TEST_SECRET = "test-session-secret-32chars-minimum"
-TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum"
+TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!!"
 COMPANY_ID = UUID("11111111-1111-1111-1111-111111111111")
 NOW = datetime(2026, 7, 15, 12, 0, tzinfo=timezone.utc)
 
