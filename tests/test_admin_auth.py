@@ -237,9 +237,8 @@ def admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "5")
     monkeypatch.setenv("ADMIN_LOGIN_RATE_WINDOW_SECONDS", "900")
     monkeypatch.setenv("ADMIN_LOGIN_LOCKOUT_SECONDS", "900")
-    monkeypatch.delenv("ADMIN_TRUST_PROXY_HEADERS", raising=False)
-    monkeypatch.delenv("ADMIN_TRUSTED_PROXY_CIDRS", raising=False)
-    monkeypatch.delenv("ADMIN_CLOUDFLARE_PROXY_CIDRS", raising=False)
+    monkeypatch.delenv("ADMIN_TRUSTED_PROXY_IPS", raising=False)
+    monkeypatch.delenv("ADMIN_TRUSTED_EDGE_IPS", raising=False)
     admin_auth.reset_login_rate_limiter()
     _login_flows.clear()
     _session_store.clear()
@@ -653,7 +652,8 @@ def test_build_rate_limit_key_hashes_username_and_source() -> None:
 def test_client_ip_ignores_forwarded_without_trusted_proxy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("ADMIN_TRUST_PROXY_HEADERS", raising=False)
+    monkeypatch.delenv("ADMIN_TRUSTED_PROXY_IPS", raising=False)
+    monkeypatch.delenv("ADMIN_TRUSTED_EDGE_IPS", raising=False)
     settings = get_settings()
     request = _request_with_client("198.51.100.10")
     request.headers.__dict__["_list"].append((b"x-forwarded-for", b"203.0.113.99"))
@@ -661,11 +661,13 @@ def test_client_ip_ignores_forwarded_without_trusted_proxy(
 
 
 @pytest.mark.unit
-def test_client_ip_uses_trusted_xff_when_proxy_boundary_verified(
+def test_client_ip_uses_trusted_proxy_chain_when_peer_verified(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_TRUST_PROXY_HEADERS", "true")
-    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
+    monkeypatch.setenv(
+        "ADMIN_TRUSTED_PROXY_IPS",
+        "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10",
+    )
     settings = get_settings()
     request = _request_with_client("10.0.0.1")
     request.headers.__dict__["_list"].append(
@@ -976,7 +978,7 @@ def test_successful_login_clears_account_rate_limit_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
-    source_key = admin_auth.build_source_rate_limit_key("testclient")
+    source_key = admin_auth.build_source_rate_limit_key("unknown")
     account_key = admin_auth.build_account_rate_limit_key(TEST_USERNAME)
     with shared_rate_limiter(rate_limit_store):
         with mock_db_connection():
@@ -1005,7 +1007,7 @@ def test_rate_limit_expires_after_lockout(
         assert _login(password="wrong").status_code == 401
         assert _login(password="wrong").status_code == 429
 
-        source_key = admin_auth.build_source_rate_limit_key("testclient")
+        source_key = admin_auth.build_source_rate_limit_key("unknown")
         account_key = admin_auth.build_account_rate_limit_key(TEST_USERNAME)
         expired_lock = datetime.now(timezone.utc) - timedelta(seconds=1)
         for key in (source_key, account_key):
@@ -1017,44 +1019,38 @@ def test_rate_limit_expires_after_lockout(
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_rate_limit_uses_trusted_xff_when_proxy_boundary_verified(
+def test_rate_limit_uses_trusted_proxy_chain_when_peer_verified(
     rate_limit_store: FakeRateLimitStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
-
-    from app.proxy_trust import uvicorn_forwarded_allow_ips_arg
-
-    monkeypatch.setenv("ADMIN_TRUST_PROXY_HEADERS", "true")
-    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
-    monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
-    trusted_client = TestClient(
-        ProxyHeadersMiddleware(app, trusted_hosts=uvicorn_forwarded_allow_ips_arg()),
-        follow_redirects=False,
-        client=("10.0.0.1", 50000),
+    monkeypatch.setenv(
+        "ADMIN_TRUSTED_PROXY_IPS",
+        "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10",
     )
+    monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
+    settings = get_settings()
     with shared_rate_limiter(rate_limit_store):
-        headers_a = {"X-Forwarded-For": "203.0.113.77, 10.0.0.1"}
-        headers_b = {"X-Forwarded-For": "203.0.113.88, 10.0.0.1"}
+        for _ in range(2):
+            request = _request_with_client("10.0.0.1")
+            request.headers.__dict__["_list"].append(
+                (b"x-forwarded-for", b"203.0.113.77, 10.0.0.1")
+            )
+            admission = admin_auth.try_admit_login_attempt(request, settings, username="ghost")
+            assert admission.admitted is True
 
-        def post_login(extra_headers: dict[str, str]) -> Any:
-            with mock_db_connection():
-                form = trusted_client.get("/admin/login")
-                csrf_token, _ = _parse_login_form(form)
-                return trusted_client.post(
-                    "/admin/login",
-                    data={
-                        "username": "ghost",
-                        "password": "wrong",
-                        "csrf_token": csrf_token,
-                    },
-                    headers=extra_headers,
-                )
+        blocked_request = _request_with_client("10.0.0.1")
+        blocked_request.headers.__dict__["_list"].append(
+            (b"x-forwarded-for", b"203.0.113.77, 10.0.0.1")
+        )
+        blocked = admin_auth.try_admit_login_attempt(blocked_request, settings, username="ghost")
+        assert blocked.throttled is True
 
-        assert post_login(headers_a).status_code == 401
-        assert post_login(headers_a).status_code == 401
-        assert post_login(headers_a).status_code == 429
-        assert post_login(headers_b).status_code == 401
+        other_request = _request_with_client("10.0.0.1")
+        other_request.headers.__dict__["_list"].append(
+            (b"x-forwarded-for", b"203.0.113.88, 10.0.0.1")
+        )
+        other = admin_auth.try_admit_login_attempt(other_request, settings, username="ghost")
+        assert other.admitted is True
 
 
 @pytest.mark.unit
@@ -1063,7 +1059,8 @@ def test_rate_limit_ignores_spoofed_forwarded_without_trust(
     rate_limit_store: FakeRateLimitStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("ADMIN_TRUST_PROXY_HEADERS", raising=False)
+    monkeypatch.delenv("ADMIN_TRUSTED_PROXY_IPS", raising=False)
+    monkeypatch.delenv("ADMIN_TRUSTED_EDGE_IPS", raising=False)
     with shared_rate_limiter(rate_limit_store):
         for i in range(5):
             forwarded = f"203.0.113.{i}"
@@ -1129,7 +1126,7 @@ def test_username_rotation_stops_password_verification_at_source_threshold(
                     assert response.status_code == 429
 
     assert verify_calls["count"] == 3
-    source_key = admin_auth.build_source_rate_limit_key("testclient")
+    source_key = admin_auth.build_source_rate_limit_key("unknown")
     assert len(rate_limit_store.rows) == 1
     assert source_key in rate_limit_store.rows
 
@@ -1261,38 +1258,35 @@ def test_account_rate_limit_blocks_configured_username_across_sources(
     rate_limit_store: FakeRateLimitStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
-
-    from app.proxy_trust import uvicorn_forwarded_allow_ips_arg
-
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
-    monkeypatch.setenv("ADMIN_TRUST_PROXY_HEADERS", "true")
-    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
-    trusted_client = TestClient(
-        ProxyHeadersMiddleware(app, trusted_hosts=uvicorn_forwarded_allow_ips_arg()),
-        follow_redirects=False,
-        client=("10.0.0.1", 50000),
+    monkeypatch.setenv(
+        "ADMIN_TRUSTED_PROXY_IPS",
+        "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10",
     )
+    settings = get_settings()
     with shared_rate_limiter(rate_limit_store):
+        for forwarded in ("203.0.113.1", "203.0.113.2"):
+            request = _request_with_client("10.0.0.1")
+            request.headers.__dict__["_list"].append(
+                (b"x-forwarded-for", f"{forwarded}, 10.0.0.1".encode("ascii"))
+            )
+            admission = admin_auth.try_admit_login_attempt(
+                request,
+                settings,
+                username=TEST_USERNAME,
+            )
+            assert admission.admitted is True
 
-        def post_login(client_ip: str) -> Any:
-            with mock_db_connection():
-                form = trusted_client.get("/admin/login")
-                csrf_token, _ = _parse_login_form(form)
-                return trusted_client.post(
-                    "/admin/login",
-                    data={
-                        "username": TEST_USERNAME,
-                        "password": "wrong-password",
-                        "csrf_token": csrf_token,
-                    },
-                    headers={"X-Forwarded-For": f"{client_ip}, 10.0.0.1"},
-                )
-
-        assert post_login("203.0.113.1").status_code == 401
-        assert post_login("203.0.113.2").status_code == 401
-        blocked = post_login("203.0.113.3")
-    assert blocked.status_code == 429
+        blocked_request = _request_with_client("10.0.0.1")
+        blocked_request.headers.__dict__["_list"].append(
+            (b"x-forwarded-for", b"203.0.113.3, 10.0.0.1")
+        )
+        blocked = admin_auth.try_admit_login_attempt(
+            blocked_request,
+            settings,
+            username=TEST_USERNAME,
+        )
+    assert blocked.throttled is True
 
 
 @pytest.mark.unit
