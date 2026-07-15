@@ -6,14 +6,18 @@ Reviewer and CI enforce coverage of the Render **service** code under `app/`:
 |-------|--------|----------------------------------|
 | Unit | `@pytest.mark.unit` | **90%** |
 | Integration | `@pytest.mark.integration` | **70%** |
+| PostgreSQL contract | `@pytest.mark.contract` | not a coverage gate (see below) |
 
 ## Commands
 
 ```bash
 pip install -r requirements.txt
-pytest -q                                 # full suite
+pytest -q -m "not contract"               # fast suite (unit + integration + scripts)
 python scripts/check_coverage.py          # unit + integration gates
 ```
+
+The `contract` marker is **excluded** from `check_coverage.py` and from the fast
+CI job, so it never distorts the unit/integration coverage math.
 
 Optional overrides:
 
@@ -29,6 +33,49 @@ Optional overrides:
 - **Live Postgres (optional locally, required in CI):** schema reconcile tests in
   `tests/test_pipeline_schema_reconcile.py` use `TEST_DATABASE_URL`. CI sets
   `REQUIRE_TEST_DATABASE=1` so those tests fail closed when the URL is missing.
+- **Contract (real PostgreSQL, `tests/pg_contract/`):** the broad
+  migrations/repositories/transactions/concurrency harness (#228). It runs
+  against a real engine so migration-version drift, invalid joined SQL,
+  partial-index behavior, and concurrency semantics are caught before merge.
+  Reusable fixtures/helpers live in `tests/pg_contract/conftest.py`. Without
+  `TEST_DATABASE_URL` the suite skips locally; CI sets `REQUIRE_TEST_DATABASE=1`
+  so it fails closed instead.
+
+## Live PostgreSQL contract suite (#228)
+
+The contract suite proves the CRM data layer against a real PostgreSQL engine:
+fresh migrations from an empty database, the supported pre-#210 legacy-upgrade
+fixture, migration digest/immutability guards, repository SQL (including joined
+contact queries), partial active-email uniqueness, foreign keys and check
+constraints, commit/rollback on real connections, advisory-lock serialization,
+and concurrent brief conversions over **separate** connections that converge on
+one consistent record set.
+
+Isolation & CI:
+
+- Every test under `tests/pg_contract/` is auto-marked `contract`.
+- It runs in its own path-scoped workflow,
+  `.github/workflows/pg-contract.yml`, which provisions `postgres:16` and runs
+  on pull requests that change migrations, CRM repositories/services, or
+  conversion flows (and on pushes to `main`). The fast `CI / test` job runs
+  `pytest -q -m "not contract"` so unit tests stay quick.
+
+Run it locally against Docker Postgres:
+
+```bash
+docker run --rm -d --name agentweb-pg \
+  -e POSTGRES_USER=test -e POSTGRES_PASSWORD=test -e POSTGRES_DB=agent_web_test \
+  -p 5432:5432 postgres:16-alpine
+
+export TEST_DATABASE_URL="postgresql://test:test@127.0.0.1:5432/agent_web_test"
+pytest -q -m contract                     # or: REQUIRE_TEST_DATABASE=1 pytest -q -m contract
+
+docker rm -f agentweb-pg
+```
+
+Any Postgres 16 reachable via `TEST_DATABASE_URL` works (a local cluster, a
+throwaway container, or a managed instance). Each test rebuilds the `public`
+schema, so point it only at a disposable database.
 - **Migration digest freeze:** after a healthy production deploy, the CI job
   **Freeze shipped migrations** runs `scripts/freeze_shipped_migrations.py` and
   commits any unfrozen digests with `deploy: freeze …` (skipped by Deploy so

@@ -10,6 +10,7 @@ from uuid import UUID
 import psycopg
 
 from app.contacts import DECISION_MAKER_BUYING_ROLES
+from app.patch import UNSET, MaybeUnset
 from app.repositories.protocols import (
     ActivityRepository,
     AdminUserRepository,
@@ -143,30 +144,30 @@ class PostgresCompanyRepository:
         conn: psycopg.Connection,
         company_id: UUID,
         *,
-        name: str | None = None,
-        website: str | None = None,
-        status: str | None = None,
-        domain: str | None = None,
-        category: str | None = None,
-        stage: str | None = None,
-        headcount_estimate: int | None = None,
-        funding_summary: str | None = None,
-        target_status: str | None = None,
-        last_verified_at: date | None = None,
-        notes: str | None = None,
+        name: MaybeUnset[str] = UNSET,
+        website: MaybeUnset[str] = UNSET,
+        status: MaybeUnset[str] = UNSET,
+        domain: MaybeUnset[str] = UNSET,
+        category: MaybeUnset[str] = UNSET,
+        stage: MaybeUnset[str] = UNSET,
+        headcount_estimate: MaybeUnset[int] = UNSET,
+        funding_summary: MaybeUnset[str] = UNSET,
+        target_status: MaybeUnset[str] = UNSET,
+        last_verified_at: MaybeUnset[date] = UNSET,
+        notes: MaybeUnset[str] = UNSET,
     ) -> dict[str, Any] | None:
+        """Apply a partial patch.
+
+        A parameter left at :data:`UNSET` is omitted from the ``UPDATE`` and keeps
+        its stored value. An explicit ``None`` writes SQL ``NULL`` (clear); any
+        other value replaces the column.
+        """
         fields: list[str] = []
         values: list[Any] = []
-        if name is not None:
-            fields.append("name = %s")
-            values.append(name)
-        if website is not None:
-            fields.append("website = %s")
-            values.append(website)
-        if status is not None:
-            fields.append("status = %s")
-            values.append(status)
         for column, value in (
+            ("name", name),
+            ("website", website),
+            ("status", status),
             ("domain", domain),
             ("category", category),
             ("stage", stage),
@@ -176,9 +177,10 @@ class PostgresCompanyRepository:
             ("last_verified_at", last_verified_at),
             ("notes", notes),
         ):
-            if value is not None:
-                fields.append(f"{column} = %s")
-                values.append(value)
+            if value is UNSET:
+                continue
+            fields.append(f"{column} = %s")
+            values.append(value)
         if not fields:
             return self.get_by_id(conn, company_id)
 
@@ -274,16 +276,6 @@ class PostgresContactRepository:
             row = cur.fetchone()
         return dict(row) if row else None
 
-    def get_by_email(self, conn: psycopg.Connection, email: str) -> dict[str, Any] | None:
-        normalized = email.strip().lower()
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT * FROM contacts WHERE lower(email) = %s",
-                (normalized,),
-            )
-            row = cur.fetchone()
-        return dict(row) if row else None
-
     def get_active_by_email(
         self,
         conn: psycopg.Connection,
@@ -291,6 +283,13 @@ class PostgresContactRepository:
         *,
         exclude_contact_id: UUID | None = None,
     ) -> dict[str, Any] | None:
+        """Return the single active (non-archived) contact for an email, if any.
+
+        Active identity lookup: excludes archived rows (``archived_at IS NULL``).
+        The partial unique index ``idx_contacts_email_unique`` guarantees at most
+        one active row per normalized email; ``ORDER BY id`` keeps the result
+        deterministic even if that guarantee is ever weakened.
+        """
         normalized = email.strip().lower()
         conditions = ["LOWER(c.email) = %s", "c.archived_at IS NULL"]
         params: list[Any] = [normalized]
@@ -308,6 +307,35 @@ class PostgresContactRepository:
                 LIMIT 1
                 """,
                 params,
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def get_archived_by_email(
+        self,
+        conn: psycopg.Connection,
+        email: str,
+    ) -> dict[str, Any] | None:
+        """Return the best archived contact match for an email, if any.
+
+        Archived identity lookup: the deliberate counterpart to
+        ``get_active_by_email`` (issue #226). Archived rows are never silently
+        linked as an active CRM contact — callers surface this only as a
+        restore/review option. The most recently archived row wins so operators
+        review the freshest history first.
+        """
+        normalized = email.strip().lower()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT c.*, co.name AS company_name
+                FROM contacts c
+                LEFT JOIN companies co ON co.id = c.company_id
+                WHERE LOWER(c.email) = %s AND c.archived_at IS NOT NULL
+                ORDER BY c.archived_at DESC, c.id
+                LIMIT 1
+                """,
+                (normalized,),
             )
             row = cur.fetchone()
         return dict(row) if row else None
@@ -437,17 +465,23 @@ class PostgresContactRepository:
         conn: psycopg.Connection,
         contact_id: UUID,
         *,
-        full_name: str | None = None,
-        email: str | None = None,
-        title: str | None = None,
-        profile_url: str | None = None,
-        email_permission: str | None = None,
-        company_id: UUID | None = None,
-        last_interaction_at: date | None = None,
-        relationship_strength: str | None = None,
-        notes: str | None = None,
-        buying_roles: list[str] | None = None,
+        full_name: MaybeUnset[str] = UNSET,
+        email: MaybeUnset[str] = UNSET,
+        title: MaybeUnset[str] = UNSET,
+        profile_url: MaybeUnset[str] = UNSET,
+        email_permission: MaybeUnset[str] = UNSET,
+        company_id: MaybeUnset[UUID] = UNSET,
+        last_interaction_at: MaybeUnset[date] = UNSET,
+        relationship_strength: MaybeUnset[str] = UNSET,
+        notes: MaybeUnset[str] = UNSET,
+        buying_roles: MaybeUnset[list[str]] = UNSET,
     ) -> dict[str, Any] | None:
+        """Apply a partial patch.
+
+        A parameter left at :data:`UNSET` is omitted and keeps its stored value.
+        An explicit ``None`` writes SQL ``NULL`` (clear) — e.g. clearing an email
+        or disassociating a company — and any other value replaces the column.
+        """
         fields: list[str] = []
         values: list[Any] = []
         for column, value in (
@@ -460,13 +494,12 @@ class PostgresContactRepository:
             ("last_interaction_at", last_interaction_at),
             ("relationship_strength", relationship_strength),
             ("notes", notes),
+            ("buying_roles", buying_roles),
         ):
-            if value is not None:
-                fields.append(f"{column} = %s")
-                values.append(value)
-        if buying_roles is not None:
-            fields.append("buying_roles = %s")
-            values.append(buying_roles)
+            if value is UNSET:
+                continue
+            fields.append(f"{column} = %s")
+            values.append(value)
         if not fields:
             return self.get_by_id(conn, contact_id)
 
@@ -750,16 +783,24 @@ class PostgresPipelineRepository:
         conn: psycopg.Connection,
         company_id: UUID,
         *,
-        pipeline_stage: str | None = None,
-        next_action: str | None = None,
-        next_action_due_at: datetime | None = None,
-        pipeline_owner: str | None = None,
-        expected_value_cents: int | None = None,
-        pipeline_loss_reason: str | None = None,
-        pipeline_nurture_reason: str | None = None,
+        pipeline_stage: MaybeUnset[str] = UNSET,
+        next_action: MaybeUnset[str] = UNSET,
+        next_action_due_at: MaybeUnset[datetime] = UNSET,
+        pipeline_owner: MaybeUnset[str] = UNSET,
+        expected_value_cents: MaybeUnset[int] = UNSET,
+        pipeline_loss_reason: MaybeUnset[str] = UNSET,
+        pipeline_nurture_reason: MaybeUnset[str] = UNSET,
         clear_loss_reason: bool = False,
         clear_nurture_reason: bool = False,
     ) -> dict[str, Any] | None:
+        """Apply a partial pipeline patch.
+
+        A parameter left at :data:`UNSET` is omitted and keeps its stored value;
+        an explicit ``None`` writes SQL ``NULL`` (clear); any other value replaces
+        the column. The ``clear_loss_reason``/``clear_nurture_reason`` flags force
+        a ``NULL`` write for stage-driven resets and are mutually exclusive with
+        supplying that same reason as a value.
+        """
         fields: list[str] = []
         values: list[Any] = []
         for column, value in (
@@ -771,12 +812,13 @@ class PostgresPipelineRepository:
             ("pipeline_loss_reason", pipeline_loss_reason),
             ("pipeline_nurture_reason", pipeline_nurture_reason),
         ):
-            if value is not None:
-                fields.append(f"{column} = %s")
-                values.append(value)
-        if clear_loss_reason:
+            if value is UNSET:
+                continue
+            fields.append(f"{column} = %s")
+            values.append(value)
+        if clear_loss_reason and pipeline_loss_reason is UNSET:
             fields.append("pipeline_loss_reason = NULL")
-        if clear_nurture_reason:
+        if clear_nurture_reason and pipeline_nurture_reason is UNSET:
             fields.append("pipeline_nurture_reason = NULL")
         if not fields:
             return self.get_company_pipeline(conn, company_id)
