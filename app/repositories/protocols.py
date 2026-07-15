@@ -309,6 +309,13 @@ class PipelineRepository(Protocol):
         limit: int,
     ) -> list[dict[str, Any]]: ...
 
+    def list_companies_without_next_action(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int,
+    ) -> list[dict[str, Any]]: ...
+
     def count_by_pipeline_stage(
         self, conn: psycopg.Connection
     ) -> list[tuple[str, int]]: ...

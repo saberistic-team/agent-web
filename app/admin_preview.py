@@ -172,21 +172,20 @@ def build_preview_acquisition_dashboard_data(
         )
 
     def _next_actions(*, overdue: bool) -> tuple[NextActionRow, ...]:
+        stage_keys = list(PIPELINE_STAGES.keys())
         rows: list[NextActionRow] = []
         for i in range(rng.randint(3, 6)):
             company = companies[i % len(companies)]
-            first = rng.choice(CONTACT_FIRST)
-            last = rng.choice(CONTACT_LAST)
             delta_days = rng.randint(1, 10)
-            review_at = now - timedelta(days=delta_days) if overdue else now + timedelta(days=delta_days)
+            due_at = now - timedelta(days=delta_days) if overdue else now + timedelta(days=delta_days)
             rows.append(
                 NextActionRow(
-                    record_id=_preview_uuid(rng),
                     company_id=_preview_uuid(rng),
                     company_name=company,
-                    contact_name=f"{first} {last}",
-                    body=rng.choice(BRIEF_TEXTS)[:140],
-                    review_at=review_at,
+                    pipeline_stage=stage_keys[i % len(stage_keys)],
+                    pipeline_owner=rng.choice(("alex", "sam", "preview")),
+                    next_action=rng.choice(BRIEF_TEXTS)[:140],
+                    next_action_due_at=due_at,
                 )
             )
         return tuple(rows)
@@ -210,9 +209,10 @@ def build_preview_acquisition_dashboard_data(
             )
         return tuple(rows)
 
-    def _attention() -> tuple[CompanyAttentionRow, ...]:
+    def _attention(*, pipeline_only: bool = False) -> tuple[CompanyAttentionRow, ...]:
         stage_keys = tuple(COMPANY_STAGES.keys())
         category_keys = tuple(COMPANY_CATEGORIES.keys())
+        pipeline_keys = tuple(PIPELINE_STAGES.keys())
         rows: list[CompanyAttentionRow] = []
         for i in range(rng.randint(2, 4)):
             company = companies[(i + 4) % len(companies)]
@@ -225,6 +225,7 @@ def build_preview_acquisition_dashboard_data(
                     target_status=rng.choice(("target", "watching")),
                     category=category,
                     stage=stage,
+                    pipeline_stage=rng.choice(pipeline_keys) if pipeline_only else None,
                 )
             )
         return tuple(rows)
@@ -239,7 +240,7 @@ def build_preview_acquisition_dashboard_data(
         recent_evidence=_evidence(stale=False),
         stale_evidence=_evidence(stale=True),
         without_decision_maker=_attention(),
-        without_next_action=_attention(),
+        without_next_action=_attention(pipeline_only=True),
         generated_at=now,
     )
 

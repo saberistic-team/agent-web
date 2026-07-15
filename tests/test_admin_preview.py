@@ -42,7 +42,8 @@ def test_preview_acquisition_dashboard_html_includes_sections() -> None:
     assert "Preview data — not production" in html
     assert "Overdue next actions" in html
     assert data.overdue_actions[0].company_name in html
-    assert "Companies by stage" in html
+    assert "Companies by funding stage" in html
+    assert "/admin/pipeline/" in html
 
 
 @pytest.mark.unit

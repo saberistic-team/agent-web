@@ -86,22 +86,22 @@ def _populated_dashboard() -> AcquisitionDashboardData:
         contact_counts_by_category=(CountBucket(key="fintech", label="Fintech", count=4),),
         overdue_actions=(
             NextActionRow(
-                record_id="r1",
                 company_id=str(COMPANY_ID),
                 company_name="Northwind Labs",
-                contact_name="Alex Nguyen",
-                body="Schedule architecture review",
-                review_at=NOW - timedelta(days=2),
+                pipeline_stage="qualified",
+                pipeline_owner="Alex Nguyen",
+                next_action="Schedule architecture review",
+                next_action_due_at=NOW - timedelta(days=2),
             ),
         ),
         upcoming_actions=(
             NextActionRow(
-                record_id="r2",
                 company_id=str(COMPANY_ID),
                 company_name="Helios Rail",
-                contact_name="Sam Patel",
-                body="Send follow-up deck",
-                review_at=NOW + timedelta(days=3),
+                pipeline_stage="contacted",
+                pipeline_owner="Sam Patel",
+                next_action="Send follow-up deck",
+                next_action_due_at=NOW + timedelta(days=3),
             ),
         ),
         recent_evidence=(
@@ -142,6 +142,7 @@ def _populated_dashboard() -> AcquisitionDashboardData:
                 target_status="watching",
                 category="ai_infrastructure",
                 stage="series_a",
+                pipeline_stage="researching",
             ),
         ),
         generated_at=NOW,
@@ -173,6 +174,7 @@ def test_render_populated_dashboard_includes_metric_sections() -> None:
     assert "Stale evidence" in html
     assert "Missing decision-maker" in html
     assert "Schedule architecture review" in html
+    assert "/admin/pipeline/" in html
 
 
 @pytest.mark.unit
@@ -185,12 +187,12 @@ def test_render_dashboard_formats_naive_datetimes() -> None:
         contact_counts_by_category=(),
         overdue_actions=(
             NextActionRow(
-                record_id="r1",
                 company_id=str(COMPANY_ID),
                 company_name="Naive Co",
-                contact_name=None,
-                body="Follow up",
-                review_at=naive,
+                pipeline_stage="qualified",
+                pipeline_owner=None,
+                next_action="Follow up",
+                next_action_due_at=naive,
             ),
         ),
         upcoming_actions=(),

@@ -873,6 +873,32 @@ class PostgresPipelineRepository:
             rows = cur.fetchall()
         return [dict(row) for row in rows]
 
+    def list_companies_without_next_action(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, name, pipeline_stage, target_status, category, stage
+                FROM companies
+                WHERE archived_at IS NULL
+                  AND pipeline_stage IS NOT NULL
+                  AND (
+                      next_action IS NULL
+                      OR BTRIM(next_action) = ''
+                      OR next_action_due_at IS NULL
+                  )
+                ORDER BY name ASC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
     def count_by_pipeline_stage(
         self, conn: psycopg.Connection
     ) -> list[tuple[str, int]]:
@@ -894,6 +920,12 @@ class PostgresAcquisitionDashboardRepository:
     _COMPANY_DIMENSIONS = frozenset({"stage", "category"})
     _PUBLIC_EVIDENCE_TYPES = ("verified_fact", "public_signal")
     _TARGET_STATUSES = ("target", "watching")
+
+    def __init__(
+        self,
+        pipeline_repo: PostgresPipelineRepository | None = None,
+    ) -> None:
+        self._pipeline = pipeline_repo or PostgresPipelineRepository()
 
     def count_companies_by_dimension(
         self,
@@ -943,24 +975,11 @@ class PostgresAcquisitionDashboardRepository:
         reference: datetime,
         limit: int,
     ) -> list[dict[str, Any]]:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT rr.*, c.name AS company_name, ct.full_name AS contact_name
-                FROM research_records rr
-                INNER JOIN companies c ON c.id = rr.company_id
-                LEFT JOIN contacts ct ON ct.id = rr.contact_id
-                WHERE rr.record_type = 'follow_up_note'
-                  AND rr.review_at IS NOT NULL
-                  AND rr.review_at < %s
-                  AND c.archived_at IS NULL
-                ORDER BY rr.review_at ASC
-                LIMIT %s
-                """,
-                (reference, limit),
-            )
-            rows = cur.fetchall()
-        return [dict(row) for row in rows]
+        return self._pipeline.list_overdue_next_actions(
+            conn,
+            reference=reference,
+            limit=limit,
+        )
 
     def list_upcoming_next_actions(
         self,
@@ -970,25 +989,12 @@ class PostgresAcquisitionDashboardRepository:
         window_end: datetime,
         limit: int,
     ) -> list[dict[str, Any]]:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT rr.*, c.name AS company_name, ct.full_name AS contact_name
-                FROM research_records rr
-                INNER JOIN companies c ON c.id = rr.company_id
-                LEFT JOIN contacts ct ON ct.id = rr.contact_id
-                WHERE rr.record_type = 'follow_up_note'
-                  AND rr.review_at IS NOT NULL
-                  AND rr.review_at >= %s
-                  AND rr.review_at <= %s
-                  AND c.archived_at IS NULL
-                ORDER BY rr.review_at ASC
-                LIMIT %s
-                """,
-                (reference, window_end, limit),
-            )
-            rows = cur.fetchall()
-        return [dict(row) for row in rows]
+        return self._pipeline.list_upcoming_next_actions(
+            conn,
+            reference=reference,
+            window_end=window_end,
+            limit=limit,
+        )
 
     def list_recent_evidence(
         self,
@@ -1067,27 +1073,7 @@ class PostgresAcquisitionDashboardRepository:
         *,
         limit: int,
     ) -> list[dict[str, Any]]:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT c.*
-                FROM companies c
-                WHERE c.archived_at IS NULL
-                  AND c.target_status = ANY(%s)
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM research_records rr
-                      WHERE rr.company_id = c.id
-                        AND rr.record_type = 'follow_up_note'
-                        AND rr.review_at IS NOT NULL
-                  )
-                ORDER BY c.name ASC
-                LIMIT %s
-                """,
-                (list(self._TARGET_STATUSES), limit),
-            )
-            rows = cur.fetchall()
-        return [dict(row) for row in rows]
+        return self._pipeline.list_companies_without_next_action(conn, limit=limit)
 
 
 class PostgresAdminUserRepository:

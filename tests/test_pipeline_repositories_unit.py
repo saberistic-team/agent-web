@@ -73,6 +73,18 @@ def test_upcoming_next_actions_query_window() -> None:
 
 
 @pytest.mark.unit
+def test_companies_without_next_action_query_is_bounded() -> None:
+    conn = MagicMock()
+    cur = conn.cursor.return_value.__enter__.return_value
+    cur.fetchall.return_value = []
+    repo = PostgresPipelineRepository()
+    repo.list_companies_without_next_action(conn, limit=7)
+    sql = cur.execute.call_args.args[0]
+    assert "LIMIT %s" in sql
+    assert cur.execute.call_args.args[1] == (7,)
+
+
+@pytest.mark.unit
 def test_update_pipeline_fields_and_history_sql() -> None:
     conn = MagicMock()
     cur = conn.cursor.return_value.__enter__.return_value
