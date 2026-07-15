@@ -34,6 +34,7 @@ def database_url() -> str:
 
 @contextmanager
 def _connect(database_url: str) -> Iterator[psycopg.Connection]:
+    # App helpers expect dict rows; apply_migrations needs default tuple rows.
     conn = psycopg.connect(database_url, row_factory=dict_row, autocommit=False)
     try:
         yield conn
@@ -49,16 +50,23 @@ def _reset_public_schema(conn: psycopg.Connection) -> None:
     conn.commit()
 
 
+def _migrate(database_url: str) -> None:
+    with psycopg.connect(database_url, autocommit=False) as conn:
+        apply_migrations(conn)
+
+
 @pytest.fixture
 def pg_conn(database_url: str) -> Iterator[psycopg.Connection]:
+    with psycopg.connect(database_url, autocommit=False) as bootstrap:
+        _reset_public_schema(bootstrap)
+        apply_migrations(bootstrap)
     with _connect(database_url) as conn:
-        _reset_public_schema(conn)
-        apply_migrations(conn)
         try:
             yield conn
         finally:
             conn.rollback()
-            _reset_public_schema(conn)
+            with psycopg.connect(database_url, autocommit=False) as cleanup:
+                _reset_public_schema(cleanup)
 
 
 def _count_limiter_rows(conn: psycopg.Connection) -> int:
@@ -129,7 +137,6 @@ def test_concurrent_admission_does_not_overshoot_threshold(
     def worker() -> None:
         barrier.wait()
         with _connect(_DATABASE_URL) as conn:
-            apply_migrations(conn)
             admission = _admit(
                 conn,
                 keys=(source_key,),
