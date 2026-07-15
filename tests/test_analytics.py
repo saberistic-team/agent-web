@@ -270,14 +270,8 @@ def test_stripe_webhook_emits_payment_completed(monkeypatch: pytest.MonkeyPatch)
                 "amount_total": 15_000,
                 "currency": "usd",
                 "total_details": {"amount_discount": 5000},
-                "discounts": [{"promotion_code": "promo_test_half"}],
             }
         },
-    }
-    discounted_brief = {
-        **FAKE_PAID_BRIEF,
-        "payment_amount_cents": 15_000,
-        "payment_discount_cents": 5000,
     }
 
     with mock_db_connection():
@@ -285,7 +279,7 @@ def test_stripe_webhook_emits_payment_completed(monkeypatch: pytest.MonkeyPatch)
             "app.main.stripe_service.construct_webhook_event",
             return_value=fake_event,
         ):
-            with patch("app.main.db.mark_brief_paid", return_value=discounted_brief):
+            with patch("app.main.db.mark_brief_paid", return_value=FAKE_PAID_BRIEF):
                 with patch(
                     "app.main.analytics_service.track_payment_completed"
                 ) as track_payment:
@@ -299,7 +293,6 @@ def test_stripe_webhook_emits_payment_completed(monkeypatch: pytest.MonkeyPatch)
     track_payment.assert_called_once()
     assert track_payment.call_args.kwargs["brief_id"] == 1
     assert track_payment.call_args.kwargs["price_cents"] == 15_000
-    assert track_payment.call_args.kwargs["discount_cents"] == 5000
     assert track_payment.call_args.kwargs["utm"]["utm_source"] == "linkedin"
 
 

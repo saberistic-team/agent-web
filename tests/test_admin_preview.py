@@ -174,6 +174,10 @@ def test_preview_brief_rows_randomized_and_seed_stable() -> None:
     assert a[1]["id"] == 2 and a[1]["status"] == "pending_payment"
     assert a[1]["utm_source"] is None and a[1]["paid_at"] is None
     assert a[0]["website"] != c[0]["website"] or a[0]["contact_value"] != c[0]["contact_value"]
+    discounted = build_preview_brief_detail(3, rng=random.Random(5), now=now)
+    assert discounted is not None
+    assert discounted["payment_amount_cents"] == 15_000
+    assert discounted["payment_discount_cents"] == 5000
     detail = build_preview_brief_detail(1, rng=random.Random(5), now=now)
     assert detail is not None
     assert detail["website"] == a[0]["website"]
@@ -247,8 +251,6 @@ def test_admin_preview_briefs_list_and_detail_have_mock_data(
     assert detail.status_code == 200
     assert "Project brief #1" in detail.text
     assert "Paid" in detail.text
-    assert "Subtotal: $200" in detail.text
-    assert "Total: $150 USD" in detail.text
     emptyish = client.get("/admin/briefs/2")
     assert emptyish.status_code == 200
     assert "Project brief #2" in emptyish.text

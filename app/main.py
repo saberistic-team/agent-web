@@ -311,7 +311,7 @@ async def stripe_webhook(request: Request) -> JSONResponse:
         logger.error("checkout.session.completed missing brief_id metadata")
         return JSONResponse({"received": True})
 
-    payment = stripe_service.extract_payment_details_from_session(session)
+    payment_details = stripe_service.extract_payment_details_from_session(session)
 
     with db.db_connection(settings.database_url) as conn:
         paid_brief = db.mark_brief_paid(
@@ -319,22 +319,21 @@ async def stripe_webhook(request: Request) -> JSONResponse:
             brief_id=brief_id,
             stripe_session_id=session.get("id"),
             stripe_payment_intent_id=session.get("payment_intent"),
-            payment_subtotal_cents=payment.payment_subtotal_cents,
-            payment_discount_cents=payment.payment_discount_cents,
-            payment_amount_cents=payment.payment_amount_cents,
-            payment_currency=payment.payment_currency,
-            stripe_promotion_code_id=payment.stripe_promotion_code_id,
+            **payment_details,
         )
 
     if paid_brief is None:
         return JSONResponse({"received": True})
 
+    amount_cents = payment_details.get("payment_amount_cents")
+    if amount_cents is None:
+        amount_cents = settings.brief_price_cents
+
     try:
         analytics_service.track_payment_completed(
             settings,
             brief_id=brief_id,
-            price_cents=payment.payment_amount_cents,
-            discount_cents=payment.payment_discount_cents,
+            price_cents=int(amount_cents),
             utm={
                 "utm_source": paid_brief.get("utm_source"),
                 "utm_medium": paid_brief.get("utm_medium"),

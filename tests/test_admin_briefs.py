@@ -333,6 +333,34 @@ def test_render_admin_briefs_page_preserves_filter_params_in_pager() -> None:
 
 
 @pytest.mark.unit
+def test_render_admin_briefs_page_shows_discounted_payment() -> None:
+    filters = BriefListFilters(
+        page=1,
+        per_page=50,
+        query=None,
+        status=None,
+        date_from=None,
+        date_to=None,
+        date_from_raw=None,
+        date_to_raw=None,
+    )
+    brief = _sample_brief()
+    brief["payment_subtotal_cents"] = 20_000
+    brief["payment_discount_cents"] = 5000
+    brief["payment_amount_cents"] = 15_000
+    brief["payment_currency"] = "usd"
+    html_out = render_admin_briefs_page(
+        admin_username=TEST_USERNAME,
+        briefs=[brief],
+        filters=filters,
+        total=1,
+        price_cents=20_000,
+    )
+    assert "$150" in html_out
+    assert "−$50" in html_out or "-$50" in html_out
+
+
+@pytest.mark.unit
 @pytest.mark.integration
 def test_admin_briefs_page_requires_auth() -> None:
     response = client.get("/admin/briefs")

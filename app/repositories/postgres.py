@@ -1148,14 +1148,15 @@ class PostgresAdminUserRepository:
 class PostgresProjectBriefRepository:
     _LIST_COLUMNS = """
         id, created_at, website, contact_value, status, paid_at,
-        payment_amount_cents, payment_discount_cents, payment_currency,
+        payment_subtotal_cents, payment_discount_cents, payment_amount_cents,
+        payment_currency,
         utm_source, utm_campaign
     """
     _DETAIL_COLUMNS = """
         id, created_at, website, contact_method, contact_value, brief, status,
         stripe_session_id, stripe_payment_intent_id, paid_at,
         payment_subtotal_cents, payment_discount_cents, payment_amount_cents,
-        payment_currency, stripe_promotion_code_id,
+        payment_currency, stripe_discount_id,
         utm_source, utm_medium, utm_campaign, utm_content, utm_term
     """
 

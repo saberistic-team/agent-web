@@ -2,21 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any
 
 import stripe
-
-
-@dataclass(frozen=True)
-class CheckoutPaymentDetails:
-    """Amounts from a completed Stripe Checkout Session (source of truth)."""
-
-    payment_subtotal_cents: int | None
-    payment_discount_cents: int | None
-    payment_amount_cents: int
-    payment_currency: str
-    stripe_promotion_code_id: str | None
 
 
 def create_checkout_session(
@@ -67,34 +55,46 @@ def extract_brief_id_from_session(session: dict[str, Any]) -> int | None:
     return int(raw_id)
 
 
-def extract_payment_details_from_session(session: dict[str, Any]) -> CheckoutPaymentDetails:
-    """Read subtotal, discount, total, currency, and Stripe promotion/coupon id."""
+def extract_payment_details_from_session(
+    session: dict[str, Any],
+) -> dict[str, int | str | None]:
+    """Read completed Checkout Session payment totals (source of truth for discounts)."""
     total_details = session.get("total_details") or {}
-    discount_cents = int(total_details.get("amount_discount") or 0)
+    discount_cents = total_details.get("amount_discount")
+    if discount_cents is None:
+        discount_cents = 0
 
-    amount_total = session.get("amount_total")
-    if amount_total is None:
-        amount_total = 0
-
-    subtotal_raw = session.get("amount_subtotal")
-    if subtotal_raw is None and discount_cents:
-        subtotal_raw = int(amount_total) + discount_cents
-    subtotal_cents = int(subtotal_raw) if subtotal_raw is not None else None
-
-    currency = str(session.get("currency") or "usd")
-
-    promotion_code_id: str | None = None
-    for discount in session.get("discounts") or []:
-        if not isinstance(discount, dict):
+    stripe_discount_id: str | None = None
+    for entry in session.get("discounts") or []:
+        if not isinstance(entry, dict):
             continue
-        promotion_code_id = discount.get("promotion_code") or discount.get("coupon")
-        if promotion_code_id:
+        promotion_code = entry.get("promotion_code")
+        coupon = entry.get("coupon")
+        if isinstance(promotion_code, dict):
+            promo_id = promotion_code.get("id")
+            if promo_id:
+                stripe_discount_id = str(promo_id)
+                break
+        if isinstance(promotion_code, str) and promotion_code:
+            stripe_discount_id = promotion_code
+            break
+        if isinstance(coupon, dict):
+            coupon_id = coupon.get("id")
+            if coupon_id:
+                stripe_discount_id = str(coupon_id)
+                break
+        if isinstance(coupon, str) and coupon:
+            stripe_discount_id = coupon
             break
 
-    return CheckoutPaymentDetails(
-        payment_subtotal_cents=subtotal_cents,
-        payment_discount_cents=discount_cents if discount_cents else None,
-        payment_amount_cents=int(amount_total),
-        payment_currency=currency,
-        stripe_promotion_code_id=promotion_code_id,
-    )
+    subtotal = session.get("amount_subtotal")
+    total = session.get("amount_total")
+    currency = session.get("currency")
+
+    return {
+        "payment_subtotal_cents": int(subtotal) if subtotal is not None else None,
+        "payment_discount_cents": int(discount_cents),
+        "payment_amount_cents": int(total) if total is not None else None,
+        "payment_currency": str(currency).lower() if currency else None,
+        "stripe_discount_id": stripe_discount_id,
+    }
