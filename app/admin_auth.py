@@ -20,10 +20,7 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.admin_client_source import (
-    ClientSourceResolutionPath,
-    resolve_admin_login_client_source,
-)
+from app.admin_client_source import client_ip
 from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
@@ -236,34 +233,6 @@ def read_login_flow_token(request: Request) -> str | None:
     if not token:
         return None
     return token.strip() or None
-
-
-def client_ip(request: Request, settings: Settings) -> str:
-    """Resolve the client source IP for admin login rate limiting.
-
-    Forwarding headers are honored only when the immediate peer matches
-    ``ADMIN_TRUSTED_PROXY_CIDRS`` (Render's internal proxy boundary in
-    production). Otherwise the direct peer address is used so clients cannot
-    spoof ``X-Forwarded-For``, ``Forwarded``, or ``CF-Connecting-IP``.
-
-    Source identity notes:
-
-    * **IPv4 / IPv6** — stored only as keyed digests; the resolved string is
-      passed verbatim into the source bucket (e.g. ``203.0.113.1``,
-      ``2001:db8::1``).
-    * **Missing peer** — falls back to ``unknown`` so attempts still share one
-      bucket instead of creating an unbounded namespace.
-    * **Trusted proxy** — when the peer is verified, ``CF-Connecting-IP`` or a
-      right-to-left ``X-Forwarded-For`` walk selects the client; spoofed
-      left-most values are ignored.
-    """
-    resolution = resolve_admin_login_client_source(request, settings)
-    if resolution.path is not ClientSourceResolutionPath.DIRECT_PEER:
-        _logger.info(
-            "Admin login client source resolved",
-            extra={"source_resolution_path": resolution.path.value},
-        )
-    return resolution.source
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
