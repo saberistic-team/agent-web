@@ -27,10 +27,10 @@ class Settings:
     admin_login_rate_limit: int = 5
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
-    admin_trusted_proxy_cidrs: tuple[str, ...] = ()
-    admin_trusted_forwarding_cidrs: tuple[str, ...] = ()
-    admin_cloudflare_forwarding_cidrs: tuple[str, ...] = ()
-    uvicorn_forwarded_allow_ips: str = ""
+    admin_trust_proxy_headers: bool = False
+    admin_trusted_proxy_networks: str = ""
+    admin_cloudflare_edge_networks: str = ""
+    admin_forwarded_allow_ips: str = "127.0.0.1"
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -112,52 +112,18 @@ def get_settings() -> Settings:
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
         brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
-        admin_trusted_proxy_cidrs=_load_admin_trusted_proxy_cidrs(),
-        admin_trusted_forwarding_cidrs=_load_admin_trusted_forwarding_cidrs(),
-        admin_cloudflare_forwarding_cidrs=_load_admin_cloudflare_forwarding_cidrs(),
-        uvicorn_forwarded_allow_ips=os.environ.get("UVICORN_FORWARDED_ALLOW_IPS", "").strip(),
+        admin_trust_proxy_headers=os.environ.get(
+            "ADMIN_TRUST_PROXY_HEADERS", ""
+        ).lower()
+        in ("1", "true", "yes"),
+        admin_trusted_proxy_networks=os.environ.get(
+            "ADMIN_TRUSTED_PROXY_NETWORKS", ""
+        ).strip(),
+        admin_cloudflare_edge_networks=os.environ.get(
+            "ADMIN_CLOUDFLARE_EDGE_NETWORKS", ""
+        ).strip(),
+        admin_forwarded_allow_ips=os.environ.get(
+            "ADMIN_FORWARDED_ALLOW_IPS", "127.0.0.1"
+        ).strip()
+        or "127.0.0.1",
     )
-
-
-def _parse_cidr_env(name: str) -> tuple[str, ...]:
-    raw = os.environ.get(name, "").strip()
-    if not raw:
-        return ()
-    return tuple(part.strip() for part in raw.split(",") if part.strip())
-
-
-def _legacy_proxy_trust_enabled() -> bool:
-    return os.environ.get("ADMIN_TRUST_PROXY_HEADERS", "").lower() in ("1", "true", "yes")
-
-
-def _load_admin_trusted_proxy_cidrs() -> tuple[str, ...]:
-    from app.admin_client_source import DEFAULT_TRUSTED_PROXY_CIDRS
-
-    explicit = _parse_cidr_env("ADMIN_TRUSTED_PROXY_CIDRS")
-    if explicit:
-        return explicit
-    if _legacy_proxy_trust_enabled():
-        return DEFAULT_TRUSTED_PROXY_CIDRS
-    return ()
-
-
-def _load_admin_trusted_forwarding_cidrs() -> tuple[str, ...]:
-    from app.admin_client_source import DEFAULT_TRUSTED_FORWARDING_CIDRS
-
-    explicit = _parse_cidr_env("ADMIN_TRUSTED_FORWARDING_CIDRS")
-    if explicit:
-        return explicit
-    if _load_admin_trusted_proxy_cidrs():
-        return DEFAULT_TRUSTED_FORWARDING_CIDRS
-    return ()
-
-
-def _load_admin_cloudflare_forwarding_cidrs() -> tuple[str, ...]:
-    from app.admin_client_source import DEFAULT_CLOUDFLARE_FORWARDING_CIDRS
-
-    explicit = _parse_cidr_env("ADMIN_CLOUDFLARE_FORWARDING_CIDRS")
-    if explicit:
-        return explicit
-    if _load_admin_trusted_proxy_cidrs():
-        return DEFAULT_CLOUDFLARE_FORWARDING_CIDRS
-    return ()
