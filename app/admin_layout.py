@@ -93,12 +93,11 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
-    "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-    "/admin/companies/cccccccc-cccc-cccc-cccc-cccccccccccc",
-    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
-    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd",
-    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/edit",
-    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd/edit",
+    "/admin/companies/44444444-4444-4444-4444-444444444444",
+    "/admin/companies/55555555-5555-5555-5555-555555555555",
+    "/admin/contacts/66666666-6666-6666-6666-666666666666",
+    "/admin/contacts/77777777-7777-7777-7777-777777777777",
+    "/admin/contacts/88888888-8888-8888-8888-888888888888/edit",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
@@ -107,6 +106,13 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
 ADMIN_SCREENSHOT_EXPECTED_STATUS: dict[str, int] = {
     "/admin/briefs/503": 503,
 }
+
+
+def admin_archive_action_button_class(*, archived: bool) -> str:
+    """CSS classes for archive (destructive) vs restore (secondary) form actions."""
+    if archived:
+        return "admin-action-btn admin-action-btn--secondary"
+    return "admin-action-btn admin-action-btn--destructive"
 
 
 def _active_nav_label(active_path: str) -> str:
@@ -152,13 +158,6 @@ def render_admin_nav(active_path: str) -> str:
             </ul>
           </details>
         </nav>"""
-
-
-def archive_restore_button_class(*, archived: bool) -> str:
-    """Return semantic admin action classes for archive/restore form buttons."""
-    if archived:
-        return "admin-action-btn admin-action-btn--restore"
-    return "admin-action-btn admin-action-btn--destructive"
 
 
 def render_admin_shell(

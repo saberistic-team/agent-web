@@ -68,33 +68,28 @@ body.admin-app {
   padding: 0;
 }
 
+/* Form action buttons (archive/restore) — distinct from link-like .admin-exit. */
 .admin-action-btn {
   appearance: none;
-  -webkit-appearance: none;
   display: inline-block;
   margin: 0;
-  padding: 0.55rem 0.9rem;
   font-family: inherit;
   font-size: 0.72rem;
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   line-height: 1.2;
+  padding: 0.5rem 0.85rem;
   border-radius: 2px;
-  border: 1px solid var(--line);
-  background: color-mix(in srgb, var(--surface) 75%, transparent);
-  color: var(--ink);
   cursor: pointer;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  color: var(--ink);
   transition:
-    background 0.15s ease,
-    border-color 0.15s ease,
-    color 0.15s ease,
+    background 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease,
     transform 0.15s ease;
-}
-
-.admin-action-btn:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent);
 }
 
 .admin-action-btn:focus-visible {
@@ -121,33 +116,25 @@ body.admin-app {
 }
 
 .admin-action-btn--destructive:hover:not(:disabled) {
-  border-color: #e88a6a;
-  background: color-mix(in srgb, #e05a5a 22%, var(--surface));
-  color: #ffd0c8;
+  border-color: #e05a5a;
+  color: #ffd4d4;
+  background: color-mix(in srgb, #e05a5a 24%, var(--surface));
 }
 
 .admin-action-btn--destructive:focus-visible {
-  outline-color: #e88a6a;
+  outline-color: #e05a5a;
 }
 
-.admin-action-btn--destructive:active:not(:disabled) {
-  background: color-mix(in srgb, #e05a5a 28%, var(--surface));
-}
-
-.admin-action-btn--restore {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+.admin-action-btn--secondary {
+  border-color: var(--line);
   background: color-mix(in srgb, var(--surface) 80%, transparent);
   color: var(--ink);
 }
 
-.admin-action-btn--restore:hover:not(:disabled) {
+.admin-action-btn--secondary:hover:not(:disabled) {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
   color: var(--accent);
-}
-
-.admin-action-btn--restore:focus-visible {
-  outline-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
 }
 
 .admin-layout {
