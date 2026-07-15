@@ -70,11 +70,21 @@ def is_agent_infra_issue(title: str, body: str) -> bool:
         title_l,
     ):
         return False
+    # NOTE: a bare `playwright` (or `headless`) mention is *not* sufficient
+    # signal on its own — most ordinary product/bug-fix issues now require a
+    # Playwright test in their "Required tests" section. Misclassifying those
+    # as infra sends them down the no-op docs-sync path forever, which the
+    # Reviewer correctly rejects every time (Builder<->Reviewer loop; see
+    # issue #237). Only treat the issue as Reviewer/screenshot *infra* work
+    # when it is actually about the capture/reviewer pipeline itself.
     return bool(
         re.search(
-            r"\breviewer:\s*(headless|screenshot)|\bheadless\b.*\bscreenshot\b|"
-            r"\bplaywright\b|\bscreenshot.*(workflow|infra|pipeline|before approve)\b|"
-            r"visual (check|evidence|proof).*before approve|after deploy.*screenshot",
+            r"\breviewer:\s*(headless|screenshot)|"
+            r"\breviewer\b.{0,40}\bscreenshot(s)?\b|\bscreenshot(s)?\b.{0,40}\breviewer\b|"
+            r"\bheadless\b.{0,40}\bscreenshot\b|\bscreenshot\b.{0,40}\bheadless\b|"
+            r"\bscreenshot.{0,20}(workflow|infra|pipeline|before approve|capture)\b|"
+            r"\bpreview screenshot\b|\bscreenshot.{0,20}preview mode\b|"
+            r"visual (check|evidence|proof).{0,40}before approve|after deploy.{0,20}screenshot",
             text,
         )
     )
