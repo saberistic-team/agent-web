@@ -20,7 +20,7 @@ from app.acquisition_dashboard import (
     NextActionRow,
 )
 from app.pipeline_stages import PIPELINE_STAGES
-from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES
+from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES, TARGET_STATUSES
 
 
 COMPANY_NAMES = (
@@ -100,6 +100,22 @@ PREVIEW_PIPELINE_COMPANY_IDS = (
     UUID("33333333-3333-3333-3333-333333333333"),
     UUID("44444444-4444-4444-4444-444444444444"),
     UUID("55555555-5555-5555-5555-555555555555"),
+)
+PREVIEW_COMPANY_IDS = (
+    UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa01"),
+    UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa02"),
+    UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa03"),
+    UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa04"),
+    UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa05"),
+    UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa06"),
+)
+PREVIEW_CONTACT_IDS = (
+    UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb01"),
+    UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb02"),
+    UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb03"),
+    UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb04"),
+    UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb05"),
+    UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbb06"),
 )
 _SECTION_COLUMNS: dict[str, tuple[str, ...]] = {
     "/admin/companies": ("Company", "Category", "Stage", "Target", "Verified"),
@@ -553,6 +569,130 @@ def build_preview_pipeline_companies(
             }
         )
     return companies
+
+
+def build_preview_companies(
+    *,
+    query: str | None = None,
+    category: str | None = None,
+    stage: str | None = None,
+    target_status: str | None = None,
+    freshness: str | None = None,
+    include_archived: bool = False,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> list[dict[str, object]]:
+    """Randomized company rows for ADMIN_PREVIEW_MODE list screenshots."""
+    rng = rng or _preview_rng()
+    now = now or datetime.now(timezone.utc)
+    category_keys = list(COMPANY_CATEGORIES)
+    stage_keys = list(COMPANY_STAGES)
+    target_keys = list(TARGET_STATUSES)
+    companies: list[dict[str, object]] = []
+    for index, company_id in enumerate(PREVIEW_COMPANY_IDS):
+        name = COMPANY_NAMES[index % len(COMPANY_NAMES)]
+        verified_days = rng.randint(-120, 45)
+        verified_at = (now + timedelta(days=verified_days)).date().isoformat()
+        archived_at = None
+        if index == len(PREVIEW_COMPANY_IDS) - 1:
+            archived_at = (now - timedelta(days=rng.randint(3, 30))).isoformat()
+        companies.append(
+            {
+                "id": company_id,
+                "name": name,
+                "category": category_keys[index % len(category_keys)],
+                "stage": stage_keys[index % len(stage_keys)],
+                "target_status": target_keys[index % len(target_keys)],
+                "last_verified_at": verified_at if verified_days >= -90 else None,
+                "archived_at": archived_at,
+            }
+        )
+
+    def _matches(row: dict[str, object]) -> bool:
+        if query:
+            needle = query.lower()
+            if needle not in str(row.get("name", "")).lower():
+                return False
+        if category and row.get("category") != category:
+            return False
+        if stage and row.get("stage") != stage:
+            return False
+        if target_status and row.get("target_status") != target_status:
+            return False
+        if freshness == "fresh" and not row.get("last_verified_at"):
+            return False
+        if freshness == "stale" and row.get("last_verified_at"):
+            return False
+        if freshness == "unknown" and row.get("last_verified_at"):
+            return False
+        if not include_archived and row.get("archived_at"):
+            return False
+        return True
+
+    return [row for row in companies if _matches(row)]
+
+
+def build_preview_contacts(
+    *,
+    query: str | None = None,
+    company_id: UUID | None = None,
+    buying_role: str | None = None,
+    include_archived: bool = False,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    """Randomized contact rows and company options for ADMIN_PREVIEW_MODE."""
+    from app.contacts import BUYING_ROLES
+
+    rng = rng or _preview_rng()
+    now = now or datetime.now(timezone.utc)
+    companies = build_preview_companies(rng=rng, now=now, include_archived=True)
+    company_by_id = {row["id"]: row for row in companies}
+    role_keys = list(BUYING_ROLES)
+    contacts: list[dict[str, object]] = []
+    for index, contact_id in enumerate(PREVIEW_CONTACT_IDS):
+        company = companies[index % len(companies)]
+        first = CONTACT_FIRST[index % len(CONTACT_FIRST)]
+        last = CONTACT_LAST[index % len(CONTACT_LAST)]
+        company_name = str(company["name"])
+        role_count = rng.randint(1, 2)
+        buying_roles = rng.sample(role_keys, k=min(role_count, len(role_keys)))
+        archived_at = None
+        if index == len(PREVIEW_CONTACT_IDS) - 1:
+            archived_at = (now - timedelta(days=rng.randint(3, 30))).isoformat()
+        contacts.append(
+            {
+                "id": contact_id,
+                "full_name": f"{first} {last}",
+                "title": rng.choice(("CTO", "VP Engineering", "Founder", "Head of Product")),
+                "buying_roles": buying_roles,
+                "company_id": company["id"],
+                "company_name": company_name,
+                "email": _slug_email(first, last, company_name, rng),
+                "last_interaction_at": (now - timedelta(days=rng.randint(1, 90))).date().isoformat(),
+                "archived_at": archived_at,
+            }
+        )
+
+    def _matches(row: dict[str, object]) -> bool:
+        if query:
+            needle = query.lower()
+            haystack = " ".join(
+                str(row.get(key, ""))
+                for key in ("full_name", "title", "email")
+            ).lower()
+            if needle not in haystack:
+                return False
+        if company_id and row.get("company_id") != company_id:
+            return False
+        if buying_role and buying_role not in (row.get("buying_roles") or []):
+            return False
+        if not include_archived and row.get("archived_at"):
+            return False
+        return True
+
+    filtered = [row for row in contacts if _matches(row)]
+    return filtered, list(company_by_id.values())
 
 
 def build_preview_pipeline_detail(
