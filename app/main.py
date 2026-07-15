@@ -45,14 +45,13 @@ ASSETS_DIR = SITE_DIR / "assets"
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
+    if settings.admin_auth_configured:
+        validate_admin_login_limiter_secrets(settings)
     if settings.database_configured:
         db.init_db(settings.database_url)
         logger.info("database schema ready")
     else:
         logger.warning("DATABASE_URL not set — brief persistence disabled")
-    if settings.admin_auth_configured:
-        validate_admin_login_limiter_secrets(settings)
-        logger.info("admin login limiter secrets validated")
     yield
 
 

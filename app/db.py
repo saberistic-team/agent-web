@@ -406,14 +406,14 @@ def try_admit_admin_login(
     rate_limit: int,
     window_seconds: int,
     lockout_seconds: int,
-    lock_check_keys: tuple[str, ...] | None = None,
+    lookup_keys: tuple[str, ...] | None = None,
 ) -> AdminLoginAdmission:
     """Atomically decide whether a login attempt may reach password verification.
 
-    All ``limiter_keys`` are locked in sorted order inside one transaction so
-    concurrent requests cannot overshoot the configured threshold. When any key
-    in ``lock_check_keys`` (defaults to ``limiter_keys``) is actively locked,
-    admission is denied without incrementing counters.
+    All ``lookup_keys`` (defaulting to ``limiter_keys``) are locked in sorted
+    order inside one transaction so concurrent requests cannot overshoot the
+    configured threshold. When any consulted key is actively locked, admission
+    is denied without incrementing counters. Only ``limiter_keys`` are updated.
     """
     if not limiter_keys:
         return AdminLoginAdmission(
@@ -423,10 +423,10 @@ def try_admit_admin_login(
             lockout_transition=False,
         )
 
-    ordered_increment_keys = tuple(sorted(limiter_keys))
-    ordered_check_keys = tuple(sorted(set(limiter_keys) | set(lock_check_keys or ())))
+    admission_keys = tuple(sorted(limiter_keys))
+    consulted_keys = tuple(sorted(set(admission_keys) | set(lookup_keys or admission_keys)))
     with conn.cursor() as cur:
-        for limiter_key in ordered_increment_keys:
+        for limiter_key in admission_keys:
             cur.execute(
                 """
                 INSERT INTO admin_login_rate_limits (
@@ -446,11 +446,11 @@ def try_admit_admin_login(
             ORDER BY limiter_key
             FOR UPDATE
             """,
-            (list(ordered_check_keys),),
+            (list(consulted_keys),),
         )
         rows = {str(row["limiter_key"]): row for row in cur.fetchall()}
 
-        for limiter_key in ordered_check_keys:
+        for limiter_key in consulted_keys:
             row = rows.get(limiter_key)
             if row is None:
                 continue
@@ -466,7 +466,7 @@ def try_admit_admin_login(
 
         updates: dict[str, tuple[int, datetime, datetime | None]] = {}
         lockout_transition = False
-        for limiter_key in ordered_increment_keys:
+        for limiter_key in admission_keys:
             row = rows[limiter_key]
             window_started_at = row["window_started_at"]
             if window_started_at.tzinfo is None:

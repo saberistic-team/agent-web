@@ -16,7 +16,6 @@ from pathlib import Path
 import pytest
 
 from app.admin_auth import LOGIN_FLOW_COOKIE_NAME
-from tests.conftest import TEST_LIMITER_SECRET
 from tests.test_admin_auth import TEST_HASH, TEST_PASSWORD, TEST_SECRET, TEST_USERNAME
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -73,7 +72,7 @@ def test_uvicorn_trusted_proxy_chain_throttles_rotated_spoofed_headers() -> None
         "ADMIN_USERNAME": TEST_USERNAME,
         "ADMIN_PASSWORD_HASH": TEST_HASH,
         "ADMIN_SESSION_SECRET": TEST_SECRET,
-        "ADMIN_LOGIN_LIMITER_SECRET": TEST_LIMITER_SECRET,
+        "ADMIN_LOGIN_LIMITER_SECRET": "test-limiter-secret-32chars-minimum!",
         "ADMIN_LOGIN_RATE_LIMIT": "2",
         "ADMIN_TRUSTED_PROXY_CIDRS": TRUSTED_PROXY_CIDRS,
         "UVICORN_FORWARDED_ALLOW_IPS": "127.0.0.0/8",
