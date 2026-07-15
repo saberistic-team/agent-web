@@ -93,6 +93,12 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
+    "/admin/companies/66666666-6666-6666-6666-666666666666",
+    "/admin/companies/77777777-7777-7777-7777-777777777777",
+    "/admin/contacts/88888888-8888-8888-8888-888888888888",
+    "/admin/contacts/99999999-9999-9999-9999-999999999999",
+    "/admin/contacts/88888888-8888-8888-8888-888888888888/edit",
+    "/admin/contacts/99999999-9999-9999-9999-999999999999/edit",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
@@ -148,10 +154,10 @@ def render_admin_nav(active_path: str) -> str:
         </nav>"""
 
 
-def admin_archive_action_class(*, archived: bool) -> str:
-    """CSS classes for archive/restore form submit buttons."""
+def archive_action_button_class(*, archived: bool) -> str:
+    """Semantic classes for archive/restore form submit buttons."""
     if archived:
-        return "admin-action admin-action--secondary"
+        return "admin-action admin-action--restore"
     return "admin-action admin-action--destructive"
 
 
