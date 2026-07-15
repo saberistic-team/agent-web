@@ -50,19 +50,6 @@ server-side; raw tokens appear in HTML forms only and are never logged.
    CSRF digest, `consumed_at IS NULL`, and `expires_at > now`. Exactly one
    concurrent submission can succeed; a zero-row update is a failed security
    claim.
-
-   **PostgreSQL concurrency guarantee (verified #243):** independent
-   `psycopg` connections racing the production `claim_admin_login_flow`
-   statement against one row produce exactly one non-empty `RETURNING` result;
-   blocked waiters observe zero rows after the winner commits. A rolled-back
-   claim leaves `consumed_at` unset so a later claimant can succeed. Route-level
-   integration tests confirm only one concurrent `POST` reaches password
-   verification, mints a session, or records `auth.login.success`; losers follow
-   the failed-claim path with no session or success audit. Fast mocked unit
-   tests in `tests/test_admin_login_flow_claim_concurrency.py` and
-   `tests/test_admin_login_flow_concurrency.py` remain supplemental; live
-   coverage lives in `tests/test_admin_login_flow_claim_pg_integration.py`
-   (CI sets `REQUIRE_TEST_DATABASE=1`).
 4. **Consumption point** — the flow is marked consumed at successful claim,
    *before* password verification. This closes the time-of-check/time-of-use
    race: concurrent replays cannot both reach credential checks. A successful
@@ -75,6 +62,29 @@ server-side; raw tokens appear in HTML forms only and are never logged.
 6. On failure or throttle, a fresh flow and CSRF token are issued.
 7. On success, the flow cookie is cleared and a new authenticated session is
    minted (session fixation resistance).
+
+#### Verified PostgreSQL concurrency (#243)
+
+Integration tests in
+``tests/test_admin_login_flow_claim_pg_integration.py`` race **independent**
+``psycopg`` connections (separate transactions, no Python lock around the
+claim) against one ``admin_login_flows`` row. PostgreSQL row locking and the
+conditional ``UPDATE … RETURNING`` determine the outcome:
+
+| Scenario | PostgreSQL behavior |
+|----------|---------------------|
+| Two or more concurrent valid claims | Exactly one ``RETURNING`` row; all others zero-row |
+| Loser at the route layer | Failed security claim (HTTP 400); no password verify, session, or ``auth.login.success`` audit |
+| Winner with invalid credentials | One password verify and one replacement flow; loser cannot consume the replacement |
+| Uncommitted winning ``UPDATE`` rolled back | Row remains claimable; a later transaction may claim |
+| Claim at ``expires_at`` | Zero-row update (``expires_at > now`` is strict) |
+| Cleanup vs in-flight claim | Cleanup never deletes active (unexpired, unconsumed) rows |
+
+CI sets ``REQUIRE_TEST_DATABASE=1`` so these tests fail closed when
+``TEST_DATABASE_URL`` is missing. Fast mocked unit tests in
+``tests/test_admin_login_flow_claim_concurrency.py`` and
+``tests/test_admin_login_flow_concurrency.py`` remain supplemental branch
+coverage.
 
 Stale flows are removed opportunistically when minting a new flow
 (see [Login flow retention](#login-flow-retention)). Only hashed tokens are
