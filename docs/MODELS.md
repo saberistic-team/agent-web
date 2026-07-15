@@ -3,6 +3,8 @@
 **Builder codegen**, **Reviewer AI** (PR review + acceptance), and
 **post-deploy visual** prefer the **Cursor Agent SDK** when `CURSOR_API_KEY`
 is set. OpenAI and GitHub Models are backups (OpenAI quota is often exhausted).
+Every Cursor SDK call defaults to Claude **Sonnet with Max Mode enabled**
+(`scripts/cursor_model.py`) — override with `CURSOR_MODEL` / `CURSOR_MAX_MODE`.
 
 ## Builder flow
 
@@ -101,7 +103,8 @@ commit per file, which storms CI and races merges).
 | `CODEGEN_PROVIDER` | unset → Cursor if key present, else OpenAI, else Models |
 | `REVIEW_PROVIDER` | unset → Cursor if key present, else OpenAI, else Models |
 | `VISUAL_PROVIDER` | unset → Cursor if key present, else OpenAI |
-| `CURSOR_MODEL` | `composer-2.5` |
+| `CURSOR_MODEL` | `sonnet-4.5` |
+| `CURSOR_MAX_MODE` | `true` (Max Mode on for every Cursor SDK call; set `false` to disable) |
 | `CURSOR_RUNTIME` | `local` in Actions (Builder); set `cloud` only when needed |
 | `OPENAI_MODEL` | Path-specific defaults when unset: codegen / post-deploy visual → `gpt-4.1-mini`; Reviewer / acceptance / conflict helpers → `gpt-4o-mini` |
 | `GITHUB_MODELS_MODEL` | `openai/gpt-4o-mini` |
@@ -112,7 +115,8 @@ commit per file, which storms CI and races merges).
 2. Repo secret: `CURSOR_API_KEY`
 3. Repo variables: `CODEGEN_PROVIDER=cursor`, optionally `REVIEW_PROVIDER=cursor`,
    `VISUAL_PROVIDER=cursor`
-4. Optional: `CURSOR_MODEL=composer-2.5`, `CURSOR_RUNTIME=local`
+4. Optional: `CURSOR_MODEL=sonnet-4.5` (defaults to Sonnet with Max Mode on;
+   `CURSOR_MAX_MODE=false` disables Max Mode), `CURSOR_RUNTIME=local`
 5. For Builder **cloud** only: connect GitHub so Cursor can clone/open PRs
 
 Docs: [Cursor Python SDK](https://cursor.com/docs/sdk/python)

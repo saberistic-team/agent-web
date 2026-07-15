@@ -14,11 +14,11 @@ import urllib.error
 import urllib.request
 from typing import Any
 
+from cursor_model import DEFAULT_CURSOR_MODEL, cursor_model_dict, cursor_model_selection
 from github_api import GitHubError, api, split_repo
 
 DEFAULT_MODEL = "openai/gpt-4o-mini"
 DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
-DEFAULT_CURSOR_MODEL = "composer-2.5"
 MODELS_URL = "https://models.github.ai/inference/chat/completions"
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 
@@ -67,7 +67,7 @@ def chat_cursor(system: str, user: str, model: str | None = None) -> tuple[str, 
         result = Agent.prompt(
             prompt,
             AgentOptions(
-                model=model,
+                model=cursor_model_selection(model),
                 api_key=key,
                 name="reviewer-ai",
                 mode="plan",
@@ -80,7 +80,7 @@ def chat_cursor(system: str, user: str, model: str | None = None) -> tuple[str, 
             result = Agent.prompt(
                 prompt,
                 {
-                    "model": model,
+                    "model": cursor_model_dict(model),
                     "apiKey": key,
                     "name": "reviewer-ai",
                     "mode": "plan",

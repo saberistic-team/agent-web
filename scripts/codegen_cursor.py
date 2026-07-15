@@ -16,10 +16,10 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from cursor_model import DEFAULT_CURSOR_MODEL, cursor_model_selection
 from github_api import GitHubError, api, post_issue_comment, split_repo
 from pr_labels import apply_pr_mirror
 
-DEFAULT_CURSOR_MODEL = "composer-2.5"
 SKIP_PATH_PREFIXES = (
     ".git/",
     ".venv/",
@@ -273,7 +273,7 @@ def _build_local(
     for attempt in range(1, attempts + 1):
         try:
             with Agent.create(
-                model=model,
+                model=cursor_model_selection(model),
                 api_key=key,
                 name=f"builder-{issue}",
                 local=LocalAgentOptions(cwd=str(root)),
@@ -417,7 +417,7 @@ def _build_cloud(
     run_id = ""
     try:
         with Agent.create(
-            model=model,
+            model=cursor_model_selection(model),
             api_key=key,
             name=f"builder-{issue}",
             cloud=CloudAgentOptions(
