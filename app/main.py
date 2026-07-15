@@ -109,11 +109,13 @@ def sitemap() -> Response:
 
 @app.get("/health")
 def health() -> dict:
-    """Liveness/readiness. Includes ``schema_version`` when the DB is configured.
+    """Process liveness. Optionally reports ``schema_version`` when the DB is readable.
 
-    Migrations run at startup; if they fail the process never serves /health, so
-    Render marks the deploy failed. When the DB is up, ``schema_version`` is the
-    latest applied migration for post-deploy verification.
+    Migrations run at startup (``db.init_db``). If they fail, uvicorn never serves
+    this path and Render marks the deploy ``update_failed``. ``schema_version`` is
+    best-effort for post-deploy verification — connection errors must not turn
+    liveness into 503 (that breaks readiness probes and unit tests that set a
+    unused DATABASE_URL).
     """
     payload: dict = {"status": "ok"}
     settings = get_settings()
@@ -123,10 +125,9 @@ def health() -> dict:
         version = db.latest_schema_version(settings.database_url)
     except Exception:
         logger.exception("health: failed to read schema_migrations")
-        raise HTTPException(status_code=503, detail="schema not ready") from None
-    if version is None:
-        raise HTTPException(status_code=503, detail="schema not ready")
-    payload["schema_version"] = version
+        return payload
+    if version is not None:
+        payload["schema_version"] = version
     return payload
 
 
