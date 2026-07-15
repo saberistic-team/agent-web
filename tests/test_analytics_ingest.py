@@ -348,8 +348,10 @@ def test_persist_and_deduplicate_event_pg(pg_conn: psycopg.Connection) -> None:
     assert not retry.duplicate
 
     with pg_conn.cursor() as cur:
-        cur.execute("SELECT COUNT(*) FROM analytics_events")
-        count = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) AS n FROM analytics_events")
+        row = cur.fetchone()
+        assert row is not None
+        count = row["n"]
     assert count == 2
 
 

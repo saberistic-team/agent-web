@@ -230,7 +230,7 @@ def test_pipeline_detail_renders_themed_checkbox_and_datetime() -> None:
     assert 'type="datetime-local"' in html
     assert 'name="confirm"' in html
     assert 'type="checkbox"' in html
-    assert 'class="admin-form"' in html
+    assert 'class="admin-form admin-form--editor"' in html
 
 
 @pytest.mark.unit
@@ -346,7 +346,7 @@ def test_preview_companies_page_includes_archived_checkbox(
     )
     assert response.status_code == 200
     body = response.text
-    assert 'class="admin-form"' in body
+    assert 'class="admin-form admin-form--compact"' in body
     assert 'name="archived"' in body
     assert 'type="checkbox"' in body
     assert "Include archived" in body
@@ -365,7 +365,7 @@ def test_preview_contacts_page_includes_archived_checkbox(
     )
     assert response.status_code == 200
     body = response.text
-    assert 'class="admin-form"' in body
+    assert 'class="admin-form admin-form--compact"' in body
     assert 'name="archived"' in body
     assert 'type="checkbox"' in body
     assert "Include archived" in body
