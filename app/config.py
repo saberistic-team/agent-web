@@ -2,25 +2,14 @@
 
 from __future__ import annotations
 
-import ipaddress
 import os
 from dataclasses import dataclass
-from typing import Iterable
 
 
-def _parse_proxy_networks(
-    cidrs: Iterable[str],
-) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
-    networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
-    for raw in cidrs:
-        value = raw.strip()
-        if not value:
-            continue
-        try:
-            networks.append(ipaddress.ip_network(value, strict=False))
-        except ValueError:
-            continue
-    return tuple(networks)
+def _parse_cidr_list(raw: str) -> tuple[str, ...]:
+    if not raw.strip():
+        return ()
+    return tuple(token.strip() for token in raw.split(",") if token.strip())
 
 
 @dataclass(frozen=True)
@@ -63,18 +52,6 @@ class Settings:
         return bool(self.resend_api_key)
 
     @property
-    def admin_trusted_proxy_networks(
-        self,
-    ) -> tuple:
-        return _parse_proxy_networks(self.admin_trusted_proxy_cidrs)
-
-    @property
-    def admin_cloudflare_proxy_networks(
-        self,
-    ) -> tuple:
-        return _parse_proxy_networks(self.admin_cloudflare_proxy_cidrs)
-
-    @property
     def admin_preview_mode(self) -> bool:
         flag = os.environ.get("ADMIN_PREVIEW_MODE", "").lower()
         return flag in ("1", "true", "yes")
@@ -113,13 +90,6 @@ class Settings:
         return bool(self.plausible_domain)
 
 
-def _csv_env_tuple(name: str) -> tuple[str, ...]:
-    raw = os.environ.get(name, "")
-    if not raw.strip():
-        return ()
-    return tuple(part.strip() for part in raw.split(",") if part.strip())
-
-
 def get_settings() -> Settings:
     return Settings(
         database_url=os.environ.get("DATABASE_URL", ""),
@@ -151,6 +121,10 @@ def get_settings() -> Settings:
             "ADMIN_TRUST_PROXY_HEADERS", ""
         ).lower()
         in ("1", "true", "yes"),
-        admin_trusted_proxy_cidrs=_csv_env_tuple("ADMIN_TRUSTED_PROXY_CIDRS"),
-        admin_cloudflare_proxy_cidrs=_csv_env_tuple("ADMIN_CLOUDFLARE_PROXY_CIDRS"),
+        admin_trusted_proxy_cidrs=_parse_cidr_list(
+            os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "")
+        ),
+        admin_cloudflare_proxy_cidrs=_parse_cidr_list(
+            os.environ.get("ADMIN_CLOUDFLARE_PROXY_CIDRS", "")
+        ),
     )
