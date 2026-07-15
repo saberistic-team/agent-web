@@ -20,7 +20,8 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.admin_client_source import client_ip, resolve_admin_login_client_source
+from app.client_source import client_ip as resolve_client_ip
+from app.client_source import resolve_client_source
 from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
@@ -235,6 +236,17 @@ def read_login_flow_token(request: Request) -> str | None:
     return token.strip() or None
 
 
+def client_ip(request: Request, settings: Settings) -> str:
+    """Resolve the client source for admin login rate limiting.
+
+    Delegates to :mod:`app.client_source`, which applies verified-hop parsing
+    when ``ADMIN_TRUST_PROXY_HEADERS`` is enabled and the immediate peer is
+    within ``ADMIN_TRUSTED_PROXY_IPS``. Raw forwarding headers from untrusted
+    peers are ignored.
+    """
+    return resolve_client_ip(request, settings)
+
+
 def _digest_limiter_key(prefix: str, material: str) -> str:
     payload = f"{prefix}:{material}"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -356,6 +368,7 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
+    resolve_client_source(request, settings)
     source = client_ip(request, settings)
     limiter_keys = login_limiter_keys(
         submitted_username=username,

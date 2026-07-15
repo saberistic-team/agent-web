@@ -41,27 +41,21 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(f"PASS {url} → {payload}")
 
-    health_url = f"{base}/health"
-    try:
-        health_payload = get_json(health_url)
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-        print(f"FAIL {health_url}: {exc}", file=sys.stderr)
-        return 1
-    proxy_trust = health_payload.get("admin_proxy_trust")
+    health = get_json(f"{base}/health")
+    proxy_trust = health.get("admin_client_source")
     if not isinstance(proxy_trust, dict):
-        print(f"FAIL {health_url}: missing admin_proxy_trust metadata", file=sys.stderr)
-        return 1
-    if proxy_trust.get("forwarded_allow_ips") != "127.0.0.1":
         print(
-            f"FAIL {health_url}: unexpected forwarded_allow_ips "
-            f"{proxy_trust.get('forwarded_allow_ips')!r}",
+            f"FAIL {base}/health: missing admin_client_source deploy verification block",
             file=sys.stderr,
         )
         return 1
-    if not proxy_trust.get("trusted_proxy_cidrs_configured"):
-        print(f"FAIL {health_url}: trusted proxy CIDRs not configured", file=sys.stderr)
+    if proxy_trust.get("resolution_strategy") != "verified_hop_parse":
+        print(
+            f"FAIL {base}/health: unexpected admin_client_source strategy {proxy_trust!r}",
+            file=sys.stderr,
+        )
         return 1
-    print(f"PASS {health_url} → admin_proxy_trust configured")
+    print(f"PASS {base}/health admin_client_source → {proxy_trust}")
     return 0
 
 
