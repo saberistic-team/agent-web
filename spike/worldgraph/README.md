@@ -9,6 +9,10 @@ python -m spike.worldgraph.run_benchmarks
 python -m pytest tests/test_worldgraph_spike.py -v
 ```
 
+Offline fixture bodies are bundled in `docs/worldgraph/spike/corpus_fixtures.json`
+(keyed by filename from `corpus_sources.json`). Supplementary SSRF/XSS/injection
+controls live inline in `docs/worldgraph/research-corpus.json`.
+
 ## Modules
 
 | Module | Purpose |
