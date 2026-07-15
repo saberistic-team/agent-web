@@ -9,25 +9,12 @@ import sys
 import urllib.error
 import urllib.request
 
+from app.admin_client_source import uvicorn_forwarded_allow_ips_arg
+
 
 def get_json(url: str) -> dict:
     with urllib.request.urlopen(url, timeout=30) as resp:
         return json.loads(resp.read().decode())
-
-
-def verify_admin_login_source_trust(health_payload: dict, base_url: str) -> bool:
-    """Return True when production health reports an active proxy trust boundary."""
-    if not isinstance(health_payload, dict) or health_payload.get("status") != "ok":
-        return False
-
-    origin = base_url.rstrip("/")
-    if not (origin.endswith("saberistic.com") or "onrender.com" in origin):
-        return True
-
-    trust = health_payload.get("admin_proxy_trust")
-    if not isinstance(trust, dict):
-        return False
-    return bool(trust.get("enabled")) and int(trust.get("trusted_proxy_entry_count", 0)) > 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -58,19 +45,26 @@ def main(argv: list[str] | None = None) -> int:
 
     health_url = f"{base}/health"
     try:
-        health_payload = get_json(health_url)
+        health = get_json(health_url)
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
         print(f"FAIL {health_url}: {exc}", file=sys.stderr)
         return 1
-
-    if not verify_admin_login_source_trust(health_payload, base):
+    proxy_trust = health.get("admin_proxy_trust")
+    if not isinstance(proxy_trust, dict) or not proxy_trust.get("configured"):
         print(
-            f"FAIL {health_url}: expected admin_proxy_trust enabled with trusted proxies",
+            f"FAIL {health_url}: expected admin_proxy_trust.configured=true in production",
             file=sys.stderr,
         )
         return 1
-    if base.endswith("saberistic.com") or "onrender.com" in base:
-        print(f"PASS {health_url} → admin_proxy_trust boundary active")
+    expected_ips = uvicorn_forwarded_allow_ips_arg()
+    if proxy_trust.get("forwarded_allow_ips") != expected_ips:
+        print(
+            f"FAIL {health_url}: forwarded_allow_ips mismatch "
+            f"(got {proxy_trust.get('forwarded_allow_ips')!r}, expected {expected_ips!r})",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"PASS {health_url} → admin_proxy_trust configured")
     return 0
 
 
