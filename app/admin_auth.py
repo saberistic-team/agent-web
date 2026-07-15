@@ -20,8 +20,11 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.admin_client_source import resolve_admin_login_client_source
 from app.config import Settings
+from app.proxy_trust import (
+    ClientSourceResolution,
+    resolve_admin_login_client_source,
+)
 
 SESSION_COOKIE_NAME = "admin_session"
 LOGIN_FLOW_COOKIE_NAME = "admin_login_flow"
@@ -235,14 +238,32 @@ def read_login_flow_token(request: Request) -> str | None:
     return token.strip() or None
 
 
-def client_ip(request: Request, settings: Settings) -> str:
-    """Resolve the client source IP for admin login rate limiting.
+def _cached_client_source_resolution(
+    request: Request,
+    settings: Settings,
+) -> ClientSourceResolution:
+    cached = getattr(request.state, "_admin_login_client_source", None)
+    if isinstance(cached, ClientSourceResolution):
+        return cached
+    resolution = resolve_admin_login_client_source(request, settings)
+    request.state._admin_login_client_source = resolution
+    return resolution
 
-    Delegates to :func:`resolve_admin_login_client_source`, which accepts
-    forwarding headers only when the rightmost hop is a configured trusted
-    proxy and derives the client by walking the chain right-to-left.
+
+def client_ip(request: Request, settings: Settings) -> str:
+    """Resolve the client source IP for rate limiting.
+
+    Delegates to :func:`resolve_admin_login_client_source`, which only trusts
+    forwarding headers when the immediate peer matches
+    ``ADMIN_TRUSTED_PROXY_CIDRS``. Resolved values are digested for limiter
+    storage; raw addresses and header chains are never logged.
     """
-    return resolve_admin_login_client_source(request, settings).source
+    return _cached_client_source_resolution(request, settings).address
+
+
+def client_source_resolution_path(request: Request, settings: Settings) -> str:
+    """Return the telemetry-only resolution path label for the active request."""
+    return _cached_client_source_resolution(request, settings).path
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
@@ -412,12 +433,14 @@ def try_admit_login_attempt(
             store_unavailable=True,
         )
 
+    resolution_path = client_source_resolution_path(request, settings)
     if admission.admitted:
         _logger.info(
             "Admin login attempt admitted",
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "lockout_transition": admission.lockout_transition,
+                "source_resolution_path": resolution_path,
             },
         )
     elif admission.already_locked:
@@ -426,6 +449,7 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "already_locked": True,
+                "source_resolution_path": resolution_path,
             },
         )
     return LoginAdmissionResult(
