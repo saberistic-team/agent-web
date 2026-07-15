@@ -134,7 +134,7 @@ def test_preview_section_main_html_includes_contacts_mock_table() -> None:
 def test_preview_section_rows_contacts_include_five_columns() -> None:
     rows = build_preview_section_rows("/admin/contacts", rng=random.Random(11))
     assert 4 <= len(rows) <= 8
-    assert all(len(row) == 5 for row in rows)
+    assert all(len(row) == 6 for row in rows)
 
 
 @pytest.mark.unit

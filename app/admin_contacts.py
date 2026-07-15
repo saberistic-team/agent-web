@@ -115,19 +115,35 @@ def render_contact_form_page(
     error_message: str | None = None,
     warnings: list[Any] | None = None,
 ) -> str:
-    is_new = contact is None
-    action = "/admin/contacts" if is_new else f"/admin/contacts/{contact['id']}/edit"
+    is_new = contact is None or contact.get("id") is None
+    contact_id = None if is_new else contact.get("id")
+    action = "/admin/contacts" if is_new else f"/admin/contacts/{contact_id}/edit"
     title = "Add contact" if is_new else f"Edit {contact.get('full_name', '')}"
     warning_html = "".join(
         f'<li>Possible duplicate ({_esc(item.reason)}): '
         f'<a href="/admin/contacts/{_esc(item.contact_id)}">{_esc(item.full_name)}</a>.</li>'
         for item in (warnings or [])
     )
+    archive_form = ""
+    if not is_new and contact_id is not None:
+        if contact.get("archived_at"):
+            archive_form = f"""
+      <form class="admin-inline-form" method="post" action="/admin/contacts/{_esc(contact_id)}/restore">
+        <input type="hidden" name="csrf_token" value="{_esc(csrf_token)}" />
+        <button class="admin-exit" type="submit">Restore contact</button>
+      </form>"""
+        else:
+            archive_form = f"""
+      <form class="admin-inline-form" method="post" action="/admin/contacts/{_esc(contact_id)}/archive">
+        <input type="hidden" name="csrf_token" value="{_esc(csrf_token)}" />
+        <button class="admin-danger" type="submit">Archive contact</button>
+      </form>"""
     main = f"""<section class="admin-section" aria-labelledby="contact-form-title">
       <p class="admin-breadcrumb"><a href="/admin/contacts">Contacts</a></p>
       <h1 class="admin-title" id="contact-form-title">{_esc(title)}</h1>
       {'<p class="form-error" role="alert">' + _esc(error_message) + '</p>' if error_message else ''}
       {'<ul class="form-error" role="status">' + warning_html + '</ul>' if warning_html else ''}
       {_contact_form(action=action, csrf_token=csrf_token, contact=contact, companies=companies)}
+      {archive_form}
     </section>"""
     return render_admin_shell(title=title, main=main, active_path="/admin/contacts", admin_username=admin_username, csrf_token=csrf_token)

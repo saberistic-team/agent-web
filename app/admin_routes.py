@@ -826,6 +826,8 @@ def admin_contacts(
         ),
         "archived": "1" if archived else None,
     }
+    if not settings.database_url:
+        raise HTTPException(status_code=503, detail="Database not configured")
     with db.db_connection(settings.database_url) as conn:
         contacts = _crm.list_contacts(
             conn,
@@ -979,7 +981,7 @@ def admin_contact_restore(
     with db.db_connection(get_settings().database_url) as conn:
         if _crm.restore_contact(conn, contact_id) is None:
             raise HTTPException(status_code=404, detail="Contact not found")
-    return RedirectResponse(url=f"/admin/contacts/{contact_id}", status_code=303)
+    return RedirectResponse(url=f"/admin/contacts/{contact_id}/edit", status_code=303)
 
 
 @router.get("/contacts/{contact_id}", response_class=HTMLResponse)

@@ -12,9 +12,9 @@ import pytest
 from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 
-from app import admin_auth, db
+from app import admin_auth, admin_routes, db
 from app.admin_auth import SESSION_COOKIE_NAME
-from app.crm_service import CrmService, CrmRepositories
+from app.contacts import ContactDuplicateWarning
 from app.main import app
 
 client = TestClient(app, follow_redirects=False)
@@ -88,7 +88,8 @@ def authenticated_admin() -> dict[str, Any]:
     ):
         db_conn.return_value.__enter__.return_value = mock_conn
         cookies = {SESSION_COOKIE_NAME: raw_token}
-        response = client.get("/admin/contacts", cookies=cookies)
+        with patch.object(admin_routes._crm, "list_contacts", return_value=[]):
+            response = client.get("/admin/contacts", cookies=cookies)
         csrf_token = _extract_csrf_token(response.text)
         yield {"cookies": cookies, "csrf_token": csrf_token, "conn": mock_conn}
 
@@ -104,13 +105,13 @@ def test_contacts_list_requires_auth() -> None:
 @pytest.mark.unit
 @pytest.mark.integration
 def test_contacts_list_renders_for_admin(authenticated_admin: dict[str, Any]) -> None:
-    with patch.object(CrmService, "search_contacts", return_value=[]) as search:
+    with patch.object(admin_routes._crm, "list_contacts", return_value=[]) as list_contacts:
         response = client.get("/admin/contacts", cookies=authenticated_admin["cookies"])
 
     assert response.status_code == 200
     assert "Contacts" in response.text
     assert 'href="/admin/contacts/new"' in response.text
-    search.assert_called_once()
+    list_contacts.assert_called_once()
 
 
 @pytest.mark.unit
@@ -119,56 +120,49 @@ def test_create_contact_assigns_roles_and_shows_duplicate_warnings(
     authenticated_admin: dict[str, Any],
 ) -> None:
     created = {
-        "id": CONTACT_ID,
-        "name": "Pat Example",
-        "buying_roles": ["founder", "technical_buyer"],
-        "duplicate_warnings": ["Profile URL matches existing contact: Existing"],
+        "contact": {
+            "id": CONTACT_ID,
+            "full_name": "Pat Example",
+            "buying_roles": ["founder", "technical_buyer"],
+        },
+        "duplicate_warnings": [
+            ContactDuplicateWarning(
+                contact_id=str(CONTACT_ID),
+                full_name="Existing",
+                reason="profile_url",
+            )
+        ],
     }
 
-    company_repo = MagicMock()
-    company_repo.list_all.return_value = []
-    service = CrmService(
-        repos=CrmRepositories(
-            companies=company_repo,
-            contacts=MagicMock(),
-            source_records=MagicMock(),
-            activities=MagicMock(),
-            admin_users=MagicMock(),
-        )
-    )
-
-    with (
-        patch("app.admin_routes._crm_service", return_value=service),
-        patch.object(service, "create_contact", return_value=created),
-    ):
+    with patch.object(admin_routes._crm, "create_contact", return_value=created):
         response = client.post(
-            "/admin/contacts/new",
+            "/admin/contacts",
             cookies=authenticated_admin["cookies"],
             data={
                 "csrf_token": authenticated_admin["csrf_token"],
-                "name": "Pat Example",
+                "full_name": "Pat Example",
                 "profile_url": "https://linkedin.com/in/pat/",
                 "buying_roles": ["founder", "technical_buyer"],
             },
         )
 
-    assert response.status_code == 200
-    assert "Possible duplicates" in response.text
-    assert "Founder" in response.text
-    assert "Technical buyer" in response.text
+    assert response.status_code == 303
+    assert f"/admin/contacts/{CONTACT_ID}/edit" in response.headers["location"]
+    assert "duplicate" in response.headers["location"].lower()
 
 
 @pytest.mark.unit
 @pytest.mark.integration
 def test_archive_contact_redirects(authenticated_admin: dict[str, Any]) -> None:
-    with patch.object(CrmService, "archive_contact", return_value={"id": CONTACT_ID}) as archive:
-        with patch("app.admin_routes._crm_service", return_value=CrmService()):
-            response = client.post(
-                f"/admin/contacts/{CONTACT_ID}/archive",
-                cookies=authenticated_admin["cookies"],
-                data={"csrf_token": authenticated_admin["csrf_token"]},
-                follow_redirects=False,
-            )
+    with patch.object(
+        admin_routes._crm, "archive_contact", return_value={"id": CONTACT_ID}
+    ) as archive:
+        response = client.post(
+            f"/admin/contacts/{CONTACT_ID}/archive",
+            cookies=authenticated_admin["cookies"],
+            data={"csrf_token": authenticated_admin["csrf_token"]},
+            follow_redirects=False,
+        )
 
     assert response.status_code == 303
     assert response.headers["location"] == "/admin/contacts"
@@ -178,37 +172,35 @@ def test_archive_contact_redirects(authenticated_admin: dict[str, Any]) -> None:
 @pytest.mark.unit
 @pytest.mark.integration
 def test_company_page_shows_associated_contacts(authenticated_admin: dict[str, Any]) -> None:
-    company = {"id": COMPANY_ID, "name": "Acme", "website": "https://acme.dev", "status": "prospect"}
+    company = {
+        "id": COMPANY_ID,
+        "name": "Acme",
+        "website": "https://acme.dev",
+        "category": "fintech",
+        "stage": "seed",
+        "target_status": "target",
+    }
     contacts = [
         {
             "id": CONTACT_ID,
-            "name": "Pat Example",
+            "full_name": "Pat Example",
             "title": "CTO",
             "buying_roles": ["technical_buyer"],
             "relationship_strength": "good",
         }
     ]
 
-    company_repo = MagicMock()
-    company_repo.get_by_id.return_value = company
-    service = CrmService(
-        repos=CrmRepositories(
-            companies=company_repo,
-            contacts=MagicMock(),
-            source_records=MagicMock(),
-            activities=MagicMock(),
-            admin_users=MagicMock(),
-        )
-    )
-
     with (
-        patch("app.admin_routes._crm_service", return_value=service),
-        patch.object(service, "list_company_contacts", return_value=contacts),
+        patch.object(admin_routes._crm, "get_company", return_value=company),
+        patch.object(admin_routes._crm, "list_contacts_for_company", return_value=contacts),
+        patch.object(admin_routes._crm, "list_research_for_company", return_value=[]),
     ):
-        response = client.get(f"/admin/companies/{COMPANY_ID}", cookies=authenticated_admin["cookies"])
+        response = client.get(
+            f"/admin/companies/{COMPANY_ID}", cookies=authenticated_admin["cookies"]
+        )
 
     assert response.status_code == 200
-    assert "Associated contacts" in response.text
+    assert "Contacts" in response.text
     assert "Pat Example" in response.text
     assert "Technical buyer" in response.text
 
@@ -227,23 +219,16 @@ def test_contacts_returns_503_without_database(
 @pytest.mark.unit
 @pytest.mark.integration
 def test_contacts_new_form_renders(authenticated_admin: dict[str, Any]) -> None:
-    company_repo = MagicMock()
-    company_repo.list_all.return_value = [{"id": COMPANY_ID, "name": "Acme"}]
-    service = CrmService(
-        repos=CrmRepositories(
-            companies=company_repo,
-            contacts=MagicMock(),
-            source_records=MagicMock(),
-            activities=MagicMock(),
-            admin_users=MagicMock(),
-        )
-    )
-    with patch("app.admin_routes._crm_service", return_value=service):
+    with patch.object(
+        admin_routes._crm,
+        "list_companies",
+        return_value=[{"id": COMPANY_ID, "name": "Acme"}],
+    ):
         response = client.get(
             f"/admin/contacts/new?company_id={COMPANY_ID}",
             cookies=authenticated_admin["cookies"],
         )
 
     assert response.status_code == 200
-    assert "New contact" in response.text
+    assert "Add contact" in response.text
     assert str(COMPANY_ID) in response.text
