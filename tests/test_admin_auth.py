@@ -237,10 +237,8 @@ def admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "5")
     monkeypatch.setenv("ADMIN_LOGIN_RATE_WINDOW_SECONDS", "900")
     monkeypatch.setenv("ADMIN_LOGIN_LOCKOUT_SECONDS", "900")
-    monkeypatch.delenv("ADMIN_TRUSTED_PROXY_CIDRS", raising=False)
-    monkeypatch.delenv("ADMIN_CLOUDFLARE_EDGE_CIDRS", raising=False)
-    monkeypatch.delenv("ADMIN_TRUST_CLOUDFLARE_EDGE", raising=False)
-    monkeypatch.delenv("UVICORN_FORWARDED_ALLOW_IPS", raising=False)
+    monkeypatch.delenv("ADMIN_TRUSTED_PROXY_IPS", raising=False)
+    admin_auth.reset_login_rate_limiter()
     _login_flows.clear()
     _session_store.clear()
 
@@ -653,7 +651,7 @@ def test_build_rate_limit_key_hashes_username_and_source() -> None:
 def test_client_ip_ignores_forwarded_without_trusted_proxy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("ADMIN_TRUSTED_PROXY_CIDRS", raising=False)
+    monkeypatch.delenv("ADMIN_TRUSTED_PROXY_IPS", raising=False)
     settings = get_settings()
     request = _request_with_client("198.51.100.10")
     request.headers.__dict__["_list"].append((b"x-forwarded-for", b"203.0.113.99"))
@@ -661,14 +659,14 @@ def test_client_ip_ignores_forwarded_without_trusted_proxy(
 
 
 @pytest.mark.unit
-def test_client_ip_uses_trusted_hop_chain_when_proxy_verified(
+def test_client_ip_uses_trusted_proxy_chain_when_peer_is_trusted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", "10.0.0.1/32")
+    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_IPS", "10.0.0.0/8,127.0.0.1")
     settings = get_settings()
     request = _request_with_client("10.0.0.1")
     request.headers.__dict__["_list"].append(
-        (b"x-forwarded-for", b"203.0.113.99, 203.0.113.50, 10.0.0.1")
+        (b"x-forwarded-for", b"203.0.113.50, 10.0.0.1")
     )
     assert admin_auth.client_ip(request, settings) == "203.0.113.50"
 
@@ -1015,25 +1013,22 @@ def test_rate_limit_expires_after_lockout(
 
 
 @pytest.mark.unit
-def test_rate_limit_source_key_stable_for_trusted_hop_chain_despite_spoof_rotation(
+@pytest.mark.integration
+def test_rate_limit_uses_forwarded_ip_when_trusted(
+    rate_limit_store: FakeRateLimitStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", "10.0.0.1/32")
-    settings = get_settings()
-    first = _request_with_client("10.0.0.1")
-    first.headers.__dict__["_list"].append(
-        (b"x-forwarded-for", b"203.0.113.99, 203.0.113.77, 10.0.0.1")
-    )
-    second = _request_with_client("10.0.0.1")
-    second.headers.__dict__["_list"].append(
-        (b"x-forwarded-for", b"203.0.113.88, 203.0.113.77, 10.0.0.1")
-    )
-    first_source = admin_auth.client_ip(first, settings)
-    second_source = admin_auth.client_ip(second, settings)
-    assert first_source == second_source == "203.0.113.77"
-    assert admin_auth.build_source_rate_limit_key(first_source) == admin_auth.build_source_rate_limit_key(
-        second_source
-    )
+    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_IPS", "127.0.0.1")
+    monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
+    with shared_rate_limiter(rate_limit_store):
+        with patch("app.client_source.immediate_peer_host", return_value="127.0.0.1"):
+            headers = {"X-Forwarded-For": "203.0.113.77"}
+            assert _login(username="ghost", password="wrong", headers=headers).status_code == 401
+            assert _login(username="ghost", password="wrong", headers=headers).status_code == 401
+            assert _login(username="ghost", password="wrong", headers=headers).status_code == 429
+
+            other_ip_headers = {"X-Forwarded-For": "203.0.113.88"}
+            assert _login(username="ghost", password="wrong", headers=other_ip_headers).status_code == 401
 
 
 @pytest.mark.unit
@@ -1042,7 +1037,7 @@ def test_rate_limit_ignores_spoofed_forwarded_without_trust(
     rate_limit_store: FakeRateLimitStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("ADMIN_TRUSTED_PROXY_CIDRS", raising=False)
+    monkeypatch.delenv("ADMIN_TRUSTED_PROXY_IPS", raising=False)
     with shared_rate_limiter(rate_limit_store):
         for i in range(5):
             forwarded = f"203.0.113.{i}"
@@ -1051,6 +1046,44 @@ def test_rate_limit_ignores_spoofed_forwarded_without_trust(
 
         blocked = _login(password="wrong", headers={"X-Forwarded-For": "203.0.113.99"})
         assert blocked.status_code == 429
+    source_key = admin_auth.build_source_rate_limit_key("testclient")
+    assert source_key in rate_limit_store.rows
+    assert len([key for key in rate_limit_store.rows if key == source_key]) == 1
+    for row_key in rate_limit_store.rows:
+        assert "203.0.113" not in row_key
+        assert len(row_key) == 64
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_limiter_rows_and_audit_metadata_exclude_raw_forwarding_data(
+    rate_limit_store: FakeRateLimitStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_IPS", "127.0.0.1")
+    with shared_rate_limiter(rate_limit_store):
+        with (
+            mock_db_connection(),
+            patch("app.client_source.immediate_peer_host", return_value="127.0.0.1"),
+            patch("app.admin_routes._record_login_failure") as audit_mock,
+        ):
+            response = _login(
+                password="wrong",
+                headers={
+                    "X-Forwarded-For": "203.0.113.50, 198.51.100.20",
+                    "CF-Connecting-IP": "203.0.113.88",
+                },
+            )
+    assert response.status_code == 401
+    for row_key in rate_limit_store.rows:
+        assert "203.0.113" not in row_key
+        assert "198.51.100" not in row_key
+        assert "x-forwarded-for" not in row_key.lower()
+    if audit_mock.call_args is not None:
+        audit_kwargs = audit_mock.call_args.kwargs
+        audit_blob = repr(audit_kwargs)
+        assert "203.0.113" not in audit_blob
+        assert "198.51.100" not in audit_blob
 
 
 @pytest.mark.unit
@@ -1241,14 +1274,10 @@ def test_account_rate_limit_blocks_configured_username_across_sources(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
-    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", "10.0.0.1/32")
-    monkeypatch.setenv("ADMIN_CLOUDFLARE_EDGE_CIDRS", "172.64.0.10/32")
     with shared_rate_limiter(rate_limit_store):
-        headers_a = {"X-Forwarded-For": "203.0.113.1, 172.64.0.10"}
-        headers_b = {"X-Forwarded-For": "203.0.113.2, 172.64.0.10"}
-        assert _login(password="wrong", headers=headers_a).status_code == 401
-        assert _login(password="wrong", headers=headers_b).status_code == 401
-        blocked = _login(password="wrong", headers={"X-Forwarded-For": "203.0.113.3, 172.64.0.10"})
+        assert _login(password="wrong", headers={"X-Forwarded-For": "203.0.113.1"}).status_code == 401
+        assert _login(password="wrong", headers={"X-Forwarded-For": "203.0.113.2"}).status_code == 401
+        blocked = _login(password="wrong", headers={"X-Forwarded-For": "203.0.113.3"})
     assert blocked.status_code == 429
 
 

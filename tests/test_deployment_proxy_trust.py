@@ -1,41 +1,44 @@
-"""Deployment configuration consistency for admin proxy trust (#239)."""
+"""Deployment configuration tests for admin client-source proxy trust."""
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import pytest
 
-RENDER_PATH = Path("render.yaml")
-ADMIN_AUTH_DOC = Path("docs/ADMIN_AUTH.md")
+REPO_ROOT = Path(__file__).resolve().parent.parent
+RENDER_YAML = REPO_ROOT / "render.yaml"
+ADMIN_AUTH_DOC = REPO_ROOT / "docs" / "ADMIN_AUTH.md"
+
+PRODUCTION_TRUSTED_IPS = (
+    "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.1,::1"
+)
 
 
 @pytest.mark.unit
-def test_render_yaml_declares_proxy_trust_env_and_uvicorn_flag() -> None:
-    text = RENDER_PATH.read_text(encoding="utf-8")
-    assert re.search(
-        r'startCommand:.*--forwarded-allow-ips="\$UVICORN_FORWARDED_ALLOW_IPS"',
-        text,
-    )
-    for key, expected in (
-        ("ADMIN_TRUST_PROXY_HEADERS", "true"),
-        ("ADMIN_TRUST_CLOUDFLARE_EDGE", "true"),
-    ):
-        assert re.search(rf"key: {key}\n\s+value: \"{expected}\"", text)
-    for key in ("ADMIN_TRUSTED_PROXY_CIDRS", "UVICORN_FORWARDED_ALLOW_IPS"):
-        assert re.search(rf"key: {key}\n\s+value:", text)
+def test_render_yaml_declares_no_proxy_headers_and_trusted_ips() -> None:
+    text = RENDER_YAML.read_text(encoding="utf-8")
+    assert "--no-proxy-headers" in text
+    assert "ADMIN_TRUSTED_PROXY_IPS" in text
+    assert PRODUCTION_TRUSTED_IPS in text
 
 
 @pytest.mark.unit
-def test_admin_auth_doc_documents_same_trust_model() -> None:
+def test_admin_auth_doc_matches_render_proxy_trust_model() -> None:
     text = ADMIN_AUTH_DOC.read_text(encoding="utf-8")
-    for phrase in (
-        "ADMIN_TRUSTED_PROXY_CIDRS",
-        "ADMIN_TRUST_CLOUDFLARE_EDGE",
-        "UVICORN_FORWARDED_ALLOW_IPS",
-        "Right-to-left",
-        "admin_client_source_trust",
-        "Rollback if every request shares one limiter source",
-    ):
-        assert phrase in text
+    assert "--no-proxy-headers" in text
+    assert "ADMIN_TRUSTED_PROXY_IPS" in text
+    assert "verified-proxy-hop-v1" in text
+    assert "ADMIN_TRUST_PROXY_HEADERS" not in text
+    assert "left-most" not in text
+
+
+@pytest.mark.unit
+def test_health_reports_client_source_trust_fingerprint() -> None:
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    client = TestClient(app)
+    payload = client.get("/health").json()
+    assert payload["client_source_trust"] == "verified-proxy-hop-v1"

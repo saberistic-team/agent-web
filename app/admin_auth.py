@@ -20,8 +20,8 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.config import Settings, cloudflare_edge_networks, trusted_proxy_networks
-from app.proxy_trust import log_source_resolution, resolve_admin_login_client_source
+from app.client_source import resolve_admin_login_client_source
+from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
 LOGIN_FLOW_COOKIE_NAME = "admin_login_flow"
@@ -238,30 +238,21 @@ def read_login_flow_token(request: Request) -> str | None:
 def client_ip(request: Request, settings: Settings) -> str:
     """Resolve the client source IP for rate limiting.
 
-    Forwarding headers are honored only when the immediate TCP peer matches
-    ``ADMIN_TRUSTED_PROXY_CIDRS``. A right-to-left trusted-hop walk selects the
-    first non-proxy address; spoofed left-most ``X-Forwarded-For`` values are
-    ignored even behind Cloudflare.
+    Forwarding headers are honored only when the immediate TCP peer is listed in
+    ``ADMIN_TRUSTED_PROXY_IPS``. Otherwise the direct peer address is used so
+    clients cannot spoof ``X-Forwarded-For``, ``Forwarded``, or vendor headers.
 
     Source identity notes:
 
-    * **IPv4 / IPv6** — normalized before the source bucket digest (e.g.
+    * **IPv4 / IPv6** — normalized deterministically before hashing (e.g.
       ``203.0.113.1``, ``2001:db8::1``; IPv4-mapped IPv6 collapses to IPv4).
     * **Missing peer** — falls back to ``unknown`` so attempts still share one
       bucket instead of creating an unbounded namespace.
-    * **Untrusted peer** — direct peer address only; forwarding headers are
-      ignored.
+    * **Trusted proxy** — when the immediate peer is trusted, the right-most
+      untrusted hop in ``X-Forwarded-For`` (or documented fallbacks) is used.
+      Spoofed left-most values appended by Cloudflare are not selected.
     """
-    immediate_peer = request.client.host if request.client is not None else None
-    resolution = resolve_admin_login_client_source(
-        immediate_peer=immediate_peer,
-        headers=dict(request.headers),
-        trusted_networks=trusted_proxy_networks(settings),
-        cloudflare_networks=cloudflare_edge_networks(settings),
-        trust_cloudflare_edge=settings.admin_trust_cloudflare_edge,
-    )
-    log_source_resolution(resolution)
-    return resolution.source
+    return resolve_admin_login_client_source(request, settings).source
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
