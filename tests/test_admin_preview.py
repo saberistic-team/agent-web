@@ -9,11 +9,37 @@ import pytest
 
 from app.admin_preview import (
     COMPANY_NAMES,
+    build_preview_acquisition_dashboard_data,
     build_preview_dashboard_data,
     build_preview_section_rows,
     render_preview_dashboard_main,
     render_preview_section_main,
 )
+from app.admin_dashboard_pages import render_acquisition_dashboard_page
+
+
+@pytest.mark.unit
+def test_preview_acquisition_dashboard_seed_stable() -> None:
+    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
+    a = build_preview_acquisition_dashboard_data(rng=random.Random(42), now=now)
+    b = build_preview_acquisition_dashboard_data(rng=random.Random(42), now=now)
+    assert a == b
+    assert len(a.overdue_actions) >= 3
+    assert len(a.recent_evidence) >= 3
+
+
+@pytest.mark.unit
+def test_preview_acquisition_dashboard_html_includes_sections() -> None:
+    data = build_preview_acquisition_dashboard_data(rng=random.Random(99))
+    html = render_acquisition_dashboard_page(
+        data=data,
+        admin_username="preview",
+        preview_banner="Preview data — not production",
+    )
+    assert "Preview data — not production" in html
+    assert "Overdue next actions" in html
+    assert data.overdue_actions[0].company_name in html
+    assert "Companies by stage" in html
 
 
 @pytest.mark.unit
@@ -50,13 +76,13 @@ def test_preview_data_has_plausible_ranges() -> None:
 
 
 @pytest.mark.unit
-def test_preview_dashboard_main_html_includes_mock_table() -> None:
+def test_preview_dashboard_main_html_legacy_brief_table() -> None:
     data = build_preview_dashboard_data(rng=random.Random(99))
     html = render_preview_dashboard_main(data)
-    assert "Preview data — not production" in html
     assert "admin-stat-row" in html
     assert "Recent submissions" in html
     assert data.recent_briefs[0].company in html
+
 
 
 @pytest.mark.unit

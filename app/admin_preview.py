@@ -10,7 +10,16 @@ import os
 import random
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from uuid import UUID
 
+from app.acquisition_dashboard import (
+    AcquisitionDashboardData,
+    CompanyAttentionRow,
+    CountBucket,
+    EvidenceRow,
+    NextActionRow,
+)
+from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES
 from app.pipeline import PIPELINE_STAGE_LABELS, PIPELINE_STAGES
 
 
@@ -130,6 +139,101 @@ def _slug_email(first: str, last: str, company: str, rng: random.Random) -> str:
         (".io", ".com", ".co", ".dev")
     )
     return f"{first.lower()}.{last.lower()}@{domain}"
+
+
+def _preview_uuid(rng: random.Random) -> str:
+    return str(UUID(int=rng.getrandbits(128), version=4))
+
+
+def build_preview_acquisition_dashboard_data(
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> AcquisitionDashboardData:
+    """Randomized acquisition dashboard for ADMIN_PREVIEW_MODE screenshots."""
+    rng = rng or _preview_rng()
+    now = now or datetime.now(timezone.utc)
+    companies = list(COMPANY_NAMES)
+    rng.shuffle(companies)
+
+    def _buckets(registry: dict[str, str]) -> tuple[CountBucket, ...]:
+        chosen = rng.sample(list(registry.keys()), k=min(len(registry), rng.randint(3, 5)))
+        return tuple(
+            CountBucket(key=key, label=registry[key], count=rng.randint(1, 18))
+            for key in chosen
+        )
+
+    def _next_actions(*, overdue: bool) -> tuple[NextActionRow, ...]:
+        rows: list[NextActionRow] = []
+        for i in range(rng.randint(3, 6)):
+            company = companies[i % len(companies)]
+            first = rng.choice(CONTACT_FIRST)
+            last = rng.choice(CONTACT_LAST)
+            delta_days = rng.randint(1, 10)
+            review_at = now - timedelta(days=delta_days) if overdue else now + timedelta(days=delta_days)
+            rows.append(
+                NextActionRow(
+                    record_id=_preview_uuid(rng),
+                    company_id=_preview_uuid(rng),
+                    company_name=company,
+                    contact_name=f"{first} {last}",
+                    body=rng.choice(BRIEF_TEXTS)[:140],
+                    review_at=review_at,
+                )
+            )
+        return tuple(rows)
+
+    def _evidence(*, stale: bool) -> tuple[EvidenceRow, ...]:
+        rows: list[EvidenceRow] = []
+        for i in range(rng.randint(3, 5)):
+            company = companies[(i + 2) % len(companies)]
+            created = now - timedelta(days=rng.randint(1, 20))
+            expires = now - timedelta(days=rng.randint(1, 5)) if stale else now + timedelta(days=30)
+            rows.append(
+                EvidenceRow(
+                    record_id=_preview_uuid(rng),
+                    company_id=_preview_uuid(rng),
+                    company_name=company,
+                    record_type=rng.choice(("verified_fact", "public_signal")),
+                    body=rng.choice(BRIEF_TEXTS)[:120],
+                    created_at=created,
+                    expires_at=expires,
+                )
+            )
+        return tuple(rows)
+
+    def _attention() -> tuple[CompanyAttentionRow, ...]:
+        stage_keys = tuple(COMPANY_STAGES.keys())
+        category_keys = tuple(COMPANY_CATEGORIES.keys())
+        rows: list[CompanyAttentionRow] = []
+        for i in range(rng.randint(2, 4)):
+            company = companies[(i + 4) % len(companies)]
+            stage = rng.choice(stage_keys)
+            category = rng.choice(category_keys)
+            rows.append(
+                CompanyAttentionRow(
+                    company_id=_preview_uuid(rng),
+                    company_name=company,
+                    target_status=rng.choice(("target", "watching")),
+                    category=category,
+                    stage=stage,
+                )
+            )
+        return tuple(rows)
+
+    return AcquisitionDashboardData(
+        company_counts_by_stage=_buckets(COMPANY_STAGES),
+        company_counts_by_category=_buckets(COMPANY_CATEGORIES),
+        contact_counts_by_stage=_buckets(COMPANY_STAGES),
+        contact_counts_by_category=_buckets(COMPANY_CATEGORIES),
+        overdue_actions=_next_actions(overdue=True),
+        upcoming_actions=_next_actions(overdue=False),
+        recent_evidence=_evidence(stale=False),
+        stale_evidence=_evidence(stale=True),
+        without_decision_maker=_attention(),
+        without_next_action=_attention(),
+        generated_at=now,
+    )
 
 
 def build_preview_dashboard_data(
@@ -482,8 +586,8 @@ def build_preview_brief_detail(
 
 
 AUDIT_ACTIONS = (
-    "auth.login.success",
-    "auth.logout",
+    "admin.login.success",
+    "admin.logout",
     "import.batch",
     "entity.delete",
     "pipeline.update",
