@@ -27,9 +27,10 @@ class Settings:
     admin_login_rate_limit: int = 5
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
-    admin_trust_proxy_headers: bool = False
     admin_trusted_proxy_cidrs: tuple[str, ...] = ()
-    admin_forwarded_allow_ips: str = ""
+    admin_trust_proxy_headers: bool = False
+    uvicorn_proxy_headers: bool = False
+    uvicorn_forwarded_allow_ips: str = "127.0.0.1"
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -111,18 +112,24 @@ def get_settings() -> Settings:
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
         brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
+        admin_trusted_proxy_cidrs=_parse_admin_trusted_proxy_cidrs(),
         admin_trust_proxy_headers=os.environ.get(
             "ADMIN_TRUST_PROXY_HEADERS", ""
         ).lower()
         in ("1", "true", "yes"),
-        admin_trusted_proxy_cidrs=_parse_admin_trusted_proxy_cidrs(),
-        admin_forwarded_allow_ips=os.environ.get(
-            "ADMIN_FORWARDED_ALLOW_IPS", ""
-        ).strip(),
+        uvicorn_proxy_headers=os.environ.get("UVICORN_PROXY_HEADERS", "").lower()
+        in ("1", "true", "yes"),
+        uvicorn_forwarded_allow_ips=os.environ.get(
+            "UVICORN_FORWARDED_ALLOW_IPS", "127.0.0.1"
+        ).strip()
+        or "127.0.0.1",
     )
 
 
 def _parse_admin_trusted_proxy_cidrs() -> tuple[str, ...]:
-    from app.proxy_trust import parse_trusted_proxy_cidrs
+    from app.client_source import parse_trusted_proxy_cidrs
 
-    return parse_trusted_proxy_cidrs(os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", ""))
+    explicit = os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "").strip()
+    if not explicit:
+        return ()
+    return parse_trusted_proxy_cidrs(explicit)

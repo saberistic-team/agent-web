@@ -15,6 +15,38 @@ def get_json(url: str) -> dict:
         return json.loads(resp.read().decode())
 
 
+def verify_admin_login_source_trust(payload: dict, url: str) -> bool:
+    trust = payload.get("admin_login_source_trust")
+    if not isinstance(trust, dict):
+        print(
+            f"FAIL {url}: missing admin_login_source_trust in health payload",
+            file=sys.stderr,
+        )
+        return False
+    required = {
+        "trusted_proxies_configured": True,
+        "uvicorn_proxy_headers": True,
+        "resolution_mode": "trusted_hop_chain",
+    }
+    for key, expected in required.items():
+        if trust.get(key) != expected:
+            print(
+                f"FAIL {url}: admin_login_source_trust[{key!r}]="
+                f"{trust.get(key)!r}, expected {expected!r}",
+                file=sys.stderr,
+            )
+            return False
+    if trust.get("uvicorn_forwarded_allow_ips") != "*":
+        print(
+            "FAIL {url}: uvicorn_forwarded_allow_ips must be '*' on Render".format(
+                url=url
+            ),
+            file=sys.stderr,
+        )
+        return False
+    return True
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -39,20 +71,8 @@ def main(argv: list[str] | None = None) -> int:
         if not isinstance(payload, dict) or payload.get(key) != expected:
             print(f"FAIL {url}: got {payload!r}, expected {key}={expected!r}", file=sys.stderr)
             return 1
-        if path == "/health":
-            proxy_trust = payload.get("admin_login_proxy_trust")
-            if not isinstance(proxy_trust, dict):
-                print(
-                    f"FAIL {url}: missing admin_login_proxy_trust summary",
-                    file=sys.stderr,
-                )
-                return 1
-            if proxy_trust.get("enabled") and not proxy_trust.get("trusted_network_count"):
-                print(
-                    f"FAIL {url}: proxy trust enabled without trusted networks",
-                    file=sys.stderr,
-                )
-                return 1
+        if path == "/health" and not verify_admin_login_source_trust(payload, url):
+            return 1
         print(f"PASS {url} → {payload}")
     return 0
 

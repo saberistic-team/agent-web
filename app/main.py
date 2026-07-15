@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -25,6 +24,7 @@ from app.admin_auth import AdminLoginRequired, login_redirect_url
 from app.admin_pipeline_routes import router as admin_pipeline_router
 from app.admin_routes import router as admin_router
 from app.actor_context import CORRELATION_HEADER
+from app.client_source import deployment_trust_summary
 from app.config import get_settings
 from app.models import BriefCreateRequest, BriefCreateResponse
 from app.seo import (
@@ -120,19 +120,11 @@ def health() -> dict:
     """
     payload: dict = {"status": "ok"}
     settings = get_settings()
-    if settings.admin_trust_proxy_headers:
-        forwarded_allow_ips = settings.admin_forwarded_allow_ips
-        if not forwarded_allow_ips:
-            from app.proxy_trust import PRODUCTION_FORWARDED_ALLOW_IPS
-
-            forwarded_allow_ips = PRODUCTION_FORWARDED_ALLOW_IPS
-        payload["admin_proxy_trust"] = {
-            "enabled": True,
-            "forwarded_allow_ips": forwarded_allow_ips,
-            "trusted_proxy_cidrs_configured": bool(
-                os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "").strip()
-            ),
-        }
+    payload["admin_login_source_trust"] = deployment_trust_summary(
+        trusted_proxy_cidrs=settings.admin_trusted_proxy_cidrs,
+        uvicorn_proxy_headers=settings.uvicorn_proxy_headers,
+        uvicorn_forwarded_allow_ips=settings.uvicorn_forwarded_allow_ips,
+    )
     if not settings.database_configured:
         return payload
     try:

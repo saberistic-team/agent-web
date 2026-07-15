@@ -20,11 +20,8 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
+from app.client_source import record_client_source_telemetry, resolve_request_client_source
 from app.config import Settings
-from app.proxy_trust import (
-    log_source_resolution,
-    resolve_admin_login_client_source,
-)
 
 SESSION_COOKIE_NAME = "admin_session"
 LOGIN_FLOW_COOKIE_NAME = "admin_login_flow"
@@ -241,18 +238,29 @@ def read_login_flow_token(request: Request) -> str | None:
 def client_ip(request: Request, settings: Settings) -> str:
     """Resolve the client source IP for rate limiting.
 
-    See :func:`resolve_admin_login_client_source` and ``docs/ADMIN_AUTH.md`` for
-    the trusted-proxy model (Cloudflare → Render → Uvicorn).
+    Forwarding headers are honored only when the immediate peer matches
+    ``ADMIN_TRUSTED_PROXY_CIDRS``. The resolver walks ``X-Forwarded-For``
+    right-to-left across trusted hops instead of trusting a leftmost value from
+    arbitrary requests.
+
+    Source identity notes:
+
+    * **IPv4 / IPv6** — stored only as keyed digests; the resolved string is
+      passed verbatim into the source bucket (e.g. ``203.0.113.1``,
+      ``2001:db8::1``).
+    * **Missing peer** — falls back to ``unknown`` so attempts still share one
+      bucket instead of creating an unbounded namespace.
+    * **Trusted proxy** — when trusted CIDRs are configured and the direct peer
+      is verified, the rightmost untrusted hop in the forwarding chain is used.
+    * **Direct / local** — leave ``ADMIN_TRUSTED_PROXY_CIDRS`` empty so spoofed
+      forwarding headers are ignored and the direct peer address is used.
     """
-    socket_peer = request.client.host if request.client is not None else None
-    resolution = resolve_admin_login_client_source(
-        socket_peer=socket_peer,
-        headers=request.headers,
-        trust_proxy_headers=settings.admin_trust_proxy_headers,
+    result = resolve_request_client_source(
+        request,
         trusted_proxy_cidrs=settings.admin_trusted_proxy_cidrs,
     )
-    log_source_resolution(resolution.path)
-    return resolution.source
+    record_client_source_telemetry(result)
+    return result.source
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
