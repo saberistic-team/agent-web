@@ -319,21 +319,25 @@ async def stripe_webhook(request: Request) -> JSONResponse:
             brief_id=brief_id,
             stripe_session_id=session.get("id"),
             stripe_payment_intent_id=session.get("payment_intent"),
-            payment_subtotal_cents=payment.subtotal_cents,
-            payment_discount_cents=payment.discount_cents,
-            payment_amount_cents=payment.amount_cents,
-            payment_currency=payment.currency,
-            stripe_promotion_code_id=payment.promotion_code_id,
+            payment_subtotal_cents=payment["payment_subtotal_cents"],
+            payment_discount_cents=payment["payment_discount_cents"],
+            payment_amount_cents=payment["payment_amount_cents"],
+            payment_currency=payment["payment_currency"],
+            stripe_promotion_code_id=payment["stripe_promotion_code_id"],
         )
 
     if paid_brief is None:
         return JSONResponse({"received": True})
 
+    paid_cents = payment["payment_amount_cents"]
+    if paid_cents is None:
+        paid_cents = settings.brief_price_cents
+
     try:
         analytics_service.track_payment_completed(
             settings,
             brief_id=brief_id,
-            price_cents=payment.amount_cents,
+            price_cents=paid_cents,
             utm={
                 "utm_source": paid_brief.get("utm_source"),
                 "utm_medium": paid_brief.get("utm_medium"),
@@ -357,6 +361,7 @@ async def stripe_webhook(request: Request) -> JSONResponse:
                 api_key=settings.resend_api_key,
                 from_email=settings.from_email,
                 brief=paid_brief,
+                list_price_cents=settings.brief_price_cents,
             )
         except Exception:
             logger.exception("Failed to send brief notification emails for %s", brief_id)

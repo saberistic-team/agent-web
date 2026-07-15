@@ -171,17 +171,18 @@ def test_render_admin_brief_detail_page_shows_discounted_payment_breakdown() -> 
     brief["payment_discount_cents"] = 5_000
     brief["payment_amount_cents"] = 15_000
     brief["payment_currency"] = "usd"
-    brief["stripe_promotion_code_id"] = "promo_test_abc"
+    brief["stripe_promotion_code_id"] = "promo_test_detail"
     html_out = render_admin_brief_detail_page(
         admin_username=TEST_USERNAME,
         brief=brief,
         back_filters=_back_filters(),
         price_cents=20_000,
     )
-    assert "$200 subtotal" in html_out
-    assert "−$50 discount" in html_out
-    assert "$150 USD" in html_out
-    assert "promo_test_abc" in html_out
+    assert "Subtotal: $200" in html_out
+    assert "Discount: −$50" in html_out
+    assert "Total collected: $150" in html_out
+    assert "Currency: USD" in html_out
+    assert "promo_test_detail" in html_out
 
 
 @pytest.mark.unit

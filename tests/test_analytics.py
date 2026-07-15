@@ -40,6 +40,31 @@ FAKE_PAID_BRIEF = {
 }
 
 
+def _checkout_completed_event(
+    *,
+    amount_subtotal: int = 20_000,
+    amount_total: int = 20_000,
+    amount_discount: int = 0,
+) -> dict:
+    total_details: dict = {}
+    if amount_discount:
+        total_details["amount_discount"] = amount_discount
+    return {
+        "type": "checkout.session.completed",
+        "data": {
+            "object": {
+                "id": "cs_test_123",
+                "payment_intent": "pi_test_123",
+                "metadata": {"brief_id": "1"},
+                "amount_subtotal": amount_subtotal,
+                "amount_total": amount_total,
+                "currency": "usd",
+                "total_details": total_details,
+            }
+        },
+    }
+
+
 @pytest.fixture(autouse=True)
 def analytics_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
@@ -259,28 +284,18 @@ def test_stripe_webhook_emits_payment_completed(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setenv("ANALYTICS_ENABLED", "true")
     monkeypatch.setenv("PLAUSIBLE_DOMAIN", "saberistic.com")
 
-    fake_event = {
-        "type": "checkout.session.completed",
-        "data": {
-            "object": {
-                "id": "cs_test_123",
-                "payment_intent": "pi_test_123",
-                "metadata": {"brief_id": "1"},
-                "amount_subtotal": 20_000,
-                "amount_total": 15_000,
-                "currency": "usd",
-                "total_details": {"amount_discount": 5_000},
-                "discounts": [{"promotion_code": "promo_test"}],
-            }
-        },
-    }
+    fake_event = _checkout_completed_event(
+        amount_total=15_000,
+        amount_discount=5_000,
+    )
+    discounted_brief = {**FAKE_PAID_BRIEF, "payment_amount_cents": 15_000}
 
     with mock_db_connection():
         with patch(
             "app.main.stripe_service.construct_webhook_event",
             return_value=fake_event,
         ):
-            with patch("app.main.db.mark_brief_paid", return_value=FAKE_PAID_BRIEF):
+            with patch("app.main.db.mark_brief_paid", return_value=discounted_brief):
                 with patch(
                     "app.main.analytics_service.track_payment_completed"
                 ) as track_payment:

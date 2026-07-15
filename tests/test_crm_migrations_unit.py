@@ -73,6 +73,20 @@ def test_brief_migrations_remain_idempotent() -> None:
 
 
 @pytest.mark.unit
+def test_brief_payment_amounts_migration_adds_nullable_columns() -> None:
+    payment = next(m for m in MIGRATIONS if m.name == "project_briefs_payment_amounts")
+    assert payment.version == "015"
+    for column in (
+        "payment_subtotal_cents",
+        "payment_discount_cents",
+        "payment_amount_cents",
+        "payment_currency",
+        "stripe_promotion_code_id",
+    ):
+        assert f"ADD COLUMN IF NOT EXISTS {column}" in payment.up_sql
+
+
+@pytest.mark.unit
 def test_pending_migrations_skips_applied_versions() -> None:
     applied = {"001", "002"}
     pending = pending_migrations(applied_versions=applied)
@@ -357,20 +371,6 @@ def test_apply_migrations_raises_when_lock_times_out(monkeypatch: pytest.MonkeyP
 
     conn.rollback.assert_called_once()
     conn.commit.assert_not_called()
-
-@pytest.mark.unit
-def test_project_briefs_payment_amounts_migration_is_idempotent() -> None:
-    migration = next(m for m in MIGRATIONS if m.name == "project_briefs_payment_amounts")
-    assert migration.version == "015"
-    for column in (
-        "payment_subtotal_cents",
-        "payment_discount_cents",
-        "payment_amount_cents",
-        "payment_currency",
-        "stripe_promotion_code_id",
-    ):
-        assert f"ADD COLUMN IF NOT EXISTS {column}" in migration.up_sql
-
 
 @pytest.mark.unit
 def test_contact_records_migration_is_idempotent() -> None:

@@ -635,31 +635,32 @@ def build_preview_brief_rows(
         company = companies[i % len(companies)]
         brief_id = i + 1
         status = BRIEF_PAYMENT_STATUSES[0] if brief_id == 2 else rng.choice(BRIEF_PAYMENT_STATUSES)
-        # Keep id=1 rich/paid and id=2 unpaid+nullable so Reviewer shots cover both AC states.
+        # Keep id=1 rich/paid, id=2 unpaid+nullable, id=3 discounted paid for Reviewer shots.
         if brief_id == 1:
+            status = "paid"
+        if brief_id == 3:
             status = "paid"
         created = now - timedelta(hours=rng.randint(2, 120), minutes=rng.randint(0, 50))
         paid_at: datetime | None = None
         session_id: str | None = None
         intent_id: str | None = None
-        if status == "paid":
-            paid_at = created + timedelta(minutes=rng.randint(5, 90))
-            session_id = f"cs_preview_{rng.randint(100000, 999999)}"
-            intent_id = f"pi_preview_{rng.randint(100000, 999999)}"
         payment_subtotal_cents: int | None = None
         payment_discount_cents: int | None = None
         payment_amount_cents: int | None = None
         payment_currency: str | None = None
         stripe_promotion_code_id: str | None = None
         if status == "paid":
+            paid_at = created + timedelta(minutes=rng.randint(5, 90))
+            session_id = f"cs_preview_{rng.randint(100000, 999999)}"
+            intent_id = f"pi_preview_{rng.randint(100000, 999999)}"
             payment_subtotal_cents = 20_000
-            if brief_id == 1:
+            payment_amount_cents = 20_000
+            payment_currency = "usd"
+            if brief_id == 3:
                 payment_discount_cents = 5_000
                 payment_amount_cents = 15_000
-                stripe_promotion_code_id = f"promo_preview_{rng.randint(100000, 999999)}"
-            else:
-                payment_amount_cents = 20_000
-            payment_currency = "usd"
+                stripe_promotion_code_id = "promo_preview_diagnostic15"
+                intent_id = f"pi_preview_{rng.randint(100000, 999999)}"
         utm_source = None if brief_id == 2 else rng.choice(UTM_SOURCES)
         utm_medium = None if brief_id == 2 else rng.choice(UTM_MEDIUMS)
         utm_campaign = None if brief_id == 2 else rng.choice(UTM_CAMPAIGNS)

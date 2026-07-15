@@ -91,14 +91,14 @@ def test_create_checkout_session_calls_stripe() -> None:
     create.assert_called_once()
     kwargs = create.call_args.kwargs
     assert kwargs["metadata"]["brief_id"] == "3"
-    assert kwargs["allow_promotion_codes"] is True
     assert kwargs["line_items"][0]["price_data"]["unit_amount"] == 20_000
+    assert kwargs["allow_promotion_codes"] is True
     assert kwargs["line_items"][0]["price_data"]["product_data"]["name"] == "Architecture Diagnostic"
 
 
 @pytest.mark.unit
-def test_extract_payment_details_from_session_full_price() -> None:
-    details = stripe_service.extract_payment_details_from_session(
+def test_extract_payment_details_from_session() -> None:
+    full_price = stripe_service.extract_payment_details_from_session(
         {
             "amount_subtotal": 20_000,
             "amount_total": 20_000,
@@ -106,45 +106,39 @@ def test_extract_payment_details_from_session_full_price() -> None:
             "total_details": {"amount_discount": 0},
         }
     )
-    assert details.subtotal_cents == 20_000
-    assert details.discount_cents == 0
-    assert details.amount_cents == 20_000
-    assert details.currency == "usd"
-    assert details.promotion_code_id is None
+    assert full_price["payment_subtotal_cents"] == 20_000
+    assert full_price["payment_amount_cents"] == 20_000
+    assert full_price["payment_discount_cents"] is None
+    assert full_price["payment_currency"] == "usd"
+    assert full_price["stripe_promotion_code_id"] is None
 
-
-@pytest.mark.unit
-def test_extract_payment_details_from_session_discounted() -> None:
-    details = stripe_service.extract_payment_details_from_session(
+    discounted = stripe_service.extract_payment_details_from_session(
         {
             "amount_subtotal": 20_000,
             "amount_total": 15_000,
             "currency": "usd",
             "total_details": {"amount_discount": 5_000},
-            "discounts": [{"promotion_code": "promo_test_abc"}],
+            "discounts": [
+                {"promotion_code": {"id": "promo_test_discount"}},
+            ],
         }
     )
-    assert details.subtotal_cents == 20_000
-    assert details.discount_cents == 5_000
-    assert details.amount_cents == 15_000
-    assert details.promotion_code_id == "promo_test_abc"
+    assert discounted["payment_discount_cents"] == 5_000
+    assert discounted["payment_amount_cents"] == 15_000
+    assert discounted["stripe_promotion_code_id"] == "promo_test_discount"
 
-
-@pytest.mark.unit
-def test_extract_payment_details_from_session_hundred_percent_off() -> None:
-    details = stripe_service.extract_payment_details_from_session(
+    free_checkout = stripe_service.extract_payment_details_from_session(
         {
             "amount_subtotal": 20_000,
             "amount_total": 0,
             "currency": "usd",
             "total_details": {"amount_discount": 20_000},
-            "discounts": [{"promotion_code": {"id": "promo_free"}}],
             "payment_intent": None,
+            "discounts": [{"coupon": {"id": "coupon_test_free"}}],
         }
     )
-    assert details.amount_cents == 0
-    assert details.discount_cents == 20_000
-    assert details.promotion_code_id == "promo_free"
+    assert free_checkout["payment_amount_cents"] == 0
+    assert free_checkout["stripe_promotion_code_id"] == "coupon_test_free"
 
 
 @pytest.mark.unit
@@ -260,11 +254,6 @@ def test_db_helpers_use_connection() -> None:
         brief_id=5,
         stripe_session_id="cs_1",
         stripe_payment_intent_id="pi_1",
-        payment_subtotal_cents=20_000,
-        payment_discount_cents=5_000,
-        payment_amount_cents=15_000,
-        payment_currency="usd",
-        stripe_promotion_code_id="promo_1",
     )
     assert paid["status"] == "paid"
 

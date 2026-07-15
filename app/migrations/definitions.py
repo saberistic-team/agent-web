@@ -469,6 +469,7 @@ CREATE INDEX IF NOT EXISTS idx_import_batch_rows_entity_id
     WHERE entity_id IS NOT NULL;
 """,
     ),
+
     Migration(
         version="015",
         name="project_briefs_payment_amounts",

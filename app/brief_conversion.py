@@ -42,14 +42,6 @@ def pipeline_capabilities_available(settings: Settings) -> bool:
     return bool(settings.database_url)
 
 
-def paid_amount_cents_for_brief(brief: dict[str, Any], *, list_price_cents: int) -> int:
-    """Return the Stripe-collected amount when stored on the brief, else list price."""
-    stored = brief.get("payment_amount_cents")
-    if stored is not None:
-        return int(stored)
-    return list_price_cents
-
-
 def build_conversion_proposal(
     brief: dict[str, Any],
     *,
@@ -62,7 +54,9 @@ def build_conversion_proposal(
     pipeline_stage = initial_pipeline_stage_for_brief_status(brief_status)
     expected_value: float | None = None
     if brief_status == "paid":
-        expected_value = round(paid_amount_cents_for_brief(brief, list_price_cents=price_cents) / 100, 2)
+        paid_cents = brief.get("payment_amount_cents")
+        cents = paid_cents if paid_cents is not None else price_cents
+        expected_value = round(cents / 100, 2)
     return {
         "company_name": derive_company_name(website=str(brief.get("website", "")), domain=domain),
         "website": str(brief.get("website", "")),
