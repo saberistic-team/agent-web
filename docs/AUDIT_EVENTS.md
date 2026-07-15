@@ -51,40 +51,23 @@ both commit or roll back together.
 | Brief-to-CRM linkage | `CrmService.link_project_brief_source` | Transactional write; audit ships with future routes |
 | Login success | `admin_routes._issue_session` | Prior-session revocation (if any) + new session + required audit atomically |
 | Logout (authenticated) | `admin_routes.admin_logout` | Revocation + required audit atomically when the session row transitions to revoked |
-| Login failure | `admin_routes` | Best-effort audit (`required=False`); actor is always `anonymous` |
+| Login failure | `admin_routes` | Best-effort audit (`required=False`); actor is always `anonymous` before authentication |
 
-### Unauthenticated login-failure actor policy
+Unauthenticated login failures (`auth.login.failure`) always record `actor =
+anonymous`. Submitted usernames, email addresses, and other login-form candidates
+are never persisted in `actor`, metadata, reason text, or correlation fields.
+Failure reasons are a small server-defined enum (`invalid_credentials`,
+`invalid_csrf`, `rate_limited`).
 
-Every `auth.login.failure` event recorded **before** successful authentication uses
-actor `anonymous`. Submitted usernames, email addresses, or other login-form
-candidates must not appear in `actor`, metadata, reason text, correlation
-identifiers, logs, or metrics. Failure reasons are a small server-defined enum in
-`summary_after.reason` (for example `invalid_credentials`, `invalid_csrf`,
-`rate_limited`).
+### Historical login-failure actors (pre-#242)
 
-Authenticated events (`auth.login.success`, `auth.logout`, and CRM mutations)
-retain the configured administrator username in `actor`.
-
-#### Historical immutable rows (pre-#242)
-
-Deployments before keyed limiter identifiers and anonymous failure actors (#242)
-may have appended `auth.login.failure` rows whose `actor` column contains a
-submitted username candidate. Those rows are append-only; application code does
-not rewrite or delete them. Security reporting should treat such historical
-`actor` values as unverified candidates, not authenticated identities. The
-forward fix prevents all new occurrences.
-
-To inventory exposure:
-
-```sql
-SELECT COUNT(*) AS legacy_failure_actors
-FROM audit_events
-WHERE action = 'auth.login.failure'
-  AND actor <> 'anonymous';
-```
-
-Remediation of historical rows, if required, is a data-governance decision outside
-normal application code (for example export-and-annotate, not in-place mutation).
+Append-only `audit_events` rows written before keyed limiter identifiers and
+anonymous failure actors shipped may have attacker-supplied strings in the
+`actor` column for `auth.login.failure` events. Those rows are immutable; this
+codebase does not rewrite or delete historical audit history. Operational
+queries should treat pre-migration failure actors as untrusted candidate labels,
+not authenticated administrator identities. Data-governance remediation of
+historical rows, if required, is an explicit out-of-band decision.
 
 `record_event(..., required=True)` propagates persistence errors. Security-sensitive
 mutations must not return success when a required audit event could not be stored.
