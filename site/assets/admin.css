@@ -4,12 +4,45 @@ body.admin-app {
   background:
     radial-gradient(900px 480px at 0% -5%, #1a2036 0%, transparent 55%),
     var(--bg);
+  color-scheme: dark;
+  accent-color: var(--accent);
   /* Belt-and-suspenders against unrelated stray overflow — the top-bar
      itself must never depend on this to hide clipped controls. See
      .admin-top-actions / .admin-user / .admin-exit-group for the actual
      shrink+wrap strategy that keeps Public site and Sign out reachable. */
   overflow-x: clip;
   max-width: 100vw;
+}
+
+/* Native checkbox and radio — accent, focus, and disabled without custom controls. */
+.admin-form input[type="checkbox"],
+.admin-form input[type="radio"] {
+  accent-color: var(--accent);
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.admin-form input[type="checkbox"]:focus-visible,
+.admin-form input[type="radio"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.admin-form input[type="checkbox"]:disabled,
+.admin-form input[type="radio"]:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.admin-form .field > label:has(> input[type="checkbox"]),
+.admin-form .field > label:has(> input[type="radio"]) {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
 }
 
 .admin-top {
@@ -108,6 +141,72 @@ body.admin-app {
   cursor: pointer;
   font-family: inherit;
   padding: 0;
+}
+
+/* Form action buttons — distinct from link-like .admin-exit top-bar actions. */
+.admin-action {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.5rem 0.85rem;
+  border-radius: 2px;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  color: var(--ink);
+  line-height: 1.2;
+}
+
+.admin-action:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+}
+
+.admin-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.admin-action:active {
+  transform: translateY(1px);
+}
+
+.admin-action:disabled,
+.admin-action[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.admin-action--destructive {
+  border-color: color-mix(in srgb, #e05a5a 55%, var(--line));
+  background: color-mix(in srgb, #e05a5a 14%, var(--surface));
+  color: #ffd0d0;
+}
+
+.admin-action--destructive:hover {
+  border-color: #e05a5a;
+  background: color-mix(in srgb, #e05a5a 24%, var(--surface));
+  color: #ffe8e8;
+}
+
+.admin-action--destructive:focus-visible {
+  outline-color: #e05a5a;
+}
+
+.admin-action--secondary {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  color: var(--ink);
+}
+
+.admin-action--secondary:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  color: var(--ink);
 }
 
 .admin-layout {
@@ -423,6 +522,36 @@ body.admin-app {
   border-radius: 2px;
 }
 
+.admin-form input[type="date"],
+.admin-form input[type="datetime-local"],
+.brief-filter input[type="date"] {
+  color-scheme: dark;
+}
+
+.admin-form input[type="date"]::-webkit-calendar-picker-indicator,
+.admin-form input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+.brief-filter input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
+  cursor: pointer;
+}
+
+.brief-filter input:focus-visible,
+.brief-filter select:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.brief-filter input:disabled,
+.brief-filter select:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.brief-filter input:user-invalid,
+.brief-filter input:invalid:not(:focus):not(:placeholder-shown) {
+  border-color: #e88a6a;
+}
+
 .brief-filter-submit {
   font-family: inherit;
   font-size: 0.72rem;
@@ -539,6 +668,75 @@ body.admin-app {
 .research-form {
   max-width: 48ch;
   margin-bottom: 2.5rem;
+}
+
+.admin-form fieldset.field,
+.brief-convert-fieldset {
+  border: 1px solid var(--line);
+  padding: 1rem 1.25rem;
+  margin: 0;
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+}
+
+.brief-convert-fieldset legend {
+  padding: 0 0.35rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.brief-convert-choice,
+.brief-convert-match,
+.admin-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.45rem 0.5rem;
+  margin: 0 -0.5rem;
+  color: var(--ink);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background 0.15s ease;
+}
+
+.brief-convert-choice:hover,
+.brief-convert-match:hover,
+.admin-checkbox:hover {
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+}
+
+.brief-convert-choice:has(input:checked),
+.brief-convert-match:has(input:checked),
+.admin-checkbox:has(input:checked) {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.brief-convert-choice:has(input:focus-visible),
+.brief-convert-match:has(input:focus-visible),
+.admin-checkbox:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.brief-convert-choice input,
+.brief-convert-match input,
+.admin-checkbox input {
+  accent-color: var(--accent);
+  width: 1rem;
+  height: 1rem;
+  margin: 0.15rem 0 0;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.brief-convert-choice input:disabled,
+.brief-convert-match input:disabled,
+.admin-checkbox input:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
 }
 
 .research-evidence-fields {

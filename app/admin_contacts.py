@@ -5,7 +5,7 @@ from __future__ import annotations
 import html
 from typing import Any
 
-from app.admin_layout import render_admin_shell
+from app.admin_layout import render_admin_archive_action_button, render_admin_shell
 from app.contacts import (
     BUYING_ROLES,
     EMAIL_PERMISSIONS,
@@ -79,7 +79,13 @@ def render_contacts_list_page(
     filters: dict[str, str | None],
     csrf_token: str,
     admin_username: str,
+    preview_banner: str | None = None,
 ) -> str:
+    banner_html = ""
+    if preview_banner:
+        banner_html = (
+            f'<p class="admin-preview-banner" role="status">{_esc(preview_banner)}</p>'
+        )
     company_names = {str(row["id"]): row.get("name", "") for row in companies}
     rows = "".join(
         f"""<tr>
@@ -93,6 +99,7 @@ def render_contacts_list_page(
         for row in contacts
     ) or '<tr><td colspan="6">No contacts match these filters.</td></tr>'
     main = f"""<section class="admin-section" aria-labelledby="contacts-title">
+      {banner_html}
       <div class="admin-section-head"><div><p class="admin-eyebrow">CRM</p><h1 class="admin-title" id="contacts-title">Contacts</h1></div><a class="cta" href="/admin/contacts/new">Add contact</a></div>
       <form class="admin-form" method="get" action="/admin/contacts">
         <div class="field"><label for="q">Search</label><input id="q" name="q" value="{_esc(filters.get("q"))}" placeholder="Name, email, title, or profile URL" /></div>
@@ -127,9 +134,13 @@ def render_contact_form_page(
     if contact is not None:
         archive_action = "restore" if contact.get("archived_at") else "archive"
         archive_label = "Restore contact" if contact.get("archived_at") else "Archive contact"
+        archive_button = render_admin_archive_action_button(
+            label=archive_label,
+            archived=bool(contact.get("archived_at")),
+        )
         archive_html = f"""<form method="post" action="/admin/contacts/{_esc(contact["id"])}/{archive_action}">
         <input type="hidden" name="csrf_token" value="{_esc(csrf_token)}" />
-        <button class="admin-exit" type="submit">{archive_label}</button>
+        {archive_button}
       </form>"""
     main = f"""<section class="admin-section" aria-labelledby="contact-form-title">
       <p class="admin-breadcrumb"><a href="/admin/contacts">Contacts</a></p>

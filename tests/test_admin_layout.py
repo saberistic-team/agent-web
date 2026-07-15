@@ -306,6 +306,28 @@ def test_admin_dashboard_long_username_keeps_exit_actions_reachable() -> None:
     assert 'class="admin-exit-group"' in body
     assert "Public site</a>" in body
     assert "Sign out</button>" in body
+def test_admin_css_archive_action_buttons_reset_native_appearance() -> None:
+    css = ADMIN_CSS.read_text(encoding="utf-8")
+    action_block = css.split(".admin-action {", 1)[1].split("}", 1)[0]
+    assert "appearance: none" in action_block
+    assert "-webkit-appearance: none" in action_block
+    assert "background:" in action_block
+    assert "border:" in action_block
+    assert "padding:" in action_block
+    assert "cursor: pointer" in action_block
+    assert "border-radius:" in action_block
+    assert ".admin-action:focus-visible" in css
+    assert ".admin-action:disabled" in css
+    assert ".admin-action--destructive" in css
+    assert ".admin-action--secondary" in css
+    destructive_block = css.split(".admin-action--destructive {", 1)[1].split("}", 1)[0]
+    secondary_block = css.split(".admin-action--secondary {", 1)[1].split("}", 1)[0]
+    assert "background:" in destructive_block
+    assert "border-color:" in destructive_block
+    assert "background:" in secondary_block
+    assert "border-color:" in secondary_block
+    assert "#fff" not in destructive_block.lower()
+    assert "#ffffff" not in destructive_block.lower()
 
 
 @pytest.mark.unit
@@ -593,6 +615,8 @@ def test_admin_preview_mode_renders_section_mock_data(
     monkeypatch.delenv("DATABASE_URL", raising=False)
     response = client.get("/admin/companies")
     assert response.status_code == 200
-    assert "Preview data — not production" in response.text
     assert "admin-table" in response.text
     assert "Companies" in response.text
+    assert 'name="archived"' in response.text
+    assert "Include archived" in response.text
+    assert "No companies match these filters." not in response.text
