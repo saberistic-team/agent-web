@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+from typing import Any
 
 ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
     {
@@ -93,12 +94,12 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
-    "/admin/companies/10101010-1010-1010-1010-101010101010",
-    "/admin/companies/20202020-2020-2020-2020-202020202020",
-    "/admin/contacts/30303030-3030-3030-3030-303030303030",
-    "/admin/contacts/40404040-4040-4040-4040-404040404040",
-    "/admin/contacts/30303030-3030-3030-3030-303030303030/edit",
-    "/admin/contacts/40404040-4040-4040-4040-404040404040/edit",
+    "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    "/admin/companies/cccccccc-cccc-cccc-cccc-cccccccccccc",
+    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd",
+    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/edit",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd/edit",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
@@ -109,17 +110,33 @@ ADMIN_SCREENSHOT_EXPECTED_STATUS: dict[str, int] = {
 }
 
 
-def archive_restore_button_class(*, archived: bool) -> str:
-    """Return semantic classes for Archive (destructive) or Restore (secondary) actions."""
-    if archived:
-        return "admin-action-btn admin-action-btn--restore"
-    return "admin-action-btn admin-action-btn--destructive"
+def admin_archive_button_class(*, archived: bool) -> str:
+    """Return semantic action classes for archive vs restore submit buttons."""
+    modifier = "admin-action--secondary" if archived else "admin-action--destructive"
+    return f"admin-action {modifier}"
 
 
-def render_archive_restore_button(*, label: str, archived: bool) -> str:
-    """Return a themed submit button for archive/restore form actions."""
-    classes = archive_restore_button_class(archived=archived)
-    return f'<button class="{classes}" type="submit">{html.escape(label)}</button>'
+def render_admin_archive_form(
+    *,
+    entity_path: str,
+    entity_label: str,
+    csrf_token: str,
+    archived_at: Any,
+    indent: str = "          ",
+) -> str:
+    """Render POST form with themed Archive/Restore action button."""
+    action = "restore" if archived_at else "archive"
+    label = f"Restore {entity_label}" if archived_at else f"Archive {entity_label}"
+    button_class = admin_archive_button_class(archived=bool(archived_at))
+    token = html.escape(csrf_token, quote=True)
+    path = html.escape(entity_path, quote=True)
+    return (
+        f'{indent}<form method="post" action="{path}/{action}">\n'
+        f'{indent}  <input type="hidden" name="csrf_token" value="{token}" />\n'
+        f'{indent}  <button class="{button_class}" type="submit">'
+        f"{html.escape(label)}</button>\n"
+        f"{indent}</form>"
+    )
 
 
 def _active_nav_label(active_path: str) -> str:
