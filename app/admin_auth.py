@@ -20,8 +20,9 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.admin_client_source import resolve_admin_login_client_source
 from app.config import Settings
+
+from app.admin_client_source import resolve_admin_login_client_source
 
 SESSION_COOKIE_NAME = "admin_session"
 LOGIN_FLOW_COOKIE_NAME = "admin_login_flow"
@@ -238,20 +239,27 @@ def read_login_flow_token(request: Request) -> str | None:
 def client_ip(request: Request, settings: Settings) -> str:
     """Resolve the client source IP for rate limiting.
 
-    Forwarded headers are honored only when the immediate TCP peer is a member
-    of ``ADMIN_TRUSTED_PROXY_IPS``. See :func:`resolve_admin_login_client_source`
-    for the production Cloudflare → Render trust model and header precedence.
+    Forwarding headers are honored only when the immediate peer is a member of
+    ``ADMIN_TRUSTED_PROXY_CIDRS`` and ``ADMIN_TRUST_PROXY_HEADERS`` is enabled.
+    The leftmost ``X-Forwarded-For`` value is never trusted on its own; a
+    right-to-left trusted-hop walk selects the effective client source.
 
     Source identity notes:
 
-    * **IPv4 / IPv6** — normalized deterministically before digesting (IPv4-mapped
-      IPv6 collapses to dotted quad).
+    * **IPv4 / IPv6** — stored only as keyed digests; the resolved string is
+      passed verbatim into the source bucket (e.g. ``203.0.113.1``,
+      ``2001:db8::1``).
     * **Missing peer** — falls back to ``unknown`` so attempts still share one
       bucket instead of creating an unbounded namespace.
-    * **Untrusted peer** — spoofed ``X-Forwarded-For``, ``Forwarded``, and
-      ``CF-Connecting-IP`` values are ignored.
+    * **Untrusted peer** — direct peer address is used; spoofed forwarding and
+      vendor headers are ignored.
     """
-    return resolve_admin_login_client_source(request, settings).source
+    resolution = resolve_admin_login_client_source(request, settings)
+    _logger.info(
+        "Admin login client source resolved",
+        extra={"resolution_path": resolution.path},
+    )
+    return resolution.source
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
