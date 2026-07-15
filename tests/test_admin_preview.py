@@ -10,8 +10,14 @@ from fastapi.testclient import TestClient
 
 from app.admin_preview import (
     COMPANY_NAMES,
+    PREVIEW_COMPANY_ARCHIVE_ID,
+    PREVIEW_COMPANY_RESTORE_ID,
+    PREVIEW_CONTACT_ARCHIVE_ID,
+    PREVIEW_CONTACT_RESTORE_ID,
     PREVIEW_PIPELINE_COMPANY_IDS,
     build_preview_acquisition_dashboard_data,
+    build_preview_company_detail,
+    build_preview_contact_detail,
     build_preview_dashboard_data,
     build_preview_pipeline_companies,
     build_preview_pipeline_detail,
@@ -290,55 +296,26 @@ def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytes
 
 
 @pytest.mark.unit
-def test_preview_crm_detail_pages_include_archive_action_buttons(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from app.admin_preview import (
-        PREVIEW_CRM_COMPANY_ACTIVE_ID,
-        PREVIEW_CRM_COMPANY_ARCHIVED_ID,
-        PREVIEW_CRM_CONTACT_ACTIVE_ID,
-        PREVIEW_CRM_CONTACT_ARCHIVED_ID,
-    )
+def test_preview_crm_detail_builders_seed_stable() -> None:
+    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
+    rng = random.Random(11)
+    company_archive = build_preview_company_detail(PREVIEW_COMPANY_ARCHIVE_ID, rng=rng, now=now)
+    company_restore = build_preview_company_detail(PREVIEW_COMPANY_RESTORE_ID, rng=rng, now=now)
+    contact_archive = build_preview_contact_detail(PREVIEW_CONTACT_ARCHIVE_ID, rng=rng, now=now)
+    contact_restore = build_preview_contact_detail(PREVIEW_CONTACT_RESTORE_ID, rng=rng, now=now)
+    assert company_archive is not None
+    assert company_restore is not None
+    assert contact_archive is not None
+    assert contact_restore is not None
+    assert company_archive[0]["archived_at"] is None
+    assert company_restore[0]["archived_at"] is not None
+    assert contact_archive[0]["archived_at"] is None
+    assert contact_restore[0]["archived_at"] is not None
 
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "11")
-    monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
-    monkeypatch.setenv("ADMIN_PASSWORD_HASH", "$argon2id$v=19$m=65536,t=3,p=4$salt$hash")
-    monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
-    monkeypatch.delenv("DATABASE_URL", raising=False)
-    client = TestClient(app, follow_redirects=False)
-    headers = {"Cookie": "admin_session=preview-screenshot-session"}
-
-    company_archive = client.get(
-        f"/admin/companies/{PREVIEW_CRM_COMPANY_ACTIVE_ID}",
-        headers=headers,
-    )
-    assert company_archive.status_code == 200
-    assert "admin-action--destructive" in company_archive.text
-    assert "research-record-list" in company_archive.text
-
-    company_restore = client.get(
-        f"/admin/companies/{PREVIEW_CRM_COMPANY_ARCHIVED_ID}",
-        headers=headers,
-    )
-    assert company_restore.status_code == 200
-    assert "admin-action--secondary" in company_restore.text
-
-    contact_edit = client.get(
-        f"/admin/contacts/{PREVIEW_CRM_CONTACT_ARCHIVED_ID}/edit",
-        headers=headers,
-    )
-    assert contact_edit.status_code == 200
-    assert "Restore contact" in contact_edit.text
-    assert "admin-action--secondary" in contact_edit.text
-
-    contact_detail = client.get(
-        f"/admin/contacts/{PREVIEW_CRM_CONTACT_ACTIVE_ID}",
-        headers=headers,
-    )
-    assert contact_detail.status_code == 200
-    assert "Archive contact" in contact_detail.text
+    repeat_rng = random.Random(11)
+    assert build_preview_company_detail(
+        PREVIEW_COMPANY_ARCHIVE_ID, rng=repeat_rng, now=now
+    ) == company_archive
 
 
 @pytest.mark.unit

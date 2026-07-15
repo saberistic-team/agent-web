@@ -92,13 +92,12 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert",
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
+    "/admin/companies/66666666-6666-6666-6666-666666666666",
+    "/admin/companies/77777777-7777-7777-7777-777777777777",
+    "/admin/contacts/88888888-8888-8888-8888-888888888888",
+    "/admin/contacts/99999999-9999-9999-9999-999999999999",
+    "/admin/contacts/99999999-9999-9999-9999-999999999999/edit",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
-    "/admin/companies/c1111111-1111-1111-1111-111111111111",
-    "/admin/companies/c2222222-2222-2222-2222-222222222222",
-    "/admin/contacts/c3333333-3333-3333-3333-333333333333",
-    "/admin/contacts/c4444444-4444-4444-4444-444444444444",
-    "/admin/contacts/c3333333-3333-3333-3333-333333333333/edit",
-    "/admin/contacts/c4444444-4444-4444-4444-444444444444/edit",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
@@ -115,30 +114,6 @@ def _active_nav_label(active_path: str) -> str:
         if link["href"] == active_path:
             return link["label"]
     return "Admin"
-
-
-def render_admin_archive_form(
-    *,
-    resource_path: str,
-    csrf_token: str,
-    archived_at: object,
-    archive_label: str,
-    restore_label: str,
-) -> str:
-    """Return a POST form for archive or restore with themed action styling."""
-    is_archived = bool(archived_at)
-    action = "restore" if is_archived else "archive"
-    label = restore_label if is_archived else archive_label
-    variant = "admin-action--secondary" if is_archived else "admin-action--destructive"
-    safe_path = html.escape(resource_path, quote=True)
-    safe_token = html.escape(csrf_token, quote=True)
-    safe_label = html.escape(label)
-    return (
-        f'<form method="post" action="{safe_path}/{action}">\n'
-        f'            <input type="hidden" name="csrf_token" value="{safe_token}" />\n'
-        f'            <button class="admin-action {variant}" type="submit">{safe_label}</button>\n'
-        f"          </form>"
-    )
 
 
 def render_admin_nav(active_path: str) -> str:
@@ -176,6 +151,13 @@ def render_admin_nav(active_path: str) -> str:
             </ul>
           </details>
         </nav>"""
+
+
+def admin_archive_button_class(*, is_archived: bool) -> str:
+    """Semantic classes for company/contact archive vs restore form actions (#233)."""
+    if is_archived:
+        return "admin-action admin-action--restore"
+    return "admin-action admin-action--destructive"
 
 
 def render_admin_shell(
