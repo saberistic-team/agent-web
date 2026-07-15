@@ -258,6 +258,22 @@ Regressing those surfaces creates screenshot 404/500s and Builder↔Reviewer
 loops on unrelated PRs (learned from #109 / #180 and #110 / #181). Prefer
 surgical edits over rewriting whole `admin_routes.py` / migration files.
 
+## Contaminated PR heads (anti-loop)
+
+When `builder_conflicts` repeatedly returns `broken_after_resolve` after
+cross-issue commit thrash (wrong PR binding) **or** after a reset left the
+PR head identical to `main` (0 commits ahead):
+
+1. **Reset** the existing PR head to current `main` (`force-with-lease` on
+   the same `builder/{issue}-…` branch — never open a second PR).
+2. Re-implement (or clean cherry-pick) the issue on that clean base.
+3. Run full pytest + `scripts/check_coverage.py` before Reviewer handoff.
+4. Dependent PR bodies must not use bare `#earlier` prose (use “issue N” /
+   “PR #M”) so `linked_open_prs` cannot re-bind the wrong head.
+
+Empty PR heads (`ahead_by: 0`) are **not** “done” — they need implementation
+commits. Do not hand off `waiting` forever without new commits.
+
 ## Dependent milestone issues (anti-loop)
 
 When stacked issues share admin/CRM surfaces (LinkedIn import #109→#110→#111),

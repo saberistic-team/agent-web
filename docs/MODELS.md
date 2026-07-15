@@ -31,6 +31,10 @@ is set. OpenAI and GitHub Models are backups (OpenAI quota is often exhausted).
    **Also smoke mergeable/clean PR heads** before handoff; an already-broken
    remote head can be `mergeable: true` while `admin_router` /
    `CORRELATION_HEADER` are undefined, collection fails, or CI assertions fail.
+   **Pitfall:** after a contaminated head is force-reset to `main`, Builder
+   must still implement the issue (empty PR ≠ done). Repeated
+   `broken_after_resolve` after cross-issue thrash → reset same PR head to
+   `main` and re-implement; do not keep merging the corrupted tip.
    **Pitfall:** Cursor local bridge rejects callback tokens that start with `-`
    (`Missing value for --tool-callback-auth-token`). SDK may mark
    `retryable=False`, but Builder must treat it as `waiting` and patch token
