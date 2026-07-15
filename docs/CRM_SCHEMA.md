@@ -180,7 +180,7 @@ Credentials stay in env vars; this table stores revocable session rows only.
 | `admin_username` | `TEXT` | Matches `ADMIN_USERNAME` |
 | `created_at`, `expires_at` | `TIMESTAMPTZ` | TTL enforced at read |
 | `revoked_at` | `TIMESTAMPTZ` | Set on logout |
-| `csrf_token_hash` | `TEXT` | Optional; synchronizer token hash for authenticated forms |
+| `csrf_token_hash` | `TEXT` | Optional; HMAC-derived synchronizer hash stored at login (validation derives from session cookie; stable across navigation until session ends) |
 
 Index: `token_hash`. See [ADMIN_AUTH.md](ADMIN_AUTH.md).
 

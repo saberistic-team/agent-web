@@ -43,9 +43,21 @@ _crm = CrmService()
 PREVIEW_SESSION_TOKEN = "preview-screenshot-session"
 
 
-def _verify_session_csrf(session: admin_auth.AdminSession, csrf_token: str) -> None:
-    if not admin_auth.verify_csrf_value(csrf_token, session.csrf_token_hash):
+def _verify_session_csrf(
+    request: Request,
+    session: admin_auth.AdminSession,
+    csrf_token: str,
+) -> None:
+    settings = get_settings()
+    if not admin_auth.verify_session_csrf_request(request, csrf_token, settings):
         raise HTTPException(status_code=400, detail=admin_auth.INVALID_REQUEST_MESSAGE)
+
+
+def _session_csrf_for_forms(request: Request, settings: Settings) -> str:
+    """Return the stable session-bound CSRF token for authenticated HTML forms."""
+    if settings.admin_preview_enabled:
+        return ""
+    return admin_auth.session_csrf_for_request(request, settings)
 
 
 def _parse_research_form(
@@ -336,19 +348,6 @@ def _consume_login_flow(request: Request, settings: Settings) -> None:
         db.consume_admin_login_flow(conn, flow_token_hash=flow_hash)
 
 
-def _issue_session_csrf(settings: Settings, session_id: int) -> str:
-    """Rotate the synchronizer token for an authenticated session."""
-    raw_csrf_token = admin_auth.generate_csrf_value()
-    csrf_hash = admin_auth.hash_csrf_token(raw_csrf_token)
-    with db.db_connection(settings.database_url) as conn:
-        db.update_admin_session_csrf(
-            conn,
-            session_id=session_id,
-            csrf_token_hash=csrf_hash,
-        )
-    return raw_csrf_token
-
-
 def _issue_session(
     *,
     request: Request,
@@ -360,8 +359,8 @@ def _issue_session(
     raw_token = admin_auth.generate_session_token()
     token_hash = admin_auth.hash_session_token(raw_token)
     expires_at = admin_auth.session_expires_at(settings)
-    initial_csrf = admin_auth.generate_csrf_value()
-    csrf_hash = admin_auth.hash_csrf_token(initial_csrf)
+    derived_csrf = admin_auth.derive_session_csrf_token(raw_token, settings)
+    csrf_hash = admin_auth.hash_csrf_token(derived_csrf)
     with db.db_connection(settings.database_url) as conn:
         with crm_transaction(conn):
             if prior_raw_token:
@@ -494,7 +493,7 @@ def admin_logout(
     _require_admin_auth_configured(settings)
     session = _load_valid_session(request, settings)
     if session is not None:
-        if not admin_auth.verify_csrf_value(csrf_token, session.csrf_token_hash):
+        if not admin_auth.verify_session_csrf_request(request, csrf_token, settings):
             raise HTTPException(status_code=400, detail=admin_auth.INVALID_REQUEST_MESSAGE)
         raw_token = admin_auth.read_session_token(request)
         if raw_token is not None:
@@ -538,9 +537,7 @@ def admin_companies(
 ) -> HTMLResponse:
     session = require_admin_session(request)
     settings = get_settings()
-    csrf_token = ""
-    if session.id:
-        csrf_token = _issue_session_csrf(settings, session.id)
+    csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
         from app.admin_preview import render_preview_section_main
 
@@ -589,7 +586,7 @@ def admin_companies(
 @router.get("/companies/new", response_class=HTMLResponse)
 def admin_company_new(request: Request) -> HTMLResponse:
     session = require_admin_session(request)
-    csrf_token = _issue_session_csrf(get_settings(), session.id) if session.id else ""
+    csrf_token = _session_csrf_for_forms(request, get_settings())
     return HTMLResponse(
         company_pages.render_company_form_page(
             csrf_token=csrf_token, admin_username=session.admin_username
@@ -613,7 +610,7 @@ def admin_company_create(
     notes: str | None = Form(default=None),
 ) -> Response:
     session = require_admin_session(request)
-    _verify_session_csrf(session, csrf_token)
+    _verify_session_csrf(request, session, csrf_token)
     try:
         company = CompanyCreate(**_company_form_payload(**locals()))
     except (ValueError, TypeError, ValidationError) as exc:
@@ -636,9 +633,7 @@ def admin_company_research(
 ) -> HTMLResponse:
     session = require_admin_session(request)
     settings = get_settings()
-    csrf_token = ""
-    if session.id:
-        csrf_token = _issue_session_csrf(settings, session.id)
+    csrf_token = _session_csrf_for_forms(request, settings)
     with db.db_connection(settings.database_url) as conn:
         company = _crm.get_company(conn, company_id)
         if company is None:
@@ -662,7 +657,7 @@ def admin_company_edit(
     request: Request, company_id: UUID, error: str | None = None, warning: str | None = None
 ) -> HTMLResponse:
     session = require_admin_session(request)
-    csrf_token = _issue_session_csrf(get_settings(), session.id) if session.id else ""
+    csrf_token = _session_csrf_for_forms(request, get_settings())
     with db.db_connection(get_settings().database_url) as conn:
         company = _crm.get_company(conn, company_id)
     if company is None:
@@ -694,7 +689,7 @@ def admin_company_update(
     notes: str | None = Form(default=None),
 ) -> Response:
     session = require_admin_session(request)
-    _verify_session_csrf(session, csrf_token)
+    _verify_session_csrf(request, session, csrf_token)
     try:
         company = CompanyUpdate(**_company_form_payload(**locals()))
     except (ValueError, TypeError, ValidationError) as exc:
@@ -713,7 +708,7 @@ def admin_company_update(
 @router.post("/companies/{company_id}/archive", response_model=None)
 def admin_company_archive(request: Request, company_id: UUID, csrf_token: str = Form(...)) -> Response:
     session = require_admin_session(request)
-    _verify_session_csrf(session, csrf_token)
+    _verify_session_csrf(request, session, csrf_token)
     with db.db_connection(get_settings().database_url) as conn:
         if _crm.archive_company(conn, company_id) is None:
             raise HTTPException(status_code=404, detail="Company not found")
@@ -723,7 +718,7 @@ def admin_company_archive(request: Request, company_id: UUID, csrf_token: str = 
 @router.post("/companies/{company_id}/restore", response_model=None)
 def admin_company_restore(request: Request, company_id: UUID, csrf_token: str = Form(...)) -> Response:
     session = require_admin_session(request)
-    _verify_session_csrf(session, csrf_token)
+    _verify_session_csrf(request, session, csrf_token)
     with db.db_connection(get_settings().database_url) as conn:
         if _crm.restore_company(conn, company_id) is None:
             raise HTTPException(status_code=404, detail="Company not found")
@@ -748,7 +743,7 @@ def admin_company_research_create(
 ) -> Response:
     session = require_admin_session(request)
     settings = get_settings()
-    _verify_session_csrf(session, csrf_token)
+    _verify_session_csrf(request, session, csrf_token)
     try:
         payload = _parse_research_form(
             record_type=record_type,
@@ -808,9 +803,7 @@ def admin_contacts(
 ) -> HTMLResponse:
     session = require_admin_session(request)
     settings = get_settings()
-    csrf_token = ""
-    if session.id:
-        csrf_token = _issue_session_csrf(settings, session.id)
+    csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
         from app.admin_preview import render_preview_section_main
 
@@ -863,7 +856,7 @@ def admin_contacts(
 @router.get("/contacts/new", response_class=HTMLResponse)
 def admin_contact_new(request: Request) -> HTMLResponse:
     session = require_admin_session(request)
-    csrf_token = _issue_session_csrf(get_settings(), session.id) if session.id else ""
+    csrf_token = _session_csrf_for_forms(request, get_settings())
     with db.db_connection(get_settings().database_url) as conn:
         companies = _crm.list_companies(conn, limit=500)
     return HTMLResponse(
@@ -891,7 +884,7 @@ def admin_contact_create(
     buying_roles: list[str] = Form(default=[]),
 ) -> Response:
     session = require_admin_session(request)
-    _verify_session_csrf(session, csrf_token)
+    _verify_session_csrf(request, session, csrf_token)
     try:
         contact = ContactCreate(**_contact_form_payload(**locals()))
     except (ValueError, TypeError, ValidationError) as exc:
@@ -911,7 +904,7 @@ def admin_contact_edit(
     request: Request, contact_id: UUID, error: str | None = None, warning: str | None = None
 ) -> HTMLResponse:
     session = require_admin_session(request)
-    csrf_token = _issue_session_csrf(get_settings(), session.id) if session.id else ""
+    csrf_token = _session_csrf_for_forms(request, get_settings())
     with db.db_connection(get_settings().database_url) as conn:
         contact = _crm.get_contact(conn, contact_id)
         companies = _crm.list_companies(conn, limit=500)
@@ -945,7 +938,7 @@ def admin_contact_update(
     buying_roles: list[str] = Form(default=[]),
 ) -> Response:
     session = require_admin_session(request)
-    _verify_session_csrf(session, csrf_token)
+    _verify_session_csrf(request, session, csrf_token)
     try:
         contact = ContactUpdate(**_contact_form_payload(**locals()))
     except (ValueError, TypeError, ValidationError) as exc:
@@ -964,7 +957,7 @@ def admin_contact_update(
 @router.post("/contacts/{contact_id}/archive", response_model=None)
 def admin_contact_archive(request: Request, contact_id: UUID, csrf_token: str = Form(...)) -> Response:
     session = require_admin_session(request)
-    _verify_session_csrf(session, csrf_token)
+    _verify_session_csrf(request, session, csrf_token)
     with db.db_connection(get_settings().database_url) as conn:
         if _crm.archive_contact(conn, contact_id) is None:
             raise HTTPException(status_code=404, detail="Contact not found")
@@ -974,7 +967,7 @@ def admin_contact_archive(request: Request, contact_id: UUID, csrf_token: str = 
 @router.post("/contacts/{contact_id}/restore", response_model=None)
 def admin_contact_restore(request: Request, contact_id: UUID, csrf_token: str = Form(...)) -> Response:
     session = require_admin_session(request)
-    _verify_session_csrf(session, csrf_token)
+    _verify_session_csrf(request, session, csrf_token)
     with db.db_connection(get_settings().database_url) as conn:
         if _crm.restore_contact(conn, contact_id) is None:
             raise HTTPException(status_code=404, detail="Contact not found")
@@ -989,9 +982,7 @@ def admin_contact_research(
 ) -> HTMLResponse:
     session = require_admin_session(request)
     settings = get_settings()
-    csrf_token = ""
-    if session.id:
-        csrf_token = _issue_session_csrf(settings, session.id)
+    csrf_token = _session_csrf_for_forms(request, settings)
     with db.db_connection(settings.database_url) as conn:
         contact = _crm.get_contact(conn, contact_id)
         if contact is None:
@@ -1029,7 +1020,7 @@ def admin_contact_research_create(
 ) -> Response:
     session = require_admin_session(request)
     settings = get_settings()
-    _verify_session_csrf(session, csrf_token)
+    _verify_session_csrf(request, session, csrf_token)
     try:
         payload = _parse_research_form(
             record_type=record_type,
@@ -1078,9 +1069,7 @@ def _render_admin_shell_page(request: Request, active_path: str) -> HTMLResponse
     """Authenticate and render the shared admin shell for a nav path."""
     session = require_admin_session(request)
     settings = get_settings()
-    csrf_token = ""
-    if session.id:
-        csrf_token = _issue_session_csrf(settings, session.id)
+    csrf_token = _session_csrf_for_forms(request, settings)
     kwargs = dict(admin_username=session.admin_username, csrf_token=csrf_token)
     if not admin.is_admin_path(active_path):
         return HTMLResponse(admin.render_admin_not_found(active_path, **kwargs), status_code=404)
@@ -1098,9 +1087,7 @@ def admin_briefs_list(
 ) -> HTMLResponse:
     session = require_admin_session(request)
     settings = get_settings()
-    csrf_token = ""
-    if session.id:
-        csrf_token = _issue_session_csrf(settings, session.id)
+    csrf_token = _session_csrf_for_forms(request, settings)
     briefs: list[dict] = []
     total = 0
     filters = brief_service.normalize_filters(
@@ -1167,9 +1154,7 @@ def admin_brief_detail(
 ) -> HTMLResponse:
     session = require_admin_session(request)
     settings = get_settings()
-    csrf_token = ""
-    if session.id:
-        csrf_token = _issue_session_csrf(settings, session.id)
+    csrf_token = _session_csrf_for_forms(request, settings)
     back_filters = brief_service.normalize_list_back_params(
         page=page,
         q=q,
@@ -1473,9 +1458,7 @@ def admin_brief_convert_confirm(
 def admin_audit_list(request: Request, page: int = 1) -> HTMLResponse:
     session = require_admin_session(request)
     settings = get_settings()
-    csrf_token = ""
-    if session.id:
-        csrf_token = _issue_session_csrf(settings, session.id)
+    csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
         from app.admin_preview import build_preview_audit_events
 
@@ -1532,9 +1515,7 @@ for _link in ADMIN_NAV_LINKS:
 def admin_dashboard(request: Request) -> HTMLResponse:
     session = require_admin_session(request)
     settings = get_settings()
-    csrf_token = ""
-    if session.id:
-        csrf_token = _issue_session_csrf(settings, session.id)
+    csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
         from app.admin_preview import build_preview_acquisition_dashboard_data
 
@@ -1591,9 +1572,7 @@ def admin_protected_fallback(request: Request, full_path: str) -> Response:
         raise HTTPException(status_code=404, detail="Not found")
     session = require_admin_session(request)
     settings = get_settings()
-    csrf_token = ""
-    if session.id:
-        csrf_token = _issue_session_csrf(settings, session.id)
+    csrf_token = _session_csrf_for_forms(request, settings)
     path = f"/admin/{full_path.rstrip('/')}"
     return HTMLResponse(
         admin.render_admin_not_found(

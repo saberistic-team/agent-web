@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import logging
@@ -25,6 +26,10 @@ SESSION_COOKIE_NAME = "admin_session"
 LOGIN_FLOW_COOKIE_NAME = "admin_login_flow"
 CSRF_FORM_FIELD = "csrf_token"
 CSRF_MAX_AGE_SECONDS = 900
+# Authenticated session CSRF lifetime matches ``ADMIN_SESSION_TTL_SECONDS`` (see
+# ``derive_session_csrf_token``). Tokens are not rotated on navigation so forms
+# stay valid across multiple tabs until the session expires, is revoked, or is
+# replaced at login.
 # Retention after ``expires_at`` before deleting never-consumed flows.
 LOGIN_FLOW_EXPIRED_RETENTION_SECONDS = CSRF_MAX_AGE_SECONDS * 2
 # Retention after ``consumed_at`` before deleting one-time-used flows.
@@ -132,6 +137,46 @@ def verify_csrf_value(raw_token: str, stored_hash: str | None) -> bool:
         return False
     expected = hash_csrf_token(raw_token)
     return hmac.compare_digest(expected, stored_hash)
+
+
+def derive_session_csrf_token(raw_session_token: str, settings: Settings) -> str:
+    """Return the stable synchronizer token bound to an authenticated session cookie.
+
+    The token is derived with HMAC-SHA256 over the raw session token using
+    ``ADMIN_SESSION_SECRET``. It is stored only in HTML forms (never logged) and
+    validated on each state-changing request. Lifetime equals the session TTL;
+    replacing or revoking the session cookie invalidates the token.
+    """
+    secret = settings.admin_session_secret
+    if not secret:
+        raise ValueError("admin_session_secret is required for session CSRF")
+    digest = hmac.new(
+        secret.encode("utf-8"),
+        raw_session_token.encode("ascii"),
+        hashlib.sha256,
+    ).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
+
+def session_csrf_for_request(request: Request, settings: Settings) -> str:
+    """Derive the session-bound CSRF token for the active admin session cookie."""
+    raw_session_token = read_session_token(request)
+    if raw_session_token is None:
+        return ""
+    return derive_session_csrf_token(raw_session_token, settings)
+
+
+def verify_session_csrf_request(
+    request: Request,
+    submitted_csrf_token: str,
+    settings: Settings,
+) -> bool:
+    """Validate a submitted CSRF token against the active session cookie."""
+    raw_session_token = read_session_token(request)
+    if not raw_session_token or not submitted_csrf_token:
+        return False
+    expected = derive_session_csrf_token(raw_session_token, settings)
+    return hmac.compare_digest(submitted_csrf_token, expected)
 
 
 def login_flow_expires_at() -> datetime:
