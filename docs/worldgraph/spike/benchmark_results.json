@@ -337,21 +337,21 @@
     "schema_version": "worldgraph-spike-search-v1",
     "approaches": {
       "postgres_fts_trigram": {
-        "avg_latency_ms": 1.162,
+        "avg_latency_ms": 1.15,
         "no_result_rate": 0.0,
         "relevance_proxy": 1.0,
         "operational_complexity": "low",
         "estimated_cost_per_1k_queries_usd": 0.02
       },
       "pgvector_embedding": {
-        "avg_latency_ms": 0.566,
+        "avg_latency_ms": 0.583,
         "no_result_rate": 0.0,
         "relevance_proxy": 1.0,
         "operational_complexity": "medium",
         "estimated_cost_per_1k_queries_usd": 0.18
       },
       "hybrid": {
-        "avg_latency_ms": 1.755,
+        "avg_latency_ms": 1.767,
         "no_result_rate": 0.0,
         "relevance_proxy": 1.0,
         "operational_complexity": "high",
@@ -370,7 +370,7 @@
           "wg-opensource-001"
         ],
         "top_explain": "fts=15.08,trigram=0.31",
-        "latency_ms": 1.312
+        "latency_ms": 1.255
       },
       {
         "query_id": "q-spatial-explore",
@@ -383,7 +383,7 @@
           "wg-game-001"
         ],
         "top_explain": "fts=13.39,trigram=0.27",
-        "latency_ms": 1.185
+        "latency_ms": 1.164
       },
       {
         "query_id": "q-agent-simulation",
@@ -396,7 +396,7 @@
           "wg-spatial-001"
         ],
         "top_explain": "fts=21.48,trigram=0.24",
-        "latency_ms": 1.179
+        "latency_ms": 1.138
       },
       {
         "query_id": "q-ai-game-npc",
@@ -409,7 +409,7 @@
           "wg-opensource-001"
         ],
         "top_explain": "fts=17.46,trigram=0.20",
-        "latency_ms": 1.148
+        "latency_ms": 1.107
       },
       {
         "query_id": "q-social-economy",
@@ -422,7 +422,7 @@
           "wg-narrative-002"
         ],
         "top_explain": "fts=16.32,trigram=0.18",
-        "latency_ms": 1.15
+        "latency_ms": 1.225
       },
       {
         "query_id": "q-open-source-deploy",
@@ -435,7 +435,7 @@
           "wg-game-001"
         ],
         "top_explain": "fts=12.49,trigram=0.13",
-        "latency_ms": 1.127
+        "latency_ms": 1.11
       },
       {
         "query_id": "q-no-match-engine",
@@ -448,7 +448,7 @@
           "wg-hybrid-001"
         ],
         "top_explain": "fts=3.08,trigram=0.02",
-        "latency_ms": 1.104
+        "latency_ms": 1.077
       },
       {
         "query_id": "q-no-match-chatbot",
@@ -461,7 +461,7 @@
           "wg-narrative-001"
         ],
         "top_explain": "fts=3.40,trigram=0.06",
-        "latency_ms": 1.124
+        "latency_ms": 1.102
       },
       {
         "query_id": "q-hybrid-story-spatial",
@@ -474,7 +474,7 @@
           "wg-social-001"
         ],
         "top_explain": "fts=16.67,trigram=0.32",
-        "latency_ms": 1.149
+        "latency_ms": 1.185
       },
       {
         "query_id": "q-research-reproducible",
@@ -487,7 +487,7 @@
           "wg-game-002"
         ],
         "top_explain": "fts=11.98,trigram=0.18",
-        "latency_ms": 1.148
+        "latency_ms": 1.133
       },
       {
         "query_id": "q-interactive-narrative",
@@ -500,7 +500,7 @@
           "wg-spatial-001"
         ],
         "top_explain": "cosine=0.617",
-        "latency_ms": 0.62
+        "latency_ms": 0.64
       },
       {
         "query_id": "q-spatial-explore",
@@ -513,7 +513,7 @@
           "wg-social-002"
         ],
         "top_explain": "cosine=0.556",
-        "latency_ms": 0.583
+        "latency_ms": 0.585
       },
       {
         "query_id": "q-agent-simulation",
@@ -526,7 +526,7 @@
           "wg-social-001"
         ],
         "top_explain": "cosine=0.612",
-        "latency_ms": 0.569
+        "latency_ms": 0.599
       },
       {
         "query_id": "q-ai-game-npc",
@@ -539,7 +539,7 @@
           "wg-spatial-001"
         ],
         "top_explain": "cosine=0.502",
-        "latency_ms": 0.572
+        "latency_ms": 0.587
       },
       {
         "query_id": "q-social-economy",
@@ -552,7 +552,7 @@
           "wg-narrative-001"
         ],
         "top_explain": "cosine=0.629",
-        "latency_ms": 0.55
+        "latency_ms": 0.575
       },
       {
         "query_id": "q-open-source-deploy",
@@ -565,7 +565,7 @@
           "wg-spatial-001"
         ],
         "top_explain": "cosine=0.418",
-        "latency_ms": 0.569
+        "latency_ms": 0.584
       },
       {
         "query_id": "q-no-match-engine",
@@ -576,7 +576,7 @@
           "wg-simulation-002"
         ],
         "top_explain": "cosine=0.282",
-        "latency_ms": 0.531
+        "latency_ms": 0.547
       },
       {
         "query_id": "q-no-match-chatbot",
@@ -589,7 +589,7 @@
           "wg-game-001"
         ],
         "top_explain": "cosine=0.563",
-        "latency_ms": 0.56
+        "latency_ms": 0.574
       },
       {
         "query_id": "q-hybrid-story-spatial",
@@ -602,7 +602,7 @@
           "wg-opensource-001"
         ],
         "top_explain": "cosine=0.681",
-        "latency_ms": 0.558
+        "latency_ms": 0.559
       },
       {
         "query_id": "q-research-reproducible",
@@ -615,7 +615,7 @@
           "wg-social-002"
         ],
         "top_explain": "cosine=0.426",
-        "latency_ms": 0.545
+        "latency_ms": 0.576
       },
       {
         "query_id": "q-interactive-narrative",
@@ -628,7 +628,7 @@
           "wg-opensource-001"
         ],
         "top_explain": "hybrid fts=15.70 emb=0.617",
-        "latency_ms": 1.792
+        "latency_ms": 1.79
       },
       {
         "query_id": "q-spatial-explore",
@@ -641,7 +641,7 @@
           "wg-game-001"
         ],
         "top_explain": "hybrid fts=13.92 emb=0.556",
-        "latency_ms": 1.774
+        "latency_ms": 1.783
       },
       {
         "query_id": "q-agent-simulation",
@@ -654,7 +654,7 @@
           "wg-spatial-001"
         ],
         "top_explain": "hybrid fts=21.97 emb=0.612",
-        "latency_ms": 1.755
+        "latency_ms": 1.761
       },
       {
         "query_id": "q-ai-game-npc",
@@ -667,7 +667,7 @@
           "wg-opensource-001"
         ],
         "top_explain": "hybrid fts=17.86 emb=0.502",
-        "latency_ms": 1.776
+        "latency_ms": 1.757
       },
       {
         "query_id": "q-social-economy",
@@ -680,7 +680,7 @@
           "wg-opensource-001"
         ],
         "top_explain": "hybrid fts=16.68 emb=0.629",
-        "latency_ms": 1.76
+        "latency_ms": 1.879
       },
       {
         "query_id": "q-open-source-deploy",
@@ -693,7 +693,7 @@
           "wg-game-001"
         ],
         "top_explain": "hybrid fts=12.74 emb=0.418",
-        "latency_ms": 1.746
+        "latency_ms": 1.759
       },
       {
         "query_id": "q-no-match-engine",
@@ -706,7 +706,7 @@
           "wg-hybrid-001"
         ],
         "top_explain": "hybrid fts=3.12 emb=0.282",
-        "latency_ms": 1.671
+        "latency_ms": 1.7
       },
       {
         "query_id": "q-no-match-chatbot",
@@ -719,7 +719,7 @@
           "wg-game-001"
         ],
         "top_explain": "hybrid fts=3.52 emb=0.563",
-        "latency_ms": 1.736
+        "latency_ms": 1.721
       },
       {
         "query_id": "q-hybrid-story-spatial",
@@ -732,7 +732,7 @@
           "wg-opensource-001"
         ],
         "top_explain": "hybrid fts=17.31 emb=0.681",
-        "latency_ms": 1.769
+        "latency_ms": 1.755
       },
       {
         "query_id": "q-research-reproducible",

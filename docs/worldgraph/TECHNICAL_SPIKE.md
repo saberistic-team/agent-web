@@ -6,7 +6,8 @@ production routes, migrations, or Render resources ship from this milestone.
 **Parent issue:** [#204](https://github.com/saberistic-team/agent-web/issues/204)
 
 **Related docs:** [ADR_INGESTION_AND_SEARCH.md](./ADR_INGESTION_AND_SEARCH.md),
-[MARKET_POSITION.md](./MARKET_POSITION.md), [world-manifest-v0.schema.json](./world-manifest-v0.schema.json)
+[MANIFEST_V0.md](./MANIFEST_V0.md), [MARKET_POSITION.md](./MARKET_POSITION.md),
+[world-manifest-v0.schema.json](./world-manifest-v0.schema.json)
 
 **Last updated:** 2026-07-15
 
