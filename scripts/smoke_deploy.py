@@ -41,19 +41,24 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(f"PASS {url} → {payload}")
 
-    if base.rstrip("/").endswith("saberistic.com"):
-        try:
-            health = get_json(f"{base}/health")
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-            print(f"FAIL {base}/health proxy trust: {exc}", file=sys.stderr)
-            return 1
-        if health.get("admin_proxy_trust") != "configured":
-            print(
-                f"FAIL {base}/health: expected admin_proxy_trust='configured', got {health!r}",
-                file=sys.stderr,
-            )
-            return 1
-        print(f"PASS {base}/health → admin_proxy_trust configured")
+    health_url = f"{base}/health"
+    try:
+        health_payload = get_json(health_url)
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        print(f"FAIL {health_url}: {exc}", file=sys.stderr)
+        return 1
+    trust = health_payload.get("admin_client_source_trust")
+    if not isinstance(trust, dict):
+        print(f"FAIL {health_url}: missing admin_client_source_trust", file=sys.stderr)
+        return 1
+    if not trust.get("immediate_peer_cidrs_configured"):
+        print(
+            f"FAIL {health_url}: admin_client_source_trust.immediate_peer_cidrs_configured "
+            f"is false — proxy trust misconfigured",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"PASS {health_url} → admin_client_source_trust configured")
     return 0
 
 

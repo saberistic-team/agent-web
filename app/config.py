@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import ipaddress
 from dataclasses import dataclass
 
 
@@ -28,8 +27,10 @@ class Settings:
     admin_login_rate_limit: int = 5
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
-    admin_trusted_proxy_cidrs: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...] = ()
-    admin_edge_proxy_cidrs: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...] = ()
+    admin_trust_proxy_headers: bool = False
+    admin_trusted_proxy_cidrs: tuple[str, ...] = ()
+    admin_trusted_forwarding_cidrs: tuple[str, ...] = ()
+    admin_trust_cloudflare_forwarding: bool = True
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -84,19 +85,6 @@ class Settings:
         return bool(self.plausible_domain)
 
 
-def _parse_network_list(raw: str) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
-    networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
-    for item in raw.split(","):
-        token = item.strip()
-        if not token:
-            continue
-        try:
-            networks.append(ipaddress.ip_network(token, strict=False))
-        except ValueError:
-            continue
-    return tuple(networks)
-
-
 def get_settings() -> Settings:
     return Settings(
         database_url=os.environ.get("DATABASE_URL", ""),
@@ -124,10 +112,21 @@ def get_settings() -> Settings:
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
         brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
-        admin_trusted_proxy_cidrs=_parse_network_list(
-            os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "")
-        ),
-        admin_edge_proxy_cidrs=_parse_network_list(
-            os.environ.get("ADMIN_EDGE_PROXY_CIDRS", "")
-        ),
+        admin_trust_proxy_headers=os.environ.get(
+            "ADMIN_TRUST_PROXY_HEADERS", ""
+        ).lower()
+        in ("1", "true", "yes"),
+        admin_trusted_proxy_cidrs=_parse_csv_env("ADMIN_TRUSTED_PROXY_CIDRS"),
+        admin_trusted_forwarding_cidrs=_parse_csv_env("ADMIN_TRUSTED_FORWARDING_CIDRS"),
+        admin_trust_cloudflare_forwarding=os.environ.get(
+            "ADMIN_TRUST_CLOUDFLARE_FORWARDING", "true"
+        ).lower()
+        in ("1", "true", "yes"),
     )
+
+
+def _parse_csv_env(name: str) -> tuple[str, ...]:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return ()
+    return tuple(part.strip() for part in raw.split(",") if part.strip())
