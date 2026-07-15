@@ -47,15 +47,15 @@ def main(argv: list[str] | None = None) -> int:
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
         print(f"FAIL {health_url}: {exc}", file=sys.stderr)
         return 1
-    proxy_trust = health_payload.get("admin_proxy_trust")
-    if not isinstance(proxy_trust, dict) or proxy_trust.get("configured") is not True:
-        print(
-            f"FAIL {health_url}: admin_proxy_trust.configured must be true in production, "
-            f"got {proxy_trust!r}",
-            file=sys.stderr,
-        )
-        return 1
-    print(f"PASS {health_url} → admin_proxy_trust configured")
+    admin_source = health_payload.get("admin_client_source") if isinstance(health_payload, dict) else None
+    if base.endswith("saberistic.com") or base.endswith("onrender.com"):
+        if not isinstance(admin_source, dict) or not admin_source.get("trusted_proxy_boundary"):
+            print(
+                f"FAIL {health_url}: expected admin_client_source.trusted_proxy_boundary on production",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"PASS {health_url} → admin_client_source boundary active")
     return 0
 
 

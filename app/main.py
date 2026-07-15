@@ -119,13 +119,16 @@ def health() -> dict:
     """
     payload: dict = {"status": "ok"}
     settings = get_settings()
-    if settings.admin_trust_proxy_headers:
-        payload["admin_login_proxy_trust"] = {
-            "enabled": True,
-            "trusted_proxy_cidr_count": len(settings.admin_trusted_proxy_cidrs),
-            "uvicorn_forwarded_allow_ips_configured": bool(
-                settings.uvicorn_forwarded_allow_ips
-            ),
+    if settings.admin_trusted_proxy_cidrs:
+        payload["admin_client_source"] = {
+            "trusted_proxy_boundary": True,
+            "resolution_model": "trusted_peer_right_to_left",
+            "header_precedence": [
+                "cf_connecting_ip_with_cloudflare_hop",
+                "x_forwarded_for",
+                "forwarded",
+            ],
+            "uvicorn_proxy_headers": True,
         }
     if not settings.database_configured:
         return payload

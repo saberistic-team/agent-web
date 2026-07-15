@@ -238,9 +238,22 @@ def read_login_flow_token(request: Request) -> str | None:
 def client_ip(request: Request, settings: Settings) -> str:
     """Resolve the client source IP for rate limiting.
 
-    Delegates to :func:`resolve_admin_login_client_source`, which verifies the
-    immediate TCP peer against the configured trusted-proxy boundary before
-    parsing forwarding headers right-to-left. Raw addresses are never logged.
+    Forwarding headers are honored only when the immediate TCP peer is inside
+    ``ADMIN_TRUSTED_PROXY_CIDRS``. Otherwise the direct peer address is used so
+    clients cannot spoof ``X-Forwarded-For``, ``Forwarded``, or
+    ``CF-Connecting-IP``.
+
+    Source identity notes:
+
+    * **IPv4 / IPv6** — stored only as keyed digests; the resolved string is
+      passed verbatim into the source bucket (e.g. ``203.0.113.1``,
+      ``2001:db8::1``).
+    * **Missing peer** — falls back to ``unknown`` so attempts still share one
+      bucket instead of creating an unbounded namespace.
+    * **Trusted proxy boundary** — when the peer is verified, client identity
+      is derived from ``CF-Connecting-IP`` (Cloudflare path only),
+      ``X-Forwarded-For``, or ``Forwarded`` using right-to-left trusted-hop
+      parsing.
     """
     return resolve_admin_login_client_source(request, settings).source
 
@@ -366,7 +379,8 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    source = client_ip(request, settings)
+    source_resolution = resolve_admin_login_client_source(request, settings)
+    source = source_resolution.source
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,
@@ -418,6 +432,7 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "lockout_transition": admission.lockout_transition,
+                "source_resolution_path": source_resolution.path.value,
             },
         )
     elif admission.already_locked:
