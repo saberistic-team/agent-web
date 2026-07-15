@@ -20,11 +20,8 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
+from app.client_source import ClientSourceResolution, resolve_admin_login_client_source
 from app.config import Settings
-from app.trusted_proxy import (
-    emit_source_resolution_telemetry,
-    resolve_admin_login_client_source,
-)
 
 SESSION_COOKIE_NAME = "admin_session"
 LOGIN_FLOW_COOKIE_NAME = "admin_login_flow"
@@ -239,31 +236,16 @@ def read_login_flow_token(request: Request) -> str | None:
 
 
 def client_ip(request: Request, settings: Settings) -> str:
-    """Resolve the client source IP for rate limiting.
+    """Resolve the client source for rate limiting (see ``client_source``)."""
+    return resolve_admin_login_client_source(request, settings).source
 
-    Forwarding headers are honored only when the immediate TCP peer is a member
-    of ``ADMIN_TRUSTED_PROXY_CIDRS`` (Render private-network peers in
-    production). A right-to-left trusted-hop walk selects the effective client;
-    spoofed left-most ``X-Forwarded-For`` values are never trusted directly.
 
-    Source identity notes:
-
-    * **IPv4 / IPv6** — stored only as keyed digests; normalized addresses are
-      passed into the source bucket (e.g. ``203.0.113.1``, ``2001:db8::1``).
-    * **Missing peer** — falls back to ``unknown`` so attempts still share one
-      bucket instead of creating an unbounded namespace.
-    * **Untrusted peer** — forwarding headers are ignored; the direct peer is
-      used so clients cannot spoof ``X-Forwarded-For`` or ``CF-Connecting-IP``.
-    """
-    peer_host = request.client.host if request.client is not None else None
-    result = resolve_admin_login_client_source(
-        peer_host=peer_host,
-        headers=request.headers,
-        trusted_proxy_networks=settings.admin_trusted_proxy_networks,
-        cloudflare_edge_networks=settings.admin_cloudflare_edge_networks,
-    )
-    emit_source_resolution_telemetry(result)
-    return result.source
+def resolve_admin_login_client_source_with_telemetry(
+    request: Request,
+    settings: Settings,
+) -> ClientSourceResolution:
+    """Resolve client source and expose non-sensitive resolution metadata."""
+    return resolve_admin_login_client_source(request, settings)
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
@@ -387,7 +369,8 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    source = client_ip(request, settings)
+    resolution = resolve_admin_login_client_source(request, settings)
+    source = resolution.source
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,
@@ -433,11 +416,18 @@ def try_admit_login_attempt(
             store_unavailable=True,
         )
 
+    telemetry = {
+        "limiter_key_count": len(limiter_keys),
+        "source_resolution_path": resolution.path,
+    }
+    if resolution.ignored_untrusted_forwarding:
+        telemetry["ignored_untrusted_forwarding"] = True
+
     if admission.admitted:
         _logger.info(
             "Admin login attempt admitted",
             extra={
-                "limiter_key_count": len(limiter_keys),
+                **telemetry,
                 "lockout_transition": admission.lockout_transition,
             },
         )
@@ -445,7 +435,7 @@ def try_admit_login_attempt(
         _logger.info(
             "Admin login attempt throttled",
             extra={
-                "limiter_key_count": len(limiter_keys),
+                **telemetry,
                 "already_locked": True,
             },
         )
