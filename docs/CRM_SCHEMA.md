@@ -88,10 +88,22 @@ warning rather than preventing a save.
 |--------|------|-------|
 | `id` | `UUID` | PK |
 | `company_id` | `UUID` | FK → `companies`, `ON DELETE SET NULL` |
-| `email` | `TEXT` | Unique |
-| `full_name` | `TEXT` | Optional |
+| `full_name` | `TEXT` | Required display name |
+| `title` | `TEXT` | Optional job title |
+| `profile_url` | `TEXT` | Optional LinkedIn or profile URL (normalized for duplicate warnings) |
+| `email` | `TEXT` | Optional; unique among active rows when set |
+| `email_permission` | `TEXT` | Optional outreach permission/provenance |
+| `buying_roles` | `TEXT[]` | Zero or more: `founder`, `technical_buyer`, `executive_buyer`, `influencer`, `investor`, `introducer`, `other` |
+| `last_interaction_at` | `DATE` | Optional last touch date |
+| `relationship_strength` | `TEXT` | Optional relationship context |
+| `notes` | `TEXT` | Optional operator notes |
+| `archived_at` | `TIMESTAMPTZ` | Soft archive timestamp |
 
-Indexes: `company_id`, `email`.
+Indexes: `company_id`, partial unique on `LOWER(email)`, `profile_url`, `archived_at`,
+`last_interaction_at`, GIN on `buying_roles`.
+
+`app/contacts.py` owns buying-role and relationship registries. Duplicate warnings for
+normalized profile URL, email, and name/company combinations are non-blocking.
 
 ### `source_records`
 
@@ -218,6 +230,8 @@ Migrations live in `app/migrations/definitions.py` and are applied at startup vi
 | `006` | `admin_csrf_binding` | Login-flow CSRF rows and session CSRF column |
 | `007` | `research_records` | Typed research records with provenance and expiry |
 | `010` | `company_records` | Company firmographics, normalized domain, and soft archival |
+| `011` | `acquisition_dashboard_indexes` | Research-record indexes for the acquisition dashboard |
+| `012` | `contact_records` | Contact roles, relationship context, optional email, soft archival |
 
 Applied versions are recorded in `schema_migrations`. Steps are **idempotent**
 (`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`) so empty and existing Render Postgres

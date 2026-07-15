@@ -8,8 +8,8 @@ ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
     {
         "label": "Dashboard",
         "href": "/admin",
-        "milestone": "Admin foundation",
-        "summary": "Operational overview and brief summaries",
+        "milestone": "CRM core",
+        "summary": "Acquisition pipeline and daily attention queues",
     },
     {
         "label": "Audit",

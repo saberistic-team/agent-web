@@ -46,7 +46,11 @@ def _mock_conn(row: dict | list | None = None) -> MagicMock:
         ),
         (
             PostgresContactRepository,
-            {"email": "lead@example.com", "company_id": COMPANY_ID},
+            {
+                "full_name": "Lead",
+                "email": "lead@example.com",
+                "company_id": COMPANY_ID,
+            },
         ),
         (
             PostgresSourceRecordRepository,

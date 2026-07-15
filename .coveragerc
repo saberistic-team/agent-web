@@ -3,6 +3,7 @@ source = app
 branch = True
 omit =
     app/__init__.py
+    app/repositories/protocols.py
     */tests/*
     */.venv/*
 

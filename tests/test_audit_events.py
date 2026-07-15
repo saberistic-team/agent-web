@@ -654,6 +654,17 @@ def test_render_admin_section_empty_state() -> None:
 
 
 @pytest.mark.unit
+def test_render_admin_page_preview_dashboard(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app import admin
+
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
+    html_out = admin.render_admin_page("/admin", admin_username=TEST_USERNAME)
+    assert "Today&apos;s attention" in html_out
+    assert "Preview data — not production" in html_out
+
+
+@pytest.mark.unit
 def test_redact_value_truncates_long_strings() -> None:
     long_text = "x" * 600
     safe = audit_service.redact_value(long_text)
