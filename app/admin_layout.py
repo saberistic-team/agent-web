@@ -93,6 +93,13 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/503",
 )
 
+# Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
+# Register preview-only ids in app/admin_preview.py so ADMIN_PREVIEW_MODE
+# renders populated error shells, not JSON or empty pages.
+ADMIN_SCREENSHOT_EXPECTED_STATUS: dict[str, int] = {
+    "/admin/briefs/503": 503,
+}
+
 
 def _active_nav_label(active_path: str) -> str:
     """Return the label for the current admin section."""
