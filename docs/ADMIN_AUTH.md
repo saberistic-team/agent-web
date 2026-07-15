@@ -282,13 +282,13 @@ Resolved client source comes from :func:`resolve_admin_login_client_source` in
 
 Uvicorn is started with an explicit ``--forwarded-allow-ips`` boundary in
 ``render.yaml`` that mirrors ``ADMIN_TRUSTED_PROXY_CIDRS``. Application-layer
-resolution is authoritative; Uvicorn ``--proxy-headers`` is **not** enabled
-because its leftmost ``X-Forwarded-For`` strategy is unsafe behind Cloudflare.
+resolution is authoritative for the login limiter; Uvicorn forwarded-header
+trust is scoped to Render’s internal load balancer only.
 
 | Environment | Proxy trust | Effective source |
 |-------------|-------------|------------------|
 | **Production Render** | ``ADMIN_TRUST_PROXY_HEADERS=true`` + Render CIDRs | Right-to-left walk from trusted Render peer |
-| **Direct Render origin** | Peer is not a public Cloudflare hop; CF headers ignored | Direct peer or ``unknown`` |
+| **Direct Render origin** | Peer is not a trusted Render proxy; CF headers ignored | Direct peer or ``unknown`` |
 | **Local dev / tests** | Trust off (default) | Direct peer (``testclient`` in pytest) |
 | **ADMIN_PREVIEW_MODE** | Same as host environment | Same resolver; mock pages only |
 

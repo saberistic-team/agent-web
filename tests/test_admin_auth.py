@@ -18,8 +18,8 @@ from fastapi.testclient import TestClient
 
 from app import admin_auth
 from app import db
-from app.admin_client_source import resolve_admin_login_client_source
 from app.admin_auth import LOGIN_FLOW_COOKIE_NAME, SESSION_COOKIE_NAME
+from app.admin_client_source import resolve_admin_login_client_source
 from app.admin_routes import _issue_session
 from app.config import get_settings
 from app.crm_uow import crm_transaction
