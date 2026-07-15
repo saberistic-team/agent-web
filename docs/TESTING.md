@@ -26,6 +26,9 @@ Optional overrides:
   In-process `TestClient` and direct handler calls are fine.
 - **Integration:** broader service flows (HTTP paths, mocked Stripe/DB/email).
   Still no live paid APIs in CI.
+- **Live Postgres (optional locally, required in CI):** schema reconcile tests in
+  `tests/test_pipeline_schema_reconcile.py` use `TEST_DATABASE_URL`. CI sets
+  `REQUIRE_TEST_DATABASE=1` so those tests fail closed when the URL is missing.
 - Agent/orchestration scripts under `scripts/` are **not** measured by these
   gates (they have their own tests without `app/` coverage requirements).
 

@@ -170,6 +170,84 @@ def is_retryable_codegen_failure(exc: BaseException) -> bool:
     return any(marker in text for marker in markers)
 
 
+def is_github_app_write_permission_failure(exc: BaseException) -> bool:
+    """True when the Builder App cannot write git contents (common 403).
+
+    Often means the App lacks ``contents: write``, or a concurrent human/local
+    push already owns the branch. With an open linked PR this must not become
+    ``status:blocked`` (#210 / PR #218).
+    """
+    text = str(exc).lower()
+    if "resource not accessible by integration" in text:
+        return True
+    if "403" in text and (
+        "git/trees" in text
+        or "git/refs" in text
+        or "/contents/" in text
+        or "create a tree" in text
+    ):
+        return True
+    return False
+
+
+def recover_builder_after_codegen_failure(
+    repo: str,
+    issue: int,
+    exc: BaseException,
+    *,
+    detail: str,
+) -> str:
+    """Classify a codegen failure into handoff mode: waiting | reviewer | blocked.
+
+    Returns the handoff mode written (caller should return immediately).
+    """
+    if is_retryable_codegen_failure(exc):
+        post_issue_comment(
+            repo,
+            issue,
+            (
+                "### builder_codegen_retry\n"
+                "- result: `waiting`\n"
+                "- reason: transient / soft codegen failure (do not `status:blocked`)\n\n"
+                f"{detail}\n"
+            ),
+        )
+        write_builder_handoff("waiting")
+        return "waiting"
+
+    existing = linked_open_prs(repo, issue)
+    if existing:
+        pr_number = int(existing[0]["number"])
+        permission_note = ""
+        if is_github_app_write_permission_failure(exc):
+            permission_note = (
+                "- note: GitHub App write denied, but an intentional linked PR "
+                "already exists — handing that head to Reviewer instead of "
+                "`status:blocked` (learned from #210).\n"
+            )
+        else:
+            permission_note = (
+                "- note: codegen failed, but an intentional linked PR already "
+                "exists — consolidate on that head instead of `status:blocked`.\n"
+            )
+        post_issue_comment(
+            repo,
+            issue,
+            (
+                "### builder_codegen_existing_pr\n"
+                f"- pr: #{pr_number}\n"
+                f"{permission_note}\n"
+                f"{detail}\n"
+            ),
+        )
+        handoff_builder_when_mergeable(repo, issue)
+        return "reviewer"
+
+    escalate(repo, issue, detail)
+    write_builder_handoff("blocked")
+    return "blocked"
+
+
 def write_builder_handoff(mode: str) -> None:
     """Tell builder.yml how to advance labels: reviewer | done | blocked | waiting."""
     if mode not in {"reviewer", "done", "blocked", "waiting"}:
@@ -780,21 +858,7 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
             "If `git/refs` returns 403 for the Builder App, grant the App "
             "`contents: write` on this repository."
         )
-        if is_retryable_codegen_failure(exc):
-            post_issue_comment(
-                repo,
-                issue,
-                (
-                    "### builder_codegen_retry\n"
-                    "- result: `waiting`\n"
-                    "- reason: transient / soft codegen failure (do not `status:blocked`)\n\n"
-                    f"{detail}\n"
-                ),
-            )
-            write_builder_handoff("waiting")
-            return
-        escalate(repo, issue, detail)
-        write_builder_handoff("blocked")
+        recover_builder_after_codegen_failure(repo, issue, exc, detail=detail)
 
 
 def role_docs(repo: str, issue: int, brief: Path) -> None:
