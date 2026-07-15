@@ -88,12 +88,12 @@ ADMIN_SCREENSHOT_ROUTES: tuple[str, ...] = (
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
-    "/admin/companies/dddddddd-dddd-dddd-dddd-000000000001",
-    "/admin/companies/dddddddd-dddd-dddd-dddd-000000000002",
-    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-000000000001",
-    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-000000000002",
-    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-000000000001/edit",
-    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-000000000002/edit",
+    "/admin/companies/cccccccc-cccc-cccc-cccc-cccccccccccc",
+    "/admin/companies/dddddddd-dddd-dddd-dddd-dddddddddddd",
+    "/admin/contacts/88888888-8888-8888-8888-888888888888",
+    "/admin/contacts/99999999-9999-9999-9999-999999999999",
+    "/admin/contacts/88888888-8888-8888-8888-888888888888/edit",
+    "/admin/contacts/99999999-9999-9999-9999-999999999999/edit",
 )
 
 # Fallback when app.admin_layout import fails (keep in sync).

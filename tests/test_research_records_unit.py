@@ -225,14 +225,14 @@ def test_admin_research_page_renderers_cover_company_and_contact(
     assert "Archive company" in company_html
 
     archived_company = {**company, "archived_at": "2026-01-01"}
-    archived_company_html = render_admin_company_research_page(
+    company_restore_html = render_admin_company_research_page(
         company=archived_company,
         contacts=[contact],
         records=[record],
         csrf_token="csrf",
     )
-    assert 'class="admin-action admin-action--restore"' in archived_company_html
-    assert "Restore company" in archived_company_html
+    assert 'class="admin-action admin-action--secondary"' in company_restore_html
+    assert "Restore company" in company_restore_html
 
     contact_html = render_admin_contact_research_page(
         contact=contact,
@@ -245,11 +245,11 @@ def test_admin_research_page_renderers_cover_company_and_contact(
     assert "Archive contact" in contact_html
 
     archived_contact = {**contact, "archived_at": "2026-01-01"}
-    archived_contact_html = render_admin_contact_research_page(
+    contact_restore_html = render_admin_contact_research_page(
         contact=archived_contact,
         company=company,
         records=[record],
         csrf_token="csrf",
     )
-    assert 'class="admin-action admin-action--restore"' in archived_contact_html
-    assert "Restore contact" in archived_contact_html
+    assert 'class="admin-action admin-action--secondary"' in contact_restore_html
+    assert "Restore contact" in contact_restore_html

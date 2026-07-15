@@ -206,7 +206,7 @@ def render_admin_company_research_page(
     )
     archive_action = "restore" if company.get("archived_at") else "archive"
     archive_label = "Restore company" if company.get("archived_at") else "Archive company"
-    archive_button_class = archive_action_button_class(archived=bool(company.get("archived_at")))
+    archive_button_class = archive_action_button_class(archived_at=company.get("archived_at"))
     error_html = ""
     if error_message:
         error_html = (
@@ -333,7 +333,7 @@ def render_admin_contact_research_page(
     form_body = _research_form_body(csrf_token=csrf_token)
     archive_action = "restore" if contact.get("archived_at") else "archive"
     archive_label = "Restore contact" if contact.get("archived_at") else "Archive contact"
-    archive_button_class = archive_action_button_class(archived=bool(contact.get("archived_at")))
+    archive_button_class = archive_action_button_class(archived_at=contact.get("archived_at"))
     main = f"""        <section class="admin-research" aria-labelledby="contact-research-title">
           <p class="admin-breadcrumb"><a href="/admin/contacts">Contacts</a></p>
           <h1 class="admin-title" id="contact-research-title">{display_name}</h1>
