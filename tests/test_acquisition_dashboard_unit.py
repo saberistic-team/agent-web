@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 from uuid import UUID
 
@@ -174,3 +174,105 @@ def test_load_acquisition_dashboard_maps_repository_rows() -> None:
     assert data.company_counts_by_stage[0].label == "Seed"
     assert data.overdue_actions[0].company_name == "Acme"
     assert data.generated_at == NOW
+
+
+@pytest.mark.unit
+def test_load_acquisition_dashboard_parses_string_and_naive_datetimes() -> None:
+    repo = MagicMock()
+    repo.count_companies_by_dimension.side_effect = [[("unspecified", 1)], []]
+    repo.count_contacts_by_company_dimension.side_effect = [[("custom_stage", 2)], []]
+    repo.list_overdue_next_actions.return_value = [
+        {
+            "id": COMPANY_ID,
+            "company_id": COMPANY_ID,
+            "company_name": "Acme",
+            "contact_name": None,
+            "body": "Ping",
+            "review_at": "2026-07-10T08:00:00Z",
+        }
+    ]
+    repo.list_upcoming_next_actions.return_value = []
+    repo.list_recent_evidence.return_value = [
+        {
+            "id": COMPANY_ID,
+            "company_id": COMPANY_ID,
+            "company_name": "Beta",
+            "record_type": "verified_fact",
+            "body": "Fact",
+            "created_at": datetime(2026, 7, 1, 9, 0),
+            "expires_at": "2026-08-01T00:00:00Z",
+        }
+    ]
+    repo.list_stale_evidence.return_value = []
+    repo.list_companies_without_decision_maker.return_value = [
+        {
+            "id": COMPANY_ID,
+            "name": "Gamma",
+            "target_status": "target",
+            "category": "other",
+            "stage": None,
+        }
+    ]
+    repo.list_companies_without_next_action.return_value = []
+
+    data = load_acquisition_dashboard(MagicMock(), repo, now=NOW)
+    assert data.company_counts_by_stage[0].label == "Unspecified"
+    assert data.contact_counts_by_stage[0].label == "Custom Stage"
+    assert data.overdue_actions[0].review_at.tzinfo == timezone.utc
+    assert data.recent_evidence[0].created_at.tzinfo == timezone.utc
+    assert data.recent_evidence[0].expires_at is not None
+    assert data.without_decision_maker[0].company_name == "Gamma"
+
+
+@pytest.mark.unit
+def test_upcoming_next_actions_sql_is_bounded() -> None:
+    repo = PostgresAcquisitionDashboardRepository()
+    conn = _mock_conn([])
+    window_end = NOW + timedelta(days=14)
+    repo.list_upcoming_next_actions(
+        conn,
+        reference=NOW,
+        window_end=window_end,
+        limit=12,
+    )
+    sql = str(conn.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    assert "review_at >=" in sql
+    assert "review_at <=" in sql
+    assert conn.cursor.return_value.__enter__.return_value.execute.call_args.args[1] == (
+        NOW,
+        window_end,
+        12,
+    )
+
+
+@pytest.mark.unit
+def test_recent_evidence_sql_orders_by_created_at() -> None:
+    repo = PostgresAcquisitionDashboardRepository()
+    conn = _mock_conn([])
+    repo.list_recent_evidence(conn, limit=8)
+    sql = str(conn.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    assert "ORDER BY rr.created_at DESC" in sql
+    assert conn.cursor.return_value.__enter__.return_value.execute.call_args.args[1] == (
+        ["verified_fact", "public_signal"],
+        8,
+    )
+
+
+@pytest.mark.unit
+def test_companies_without_next_action_sql() -> None:
+    repo = PostgresAcquisitionDashboardRepository()
+    conn = _mock_conn([])
+    repo.list_companies_without_next_action(conn, limit=5)
+    sql = str(conn.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    assert "follow_up_note" in sql
+    assert "review_at IS NOT NULL" in sql
+
+
+@pytest.mark.unit
+def test_unsupported_dimension_raises() -> None:
+    repo = PostgresAcquisitionDashboardRepository()
+    conn = _mock_conn([])
+    with pytest.raises(ValueError, match="unsupported company dimension"):
+        repo.count_companies_by_dimension(conn, "invalid")
+    with pytest.raises(ValueError, match="unsupported contact dimension"):
+        repo.count_contacts_by_company_dimension(conn, "invalid")

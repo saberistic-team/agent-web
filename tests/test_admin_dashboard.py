@@ -176,6 +176,40 @@ def test_render_populated_dashboard_includes_metric_sections() -> None:
 
 
 @pytest.mark.unit
+def test_render_dashboard_formats_naive_datetimes() -> None:
+    naive = datetime(2026, 7, 15, 8, 30)
+    data = AcquisitionDashboardData(
+        company_counts_by_stage=(CountBucket(key="seed", label="Seed", count=1),),
+        company_counts_by_category=(),
+        contact_counts_by_stage=(),
+        contact_counts_by_category=(),
+        overdue_actions=(
+            NextActionRow(
+                record_id="r1",
+                company_id=str(COMPANY_ID),
+                company_name="Naive Co",
+                contact_name=None,
+                body="Follow up",
+                review_at=naive,
+            ),
+        ),
+        upcoming_actions=(),
+        recent_evidence=(),
+        stale_evidence=(),
+        without_decision_maker=(),
+        without_next_action=(),
+        generated_at=naive,
+    )
+    html = render_acquisition_dashboard_page(
+        data=data,
+        admin_username=TEST_USERNAME,
+        preview_banner="Preview data — not production",
+    )
+    assert "Preview data — not production" in html
+    assert "2026-07-15 08:30 UTC" in html
+
+
+@pytest.mark.unit
 @pytest.mark.integration
 def test_admin_dashboard_requires_auth() -> None:
     response = client.get("/admin")
