@@ -93,6 +93,12 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
+    "/admin/companies/c1111111-1111-1111-1111-111111111111",
+    "/admin/companies/c2222222-2222-2222-2222-222222222222",
+    "/admin/contacts/c3333333-3333-3333-3333-333333333333",
+    "/admin/contacts/c4444444-4444-4444-4444-444444444444",
+    "/admin/contacts/c3333333-3333-3333-3333-333333333333/edit",
+    "/admin/contacts/c4444444-4444-4444-4444-444444444444/edit",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
@@ -111,12 +117,27 @@ def _active_nav_label(active_path: str) -> str:
     return "Admin"
 
 
-def render_admin_archive_restore_button(*, label: str, is_archived: bool) -> str:
-    """Return a themed Archive/Restore submit button for admin detail forms."""
-    variant = "admin-action-btn--restore" if is_archived else "admin-action-btn--destructive"
+def render_admin_archive_form(
+    *,
+    resource_path: str,
+    csrf_token: str,
+    archived_at: object,
+    archive_label: str,
+    restore_label: str,
+) -> str:
+    """Return a POST form for archive or restore with themed action styling."""
+    is_archived = bool(archived_at)
+    action = "restore" if is_archived else "archive"
+    label = restore_label if is_archived else archive_label
+    variant = "admin-action--secondary" if is_archived else "admin-action--destructive"
+    safe_path = html.escape(resource_path, quote=True)
+    safe_token = html.escape(csrf_token, quote=True)
+    safe_label = html.escape(label)
     return (
-        f'<button class="admin-action-btn {variant}" type="submit">'
-        f"{html.escape(label)}</button>"
+        f'<form method="post" action="{safe_path}/{action}">\n'
+        f'            <input type="hidden" name="csrf_token" value="{safe_token}" />\n'
+        f'            <button class="admin-action {variant}" type="submit">{safe_label}</button>\n'
+        f"          </form>"
     )
 
 

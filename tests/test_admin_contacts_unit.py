@@ -87,4 +87,4 @@ def test_render_contact_form_page_shows_archived_state() -> None:
         contact={"id": CONTACT_ID, "full_name": "Pat", "archived_at": "2026-01-01"},
     )
     assert "Restore contact" in html
-    assert 'class="admin-action admin-action--restore"' in html
+    assert 'class="admin-action admin-action--secondary"' in html

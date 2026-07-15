@@ -5,7 +5,7 @@ from __future__ import annotations
 import html
 from typing import Any
 
-from app.admin_layout import render_admin_archive_restore_button, render_admin_shell
+from app.admin_layout import render_admin_archive_form, render_admin_shell
 from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES, TARGET_STATUSES
 from app.contacts import EMAIL_PERMISSIONS, RELATIONSHIP_STRENGTHS, format_buying_roles
 from app.research_records import (
@@ -204,11 +204,12 @@ def render_admin_company_research_page(
         f"<div><dt>{html.escape(label)}</dt><dd>{html.escape(str(value or '—'))}</dd></div>"
         for label, value in company_fields
     )
-    archive_action = "restore" if company.get("archived_at") else "archive"
-    archive_label = "Restore company" if company.get("archived_at") else "Archive company"
-    archive_button = render_admin_archive_restore_button(
-        label=archive_label,
-        is_archived=bool(company.get("archived_at")),
+    archive_form = render_admin_archive_form(
+        resource_path=f"/admin/companies/{company_id}",
+        csrf_token=csrf_token,
+        archived_at=company.get("archived_at"),
+        archive_label="Archive company",
+        restore_label="Restore company",
     )
     error_html = ""
     if error_message:
@@ -250,10 +251,7 @@ def render_admin_company_research_page(
           <p class="admin-lede">Research records for company <code>{company_id}</code>.</p>
           <p><a class="cta" href="/admin/companies/{company_id}/edit">Edit company</a></p>
           <dl class="research-provenance">{facts_html}</dl>
-          <form method="post" action="/admin/companies/{company_id}/{archive_action}">
-            <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}" />
-            {archive_button}
-          </form>
+          {archive_form}
           <h2 class="admin-section-heading">Contacts</h2>
           <p><a class="cta" href="/admin/contacts/new">Add contact</a></p>
           <ul class="admin-list">{contact_links}
@@ -334,11 +332,12 @@ def render_admin_contact_research_page(
     else:
         records_html = '<p class="admin-note">No research records yet.</p>'
     form_body = _research_form_body(csrf_token=csrf_token)
-    archive_action = "restore" if contact.get("archived_at") else "archive"
-    archive_label = "Restore contact" if contact.get("archived_at") else "Archive contact"
-    archive_button = render_admin_archive_restore_button(
-        label=archive_label,
-        is_archived=bool(contact.get("archived_at")),
+    archive_form = render_admin_archive_form(
+        resource_path=f"/admin/contacts/{contact_id}",
+        csrf_token=csrf_token,
+        archived_at=contact.get("archived_at"),
+        archive_label="Archive contact",
+        restore_label="Restore contact",
     )
     main = f"""        <section class="admin-research" aria-labelledby="contact-research-title">
           <p class="admin-breadcrumb"><a href="/admin/contacts">Contacts</a></p>
@@ -347,10 +346,7 @@ def render_admin_contact_research_page(
           <p class="admin-lede">Research records for contact <code>{contact_id}</code>.</p>
           <p><a class="cta" href="/admin/contacts/{contact_id}/edit">Edit contact</a></p>
           <dl class="research-provenance">{facts_html}</dl>
-          <form method="post" action="/admin/contacts/{contact_id}/{archive_action}">
-            <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}" />
-            {archive_button}
-          </form>
+          {archive_form}
           <h2 class="admin-section-heading">Attach record</h2>
           {error_html}
           <form class="admin-form research-form" method="post" action="/admin/contacts/{contact_id}/research">
