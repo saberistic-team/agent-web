@@ -27,9 +27,8 @@ class Settings:
     admin_login_rate_limit: int = 5
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
-    admin_trust_proxy_headers: bool = False
     admin_trusted_proxy_cidrs: tuple[str, ...] = ()
-    uvicorn_forwarded_allow_ips: str = ""
+    admin_cloudflare_proxy_cidrs: tuple[str, ...] = ()
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -49,6 +48,11 @@ class Settings:
     def admin_preview_mode(self) -> bool:
         flag = os.environ.get("ADMIN_PREVIEW_MODE", "").lower()
         return flag in ("1", "true", "yes")
+
+    @property
+    def admin_trust_proxy_headers(self) -> bool:
+        """True when explicit trusted-proxy CIDRs are configured (legacy name)."""
+        return bool(self.admin_trusted_proxy_cidrs)
 
     @property
     def admin_auth_configured(self) -> bool:
@@ -111,12 +115,8 @@ def get_settings() -> Settings:
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
         brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
-        admin_trust_proxy_headers=os.environ.get(
-            "ADMIN_TRUST_PROXY_HEADERS", ""
-        ).lower()
-        in ("1", "true", "yes"),
         admin_trusted_proxy_cidrs=_parse_csv_env("ADMIN_TRUSTED_PROXY_CIDRS"),
-        uvicorn_forwarded_allow_ips=os.environ.get("UVICORN_FORWARDED_ALLOW_IPS", "").strip(),
+        admin_cloudflare_proxy_cidrs=_parse_csv_env("ADMIN_CLOUDFLARE_PROXY_CIDRS"),
     )
 
 
