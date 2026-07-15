@@ -72,15 +72,16 @@ body.admin-app {
   display: grid;
   grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
   gap: 0;
-  min-height: calc(100vh - 72px);
   min-width: 0;
   width: 100%;
-  align-items: start;
 }
 
 .admin-nav {
+  /* Override legacy header-nav flex rules from site.css; size to links only. */
+  display: block;
   align-self: start;
-  width: 100%;
+  margin-left: 0;
+  margin-right: 0;
   border-right: 1px solid var(--line);
   background: color-mix(in srgb, var(--surface) 55%, transparent);
   padding: 1.25rem clamp(1rem, 3vw, 1.5rem);
@@ -606,7 +607,7 @@ body.admin-app {
   .admin-nav {
     position: sticky;
     top: 0;
-    max-height: 100dvh;
+    max-height: 100vh;
     overflow-y: auto;
   }
 
@@ -681,6 +682,9 @@ body.admin-app {
   .admin-nav-toggle {
     display: block;
     width: 100%;
+  }
+
+  .admin-nav-toggle:not([open]) {
     height: fit-content;
   }
 
@@ -690,11 +694,6 @@ body.admin-app {
 
   .admin-nav-toggle:not([open]) .admin-nav-mobile-list {
     display: none;
-  }
-
-  .admin-nav-toggle:not([open]) {
-    height: fit-content;
-    min-height: 0;
   }
 
   .admin-nav-toggle:not([open]) .admin-nav-current {

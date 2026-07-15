@@ -118,28 +118,6 @@ def test_render_admin_nav_unknown_path_uses_admin_label() -> None:
 
 
 @pytest.mark.unit
-def test_admin_css_nav_does_not_stretch_with_grid() -> None:
-    css = ADMIN_CSS.read_text(encoding="utf-8")
-    layout_block = css.split(".admin-layout {", 1)[1].split("}", 1)[0]
-    nav_block = css.split(".admin-nav {", 1)[1].split("}", 1)[0]
-    assert "align-items: start" in layout_block
-    assert "align-self: start" in nav_block
-    desktop_block = css.split("@media (min-width: 769px)")[1].split("@media")[0]
-    assert "position: sticky" in desktop_block
-    assert "max-height: 100dvh" in desktop_block
-
-
-@pytest.mark.unit
-def test_admin_css_mobile_disclosure_compact_sizing() -> None:
-    css = ADMIN_CSS.read_text(encoding="utf-8")
-    mobile_block = css.split("@media (max-width: 768px)")[1]
-    assert "height: fit-content" in mobile_block
-    assert ".admin-nav-toggle:not([open])" in mobile_block
-    assert ".admin-nav-toggle:not([open]) .admin-nav-mobile-list" in mobile_block
-    assert "display: none" in mobile_block
-
-
-@pytest.mark.unit
 def test_admin_css_mobile_nav_and_table_scroll_guardrails() -> None:
     css = ADMIN_CSS.read_text(encoding="utf-8")
     assert "@media (min-width: 769px)" in css
@@ -150,6 +128,40 @@ def test_admin_css_mobile_nav_and_table_scroll_guardrails() -> None:
     assert ".admin-table-wrap::before" in css
     assert "overflow-x: auto" in css
     assert "Scroll horizontally for more columns" in css
+
+
+@pytest.mark.unit
+def test_admin_css_nav_sizes_to_content_not_grid_stretch() -> None:
+    css = ADMIN_CSS.read_text(encoding="utf-8")
+    nav_block = css.split(".admin-nav {", 1)[1].split("}", 1)[0]
+    assert "align-self: start" in nav_block
+    assert "display: block" in nav_block
+    layout_block = css.split(".admin-layout {", 1)[1].split("}", 1)[0]
+    assert "min-height:" not in layout_block
+
+
+@pytest.mark.unit
+def test_admin_css_desktop_nav_sticky_content_sized() -> None:
+    css = ADMIN_CSS.read_text(encoding="utf-8")
+    desktop_block = css.split("@media (min-width: 769px)")[1].split("@media")[0]
+    nav_rules = desktop_block.split(".admin-nav {", 1)[1].split("}", 1)[0]
+    assert "position: sticky" in nav_rules
+    assert "top: 0" in nav_rules
+    assert "max-height: 100vh" in nav_rules
+
+
+@pytest.mark.unit
+def test_admin_css_mobile_disclosure_collapsed_sizing() -> None:
+    css = ADMIN_CSS.read_text(encoding="utf-8")
+    mobile_block = css.split("@media (max-width: 768px)")[1]
+    collapsed_block = mobile_block.split(
+        ".admin-nav-toggle:not([open]) {", 1
+    )[1].split("}", 1)[0]
+    assert "height: fit-content" in collapsed_block
+    assert ".admin-nav-toggle:not([open]) .admin-nav-mobile-list" in mobile_block
+    assert "display: none" in mobile_block.split(
+        ".admin-nav-toggle:not([open]) .admin-nav-mobile-list", 1
+    )[1].split("}", 1)[0]
 
 
 @pytest.mark.unit
