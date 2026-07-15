@@ -9,12 +9,15 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from decimal import Decimal
 from typing import Any
+from unittest.mock import patch
 from uuid import uuid4
 
 import psycopg
 import pytest
 from psycopg.rows import dict_row
 
+from app.actor_context import ActorContext
+from app.crm_service import CrmService
 from app.migrations.definitions import (
     FROZEN_MIGRATION_DIGESTS,
     MIGRATIONS,
@@ -442,6 +445,31 @@ def test_legacy_013_upgrades_through_015(pg_conn: psycopg.Connection) -> None:
     listed = repo.list_stage_history(pg_conn, seeded["company_id"])
     assert any(row["id"] == recorded["id"] for row in listed)
 
+    # Canonical loss/nurture reason *writes* (not only backfill reads).
+    lost_write = repo.update_pipeline_fields(
+        pg_conn,
+        seeded["company_id"],
+        pipeline_stage="lost",
+        pipeline_loss_reason="no champion",
+        clear_nurture_reason=True,
+    )
+    assert lost_write is not None
+    assert lost_write["pipeline_stage"] == "lost"
+    assert lost_write["pipeline_loss_reason"] == "no champion"
+    assert lost_write["pipeline_nurture_reason"] is None
+
+    nurture_write = repo.update_pipeline_fields(
+        pg_conn,
+        seeded["company_id"],
+        pipeline_stage="nurture",
+        pipeline_nurture_reason="revisit next quarter",
+        clear_loss_reason=True,
+    )
+    assert nurture_write is not None
+    assert nurture_write["pipeline_stage"] == "nurture"
+    assert nurture_write["pipeline_nurture_reason"] == "revisit next quarter"
+    assert nurture_write["pipeline_loss_reason"] is None
+
 
 @pytest.mark.integration
 def test_fresh_database_applies_001_through_015_idempotently(
@@ -493,3 +521,152 @@ def test_fresh_database_applies_001_through_015_idempotently(
         changed_by="alex",
     )
     assert repo.list_stage_history(pg_conn, company_id)
+
+
+ACTOR = ActorContext(actor="operator", correlation_id="corr-reconcile-210")
+
+
+def _upgrade_legacy_013(conn: psycopg.Connection) -> None:
+    apply_migrations(conn, migrations=_migrations_through("012"))
+    conn.execute(LEGACY_013_SQL)
+    conn.execute(
+        """
+        INSERT INTO schema_migrations (version, name)
+        VALUES ('013', 'acquisition_pipeline')
+        ON CONFLICT (version) DO NOTHING
+        """
+    )
+    assert apply_migrations(conn) == ["014", "015"]
+
+
+def _insert_brief(
+    conn: psycopg.Connection,
+    *,
+    website: str,
+    email: str,
+    status: str,
+    brief: str = "Need architecture help.",
+) -> dict[str, Any]:
+    row = _fetch_dict(
+        conn,
+        """
+        INSERT INTO project_briefs (website, contact_value, brief, status)
+        VALUES (%s, %s, %s, %s)
+        RETURNING *
+        """,
+        (website, email, brief, status),
+    )
+    assert row is not None
+    return row
+
+
+def _count(conn: psycopg.Connection, table: str) -> int:
+    row = _fetch_dict(conn, f"SELECT COUNT(*) AS n FROM {table}")
+    assert row is not None
+    return int(row["n"])
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("status", "price_cents", "expected_stage", "expected_cents"),
+    [
+        ("paid", 20_000, "diagnostic_paid", 20_000),
+        ("pending_payment", 0, "qualified", None),
+    ],
+)
+def test_brief_conversion_on_legacy_013_reconciled_schema(
+    pg_conn: psycopg.Connection,
+    status: str,
+    price_cents: int,
+    expected_stage: str,
+    expected_cents: int | None,
+) -> None:
+    _upgrade_legacy_013(pg_conn)
+    brief = _insert_brief(
+        pg_conn,
+        website=f"https://{status.replace('_', '')}.example",
+        email=f"{status}@example.com",
+        status=status,
+    )
+    pg_conn.commit()
+
+    pg_conn.row_factory = dict_row
+    service = CrmService()
+    first = service.convert_project_brief(
+        pg_conn,
+        brief=brief,
+        actor_context=ACTOR,
+        price_cents=price_cents,
+        company_choice="new",
+        contact_choice="new",
+    )
+    assert first["idempotent"] is False
+    assert first["pipeline_stage"] == expected_stage
+    company = first["company"]
+    assert company["pipeline_stage"] == expected_stage
+    assert company.get("expected_value_cents") == expected_cents
+    assert company.get("pipeline_owner") is None or "pipeline_owner" in company
+
+    source_count = _count(pg_conn, "source_records")
+    company_count = _count(pg_conn, "companies")
+    history_count = _count(pg_conn, "pipeline_stage_history")
+    assert source_count == 1
+    assert company_count == 1
+
+    second = service.convert_project_brief(
+        pg_conn,
+        brief=brief,
+        actor_context=ACTOR,
+        price_cents=price_cents,
+        company_choice="new",
+        contact_choice="new",
+    )
+    assert second["idempotent"] is True
+    assert second["company"]["id"] == first["company"]["id"]
+    assert _count(pg_conn, "source_records") == source_count
+    assert _count(pg_conn, "companies") == company_count
+    assert _count(pg_conn, "pipeline_stage_history") == history_count
+
+
+@pytest.mark.integration
+def test_brief_conversion_rolls_back_on_reconciled_schema(
+    pg_conn: psycopg.Connection,
+) -> None:
+    _upgrade_legacy_013(pg_conn)
+    brief = _insert_brief(
+        pg_conn,
+        website="https://rollback.example",
+        email="rollback@example.com",
+        status="paid",
+    )
+    pg_conn.commit()
+
+    before_companies = _count(pg_conn, "companies")
+    before_sources = _count(pg_conn, "source_records")
+    before_contacts = _count(pg_conn, "contacts")
+    before_history = _count(pg_conn, "pipeline_stage_history")
+    before_activities = _count(pg_conn, "activities")
+    before_audit = _count(pg_conn, "audit_events")
+
+    pg_conn.row_factory = dict_row
+    service = CrmService()
+    with patch(
+        "app.crm_service.audit_service.record_brief_convert",
+        side_effect=RuntimeError("audit failed"),
+    ):
+        with pytest.raises(RuntimeError, match="audit failed"):
+            service.convert_project_brief(
+                pg_conn,
+                brief=brief,
+                actor_context=ACTOR,
+                price_cents=15_000,
+                company_choice="new",
+                contact_choice="new",
+            )
+
+    assert _count(pg_conn, "companies") == before_companies
+    assert _count(pg_conn, "source_records") == before_sources
+    assert _count(pg_conn, "contacts") == before_contacts
+    assert _count(pg_conn, "pipeline_stage_history") == before_history
+    assert _count(pg_conn, "activities") == before_activities
+    assert _count(pg_conn, "audit_events") == before_audit

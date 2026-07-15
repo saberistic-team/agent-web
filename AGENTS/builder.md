@@ -315,12 +315,19 @@ Do **not** escalate / `status:blocked` for:
 - Soft “too many files” budgets after a raise of `CURSOR_MAX_FILES` (requeue;
   learned from [#105](https://github.com/saberistic-team/agent-web/issues/105))
 - Single transient Contents API `500` / timeout
+- Codegen write failures (`git/trees` / Contents `403` “Resource not accessible
+  by integration”) when an **intentional open PR already links the issue** —
+  hand that head to Reviewer (or `waiting` if dirty) instead of
+  `@human-review` / `status:blocked` (learned from [#210](https://github.com/saberistic-team/agent-web/issues/210)
+  / #218). Grant the Builder App `contents: write` separately.
 - Service coverage below threshold, missing tests, failing CI assertions, visual
   readability / mobile overflow, or merge conflicts with `main` — fix those
   (same PR head) and re-run
 
 `scripts/run_agent.py` classifies retryable codegen errors with
 `is_retryable_codegen_failure()` → `waiting` handoff, not `@human-review`.
+Existing linked PRs use `recover_builder_after_codegen_failure()` so a second
+Builder run cannot strand Reviewer with a false `status:blocked`.
 
 ## Special case: landing / UI design
 
