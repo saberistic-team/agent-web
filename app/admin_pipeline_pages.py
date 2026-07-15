@@ -6,11 +6,8 @@ import html
 from datetime import datetime
 from typing import Any
 
-from app.acquisition_pipeline import (
-    PIPELINE_ACTIVITY_TYPES,
-    PIPELINE_STAGES,
-    pipeline_stage_label,
-)
+from app.acquisition_pipeline import PIPELINE_ACTIVITY_TYPES
+from app.pipeline_stages import PIPELINE_STAGES, pipeline_stage_label
 from app.admin_layout import render_admin_shell
 
 

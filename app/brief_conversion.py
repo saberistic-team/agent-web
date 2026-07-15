@@ -6,7 +6,7 @@ from typing import Any
 
 from app.companies import normalize_domain
 from app.config import Settings
-from app.pipeline import initial_pipeline_stage_for_brief_status, pipeline_stage_label
+from app.pipeline_stages import initial_pipeline_stage_for_brief_status, pipeline_stage_label
 
 
 class BriefConversionError(Exception):

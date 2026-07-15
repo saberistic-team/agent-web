@@ -1,4 +1,4 @@
-"""Acquisition pipeline stages, activities, and transition rules."""
+"""Acquisition pipeline activities and transition rules."""
 
 from __future__ import annotations
 
@@ -7,36 +7,13 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-PIPELINE_STAGES: dict[str, str] = {
-    "researching": "Researching",
-    "qualified": "Qualified",
-    "ready_for_outreach": "Ready for outreach",
-    "contacted": "Contacted",
-    "replied": "Replied",
-    "discovery_scheduled": "Discovery scheduled",
-    "diagnostic_proposed": "Diagnostic proposed",
-    "diagnostic_paid": "Diagnostic paid",
-    "larger_engagement": "Larger engagement",
-    "won": "Won",
-    "lost": "Lost",
-    "nurture": "Nurture",
-}
-
-STAGE_ORDER: tuple[str, ...] = (
-    "researching",
-    "qualified",
-    "ready_for_outreach",
-    "contacted",
-    "replied",
-    "discovery_scheduled",
-    "diagnostic_proposed",
-    "diagnostic_paid",
-    "larger_engagement",
-    "won",
+from app.pipeline_stages import (
+    PIPELINE_STAGES,
+    SIDE_EXIT_STAGES,
+    STAGE_ORDER,
+    TERMINAL_STAGES,
+    pipeline_stage_label,
 )
-
-TERMINAL_STAGES = frozenset({"won", "lost"})
-SIDE_EXIT_STAGES = frozenset({"lost", "nurture"})
 
 PIPELINE_ACTIVITY_TYPES: dict[str, str] = {
     "note": "Note",
@@ -54,12 +31,6 @@ LEGACY_ACTIVITY_TYPES = frozenset({"email", "call", "status_change"})
 
 class PipelineTransitionError(ValueError):
     """Raised when a stage change is not allowed."""
-
-
-def pipeline_stage_label(stage: str | None) -> str:
-    if not stage:
-        return "—"
-    return PIPELINE_STAGES.get(stage, stage.replace("_", " ").title())
 
 
 def validate_pipeline_stage(stage: str) -> str:

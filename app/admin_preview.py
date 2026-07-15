@@ -19,7 +19,7 @@ from app.acquisition_dashboard import (
     EvidenceRow,
     NextActionRow,
 )
-from app.acquisition_pipeline import PIPELINE_STAGES
+from app.pipeline_stages import PIPELINE_STAGES
 from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES
 
 

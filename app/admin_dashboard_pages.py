@@ -15,7 +15,7 @@ from app.acquisition_dashboard import (
     UPCOMING_ACTION_WINDOW_DAYS,
     dashboard_is_empty,
 )
-from app.acquisition_pipeline import pipeline_stage_label
+from app.pipeline_stages import pipeline_stage_label
 from app.admin_layout import render_admin_shell
 from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES, TARGET_STATUSES
 from app.research_records import RECORD_TYPE_LABELS

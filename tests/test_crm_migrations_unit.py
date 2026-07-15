@@ -368,6 +368,14 @@ def test_audit_events_migration_is_append_only() -> None:
 
 
 @pytest.mark.unit
+def test_acquisition_pipeline_migration_check_matches_registry() -> None:
+    from app.pipeline_stages import PIPELINE_STAGE_ORDER, extract_pipeline_stage_check_values
+
+    pipeline = next(m for m in MIGRATIONS if m.name == "acquisition_pipeline")
+    assert extract_pipeline_stage_check_values(pipeline.up_sql) == frozenset(PIPELINE_STAGE_ORDER)
+
+
+@pytest.mark.unit
 def test_acquisition_pipeline_migration_adds_columns_and_history() -> None:
     pipeline = next(m for m in MIGRATIONS if m.name == "acquisition_pipeline")
     assert pipeline.version == "013"

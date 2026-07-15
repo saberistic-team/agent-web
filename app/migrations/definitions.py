@@ -373,6 +373,7 @@ ALTER TABLE companies ALTER COLUMN pipeline_stage SET DEFAULT 'researching';
 ALTER TABLE companies ALTER COLUMN pipeline_stage SET NOT NULL;
 
 ALTER TABLE companies DROP CONSTRAINT IF EXISTS companies_pipeline_stage_check;
+-- Stage keys must match app/pipeline_stages.py (PIPELINE_STAGE_ORDER).
 ALTER TABLE companies ADD CONSTRAINT companies_pipeline_stage_check
     CHECK (pipeline_stage IN (
         'researching', 'qualified', 'ready_for_outreach', 'contacted', 'replied',

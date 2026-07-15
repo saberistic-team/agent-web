@@ -18,7 +18,7 @@ from app.brief_conversion import (
 )
 from app.config import get_settings
 from app.crm_service import CrmRepositories, CrmService
-from app.pipeline import (
+from app.pipeline_stages import (
     InvalidStageError,
     initial_pipeline_stage_for_brief_status,
     pipeline_stage_label,

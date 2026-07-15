@@ -41,7 +41,11 @@ from app.contacts import (
     normalize_email,
 )
 from app.crm_uow import crm_transaction
-from app.pipeline import initial_pipeline_stage_for_brief_status, pipeline_stage_label, validate_stage
+from app.pipeline_stages import (
+    initial_pipeline_stage_for_brief_status,
+    pipeline_stage_label,
+    validate_stage,
+)
 from app.repositories import (
     ActivityRepository,
     AdminUserRepository,
