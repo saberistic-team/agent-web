@@ -30,7 +30,7 @@ TEST_USERNAME = "operator"
 TEST_PASSWORD = "correct-horse-battery-staple"
 TEST_HASH = PasswordHasher().hash(TEST_PASSWORD)
 TEST_SECRET = "test-session-secret-32chars-minimum"
-TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum"
+TEST_LIMITER_SECRET = "test-login-limiter-secret-32bytes!!"
 
 _login_flows: dict[str, dict[str, Any]] = {}
 _session_store: dict[str, dict[str, Any]] = {}
@@ -533,6 +533,7 @@ def test_admin_preview_mode_allows_dashboard_without_login(
     monkeypatch.delenv("ADMIN_USERNAME", raising=False)
     monkeypatch.delenv("ADMIN_PASSWORD_HASH", raising=False)
     monkeypatch.delenv("ADMIN_SESSION_SECRET", raising=False)
+    monkeypatch.delenv("ADMIN_LOGIN_LIMITER_SECRET", raising=False)
     monkeypatch.delenv("DATABASE_URL", raising=False)
     dash = client.get("/admin")
     assert dash.status_code == 200
@@ -613,6 +614,8 @@ def test_build_source_and_account_rate_limit_keys() -> None:
     source_b = admin_auth.build_source_rate_limit_key("203.0.113.2", settings)
     assert source_a != source_b
     assert len(source_a) == 64
+    plain = admin_auth.plain_sha256_limiter_key("src", "203.0.113.1")
+    assert source_a != plain
 
     account_a = admin_auth.build_account_rate_limit_key("Operator", settings)
     account_b = admin_auth.build_account_rate_limit_key("operator", settings)
@@ -623,9 +626,10 @@ def test_build_source_and_account_rate_limit_keys() -> None:
 def test_login_limiter_keys_include_account_for_configured_username() -> None:
     settings = get_settings()
     keys = admin_auth.login_limiter_keys(
-        settings=settings,
         submitted_username="Operator",
         client_source="203.0.113.1",
+        configured_admin_username="operator",
+        settings=settings,
     )
     assert len(keys) == 2
     assert admin_auth.build_source_rate_limit_key("203.0.113.1", settings) in keys
@@ -636,9 +640,10 @@ def test_login_limiter_keys_include_account_for_configured_username() -> None:
 def test_login_limiter_keys_source_only_for_unknown_username() -> None:
     settings = get_settings()
     keys = admin_auth.login_limiter_keys(
-        settings=settings,
         submitted_username="ghost",
         client_source="203.0.113.1",
+        configured_admin_username="operator",
+        settings=settings,
     )
     assert keys == (admin_auth.build_source_rate_limit_key("203.0.113.1", settings),)
 

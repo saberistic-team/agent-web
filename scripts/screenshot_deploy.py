@@ -51,7 +51,7 @@ PREVIEW_ADMIN_PASSWORD_HASH = (
     "$argon2id$v=19$m=65536,t=3,p=4$preview-screenshot-salt$preview-screenshot-hash"
 )
 PREVIEW_ADMIN_SESSION_SECRET = "preview-session-secret-32chars-minimum"
-PREVIEW_ADMIN_LIMITER_SECRET = "preview-limiter-secret-32chars-minimum"
+PREVIEW_ADMIN_LOGIN_LIMITER_SECRET = "preview-login-limiter-secret-32bytes!!"
 PREVIEW_SESSION_TOKEN = "preview-screenshot-session"
 ADMIN_SESSION_COOKIE = "admin_session"
 
@@ -732,7 +732,7 @@ def local_preview_server(
         "ADMIN_SESSION_SECRET": os.environ.get("ADMIN_SESSION_SECRET")
         or PREVIEW_ADMIN_SESSION_SECRET,
         "ADMIN_LOGIN_LIMITER_SECRET": os.environ.get("ADMIN_LOGIN_LIMITER_SECRET")
-        or PREVIEW_ADMIN_LIMITER_SECRET,
+        or PREVIEW_ADMIN_LOGIN_LIMITER_SECRET,
     }
     proc = subprocess.Popen(
         [

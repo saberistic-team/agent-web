@@ -85,25 +85,38 @@ Anonymous logout traffic is not stored in `audit_events`. Operational visibility
 if needed, should use bounded HTTP access logs or metrics — never the append-only
 admin audit table.
 
+### Unauthenticated login failures
+
+Every `auth.login.failure` event recorded **before** successful authentication
+uses `actor=anonymous`. Submitted usernames, email addresses, or other login-form
+candidates must not appear in `actor`, `metadata`, `summary_after`, correlation
+identifiers, application logs, or metrics. Failure reasons are limited to a small
+server-defined enum (`invalid_credentials`, `invalid_csrf`, `rate_limited`, …).
+
+Authenticated `auth.login.success` and post-login events retain the configured
+administrator username and session linkage.
+
+#### Historical rows (pre-#242)
+
+Prior to keyed limiter identifiers and anonymous failure actors ([#242](https://github.com/saberistic-team/agent-web/issues/242)),
+some `auth.login.failure` rows may have attacker-supplied strings in `actor`
+because the route forwarded the submitted username. Those rows are **immutable**
+(append-only triggers); this fix prevents new occurrences only. Remediating
+historical `actor` values requires an explicit data-governance decision outside
+normal application code — do not disable append-only protections for convenience.
+
+Inventory query (adjust date bound to your deploy):
+
+```sql
+SELECT created_at, actor, summary_after->>'reason' AS reason
+FROM audit_events
+WHERE action = 'auth.login.failure'
+  AND actor <> 'anonymous'
+ORDER BY created_at DESC
+LIMIT 100;
+```
+
 ### Admin login session boundary
-
-Unauthenticated login failures (`auth.login.failure`) always record
-``actor = anonymous``. Submitted username candidates are never stored in the
-audit ``actor`` column, metadata, reason text, logs, or limiter state. Failure
-reasons are a small server-defined enum: ``invalid_credentials``,
-``invalid_csrf``, and ``rate_limited``.
-
-Authenticated login success and subsequent authenticated mutations retain the
-configured administrator username in ``actor``.
-
-#### Historical audit exposure (pre-#242)
-
-Rows appended before keyed limiter identifiers and anonymous failure actors may
-have ``actor`` values copied from submitted login usernames. Those rows are
-immutable; application code does not rewrite or delete them. Security reporting
-should treat non-``anonymous`` actors on ``auth.login.failure`` events as
-potentially attacker-supplied unless corroborated by session linkage. Forward
-fixes prevent new occurrences.
 
 `admin_routes._issue_session` opens one `db_connection` and one `crm_transaction`
 for every successful login — with or without a prior session cookie (e.g. two-tab
@@ -124,7 +137,7 @@ or rolled-back logins never emit a new session cookie.
 | Action | When recorded |
 |--------|----------------|
 | `auth.login.success` | Valid admin login creates a server-side session |
-| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting (actor always `anonymous`) |
+| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting (always `actor=anonymous`) |
 | `auth.logout` | Authenticated session revocation (live session → revoked) |
 | `import.batch` | Data import batches via `CrmService.commit_linkedin_import` / `import_batch` |
 | `import.batch.rollback` | Rollback of committed import batches via `CrmService.rollback_import_batch` |
