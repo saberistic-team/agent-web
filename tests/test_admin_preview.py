@@ -8,10 +8,18 @@ from datetime import datetime, timezone
 import pytest
 from fastapi.testclient import TestClient
 
+from app.admin_auth import SESSION_COOKIE_NAME
 from app.admin_preview import (
     COMPANY_NAMES,
+    PREVIEW_COMPANY_ARCHIVE_ID,
+    PREVIEW_COMPANY_RESTORE_ID,
+    PREVIEW_CONTACT_ARCHIVE_ID,
+    PREVIEW_CONTACT_RESTORE_ID,
     PREVIEW_PIPELINE_COMPANY_IDS,
     build_preview_acquisition_dashboard_data,
+    build_preview_company_research,
+    build_preview_contact_edit,
+    build_preview_contact_research,
     build_preview_dashboard_data,
     build_preview_pipeline_companies,
     build_preview_pipeline_detail,
@@ -290,6 +298,47 @@ def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytes
 
 
 @pytest.mark.unit
+def test_preview_crm_detail_pages_include_archive_restore_actions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    client = TestClient(app, follow_redirects=False)
+
+    company = build_preview_company_research(
+        PREVIEW_COMPANY_ARCHIVE_ID, rng=random.Random(42)
+    )
+    assert company is not None
+    contact = build_preview_contact_research(
+        PREVIEW_CONTACT_RESTORE_ID, rng=random.Random(42)
+    )
+    assert contact is not None
+    edit = build_preview_contact_edit(PREVIEW_CONTACT_RESTORE_ID, rng=random.Random(42))
+    assert edit is not None
+
+    for path, label, variant in (
+        (f"/admin/companies/{PREVIEW_COMPANY_ARCHIVE_ID}", "Archive company", "destructive"),
+        (f"/admin/companies/{PREVIEW_COMPANY_RESTORE_ID}", "Restore company", "secondary"),
+        (f"/admin/contacts/{PREVIEW_CONTACT_ARCHIVE_ID}", "Archive contact", "destructive"),
+        (f"/admin/contacts/{PREVIEW_CONTACT_RESTORE_ID}", "Restore contact", "secondary"),
+        (
+            f"/admin/contacts/{PREVIEW_CONTACT_RESTORE_ID}/edit",
+            "Restore contact",
+            "secondary",
+        ),
+    ):
+        response = client.get(
+            path,
+            cookies={SESSION_COOKIE_NAME: "preview-screenshot-session"},
+        )
+        assert response.status_code == 200
+        assert label in response.text
+        assert f"admin-action--{variant}" in response.text
+        assert "research-record" in response.text or "Save contact" in response.text
+
+
+@pytest.mark.unit
 def test_preview_pipeline_companies_seed_stable() -> None:
     now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
     a = build_preview_pipeline_companies(rng=random.Random(42), now=now)
@@ -366,97 +415,3 @@ def test_preview_brief_conversion_states() -> None:
     assert matches["company_matches"]
     assert matches["contact_matches"]
     assert matches["proposal"]["pipeline_stage"] in {"qualified", "diagnostic_paid"}
-
-
-@pytest.mark.unit
-def test_preview_company_detail_archive_and_restore_buttons(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import random
-
-    from argon2 import PasswordHasher
-
-    from app.admin_preview import (
-        PREVIEW_COMPANY_ACTIVE_ID,
-        PREVIEW_COMPANY_ARCHIVED_ID,
-        preview_company_research,
-    )
-
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "11")
-    monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
-    monkeypatch.setenv(
-        "ADMIN_PASSWORD_HASH",
-        PasswordHasher().hash("preview"),
-    )
-    monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
-    monkeypatch.delenv("DATABASE_URL", raising=False)
-    preview = preview_company_research(PREVIEW_COMPANY_ACTIVE_ID, rng=random.Random(11))
-    assert preview is not None
-    client = TestClient(app, follow_redirects=False)
-    archive_page = client.get(
-        f"/admin/companies/{PREVIEW_COMPANY_ACTIVE_ID}",
-        cookies={"admin_session": "preview-screenshot-session"},
-    )
-    restore_page = client.get(
-        f"/admin/companies/{PREVIEW_COMPANY_ARCHIVED_ID}",
-        cookies={"admin_session": "preview-screenshot-session"},
-    )
-    assert archive_page.status_code == 200
-    assert restore_page.status_code == 200
-    assert preview["company"]["name"] in archive_page.text
-    assert 'class="admin-action admin-action--destructive"' in archive_page.text
-    assert "Archive company" in archive_page.text
-    assert 'class="admin-action admin-action--secondary"' in restore_page.text
-    assert "Restore company" in restore_page.text
-
-
-@pytest.mark.unit
-def test_preview_contact_detail_and_edit_archive_restore_buttons(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import random
-
-    from argon2 import PasswordHasher
-
-    from app.admin_preview import (
-        PREVIEW_CONTACT_ACTIVE_ID,
-        PREVIEW_CONTACT_ARCHIVED_ID,
-        preview_contact_research,
-    )
-
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "12")
-    monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
-    monkeypatch.setenv(
-        "ADMIN_PASSWORD_HASH",
-        PasswordHasher().hash("preview"),
-    )
-    monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
-    monkeypatch.delenv("DATABASE_URL", raising=False)
-    preview = preview_contact_research(PREVIEW_CONTACT_ACTIVE_ID, rng=random.Random(12))
-    assert preview is not None
-    client = TestClient(app, follow_redirects=False)
-    cookies = {"admin_session": "preview-screenshot-session"}
-    detail_archive = client.get(f"/admin/contacts/{PREVIEW_CONTACT_ACTIVE_ID}", cookies=cookies)
-    detail_restore = client.get(
-        f"/admin/contacts/{PREVIEW_CONTACT_ARCHIVED_ID}",
-        cookies=cookies,
-    )
-    edit_archive = client.get(
-        f"/admin/contacts/{PREVIEW_CONTACT_ACTIVE_ID}/edit",
-        cookies=cookies,
-    )
-    edit_restore = client.get(
-        f"/admin/contacts/{PREVIEW_CONTACT_ARCHIVED_ID}/edit",
-        cookies=cookies,
-    )
-    for response in (detail_archive, detail_restore, edit_archive, edit_restore):
-        assert response.status_code == 200
-    assert preview["contact"]["full_name"] in detail_archive.text
-    assert 'class="admin-action admin-action--destructive"' in detail_archive.text
-    assert 'class="admin-action admin-action--destructive"' in edit_archive.text
-    assert 'class="admin-action admin-action--secondary"' in detail_restore.text
-    assert 'class="admin-action admin-action--secondary"' in edit_restore.text

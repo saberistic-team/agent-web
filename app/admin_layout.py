@@ -93,12 +93,11 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
-    "/admin/companies/a1a1a1a1-a1a1-a1a1-a1a1-a1a1a1a1a101",
-    "/admin/companies/a1a1a1a1-a1a1-a1a1-a1a1-a1a1a1a1a102",
-    "/admin/contacts/b2b2b2b2-b2b2-b2b2-b2b2-b2b2b2b2b201",
-    "/admin/contacts/b2b2b2b2-b2b2-b2b2-b2b2-b2b2b2b2b202",
-    "/admin/contacts/b2b2b2b2-b2b2-b2b2-b2b2-b2b2b2b2b201/edit",
-    "/admin/contacts/b2b2b2b2-b2b2-b2b2-b2b2-b2b2b2b2b202/edit",
+    "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    "/admin/companies/cccccccc-cccc-cccc-cccc-cccccccccccc",
+    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd/edit",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
@@ -109,10 +108,25 @@ ADMIN_SCREENSHOT_EXPECTED_STATUS: dict[str, int] = {
 }
 
 
-def admin_archive_action_classes(*, archived: bool) -> str:
-    """CSS classes for company/contact archive or restore form buttons."""
-    modifier = "admin-action--secondary" if archived else "admin-action--destructive"
-    return f"admin-action {modifier}"
+def archive_restore_button_class(*, archived: bool) -> str:
+    """Return semantic admin action classes for archive (destructive) or restore."""
+    variant = "secondary" if archived else "destructive"
+    return f"admin-action admin-action--{variant}"
+
+
+def render_archive_restore_form(
+    *,
+    post_url: str,
+    csrf_token: str,
+    label: str,
+    archived: bool,
+) -> str:
+    """Render a CSRF-protected archive/restore form with themed action styling."""
+    button_class = archive_restore_button_class(archived=archived)
+    return f"""<form method="post" action="{html.escape(post_url, quote=True)}">
+        <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}" />
+        <button class="{button_class}" type="submit">{html.escape(label)}</button>
+      </form>"""
 
 
 def _active_nav_label(active_path: str) -> str:

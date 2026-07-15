@@ -68,52 +68,25 @@ body.admin-app {
   padding: 0;
 }
 
-/* Form action buttons — distinct from link-like top-bar exits (.admin-exit). */
+/* Form action buttons — distinct from link-like .admin-exit top-bar controls. */
 .admin-action {
   font-family: inherit;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 500;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   padding: 0.5rem 0.85rem;
-  margin: 0;
   border-radius: 2px;
   cursor: pointer;
-  appearance: none;
   border: 1px solid var(--line);
   background: color-mix(in srgb, var(--surface) 80%, transparent);
   color: var(--ink);
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-}
-
-.admin-action--destructive {
-  border-color: color-mix(in srgb, #e05a5a 55%, var(--line));
-  background: color-mix(in srgb, #e05a5a 14%, var(--surface));
-  color: #ffb4b4;
-}
-
-.admin-action--secondary {
-  border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
-  background: color-mix(in srgb, var(--surface) 85%, transparent);
-  color: var(--ink);
-}
-
-.admin-action:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: color-mix(in srgb, var(--surface) 65%, transparent);
-}
-
-.admin-action--destructive:hover {
-  border-color: #e05a5a;
-  color: #ffd4d4;
-  background: color-mix(in srgb, #e05a5a 22%, var(--surface));
-}
-
-.admin-action--secondary:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease,
+    transform 0.1s ease;
 }
 
 .admin-action:focus-visible {
@@ -121,37 +94,45 @@ body.admin-app {
   outline-offset: 2px;
 }
 
-.admin-action--destructive:focus-visible {
-  outline-color: #e05a5a;
-}
-
-.admin-action:active {
+.admin-action:active:not(:disabled) {
   transform: translateY(1px);
 }
 
 .admin-action:disabled,
-.admin-action[disabled] {
+.admin-action[aria-disabled="true"] {
   opacity: 0.45;
   cursor: not-allowed;
-  transform: none;
 }
 
-.admin-action:disabled:hover,
-.admin-action[disabled]:hover,
-.admin-action--destructive:disabled:hover,
-.admin-action--destructive[disabled]:hover,
-.admin-action--secondary:disabled:hover,
-.admin-action--secondary[disabled]:hover {
-  border-color: var(--line);
-  color: var(--muted);
-  background: color-mix(in srgb, var(--surface) 80%, transparent);
+.admin-action--secondary {
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  color: var(--ink);
+  border-color: color-mix(in srgb, var(--line) 90%, var(--accent) 10%);
 }
 
-.admin-action--destructive:disabled,
-.admin-action--destructive[disabled] {
-  border-color: color-mix(in srgb, #e05a5a 30%, var(--line));
-  color: color-mix(in srgb, #ffb4b4 55%, var(--muted));
-  background: color-mix(in srgb, var(--surface) 80%, transparent);
+.admin-action--secondary:hover:not(:disabled),
+.admin-action--secondary:focus-visible:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+
+.admin-action--destructive {
+  background: color-mix(in srgb, #e05a5a 14%, var(--surface));
+  color: #ffb4b4;
+  border-color: color-mix(in srgb, #e05a5a 50%, var(--line));
+}
+
+.admin-action--destructive:hover:not(:disabled),
+.admin-action--destructive:focus-visible:not(:disabled) {
+  color: #ffd4d4;
+  border-color: #e05a5a;
+  background: color-mix(in srgb, #e05a5a 22%, var(--surface));
+  outline-color: #e05a5a;
+}
+
+.admin-action--destructive:active:not(:disabled) {
+  background: color-mix(in srgb, #e05a5a 28%, var(--surface));
 }
 
 .admin-layout {
