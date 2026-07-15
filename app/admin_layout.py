@@ -92,13 +92,13 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert",
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
+    "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    "/admin/companies/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    "/admin/contacts/cccccccc-cccc-cccc-cccc-cccccccccccc",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd",
+    "/admin/contacts/cccccccc-cccc-cccc-cccc-cccccccccccc/edit",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd/edit",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
-    "/admin/companies/a1111111-1111-1111-1111-111111111111",
-    "/admin/companies/a2222222-2222-2222-2222-222222222222",
-    "/admin/contacts/c1111111-1111-1111-1111-111111111111",
-    "/admin/contacts/c2222222-2222-2222-2222-222222222222",
-    "/admin/contacts/c1111111-1111-1111-1111-111111111111/edit",
-    "/admin/contacts/c2222222-2222-2222-2222-222222222222/edit",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
@@ -107,13 +107,6 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
 ADMIN_SCREENSHOT_EXPECTED_STATUS: dict[str, int] = {
     "/admin/briefs/503": 503,
 }
-
-
-def archive_action_button_class(*, archived: bool) -> str:
-    """Return semantic classes for archive (destructive) or restore (secondary) actions."""
-    if archived:
-        return "admin-action admin-action--restore"
-    return "admin-action admin-action--destructive"
 
 
 def _active_nav_label(active_path: str) -> str:
