@@ -92,13 +92,13 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert",
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
+    "/admin/companies/a1a1a1a1-a1a1-a1a1-a1a1-a1a1a1a1a1a1",
+    "/admin/companies/b2b2b2b2-b2b2-b2b2-b2b2-b2b2b2b2b2b2",
+    "/admin/contacts/c3c3c3c3-c3c3-c3c3-c3c3-c3c3c3c3c3c3",
+    "/admin/contacts/d4d4d4d4-d4d4-d4d4-d4d4-d4d4d4d4d4d4",
+    "/admin/contacts/c3c3c3c3-c3c3-c3c3-c3c3-c3c3c3c3c3c3/edit",
+    "/admin/contacts/d4d4d4d4-d4d4-d4d4-d4d4-d4d4d4d4d4d4/edit",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
-    "/admin/companies/12121212-1212-1212-1212-121212121212",
-    "/admin/companies/21212121-2121-2121-2121-212121212121",
-    "/admin/contacts/34343434-3434-3434-3434-343434343434",
-    "/admin/contacts/43434343-4343-4343-4343-434343434343",
-    "/admin/contacts/34343434-3434-3434-3434-343434343434/edit",
-    "/admin/contacts/43434343-4343-4343-4343-434343434343/edit",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
@@ -109,20 +109,10 @@ ADMIN_SCREENSHOT_EXPECTED_STATUS: dict[str, int] = {
 }
 
 
-def render_admin_archive_action_button(
-    *,
-    label: str,
-    archived: bool = False,
-    disabled: bool = False,
-) -> str:
-    """Return a themed Archive/Restore submit button with native appearance reset."""
-    safe_label = html.escape(label)
-    modifier = "admin-action-btn--secondary" if archived else "admin-action-btn--destructive"
-    disabled_attr = " disabled" if disabled else ""
-    return (
-        f'<button class="admin-action-btn {modifier}" type="submit"{disabled_attr}>'
-        f"{safe_label}</button>"
-    )
+def archive_action_button_class(*, archived: bool) -> str:
+    """CSS classes for company/contact archive or restore form actions."""
+    variant = "admin-action--restore" if archived else "admin-action--destructive"
+    return f"admin-action {variant}"
 
 
 def _active_nav_label(active_path: str) -> str:

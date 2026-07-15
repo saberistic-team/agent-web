@@ -34,9 +34,9 @@ from app.admin_preview import (
     PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR,
     PREVIEW_BRIEF_DATABASE_ERROR_ID,
     PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID,
-    build_preview_company_research_detail,
-    build_preview_contact_edit_detail,
-    build_preview_contact_research_detail,
+    build_preview_company_detail,
+    build_preview_contact_detail,
+    build_preview_contact_edit_companies,
     preview_contact_restore_conflict,
 )
 from app.config import Settings, get_settings
@@ -701,7 +701,7 @@ def admin_company_research(
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
-        preview = build_preview_company_research_detail(company_id)
+        preview = build_preview_company_detail(company_id)
         if preview is not None:
             company, contacts, records = preview
             return HTMLResponse(
@@ -987,14 +987,14 @@ def admin_contact_edit(
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
-        preview = build_preview_contact_edit_detail(contact_id)
+        preview = build_preview_contact_detail(contact_id)
         if preview is not None:
-            contact, companies = preview
+            contact, _company, _records = preview
             return HTMLResponse(
                 contact_pages.render_contact_form_page(
                     csrf_token=csrf_token,
                     admin_username=session.admin_username,
-                    companies=companies,
+                    companies=build_preview_contact_edit_companies(),
                     contact=contact,
                     error_message=error or warning,
                 )
@@ -1143,7 +1143,7 @@ def admin_contact_research(
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
-        preview = build_preview_contact_research_detail(contact_id)
+        preview = build_preview_contact_detail(contact_id)
         if preview is not None:
             contact, company, records = preview
             return HTMLResponse(
