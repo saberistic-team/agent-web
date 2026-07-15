@@ -3,13 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
-
-from app.proxy_trust import (
-    DEFAULT_CLOUDFLARE_IPV4_CIDRS,
-    parse_trusted_proxy_networks,
-    production_trusted_proxy_cidrs,
-)
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -34,10 +28,7 @@ class Settings:
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
     admin_trust_proxy_headers: bool = False
-    admin_trusted_proxy_cidrs: tuple[str, ...] = field(default_factory=tuple)
-    admin_cloudflare_proxy_cidrs: tuple[str, ...] = field(
-        default_factory=lambda: DEFAULT_CLOUDFLARE_IPV4_CIDRS
-    )
+    admin_trusted_proxy_cidrs: str = ""
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -84,14 +75,6 @@ class Settings:
         return True
 
     @property
-    def admin_trusted_proxy_networks(self) -> tuple:
-        return parse_trusted_proxy_networks(self.admin_trusted_proxy_cidrs)
-
-    @property
-    def admin_cloudflare_proxy_networks(self) -> tuple:
-        return parse_trusted_proxy_networks(self.admin_cloudflare_proxy_cidrs)
-
-    @property
     def analytics_enabled(self) -> bool:
         """True only when explicitly enabled and a Plausible domain is set."""
         flag = os.environ.get("ANALYTICS_ENABLED", "").lower()
@@ -100,26 +83,7 @@ class Settings:
         return bool(self.plausible_domain)
 
 
-def _parse_csv_env(name: str, *, default: tuple[str, ...] = ()) -> tuple[str, ...]:
-    raw = os.environ.get(name, "").strip()
-    if not raw:
-        return default
-    return tuple(part.strip() for part in raw.split(",") if part.strip())
-
-
 def get_settings() -> Settings:
-    trust_proxy_headers = os.environ.get("ADMIN_TRUST_PROXY_HEADERS", "").lower() in (
-        "1",
-        "true",
-        "yes",
-    )
-    trusted_proxy_cidrs = _parse_csv_env("ADMIN_TRUSTED_PROXY_CIDRS")
-    if trust_proxy_headers and not trusted_proxy_cidrs:
-        trusted_proxy_cidrs = production_trusted_proxy_cidrs()
-    cloudflare_proxy_cidrs = _parse_csv_env(
-        "ADMIN_CLOUDFLARE_PROXY_CIDRS",
-        default=DEFAULT_CLOUDFLARE_IPV4_CIDRS,
-    )
     return Settings(
         database_url=os.environ.get("DATABASE_URL", ""),
         stripe_secret_key=os.environ.get("STRIPE_SECRET_KEY", ""),
@@ -146,7 +110,11 @@ def get_settings() -> Settings:
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
         brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
-        admin_trust_proxy_headers=trust_proxy_headers,
-        admin_trusted_proxy_cidrs=trusted_proxy_cidrs,
-        admin_cloudflare_proxy_cidrs=cloudflare_proxy_cidrs,
+        admin_trust_proxy_headers=os.environ.get(
+            "ADMIN_TRUST_PROXY_HEADERS", ""
+        ).lower()
+        in ("1", "true", "yes"),
+        admin_trusted_proxy_cidrs=os.environ.get(
+            "ADMIN_TRUSTED_PROXY_CIDRS", ""
+        ).strip(),
     )
