@@ -164,9 +164,9 @@ Same 10 queries × 12 qualifying worlds compared across:
 
 | Approach | Avg latency | No-result rate | Relevance proxy* | Ops complexity | Est. cost / 1k queries |
 |----------|------------:|---------------:|-----------------:|----------------|----------------------:|
-| FTS + trigram | 1.2 ms | 0.0 | 1.0 | Low | $0.02 |
-| pgvector embedding | 0.6 ms | 0.0 | 1.0 | Medium | $0.18 |
-| Hybrid | 1.4 ms | 0.0 | 1.0 | High | $0.22 |
+| FTS + trigram | 0.8 ms | 0.0 | 1.0 | Low | $0.02 |
+| pgvector embedding | 0.4 ms | 0.0 | 1.0 | Medium | $0.18 |
+| Hybrid | 1.2 ms | 0.0 | 1.0 | High | $0.22 |
 
 \*Relevance proxy = share of expected category hits among qualifying worlds for discovery queries (excludes negative-control queries).
 

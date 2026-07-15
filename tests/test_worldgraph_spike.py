@@ -22,8 +22,10 @@ from spike.worldgraph.prompt_injection import detect_injection_phrases, sanitize
 from spike.worldgraph.run_benchmarks import run_ingestion_benchmark
 from spike.worldgraph.search_benchmark import rank_fts, run_search_benchmark
 from spike.worldgraph.verification import (
+    issue_dns_txt_challenge,
     issue_domain_well_known_challenge,
     separate_trust_concepts,
+    verify_dns_txt,
     verify_domain_well_known,
     verify_email_domain_magic_link,
     verify_github_repo,
@@ -313,6 +315,14 @@ def test_domain_well_known_and_github_and_email_claim_paths() -> None:
     ok = verify_domain_well_known(challenge.expected_token, expected_token=challenge.expected_token)
     assert ok.verified is True
     assert ok.trust_level == "domain_verified"
+
+    dns_challenge = issue_dns_txt_challenge("example.com", "world-123")
+    dns_ok = verify_dns_txt(
+        [f"worldgraph-verification={dns_challenge.expected_token}"],
+        expected_token=dns_challenge.expected_token,
+    )
+    assert dns_ok.verified is True
+    assert dns_ok.trust_level == "domain_verified"
 
     github = verify_github_repo(
         repo_url="https://github.com/example-worlds/open-agent-world",
