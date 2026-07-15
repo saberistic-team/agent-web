@@ -53,6 +53,11 @@ Builder must keep **one open PR and one head branch per issue**.
 | No open linked PR | Create `builder/{issue}-{slugify(title)}` and open the PR |
 | Re-queue after changes-requested | Same PR head — never a second `builder/{issue}-…` from a retitled slug |
 
+`linked_open_prs()` only counts **intentional** links: `Closes`/`Fixes`/
+`Resolves #N`, title `(#N)`, or head `builder/{N}-…`. A casual body mention
+like “preview #109” on a dependent PR is **not** a link — that false match
+pushed #109 commits onto PR #181 and alternated Builders (#109/#110).
+
 Title-only slugs drift (e.g. `P1 — …` vs bare title) and previously forked
 Reviewer onto a ghost branch while the real PR stayed stale. See
 [AGENTS/builder.md](../AGENTS/builder.md) — **Branch and PR reuse**.

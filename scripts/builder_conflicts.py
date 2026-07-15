@@ -65,14 +65,10 @@ _NAMEERROR_RE = re.compile(
 
 
 def linked_open_prs(repo: str, issue: int) -> list[dict[str, Any]]:
-    owner, name = split_repo(repo)
-    prs = api("GET", f"/repos/{owner}/{name}/pulls?state=open&per_page=100") or []
-    needle = f"#{issue}"
-    return [
-        pr
-        for pr in prs
-        if needle in (pr.get("title") or "") or needle in (pr.get("body") or "")
-    ]
+    """Delegate to shared intentional-link matcher (anti-loop #109/#181)."""
+    from github_api import linked_open_prs as _linked_open_prs
+
+    return _linked_open_prs(repo, issue)
 
 
 def repair_main_wiring(text: str) -> tuple[str, list[str]]:

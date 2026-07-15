@@ -26,8 +26,14 @@ triggers): copy `type:*` and `priority:*` from the issue, set
 
 ### Rules
 
-1. **Before creating a branch**, look for an open PR that links this issue
-   (`Closes #N`, `Fixes #N`, or `#N` in title/body).
+1. **Before creating a branch**, look for an open PR that **intentionally**
+   links this issue:
+   - body `Closes` / `Fixes` / `Resolves #N`, **or**
+   - title `(#N)`, **or**
+   - head branch `builder/{N}-…`
+   Casual `#N` mentions in another PR’s body (e.g. “builds on preview #109”)
+   must **not** bind you — that routed #109 commits onto PR #181 (#110) and
+   thrashed both Builders (milestone 4).
 2. If that PR exists, **every follow-up commit goes on that PR’s current head
    ref** — even after `review:changes-requested` requeues Builder.
 3. **Do not** derive a new branch name from the issue title slug. Titles change
@@ -242,10 +248,21 @@ shared file. Preserve unless the issue explicitly requires removing them:
 - `/admin/briefs/{id}/convert` (+ `preview_brief_convert_*`)
 - `admin_pipeline_routes` + `PostgresPipelineRepository` / pipeline APIs
 - Session CSRF helpers (`_session_csrf_for_forms` and successors)
+- Brief-conversion locks / helpers on `crm_service` (e.g.
+  `acquire_brief_conversion_lock`)
 
 Regressing those surfaces creates screenshot 404/500s and Builder↔Reviewer
 loops on unrelated PRs (learned from #109 / #180 and #110 / #181). Prefer
 surgical edits over rewriting whole `admin_routes.py` / migration files.
+
+## Dependent milestone issues (anti-loop)
+
+When stacked issues share admin/CRM surfaces (LinkedIn import #109→#110→#111),
+**serialize** Builder: finish and merge the earlier PR before dispatching the
+next. Concurrent Builders racing the same files regenerate regressions even
+when linking is correct. Dependent PR bodies must not use bare `#earlier`
+prose — write “issue 109” / “PR #180” instead, or rely on `Closes` only on the
+owning PR.
 
 ## Constraints
 

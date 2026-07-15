@@ -348,18 +348,12 @@ def content_state(owner: str, repo: str, number: int) -> bool:
 
 
 def linked_open_prs(repo: str, issue: int) -> list[int]:
-    """Open PRs whose title/body reference ``#issue`` (Builder convention)."""
+    """Open PRs that intentionally link ``issue`` (not casual ``#N`` prose)."""
+    from github_api import pr_links_issue
+
     owner, name = split_repo(repo)
     prs = _rest("GET", f"/repos/{owner}/{name}/pulls?state=open&per_page=50") or []
-    needle = f"#{issue}"
-    closes = f"Closes #{issue}"
-    out: list[int] = []
-    for pr in prs:
-        title = pr.get("title") or ""
-        body = pr.get("body") or ""
-        if needle in title or needle in body or closes.lower() in body.lower():
-            out.append(int(pr["number"]))
-    return out
+    return [int(pr["number"]) for pr in prs if pr_links_issue(pr, issue)]
 
 
 def sync_number(
