@@ -308,13 +308,20 @@ def _seed_legacy_pipeline_data(conn: psycopg.Connection) -> dict[str, Any]:
 
 
 @pytest.mark.unit
-def test_frozen_migration_digests_cover_shipped_versions() -> None:
+def test_frozen_migration_digests_match_and_form_prefix() -> None:
+    """Frozen digests must match SQL and be a contiguous prefix of the registry.
+
+    Newest versions may remain unfrozen until post-deploy freezes them.
+    """
+    versions = [m.version for m in MIGRATIONS]
     by_version = {m.version: m for m in MIGRATIONS}
-    assert set(FROZEN_MIGRATION_DIGESTS) == {
-        "001", "002", "003", "004", "005", "006", "007", "008", "009",
-        "010", "011", "012", "013", "014",
-    }
-    for version, expected in FROZEN_MIGRATION_DIGESTS.items():
+    frozen = FROZEN_MIGRATION_DIGESTS
+    assert frozen
+    assert set(frozen).issubset(by_version)
+    frozen_in_order = [version for version in versions if version in frozen]
+    assert frozen_in_order == versions[: len(frozen_in_order)]
+    assert set(frozen_in_order) == set(frozen)
+    for version, expected in frozen.items():
         assert migration_content_digest(by_version[version]) == expected
 
 

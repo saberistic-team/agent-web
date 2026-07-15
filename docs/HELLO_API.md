@@ -60,6 +60,6 @@ On every push/merge to `main`, [`.github/workflows/ci.yml`](../.github/workflows
    ([SCREENSHOTS.md](SCREENSHOTS.md))
 
 CI skips push jobs whose commit message starts with `review: record` or
-`deploy: record` (screenshot/health recorder commits).
+`deploy: record` / `deploy: freeze` (screenshot/health/migration-freeze recorder commits).
 
 Never commit the deploy hook URL; keep it in GitHub Actions secrets only.
