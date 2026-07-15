@@ -238,6 +238,13 @@ def test_lifespan_with_and_without_database(monkeypatch: pytest.MonkeyPatch) -> 
     asyncio.run(_run_without())
 
     monkeypatch.setenv("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
+    monkeypatch.setenv("ADMIN_USERNAME", "operator")
+    monkeypatch.setenv(
+        "ADMIN_PASSWORD_HASH",
+        "$argon2id$v=19$m=65536,t=3,p=4$aaaaaaaaaaaaaaaaaaaaaa$bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    )
+    monkeypatch.setenv("ADMIN_SESSION_SECRET", "test-session-secret-32chars-minimum")
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "test-limiter-secret-32chars-minimum!!")
     with patch("app.main.db.init_db") as init_db:
 
         async def _run_with() -> None:

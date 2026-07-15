@@ -16,22 +16,23 @@ from app import admin_auth, db
 from app.config import Settings, get_settings
 from app.migrations.runner import apply_migrations
 
-TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!"
+TEST_LIMITER_SECRET = "integration-limiter-secret-32chars-minimum"
+
+
+def _integration_settings() -> Settings:
+    return get_settings()
 
 
 @pytest.fixture(autouse=True)
-def _limiter_secret_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DATABASE_URL", _DATABASE_URL or "postgresql://test:test@localhost/test")
+def limiter_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_USERNAME", "operator")
-    monkeypatch.setenv("ADMIN_PASSWORD_HASH", "unused-for-limiter-tests")
-    monkeypatch.setenv("ADMIN_SESSION_SECRET", "test-session-secret-32chars-minimum")
+    monkeypatch.setenv(
+        "ADMIN_PASSWORD_HASH",
+        "$argon2id$v=19$m=65536,t=3,p=4$aaaaaaaaaaaaaaaaaaaaaa$bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    )
+    monkeypatch.setenv("ADMIN_SESSION_SECRET", "integration-session-secret-32chars-min")
     monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
-    monkeypatch.delenv("ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS", raising=False)
-
-
-@pytest.fixture
-def limiter_settings() -> Settings:
-    return get_settings()
+    monkeypatch.setenv("BASE_URL", "http://testserver")
 
 _REQUIRED = (os.environ.get("REQUIRE_TEST_DATABASE") or "").strip() in {"1", "true", "yes"}
 _DATABASE_URL = (os.environ.get("TEST_DATABASE_URL") or "").strip()
@@ -115,17 +116,13 @@ def _admit(
 
 
 @pytest.mark.integration
-def test_username_rotation_shares_source_bucket(
-    pg_conn: psycopg.Connection,
-    limiter_settings: Settings,
-) -> None:
+def test_username_rotation_shares_source_bucket(pg_conn: psycopg.Connection) -> None:
+    settings = _integration_settings()
     now = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
-    source_key = admin_auth.build_source_rate_limit_key(
-        "203.0.113.10", settings=limiter_settings
-    )
+    source_key = admin_auth.build_source_rate_limit_key("203.0.113.10", settings)
 
     for index in range(5):
-        user_key = admin_auth.build_rate_limit_key(f"user-{index}", "203.0.113.10")
+        user_key = admin_auth.build_rate_limit_key(f"user-{index}", "203.0.113.10", settings)
         assert user_key != source_key
         admission = _admit(
             pg_conn,
@@ -149,11 +146,9 @@ def test_username_rotation_shares_source_bucket(
 @pytest.mark.integration
 def test_concurrent_admission_does_not_overshoot_threshold(
     pg_conn: psycopg.Connection,
-    limiter_settings: Settings,
 ) -> None:
-    source_key = admin_auth.build_source_rate_limit_key(
-        "198.51.100.20", settings=limiter_settings
-    )
+    settings = _integration_settings()
+    source_key = admin_auth.build_source_rate_limit_key("198.51.100.20", settings)
     now = datetime(2026, 2, 1, 9, 0, tzinfo=timezone.utc)
     rate_limit = 5
     barrier = threading.Barrier(8)
@@ -185,14 +180,14 @@ def test_concurrent_admission_does_not_overshoot_threshold(
 @pytest.mark.integration
 def test_account_bucket_limits_configured_admin_across_sources(
     pg_conn: psycopg.Connection,
-    limiter_settings: Settings,
 ) -> None:
-    account_key = admin_auth.build_account_rate_limit_key("operator", settings=limiter_settings)
+    settings = _integration_settings()
+    account_key = admin_auth.build_account_rate_limit_key("operator", settings)
     now = datetime(2026, 3, 1, 8, 0, tzinfo=timezone.utc)
 
     for index in range(5):
         source_key = admin_auth.build_source_rate_limit_key(
-            f"203.0.113.{index + 1}", settings=limiter_settings
+            f"203.0.113.{index + 1}", settings
         )
         admission = _admit(
             pg_conn,
@@ -202,9 +197,7 @@ def test_account_bucket_limits_configured_admin_across_sources(
         )
         assert admission.admitted
 
-    blocked_source = admin_auth.build_source_rate_limit_key(
-        "203.0.113.99", settings=limiter_settings
-    )
+    blocked_source = admin_auth.build_source_rate_limit_key("203.0.113.99", settings)
     blocked = _admit(
         pg_conn,
         keys=(blocked_source, account_key),
@@ -216,13 +209,9 @@ def test_account_bucket_limits_configured_admin_across_sources(
 
 
 @pytest.mark.integration
-def test_window_boundary_resets_failure_count(
-    pg_conn: psycopg.Connection,
-    limiter_settings: Settings,
-) -> None:
-    source_key = admin_auth.build_source_rate_limit_key(
-        "203.0.113.44", settings=limiter_settings
-    )
+def test_window_boundary_resets_failure_count(pg_conn: psycopg.Connection) -> None:
+    settings = _integration_settings()
+    source_key = admin_auth.build_source_rate_limit_key("203.0.113.44", settings)
     window_seconds = 60
     start = datetime(2026, 4, 1, 10, 0, tzinfo=timezone.utc)
 
@@ -251,13 +240,9 @@ def test_window_boundary_resets_failure_count(
 
 
 @pytest.mark.integration
-def test_expired_lockout_allows_new_admissions(
-    pg_conn: psycopg.Connection,
-    limiter_settings: Settings,
-) -> None:
-    source_key = admin_auth.build_source_rate_limit_key(
-        "203.0.113.55", settings=limiter_settings
-    )
+def test_expired_lockout_allows_new_admissions(pg_conn: psycopg.Connection) -> None:
+    settings = _integration_settings()
+    source_key = admin_auth.build_source_rate_limit_key("203.0.113.55", settings)
     start = datetime(2026, 5, 1, 10, 0, tzinfo=timezone.utc)
     lockout_seconds = 30
 
@@ -292,13 +277,9 @@ def test_expired_lockout_allows_new_admissions(
 
 
 @pytest.mark.integration
-def test_cleanup_removes_stale_unlocked_rows(
-    pg_conn: psycopg.Connection,
-    limiter_settings: Settings,
-) -> None:
-    source_key = admin_auth.build_source_rate_limit_key(
-        "203.0.113.66", settings=limiter_settings
-    )
+def test_cleanup_removes_stale_unlocked_rows(pg_conn: psycopg.Connection) -> None:
+    settings = _integration_settings()
+    source_key = admin_auth.build_source_rate_limit_key("203.0.113.66", settings)
     now = datetime(2026, 6, 1, 10, 0, tzinfo=timezone.utc)
     _admit(pg_conn, keys=(source_key,), now=now, rate_limit=5, window_seconds=60)
 

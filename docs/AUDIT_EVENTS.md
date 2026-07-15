@@ -51,12 +51,7 @@ both commit or roll back together.
 | Brief-to-CRM linkage | `CrmService.link_project_brief_source` | Transactional write; audit ships with future routes |
 | Login success | `admin_routes._issue_session` | Prior-session revocation (if any) + new session + required audit atomically |
 | Logout (authenticated) | `admin_routes.admin_logout` | Revocation + required audit atomically when the session row transitions to revoked |
-| Login failure | `admin_routes` | Best-effort audit (`required=False`); actor is always `anonymous` |
-
-Unauthenticated login failures never persist submitted usernames, email addresses,
-or other attacker-supplied identifiers in `actor`, metadata, reason text, or
-correlation fields. Only a small server-defined `reason` enum is stored
-(`invalid_credentials`, `invalid_csrf`, `rate_limited`, …).
+| Login failure | `admin_routes` | Best-effort audit (`required=False`) |
 
 `record_event(..., required=True)` propagates persistence errors. Security-sensitive
 mutations must not return success when a required audit event could not be stored.
@@ -105,6 +100,28 @@ creation or audit insertion rolls back prior-session revocation as well, so the
 operator is never left without a valid server-side session. The session cookie is
 set on the redirect response only after the transaction exits successfully; failed
 or rolled-back logins never emit a new session cookie.
+
+**Unauthenticated actor policy:** Every `auth.login.failure` event recorded before
+successful authentication uses actor `anonymous`. Submitted usernames, email
+addresses, and other login-form candidates are never persisted in `actor`,
+`metadata`, or `summary_after`. Failure reasons are limited to server-defined
+values such as `invalid_credentials`, `invalid_csrf`, and `rate_limited`.
+
+**Historical exposure (pre-#242):** Append-only rows created before this policy
+may list attacker-supplied strings in `actor` for failed login attempts. Do not
+rewrite immutable audit history without an explicit data-governance decision.
+Forward-fix deployments prevent new occurrences regardless of remediation choices.
+
+Inventory prior rows:
+
+```sql
+SELECT created_at, actor, summary_after->>'reason' AS reason
+FROM audit_events
+WHERE action = 'auth.login.failure'
+  AND actor <> 'anonymous'
+ORDER BY created_at DESC
+LIMIT 100;
+```
 
 ## Audited actions
 
@@ -189,29 +206,3 @@ ORDER BY 1 DESC;
 | `AUDIT_PAGE_SIZE` | `50` | Admin audit list page size (max 100) |
 
 Requires `DATABASE_URL` and admin auth env vars documented in `docs/ADMIN_AUTH.md`.
-
-## Historical login-failure actors
-
-Revisions before keyed limiter identifiers and anonymous failure actors (issue
-[#242](https://github.com/saberistic-team/agent-web/issues/242)) could append
-`auth.login.failure` rows whose `actor` column contained a submitted username
-candidate. Those rows remain immutable under Postgres triggers; application code
-does not rewrite historical audit data.
-
-Forward policy (from #242 onward):
-
-- Every new unauthenticated login failure uses `actor = anonymous`.
-- Submitted username candidates are not stored in audit metadata.
-
-To inventory legacy exposure:
-
-```sql
-SELECT created_at, actor, action, summary_after
-FROM audit_events
-WHERE action = 'auth.login.failure'
-  AND actor <> 'anonymous'
-ORDER BY created_at DESC;
-```
-
-Remediation of historical rows (if required) is a data-governance decision
-outside normal application mutation paths.
