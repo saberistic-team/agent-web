@@ -308,10 +308,11 @@ revision reused version `013` for the canonical
 work by version, so migration `015` performs the additive reconciliation.
 Versions that have shipped to production are frozen via
 `FROZEN_MIGRATION_DIGESTS` so an existing migration cannot be silently
-redefined again. After each healthy production deploy, post-deploy runs
-`scripts/freeze_shipped_migrations.py` and commits any still-unfrozen digests
-with a `deploy: freeze …` meta commit (skipped by the Deploy job so Render is
-not retriggered).
+redefined again. After each healthy production deploy, the CI job
+**Freeze shipped migrations** runs `scripts/freeze_shipped_migrations.py
+--commit --wait-healthy` and commits any still-unfrozen digests with a
+`deploy: freeze …` meta commit (skipped by the Deploy job so Render is not
+retriggered).
 
 Applied versions are recorded in `schema_migrations`. Steps are **idempotent**
 (`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, conditional legacy backfills) so

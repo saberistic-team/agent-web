@@ -27,9 +27,9 @@ def migration_content_digest(migration: Migration) -> str:
 
 
 # Digests for versions that must never be silently redefined (#210).
-# When adding a new migration, leave prior entries unchanged. Post-deploy
-# (scripts/freeze_shipped_migrations.py) freezes new versions after a healthy
-# production deploy — do not hand-edit shipped digests.
+# When adding a new migration, leave prior entries unchanged. The CI job
+# "Freeze shipped migrations" (scripts/freeze_shipped_migrations.py) freezes
+# new versions after a healthy production deploy — do not hand-edit shipped digests.
 FROZEN_MIGRATION_DIGESTS: dict[str, str] = {
     "001": "b25d23a80d13aca9fab1449d4ce7b50513b747a6bd6d00e234ea0ff21c0877f6",
     "002": "a74155b616b65ecb04f14cae1f2f33cf4e6a316d23c9452a6e4e3ac1161d6ed6",

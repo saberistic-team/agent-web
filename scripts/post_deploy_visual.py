@@ -414,22 +414,6 @@ def main(argv: list[str] | None = None) -> int:
             health=health,
         )
 
-        # After production accepts this SHA, freeze any still-unfrozen migration
-        # digests so shipped SQL cannot be silently redefined (#210).
-        try:
-            from freeze_shipped_migrations import maybe_commit_freeze
-
-            freeze_result = maybe_commit_freeze(args.repo, default)
-            if freeze_result.get("frozen"):
-                print(
-                    "freeze_migrations_versions="
-                    + ",".join(str(v) for v in freeze_result["frozen"])
-                )
-        except Exception as freeze_exc:
-            # Health already recorded; do not fail the deploy visual path if the
-            # meta freeze commit races. Operators can re-run --commit manually.
-            print(f"freeze_migrations_error={freeze_exc}", file=sys.stderr)
-
         out = Path("trace/screenshots-post")
         short = (args.sha or "local")[:12]
         changed: list[str] | None = None

@@ -68,7 +68,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     assert rel == "app/migrations/definitions.py"
     text = content.decode("utf-8")
     assert '"002"' in text
-    assert "Post-deploy" in text
+    assert "Freeze shipped migrations" in text
     assert "freeze_shipped_migrations.py" in text
 
     path.write_bytes(content)
