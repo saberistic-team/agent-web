@@ -24,8 +24,8 @@ from app.admin_auth import AdminLoginRequired, login_redirect_url
 from app.admin_pipeline_routes import router as admin_pipeline_router
 from app.admin_routes import router as admin_router
 from app.actor_context import CORRELATION_HEADER
-from app.client_source import CLIENT_SOURCE_TRUST_MODEL
 from app.config import get_settings
+from app.proxy_trust import admin_proxy_trust_health
 from app.models import BriefCreateRequest, BriefCreateResponse
 from app.seo import (
     PERMANENT_REDIRECTS,
@@ -118,8 +118,9 @@ def health() -> dict:
     liveness into 503 (that breaks readiness probes and unit tests that set a
     unused DATABASE_URL).
     """
-    payload: dict = {"status": "ok", "client_source_trust": CLIENT_SOURCE_TRUST_MODEL}
+    payload: dict = {"status": "ok"}
     settings = get_settings()
+    payload["admin_proxy_trust"] = admin_proxy_trust_health(settings)
     if not settings.database_configured:
         return payload
     try:

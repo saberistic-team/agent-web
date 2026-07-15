@@ -27,7 +27,11 @@ class Settings:
     admin_login_rate_limit: int = 5
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
-    admin_trusted_proxy_cidrs: str = ""
+    admin_trust_proxy_headers: bool = False
+    admin_trusted_proxy_cidrs: tuple[str, ...] = ()
+    admin_trusted_edge_cidrs: tuple[str, ...] = ()
+    admin_trust_cloudflare_edge: bool = False
+    uvicorn_forwarded_allow_ips: str = "127.0.0.1"
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -109,8 +113,25 @@ def get_settings() -> Settings:
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
         brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
-        admin_trusted_proxy_cidrs=os.environ.get(
-            "ADMIN_TRUSTED_PROXY_CIDRS",
-            os.environ.get("UVICORN_FORWARDED_ALLOW_IPS", ""),
-        ).strip(),
+        admin_trust_proxy_headers=os.environ.get(
+            "ADMIN_TRUST_PROXY_HEADERS", ""
+        ).lower()
+        in ("1", "true", "yes"),
+        admin_trusted_proxy_cidrs=_parse_csv_env("ADMIN_TRUSTED_PROXY_CIDRS"),
+        admin_trusted_edge_cidrs=_parse_csv_env("ADMIN_TRUSTED_EDGE_CIDRS"),
+        admin_trust_cloudflare_edge=os.environ.get(
+            "ADMIN_TRUST_CLOUDFLARE_EDGE", ""
+        ).lower()
+        in ("1", "true", "yes"),
+        uvicorn_forwarded_allow_ips=os.environ.get(
+            "UVICORN_FORWARDED_ALLOW_IPS", "127.0.0.1"
+        ).strip()
+        or "127.0.0.1",
     )
+
+
+def _parse_csv_env(name: str) -> tuple[str, ...]:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return ()
+    return tuple(part.strip() for part in raw.split(",") if part.strip())
