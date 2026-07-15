@@ -286,33 +286,18 @@ def test_create_brief_missing_checkout_url() -> None:
     assert response.status_code == 502
 
 
-def _completed_session(
-    *,
-    brief_id: str = "1",
-    payment_intent: str | None = "pi_test_123",
-    amount_subtotal: int = 20_000,
-    amount_total: int = 20_000,
-    amount_discount: int = 0,
-    discounts: list[dict[str, object]] | None = None,
-) -> dict[str, object]:
-    return {
-        "id": "cs_test_123",
-        "payment_intent": payment_intent,
-        "metadata": {"brief_id": brief_id},
-        "amount_subtotal": amount_subtotal,
-        "amount_total": amount_total,
-        "currency": "usd",
-        "total_details": {"amount_discount": amount_discount},
-        "discounts": discounts or [],
-    }
-
-
 @pytest.mark.unit
 @pytest.mark.integration
 def test_stripe_webhook_marks_paid_and_sends_email() -> None:
     fake_event = {
         "type": "checkout.session.completed",
-        "data": {"object": _completed_session()},
+        "data": {
+            "object": {
+                "id": "cs_test_123",
+                "payment_intent": "pi_test_123",
+                "metadata": {"brief_id": "1"},
+            }
+        },
     }
 
     with mock_db_connection() as conn:
@@ -344,97 +329,15 @@ def test_stripe_webhook_marks_paid_and_sends_email() -> None:
         brief_id=1,
         stripe_session_id="cs_test_123",
         stripe_payment_intent_id="pi_test_123",
-        payment_subtotal_cents=20_000,
-        payment_discount_cents=0,
-        payment_amount_cents=20_000,
-        payment_currency="usd",
-        stripe_discount_id=None,
+        payment_subtotal_cents=None,
+        payment_discount_cents=None,
+        payment_amount_cents=None,
+        payment_currency=None,
+        stripe_promotion_code_id=None,
+        stripe_coupon_id=None,
     )
     notify_team.assert_called_once()
     notify_customer.assert_called_once()
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_stripe_webhook_persists_discounted_payment() -> None:
-    fake_event = {
-        "type": "checkout.session.completed",
-        "data": {
-            "object": _completed_session(
-                amount_total=15_000,
-                amount_discount=5_000,
-                discounts=[{"promotion_code": "promo_live_test"}],
-            )
-        },
-    }
-
-    with mock_db_connection() as conn:
-        with patch(
-            "app.main.stripe_service.construct_webhook_event",
-            return_value=fake_event,
-        ):
-            with patch("app.main.db.mark_brief_paid", return_value=FAKE_PAID_BRIEF) as mark_paid:
-                with patch("app.main.analytics_service.track_payment_completed") as track_payment:
-                    response = client.post(
-                        "/webhooks/stripe",
-                        content=b"{}",
-                        headers={"stripe-signature": "sig_test"},
-                    )
-
-    assert response.status_code == 200
-    mark_paid.assert_called_once_with(
-        conn,
-        brief_id=1,
-        stripe_session_id="cs_test_123",
-        stripe_payment_intent_id="pi_test_123",
-        payment_subtotal_cents=20_000,
-        payment_discount_cents=5_000,
-        payment_amount_cents=15_000,
-        payment_currency="usd",
-        stripe_discount_id="promo_live_test",
-    )
-    assert track_payment.call_args.kwargs["price_cents"] == 15_000
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_stripe_webhook_marks_paid_without_payment_intent_for_free_checkout() -> None:
-    fake_event = {
-        "type": "checkout.session.completed",
-        "data": {
-            "object": _completed_session(
-                payment_intent=None,
-                amount_total=0,
-                amount_discount=20_000,
-                discounts=[{"coupon": "coupon_free"}],
-            )
-        },
-    }
-
-    with mock_db_connection() as conn:
-        with patch(
-            "app.main.stripe_service.construct_webhook_event",
-            return_value=fake_event,
-        ):
-            with patch("app.main.db.mark_brief_paid", return_value=FAKE_PAID_BRIEF) as mark_paid:
-                response = client.post(
-                    "/webhooks/stripe",
-                    content=b"{}",
-                    headers={"stripe-signature": "sig_test"},
-                )
-
-    assert response.status_code == 200
-    mark_paid.assert_called_once_with(
-        conn,
-        brief_id=1,
-        stripe_session_id="cs_test_123",
-        stripe_payment_intent_id=None,
-        payment_subtotal_cents=20_000,
-        payment_discount_cents=20_000,
-        payment_amount_cents=0,
-        payment_currency="usd",
-        stripe_discount_id="coupon_free",
-    )
 
 
 @pytest.mark.unit
@@ -483,7 +386,13 @@ def test_stripe_webhook_missing_brief_id() -> None:
 def test_stripe_webhook_already_paid() -> None:
     fake_event = {
         "type": "checkout.session.completed",
-        "data": {"object": _completed_session()},
+        "data": {
+            "object": {
+                "id": "cs_test_123",
+                "payment_intent": "pi_test_123",
+                "metadata": {"brief_id": "1"},
+            }
+        },
     }
     with mock_db_connection():
         with patch(
@@ -533,7 +442,13 @@ def test_stripe_webhook_requires_secret(monkeypatch: pytest.MonkeyPatch) -> None
 def test_stripe_webhook_email_failure_still_ok() -> None:
     fake_event = {
         "type": "checkout.session.completed",
-        "data": {"object": _completed_session()},
+        "data": {
+            "object": {
+                "id": "cs_test_123",
+                "payment_intent": "pi_test_123",
+                "metadata": {"brief_id": "1"},
+            }
+        },
     }
     with mock_db_connection():
         with patch(

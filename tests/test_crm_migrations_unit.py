@@ -414,6 +414,21 @@ def test_frozen_migration_digests_reject_silent_redefinition() -> None:
 
 
 @pytest.mark.unit
+def test_project_brief_payment_columns_migration_is_idempotent() -> None:
+    migration = next(m for m in MIGRATIONS if m.name == "project_brief_payment_details")
+    assert migration.version == "016"
+    for column in (
+        "payment_subtotal_cents",
+        "payment_discount_cents",
+        "payment_amount_cents",
+        "payment_currency",
+        "stripe_promotion_code_id",
+        "stripe_coupon_id",
+    ):
+        assert f"ADD COLUMN IF NOT EXISTS {column}" in migration.up_sql
+
+
+@pytest.mark.unit
 def test_reconcile_acquisition_pipeline_migration_is_idempotent_sql() -> None:
     reconcile = next(m for m in MIGRATIONS if m.name == "reconcile_acquisition_pipeline_schema")
     assert reconcile.version == "015"

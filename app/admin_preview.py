@@ -635,11 +635,6 @@ def build_preview_brief_rows(
         company = companies[i % len(companies)]
         brief_id = i + 1
         status = BRIEF_PAYMENT_STATUSES[0] if brief_id == 2 else rng.choice(BRIEF_PAYMENT_STATUSES)
-        # Keep id=1 rich/paid and id=2 unpaid+nullable so Reviewer shots cover both AC states.
-        if brief_id == 1:
-            status = "paid"
-        if brief_id == 5:
-            status = "paid"
         created = now - timedelta(hours=rng.randint(2, 120), minutes=rng.randint(0, 50))
         paid_at: datetime | None = None
         session_id: str | None = None
@@ -648,22 +643,35 @@ def build_preview_brief_rows(
         payment_discount_cents: int | None = None
         payment_amount_cents: int | None = None
         payment_currency: str | None = None
-        stripe_discount_id: str | None = None
-        if status == "paid":
+        stripe_promotion_code_id: str | None = None
+        stripe_coupon_id: str | None = None
+        # Keep id=1 full-price paid, id=2 unpaid+nullable, id=4 discounted paid.
+        if brief_id == 1:
+            status = "paid"
             paid_at = created + timedelta(minutes=rng.randint(5, 90))
             session_id = f"cs_preview_{rng.randint(100000, 999999)}"
             intent_id = f"pi_preview_{rng.randint(100000, 999999)}"
-            if brief_id == 5:
-                payment_subtotal_cents = 20_000
-                payment_discount_cents = 5_000
-                payment_amount_cents = 15_000
-                payment_currency = "usd"
-                stripe_discount_id = "promo_preview_discount"
-            elif brief_id == 1:
-                payment_subtotal_cents = 20_000
-                payment_discount_cents = 0
-                payment_amount_cents = 20_000
-                payment_currency = "usd"
+            payment_subtotal_cents = 20_000
+            payment_amount_cents = 20_000
+            payment_currency = "usd"
+        elif brief_id == PREVIEW_BRIEF_CONVERT_MATCHES_ID:
+            status = "paid"
+            paid_at = created + timedelta(minutes=rng.randint(5, 90))
+            session_id = f"cs_preview_{rng.randint(100000, 999999)}"
+            intent_id = f"pi_preview_{rng.randint(100000, 999999)}"
+            payment_subtotal_cents = 20_000
+            payment_discount_cents = 5_000
+            payment_amount_cents = 15_000
+            payment_currency = "usd"
+            stripe_promotion_code_id = "promo_preview_25off"
+            stripe_coupon_id = "coupon_preview_25off"
+        elif status == "paid":
+            paid_at = created + timedelta(minutes=rng.randint(5, 90))
+            session_id = f"cs_preview_{rng.randint(100000, 999999)}"
+            intent_id = f"pi_preview_{rng.randint(100000, 999999)}"
+            payment_subtotal_cents = 20_000
+            payment_amount_cents = 20_000
+            payment_currency = "usd"
         utm_source = None if brief_id == 2 else rng.choice(UTM_SOURCES)
         utm_medium = None if brief_id == 2 else rng.choice(UTM_MEDIUMS)
         utm_campaign = None if brief_id == 2 else rng.choice(UTM_CAMPAIGNS)
@@ -696,7 +704,8 @@ def build_preview_brief_rows(
                 "payment_discount_cents": payment_discount_cents,
                 "payment_amount_cents": payment_amount_cents,
                 "payment_currency": payment_currency,
-                "stripe_discount_id": stripe_discount_id,
+                "stripe_promotion_code_id": stripe_promotion_code_id,
+                "stripe_coupon_id": stripe_coupon_id,
                 "utm_source": utm_source,
                 "utm_medium": utm_medium,
                 "utm_campaign": utm_campaign,

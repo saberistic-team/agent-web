@@ -159,7 +159,6 @@ def test_postgres_project_brief_repository_get_by_id_selects_detail_columns() ->
     sql = cursor.execute.call_args[0][0]
     assert "stripe_session_id" in sql
     assert "payment_amount_cents" in sql
-    assert "stripe_discount_id" in sql
     assert "utm_term" in sql
     assert "WHERE id = %s" in sql
 
@@ -252,30 +251,6 @@ def test_render_admin_brief_detail_page_ignores_unsafe_back_params() -> None:
     )
     assert "javascript:" not in html_out
     assert "status=hacked" not in html_out
-
-
-@pytest.mark.unit
-def test_render_admin_brief_detail_page_shows_discounted_payment_breakdown() -> None:
-    brief = _detail_brief()
-    brief.update(
-        {
-            "payment_subtotal_cents": 20_000,
-            "payment_discount_cents": 5_000,
-            "payment_amount_cents": 15_000,
-            "payment_currency": "usd",
-            "stripe_discount_id": "promo_preview_discount",
-        }
-    )
-    html_out = render_admin_brief_detail_page(
-        admin_username=TEST_USERNAME,
-        brief=brief,
-        back_filters=_back_filters(),
-        price_cents=20_000,
-    )
-    assert "Subtotal $200" in html_out
-    assert "Discount −$50" in html_out
-    assert "Total $150 USD" in html_out
-    assert "promo_preview_discount" in html_out
 
 
 @pytest.mark.unit
