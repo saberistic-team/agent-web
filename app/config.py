@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import ipaddress
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -29,10 +28,7 @@ class Settings:
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
     admin_trust_proxy_headers: bool = False
-    admin_trusted_proxy_ips: str = ""
-    admin_trusted_proxy_networks: tuple[
-        ipaddress.IPv4Network | ipaddress.IPv6Network, ...
-    ] = field(default_factory=tuple)
+    admin_trusted_proxy_cidrs: str = ""
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -87,24 +83,6 @@ class Settings:
         return bool(self.plausible_domain)
 
 
-def _parse_trusted_proxy_networks(raw: str) -> tuple[
-    ipaddress.IPv4Network | ipaddress.IPv6Network, ...
-]:
-    """Parse comma-separated trusted proxy CIDRs/hosts from configuration."""
-    networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
-    for item in raw.split(","):
-        token = item.strip()
-        if not token:
-            continue
-        if "/" not in token:
-            token = f"{token}/32" if ":" not in token else f"{token}/128"
-        try:
-            networks.append(ipaddress.ip_network(token, strict=False))
-        except ValueError:
-            continue
-    return tuple(networks)
-
-
 def get_settings() -> Settings:
     return Settings(
         database_url=os.environ.get("DATABASE_URL", ""),
@@ -136,8 +114,5 @@ def get_settings() -> Settings:
             "ADMIN_TRUST_PROXY_HEADERS", ""
         ).lower()
         in ("1", "true", "yes"),
-        admin_trusted_proxy_ips=os.environ.get("ADMIN_TRUSTED_PROXY_IPS", "").strip(),
-        admin_trusted_proxy_networks=_parse_trusted_proxy_networks(
-            os.environ.get("ADMIN_TRUSTED_PROXY_IPS", "").strip()
-        ),
+        admin_trusted_proxy_cidrs=os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "").strip(),
     )
