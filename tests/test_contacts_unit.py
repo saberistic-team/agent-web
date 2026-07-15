@@ -141,3 +141,63 @@ def test_contact_admin_pages_render_filters_forms_and_warnings() -> None:
     assert "/edit" in edit and "warning" in edit
     assert "Technical buyer" in edit
     assert 'value="technical_buyer"' in edit
+
+
+@pytest.mark.unit
+def test_duplicate_warning_helpers_skip_invalid_and_empty_inputs() -> None:
+    contacts = [
+        {
+            "id": UUID("44444444-4444-4444-4444-444444444444"),
+            "full_name": "Bad Url",
+            "email": "not-an-email",
+            "profile_url": "://bad",
+            "company_id": COMPANY_ID,
+            "archived_at": None,
+        },
+        {
+            "id": UUID("55555555-5555-5555-5555-555555555555"),
+            "full_name": "Pat Example",
+            "email": "pat@example.com",
+            "profile_url": "https://linkedin.com/in/pat",
+            "company_id": COMPANY_ID,
+            "archived_at": None,
+        },
+    ]
+    assert find_profile_url_duplicate_warnings(contacts, profile_url=None) == []
+    assert find_profile_url_duplicate_warnings(contacts, profile_url="https://linkedin.com/in/pat")
+    assert find_email_duplicate_warnings(contacts, email=None) == []
+    assert find_email_duplicate_warnings(contacts, email="pat@example.com")
+    assert find_name_company_duplicate_warnings(
+        contacts, full_name="Pat Example", company_id=None
+    ) == []
+    assert find_name_company_duplicate_warnings(
+        contacts, full_name="   ", company_id=COMPANY_ID
+    ) == []
+    assert find_name_company_duplicate_warnings(
+        contacts, full_name="Pat Example", company_id=COMPANY_ID
+    )
+
+
+@pytest.mark.unit
+def test_contact_repository_find_helpers_support_exclude_id() -> None:
+    repo = PostgresContactRepository()
+    conn = _conn([{"id": CONTACT_ID, "full_name": "Ada"}])
+    rows = repo.find_by_profile_url(
+        conn, "https://linkedin.com/in/ada", exclude_contact_id=CONTACT_ID
+    )
+    assert rows == [{"id": CONTACT_ID, "full_name": "Ada"}]
+    sql = str(conn.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    assert "profile_url = %s" in sql and "id <> %s" in sql
+
+    named = _conn([])
+    assert (
+        repo.find_by_name_company(
+            named,
+            full_name="Ada",
+            company_id=COMPANY_ID,
+            exclude_contact_id=CONTACT_ID,
+        )
+        == []
+    )
+    named_sql = str(named.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    assert "LOWER(full_name) = LOWER(%s)" in named_sql and "id <> %s" in named_sql

@@ -128,8 +128,8 @@ def test_create_contact_assigns_roles_and_shows_duplicate_warnings(
         "duplicate_warnings": [
             ContactDuplicateWarning(
                 contact_id=str(CONTACT_ID),
-                full_name="Existing",
-                reason="profile_url",
+                label="Existing",
+                match_type="profile_url",
             )
         ],
     }

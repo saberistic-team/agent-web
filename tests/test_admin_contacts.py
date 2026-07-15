@@ -116,16 +116,14 @@ def test_contact_record_mutations_require_session_and_use_csrf() -> None:
                     "company_id": str(COMPANY_ID),
                     "buying_roles": ["founder", "technical_buyer"],
                     "email": "ada@acme.dev",
-                    "email_permitted": "1",
-                    "email_provenance": "introduction",
+                    "email_permission": "permitted",
                 },
             )
             assert response.status_code == 303
             assert f"/admin/contacts/{CONTACT_ID}/edit" in response.headers["location"]
             created = crm.create_contact.call_args.kwargs["contact"]
             assert created.buying_roles == ["founder", "technical_buyer"]
-            assert created.email_permitted is True
-
+            assert created.email_permission == "permitted"
             client.post(
                 f"/admin/contacts/{CONTACT_ID}/archive",
                 data={"csrf_token": CSRF_TOKEN},

@@ -368,3 +368,13 @@ def test_contact_crud_helpers_commit_and_return_nonblocking_duplicate_warnings()
     assert service.archive_contact(conn, CONTACT_ID)["archived_at"] == "now"
     assert service.restore_contact(conn, CONTACT_ID)["archived_at"] is None
     assert conn.commit.call_count == 4
+
+
+@pytest.mark.unit
+def test_search_contacts_aliases_list_contacts() -> None:
+    from unittest.mock import patch
+
+    service, conn, _ = _service_with_mocks()
+    with patch.object(service, "list_contacts", return_value=[{"id": "x"}]) as listed:
+        assert service.search_contacts(conn, query="pat") == [{"id": "x"}]
+        listed.assert_called_once_with(conn, query="pat")

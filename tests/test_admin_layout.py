@@ -217,7 +217,7 @@ def test_admin_dashboard_renders_shell() -> None:
     assert 'id="main-content"' in body
     assert 'meta name="robots" content="noindex, nofollow"' in body
     assert 'href="/assets/admin.css"' in body
-    assert "Admin foundation" in body
+    assert "Operations" in body
     assert 'admin-nav-toggle" open' not in body
     assert '<span class="admin-nav-current">Dashboard</span>' in body
 
@@ -250,22 +250,22 @@ def test_admin_nav_links_present(path: str) -> None:
 
 
 @pytest.mark.parametrize(
-    ("path", "label"),
+    ("path", "heading", "title_id", "nav_label"),
     [
-        ("/admin", "Dashboard"),
-        ("/admin/contacts", "Contacts"),
-        ("/admin/signals", "Signals"),
-        ("/admin/pipeline", "Pipeline"),
-        ("/admin/imports", "Imports"),
-        ("/admin/discovery", "Discovery"),
-        ("/admin/analytics", "Analytics"),
-        ("/admin/content", "Content"),
-        ("/admin/settings", "Settings"),
+        ("/admin", "Operations", "admin-dashboard-title", "Dashboard"),
+        ("/admin/contacts", "Contacts", "contacts-title", "Contacts"),
+        ("/admin/signals", "Signals", "admin-empty-title", "Signals"),
+        ("/admin/pipeline", "Pipeline", "admin-empty-title", "Pipeline"),
+        ("/admin/imports", "Imports", "admin-empty-title", "Imports"),
+        ("/admin/discovery", "Discovery", "admin-empty-title", "Discovery"),
+        ("/admin/analytics", "Analytics", "admin-empty-title", "Analytics"),
+        ("/admin/content", "Content", "admin-empty-title", "Content"),
+        ("/admin/settings", "Settings", "admin-empty-title", "Settings"),
     ],
 )
 @pytest.mark.unit
 @pytest.mark.integration
-def test_admin_active_nav(path: str, label: str) -> None:
+def test_admin_active_nav(path: str, heading: str, title_id: str, nav_label: str) -> None:
     from app import admin_auth
 
     raw_token = admin_auth.generate_session_token()
@@ -279,12 +279,11 @@ def test_admin_active_nav(path: str, label: str) -> None:
             response = client.get(path, cookies={SESSION_COOKIE_NAME: raw_token})
     assert response.status_code == 200
     body = response.text
-    title_id = "contacts-title" if path == "/admin/contacts" else "admin-empty-title"
-    assert f'id="{title_id}">{label}</h1>' in body
+    assert f'id="{title_id}">{heading}</h1>' in body
     assert body.count('aria-current="page"') == 2
     assert f'href="{path}"' in body
     assert 'aria-current="page"' in body
-    assert f'class="admin-nav-link" aria-current="page">{label}</a>' in body
+    assert f'class="admin-nav-link" aria-current="page">{nav_label}</a>' in body
 
 
 @pytest.mark.unit

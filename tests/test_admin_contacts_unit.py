@@ -19,18 +19,19 @@ def test_render_contacts_list_page_includes_search_and_rows() -> None:
     html = admin_contacts.render_contacts_list_page(
         admin_username="operator",
         csrf_token="csrf-token",
+        companies=[{"id": COMPANY_ID, "name": "Acme"}],
         contacts=[
             {
                 "id": CONTACT_ID,
                 "full_name": "Pat Example",
                 "title": "CTO",
-                "company_name": "Acme",
+                "company_id": COMPANY_ID,
                 "buying_roles": ["technical_buyer"],
                 "email": "pat@acme.dev",
                 "last_interaction_at": None,
             }
         ],
-        filters={"q": "pat", "buying_role": None, "archived": None},
+        filters={"q": "pat", "buying_role": None, "company_id": None, "archived": None},
     )
     assert "Contacts" in html
     assert "Pat Example" in html
@@ -65,8 +66,8 @@ def test_render_contact_form_page_new_and_edit() -> None:
         warnings=[
             ContactDuplicateWarning(
                 contact_id=str(CONTACT_ID),
-                full_name="Other Pat",
-                reason="email",
+                label="Other Pat",
+                match_type="email",
             )
         ],
     )

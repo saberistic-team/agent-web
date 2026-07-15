@@ -345,6 +345,10 @@ class CrmService:
         ]
         return {"contact": updated, "duplicate_warnings": duplicate_warnings}
 
+    def search_contacts(self, *args, **kwargs):
+        """Compat alias for older call sites; prefer list_contacts."""
+        return self.list_contacts(*args, **kwargs)
+
     def archive_contact(
         self, conn: psycopg.Connection, contact_id: UUID
     ) -> dict[str, Any] | None:

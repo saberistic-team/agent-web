@@ -67,8 +67,6 @@ def authenticated_admin() -> Generator[dict[str, str], None, None]:
         patch.object(db, "get_admin_session_by_token_hash", side_effect=_get_session),
         patch.object(db, "update_admin_session_csrf", side_effect=_update_csrf),
         patch("app.db.db_connection") as db_conn,
-        patch("app.admin_deps.db.db_connection", db_conn),
-        patch("app.admin_crm_routes.db.db_connection", db_conn),
         patch("app.admin_routes.db.db_connection", db_conn),
     ):
         db_conn.return_value.__enter__.return_value = mock_conn
