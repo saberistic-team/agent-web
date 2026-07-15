@@ -81,6 +81,13 @@ ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
 
 ADMIN_PATHS: frozenset[str] = frozenset(link["href"] for link in ADMIN_NAV_LINKS)
 
+
+def archive_action_button_class(*, is_archived: bool) -> str:
+    """Semantic classes for CRM archive/restore submit buttons (not top-bar links)."""
+    if is_archived:
+        return "admin-action admin-action--secondary"
+    return "admin-action admin-action--destructive"
+
 # Pre-merge Playwright capture targets (shell pages + login). Never production.
 ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     *(link["href"] for link in ADMIN_NAV_LINKS),
@@ -93,11 +100,11 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
-    "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-    "/admin/companies/cccccccc-cccc-cccc-cccc-cccccccccccc",
-    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
-    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd",
-    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/edit",
+    "/admin/companies/10101010-1010-1010-1010-101010101010",
+    "/admin/companies/20202020-2020-2020-2020-202020202020",
+    "/admin/contacts/30303030-3030-3030-3030-303030303030",
+    "/admin/contacts/40404040-4040-4040-4040-404040404040",
+    "/admin/contacts/40404040-4040-4040-4040-404040404040/edit",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
@@ -151,12 +158,6 @@ def render_admin_nav(active_path: str) -> str:
             </ul>
           </details>
         </nav>"""
-
-
-def admin_archive_action_button_class(*, archived: bool) -> str:
-    """Semantic classes for archive (destructive) vs restore (non-destructive) actions."""
-    modifier = "restore" if archived else "destructive"
-    return f"admin-action admin-action--{modifier}"
 
 
 def render_admin_shell(
