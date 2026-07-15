@@ -236,13 +236,14 @@ def read_login_flow_token(request: Request) -> str | None:
 
 
 def client_ip(request: Request, settings: Settings) -> str:
-    """Resolve the client source for admin login rate limiting.
+    """Resolve the client source IP for rate limiting.
 
     Delegates to :func:`resolve_admin_login_client_source`, which only trusts
-    forwarding headers when the immediate peer matches
-    ``ADMIN_TRUSTED_PROXY_CIDRS`` and the hop chain validates.
+    forwarding headers when the immediate peer is in the configured trusted-proxy
+    boundary and selects the rightmost untrusted hop (never the raw leftmost
+    ``X-Forwarded-For`` value from an unverified chain).
     """
-    return resolve_admin_login_client_source(request, settings).source
+    return resolve_admin_login_client_source(request, settings).address
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
@@ -366,8 +367,8 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    resolution = resolve_admin_login_client_source(request, settings)
-    source = resolution.source
+    source_resolution = resolve_admin_login_client_source(request, settings)
+    source = source_resolution.address
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,
@@ -413,25 +414,22 @@ def try_admit_login_attempt(
             store_unavailable=True,
         )
 
-    telemetry = {
-        "limiter_key_count": len(limiter_keys),
-        "source_resolution_path": resolution.path.value,
-        "invalid_forwarding": resolution.invalid_forwarding,
-    }
     if admission.admitted:
         _logger.info(
             "Admin login attempt admitted",
             extra={
-                **telemetry,
+                "limiter_key_count": len(limiter_keys),
                 "lockout_transition": admission.lockout_transition,
+                "source_resolution_path": source_resolution.path.value,
             },
         )
     elif admission.already_locked:
         _logger.info(
             "Admin login attempt throttled",
             extra={
-                **telemetry,
+                "limiter_key_count": len(limiter_keys),
                 "already_locked": True,
+                "source_resolution_path": source_resolution.path.value,
             },
         )
     return LoginAdmissionResult(
