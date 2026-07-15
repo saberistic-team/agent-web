@@ -144,7 +144,7 @@ def test_header_precedence_prefers_xff_over_forwarded_and_cf() -> None:
         peer_host=RENDER_PROXY,
         trusted_proxy_cidrs=_trusted_cidrs(RENDER_PROXY),
         x_forwarded_for=f"{CLIENT_A}, {RENDER_PROXY}",
-        forwarded=f'for={CLIENT_B};proto=https',
+        forwarded=f"for={CLIENT_B};proto=https",
         cf_connecting_ip=CLIENT_B,
     )
     assert result.source == CLIENT_A
@@ -201,15 +201,16 @@ def test_client_ip_wrapper_uses_resolver(monkeypatch: pytest.MonkeyPatch) -> Non
 
 @pytest.mark.unit
 def test_health_reports_deployment_trust_summary(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", "*")
-    monkeypatch.setenv("UVICORN_PROXY_HEADERS", "true")
-    monkeypatch.setenv("UVICORN_FORWARDED_ALLOW_IPS", "*")
+    monkeypatch.setenv(
+        "ADMIN_TRUSTED_PROXY_CIDRS",
+        "127.0.0.1/32,10.0.0.0/8",
+    )
+    monkeypatch.setenv("UVICORN_FORWARDED_ALLOW_IPS", "")
     payload = health()
     trust = payload["admin_login_source_trust"]
     assert trust["trusted_proxies_configured"] is True
-    assert trust["trust_wildcard"] is True
-    assert trust["uvicorn_proxy_headers"] is True
-    assert trust["uvicorn_forwarded_allow_ips"] == "*"
+    assert trust["trust_wildcard"] is False
+    assert trust["uvicorn_forwarded_allow_ips"] == ""
     assert trust["resolution_mode"] == "trusted_hop_chain"
 
 
@@ -227,11 +228,9 @@ def test_deployment_trust_summary_without_proxies() -> None:
 @pytest.mark.unit
 def test_render_yaml_proxy_settings_are_consistent() -> None:
     text = RENDER_YAML.read_text(encoding="utf-8")
-    assert "--proxy-headers" in text
-    assert "--forwarded-allow-ips='*'" in text
+    assert "--forwarded-allow-ips=''" in text
     assert "ADMIN_TRUSTED_PROXY_CIDRS" in text
-    assert 'value: "*"' in text
-    assert "UVICORN_PROXY_HEADERS" in text
+    assert "127.0.0.1/32" in text
     assert "UVICORN_FORWARDED_ALLOW_IPS" in text
 
 
@@ -239,7 +238,7 @@ def test_render_yaml_proxy_settings_are_consistent() -> None:
 def test_admin_auth_doc_documents_trusted_hop_model() -> None:
     text = ADMIN_AUTH_DOC.read_text(encoding="utf-8")
     assert "ADMIN_TRUSTED_PROXY_CIDRS" in text
-    assert "right-to-left" in text
+    assert "Right-to-left parse" in text
     assert "admin_login_source_trust" in text
     assert "rollback" in text.lower()
 
@@ -258,7 +257,6 @@ def test_telemetry_logs_path_without_raw_addresses(
 
     record_client_source_telemetry(result)
     messages = " ".join(record.message for record in caplog.records)
-    assert "source_resolution_path" not in messages
     assert ATTACKER_SPOOF not in messages
     assert DIRECT_ATTACKER not in messages
     assert any(
@@ -323,7 +321,6 @@ def uvicorn_proxy_server(monkeypatch: pytest.MonkeyPatch) -> Generator[str, None
     monkeypatch.setenv("ADMIN_SESSION_SECRET", "test-session-secret-32chars-minimum")
     monkeypatch.setenv("BASE_URL", "http://testserver")
     monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", "127.0.0.1")
-    monkeypatch.setenv("UVICORN_PROXY_HEADERS", "true")
     monkeypatch.setenv("UVICORN_FORWARDED_ALLOW_IPS", "127.0.0.1")
 
     port = _reserve_port()
@@ -368,7 +365,6 @@ def test_uvicorn_proxy_configuration_resolves_trusted_xff_chain(
         health_response = client.get(f"{uvicorn_proxy_server}/health")
         assert health_response.status_code == 200
         trust = health_response.json()["admin_login_source_trust"]
-        assert trust["uvicorn_proxy_headers"] is True
         assert trust["resolution_mode"] == "trusted_hop_chain"
 
         scope_request = _request_with_client(

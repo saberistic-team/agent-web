@@ -53,12 +53,11 @@ def verify_admin_proxy_config() -> list[str]:
     doc_text = _read_text(ADMIN_AUTH_DOC)
     for needle in (
         "ADMIN_TRUSTED_PROXY_CIDRS",
-        "ADMIN_TRUSTED_FORWARDING_CIDRS",
-        "ADMIN_CLOUDFLARE_FORWARDING_CIDRS",
         "--forwarded-allow-ips=''",
         "Right-to-left parse",
         "Cloudflare edge",
         "verify_admin_proxy_config.py",
+        "admin_login_source_trust",
     ):
         if needle not in doc_text:
             errors.append(f"docs/ADMIN_AUTH.md must document {needle!r}")

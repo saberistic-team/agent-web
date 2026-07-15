@@ -7,12 +7,18 @@ from pathlib import Path
 
 import pytest
 
-from scripts.verify_admin_proxy_config import (
-    RENDER_TRUSTED_PROXY_CIDRS,
-    verify_admin_proxy_config,
-)
+from app.client_source import RENDER_TRUSTED_PROXY_CIDRS
+from scripts.verify_admin_proxy_config import verify_admin_proxy_config
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+@pytest.mark.unit
+def test_render_trusted_proxy_cidrs_match_verify_script() -> None:
+    from app.client_source import RENDER_TRUSTED_PROXY_CIDRS as app_cidrs
+    from scripts.verify_admin_proxy_config import RENDER_TRUSTED_PROXY_CIDRS as script_cidrs
+
+    assert app_cidrs == script_cidrs
 
 
 @pytest.mark.unit

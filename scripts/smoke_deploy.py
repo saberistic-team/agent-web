@@ -25,7 +25,6 @@ def verify_admin_login_source_trust(payload: dict, url: str) -> bool:
         return False
     required = {
         "trusted_proxies_configured": True,
-        "uvicorn_proxy_headers": True,
         "resolution_mode": "trusted_hop_chain",
     }
     for key, expected in required.items():
@@ -36,11 +35,9 @@ def verify_admin_login_source_trust(payload: dict, url: str) -> bool:
                 file=sys.stderr,
             )
             return False
-    if trust.get("uvicorn_forwarded_allow_ips") != "*":
+    if trust.get("uvicorn_forwarded_allow_ips") != "":
         print(
-            "FAIL {url}: uvicorn_forwarded_allow_ips must be '*' on Render".format(
-                url=url
-            ),
+            f"FAIL {url}: uvicorn_forwarded_allow_ips must be empty in production",
             file=sys.stderr,
         )
         return False

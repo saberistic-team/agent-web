@@ -146,10 +146,10 @@ access logs or metrics for operational visibility if needed.
 | `ADMIN_LOGIN_RATE_LIMIT` | Optional | Failed login attempts allowed per window (default `5`) |
 | `ADMIN_LOGIN_RATE_WINDOW_SECONDS` | Optional | Rate-limit counting window in seconds (default `900`) |
 | `ADMIN_LOGIN_LOCKOUT_SECONDS` | Optional | Lockout duration after limit exceeded (default `900`) |
-| `ADMIN_TRUSTED_PROXY_CIDRS` | Production | Comma-separated trusted proxy IPs/CIDRs for admin login source resolution. Render sets `*` because only Render's load balancer can reach the process. Leave unset for local dev/tests. |
+| `ADMIN_TRUSTED_PROXY_CIDRS` | Production | Comma-separated trusted **immediate peer** IPs/CIDRs for admin login source resolution (Render private ranges in `render.yaml`). Leave unset for local dev/tests. |
 | `ADMIN_TRUST_PROXY_HEADERS` | Deprecated | Replaced by `ADMIN_TRUSTED_PROXY_CIDRS`. Do not enable alone. |
-| `UVICORN_PROXY_HEADERS` | Production | When `true`, Uvicorn applies `ProxyHeadersMiddleware` (set in `render.yaml`). |
-| `UVICORN_FORWARDED_ALLOW_IPS` | Production | Uvicorn forwarded-header trust boundary; must match deployment docs (`*` on Render). |
+| `UVICORN_PROXY_HEADERS` | Optional | When `true`, Uvicorn applies `ProxyHeadersMiddleware` (not used for limiter keys in production). |
+| `UVICORN_FORWARDED_ALLOW_IPS` | Production | Uvicorn forwarded-header trust boundary; production uses empty/`''` so limiter source is resolved in application code. |
 | `ADMIN_PREVIEW_MODE` | Optional | **CI / local only.** When `1`/`true`, protected `/admin` GET pages render without login and admin pages fill with **randomized mock data** for Playwright screenshots. Hard-disabled if `BASE_URL` contains `saberistic.com`. Never set on production Render. |
 | `ADMIN_PREVIEW_SEED` | Optional | Seed for mock admin randomization (stable screenshots/tests). |
 | `BASE_URL` | Yes | Public site URL; `https://…` enables `Secure` session cookies |
@@ -253,71 +253,75 @@ secrets are never written to limiter rows or limiter observability logs.
 
 ### Client source resolution
 
+Resolved client source comes from :func:`client_ip` (``app/client_source.py``):
+
 Production request chain:
 
 ```text
 Client → Cloudflare edge → Render load balancer → Uvicorn (agent-web)
 ```
 
-Resolved client source comes from :func:`client_ip`, which delegates to
-``app.client_source.resolve_request_client_source``:
+Trust model:
 
-- **IPv4 / IPv6** — normalized deterministically (including IPv4-mapped IPv6)
-  before entering the source bucket digest.
-- **Missing peer** — ``unknown`` (still one shared bucket).
 - **Direct connections / local dev / tests** — leave ``ADMIN_TRUSTED_PROXY_CIDRS``
   unset. Spoofed ``X-Forwarded-For``, ``Forwarded``, and ``CF-Connecting-IP``
-  values are ignored; the direct peer address is used.
-- **Render production** — ``ADMIN_TRUSTED_PROXY_CIDRS=*`` reflects Render's
-  network boundary (only the platform load balancer can reach the process). The
-  asterisk verifies the **immediate peer** only; hop skipping during the
-  right-to-left walk uses private-network ranges (``10/8``, ``172.16/12``, etc.)
-  so public client addresses are never treated as trusted proxy hops. When the
-  immediate peer is verified, the resolver walks ``X-Forwarded-For``
-  **right-to-left** across trusted hops and selects the rightmost untrusted
-  address. An attacker-controlled leftmost value therefore cannot mint fresh
-  source buckets.
-- **Uvicorn** — ``render.yaml`` starts the app with
-  ``--proxy-headers --forwarded-allow-ips='*'`` so framework scope ``client``
-  matches the trusted boundary. Application logic still performs its own
-  trusted-hop parse for limiter keys.
+  headers are ignored; the socket peer address is used.
+- **Render production** — ``ADMIN_TRUSTED_PROXY_CIDRS`` lists Render load-balancer
+  private ranges (``127.0.0.1/32``, ``::1/128``, ``10/8``, ``172.16/12``,
+  ``192.168/16``). Forwarding headers are honored **only** when the immediate
+  peer matches one of those ranges.
+- **Right-to-left parse** — for verified peers, the resolver walks
+  ``X-Forwarded-For`` right-to-left across trusted hops (Render private ranges
+  plus published Cloudflare edge CIDRs) and selects the rightmost untrusted
+  address. An attacker-controlled leftmost value cannot create a fresh source
+  bucket.
 - **Header precedence** (trusted peer only): ``X-Forwarded-For`` chain walk,
   then RFC 7239 ``Forwarded``, then ``CF-Connecting-IP`` only when it agrees
   with the ``X-Forwarded-For`` result. Direct access to the public Render
   origin cannot spoof Cloudflare-only headers without a verified trusted peer.
+- **Uvicorn boundary** — production ``render.yaml`` sets
+  ``--forwarded-allow-ips=''`` so Uvicorn does not rewrite ``request.client``
+  from untrusted headers. Application code performs its own trusted-hop parse
+  for limiter keys.
+- **IPv4 / IPv6** — addresses are normalized (including IPv4-mapped IPv6,
+  bracketed IPv6, and ``host:port`` forms) before digesting.
+- **Missing peer** — ``unknown`` (still one shared bucket).
 
-#### Deployment verification
+Post-deploy verification:
 
-After deploy, confirm settings via ``GET /health``:
+```bash
+python scripts/verify_admin_proxy_config.py
+python scripts/smoke_deploy.py --base-url https://saberistic.com
+```
+
+``GET /health`` includes a non-sensitive summary under ``admin_login_source_trust``:
 
 ```json
 {
   "status": "ok",
   "admin_login_source_trust": {
     "trusted_proxies_configured": true,
-    "trust_wildcard": true,
-    "uvicorn_proxy_headers": true,
-    "uvicorn_forwarded_allow_ips": "*",
+    "trust_wildcard": false,
+    "uvicorn_proxy_headers": false,
+    "uvicorn_forwarded_allow_ips": "",
     "resolution_mode": "trusted_hop_chain"
   }
 }
 ```
 
-``scripts/smoke_deploy.py`` asserts this block in production smoke checks.
-
 #### Rollback / misconfiguration recovery
 
 If trusted-proxy settings are wrong and every login appears to share one source
-bucket (for example, all requests resolve to the load balancer):
+bucket (or all requests resolve to the load-balancer address):
 
 1. Temporarily **unset** ``ADMIN_TRUSTED_PROXY_CIDRS`` in Render and redeploy —
-   limiter keys fall back to the direct peer (still privacy-preserving digests).
+   limiter keys fall back to the direct peer until settings are corrected.
 2. Fix ``ADMIN_TRUSTED_PROXY_CIDRS`` / Uvicorn forwarded settings to match this
-   document, then redeploy.
-3. Optionally prune stale limiter rows (see [Manual cleanup](#manual-cleanup)).
+   document and ``render.yaml``, then redeploy.
+3. Run ``python scripts/verify_admin_proxy_config.py`` locally before merge.
 
 Preview, CI, local development, and production differ only by whether trusted
-CIDRs are configured; error responses remain generic in all modes.
+proxy CIDRs are configured; error disclosure remains generic in all modes.
 
 ### Atomic admission
 

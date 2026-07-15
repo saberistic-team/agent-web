@@ -119,17 +119,23 @@ def get_settings() -> Settings:
         in ("1", "true", "yes"),
         uvicorn_proxy_headers=os.environ.get("UVICORN_PROXY_HEADERS", "").lower()
         in ("1", "true", "yes"),
-        uvicorn_forwarded_allow_ips=os.environ.get(
-            "UVICORN_FORWARDED_ALLOW_IPS", "127.0.0.1"
-        ).strip()
-        or "127.0.0.1",
+        uvicorn_forwarded_allow_ips=_uvicorn_forwarded_allow_ips(),
     )
 
 
+def _uvicorn_forwarded_allow_ips() -> str:
+    raw = os.environ.get("UVICORN_FORWARDED_ALLOW_IPS")
+    if raw is None:
+        return "127.0.0.1"
+    return raw.strip()
+
+
 def _parse_admin_trusted_proxy_cidrs() -> tuple[str, ...]:
-    from app.client_source import parse_trusted_proxy_cidrs
+    from app.client_source import RENDER_TRUSTED_PROXY_CIDRS, parse_trusted_proxy_cidrs
 
     explicit = os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "").strip()
-    if not explicit:
-        return ()
-    return parse_trusted_proxy_cidrs(explicit)
+    if explicit:
+        return parse_trusted_proxy_cidrs(explicit)
+    if os.environ.get("ADMIN_TRUST_PROXY_HEADERS", "").lower() in ("1", "true", "yes"):
+        return parse_trusted_proxy_cidrs(RENDER_TRUSTED_PROXY_CIDRS)
+    return ()
