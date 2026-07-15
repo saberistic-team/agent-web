@@ -1,4 +1,9 @@
-"""Regression tests for dark-themed admin form controls (#231, #235)."""
+"""Regression tests for dark-themed admin text-like form controls (#231, #235).
+
+Checkbox/radio accent-color, fieldset borders, and date/datetime color-scheme
+theming are scoped to `site/assets/admin.css` (see `tests/test_admin_native_controls.py`),
+not the public `site/assets/site.css`.
+"""
 
 from __future__ import annotations
 
@@ -129,31 +134,6 @@ def test_admin_form_css_covers_text_like_input_type(input_type: str) -> None:
 def test_admin_form_css_covers_untyped_inputs() -> None:
     css = _site_css()
     assert ".admin-form input:not([type])" in css
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize("selection_type", SELECTION_INPUT_TYPES)
-def test_admin_form_css_themes_selection_input_type(selection_type: str) -> None:
-    css = _site_css()
-    block = _rule_block(css, f'.admin-form input[type="{selection_type}"]')
-    assert "accent-color: var(--accent)" in block
-
-
-@pytest.mark.unit
-def test_admin_form_date_inputs_use_dark_color_scheme() -> None:
-    css = _site_css()
-    block = _rule_block(css, ".admin-form textarea,")
-    assert "color-scheme: dark" in block
-    assert '.admin-form input[type="date"]' in block
-    assert '.admin-form input[type="datetime-local"]' in block
-
-
-@pytest.mark.unit
-def test_admin_form_fieldset_uses_themed_border() -> None:
-    css = _site_css()
-    block = _rule_block(css, ".admin-form fieldset {")
-    assert "border: 1px solid var(--line)" in block
-    assert "background:" in block
 
 
 @pytest.mark.unit
