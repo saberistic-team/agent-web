@@ -138,6 +138,8 @@ until merged.
 | `SCREENSHOTS_REQUIRED` | variable | default true for Reviewer when pages are affected |
 | `CURSOR_API_KEY` | secret | Preferred visual / review |
 | `RENDER_DEPLOY_HOOK_URL` | secret | deploy trigger |
+| `RENDER_API_KEY` | secret | poll deploy status until live/failed |
+| `RENDER_SERVICE_ID` | secret | optional `srv-…` if not parseable from the hook URL |
 
 ## Scripts / workflows
 

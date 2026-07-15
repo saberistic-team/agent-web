@@ -26,18 +26,18 @@ def main(argv: list[str] | None = None) -> int:
     base = args.base_url.rstrip("/")
 
     checks = [
-        ("/health", {"status": "ok"}),
-        ("/hello", {"message": "hello world"}),
+        ("/health", "status", "ok"),
+        ("/hello", "message", "hello world"),
     ]
-    for path, expected in checks:
+    for path, key, expected in checks:
         url = f"{base}{path}"
         try:
             payload = get_json(url)
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
             print(f"FAIL {url}: {exc}", file=sys.stderr)
             return 1
-        if payload != expected:
-            print(f"FAIL {url}: got {payload!r}, expected {expected!r}", file=sys.stderr)
+        if not isinstance(payload, dict) or payload.get(key) != expected:
+            print(f"FAIL {url}: got {payload!r}, expected {key}={expected!r}", file=sys.stderr)
             return 1
         print(f"PASS {url} → {payload}")
     return 0

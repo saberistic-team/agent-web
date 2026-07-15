@@ -108,8 +108,26 @@ def sitemap() -> Response:
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health() -> dict:
+    """Liveness/readiness. Includes ``schema_version`` when the DB is configured.
+
+    Migrations run at startup; if they fail the process never serves /health, so
+    Render marks the deploy failed. When the DB is up, ``schema_version`` is the
+    latest applied migration for post-deploy verification.
+    """
+    payload: dict = {"status": "ok"}
+    settings = get_settings()
+    if not settings.database_configured:
+        return payload
+    try:
+        version = db.latest_schema_version(settings.database_url)
+    except Exception:
+        logger.exception("health: failed to read schema_migrations")
+        raise HTTPException(status_code=503, detail="schema not ready") from None
+    if version is None:
+        raise HTTPException(status_code=503, detail="schema not ready")
+    payload["schema_version"] = version
+    return payload
 
 
 @app.get("/hello")

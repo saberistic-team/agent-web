@@ -56,18 +56,30 @@ jobs:
       !startsWith(github.event.head_commit.message, 'deploy: freeze')
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Render deploy hook
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Trigger Render deploy and wait until live
         env:
           RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          DEPLOY_BASE_URL: ${{ vars.DEPLOY_BASE_URL }}
         run: |
           set -euo pipefail
           if [[ -z "${RENDER_DEPLOY_HOOK_URL:-}" ]]; then
             echo "::error::Missing repo secret RENDER_DEPLOY_HOOK_URL"
             exit 1
           fi
-          curl --fail --silent --show-error -X POST "$RENDER_DEPLOY_HOOK_URL"
-          echo
-          echo "Triggered Render deploy for https://saberistic.com"
+          if [[ -z "${RENDER_API_KEY:-}" ]]; then
+            echo "::error::Missing repo secret RENDER_API_KEY (needed to wait for deploy completion)"
+            exit 1
+          fi
+          # Waits until Render marks the deploy live. Migrations run in app
+          # startup — if they fail, Render status is update_failed and this
+          # step exits non-zero. Also requires /health.schema_version to match.
+          python scripts/render_deploy.py --ref "${{ github.sha }}"
 
   freeze-migrations:
     name: Freeze shipped migrations
@@ -92,14 +104,14 @@ jobs:
         with:
           app-id: ${{ secrets.BUILDER_APP_ID }}
           private-key: ${{ secrets.BUILDER_PRIVATE_KEY }}
-      - name: Wait for healthy deploy and freeze digests
+      - name: Freeze digests after live deploy
         env:
           GITHUB_TOKEN: ${{ steps.builder.outputs.token }}
           DEPLOY_BASE_URL: ${{ vars.DEPLOY_BASE_URL }}
         run: |
           set -euo pipefail
-          # Allow Render a moment after the deploy hook before health polling.
-          sleep 20
+          # Deploy job already waited for live + schema; --wait-healthy is a
+          # cheap confirm before writing freeze commits.
           python scripts/freeze_shipped_migrations.py \
             --commit \
             --wait-healthy \
@@ -148,8 +160,9 @@ jobs:
           DEPLOY_BASE_URL: ${{ vars.DEPLOY_BASE_URL }}
         run: |
           set -euo pipefail
-          # Allow Render a moment after hook before health polling starts.
-          sleep 20
+          # Deploy job already waited for Render to go live; short pause then
+          # re-check health before screenshots.
+          sleep 5
           python scripts/post_deploy_visual.py \
             --repo "${{ github.repository }}" \
             --sha "${{ github.sha }}" \
