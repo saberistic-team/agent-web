@@ -5,7 +5,7 @@ from __future__ import annotations
 import html
 from typing import Any
 
-from app.admin_layout import render_admin_shell, render_archive_action_button
+from app.admin_layout import render_admin_archive_button, render_admin_shell
 from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES, TARGET_STATUSES
 from app.contacts import EMAIL_PERMISSIONS, RELATIONSHIP_STRENGTHS, format_buying_roles
 from app.research_records import (
@@ -206,9 +206,9 @@ def render_admin_company_research_page(
     )
     archive_action = "restore" if company.get("archived_at") else "archive"
     archive_label = "Restore company" if company.get("archived_at") else "Archive company"
-    archive_button = render_archive_action_button(
+    archive_button = render_admin_archive_button(
         label=archive_label,
-        archived=bool(company.get("archived_at")),
+        is_archived=bool(company.get("archived_at")),
     )
     error_html = ""
     if error_message:
@@ -336,9 +336,9 @@ def render_admin_contact_research_page(
     form_body = _research_form_body(csrf_token=csrf_token)
     archive_action = "restore" if contact.get("archived_at") else "archive"
     archive_label = "Restore contact" if contact.get("archived_at") else "Archive contact"
-    archive_button = render_archive_action_button(
+    archive_button = render_admin_archive_button(
         label=archive_label,
-        archived=bool(contact.get("archived_at")),
+        is_archived=bool(contact.get("archived_at")),
     )
     main = f"""        <section class="admin-research" aria-labelledby="contact-research-title">
           <p class="admin-breadcrumb"><a href="/admin/contacts">Contacts</a></p>

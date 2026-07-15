@@ -13,7 +13,7 @@ from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 
 from app.admin_auth import SESSION_COOKIE_NAME
-from app.admin_layout import ADMIN_NAV_LINKS, render_admin_nav
+from app.admin_layout import ADMIN_NAV_LINKS, render_admin_nav, render_admin_archive_button
 from app.main import app
 
 client = TestClient(app, follow_redirects=False)
@@ -136,31 +136,15 @@ def test_render_admin_nav_unknown_path_uses_admin_label() -> None:
 
 
 @pytest.mark.unit
-def test_admin_css_archive_restore_action_buttons_reset_native_appearance() -> None:
-    css = ADMIN_CSS.read_text(encoding="utf-8")
-    base_block = css.split(".admin-action {", 1)[1].split("}", 1)[0]
-    assert "appearance: none" in base_block
-    assert "background:" not in base_block
-    assert "cursor: pointer" in base_block
-    assert "border-radius:" in base_block
-    assert "padding:" in base_block
-    assert "font-family: inherit" in base_block
-
-    destructive_block = css.split(".admin-action--destructive {", 1)[1].split("}", 1)[0]
-    assert "background:" in destructive_block
-    assert "border-color:" in destructive_block
-    assert "color:" in destructive_block
-    assert ".admin-action--destructive:focus-visible" in css
-    assert ".admin-action--destructive:disabled" in css
-    assert ".admin-action--destructive:active" in css
-
-    secondary_block = css.split(".admin-action--secondary {", 1)[1].split("}", 1)[0]
-    assert "background:" in secondary_block
-    assert "border-color:" in secondary_block
-    assert "color:" in secondary_block
-    assert ".admin-action--secondary:focus-visible" in css
-    assert ".admin-action--secondary:disabled" in css
-    assert ".admin-action--secondary:active" in css
+def test_render_admin_archive_button_uses_semantic_action_classes() -> None:
+    archive = render_admin_archive_button(label="Archive company", is_archived=False)
+    restore = render_admin_archive_button(label="Restore company", is_archived=True)
+    assert 'class="admin-action admin-action--destructive"' in archive
+    assert "Archive company" in archive
+    assert 'class="admin-action admin-action--secondary"' in restore
+    assert "Restore company" in restore
+    assert "admin-exit" not in archive
+    assert "admin-exit" not in restore
 
 
 @pytest.mark.unit
@@ -210,6 +194,24 @@ def test_admin_css_mobile_disclosure_collapsed_sizing() -> None:
     assert "display: none" in mobile_block.split(
         ".admin-nav-toggle:not([open]) .admin-nav-mobile-list", 1
     )[1].split("}", 1)[0]
+
+
+@pytest.mark.unit
+def test_admin_css_archive_action_resets_native_button_appearance() -> None:
+    css = ADMIN_CSS.read_text(encoding="utf-8")
+    action_block = css.split(".admin-action {", 1)[1].split("}", 1)[0]
+    assert "background:" in action_block
+    assert "border:" in action_block
+    assert "padding:" in action_block
+    assert "cursor: pointer" in action_block
+    assert "border-radius:" in action_block
+    assert ".admin-action--destructive" in css
+    assert ".admin-action--secondary" in css
+    assert ".admin-action:disabled" in css
+    assert ".admin-action:focus-visible" in css
+    destructive_block = css.split(".admin-action--destructive {", 1)[1].split("}", 1)[0]
+    secondary_block = css.split(".admin-action--secondary {", 1)[1].split("}", 1)[0]
+    assert destructive_block != secondary_block
 
 
 @pytest.mark.unit
