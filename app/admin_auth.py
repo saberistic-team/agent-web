@@ -20,6 +20,7 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
+from app.admin_client_source import log_source_resolution, resolve_admin_login_client_source
 from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
@@ -238,26 +239,24 @@ def client_ip(request: Request, settings: Settings) -> str:
     """Resolve the client source IP for rate limiting.
 
     Forwarding headers are honored only when ``ADMIN_TRUST_PROXY_HEADERS`` is
-    enabled (e.g. behind Render's load balancer). Otherwise the direct peer
-    address is used so clients cannot spoof ``X-Forwarded-For``.
+    enabled **and** ``ADMIN_TRUSTED_PROXY_CIDRS`` is configured. The immediate
+    TCP peer must match the trusted boundary; client identity is then derived
+    via a right-to-left trusted-hop walk (never the raw left-most
+    ``X-Forwarded-For`` value from an unverified peer).
 
-    Source identity notes:
-
-    * **IPv4 / IPv6** — stored only as keyed digests; the resolved string is
-      passed verbatim into the source bucket (e.g. ``203.0.113.1``,
-      ``2001:db8::1``).
-    * **Missing peer** — falls back to ``unknown`` so attempts still share one
-      bucket instead of creating an unbounded namespace.
-    * **Trusted proxy** — the left-most ``X-Forwarded-For`` value is used when
-      proxy trust is enabled; spoofed headers are ignored when trust is off.
+    See :func:`resolve_admin_login_client_source` and ``docs/ADMIN_AUTH.md``.
     """
-    if settings.admin_trust_proxy_headers:
-        forwarded = request.headers.get("x-forwarded-for", "")
-        if forwarded:
-            return forwarded.split(",")[0].strip()
-    if request.client is not None:
-        return request.client.host
-    return "unknown"
+    return resolve_admin_login_client_source(request, settings).source
+
+
+def resolve_admin_login_client_source_for_limiter(
+    request: Request,
+    settings: Settings,
+) -> str:
+    """Alias used by tests and limiter helpers."""
+    resolution = resolve_admin_login_client_source(request, settings)
+    log_source_resolution(resolution)
+    return resolution.source
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
@@ -381,7 +380,7 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    source = client_ip(request, settings)
+    source = resolve_admin_login_client_source_for_limiter(request, settings)
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,
