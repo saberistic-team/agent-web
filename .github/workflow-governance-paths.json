@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "protected_paths": [
+    {
+      "path": ".github/workflows/**",
+      "category": "GitHub Actions workflows"
+    },
+    {
+      "path": "scripts/review_*.py",
+      "category": "reviewer automation"
+    },
+    {
+      "path": "scripts/review_decision.py",
+      "category": "reviewer automation"
+    },
+    {
+      "path": "scripts/acceptance.py",
+      "category": "reviewer automation"
+    },
+    {
+      "path": "scripts/check_permission.py",
+      "category": "reviewer automation"
+    },
+    {
+      "path": "scripts/pr_labels.py",
+      "category": "reviewer automation"
+    },
+    {
+      "path": "scripts/run_agent.py",
+      "category": "reviewer and Builder orchestration"
+    },
+    {
+      "path": "scripts/write_trace.py",
+      "category": "reviewer and Builder audit trail"
+    },
+    {
+      "path": "scripts/codegen_*.py",
+      "category": "Builder configuration"
+    },
+    {
+      "path": "scripts/builder_conflicts.py",
+      "category": "Builder configuration"
+    },
+    {
+      "path": "scripts/cursor_sdk_patch.py",
+      "category": "Builder configuration"
+    },
+    {
+      "path": "AGENTS/**",
+      "category": "Builder prompts and repository policy"
+    },
+    {
+      "path": ".github/copilot-instructions.md",
+      "category": "Builder prompts and repository policy"
+    },
+    {
+      "path": "docs/WORKFLOW_GOVERNANCE.md",
+      "category": "repository policy"
+    },
+    {
+      "path": "docs/IDENTITIES.md",
+      "category": "repository policy"
+    },
+    {
+      "path": "docs/LABELS.md",
+      "category": "repository policy"
+    },
+    {
+      "path": ".github/CODEOWNERS",
+      "category": "repository policy"
+    },
+    {
+      "path": ".github/workflow-governance-paths.json",
+      "category": "repository policy"
+    },
+    {
+      "path": ".github/rulesets/**",
+      "category": "repository policy"
+    },
+    {
+      "path": "scripts/validate_workflow_governance.py",
+      "category": "repository policy"
+    },
+    {
+      "path": "tests/test_workflow_governance.py",
+      "category": "repository policy"
+    }
+  ]
+}

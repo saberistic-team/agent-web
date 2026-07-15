@@ -6,6 +6,7 @@ from typing import Any
 
 from app.companies import normalize_domain
 from app.config import Settings
+from app.contacts import normalize_email
 from app.pipeline_stages import initial_pipeline_stage_for_brief_status, pipeline_stage_label
 
 
@@ -26,7 +27,18 @@ class BriefConversionValidationError(BriefConversionError):
 
 
 def normalize_brief_email(value: str) -> str:
-    return value.strip().lower()
+    """Apply the shared contact-email normalization policy (issue #226).
+
+    Delegates to ``app.contacts.normalize_email`` so brief conversion, create,
+    edit, restore, and lookup all compare identities identically. Brief contact
+    values are not guaranteed to be email addresses, so a non-email value
+    degrades to a trimmed/lowercased string (for display/lookup) instead of
+    raising — a genuine active contact is only ever matched by a valid address.
+    """
+    try:
+        return normalize_email(value) or ""
+    except ValueError:
+        return value.strip().lower()
 
 
 def derive_company_name(*, website: str, domain: str | None = None) -> str:
