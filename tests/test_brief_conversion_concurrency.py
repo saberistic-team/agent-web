@@ -346,8 +346,17 @@ class _InMemoryContactRepo:
     def __init__(self, db: _SharedBriefConversionDatabase) -> None:
         self._db = db
 
-    def get_by_email(self, conn: MagicMock, email: str) -> dict[str, Any] | None:
+    def get_active_by_email(
+        self,
+        conn: MagicMock,
+        email: str,
+        *,
+        exclude_contact_id: UUID | None = None,
+    ) -> dict[str, Any] | None:
         return self._db.get_contact_by_email(conn, email)
+
+    def get_archived_by_email(self, conn: MagicMock, email: str) -> dict[str, Any] | None:
+        return None
 
     def get_by_id(self, conn: MagicMock, contact_id: UUID) -> dict[str, Any] | None:
         return self._db.get_contact(conn, contact_id)
