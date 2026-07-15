@@ -1,6 +1,7 @@
 from screenshot_deploy import (
     ADMIN_EXTRA_VIEWPORTS,
     ADMIN_NAV_EVIDENCE_ROUTES,
+    OVERFLOW_SELECTORS,
     VIEWPORTS,
     admin_screenshot_session_cookie,
     discover_screenshot_routes,
@@ -25,6 +26,32 @@ def test_viewports_include_desktop_and_mobile() -> None:
     by_name = {name: (w, h) for name, w, h in VIEWPORTS}
     assert by_name["desktop"] == (1280, 800)
     assert by_name["mobile"] == (390, 844)
+
+
+def test_overflow_selectors_cover_admin_exit_actions() -> None:
+    """Regression (#237): Public site / Sign out must be checked for overflow."""
+    assert ".admin-exit-group" in OVERFLOW_SELECTORS
+
+
+def test_format_overflow_hard_fail_flags_admin_exit_group_on_mobile() -> None:
+    """The Playwright overflow check flags clipped exit actions on mobile."""
+    msg = format_overflow_hard_fail(
+        [
+            {
+                "viewport": "mobile",
+                "route": "/admin",
+                "selector": ".admin-exit-group",
+                "text": "Public site Sign out",
+                "left": 350,
+                "right": 460,
+                "viewport_width": 390,
+            }
+        ]
+    )
+    assert msg is not None
+    assert "visual readability" in msg
+    assert ".admin-exit-group" in msg
+    assert "/admin" in msg
 
 
 def test_screenshot_basename_desktop_keeps_legacy_names() -> None:

@@ -83,6 +83,7 @@ Only these properties may be sent to Plausible:
 | `contact_channel` | string | `Contact Initiated` (e.g. `linkedin`) |
 | `case_study_slug` | string | `Case Study Viewed` (server-known slug) |
 | `article_slug` | string | `Insight Viewed` (server-known slug) |
+| `nav_destination` | string | Nav click events (internal path only) |
 
 ## Sensitive fields — never collected
 
@@ -213,6 +214,7 @@ WHERE status = 'pending_payment'
 
 | Component | Path |
 |-----------|------|
+| Event schema contract (v1) | `app/analytics_event_schema.py`, [ANALYTICS_EVENT_SCHEMA.md](ANALYTICS_EVENT_SCHEMA.md) |
 | Server events + sanitization | `app/analytics_service.py` |
 | Page injection (meta + script) | `app/page_service.py` |
 | Client funnel + UTM capture | `site/assets/analytics.js` |
