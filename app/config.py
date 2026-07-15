@@ -2,8 +2,41 @@
 
 from __future__ import annotations
 
+import ipaddress
 import os
 from dataclasses import dataclass
+from functools import cached_property
+
+_DEFAULT_TRUSTED_PROXY_CIDRS = (
+    "127.0.0.1/32",
+    "::1/128",
+    "10.0.0.0/8",
+    "172.16.0.0/12",
+    "192.168.0.0/16",
+)
+
+
+def parse_trusted_proxy_cidrs(raw: str | None) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+    """Parse comma-separated trusted-proxy CIDRs; ignore malformed entries."""
+    if not raw or not raw.strip():
+        return tuple(
+            ipaddress.ip_network(cidr, strict=False) for cidr in _DEFAULT_TRUSTED_PROXY_CIDRS
+        )
+
+    networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
+    for part in raw.split(","):
+        candidate = part.strip()
+        if not candidate:
+            continue
+        try:
+            networks.append(ipaddress.ip_network(candidate, strict=False))
+        except ValueError:
+            continue
+    if not networks:
+        return tuple(
+            ipaddress.ip_network(cidr, strict=False) for cidr in _DEFAULT_TRUSTED_PROXY_CIDRS
+        )
+    return tuple(networks)
 
 
 @dataclass(frozen=True)
@@ -28,7 +61,7 @@ class Settings:
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
     admin_trust_proxy_headers: bool = False
-    admin_trusted_proxy_cidrs: tuple[str, ...] = ()
+    admin_trusted_proxy_cidrs: str = ""
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -43,6 +76,12 @@ class Settings:
     @property
     def email_configured(self) -> bool:
         return bool(self.resend_api_key)
+
+    @cached_property
+    def admin_trusted_proxy_networks(
+        self,
+    ) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+        return parse_trusted_proxy_cidrs(self.admin_trusted_proxy_cidrs)
 
     @property
     def admin_preview_mode(self) -> bool:
@@ -114,9 +153,5 @@ def get_settings() -> Settings:
             "ADMIN_TRUST_PROXY_HEADERS", ""
         ).lower()
         in ("1", "true", "yes"),
-        admin_trusted_proxy_cidrs=tuple(
-            part.strip()
-            for part in os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "").split(",")
-            if part.strip()
-        ),
+        admin_trusted_proxy_cidrs=os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "").strip(),
     )

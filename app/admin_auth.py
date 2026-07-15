@@ -238,13 +238,9 @@ def read_login_flow_token(request: Request) -> str | None:
 def client_ip(request: Request, settings: Settings) -> str:
     """Resolve the client source IP for rate limiting.
 
-    Delegates to :func:`app.admin_client_source.resolve_admin_login_client_source`
-    which enforces the configured trusted-proxy boundary before honoring
-    forwarding headers. Resolved values are normalized IPv4/IPv6 strings used
-    only as keyed digests; raw addresses and header chains are never logged or
-    persisted.
+    See :func:`resolve_admin_login_client_source` for the trusted-hop model.
     """
-    return resolve_admin_login_client_source(request, settings).source
+    return resolve_admin_login_client_source(request, settings).address
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
@@ -368,7 +364,9 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    source = client_ip(request, settings)
+    resolution = resolve_admin_login_client_source(request, settings)
+    source = resolution.address
+    resolution_path = resolution.path
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,
@@ -420,6 +418,7 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "lockout_transition": admission.lockout_transition,
+                "client_source_path": resolution_path,
             },
         )
     elif admission.already_locked:
@@ -428,6 +427,7 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "already_locked": True,
+                "client_source_path": resolution_path,
             },
         )
     return LoginAdmissionResult(
