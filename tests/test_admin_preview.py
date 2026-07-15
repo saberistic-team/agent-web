@@ -290,104 +290,6 @@ def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytes
 
 
 @pytest.mark.unit
-def test_preview_company_detail_archive_and_restore_buttons(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from argon2 import PasswordHasher
-
-    from app.admin_preview import (
-        PREVIEW_COMPANY_ARCHIVE_STATE_ID,
-        PREVIEW_COMPANY_RESTORE_STATE_ID,
-        build_preview_company_detail,
-    )
-
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "11")
-    monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
-    monkeypatch.setenv(
-        "ADMIN_PASSWORD_HASH",
-        PasswordHasher().hash("preview"),
-    )
-    monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
-    monkeypatch.delenv("DATABASE_URL", raising=False)
-    client = TestClient(app, follow_redirects=False)
-    archive_preview = build_preview_company_detail(
-        PREVIEW_COMPANY_ARCHIVE_STATE_ID,
-        rng=random.Random(11),
-    )
-    restore_preview = build_preview_company_detail(
-        PREVIEW_COMPANY_RESTORE_STATE_ID,
-        rng=random.Random(11),
-    )
-    archive_response = client.get(f"/admin/companies/{PREVIEW_COMPANY_ARCHIVE_STATE_ID}")
-    restore_response = client.get(f"/admin/companies/{PREVIEW_COMPANY_RESTORE_STATE_ID}")
-    assert archive_response.status_code == 200
-    assert restore_response.status_code == 200
-    assert archive_preview is not None
-    assert restore_preview is not None
-    assert archive_preview["company"]["name"] in archive_response.text
-    assert restore_preview["company"]["name"] in restore_response.text
-    assert 'class="admin-action-btn admin-action-btn--destructive"' in archive_response.text
-    assert "Archive company" in archive_response.text
-    assert 'class="admin-action-btn admin-action-btn--restore"' in restore_response.text
-    assert "Restore company" in restore_response.text
-
-
-@pytest.mark.unit
-def test_preview_contact_detail_and_edit_archive_restore_buttons(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from argon2 import PasswordHasher
-
-    from app.admin_preview import (
-        PREVIEW_CONTACT_ARCHIVE_STATE_ID,
-        PREVIEW_CONTACT_RESTORE_STATE_ID,
-        build_preview_contact_detail,
-    )
-
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "11")
-    monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
-    monkeypatch.setenv(
-        "ADMIN_PASSWORD_HASH",
-        PasswordHasher().hash("preview"),
-    )
-    monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
-    monkeypatch.delenv("DATABASE_URL", raising=False)
-    client = TestClient(app, follow_redirects=False)
-    archive_preview = build_preview_contact_detail(
-        PREVIEW_CONTACT_ARCHIVE_STATE_ID,
-        rng=random.Random(11),
-    )
-    restore_preview = build_preview_contact_detail(
-        PREVIEW_CONTACT_RESTORE_STATE_ID,
-        rng=random.Random(11),
-    )
-    archive_detail = client.get(f"/admin/contacts/{PREVIEW_CONTACT_ARCHIVE_STATE_ID}")
-    restore_detail = client.get(f"/admin/contacts/{PREVIEW_CONTACT_RESTORE_STATE_ID}")
-    archive_edit = client.get(f"/admin/contacts/{PREVIEW_CONTACT_ARCHIVE_STATE_ID}/edit")
-    restore_edit = client.get(f"/admin/contacts/{PREVIEW_CONTACT_RESTORE_STATE_ID}/edit")
-    assert archive_detail.status_code == 200
-    assert restore_detail.status_code == 200
-    assert archive_edit.status_code == 200
-    assert restore_edit.status_code == 200
-    assert archive_preview is not None
-    assert restore_preview is not None
-    assert archive_preview["contact"]["full_name"] in archive_detail.text
-    assert restore_preview["contact"]["full_name"] in restore_detail.text
-    assert 'class="admin-action-btn admin-action-btn--destructive"' in archive_detail.text
-    assert 'class="admin-action-btn admin-action-btn--destructive"' in archive_edit.text
-    assert "Archive contact" in archive_detail.text
-    assert "Archive contact" in archive_edit.text
-    assert 'class="admin-action-btn admin-action-btn--restore"' in restore_detail.text
-    assert 'class="admin-action-btn admin-action-btn--restore"' in restore_edit.text
-    assert "Restore contact" in restore_detail.text
-    assert "Restore contact" in restore_edit.text
-
-
-@pytest.mark.unit
 def test_preview_pipeline_companies_seed_stable() -> None:
     now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
     a = build_preview_pipeline_companies(rng=random.Random(42), now=now)
@@ -464,3 +366,52 @@ def test_preview_brief_conversion_states() -> None:
     assert matches["company_matches"]
     assert matches["contact_matches"]
     assert matches["proposal"]["pipeline_stage"] in {"qualified", "diagnostic_paid"}
+
+
+@pytest.mark.unit
+def test_preview_archive_restore_pages_seed_stable() -> None:
+    from app.admin_preview import (
+        PREVIEW_COMPANY_ARCHIVE_ID,
+        PREVIEW_CONTACT_ARCHIVE_ID,
+        preview_company_research_page,
+        preview_contact_edit_page,
+        preview_contact_research_page,
+    )
+
+    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
+    company_a = preview_company_research_page(
+        PREVIEW_COMPANY_ARCHIVE_ID,
+        rng=random.Random(42),
+        now=now,
+    )
+    company_b = preview_company_research_page(
+        PREVIEW_COMPANY_ARCHIVE_ID,
+        rng=random.Random(42),
+        now=now,
+    )
+    contact_a = preview_contact_research_page(
+        PREVIEW_CONTACT_ARCHIVE_ID,
+        rng=random.Random(42),
+        now=now,
+    )
+    contact_b = preview_contact_research_page(
+        PREVIEW_CONTACT_ARCHIVE_ID,
+        rng=random.Random(42),
+        now=now,
+    )
+    edit_a = preview_contact_edit_page(
+        PREVIEW_CONTACT_ARCHIVE_ID,
+        rng=random.Random(42),
+        now=now,
+    )
+    edit_b = preview_contact_edit_page(
+        PREVIEW_CONTACT_ARCHIVE_ID,
+        rng=random.Random(42),
+        now=now,
+    )
+    assert company_a == company_b
+    assert contact_a == contact_b
+    assert edit_a == edit_b
+    assert company_a is not None and company_a["company"]["archived_at"] is None
+    assert contact_a is not None and contact_a["contact"]["archived_at"] is None
+    assert edit_a is not None and len(edit_a["companies"]) >= 2

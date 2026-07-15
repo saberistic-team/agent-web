@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+from typing import Any
 
 ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
     {
@@ -92,12 +93,12 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert",
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
-    "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-000000000001",
-    "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-000000000002",
-    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-000000000001",
-    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-000000000002",
-    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-000000000001/edit",
-    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-000000000002/edit",
+    "/admin/companies/cccccccc-cccc-cccc-cccc-cccccccccccc",
+    "/admin/companies/dddddddd-dddd-dddd-dddd-dddddddddddd",
+    "/admin/contacts/99999999-9999-9999-9999-999999999999",
+    "/admin/contacts/88888888-8888-8888-8888-888888888888",
+    "/admin/contacts/99999999-9999-9999-9999-999999999999/edit",
+    "/admin/contacts/88888888-8888-8888-8888-888888888888/edit",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
 )
 
@@ -109,11 +110,24 @@ ADMIN_SCREENSHOT_EXPECTED_STATUS: dict[str, int] = {
 }
 
 
-def archive_action_button_class(*, archived: bool) -> str:
-    """Return themed admin action classes for archive/restore form buttons."""
-    if archived:
-        return "admin-action-btn admin-action-btn--restore"
-    return "admin-action-btn admin-action-btn--destructive"
+def render_admin_archive_form(
+    *,
+    entity_base_path: str,
+    entity_label: str,
+    archived_at: Any,
+    csrf_token: str,
+) -> str:
+    """Return a CSRF-protected archive/restore form with themed action styling."""
+    archive_action = "restore" if archived_at else "archive"
+    action_label = f"Restore {entity_label}" if archived_at else f"Archive {entity_label}"
+    modifier = "admin-action-btn--restore" if archived_at else "admin-action-btn--destructive"
+    safe_path = html.escape(entity_base_path, quote=True)
+    safe_token = html.escape(csrf_token, quote=True)
+    safe_label = html.escape(action_label)
+    return f"""<form class="admin-archive-form" method="post" action="{safe_path}/{archive_action}">
+            <input type="hidden" name="csrf_token" value="{safe_token}" />
+            <button class="admin-action-btn {modifier}" type="submit">{safe_label}</button>
+          </form>"""
 
 
 def _active_nav_label(active_path: str) -> str:

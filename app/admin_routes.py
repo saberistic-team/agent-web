@@ -39,13 +39,10 @@ from app.admin_layout import ADMIN_NAV_LINKS, render_admin_shell
 from app.admin_preview import (
     PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR,
     PREVIEW_BRIEF_DATABASE_ERROR_ID,
-    PREVIEW_COMPANY_ARCHIVE_STATE_ID,
-    PREVIEW_COMPANY_RESTORE_STATE_ID,
-    PREVIEW_CONTACT_ARCHIVE_STATE_ID,
     PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID,
-    PREVIEW_CONTACT_RESTORE_STATE_ID,
-    build_preview_company_detail,
-    build_preview_contact_detail,
+    preview_company_research_page,
+    preview_contact_edit_page,
+    preview_contact_research_page,
     preview_contact_restore_conflict,
 )
 from app.config import Settings, get_settings
@@ -709,11 +706,8 @@ def admin_company_research(
     session = require_admin_session(request)
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
-    if settings.admin_preview_enabled and company_id in (
-        PREVIEW_COMPANY_ARCHIVE_STATE_ID,
-        PREVIEW_COMPANY_RESTORE_STATE_ID,
-    ):
-        preview = build_preview_company_detail(company_id)
+    if settings.admin_preview_enabled:
+        preview = preview_company_research_page(company_id)
         if preview is not None:
             return HTMLResponse(
                 admin_research_pages.render_admin_company_research_page(
@@ -1000,11 +994,8 @@ def admin_contact_edit(
     session = require_admin_session(request)
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
-    if settings.admin_preview_enabled and contact_id in (
-        PREVIEW_CONTACT_ARCHIVE_STATE_ID,
-        PREVIEW_CONTACT_RESTORE_STATE_ID,
-    ):
-        preview = build_preview_contact_detail(contact_id)
+    if settings.admin_preview_enabled:
+        preview = preview_contact_edit_page(contact_id)
         if preview is not None:
             return HTMLResponse(
                 contact_pages.render_contact_form_page(
@@ -1163,11 +1154,8 @@ def admin_contact_research(
     session = require_admin_session(request)
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
-    if settings.admin_preview_enabled and contact_id in (
-        PREVIEW_CONTACT_ARCHIVE_STATE_ID,
-        PREVIEW_CONTACT_RESTORE_STATE_ID,
-    ):
-        preview = build_preview_contact_detail(contact_id)
+    if settings.admin_preview_enabled:
+        preview = preview_contact_research_page(contact_id)
         if preview is not None:
             return HTMLResponse(
                 admin_research_pages.render_admin_contact_research_page(
