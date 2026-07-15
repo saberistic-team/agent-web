@@ -190,53 +190,28 @@ def _format_brief_status(status: str) -> str:
 
 
 def _format_amount(cents: int) -> str:
-    dollars = cents / 100
     if cents % 100 == 0:
-        return f"${dollars:.0f}"
-    return f"${dollars:.2f}"
+        return f"${cents / 100:.0f}"
+    return f"${cents / 100:.2f}"
 
 
-def _brief_collected_cents(brief: dict[str, Any], *, fallback_cents: int) -> int:
-    total = brief.get("amount_total_cents")
-    if total is not None:
-        return int(total)
-    return fallback_cents
+def _brief_collected_amount_cents(brief: dict[str, Any], *, list_price_cents: int) -> int:
+    amount = brief.get("payment_amount_cents")
+    if amount is not None:
+        return int(amount)
+    return list_price_cents
 
 
-def _format_brief_payment_summary(
-    brief: dict[str, Any],
-    *,
-    fallback_cents: int,
-) -> str:
-    """Single-line payment display for list rows."""
-    if str(brief.get("status", "")) != "paid":
-        return ""
-    total = _brief_collected_cents(brief, fallback_cents=fallback_cents)
-    discount = brief.get("amount_discount_cents")
-    if discount:
-        return f"{_format_amount(total)} (discounted)"
-    return _format_amount(total)
-
-
-def _format_brief_payment_detail_lines(
-    brief: dict[str, Any],
-    *,
-    fallback_cents: int,
-) -> list[str]:
-    """Multi-line payment breakdown for detail view."""
-    if str(brief.get("status", "")) != "paid":
-        return []
-    subtotal = brief.get("amount_subtotal_cents")
-    discount = brief.get("amount_discount_cents")
-    total = _brief_collected_cents(brief, fallback_cents=fallback_cents)
-    currency = brief.get("currency") or "usd"
-    lines: list[str] = []
-    if subtotal is not None:
-        lines.append(f"Subtotal: {_format_amount(int(subtotal))}")
-    if discount:
-        lines.append(f"Discount: −{_format_amount(int(discount))}")
-    lines.append(f"Total: {_format_amount(total)} {str(currency).upper()}")
-    return lines
+def _format_paid_amount_summary(brief: dict[str, Any], *, list_price_cents: int) -> str:
+    amount_cents = _brief_collected_amount_cents(brief, list_price_cents=list_price_cents)
+    discount_cents = int(brief.get("payment_discount_cents") or 0)
+    subtotal_cents = brief.get("payment_subtotal_cents")
+    if discount_cents > 0 and subtotal_cents is not None:
+        return (
+            f"{_format_amount(int(subtotal_cents))} − "
+            f"{_format_amount(discount_cents)} = {_format_amount(amount_cents)}"
+        )
+    return _format_amount(amount_cents)
 
 
 def _format_utm(source: str | None, campaign: str | None) -> str:
@@ -296,7 +271,7 @@ def render_admin_briefs_page(
         payment_cell = f'<span class="admin-status admin-status-{status_class}">{html.escape(status_label)}</span>'
         paid_at = brief.get("paid_at")
         if status == "paid":
-            paid_parts = [_format_brief_payment_summary(brief, fallback_cents=price_cents)]
+            paid_parts = [_format_paid_amount_summary(brief, list_price_cents=price_cents)]
             if paid_at:
                 paid_parts.append(_format_timestamp(paid_at))
             payment_cell = "<br>".join(paid_parts)
@@ -573,8 +548,12 @@ def render_admin_brief_detail_page(
     )
     payment_lines = [status_html]
     if status == "paid":
-        for line in _format_brief_payment_detail_lines(brief, fallback_cents=price_cents):
-            payment_lines.append(html.escape(line))
+        payment_lines.append(
+            html.escape(_format_paid_amount_summary(brief, list_price_cents=price_cents))
+        )
+        currency = brief.get("payment_currency")
+        if currency:
+            payment_lines.append(html.escape(str(currency).upper()))
         paid_at = brief.get("paid_at")
         if paid_at:
             payment_lines.append(_format_timestamp(paid_at))
@@ -584,21 +563,8 @@ def render_admin_brief_detail_page(
     stripe_section = ""
     if stripe_refs is not None:
         session_cell, intent_cell = stripe_refs
-        promo_cell = ""
-        promo_id = brief.get("stripe_promotion_code_id")
-        coupon_id = brief.get("stripe_coupon_id")
-        if promo_id:
-            promo_cell += f"""
-              <div class="brief-detail-row">
-                <dt>Promotion code</dt>
-                <dd>{_format_stripe_reference(promo_id)}</dd>
-              </div>"""
-        if coupon_id:
-            promo_cell += f"""
-              <div class="brief-detail-row">
-                <dt>Coupon</dt>
-                <dd>{_format_stripe_reference(coupon_id)}</dd>
-              </div>"""
+        promo_cell = _format_stripe_reference(brief.get("stripe_promotion_code_id"))
+        coupon_cell = _format_stripe_reference(brief.get("stripe_coupon_id"))
         stripe_section = f"""
           <section class="brief-detail-section" aria-labelledby="brief-stripe-title">
             <h2 class="brief-detail-heading" id="brief-stripe-title">Stripe references</h2>
@@ -611,7 +577,15 @@ def render_admin_brief_detail_page(
               <div class="brief-detail-row">
                 <dt>Payment intent</dt>
                 <dd>{intent_cell}</dd>
-              </div>{promo_cell}
+              </div>
+              <div class="brief-detail-row">
+                <dt>Promotion code</dt>
+                <dd>{promo_cell}</dd>
+              </div>
+              <div class="brief-detail-row">
+                <dt>Coupon</dt>
+                <dd>{coupon_cell}</dd>
+              </div>
             </dl>
           </section>"""
 

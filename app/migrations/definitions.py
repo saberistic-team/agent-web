@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 
 
@@ -17,6 +18,35 @@ class Migration:
     version: str
     name: str
     up_sql: str
+
+
+def migration_content_digest(migration: Migration) -> str:
+    """Stable SHA-256 of version, name, and SQL for immutability checks."""
+    payload = f"{migration.version}\0{migration.name}\0{migration.up_sql}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+# Digests for versions that must never be silently redefined (#210).
+# When adding a new migration, leave prior entries unchanged. The CI job
+# "Freeze shipped migrations" (scripts/freeze_shipped_migrations.py) freezes
+# new versions after a healthy production deploy — do not hand-edit shipped digests.
+FROZEN_MIGRATION_DIGESTS: dict[str, str] = {
+    "001": "b25d23a80d13aca9fab1449d4ce7b50513b747a6bd6d00e234ea0ff21c0877f6",
+    "002": "a74155b616b65ecb04f14cae1f2f33cf4e6a316d23c9452a6e4e3ac1161d6ed6",
+    "003": "a110b52188674dea75d952f21f571da4b5d9da8ec4f0c7694cd84b4c7298c6dd",
+    "004": "ca86d87534358f7c471241cb25ab1944dbe36fe749fc2c2212d47b2565c42545",
+    "005": "959da61312e032d7f7a1a8ebd962d5e172f9c8e9a2406c56fe1924c4f0c91145",
+    "006": "0792501de05c6c48f7cdf8613b87ad9a163fb9b624565558ab0144925d98cf3c",
+    "007": "da82d83d66b0a4af2371a644394fdda464c5866cfa99ab9e8f71674315e4f760",
+    "008": "375b45ea4df7ec8edc820be10507a63ea166d5a22767342cc94e243bb13ba91d",
+    "009": "14d8f3e5f4f8e7080877ff60c0a86d377aed024218912e27fa3803eb9db9e33b",
+    "010": "c748ec5abeb291273c31c719c32c4c0609b5c28d1e64b20be09ff2f1084ea99b",
+    "011": "af4326258e2c3b005421f9894caf7059e75b46047581b4caa150d149fcfc906b",
+    "012": "256322500ee7ac616de8f575a6b0a7c652c78924b9b1a3ca1007897626e88ef7",
+    "013": "677757b25f70e5e1b8dea6aa244d458b276ddad8e751a837c9bceb84cd9b6308",
+    "014": "9bb2a99e936e5ab77f75d1f94556715667cb97bff7dc185007ccdfe32f28f050",
+    "015": "014080f78e50242cb2e5518567634f7522f844bd55d7c4dcba4c970df73d07b0",
+}
 
 
 MIGRATIONS: tuple[Migration, ...] = (
@@ -469,18 +499,128 @@ CREATE INDEX IF NOT EXISTS idx_import_batch_rows_entity_id
     WHERE entity_id IS NOT NULL;
 """,
     ),
-
     Migration(
         version="015",
-        name="project_briefs_payment_columns",
+        name="reconcile_acquisition_pipeline_schema",
         up_sql="""
-ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS amount_subtotal_cents INTEGER;
-ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS amount_discount_cents INTEGER;
-ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS amount_total_cents INTEGER;
-ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS currency TEXT;
+-- Reconcile databases that applied the earlier incompatible form of migration
+-- 013 (legacy owner/expected_value/stage_reason + company_stage_history) with
+-- the canonical pipeline schema. Idempotent on fresh installs that already
+-- applied the current 013. Legacy columns and company_stage_history are retained.
+
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS pipeline_owner TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS expected_value_cents INTEGER;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS pipeline_loss_reason TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS pipeline_nurture_reason TEXT;
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'companies'
+          AND column_name = 'owner'
+    ) THEN
+        UPDATE companies
+        SET pipeline_owner = owner
+        WHERE pipeline_owner IS NULL
+          AND owner IS NOT NULL
+          AND BTRIM(owner) <> '';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'companies'
+          AND column_name = 'expected_value'
+    ) THEN
+        UPDATE companies
+        SET expected_value_cents = ROUND(expected_value * 100)::integer
+        WHERE expected_value_cents IS NULL
+          AND expected_value IS NOT NULL;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'companies'
+          AND column_name = 'stage_reason'
+    ) THEN
+        UPDATE companies
+        SET pipeline_loss_reason = stage_reason
+        WHERE pipeline_stage = 'lost'
+          AND pipeline_loss_reason IS NULL
+          AND stage_reason IS NOT NULL
+          AND BTRIM(stage_reason) <> '';
+
+        UPDATE companies
+        SET pipeline_nurture_reason = stage_reason
+        WHERE pipeline_stage = 'nurture'
+          AND pipeline_nurture_reason IS NULL
+          AND stage_reason IS NOT NULL
+          AND BTRIM(stage_reason) <> '';
+    END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS pipeline_stage_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID NOT NULL REFERENCES companies (id) ON DELETE CASCADE,
+    from_stage TEXT,
+    to_stage TEXT NOT NULL,
+    changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    changed_by TEXT NOT NULL,
+    metadata JSONB
+);
+
+DO $$
+BEGIN
+    IF to_regclass('public.company_stage_history') IS NOT NULL THEN
+        INSERT INTO pipeline_stage_history (
+            id, company_id, from_stage, to_stage, changed_at, changed_by, metadata
+        )
+        SELECT
+            h.id,
+            h.company_id,
+            h.from_stage,
+            h.to_stage,
+            h.changed_at,
+            h.changed_by,
+            CASE
+                WHEN h.reason IS NULL OR BTRIM(h.reason) = '' THEN h.metadata
+                WHEN h.metadata IS NULL THEN jsonb_build_object('legacy_reason', h.reason)
+                ELSE h.metadata || jsonb_build_object('legacy_reason', h.reason)
+            END
+        FROM company_stage_history AS h
+        ON CONFLICT (id) DO NOTHING;
+    END IF;
+END $$;
+
+-- Rebuild named indexes so an earlier non-canonical definition cannot linger.
+DROP INDEX IF EXISTS idx_companies_pipeline_stage;
+CREATE INDEX IF NOT EXISTS idx_companies_pipeline_stage
+    ON companies (pipeline_stage)
+    WHERE pipeline_stage IS NOT NULL;
+
+DROP INDEX IF EXISTS idx_companies_next_action_due_at;
+CREATE INDEX IF NOT EXISTS idx_companies_next_action_due_at
+    ON companies (next_action_due_at)
+    WHERE next_action_due_at IS NOT NULL AND archived_at IS NULL;
+
+DROP INDEX IF EXISTS idx_pipeline_stage_history_company_id;
+CREATE INDEX IF NOT EXISTS idx_pipeline_stage_history_company_id
+    ON pipeline_stage_history (company_id, changed_at DESC);
+""",
+    ),
+    Migration(
+        version="016",
+        name="project_briefs_payment_details",
+        up_sql="""
+ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS payment_subtotal_cents INTEGER;
+ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS payment_discount_cents INTEGER;
+ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS payment_amount_cents INTEGER;
+ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS payment_currency TEXT;
 ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS stripe_promotion_code_id TEXT;
 ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS stripe_coupon_id TEXT;
 """,
     ),
-
 )

@@ -19,6 +19,24 @@ def init_db(database_url: str) -> None:
         apply_migrations(conn)
 
 
+def latest_schema_version(database_url: str) -> str | None:
+    """Return the highest applied ``schema_migrations.version``, or None."""
+    with psycopg.connect(database_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT version
+                FROM schema_migrations
+                ORDER BY version DESC
+                LIMIT 1
+                """
+            )
+            row = cur.fetchone()
+    if row is None:
+        return None
+    return str(row[0])
+
+
 @contextmanager
 def db_connection(database_url: str) -> Generator[psycopg.Connection, None, None]:
     with psycopg.connect(database_url, row_factory=dict_row) as conn:
@@ -95,10 +113,10 @@ def mark_brief_paid(
     brief_id: int,
     stripe_session_id: str | None,
     stripe_payment_intent_id: str | None,
-    amount_subtotal_cents: int | None = None,
-    amount_discount_cents: int | None = None,
-    amount_total_cents: int | None = None,
-    currency: str | None = None,
+    payment_subtotal_cents: int | None = None,
+    payment_discount_cents: int | None = None,
+    payment_amount_cents: int | None = None,
+    payment_currency: str | None = None,
     stripe_promotion_code_id: str | None = None,
     stripe_coupon_id: str | None = None,
 ) -> dict[str, Any] | None:
@@ -111,10 +129,10 @@ def mark_brief_paid(
                 stripe_session_id = COALESCE(%s, stripe_session_id),
                 stripe_payment_intent_id = %s,
                 paid_at = %s,
-                amount_subtotal_cents = %s,
-                amount_discount_cents = %s,
-                amount_total_cents = %s,
-                currency = %s,
+                payment_subtotal_cents = %s,
+                payment_discount_cents = %s,
+                payment_amount_cents = %s,
+                payment_currency = %s,
                 stripe_promotion_code_id = %s,
                 stripe_coupon_id = %s
             WHERE id = %s AND status != 'paid'
@@ -124,10 +142,10 @@ def mark_brief_paid(
                 stripe_session_id,
                 stripe_payment_intent_id,
                 paid_at,
-                amount_subtotal_cents,
-                amount_discount_cents,
-                amount_total_cents,
-                currency,
+                payment_subtotal_cents,
+                payment_discount_cents,
+                payment_amount_cents,
+                payment_currency,
                 stripe_promotion_code_id,
                 stripe_coupon_id,
                 brief_id,

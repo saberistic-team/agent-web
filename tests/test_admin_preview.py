@@ -152,18 +152,18 @@ def test_preview_brief_rows_randomized_and_seed_stable() -> None:
     assert a == b
     assert 5 <= len(a) <= 9
     assert a[0]["id"] == 1 and a[0]["status"] == "paid"
+    assert a[0]["payment_amount_cents"] == 20_000
     assert a[1]["id"] == 2 and a[1]["status"] == "pending_payment"
     assert a[1]["utm_source"] is None and a[1]["paid_at"] is None
+    discounted = next(row for row in a if row["id"] == 3)
+    assert discounted["status"] == "paid"
+    assert discounted["payment_amount_cents"] == 15_000
+    assert discounted["payment_discount_cents"] == 5_000
     assert a[0]["website"] != c[0]["website"] or a[0]["contact_value"] != c[0]["contact_value"]
     detail = build_preview_brief_detail(1, rng=random.Random(5), now=now)
     assert detail is not None
     assert detail["website"] == a[0]["website"]
     assert detail["brief"] == a[0]["brief"]
-    assert detail["amount_total_cents"] == 20_000
-    discounted = build_preview_brief_detail(5, rng=random.Random(5), now=now)
-    assert discounted is not None
-    assert discounted["amount_total_cents"] == 10_000
-    assert discounted["amount_discount_cents"] == 10_000
     assert build_preview_brief_detail(999, rng=random.Random(5), now=now) is None
 
 

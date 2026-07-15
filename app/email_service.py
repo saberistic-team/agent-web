@@ -89,6 +89,16 @@ def notify_customer_of_brief_received(
     )
 
 
+def _format_paid_email_amount(brief: dict[str, Any]) -> str:
+    amount_cents = brief.get("payment_amount_cents")
+    if amount_cents is None:
+        return "$200"
+    cents = int(amount_cents)
+    if cents % 100 == 0:
+        return f"${cents / 100:.0f}"
+    return f"${cents / 100:.2f}"
+
+
 def notify_team_of_paid_brief(
     *,
     api_key: str,
@@ -120,20 +130,10 @@ def notify_customer_of_paid_brief(
     from_email: str,
     brief: dict[str, Any],
 ) -> dict[str, Any] | None:
-    total_cents = brief.get("amount_total_cents")
-    if total_cents is not None:
-        dollars = int(total_cents) / 100
-        if int(total_cents) % 100 == 0:
-            amount_label = f"${dollars:.0f}"
-        else:
-            amount_label = f"${dollars:.2f}"
-        payment_line = f"Your {amount_label} project brief payment was successful."
-    else:
-        payment_line = "Your project brief payment was successful."
     body = (
         "Payment received — thank you.\n\n"
-        f"{payment_line} Our team will review "
-        "your brief and follow up at this email address.\n\n"
+        f"Your {_format_paid_email_amount(brief)} project brief payment was successful. "
+        "Our team will review your brief and follow up at this email address.\n\n"
         f"Website: {brief['website']}\n\n"
         "— saberistic"
     )

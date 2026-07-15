@@ -108,8 +108,27 @@ def sitemap() -> Response:
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health() -> dict:
+    """Process liveness. Optionally reports ``schema_version`` when the DB is readable.
+
+    Migrations run at startup (``db.init_db``). If they fail, uvicorn never serves
+    this path and Render marks the deploy ``update_failed``. ``schema_version`` is
+    best-effort for post-deploy verification — connection errors must not turn
+    liveness into 503 (that breaks readiness probes and unit tests that set a
+    unused DATABASE_URL).
+    """
+    payload: dict = {"status": "ok"}
+    settings = get_settings()
+    if not settings.database_configured:
+        return payload
+    try:
+        version = db.latest_schema_version(settings.database_url)
+    except Exception:
+        logger.exception("health: failed to read schema_migrations")
+        return payload
+    if version is not None:
+        payload["schema_version"] = version
+    return payload
 
 
 @app.get("/hello")
@@ -311,7 +330,7 @@ async def stripe_webhook(request: Request) -> JSONResponse:
         logger.error("checkout.session.completed missing brief_id metadata")
         return JSONResponse({"received": True})
 
-    payment = stripe_service.extract_payment_from_session(session)
+    payment = stripe_service.extract_payment_details_from_session(session)
 
     with db.db_connection(settings.database_url) as conn:
         paid_brief = db.mark_brief_paid(
@@ -319,26 +338,22 @@ async def stripe_webhook(request: Request) -> JSONResponse:
             brief_id=brief_id,
             stripe_session_id=session.get("id"),
             stripe_payment_intent_id=session.get("payment_intent"),
-            amount_subtotal_cents=payment.amount_subtotal_cents,
-            amount_discount_cents=payment.amount_discount_cents,
-            amount_total_cents=payment.amount_total_cents,
-            currency=payment.currency,
-            stripe_promotion_code_id=payment.stripe_promotion_code_id,
-            stripe_coupon_id=payment.stripe_coupon_id,
+            payment_subtotal_cents=payment["subtotal_cents"],
+            payment_discount_cents=payment["discount_cents"],
+            payment_amount_cents=payment["amount_cents"],
+            payment_currency=payment["currency"],
+            stripe_promotion_code_id=payment["promotion_code_id"],
+            stripe_coupon_id=payment["coupon_id"],
         )
 
     if paid_brief is None:
         return JSONResponse({"received": True})
 
-    collected_cents = payment.amount_total_cents
-    if collected_cents is None:
-        collected_cents = settings.brief_price_cents
-
     try:
         analytics_service.track_payment_completed(
             settings,
             brief_id=brief_id,
-            price_cents=collected_cents,
+            price_cents=payment["amount_cents"],
             utm={
                 "utm_source": paid_brief.get("utm_source"),
                 "utm_medium": paid_brief.get("utm_medium"),

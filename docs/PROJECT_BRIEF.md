@@ -12,10 +12,45 @@ Parent issue: [#41](https://github.com/saberistic-team/agent-web/issues/41).
 
 - Public form (`site/` + FastAPI) with landing CTA
 - `project_briefs` table; row created on submit (`pending_payment`)
-- Fixed **$200** one-time Stripe Checkout with customer-entered promotion codes; webhook marks row `paid`
+- Fixed **$200** one-time Stripe Checkout; webhook marks row `paid`
 - Lead + customer receipt emails on submit (payment-independent)
 - Payment-confirmed emails to inbox + customer after webhook
 - Success page; env vars and local run documented; tests with mocked Stripe
+
+## Promotion codes (#197)
+
+Stripe Checkout Sessions are created server-side with `allow_promotion_codes=True`.
+Customers can enter an active **Promotion Code** on the Stripe-hosted checkout page.
+The list price remains **$200**; Stripe applies the discount after a valid code is
+entered.
+
+**Operator setup (Stripe Dashboard):**
+
+1. Create a **Coupon** (fixed amount, percentage, limited redemption, expiry, or
+   100%-off) in the same Stripe account as `STRIPE_SECRET_KEY`.
+2. Create an active **Promotion Code** from that coupon. A coupon alone is not
+   customer-enterable in Checkout.
+3. Use **Test mode** for local/CI verification; create or confirm the production
+   Promotion Code in **Live mode** for `https://saberistic.com/brief`.
+4. Checkout uses inline `price_data` (dynamic product). Product-restricted coupons
+   may not apply — an all-products coupon is the safe default. Verify restricted
+   coupons in Test mode before relying on them in production.
+5. Never commit Stripe secrets, Coupon IDs, or Promotion Code IDs to the repo.
+
+**Payment reporting:** On `checkout.session.completed`, the webhook persists Stripe
+session totals (`amount_subtotal`, `total_details.amount_discount`, `amount_total`,
+`currency`) and optional Stripe promotion/coupon identifiers. Admin and analytics
+use the collected amount, not the configured list price, when a discount was applied.
+
+**Production smoke-test checklist:**
+
+- [ ] Promotion Code exists and is active in Stripe **Live** mode
+- [ ] `/brief` checkout shows **Add promotion code**
+- [ ] Valid code changes the Stripe total as expected
+- [ ] Paid brief row shows correct subtotal, discount, and final amount in admin
+- [ ] Analytics `Payment Completed` uses the actual collected cents
+- [ ] No-code $200 checkout still completes and marks the brief paid
+- [ ] 100%-off code completes with no PaymentIntent and still marks the brief paid
 
 ## Intentionally deferred
 
@@ -24,46 +59,9 @@ include alongside the main implementation ([#44](https://github.com/saberistic-t
 
 - **Full CRM integration** — no HubSpot, Salesforce, or pipeline sync
 
-Promotion codes are **in scope** ([#197](https://github.com/saberistic-team/agent-web/issues/197)):
-Checkout Sessions are created with `allow_promotion_codes=True` so customers can
-enter an active Stripe Promotion Code on the hosted checkout page. The list price
-remains **$200**; Stripe applies configured discounts. Completed-session totals
-are persisted for admin reporting and analytics.
-
 Leads live in Postgres and are delivered via email. Operators can browse submitted
 briefs at `/admin/briefs` (authenticated; read-only list). Revisit other deferred
 items as separate issues when needed.
-
-## Promotion codes (Stripe Dashboard)
-
-Checkout shows Stripe’s **Add promotion code** field when `allow_promotion_codes=True`.
-No Coupon or Promotion Code ID is hardcoded in application source.
-
-### Operator setup
-
-1. In the Stripe Dashboard, create a **Coupon** (fixed amount, percentage,
-   limited redemptions, expiry, or 100% off as needed).
-2. Create an active **Promotion Code** from that coupon. A coupon alone is **not**
-   customer-enterable on Checkout.
-3. Use **Test mode** for local/CI verification; create or confirm the production
-   Promotion Code in **Live mode** on the same account as `STRIPE_SECRET_KEY`.
-4. Never commit Stripe secrets, Coupon IDs, or Promotion Code IDs to the repo.
-
-The Architecture Diagnostic checkout uses dynamic `price_data` (inline product).
-Product-restricted coupons may not apply unless verified against that product;
-an **all-products** coupon is the safe default.
-
-### Production smoke-test checklist
-
-- [ ] Live Promotion Code exists and is active in the Live-mode Stripe account.
-- [ ] Submit a brief at `https://saberistic.com/brief`.
-- [ ] Stripe Checkout shows **Add promotion code**.
-- [ ] Valid code changes the displayed total from $200 as expected.
-- [ ] Complete payment (or an approved low-risk live verification path).
-- [ ] Brief row is `paid`; `/admin/briefs/{id}` shows subtotal, discount, final
-  total, and currency matching Stripe.
-- [ ] `Payment Completed` analytics uses the collected amount, not $200.
-- [ ] Checkout without a code still charges $200 and marks the brief paid.
 
 ## Routes
 
@@ -126,6 +124,10 @@ stripe listen --forward-to localhost:8000/webhooks/stripe
 
 Use the signing secret printed by `stripe listen` as `STRIPE_WEBHOOK_SECRET`.
 
+Create a Test-mode Coupon and Promotion Code in the Dashboard to exercise discounts
+locally. Submit `/brief`, enter the code on Stripe Checkout, and confirm the webhook
+stores discounted payment fields on the brief row.
+
 ### 4. Email (optional locally)
 
 ```bash
@@ -162,21 +164,17 @@ Table `project_briefs`:
 | `stripe_session_id` | text | Nullable |
 | `stripe_payment_intent_id` | text | Nullable |
 | `paid_at` | timestamptz | Nullable |
+| `payment_subtotal_cents` | integer | Nullable until paid; Stripe `amount_subtotal` |
+| `payment_discount_cents` | integer | Nullable; Stripe `total_details.amount_discount` |
+| `payment_amount_cents` | integer | Nullable until paid; Stripe `amount_total` |
+| `payment_currency` | text | Nullable; e.g. `usd` |
+| `stripe_promotion_code_id` | text | Nullable; Stripe promotion code id when applied |
+| `stripe_coupon_id` | text | Nullable; Stripe coupon id when applied |
 | `utm_source` | text | Nullable (from brief request / session) |
 | `utm_medium` | text | Nullable |
 | `utm_campaign` | text | Nullable |
 | `utm_content` | text | Nullable |
 | `utm_term` | text | Nullable |
-| `amount_subtotal_cents` | integer | Nullable; list subtotal before discount (set on `paid`) |
-| `amount_discount_cents` | integer | Nullable; Stripe `total_details.amount_discount` |
-| `amount_total_cents` | integer | Nullable; final collected amount |
-| `currency` | text | Nullable; e.g. `usd` |
-| `stripe_promotion_code_id` | text | Nullable; Stripe Promotion Code ID (not customer-entered text) |
-| `stripe_coupon_id` | text | Nullable; Stripe Coupon ID when returned |
-
-Migration `015` (`project_briefs_payment_columns`) adds payment columns with
-`ADD COLUMN IF NOT EXISTS` so existing rows remain valid with null payment fields
-until a paid webhook backfills them.
 
 Rows are inserted with `pending_payment` **before** redirecting to Stripe, so
 abandoned checkouts still retain the lead and trigger inbox notification.
@@ -185,6 +183,7 @@ UTM columns are created via `ALTER TABLE … IF NOT EXISTS` for older databases
 
 Existing databases created before email-only contact may have `phone` values in
 `contact_method`; no migration is required — new rows always store `email`.
+Existing paid rows keep nullable payment/discount columns until new payments land.
 
 ## User flow
 
@@ -193,11 +192,11 @@ Existing databases created before email-only contact may have `phone` values in
 3. `POST /api/briefs` inserts a `pending_payment` row, emails
    `inbox@saberistic.com` (new lead) and the customer (receipt — does not
    claim payment completed), and returns a Stripe Checkout URL.
-4. User pays on Stripe at the **$200** list price, optionally applying a valid
-   Promotion Code (or abandons checkout — lead emails already sent).
+4. User pays $200 on Stripe (optionally entering a promotion code), or abandons
+   checkout — lead emails already sent.
 5. Stripe webhook `checkout.session.completed` marks the row `paid`, stores
-   Stripe IDs and completed-session payment totals, and sends payment-confirmed
-   emails to inbox and customer.
+   Stripe IDs and payment totals, and sends payment-confirmed emails to inbox
+   and customer.
 6. Stripe redirects to `/brief/success` (“We received your request.”).
 
 ## Production (Render)
@@ -227,7 +226,7 @@ routes require an admin session and are marked `noindex`.
 ## Tests
 
 ```bash
-pytest tests/test_brief.py tests/test_brief_unit.py tests/test_admin_briefs.py tests/test_admin_brief_detail.py tests/test_crm_migrations_unit.py tests/test_project_brief_scope.py -q
+pytest tests/test_brief.py tests/test_brief_unit.py tests/test_brief_promotion_codes.py tests/test_admin_briefs.py tests/test_admin_brief_detail.py -q
 ```
 
 Mocks Stripe and email; no live Postgres or Stripe required in CI.
