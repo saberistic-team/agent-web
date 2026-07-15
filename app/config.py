@@ -2,11 +2,22 @@
 
 from __future__ import annotations
 
-import os
 import ipaddress
+import os
 from dataclasses import dataclass
 
-from app.proxy_trust import DEFAULT_TRUSTED_PROXY_IPS, parse_trusted_proxy_networks
+
+def _parse_cidr_list(raw: str) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+    networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
+    for part in raw.split(","):
+        candidate = part.strip()
+        if not candidate:
+            continue
+        try:
+            networks.append(ipaddress.ip_network(candidate, strict=False))
+        except ValueError:
+            continue
+    return tuple(networks)
 
 
 @dataclass(frozen=True)
@@ -31,7 +42,8 @@ class Settings:
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
     admin_trust_proxy_headers: bool = False
-    admin_trusted_proxy_ips: str = DEFAULT_TRUSTED_PROXY_IPS
+    admin_trusted_proxy_cidrs: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...] = ()
+    admin_cloudflare_proxy_cidrs: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...] = ()
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -51,12 +63,6 @@ class Settings:
     def admin_preview_mode(self) -> bool:
         flag = os.environ.get("ADMIN_PREVIEW_MODE", "").lower()
         return flag in ("1", "true", "yes")
-
-    @property
-    def admin_trusted_proxy_networks(
-        self,
-    ) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
-        return parse_trusted_proxy_networks(self.admin_trusted_proxy_ips)
 
     @property
     def admin_auth_configured(self) -> bool:
@@ -123,8 +129,10 @@ def get_settings() -> Settings:
             "ADMIN_TRUST_PROXY_HEADERS", ""
         ).lower()
         in ("1", "true", "yes"),
-        admin_trusted_proxy_ips=os.environ.get(
-            "ADMIN_TRUSTED_PROXY_IPS", DEFAULT_TRUSTED_PROXY_IPS
-        ).strip()
-        or DEFAULT_TRUSTED_PROXY_IPS,
+        admin_trusted_proxy_cidrs=_parse_cidr_list(
+            os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "")
+        ),
+        admin_cloudflare_proxy_cidrs=_parse_cidr_list(
+            os.environ.get("ADMIN_CLOUDFLARE_PROXY_CIDRS", "")
+        ),
     )

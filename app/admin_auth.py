@@ -20,7 +20,10 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.admin_client_source import resolve_admin_login_client_source
+from app.admin_client_source import (
+    log_admin_login_source_resolution,
+    resolve_admin_login_client_source,
+)
 from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
@@ -236,24 +239,16 @@ def read_login_flow_token(request: Request) -> str | None:
 
 
 def client_ip(request: Request, settings: Settings) -> str:
-    """Resolve the client source IP for rate limiting.
+    """Resolve the client source IP for admin login rate limiting.
 
-    Forwarding headers are honored only when ``ADMIN_TRUST_PROXY_HEADERS`` is
-    enabled **and** the immediate TCP peer matches ``ADMIN_TRUSTED_PROXY_IPS``.
-    The parser walks ``X-Forwarded-For`` / ``Forwarded`` from right to left,
-    skipping configured trusted hops, so attacker-controlled leftmost values
-    cannot mint fresh source buckets.
-
-    Source identity notes:
-
-    * **IPv4 / IPv6** — normalized deterministically; only keyed digests are
-      stored (e.g. ``203.0.113.1``, ``2001:db8::1``).
-    * **Missing peer** — falls back to ``unknown`` so attempts still share one
-      bucket instead of creating an unbounded namespace.
-    * **Untrusted peer** — direct peers and direct Render origin requests ignore
-      ``X-Forwarded-For``, ``Forwarded``, and ``CF-Connecting-IP``.
+    Delegates to :func:`resolve_admin_login_client_source`, which verifies the
+    immediate ASGI peer against ``ADMIN_TRUSTED_PROXY_CIDRS`` before honoring
+    forwarding headers. Raw addresses are never logged; only privacy-preserving
+    digests are stored in shared limiter rows.
     """
-    return resolve_admin_login_client_source(request, settings).source
+    resolution = resolve_admin_login_client_source(request, settings)
+    log_admin_login_source_resolution(resolution)
+    return resolution.source
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:

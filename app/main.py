@@ -116,12 +116,22 @@ def health() -> dict:
     best-effort for post-deploy verification — connection errors must not turn
     liveness into 503 (that breaks readiness probes and unit tests that set a
     unused DATABASE_URL).
+
+    ``admin_proxy_trust`` summarizes the configured admin login source trust model
+    for post-deploy verification without exposing raw addresses or header values.
     """
     payload: dict = {"status": "ok"}
     settings = get_settings()
     payload["admin_proxy_trust"] = {
-        "enabled": settings.admin_trust_proxy_headers,
-        "boundary_configured": bool(settings.admin_trusted_proxy_cidrs.strip()),
+        "trust_proxy_headers": settings.admin_trust_proxy_headers,
+        "trusted_proxy_cidrs_configured": bool(settings.admin_trusted_proxy_cidrs),
+        "cloudflare_proxy_cidrs_configured": bool(settings.admin_cloudflare_proxy_cidrs),
+        "uvicorn_proxy_headers_disabled": True,
+        "uvicorn_forwarded_allow_ips": (
+            "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+            if settings.admin_trust_proxy_headers
+            else ""
+        ),
     }
     if not settings.database_configured:
         return payload

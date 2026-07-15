@@ -40,31 +40,30 @@ def main(argv: list[str] | None = None) -> int:
             print(f"FAIL {url}: got {payload!r}, expected {key}={expected!r}", file=sys.stderr)
             return 1
         print(f"PASS {url} → {payload}")
-
-    if base.rstrip("/").endswith("saberistic.com"):
-        health = get_json(f"{base}/health")
-        trust = health.get("admin_login_source_trust")
-        if not isinstance(trust, dict):
-            print(
-                f"FAIL {base}/health: missing admin_login_source_trust metadata",
-                file=sys.stderr,
-            )
-            return 1
-        if not trust.get("enabled"):
-            print(
-                f"FAIL {base}/health: admin login proxy trust disabled in production",
-                file=sys.stderr,
-            )
-            return 1
-        if not trust.get("proxy_boundary_configured") or not trust.get(
-            "forwarded_allow_ips_configured"
-        ):
-            print(
-                f"FAIL {base}/health: admin login proxy boundary not configured",
-                file=sys.stderr,
-            )
-            return 1
-        print(f"PASS {base}/health → admin_login_source_trust configured")
+        if path == "/health":
+            trust = payload.get("admin_proxy_trust")
+            if not isinstance(trust, dict):
+                print(f"FAIL {url}: missing admin_proxy_trust summary", file=sys.stderr)
+                return 1
+            if not trust.get("trust_proxy_headers"):
+                print(
+                    f"FAIL {url}: admin_proxy_trust.trust_proxy_headers is not enabled",
+                    file=sys.stderr,
+                )
+                return 1
+            if not trust.get("trusted_proxy_cidrs_configured"):
+                print(
+                    f"FAIL {url}: admin_proxy_trust.trusted_proxy_cidrs_configured is false",
+                    file=sys.stderr,
+                )
+                return 1
+            if not trust.get("uvicorn_proxy_headers_disabled"):
+                print(
+                    f"FAIL {url}: uvicorn proxy header rewriting must stay disabled",
+                    file=sys.stderr,
+                )
+                return 1
+            print(f"PASS {url} → admin_proxy_trust configured")
     return 0
 
 
