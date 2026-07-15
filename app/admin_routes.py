@@ -34,7 +34,11 @@ from app.contacts import (
     ContactUpdate,
 )
 from app.crm_uow import crm_transaction
-from app.actor_context import actor_context_from_request, anonymous_actor_context, correlation_id_from_request
+from app.actor_context import (
+    actor_context_from_request,
+    anonymous_actor_context,
+    correlation_id_from_request,
+)
 from app.admin_layout import ADMIN_NAV_LINKS, render_admin_shell
 from app.admin_preview import (
     PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR,
@@ -532,10 +536,7 @@ def admin_login_submit(
                 reason="rate_limited",
             )
         else:
-            _record_login_failure(
-                request,
-                reason="invalid_credentials",
-            )
+            _record_login_failure(request, reason="invalid_credentials")
         return _issue_login_flow_response(
             settings=settings,
             error_message=admin_auth.INVALID_CREDENTIALS_MESSAGE,

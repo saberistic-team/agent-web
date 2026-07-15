@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import threading
 from contextlib import contextmanager
@@ -12,9 +13,11 @@ import psycopg
 import pytest
 from psycopg.rows import dict_row
 
-from app import admin_auth, db
+from app import admin_auth, audit_service, db
+from app.actor_context import ActorContext
 from app.config import get_settings
 from app.migrations.runner import apply_migrations
+from app.repositories.postgres import PostgresAuditEventRepository
 
 _REQUIRED = (os.environ.get("REQUIRE_TEST_DATABASE") or "").strip() in {"1", "true", "yes"}
 _DATABASE_URL = (os.environ.get("TEST_DATABASE_URL") or "").strip()
@@ -97,18 +100,10 @@ def _admit(
     )
 
 
-@pytest.fixture(autouse=True)
-def _limiter_secret_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(
-        "ADMIN_LOGIN_LIMITER_SECRET",
-        "test-limiter-secret-32chars-minimum-x",
-    )
-
-
 @pytest.mark.integration
 def test_username_rotation_shares_source_bucket(pg_conn: psycopg.Connection) -> None:
-    settings = get_settings()
     now = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+    settings = get_settings()
     source_key = admin_auth.build_source_rate_limit_key("203.0.113.10", settings)
 
     for index in range(5):
@@ -279,3 +274,110 @@ def test_cleanup_removes_stale_unlocked_rows(pg_conn: psycopg.Connection) -> Non
     )
     assert deleted >= 1
     assert _count_limiter_rows(pg_conn) == 0
+
+
+@pytest.mark.integration
+def test_persisted_limiter_keys_use_hmac_not_plain_sha256(
+    pg_conn: psycopg.Connection,
+) -> None:
+    settings = get_settings()
+    source = "203.0.113.88"
+    source_key = admin_auth.build_source_rate_limit_key(source, settings)
+    now = datetime(2026, 7, 1, 10, 0, tzinfo=timezone.utc)
+    _admit(pg_conn, keys=(source_key,), now=now, rate_limit=5)
+    pg_conn.commit()
+
+    row = pg_conn.execute(
+        "SELECT limiter_key FROM admin_login_rate_limits WHERE limiter_key = %s",
+        (source_key,),
+    ).fetchone()
+    assert row is not None
+    plain = hashlib.sha256(f"src:{source}".encode("utf-8")).hexdigest()
+    assert row["limiter_key"] == source_key
+    assert row["limiter_key"] != plain
+
+
+@pytest.mark.integration
+def test_rotation_previous_key_lock_blocks_without_current_row(
+    pg_conn: psycopg.Connection,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    previous_secret = "previous-limiter-secret-32chars-minimum"
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS", previous_secret)
+    settings = get_settings()
+    source = "203.0.113.77"
+    previous_key = admin_auth._digest_limiter_key(
+        previous_secret.encode("utf-8"),
+        admin_auth.LIMITER_KEY_DOMAIN_SRC,
+        source,
+    )
+    current_key = admin_auth.build_source_rate_limit_key(source, settings)
+    now = datetime(2026, 8, 1, 10, 0, tzinfo=timezone.utc)
+
+    for index in range(5):
+        _admit(
+            pg_conn,
+            keys=(previous_key,),
+            now=now + timedelta(seconds=index),
+            rate_limit=5,
+        )
+    pg_conn.commit()
+
+    assert _any_locked(pg_conn, previous_key, now + timedelta(seconds=10))
+    assert pg_conn.execute(
+        "SELECT 1 FROM admin_login_rate_limits WHERE limiter_key = %s",
+        (current_key,),
+    ).fetchone() is None
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/admin/login",
+        "raw_path": b"/admin/login",
+        "query_string": b"",
+        "headers": [],
+        "client": (source, 12345),
+        "server": ("testserver", 80),
+    }
+    from starlette.requests import Request
+
+    request = Request(scope)
+    result = admin_auth.try_admit_login_attempt(request, settings, username="ghost")
+    assert not result.admitted
+    assert result.already_locked
+
+
+def _any_locked(conn: psycopg.Connection, limiter_key: str, now: datetime) -> bool:
+    return db.is_admin_login_throttled(conn, limiter_key=limiter_key, now=now)
+
+
+@pytest.mark.integration
+def test_login_failure_audit_persists_anonymous_actor(pg_conn: psycopg.Connection) -> None:
+    actor = ActorContext(actor="anonymous", correlation_id="corr-pg-login-failure")
+    audit_service.record_login_failure(
+        pg_conn,
+        actor_context=actor,
+        reason="invalid_credentials",
+        repository=PostgresAuditEventRepository(),
+    )
+    pg_conn.commit()
+
+    row = pg_conn.execute(
+        """
+        SELECT actor, summary_after, metadata
+        FROM audit_events
+        WHERE action = %s
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (audit_service.ACTION_AUTH_LOGIN_FAILURE,),
+    ).fetchone()
+    assert row is not None
+    assert row["actor"] == "anonymous"
+    assert row["summary_after"]["reason"] == "invalid_credentials"
+    serialized = str(row)
+    assert "operator" not in serialized
+    assert "ghost" not in serialized

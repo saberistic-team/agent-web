@@ -118,24 +118,6 @@ or rolled-back logins never emit a new session cookie.
 
 Auth events are wired in `app/admin_routes.py`. Other mutations record audit events through `CrmService` methods that future admin UI routes will call.
 
-### Login failure actor policy
-
-Every `auth.login.failure` event recorded **before** successful authentication uses
-actor `anonymous`. Submitted username candidates are never written to `actor`,
-`metadata`, or `reason` fields, and are not logged.
-
-Authenticated `auth.login.success` and post-login events (for example `auth.logout`)
-continue to use the verified administrator username.
-
-### Historical immutable rows (pre-#242)
-
-Deployments before keyed limiter identifiers and anonymous failure actors may have
-`auth.login.failure` rows whose `actor` column contains attacker-supplied username
-candidates from failed login POST bodies. Those rows remain append-only; this
-forward fix prevents new occurrences. Remediating historical `actor` values requires
-an explicit data-governance decision outside normal application code (no silent
-`UPDATE`/`DELETE` on `audit_events`).
-
 ## Admin UI
 
 Authenticated operators can review events at `/admin/audit`:
@@ -193,6 +175,40 @@ FROM audit_events
 WHERE action = 'export.request'
 GROUP BY 1
 ORDER BY 1 DESC;
+```
+
+## Login failure actor policy
+
+Every `auth.login.failure` event recorded **before** successful authentication uses
+actor `anonymous`. Submitted username candidates, client source addresses, limiter
+digest inputs, and limiter secrets must not appear in the immutable `actor` column,
+`metadata`, `summary_after`, application logs, or metrics.
+
+Failure reasons are a small server-defined enum persisted in `summary_after.reason`
+(for example `invalid_credentials`, `invalid_csrf`, `rate_limited`).
+
+Authenticated events (`auth.login.success`, `auth.logout`, CRM mutations) continue
+to record the configured administrator username in `actor` with session linkage
+where applicable.
+
+### Historical rows (pre-#242)
+
+Append-only guarantees are unchanged. Deployments that accepted login attempts before
+issue #242 may have `auth.login.failure` rows whose `actor` column contains
+attacker-supplied username candidates (the route previously forwarded submitted
+usernames into `actor` while omitting them from metadata). Those rows are
+immutable; remediation requires an explicit data-governance decision (for example
+annotated export, reporting filter, or offline archive) — not application-level
+`UPDATE`/`DELETE`. The forward fix prevents **new** occurrences only.
+
+To inventory affected rows:
+
+```sql
+SELECT created_at, actor, action, correlation_id, summary_after
+FROM audit_events
+WHERE action = 'auth.login.failure'
+  AND actor <> 'anonymous'
+ORDER BY created_at DESC;
 ```
 
 ## Environment

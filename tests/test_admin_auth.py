@@ -620,10 +620,10 @@ def test_build_source_and_account_rate_limit_keys() -> None:
 def test_login_limiter_keys_include_account_for_configured_username() -> None:
     settings = get_settings()
     keys = admin_auth.login_limiter_keys(
-        settings=settings,
         submitted_username="Operator",
         client_source="203.0.113.1",
         configured_admin_username="operator",
+        settings=settings,
     )
     assert len(keys) == 2
     assert admin_auth.build_source_rate_limit_key("203.0.113.1", settings) in keys
@@ -634,10 +634,10 @@ def test_login_limiter_keys_include_account_for_configured_username() -> None:
 def test_login_limiter_keys_source_only_for_unknown_username() -> None:
     settings = get_settings()
     keys = admin_auth.login_limiter_keys(
-        settings=settings,
         submitted_username="ghost",
         client_source="203.0.113.1",
         configured_admin_username="operator",
+        settings=settings,
     )
     assert keys == (admin_auth.build_source_rate_limit_key("203.0.113.1", settings),)
 
@@ -1008,9 +1008,8 @@ def test_rate_limit_expires_after_lockout(
         assert _login(password="wrong").status_code == 401
         assert _login(password="wrong").status_code == 429
 
-        settings = get_settings()
-        source_key = admin_auth.build_source_rate_limit_key("testclient", settings)
-        account_key = admin_auth.build_account_rate_limit_key(TEST_USERNAME, settings)
+        source_key = admin_auth.build_source_rate_limit_key("testclient", get_settings())
+        account_key = admin_auth.build_account_rate_limit_key(TEST_USERNAME, get_settings())
         expired_lock = datetime.now(timezone.utc) - timedelta(seconds=1)
         for key in (source_key, account_key):
             rate_limit_store.rows[key]["locked_until"] = expired_lock
@@ -1109,8 +1108,7 @@ def test_username_rotation_stops_password_verification_at_source_threshold(
                     assert response.status_code == 429
 
     assert verify_calls["count"] == 3
-    settings = get_settings()
-    source_key = admin_auth.build_source_rate_limit_key("testclient", settings)
+    source_key = admin_auth.build_source_rate_limit_key("testclient", get_settings())
     assert len(rate_limit_store.rows) == 1
     assert source_key in rate_limit_store.rows
 
@@ -1212,8 +1210,7 @@ def test_concurrent_login_admission_respects_shared_threshold(
     admitted_count = {"value": 0}
     lock = threading.Lock()
     now = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    settings = get_settings()
-    source_key = admin_auth.build_source_rate_limit_key("203.0.113.77", settings)
+    source_key = admin_auth.build_source_rate_limit_key("203.0.113.77", get_settings())
 
     def worker() -> None:
         barrier.wait()
