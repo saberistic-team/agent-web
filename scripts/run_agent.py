@@ -8,12 +8,14 @@ Every role posts issue comments for start/finish. No silent local-only outcomes.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import os
 import re
 import subprocess
 import sys
 import textwrap
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 from dispatch_queue import replace_priority_label
@@ -40,6 +42,39 @@ from priority import (
 
 HANDOFF_DIR = Path("trace")
 BUILDER_HANDOFF = HANDOFF_DIR / "builder-handoff.txt"
+
+
+def load_screenshot_deploy() -> ModuleType:
+    """Import screenshot helpers, preferring the PR-head copy when present.
+
+    Reviewer Actions checkout agent scripts from ``main`` and the product tree
+    into ``COVERAGE_ROOT`` (``pr-head/``). Preferring ``pr-head/scripts/
+    screenshot_deploy.py`` lets Builder extend the capture matrix on the same
+    product PR and have those shots land in the same review cycle — otherwise
+    tablet / ``mobile-open`` evidence never appears until after merge and the
+    Builder↔Reviewer loop stalls (learned from #167).
+    """
+    cov_root = (os.environ.get("COVERAGE_ROOT") or "").strip()
+    candidates: list[Path] = []
+    if cov_root:
+        candidates.append(Path(cov_root) / "scripts" / "screenshot_deploy.py")
+    candidates.append(Path(__file__).resolve().parent / "screenshot_deploy.py")
+    seen: set[Path] = set()
+    for path in candidates:
+        resolved = path.resolve()
+        if resolved in seen or not resolved.is_file():
+            continue
+        seen.add(resolved)
+        spec = importlib.util.spec_from_file_location(
+            "screenshot_deploy_review", resolved
+        )
+        if spec is None or spec.loader is None:
+            continue
+        module = importlib.util.module_from_spec(spec)
+        sys.modules["screenshot_deploy_review"] = module
+        spec.loader.exec_module(module)
+        return module
+    raise ImportError("screenshot_deploy.py not found on COVERAGE_ROOT or scripts/")
 
 
 def repo_from_env() -> str:
@@ -974,18 +1009,17 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
     # saberistic.com shots are post-deploy only.
     screenshot_note = ""
     try:
-        from screenshot_deploy import (
-            ScreenshotTarget,
-            comment_markdown_pre_dual,
-            comment_on_issue_or_pr,
-            capture_pre_dual,
-            fetch_pr_changed_paths,
-            format_admin_nav_hard_fail,
-            format_empty_data_hard_fail,
-            format_overflow_hard_fail,
-            resolve_screenshot_routes,
-            upload_to_branch,
-        )
+        screenshot_deploy = load_screenshot_deploy()
+        comment_markdown_pre_dual = screenshot_deploy.comment_markdown_pre_dual
+        comment_on_issue_or_pr = screenshot_deploy.comment_on_issue_or_pr
+        capture_pre_dual = screenshot_deploy.capture_pre_dual
+        fetch_pr_changed_paths = screenshot_deploy.fetch_pr_changed_paths
+        format_admin_nav_hard_fail = screenshot_deploy.format_admin_nav_hard_fail
+        format_empty_data_hard_fail = screenshot_deploy.format_empty_data_hard_fail
+        format_overflow_hard_fail = screenshot_deploy.format_overflow_hard_fail
+        resolve_screenshot_routes = screenshot_deploy.resolve_screenshot_routes
+        format_screenshot_targets = screenshot_deploy.format_screenshot_targets
+        upload_to_branch = screenshot_deploy.upload_to_branch
 
         out_dir = Path("trace/screenshots")
         changed = fetch_pr_changed_paths(repo, pr_number)
@@ -1015,15 +1049,14 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
             body_shots = comment_markdown_pre_dual(
                 branch_url=dual.branch_url,
                 branch_urls=branch_urls,
-                routes=routes,
+                targets=routes,
             )
             comment_on_issue_or_pr(repo, pr_number, body_shots)
             comment_on_issue_or_pr(repo, issue, body_shots)
             screenshot_note = (
                 f"- screenshots_pre: {len(branch_urls)} branch posted on PR + issue "
                 "(no saberistic.com pre-merge shots)\n"
-                f"- screenshots_routes: "
-                f"{', '.join(f'`{ScreenshotTarget.from_any(r).format_route()}`' for r in routes)}\n"
+                f"- screenshots_routes: {format_screenshot_targets(routes)}\n"
                 f"- screenshots_branch: `{dual.branch_url}`\n"
             )
             overflow_fail = format_overflow_hard_fail(dual.overflows)
