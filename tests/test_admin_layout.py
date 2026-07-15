@@ -280,7 +280,7 @@ def test_admin_nav_links_present(path: str) -> None:
         ("/admin/contacts", "Contacts", "contacts-title", "Contacts"),
         ("/admin/signals", "Signals", "admin-empty-title", "Signals"),
         ("/admin/pipeline", "Pipeline", "admin-empty-title", "Pipeline"),
-        ("/admin/imports", "Imports", "admin-empty-title", "Imports"),
+        ("/admin/imports", "LinkedIn export preview", "imports-title", "Imports"),
         ("/admin/discovery", "Discovery", "admin-empty-title", "Discovery"),
         ("/admin/analytics", "Analytics", "admin-empty-title", "Analytics"),
         ("/admin/content", "Content", "admin-empty-title", "Content"),

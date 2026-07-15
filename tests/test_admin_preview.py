@@ -168,6 +168,30 @@ def test_preview_audit_events_seed_stable() -> None:
 
 @pytest.mark.unit
 @pytest.mark.integration
+def test_preview_linkedin_import_seed_stable() -> None:
+    from app.admin_preview import build_preview_linkedin_import_data
+
+    a = build_preview_linkedin_import_data(rng=random.Random(42))
+    b = build_preview_linkedin_import_data(rng=random.Random(42))
+    assert a == b
+    assert a.connection_count >= 120
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_preview_imports_main_html_includes_populated_preview() -> None:
+    from app.admin_preview import render_preview_imports_main
+
+    html = render_preview_imports_main(rng=random.Random(99))
+    assert "LinkedIn export preview" in html
+    assert "Import preview" in html
+    assert "Proposed changes (preview only)" in html
+    assert "Recognized files" in html
+    assert "Ignored archive entries" in html
+    assert "connections.csv" in html
+
+
+@pytest.mark.integration
 def test_admin_preview_briefs_list_and_detail_have_mock_data(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -210,37 +234,3 @@ def test_admin_preview_briefs_list_and_detail_have_mock_data(
     assert audit.status_code == 200
     assert "No audit events recorded yet." not in audit.text
     assert "audit-table" in audit.text
-
-
-@pytest.mark.unit
-def test_preview_acquisition_dashboard_data_is_populated() -> None:
-    from app.admin_preview import build_preview_acquisition_dashboard_data
-
-    data = build_preview_acquisition_dashboard_data()
-    assert data.company_counts_by_stage
-    assert data.overdue_actions
-    assert data.recent_evidence
-    assert data.without_decision_maker
-
-
-@pytest.mark.unit
-def test_preview_brief_conversion_states() -> None:
-    from app.admin_preview import (
-        PREVIEW_BRIEF_CONVERTED_ID,
-        PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR,
-        preview_brief_conversion_state,
-        preview_brief_convert_matches,
-        preview_pipeline_available,
-    )
-
-    assert PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR
-
-    assert preview_pipeline_available() is True
-    assert preview_brief_conversion_state(1) is None
-    linked = preview_brief_conversion_state(PREVIEW_BRIEF_CONVERTED_ID)
-    assert linked is not None
-    assert linked["pipeline_stage"] == "diagnostic_paid"
-    matches = preview_brief_convert_matches(4, price_cents=20_000)
-    assert matches["company_matches"]
-    assert matches["contact_matches"]
-    assert matches["proposal"]["pipeline_stage"] in {"qualified", "diagnostic_paid"}

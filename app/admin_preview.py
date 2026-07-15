@@ -66,13 +66,6 @@ CONTENT_KINDS = ("insight", "case-study", "landing", "brief copy")
 BRIEF_PAYMENT_STATUSES = ("pending_payment", "paid", "abandoned")
 # Reserved preview detail id for ADMIN_PREVIEW_MODE database-unavailable screenshots.
 PREVIEW_BRIEF_DATABASE_ERROR_ID = 503
-# Brief already linked to CRM/pipeline in preview screenshots.
-PREVIEW_BRIEF_CONVERTED_ID = 3
-# Brief convert preview with explicit domain/email matches for Reviewer shots.
-PREVIEW_BRIEF_CONVERT_MATCHES_ID = 4
-PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR = (
-    "Select an existing company match or choose to create a new company."
-)
 BRIEF_TEXTS = (
     "Need a technical architecture review of our payments platform — "
     "API boundaries, retention, and rollout sequencing.",
@@ -581,91 +574,12 @@ def build_preview_brief_detail(
     return None
 
 
-def preview_pipeline_available() -> bool:
-    return True
-
-
-def preview_brief_conversion_state(brief_id: int) -> dict[str, object] | None:
-    """Return linked CRM state for converted preview briefs."""
-    if brief_id != PREVIEW_BRIEF_CONVERTED_ID:
-        return None
-    company_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
-    return {
-        "company": {
-            "id": company_id,
-            "name": "Northwind Labs",
-            "pipeline_stage": "diagnostic_paid",
-        },
-        "contact": {
-            "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
-            "email": "alex.nguyen@northwindlabs.io",
-        },
-        "pipeline_stage": "diagnostic_paid",
-    }
-
-
-def preview_brief_convert_matches(
-    brief_id: int,
-    *,
-    price_cents: int,
-) -> dict[str, object]:
-    from app.brief_conversion import build_conversion_proposal
-
-    brief = build_preview_brief_detail(brief_id)
-    if brief is None:
-        return {"proposal": {}, "company_matches": [], "contact_matches": []}
-    proposal = build_conversion_proposal(dict(brief), price_cents=price_cents)
-    company_matches: list[dict[str, object]] = []
-    contact_matches: list[dict[str, object]] = []
-    if brief_id in (1, PREVIEW_BRIEF_CONVERT_MATCHES_ID):
-        company_matches.append(
-            {
-                "id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
-                "name": "Northwind Labs (existing)",
-                "domain": proposal.get("domain"),
-            }
-        )
-    if brief_id == PREVIEW_BRIEF_CONVERT_MATCHES_ID:
-        contact_matches.append(
-            {
-                "id": "dddddddd-dddd-dddd-dddd-dddddddddddd",
-                "email": proposal.get("contact_email"),
-                "company_id": company_matches[0]["id"] if company_matches else None,
-            }
-        )
-    return {
-        "proposal": proposal,
-        "company_matches": company_matches,
-        "contact_matches": contact_matches,
-    }
-
-
-def preview_brief_convert_post(
-    brief_id: int,
-    *,
-    company_mode: str,
-    contact_mode: str,
-    selected_company_id: object,
-    selected_contact_id: object,
-) -> str | None:
-    """Simulate validation errors for preview POST; None means success."""
-    if brief_id == PREVIEW_BRIEF_CONVERT_MATCHES_ID:
-        if company_mode == "existing" and selected_company_id is None:
-            return "Select an existing company match or choose to create a new company."
-        if contact_mode == "existing" and selected_contact_id is None:
-            return "Select the existing contact match or choose to create a new contact."
-    if brief_id == PREVIEW_BRIEF_CONVERTED_ID:
-        return None
-    return None
-
-
 AUDIT_ACTIONS = (
     "admin.login.success",
     "admin.logout",
     "import.batch",
     "entity.delete",
     "pipeline.update",
-    "brief.convert",
 )
 
 
@@ -700,6 +614,124 @@ def build_preview_audit_events(
             }
         )
     return events
+
+
+@dataclass(frozen=True)
+class PreviewLinkedInImportData:
+    connection_count: int
+    message_thread_count: int
+    invitation_count: int
+    company_follow_count: int
+    duplicate_urls: tuple[str, ...]
+    ignored_samples: tuple[str, ...]
+    warnings: tuple[str, ...]
+
+
+def build_preview_linkedin_import_data(
+    *,
+    rng: random.Random | None = None,
+) -> PreviewLinkedInImportData:
+    """Randomized LinkedIn import preview stats for ADMIN_PREVIEW_MODE."""
+    rng = rng or _preview_rng()
+    return PreviewLinkedInImportData(
+        connection_count=rng.randint(120, 840),
+        message_thread_count=rng.randint(8, 64),
+        invitation_count=rng.randint(3, 40),
+        company_follow_count=rng.randint(5, 55),
+        duplicate_urls=tuple(
+            f"https://linkedin.com/in/{rng.choice(CONTACT_FIRST).lower()}-{rng.choice(CONTACT_LAST).lower()}"
+            for _ in range(rng.randint(1, 3))
+        ),
+        ignored_samples=(
+            "Logins.csv",
+            "PhoneNumbers.csv",
+            "Security_Challenges.csv",
+            "Ads Clicked.csv",
+        ),
+        warnings=(
+            "Connections.csv: 2 rows missing profile URL",
+            "messages.csv: 1 row without conversation id",
+        ),
+    )
+
+
+def render_preview_imports_main(
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> str:
+    """HTML main fragment for /admin/imports in preview mode (populated preview)."""
+    rng = rng or _preview_rng()
+    now = now or datetime.now(timezone.utc)
+    data = build_preview_linkedin_import_data(rng=rng)
+    generated = now.strftime("%Y-%m-%d %H:%M:%S UTC")
+    dup_rows = "".join(
+        f"<li>{html.escape(url)}</li>" for url in data.duplicate_urls
+    )
+    ignored_rows = "".join(
+        f"<li><code>{html.escape(name)}</code></li>" for name in data.ignored_samples
+    )
+    warning_rows = "".join(
+        f"<li>{html.escape(warning)}</li>" for warning in data.warnings
+    )
+    return f"""        <section class="admin-section linkedin-import" aria-labelledby="imports-title">
+          <p class="admin-preview-banner" role="status">Preview data — not production</p>
+          <div class="admin-section-head">
+            <div>
+              <p class="admin-eyebrow">Data import</p>
+              <h1 class="admin-title" id="imports-title">LinkedIn export preview</h1>
+            </div>
+          </div>
+          <p class="admin-lede">
+            Mock parsed export for screenshots
+            (<time datetime="{html.escape(generated)}">{html.escape(generated)}</time>).
+            Parsing runs locally; nothing is uploaded.
+          </p>
+          <div class="linkedin-import-privacy" role="note">
+            <h2 class="admin-section-title">Privacy &amp; retention</h2>
+            <dl class="linkedin-import-privacy-grid">
+              <div><dt>Processed locally</dt><dd><code>Connections.csv</code>, <code>messages.csv</code>, <code>Invitations.csv</code>, <code>Company Follows.csv</code></dd></div>
+              <div><dt>Ignored in archive</dt><dd>Logins, phones, security challenges, ads, receipts, and all other files</dd></div>
+              <div><dt>Transmitted</dt><dd>Nothing in this preview step</dd></div>
+              <div><dt>Retained</dt><dd>Nothing server-side until a future import-batch step</dd></div>
+            </dl>
+          </div>
+          <div class="linkedin-import-status linkedin-import-status--ok" role="status">Preview ready — nothing uploaded.</div>
+          <div class="linkedin-import-preview">
+            <h2 class="admin-section-title">Import preview</h2>
+            <dl class="admin-stat-row linkedin-import-stats">
+              <div><dt>Connections</dt><dd>{data.connection_count}</dd></div>
+              <div><dt>Message threads</dt><dd>{data.message_thread_count}</dd></div>
+              <div><dt>Invitations</dt><dd>{data.invitation_count}</dd></div>
+              <div><dt>Company follows</dt><dd>{data.company_follow_count}</dd></div>
+            </dl>
+            <h3 class="admin-section-title">Proposed changes (preview only)</h3>
+            <ul class="linkedin-import-proposed-list">
+              <li><strong>New connections:</strong> {data.connection_count}</li>
+              <li><strong>Message threads:</strong> {data.message_thread_count}</li>
+              <li><strong>Invitations:</strong> {data.invitation_count}</li>
+              <li><strong>Company follows:</strong> {data.company_follow_count}</li>
+            </ul>
+            <h3 class="admin-section-title">Validation warnings</h3>
+            <ul class="linkedin-import-warnings">{warning_rows}</ul>
+            <h3 class="admin-section-title">Duplicate profile URLs in export</h3>
+            <ul class="linkedin-import-duplicates">{dup_rows}</ul>
+            <h3 class="admin-section-title">Recognized files</h3>
+            <div class="admin-table-wrap">
+              <table class="admin-table">
+                <thead><tr><th>File</th><th>Rows</th><th>Valid</th><th>Skipped</th><th>Path in archive</th></tr></thead>
+                <tbody>
+                  <tr><td>connections.csv</td><td>{data.connection_count + 2}</td><td>{data.connection_count}</td><td>2</td><td>LinkedIn Export/Connections.csv</td></tr>
+                  <tr><td>messages.csv</td><td>{data.message_thread_count * 4}</td><td>{data.message_thread_count * 4 - 1}</td><td>1</td><td>LinkedIn Export/messages.csv</td></tr>
+                  <tr><td>Invitations.csv</td><td>{data.invitation_count}</td><td>{data.invitation_count}</td><td>0</td><td>LinkedIn Export/Invitations.csv</td></tr>
+                  <tr><td>company follows.csv</td><td>{data.company_follow_count}</td><td>{data.company_follow_count}</td><td>0</td><td>LinkedIn Export/Company Follows.csv</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <h3 class="admin-section-title">Ignored archive entries</h3>
+            <ul class="linkedin-import-ignored">{ignored_rows}</ul>
+          </div>
+        </section>"""
 
 
 def render_preview_section_main(
