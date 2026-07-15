@@ -146,6 +146,11 @@ a dirty PR as unfinished Builder work.
    failed → re-enter `status:queued` (`waiting` handoff in
    `trace/builder-handoff.txt`) so you run again; **never** send a conflicted or
    unresolved PR to Reviewer.
+   **Circuit breaker:** `handoff_builder_when_mergeable` escalates
+   (`@human-review` + `status:blocked`) instead of requeuing once the same
+   `smoke_error` repeats across `REPEATED_CONFLICT_FAILURE_LIMIT` (3)
+   consecutive `broken_after_resolve` results — see **Contaminated PR heads**
+   below (#242). Requeuing is only for genuinely converging retries.
 
 If Reviewer returns the issue with merge-conflict hard fails (e.g. another
 branch merged after your handoff), resolve on the **same** PR head and
@@ -273,6 +278,26 @@ PR head identical to `main` (0 commits ahead):
 
 Empty PR heads (`ahead_by: 0`) are **not** “done” — they need implementation
 commits. Do not hand off `waiting` forever without new commits.
+
+**Identical repeated smoke failure (learned from
+[#242](https://github.com/saberistic-team/agent-web/issues/242)):** codegen
+had split one concern across two modules — `app/admin_secrets.py` defined
+`validate_admin_security_config`, while five test files imported that name
+from `app.admin_security` — a `ModuleNotFoundError`/`ImportError` that
+`builder_conflicts.py` cannot fix (it only resolves textual merge conflicts,
+not naming bugs inside Builder's own change). Every dispatch re-ran codegen,
+which reproduced the same split instead of converging, so `builder_conflicts`
+returned `broken_after_resolve` with the **identical** `smoke_error` **54
+times over 7+ hours** with nothing counting the repeats. Do not rely on
+noticing this yourself — `scripts/run_agent.py:repeated_conflict_smoke_signature`
+now scans the last `REPEATED_CONFLICT_FAILURE_LIMIT` (3) `builder_conflict_result`
+comments and escalates (`@human-review` + `status:blocked`) instead of
+requeuing when the smoke error is byte-for-byte identical across all of them.
+If you land on an issue already carrying that escalation comment: do **not**
+just re-run codegen again — grep the whole `app/` tree for the symbol name in
+the error, put every definition and every import in **one** canonical module,
+delete the orphan module, and only then resume normal Builder work on the
+same PR head.
 
 ## Dependent milestone issues (anti-loop)
 
