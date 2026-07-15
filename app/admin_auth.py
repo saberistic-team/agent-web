@@ -21,10 +21,7 @@ from fastapi.responses import Response
 
 from app import db
 from app.config import Settings
-from app.proxy_trust import (
-    ClientSourceResolution,
-    resolve_admin_login_client_source,
-)
+from app.proxy_trust import ClientSourceResolution, resolve_admin_login_client_source
 
 SESSION_COOKIE_NAME = "admin_session"
 LOGIN_FLOW_COOKIE_NAME = "admin_login_flow"
@@ -263,7 +260,7 @@ def client_ip(request: Request, settings: Settings) -> str:
 
 def client_source_resolution_path(request: Request, settings: Settings) -> str:
     """Return the telemetry-only resolution path label for the active request."""
-    return _cached_client_source_resolution(request, settings).path
+    return _cached_client_source_resolution(request, settings).path.value
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:

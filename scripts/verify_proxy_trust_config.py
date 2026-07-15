@@ -11,6 +11,8 @@ ROOT = Path(__file__).resolve().parent.parent
 RENDER_YAML = ROOT / "render.yaml"
 ADMIN_AUTH_DOC = ROOT / "docs" / "ADMIN_AUTH.md"
 
+EXPECTED_FORWARDED_ALLOW_IPS = "10.0.0.0/8,172.16.0.0/12,100.64.0.0/10"
+
 
 def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
@@ -22,8 +24,13 @@ def verify_render_start_command(content: str) -> list[str]:
     if match is None:
         return ["render.yaml: missing startCommand"]
     command = match.group(1).strip()
-    if "--no-proxy-headers" not in command:
-        errors.append("render.yaml: startCommand must include --no-proxy-headers")
+    if "--proxy-headers" not in command:
+        errors.append("render.yaml: startCommand must include --proxy-headers")
+    if f"--forwarded-allow-ips={EXPECTED_FORWARDED_ALLOW_IPS}" not in command:
+        errors.append(
+            "render.yaml: startCommand --forwarded-allow-ips must match "
+            f"{EXPECTED_FORWARDED_ALLOW_IPS!r}"
+        )
     if "uvicorn app.main:app" not in command:
         errors.append("render.yaml: startCommand must launch uvicorn app.main:app")
     return errors
@@ -32,8 +39,8 @@ def verify_render_start_command(content: str) -> list[str]:
 def verify_render_env(content: str) -> list[str]:
     errors: list[str] = []
     required = {
-        "ADMIN_TRUST_PROXY_HEADERS": '"true"',
-        "ADMIN_TRUSTED_PROXY_IPS": None,
+        "ADMIN_TRUST_PROXY_HEADERS": "true",
+        "ADMIN_TRUSTED_PROXY_CIDRS": EXPECTED_FORWARDED_ALLOW_IPS,
     }
     for key, expected_value in required.items():
         pattern = rf"- key: {re.escape(key)}\s*\n\s*value:\s*(.+)"
@@ -42,26 +49,25 @@ def verify_render_env(content: str) -> list[str]:
             errors.append(f"render.yaml: missing env var {key}")
             continue
         value = match.group(1).strip().strip('"')
-        if expected_value is not None and value.lower() != expected_value.strip('"'):
+        if value != expected_value:
             errors.append(
-                f"render.yaml: {key} expected {expected_value}, got {match.group(1)!r}"
+                f"render.yaml: {key} expected {expected_value!r}, got {value!r}"
             )
-        if key == "ADMIN_TRUSTED_PROXY_IPS" and not value:
-            errors.append("render.yaml: ADMIN_TRUSTED_PROXY_IPS must not be empty")
     return errors
 
 
 def verify_admin_auth_doc(content: str) -> list[str]:
     errors: list[str] = []
     for phrase in (
-        "ADMIN_TRUSTED_PROXY_IPS",
-        "--no-proxy-headers",
-        "right-to-left",
-        "CF-Ray",
+        "ADMIN_TRUSTED_PROXY_CIDRS",
+        "--forwarded-allow-ips",
+        "right to left",
+        "verify_proxy_trust_config.py",
     ):
         if phrase not in content:
             errors.append(f"docs/ADMIN_AUTH.md: missing documentation for {phrase!r}")
-    if "left-most" in content.lower() or "leftmost" in content.lower():
+    lowered = content.lower()
+    if "left-most" in lowered or "leftmost" in lowered:
         errors.append(
             "docs/ADMIN_AUTH.md: must not document left-most X-Forwarded-For trust"
         )

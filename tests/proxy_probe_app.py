@@ -13,4 +13,4 @@ app = FastAPI()
 @app.get("/source")
 def source_probe(request: Request) -> dict[str, str]:
     resolution = resolve_admin_login_client_source(request, get_settings())
-    return {"source": resolution.source, "path": resolution.path.value}
+    return {"source": resolution.address, "path": resolution.path.value}

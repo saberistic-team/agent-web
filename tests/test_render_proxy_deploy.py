@@ -7,10 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from app.admin_client_source import (
-    DEFAULT_RENDER_TRUSTED_PROXY_CIDRS,
-    uvicorn_forwarded_allow_ips_arg,
-)
+from app.proxy_trust import PRODUCTION_TRUSTED_PROXY_CIDRS, uvicorn_forwarded_allow_ips_arg
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -32,17 +29,17 @@ def test_render_yaml_declares_matching_proxy_trust_settings() -> None:
     start_command = start_match.group(1)
 
     assert "--forwarded-allow-ips" in start_command
-    uvicorn_cidrs = start_command.split("--forwarded-allow-ips", 1)[1].strip()
+    uvicorn_cidrs = start_command.split("--forwarded-allow-ips=", 1)[1].strip()
     assert uvicorn_cidrs == uvicorn_forwarded_allow_ips_arg()
 
     configured = _render_env_value(render_yaml, "ADMIN_TRUSTED_PROXY_CIDRS")
     assert configured == uvicorn_forwarded_allow_ips_arg()
-    assert configured == ",".join(DEFAULT_RENDER_TRUSTED_PROXY_CIDRS)
+    assert configured == ",".join(PRODUCTION_TRUSTED_PROXY_CIDRS)
 
 
 @pytest.mark.unit
 def test_admin_auth_docs_mention_trusted_proxy_cidrs() -> None:
     docs = (REPO_ROOT / "docs" / "ADMIN_AUTH.md").read_text()
     assert "ADMIN_TRUSTED_PROXY_CIDRS" in docs
-    assert "right-to-left" in docs
+    assert "right to left" in docs
     assert "--forwarded-allow-ips" in docs

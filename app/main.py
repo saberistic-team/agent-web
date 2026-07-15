@@ -25,7 +25,7 @@ from app.admin_pipeline_routes import router as admin_pipeline_router
 from app.admin_routes import router as admin_router
 from app.actor_context import CORRELATION_HEADER
 from app.config import get_settings
-from app.proxy_trust import PRODUCTION_TRUSTED_PROXY_CIDRS, proxy_trust_enabled
+from app.proxy_trust import PRODUCTION_TRUSTED_PROXY_CIDRS, proxy_trust_enabled, uvicorn_forwarded_allow_ips_arg
 from app.models import BriefCreateRequest, BriefCreateResponse
 from app.seo import (
     PERMANENT_REDIRECTS,
@@ -125,7 +125,7 @@ def health() -> dict:
         "trusted_cidr_count": len(PRODUCTION_TRUSTED_PROXY_CIDRS)
         if proxy_trust_enabled(settings)
         else 0,
-        "uvicorn_proxy_headers": proxy_trust_enabled(settings),
+        "forwarded_allow_ips": uvicorn_forwarded_allow_ips_arg(settings),
     }
     if not settings.database_configured:
         return payload
