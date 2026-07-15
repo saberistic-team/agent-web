@@ -51,7 +51,13 @@ def render_companies_list_page(
     filters: dict[str, str | None],
     csrf_token: str,
     admin_username: str,
+    preview_banner: str | None = None,
 ) -> str:
+    banner_html = ""
+    if preview_banner:
+        banner_html = (
+            f'<p class="admin-preview-banner" role="status">{_esc(preview_banner)}</p>'
+        )
     rows = "".join(
         f"""<tr>
           <td><a href="/admin/companies/{_esc(row["id"])}">{_esc(row.get("name"))}</a></td>
@@ -63,6 +69,7 @@ def render_companies_list_page(
         for row in companies
     ) or '<tr><td colspan="5">No companies match these filters.</td></tr>'
     main = f"""<section class="admin-section" aria-labelledby="companies-title">
+      {banner_html}
       <div class="admin-section-head"><div><p class="admin-eyebrow">CRM</p><h1 class="admin-title" id="companies-title">Companies</h1></div><a class="cta" href="/admin/companies/new">Add company</a></div>
       <form class="admin-form" method="get" action="/admin/companies">
         <div class="field"><label for="q">Search</label><input id="q" name="q" value="{_esc(filters.get("q"))}" placeholder="Name or domain" /></div>
