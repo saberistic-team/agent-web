@@ -77,20 +77,12 @@ See [AUDIT_EVENTS.md](AUDIT_EVENTS.md) for append-only audit semantics.
 | `pipeline_stage` | `TEXT` | Acquisition stage (default `researching`); see `app/pipeline_stages.py` |
 | `next_action` | `TEXT` | Operator next step |
 | `next_action_due_at` | `TIMESTAMPTZ` | Due date for next action |
-| `pipeline_owner` | `TEXT` | Assigned operator |
-| `expected_value_cents` | `INTEGER` | Expected deal value in cents |
-| `pipeline_loss_reason` | `TEXT` | Required context when stage is `lost` |
-| `pipeline_nurture_reason` | `TEXT` | Required context when stage is `nurture` |
+| `owner` | `TEXT` | Assigned operator |
+| `expected_value` | `NUMERIC(12,2)` | Expected deal value |
+| `stage_reason` | `TEXT` | Required context when stage is `lost` or `nurture` |
 
 Indexes: `status`, `website`, `domain`, `category`, `stage`, `target_status`,
-`archived_at`, `last_verified_at`, partial `pipeline_stage`, partial
-`next_action_due_at`.
-
-Databases that applied an earlier incompatible form of migration `013` may still
-have legacy columns (`owner`, `expected_value`, `stage_reason`) and
-`company_stage_history`. Migration `015` backfills the canonical fields from
-those values and copies history into `pipeline_stage_history` without dropping
-the legacy storage (destructive cleanup requires a separate reviewed migration).
+`archived_at`, `last_verified_at`, `pipeline_stage`, `next_action_due_at`, `owner`.
 
 `app/companies.py` owns the category/stage/target registries and normalizes domains
 before storage. Unknown registry values are validation errors; blank optional values
@@ -267,13 +259,13 @@ Index: `flow_token_hash`. Partial indexes on `expires_at` (unconsumed) and
 
 ### `admin_login_rate_limits`
 
-Shared login throttling state ([#138](https://github.com/saberistic-team/agent-web/issues/138)).
+Shared login throttling state ([#138](https://github.com/saberistic-team/agent-web/issues/138), hardened in [#215](https://github.com/saberistic-team/agent-web/issues/215)).
 Stores hashed limiter keys only — no raw usernames or client IPs.
 
 | Column | Type | Notes |
 |--------|------|-------|
-| `limiter_key` | `TEXT` | PK; SHA-256 of normalized username + client source |
-| `failure_count` | `INTEGER` | Failures in the current window |
+| `limiter_key` | `TEXT` | PK; SHA-256 of prefixed source or account bucket material |
+| `failure_count` | `INTEGER` | Reserved attempts / failures in the current window |
 | `window_started_at` | `TIMESTAMPTZ` | Start of the counting window |
 | `locked_until` | `TIMESTAMPTZ` | Lockout expiry when limit exceeded |
 | `updated_at` | `TIMESTAMPTZ` | Last mutation; used for cleanup |
@@ -299,25 +291,10 @@ Migrations live in `app/migrations/definitions.py` and are applied at startup vi
 | `012` | `contact_records` | Contact roles, relationship context, optional email, soft archival |
 | `013` | `acquisition_pipeline` | Pipeline stages, stage history, expanded activity types |
 | `014` | `import_batches` | LinkedIn import batch metadata and per-row outcomes |
-| `015` | `reconcile_acquisition_pipeline_schema` | Forward-only reconcile of legacy `013` columns/history to the canonical pipeline schema ([#210](https://github.com/saberistic-team/agent-web/issues/210)) |
-
-**Legacy `013` divergence:** an earlier deployed form of `013` created
-`owner` / `expected_value` / `stage_reason` and `company_stage_history`. A later
-revision reused version `013` for the canonical
-`pipeline_owner` / `expected_value_cents` / `pipeline_loss_reason` /
-`pipeline_nurture_reason` and `pipeline_stage_history`. The runner keys pending
-work by version, so migration `015` performs the additive reconciliation.
-Versions that have shipped to production are frozen via
-`FROZEN_MIGRATION_DIGESTS` so an existing migration cannot be silently
-redefined again. After each healthy production deploy, the CI job
-**Freeze shipped migrations** runs `scripts/freeze_shipped_migrations.py
---commit --wait-healthy` and commits any still-unfrozen digests with a
-`deploy: freeze …` meta commit (skipped by the Deploy job so Render is not
-retriggered).
 
 Applied versions are recorded in `schema_migrations`. Steps are **idempotent**
-(`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, conditional legacy backfills) so
-empty and existing Render Postgres databases both converge safely.
+(`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`) so empty and existing Render Postgres
+databases both converge safely.
 
 ### Concurrent startup
 

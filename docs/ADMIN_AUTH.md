@@ -15,8 +15,8 @@ Parent issue: [#101](https://github.com/saberistic-team/agent-web/issues/101).
   pre-authentication browser flow stored server-side.
 - Authenticated state-changing requests (e.g. logout) require a CSRF token bound
   to the active server-side session.
-- Login POST requests are rate limited per username-and-source key in shared
-  Postgres storage (consistent across instances).
+- Login POST requests are rate limited using source-wide and account-wide buckets in
+  shared Postgres storage with atomic admission (consistent across instances).
 - Logout revokes the active session server-side, records one `auth.logout` audit
   event in the same transaction, and clears the cookie. Missing, invalid,
   expired, or already-revoked sessions receive idempotent cookie cleanup with
@@ -47,8 +47,9 @@ server-side; raw tokens appear in HTML forms only and are never logged.
 2. The login form embeds the raw CSRF token in a hidden field.
 3. `POST /admin/login` requires both the flow cookie and matching CSRF field.
    The flow row is consumed (one-time use) on every POST attempt.
-4. On failure or throttle, a fresh flow and CSRF token are issued.
-5. On success, the flow cookie is cleared and a new authenticated session is
+4. On failure, a fresh flow and CSRF token are issued when the login flow was consumed.
+5. On throttle, the existing flow remains valid and is not replaced.
+6. On success, the flow cookie is cleared and a new authenticated session is
    minted (session fixation resistance).
 
 Stale flows are removed opportunistically when minting a new flow
@@ -220,33 +221,92 @@ limits apply consistently across web processes, instances, and deployments.
 
 ### Limiter key strategy
 
-Each attempt is keyed by a SHA-256 hash of `normalized_username:client_source`:
+Each attempt consults one or two privacy-preserving SHA-256 buckets (only the digest
+is stored as ``limiter_key``):
 
-- **Username** — submitted value lowercased and stripped (not stored in the table).
-- **Client source** — resolved IP from :func:`client_ip` (not stored in the table).
+| Bucket | Key material | Purpose |
+|--------|--------------|---------|
+| **Source-wide** | ``src:<normalized_client_source>`` | Stops username rotation from one client source |
+| **Account-wide** | ``acct:<normalized_configured_admin_username>`` | Limits distributed attempts against the configured admin account |
 
-Only the hash (`limiter_key`) is persisted.
+The submitted username is normalized (lowercased/stripped) only to decide whether the
+account bucket applies. Unknown usernames still share the source bucket for their
+client source; responses remain generic.
 
-### Trusted proxy handling
+Raw usernames, passwords, IP addresses, forwarding headers, CSRF tokens, and session
+secrets are never written to limiter rows or limiter observability logs.
 
-Set `ADMIN_TRUST_PROXY_HEADERS=true` when the app runs behind a trusted reverse
-proxy (e.g. Render) so `X-Forwarded-For` is used for the client source. Leave it
-unset or `false` for local development and direct connections; spoofed forwarding
-headers are ignored and the direct peer address is used instead.
+### Client source resolution
 
-### Lockout and recovery
+Resolved client source comes from :func:`client_ip`:
 
-- After `ADMIN_LOGIN_RATE_LIMIT` failures within `ADMIN_LOGIN_RATE_WINDOW_SECONDS`,
-  further attempts are blocked until `ADMIN_LOGIN_LOCKOUT_SECONDS` elapse.
-- A successful login deletes the limiter row for that key (and clears any in-memory
-  fallback state).
-- Expired rows are removed opportunistically on failed-login writes (retention is
-  `2 × max(window, lockout)`).
+- **IPv4 / IPv6** — used verbatim in the source bucket digest (e.g. ``203.0.113.1``,
+  ``2001:db8::1``).
+- **Missing peer** — ``unknown`` (still one shared bucket).
+- **Trusted proxy** — when ``ADMIN_TRUST_PROXY_HEADERS=true``, the left-most
+  ``X-Forwarded-For`` value is used (Render and similar deployments).
+- **Direct connections / local dev** — leave proxy trust off; spoofed
+  ``X-Forwarded-For`` values are ignored and the direct peer address is used.
+
+### Atomic admission
+
+``POST /admin/login`` calls :func:`try_admit_login_attempt` **before** Argon2
+verification. The helper executes one PostgreSQL transaction that:
+
+1. Ensures limiter rows exist for the relevant bucket(s).
+2. Locks those rows with ``SELECT … FOR UPDATE`` in deterministic key order.
+3. Denies admission when any bucket is actively locked (no counter increment).
+4. Otherwise increments failure counters and sets ``locked_until`` when the threshold
+   is reached.
+
+With limit ``N``, at most ``N`` requests per bucket set can reach password verification
+during a synchronized burst across connections and instances.
+
+Successful login clears the account-wide bucket and releases the current source-wide
+admission reservation (decrements the source failure counter by one without clearing
+unrelated source history). Source-wide counters otherwise decay via the rolling window
+and lockout expiry.
+
+### Attempt / window / lockout semantics
+
+| Setting | Meaning |
+|---------|---------|
+| ``ADMIN_LOGIN_RATE_LIMIT`` (`N`) | Maximum admitted attempts (each may reach Argon2) per bucket within the active window before lockout |
+| ``ADMIN_LOGIN_RATE_WINDOW_SECONDS`` | Rolling window; expired windows reset counters on the next admitted attempt |
+| ``ADMIN_LOGIN_LOCKOUT_SECONDS`` | After the `N`th admitted attempt in a window, ``locked_until`` blocks further admission until this duration elapses |
+
+Admission is reserved before credential checks. Invalid CSRF and invalid credentials
+still consume an admitted attempt. Throttled requests do **not** run Argon2, do not
+consume the login flow, and do not mint replacement flows.
+
+### Throttled-request durability
+
+While a bucket is locked:
+
+- Repeated denials do not append immutable audit events (one lockout transition event
+  is recorded when the threshold is first reached).
+- Login flows are not consumed solely because the limiter denied the request.
+- Limiter rows are not created per rotated username (source bucket is bounded).
+
+### Input bounds
+
+Before hashing, storage, or verification, login POST fields are capped:
+
+| Field | Max length |
+|-------|------------|
+| Username | 256 |
+| Password | 512 |
+| CSRF token | 256 |
+| Login-flow cookie | 512 |
+| ``next`` | 2048 |
+
+Oversized values receive the same generic *Invalid username or password* response
+without Argon2 work.
 
 ### When Postgres is unavailable
 
 If the shared limiter cannot be reached, the app logs a warning and applies a
-conservative in-memory fallback (2 failures per 60 seconds per key). This fails
+conservative in-memory fallback (2 admissions per 60 seconds per bucket set). This fails
 closed without creating a permanent lockout — the fallback window is short and
 resets automatically. Restore database connectivity to resume shared enforcement.
 
@@ -259,6 +319,9 @@ DELETE FROM admin_login_rate_limits
 WHERE updated_at < NOW() - INTERVAL '30 minutes'
   AND (locked_until IS NULL OR locked_until < NOW());
 ```
+
+Expired rows are also removed opportunistically after admitted attempts (retention is
+``2 × max(window, lockout)``).
 
 ## Login flow retention
 

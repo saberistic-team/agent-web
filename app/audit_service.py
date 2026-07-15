@@ -186,9 +186,8 @@ def record_login_failure(
     attempted_username: str | None = None,
     repository: AuditEventRepository | None = None,
 ) -> dict[str, Any] | None:
+    del attempted_username
     metadata: dict[str, Any] = {"reason": reason}
-    if attempted_username:
-        metadata["attempted_username"] = attempted_username
     return record_event(
         conn,
         actor_context=actor_context,
