@@ -21,7 +21,10 @@ from fastapi.responses import Response
 
 from app import db
 from app.config import Settings
-from app.proxy_trust import resolve_admin_login_client_source
+from app.proxy_trust import (
+    log_source_resolution,
+    resolve_admin_login_client_source,
+)
 
 SESSION_COOKIE_NAME = "admin_session"
 LOGIN_FLOW_COOKIE_NAME = "admin_login_flow"
@@ -236,13 +239,20 @@ def read_login_flow_token(request: Request) -> str | None:
 
 
 def client_ip(request: Request, settings: Settings) -> str:
-    """Resolve the client source for admin login rate limiting.
+    """Resolve the client source IP for rate limiting.
 
-    Delegates to :func:`resolve_admin_login_client_source`, which verifies the
-    immediate peer against ``ADMIN_TRUSTED_PROXY_IPS`` before honoring any
-    forwarding headers. Raw addresses are never logged or persisted.
+    See :func:`resolve_admin_login_client_source` and ``docs/ADMIN_AUTH.md`` for
+    the trusted-proxy model (Cloudflare → Render → Uvicorn).
     """
-    return resolve_admin_login_client_source(request, settings).source
+    socket_peer = request.client.host if request.client is not None else None
+    resolution = resolve_admin_login_client_source(
+        socket_peer=socket_peer,
+        headers=request.headers,
+        trust_proxy_headers=settings.admin_trust_proxy_headers,
+        trusted_proxy_cidrs=settings.admin_trusted_proxy_cidrs,
+    )
+    log_source_resolution(resolution.path)
+    return resolution.source
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
@@ -366,8 +376,7 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    resolution = resolve_admin_login_client_source(request, settings)
-    source = resolution.source
+    source = client_ip(request, settings)
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,
@@ -419,7 +428,6 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "lockout_transition": admission.lockout_transition,
-                "source_resolution_path": resolution.path,
             },
         )
     elif admission.already_locked:
@@ -428,7 +436,6 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "already_locked": True,
-                "source_resolution_path": resolution.path,
             },
         )
     return LoginAdmissionResult(

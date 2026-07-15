@@ -28,9 +28,8 @@ class Settings:
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
     admin_trust_proxy_headers: bool = False
-    admin_trusted_proxy_ips: str = ""
-    admin_cloudflare_edge_ips: str = ""
-    uvicorn_forwarded_allow_ips: str = ""
+    admin_trusted_proxy_cidrs: tuple[str, ...] = ()
+    admin_forwarded_allow_ips: str = ""
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -116,11 +115,14 @@ def get_settings() -> Settings:
             "ADMIN_TRUST_PROXY_HEADERS", ""
         ).lower()
         in ("1", "true", "yes"),
-        admin_trusted_proxy_ips=os.environ.get("ADMIN_TRUSTED_PROXY_IPS", "").strip(),
-        admin_cloudflare_edge_ips=os.environ.get(
-            "ADMIN_CLOUDFLARE_EDGE_IPS", ""
-        ).strip(),
-        uvicorn_forwarded_allow_ips=os.environ.get(
-            "UVICORN_FORWARDED_ALLOW_IPS", ""
+        admin_trusted_proxy_cidrs=_parse_admin_trusted_proxy_cidrs(),
+        admin_forwarded_allow_ips=os.environ.get(
+            "ADMIN_FORWARDED_ALLOW_IPS", ""
         ).strip(),
     )
+
+
+def _parse_admin_trusted_proxy_cidrs() -> tuple[str, ...]:
+    from app.proxy_trust import parse_trusted_proxy_cidrs
+
+    return parse_trusted_proxy_cidrs(os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", ""))

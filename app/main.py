@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -25,7 +26,6 @@ from app.admin_pipeline_routes import router as admin_pipeline_router
 from app.admin_routes import router as admin_router
 from app.actor_context import CORRELATION_HEADER
 from app.config import get_settings
-from app.proxy_trust import proxy_trust_health_summary
 from app.models import BriefCreateRequest, BriefCreateResponse
 from app.seo import (
     PERMANENT_REDIRECTS,
@@ -120,7 +120,19 @@ def health() -> dict:
     """
     payload: dict = {"status": "ok"}
     settings = get_settings()
-    payload["admin_login_proxy_trust"] = proxy_trust_health_summary(settings)
+    if settings.admin_trust_proxy_headers:
+        forwarded_allow_ips = settings.admin_forwarded_allow_ips
+        if not forwarded_allow_ips:
+            from app.proxy_trust import PRODUCTION_FORWARDED_ALLOW_IPS
+
+            forwarded_allow_ips = PRODUCTION_FORWARDED_ALLOW_IPS
+        payload["admin_proxy_trust"] = {
+            "enabled": True,
+            "forwarded_allow_ips": forwarded_allow_ips,
+            "trusted_proxy_cidrs_configured": bool(
+                os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "").strip()
+            ),
+        }
     if not settings.database_configured:
         return payload
     try:
