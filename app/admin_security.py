@@ -1,88 +1,66 @@
-"""Admin security configuration validation."""
+"""Fail-fast validation for admin authentication secrets."""
 
 from __future__ import annotations
 
-import hmac
-import re
-
 from app.config import Settings
 
-MIN_ADMIN_LOGIN_LIMITER_SECRET_LENGTH = 32
+MIN_ADMIN_SECRET_BYTES = 32
 
-_WEAK_SECRET_LITERALS = frozenset(
+_FORBIDDEN_SECRET_VALUES = frozenset(
     {
+        "",
         "changeme",
+        "change-me",
         "password",
-        "placeholder",
         "secret",
         "test",
+        "testing",
+        "placeholder",
+        "placeholder-placeholder-placehold!",
         "admin",
-        "default",
-        "example",
+        "admin-login-limiter-secret",
+        "admin_session_secret",
     }
 )
 
-_WEAK_SECRET_PATTERNS = (
-    re.compile(r"changeme", re.IGNORECASE),
-    re.compile(r"placeholder", re.IGNORECASE),
-    re.compile(r"your[-_]?secret", re.IGNORECASE),
-    re.compile(r"replace[-_]?me", re.IGNORECASE),
-)
+
+def _validate_secret_material(value: str, *, name: str) -> None:
+    if not value or not value.strip():
+        raise ValueError(f"{name} is required when admin authentication is configured")
+    encoded = value.encode("utf-8")
+    if len(encoded) < MIN_ADMIN_SECRET_BYTES:
+        raise ValueError(f"{name} must be at least {MIN_ADMIN_SECRET_BYTES} bytes")
+    normalized = value.strip().lower()
+    if normalized in _FORBIDDEN_SECRET_VALUES:
+        raise ValueError(f"{name} must not use a placeholder value")
+    if len(set(value)) < 4:
+        raise ValueError(f"{name} is too weak")
 
 
-class AdminSecurityConfigError(ValueError):
-    """Raised when required admin security configuration is missing or weak."""
+def validate_admin_login_limiter_secret(value: str, *, name: str = "ADMIN_LOGIN_LIMITER_SECRET") -> None:
+    """Validate limiter HMAC key material without logging or returning the secret."""
+    _validate_secret_material(value, name=name)
 
 
-def _is_weak_secret(secret: str) -> bool:
-    normalized = secret.strip()
-    if len(normalized) < MIN_ADMIN_LOGIN_LIMITER_SECRET_LENGTH:
-        return True
-    lowered = normalized.lower()
-    if lowered in _WEAK_SECRET_LITERALS:
-        return True
-    if any(pattern.search(normalized) for pattern in _WEAK_SECRET_PATTERNS):
-        return True
-    if len(set(normalized)) < 4:
-        return True
-    return False
-
-
-def validate_admin_login_limiter_secret(
-    secret: str,
-    *,
-    env_name: str = "ADMIN_LOGIN_LIMITER_SECRET",
-) -> None:
-    if not secret or not secret.strip():
-        raise AdminSecurityConfigError(
-            f"{env_name} is required for admin login rate limiting"
-        )
-    if _is_weak_secret(secret):
-        raise AdminSecurityConfigError(
-            f"{env_name} must be at least {MIN_ADMIN_LOGIN_LIMITER_SECRET_LENGTH} "
-            "high-entropy bytes; weak or placeholder values are rejected"
-        )
-
-
-def validate_admin_security_config(settings: Settings) -> None:
-    """Fail fast when admin auth is enabled outside preview mode."""
-    if not settings.admin_auth_configured:
+def validate_admin_security_settings(settings: Settings) -> None:
+    """Validate admin security secrets at startup when auth credentials are present."""
+    if not settings.database_url:
         return
-    if settings.admin_preview_enabled:
+    has_admin_credentials = bool(
+        settings.admin_username
+        and settings.admin_password_hash
+        and settings.admin_session_secret
+    )
+    if not has_admin_credentials:
         return
     validate_admin_login_limiter_secret(settings.admin_login_limiter_secret)
-    previous = settings.admin_login_limiter_secret_previous.strip()
-    if not previous:
-        return
-    validate_admin_login_limiter_secret(
-        previous,
-        env_name="ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS",
-    )
-    if hmac.compare_digest(
-        settings.admin_login_limiter_secret,
-        settings.admin_login_limiter_secret_previous,
-    ):
-        raise AdminSecurityConfigError(
-            "ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS must differ from "
-            "ADMIN_LOGIN_LIMITER_SECRET during rotation"
+    previous = settings.admin_login_limiter_secret_previous
+    if previous:
+        validate_admin_login_limiter_secret(
+            previous,
+            name="ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS",
         )
+        if previous == settings.admin_login_limiter_secret:
+            raise ValueError(
+                "ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS must differ from ADMIN_LOGIN_LIMITER_SECRET"
+            )

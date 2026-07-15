@@ -402,7 +402,7 @@ def try_admit_admin_login(
     conn: psycopg.Connection,
     *,
     limiter_keys: tuple[str, ...],
-    increment_keys: tuple[str, ...] | None = None,
+    guard_keys: tuple[str, ...] = (),
     now: datetime,
     rate_limit: int,
     window_seconds: int,
@@ -410,15 +410,12 @@ def try_admit_admin_login(
 ) -> AdminLoginAdmission:
     """Atomically decide whether a login attempt may reach password verification.
 
-    All ``limiter_keys`` are locked in sorted order inside one transaction so
-    concurrent requests cannot overshoot the configured threshold. When any key
-    is actively locked, admission is denied without incrementing counters.
-
-    ``increment_keys`` defaults to ``limiter_keys``. During secret rotation the
-    guard set may include previous-secret identifiers while counters increment
-    only under the current secret.
+    All ``limiter_keys`` and ``guard_keys`` are locked in sorted order inside one
+    transaction so concurrent requests cannot overshoot the configured threshold.
+    When any key is actively locked, admission is denied without incrementing
+    counters. Only ``limiter_keys`` are incremented on admission.
     """
-    if not limiter_keys:
+    if not limiter_keys and not guard_keys:
         return AdminLoginAdmission(
             admitted=True,
             throttled=False,
@@ -426,12 +423,10 @@ def try_admit_admin_login(
             lockout_transition=False,
         )
 
-    write_keys = increment_keys if increment_keys is not None else limiter_keys
-    ordered_guard_keys = tuple(sorted(set(limiter_keys)))
-    ordered_write_keys = tuple(sorted(set(write_keys)))
-    ordered_lock_keys = tuple(sorted(set(ordered_guard_keys) | set(ordered_write_keys)))
+    ordered_keys = tuple(sorted(set(limiter_keys + guard_keys)))
+    write_keys = tuple(sorted(limiter_keys))
     with conn.cursor() as cur:
-        for limiter_key in ordered_lock_keys:
+        for limiter_key in ordered_keys:
             cur.execute(
                 """
                 INSERT INTO admin_login_rate_limits (
@@ -451,11 +446,20 @@ def try_admit_admin_login(
             ORDER BY limiter_key
             FOR UPDATE
             """,
-            (list(ordered_lock_keys),),
+            (list(ordered_keys),),
         )
         rows = {str(row["limiter_key"]): row for row in cur.fetchall()}
+        for limiter_key in ordered_keys:
+            rows.setdefault(
+                limiter_key,
+                {
+                    "failure_count": 0,
+                    "window_started_at": now,
+                    "locked_until": None,
+                },
+            )
 
-        for limiter_key in ordered_guard_keys:
+        for limiter_key in ordered_keys:
             row = rows[limiter_key]
             locked_until = _normalize_limiter_locked_until(row["locked_until"])
             if locked_until is not None and locked_until > now:
@@ -469,7 +473,7 @@ def try_admit_admin_login(
 
         updates: dict[str, tuple[int, datetime, datetime | None]] = {}
         lockout_transition = False
-        for limiter_key in ordered_write_keys:
+        for limiter_key in write_keys:
             row = rows[limiter_key]
             window_started_at = row["window_started_at"]
             if window_started_at.tzinfo is None:
