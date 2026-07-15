@@ -235,23 +235,24 @@ def read_login_flow_token(request: Request) -> str | None:
     return token.strip() or None
 
 
-def resolve_admin_login_client_source_address(
-    request: Request,
-    settings: Settings,
-) -> str:
-    """Return the normalized client source string for admin login rate limiting."""
-    return resolve_admin_login_client_source(request, settings).source
-
-
 def client_ip(request: Request, settings: Settings) -> str:
     """Resolve the client source IP for rate limiting.
 
-    Delegates to :func:`resolve_admin_login_client_source_address`, which only
-    trusts forwarding headers when the immediate peer matches
-    ``ADMIN_TRUSTED_PROXY_CIDRS`` and walks ``X-Forwarded-For`` /
-    ``Forwarded`` right-to-left, stripping configured trusted hops.
+    Forwarding headers are honored only when the immediate peer matches
+    ``ADMIN_TRUSTED_PROXY_CIDRS``. A right-to-left trusted-hop parse selects
+    the client address; spoofed leftmost ``X-Forwarded-For`` values are ignored.
+
+    Source identity notes:
+
+    * **IPv4 / IPv6** — normalized before digesting into the source bucket.
+    * **Missing peer** — falls back to ``unknown`` so attempts still share one
+      bucket instead of creating an unbounded namespace.
+    * **Trusted proxy** — requires a verified immediate peer plus a valid
+      forwarding chain (see ``docs/ADMIN_AUTH.md``).
+    * **Direct connections / local dev** — leave trusted CIDRs empty; spoofed
+      forwarding headers are ignored and the direct peer address is used.
     """
-    return resolve_admin_login_client_source_address(request, settings)
+    return resolve_admin_login_client_source(request, settings).address
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
@@ -375,7 +376,8 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    source = client_ip(request, settings)
+    resolution = resolve_admin_login_client_source(request, settings)
+    source = resolution.address
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,
@@ -427,6 +429,7 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "lockout_transition": admission.lockout_transition,
+                "source_resolution_path": resolution.path,
             },
         )
     elif admission.already_locked:
@@ -435,6 +438,7 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "already_locked": True,
+                "source_resolution_path": resolution.path,
             },
         )
     return LoginAdmissionResult(
