@@ -274,16 +274,6 @@ class PostgresContactRepository:
             row = cur.fetchone()
         return dict(row) if row else None
 
-    def get_by_email(self, conn: psycopg.Connection, email: str) -> dict[str, Any] | None:
-        normalized = email.strip().lower()
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT * FROM contacts WHERE lower(email) = %s",
-                (normalized,),
-            )
-            row = cur.fetchone()
-        return dict(row) if row else None
-
     def get_active_by_email(
         self,
         conn: psycopg.Connection,
@@ -291,6 +281,13 @@ class PostgresContactRepository:
         *,
         exclude_contact_id: UUID | None = None,
     ) -> dict[str, Any] | None:
+        """Return the single active (non-archived) contact for an email, if any.
+
+        Active identity lookup: excludes archived rows (``archived_at IS NULL``).
+        The partial unique index ``idx_contacts_email_unique`` guarantees at most
+        one active row per normalized email; ``ORDER BY id`` keeps the result
+        deterministic even if that guarantee is ever weakened.
+        """
         normalized = email.strip().lower()
         conditions = ["LOWER(email) = %s", "archived_at IS NULL"]
         params: list[Any] = [normalized]
@@ -304,9 +301,39 @@ class PostgresContactRepository:
                 FROM contacts c
                 LEFT JOIN companies co ON co.id = c.company_id
                 WHERE {' AND '.join(conditions)}
+                ORDER BY c.id
                 LIMIT 1
                 """,
                 params,
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def get_archived_by_email(
+        self,
+        conn: psycopg.Connection,
+        email: str,
+    ) -> dict[str, Any] | None:
+        """Return the best archived contact match for an email, if any.
+
+        Archived identity lookup: the deliberate counterpart to
+        ``get_active_by_email`` (issue #226). Archived rows are never silently
+        linked as an active CRM contact — callers surface this only as a
+        restore/review option. The most recently archived row wins so operators
+        review the freshest history first.
+        """
+        normalized = email.strip().lower()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT c.*, co.name AS company_name
+                FROM contacts c
+                LEFT JOIN companies co ON co.id = c.company_id
+                WHERE LOWER(c.email) = %s AND c.archived_at IS NOT NULL
+                ORDER BY c.archived_at DESC, c.id
+                LIMIT 1
+                """,
+                (normalized,),
             )
             row = cur.fetchone()
         return dict(row) if row else None
