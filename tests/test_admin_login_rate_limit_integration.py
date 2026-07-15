@@ -99,8 +99,8 @@ def _admit(
 
 @pytest.mark.integration
 def test_username_rotation_shares_source_bucket(pg_conn: psycopg.Connection) -> None:
-    settings = get_settings()
     now = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+    settings = get_settings()
     source_key = admin_auth.build_source_rate_limit_key("203.0.113.10", settings)
 
     for index in range(5):
@@ -129,8 +129,7 @@ def test_username_rotation_shares_source_bucket(pg_conn: psycopg.Connection) -> 
 def test_concurrent_admission_does_not_overshoot_threshold(
     pg_conn: psycopg.Connection,
 ) -> None:
-    settings = get_settings()
-    source_key = admin_auth.build_source_rate_limit_key("198.51.100.20", settings)
+    source_key = admin_auth.build_source_rate_limit_key("198.51.100.20", get_settings())
     now = datetime(2026, 2, 1, 9, 0, tzinfo=timezone.utc)
     rate_limit = 5
     barrier = threading.Barrier(8)
@@ -168,10 +167,7 @@ def test_account_bucket_limits_configured_admin_across_sources(
     now = datetime(2026, 3, 1, 8, 0, tzinfo=timezone.utc)
 
     for index in range(5):
-        source_key = admin_auth.build_source_rate_limit_key(
-            f"203.0.113.{index + 1}",
-            settings,
-        )
+        source_key = admin_auth.build_source_rate_limit_key(f"203.0.113.{index + 1}", settings)
         admission = _admit(
             pg_conn,
             keys=(source_key, account_key),
@@ -193,8 +189,7 @@ def test_account_bucket_limits_configured_admin_across_sources(
 
 @pytest.mark.integration
 def test_window_boundary_resets_failure_count(pg_conn: psycopg.Connection) -> None:
-    settings = get_settings()
-    source_key = admin_auth.build_source_rate_limit_key("203.0.113.44", settings)
+    source_key = admin_auth.build_source_rate_limit_key("203.0.113.44", get_settings())
     window_seconds = 60
     start = datetime(2026, 4, 1, 10, 0, tzinfo=timezone.utc)
 
@@ -224,8 +219,7 @@ def test_window_boundary_resets_failure_count(pg_conn: psycopg.Connection) -> No
 
 @pytest.mark.integration
 def test_expired_lockout_allows_new_admissions(pg_conn: psycopg.Connection) -> None:
-    settings = get_settings()
-    source_key = admin_auth.build_source_rate_limit_key("203.0.113.55", settings)
+    source_key = admin_auth.build_source_rate_limit_key("203.0.113.55", get_settings())
     start = datetime(2026, 5, 1, 10, 0, tzinfo=timezone.utc)
     lockout_seconds = 30
 
@@ -261,8 +255,7 @@ def test_expired_lockout_allows_new_admissions(pg_conn: psycopg.Connection) -> N
 
 @pytest.mark.integration
 def test_cleanup_removes_stale_unlocked_rows(pg_conn: psycopg.Connection) -> None:
-    settings = get_settings()
-    source_key = admin_auth.build_source_rate_limit_key("203.0.113.66", settings)
+    source_key = admin_auth.build_source_rate_limit_key("203.0.113.66", get_settings())
     now = datetime(2026, 6, 1, 10, 0, tzinfo=timezone.utc)
     _admit(pg_conn, keys=(source_key,), now=now, rate_limit=5, window_seconds=60)
 

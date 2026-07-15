@@ -1050,8 +1050,9 @@ def test_rate_limit_expires_after_lockout(
         assert _login(password="wrong").status_code == 401
         assert _login(password="wrong").status_code == 429
 
-        source_key = admin_auth.build_source_rate_limit_key("testclient", get_settings())
-        account_key = admin_auth.build_account_rate_limit_key(TEST_USERNAME, get_settings())
+        settings = get_settings()
+        source_key = admin_auth.build_source_rate_limit_key("testclient", settings)
+        account_key = admin_auth.build_account_rate_limit_key(TEST_USERNAME, settings)
         expired_lock = datetime.now(timezone.utc) - timedelta(seconds=1)
         for key in (source_key, account_key):
             rate_limit_store.rows[key]["locked_until"] = expired_lock
@@ -1126,7 +1127,8 @@ def test_rotating_spoofed_forwarded_headers_share_trusted_peer_bucket(
                 assert response.status_code == 429
 
     assert len(rate_limit_store.rows) == 1
-    source_key = admin_auth.build_source_rate_limit_key(TEST_RENDER_PEER, get_settings())
+    settings = get_settings()
+    source_key = admin_auth.build_source_rate_limit_key(TEST_RENDER_PEER, settings)
     assert source_key in rate_limit_store.rows
 
 
@@ -1208,7 +1210,8 @@ def test_username_rotation_stops_password_verification_at_source_threshold(
                     assert response.status_code == 429
 
     assert verify_calls["count"] == 3
-    source_key = admin_auth.build_source_rate_limit_key("testclient", get_settings())
+    settings = get_settings()
+    source_key = admin_auth.build_source_rate_limit_key("testclient", settings)
     assert len(rate_limit_store.rows) == 1
     assert source_key in rate_limit_store.rows
 
@@ -1263,6 +1266,7 @@ def test_lockout_transition_records_single_audit_event(
             assert lockout.status_code == 401
             assert audit_mock.call_count == 2
             assert audit_mock.call_args_list[-1].kwargs["reason"] == "rate_limited"
+            assert audit_mock.call_args.kwargs.get("attempted_username") is None
 
 
 @pytest.mark.unit
@@ -1310,7 +1314,8 @@ def test_concurrent_login_admission_respects_shared_threshold(
     admitted_count = {"value": 0}
     lock = threading.Lock()
     now = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    source_key = admin_auth.build_source_rate_limit_key("203.0.113.77", get_settings())
+    settings = get_settings()
+    source_key = admin_auth.build_source_rate_limit_key("203.0.113.77", settings)
 
     def worker() -> None:
         barrier.wait()

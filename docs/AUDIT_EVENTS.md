@@ -8,7 +8,7 @@ Each row in `audit_events` includes:
 
 | Field | Description |
 |-------|-------------|
-| `actor` | Authenticated admin username, `anonymous` for unauthenticated attempts, or a service identity |
+| `actor` | Authenticated admin username, `anonymous` for every unauthenticated login failure, or a service identity |
 | `action` | Stable action code (for example `auth.login.success`, `entity.delete`) |
 | `entity_type` | Logical entity category (`admin_session`, `company`, `pipeline`, …) |
 | `entity_id` | Entity identifier as text |
@@ -53,28 +53,21 @@ both commit or roll back together.
 | Logout (authenticated) | `admin_routes.admin_logout` | Revocation + required audit atomically when the session row transitions to revoked |
 | Login failure | `admin_routes` | Best-effort audit (`required=False`); actor is always `anonymous` before authentication |
 
-Unauthenticated login failures never persist submitted username candidates in the
-`actor`, metadata, reason text, or correlation identifiers. Only server-defined
-reason codes (`invalid_credentials`, `invalid_csrf`, `rate_limited`) appear in audit
-metadata.
+Unauthenticated login failures never persist submitted username candidates in
+`actor`, metadata, reason text, or correlation fields. Reasons are a small
+server-defined enum (`invalid_credentials`, `invalid_csrf`, `rate_limited`). Use
+HTTP access logs or metrics for operational visibility of throttled traffic that
+does not emit an audit row.
 
 ### Historical login-failure actors (pre-#242)
 
-Before issue #242, some `auth.login.failure` rows could record attacker-supplied
-username candidates in the `actor` column. These rows remain append-only; operators
-must not treat such values as authenticated administrator identities. Inventory
-non-anonymous failure actors with:
-
-```sql
-SELECT created_at, actor, correlation_id, summary_after
-FROM audit_events
-WHERE action = 'auth.login.failure'
-  AND actor <> 'anonymous'
-ORDER BY created_at DESC;
-```
-
-Remediation of historical immutable rows requires an explicit data-governance decision;
-the forward fix prevents all new occurrences.
+Append-only protections are not disabled for remediation. Rows recorded before
+keyed limiter identifiers and anonymous failure actors shipped may contain
+attacker-supplied strings in the `actor` column for `auth.login.failure` events.
+Treat those values as untrusted enumeration artifacts in reporting — not as
+authenticated administrator identities. The forward fix prevents all new
+occurrences; rewriting historical immutable rows requires an explicit
+data-governance decision outside normal application code.
 
 `record_event(..., required=True)` propagates persistence errors. Security-sensitive
 mutations must not return success when a required audit event could not be stored.
@@ -129,7 +122,7 @@ or rolled-back logins never emit a new session cookie.
 | Action | When recorded |
 |--------|----------------|
 | `auth.login.success` | Valid admin login creates a server-side session |
-| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting (actor is always `anonymous`) |
+| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting |
 | `auth.logout` | Authenticated session revocation (live session → revoked) |
 | `import.batch` | Data import batches via `CrmService.commit_linkedin_import` / `import_batch` |
 | `import.batch.rollback` | Rollback of committed import batches via `CrmService.rollback_import_batch` |
