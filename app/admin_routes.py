@@ -25,11 +25,16 @@ from app.brief_conversion import (
     BriefConversionValidationError,
     pipeline_capabilities_available,
 )
-from app.contacts import BUYING_ROLES, ContactCreate, ContactUpdate
+from app.contacts import BUYING_ROLES, ContactCreate, ContactSafeSummary, ContactUpdate
 from app.crm_uow import crm_transaction
 from app.actor_context import actor_context_from_request, anonymous_actor_context, correlation_id_from_request
 from app.admin_layout import ADMIN_NAV_LINKS, render_admin_shell
-from app.admin_preview import PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR, PREVIEW_BRIEF_DATABASE_ERROR_ID
+from app.admin_preview import (
+    PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR,
+    PREVIEW_BRIEF_DATABASE_ERROR_ID,
+    PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID,
+    preview_contact_restore_conflict,
+)
 from app.config import Settings, get_settings
 from app.crm_service import CrmService
 from app.research_records import ResearchRecordCreate
@@ -968,10 +973,75 @@ def admin_contact_archive(request: Request, contact_id: UUID, csrf_token: str = 
 def admin_contact_restore(request: Request, contact_id: UUID, csrf_token: str = Form(...)) -> Response:
     session = require_admin_session(request)
     _verify_session_csrf(request, session, csrf_token)
-    with db.db_connection(get_settings().database_url) as conn:
-        if _crm.restore_contact(conn, contact_id) is None:
+    settings = get_settings()
+    actor_context = actor_context_from_request(request, actor=session.admin_username)
+    csrf_token_for_forms = _session_csrf_for_forms(request, settings)
+
+    if settings.admin_preview_enabled and contact_id == PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID:
+        preview = preview_contact_restore_conflict()
+        conflicting = ContactSafeSummary(**preview["conflicting_contact"])  # type: ignore[arg-type]
+        return HTMLResponse(
+            contact_pages.render_contact_restore_conflict_page(
+                csrf_token=csrf_token_for_forms,
+                admin_username=session.admin_username,
+                archived_contact=preview["archived_contact"],  # type: ignore[arg-type]
+                conflicting_contact=conflicting,
+                company_name=str(preview["archived_contact"].get("company_name")),  # type: ignore[union-attr]
+            )
+        )
+
+    with db.db_connection(settings.database_url) as conn:
+        result = _crm.restore_contact(conn, contact_id, actor_context=actor_context)
+        if result.outcome == "not_found":
             raise HTTPException(status_code=404, detail="Contact not found")
+        if result.outcome == "conflict":
+            return RedirectResponse(
+                url=f"/admin/contacts/{contact_id}/restore-conflict",
+                status_code=303,
+            )
     return RedirectResponse(url=f"/admin/contacts/{contact_id}/edit", status_code=303)
+
+
+@router.get("/contacts/{contact_id}/restore-conflict", response_class=HTMLResponse)
+def admin_contact_restore_conflict(request: Request, contact_id: UUID) -> HTMLResponse:
+    session = require_admin_session(request)
+    settings = get_settings()
+    csrf_token = _session_csrf_for_forms(request, settings)
+
+    if settings.admin_preview_enabled and contact_id == PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID:
+        preview = preview_contact_restore_conflict()
+        conflicting = ContactSafeSummary(**preview["conflicting_contact"])  # type: ignore[arg-type]
+        return HTMLResponse(
+            contact_pages.render_contact_restore_conflict_page(
+                csrf_token=csrf_token,
+                admin_username=session.admin_username,
+                archived_contact=preview["archived_contact"],  # type: ignore[arg-type]
+                conflicting_contact=conflicting,
+                company_name=str(preview["archived_contact"].get("company_name")),  # type: ignore[union-attr]
+            )
+        )
+
+    with db.db_connection(settings.database_url) as conn:
+        result = _crm.get_contact_restore_conflict(conn, contact_id)
+        if result is None:
+            raise HTTPException(status_code=404, detail="Contact not found or no email conflict")
+        company_name = None
+        company_id = result.archived_contact.get("company_id") if result.archived_contact else None
+        if company_id is not None:
+            company = _crm.get_company(conn, UUID(str(company_id)))
+            if company is not None:
+                company_name = company.get("name")
+        assert result.conflicting_contact is not None
+        assert result.archived_contact is not None
+        return HTMLResponse(
+            contact_pages.render_contact_restore_conflict_page(
+                csrf_token=csrf_token,
+                admin_username=session.admin_username,
+                archived_contact=result.archived_contact,
+                conflicting_contact=result.conflicting_contact,
+                company_name=company_name,
+            )
+        )
 
 
 @router.get("/contacts/{contact_id}", response_class=HTMLResponse)

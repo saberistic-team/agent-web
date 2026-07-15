@@ -73,6 +73,13 @@ PREVIEW_BRIEF_CONVERT_MATCHES_ID = 4
 PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR = (
     "Select an existing company match or choose to create a new company."
 )
+# Archived contact id for restore-conflict screenshots in ADMIN_PREVIEW_MODE.
+PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID = UUID(
+    "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
+)
+PREVIEW_CONTACT_RESTORE_CONFLICT_ACTIVE_ID = UUID(
+    "ffffffff-ffff-ffff-ffff-ffffffffffff"
+)
 BRIEF_TEXTS = (
     "Need a technical architecture review of our payments platform — "
     "API boundaries, retention, and rollout sequencing.",
@@ -770,6 +777,37 @@ def preview_brief_convert_post(
     if brief_id == PREVIEW_BRIEF_CONVERTED_ID:
         return None
     return None
+
+
+def preview_contact_restore_conflict(
+    *,
+    rng: random.Random | None = None,
+) -> dict[str, object]:
+    """Mock archived/active pair for contact restore-conflict screenshots."""
+    rng = rng or _preview_rng()
+    first = rng.choice(CONTACT_FIRST)
+    last = rng.choice(CONTACT_LAST)
+    company = rng.choice(COMPANY_NAMES)
+    email = _slug_email(first, last, company, rng)
+    return {
+        "archived_contact": {
+            "id": str(PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID),
+            "full_name": f"{first} {last}",
+            "title": "Former VP Engineering",
+            "email": email,
+            "company_name": company,
+            "archived_at": (
+                datetime(2026, 7, 1, tzinfo=timezone.utc) + timedelta(days=rng.randint(1, 30))
+            ).isoformat(),
+        },
+        "conflicting_contact": {
+            "contact_id": str(PREVIEW_CONTACT_RESTORE_CONFLICT_ACTIVE_ID),
+            "full_name": f"{first} {last} (current)",
+            "title": "CTO",
+            "company_name": company,
+            "company_id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+        },
+    }
 
 
 AUDIT_ACTIONS = (

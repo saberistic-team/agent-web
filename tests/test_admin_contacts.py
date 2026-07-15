@@ -12,6 +12,7 @@ from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 
 from app import admin_auth
+from app.contacts import ContactRestoreResult
 from app.main import app
 
 pytestmark = [pytest.mark.unit, pytest.mark.integration]
@@ -70,7 +71,10 @@ def _mock_crm() -> Generator[MagicMock, None, None]:
     crm.create_contact.return_value = {"contact": _contact, "duplicate_warnings": []}
     crm.update_contact.return_value = {"contact": _contact, "duplicate_warnings": []}
     crm.archive_contact.return_value = _contact
-    crm.restore_contact.return_value = _contact
+    crm.restore_contact.return_value = ContactRestoreResult(
+        outcome="success",
+        contact=_contact,
+    )
 
     with (
         patch("app.admin_routes._crm", crm),
@@ -141,7 +145,10 @@ def test_contact_new_edit_restore_and_invalid_fields_are_handled() -> None:
         with patch("app.admin_routes._crm") as crm:
             crm.get_contact.return_value = _contact
             crm.update_contact.return_value = {"contact": _contact, "duplicate_warnings": []}
-            crm.restore_contact.return_value = _contact
+            crm.restore_contact.return_value = ContactRestoreResult(
+        outcome="success",
+        contact=_contact,
+    )
 
             new_page = client.get("/admin/contacts/new")
             assert new_page.status_code == 200 and "Add contact" in new_page.text

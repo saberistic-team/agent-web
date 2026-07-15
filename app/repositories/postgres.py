@@ -284,6 +284,33 @@ class PostgresContactRepository:
             row = cur.fetchone()
         return dict(row) if row else None
 
+    def get_active_by_email(
+        self,
+        conn: psycopg.Connection,
+        email: str,
+        *,
+        exclude_contact_id: UUID | None = None,
+    ) -> dict[str, Any] | None:
+        normalized = email.strip().lower()
+        conditions = ["LOWER(email) = %s", "archived_at IS NULL"]
+        params: list[Any] = [normalized]
+        if exclude_contact_id is not None:
+            conditions.append("id <> %s")
+            params.append(exclude_contact_id)
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT c.*, co.name AS company_name
+                FROM contacts c
+                LEFT JOIN companies co ON co.id = c.company_id
+                WHERE {' AND '.join(conditions)}
+                LIMIT 1
+                """,
+                params,
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
+
     def find_by_profile_url(
         self,
         conn: psycopg.Connection,

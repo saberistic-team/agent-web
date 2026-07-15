@@ -10,6 +10,7 @@ from app.contacts import (
     BUYING_ROLES,
     EMAIL_PERMISSIONS,
     RELATIONSHIP_STRENGTHS,
+    ContactSafeSummary,
     format_buying_roles,
 )
 
@@ -139,3 +140,59 @@ def render_contact_form_page(
       {archive_html}
     </section>"""
     return render_admin_shell(title=title, main=main, active_path="/admin/contacts", admin_username=admin_username, csrf_token=csrf_token)
+
+
+def _safe_field(label: str, value: Any) -> str:
+    display = _esc(value) if value else "—"
+    return f"<div class=\"brief-detail-row\"><dt>{_esc(label)}</dt><dd>{display}</dd></div>"
+
+
+def render_contact_restore_conflict_page(
+    *,
+    csrf_token: str,
+    admin_username: str,
+    archived_contact: dict[str, Any],
+    conflicting_contact: ContactSafeSummary,
+    company_name: str | None = None,
+) -> str:
+    archived_id = str(archived_contact["id"])
+    archived_name = archived_contact.get("full_name") or "Archived contact"
+    archived_company = company_name or archived_contact.get("company_name") or "—"
+    active_label = conflicting_contact.full_name or "Active contact"
+    active_company = conflicting_contact.company_name or "—"
+    main = f"""<section class="admin-section" aria-labelledby="restore-conflict-title">
+      <p class="admin-breadcrumb"><a href="/admin/contacts">Contacts</a> · <a href="/admin/contacts/{_esc(archived_id)}/edit">Edit {_esc(archived_name)}</a></p>
+      <p class="admin-eyebrow">CRM</p>
+      <h1 class="admin-title" id="restore-conflict-title">Restore blocked — email already in use</h1>
+      <p class="admin-lede">
+        Another active contact already uses this email address. Change or clear the archived
+        contact&apos;s email before restoring. Records are never merged automatically.
+      </p>
+      <section class="brief-detail-section" aria-labelledby="restore-archived-title">
+        <h2 class="brief-detail-heading" id="restore-archived-title">Archived contact</h2>
+        <dl class="brief-detail-dl">
+          {_safe_field("Name", archived_name)}
+          {_safe_field("Title", archived_contact.get("title"))}
+          {_safe_field("Company", archived_company)}
+          {_safe_field("Email", archived_contact.get("email"))}
+        </dl>
+        <p><a class="cta" href="/admin/contacts/{_esc(archived_id)}/edit">Edit archived contact</a></p>
+      </section>
+      <section class="brief-detail-section" aria-labelledby="restore-active-title">
+        <h2 class="brief-detail-heading" id="restore-active-title">Active contact using this email</h2>
+        <dl class="brief-detail-dl">
+          {_safe_field("Name", active_label)}
+          {_safe_field("Title", conflicting_contact.title)}
+          {_safe_field("Company", active_company)}
+        </dl>
+        <p><a class="cta" href="/admin/contacts/{_esc(conflicting_contact.contact_id)}/edit">View active contact</a></p>
+      </section>
+      <p class="admin-lede">The archived contact stays archived until its email no longer conflicts.</p>
+    </section>"""
+    return render_admin_shell(
+        title="Restore blocked",
+        main=main,
+        active_path="/admin/contacts",
+        admin_username=admin_username,
+        csrf_token=csrf_token,
+    )
