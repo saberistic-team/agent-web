@@ -21,8 +21,8 @@ from fastapi.responses import Response
 
 from app import db
 from app.config import Settings
-from app.proxy_trust import (
-    ClientSourceResolutionPath,
+from app.trusted_proxy import (
+    emit_source_resolution_telemetry,
     resolve_admin_login_client_source,
 )
 
@@ -239,23 +239,31 @@ def read_login_flow_token(request: Request) -> str | None:
 
 
 def client_ip(request: Request, settings: Settings) -> str:
-    """Resolve the client source IP for admin login rate limiting.
+    """Resolve the client source IP for rate limiting.
 
-    Delegates to :func:`resolve_admin_login_client_source`, which trusts
-    forwarding headers only when the immediate peer is within
-    ``FORWARDED_ALLOW_IPS`` (same boundary configured for Uvicorn). Spoofed
-    headers from untrusted peers are ignored.
+    Forwarding headers are honored only when the immediate TCP peer is a member
+    of ``ADMIN_TRUSTED_PROXY_CIDRS`` (Render private-network peers in
+    production). A right-to-left trusted-hop walk selects the effective client;
+    spoofed left-most ``X-Forwarded-For`` values are never trusted directly.
+
+    Source identity notes:
+
+    * **IPv4 / IPv6** — stored only as keyed digests; normalized addresses are
+      passed into the source bucket (e.g. ``203.0.113.1``, ``2001:db8::1``).
+    * **Missing peer** — falls back to ``unknown`` so attempts still share one
+      bucket instead of creating an unbounded namespace.
+    * **Untrusted peer** — forwarding headers are ignored; the direct peer is
+      used so clients cannot spoof ``X-Forwarded-For`` or ``CF-Connecting-IP``.
     """
-    resolution = resolve_admin_login_client_source(request, settings)
-    if resolution.path not in (
-        ClientSourceResolutionPath.DIRECT_PEER,
-        ClientSourceResolutionPath.UNKNOWN_PEER,
-    ):
-        _logger.debug(
-            "Admin login client source resolved via trusted proxy chain",
-            extra={"resolution_path": resolution.path.value},
-        )
-    return resolution.source
+    peer_host = request.client.host if request.client is not None else None
+    result = resolve_admin_login_client_source(
+        peer_host=peer_host,
+        headers=request.headers,
+        trusted_proxy_networks=settings.admin_trusted_proxy_networks,
+        cloudflare_edge_networks=settings.admin_cloudflare_edge_networks,
+    )
+    emit_source_resolution_telemetry(result)
+    return result.source
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:

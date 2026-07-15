@@ -25,7 +25,6 @@ from app.admin_pipeline_routes import router as admin_pipeline_router
 from app.admin_routes import router as admin_router
 from app.actor_context import CORRELATION_HEADER
 from app.config import get_settings
-from app.proxy_trust import proxy_trust_configured
 from app.models import BriefCreateRequest, BriefCreateResponse
 from app.seo import (
     PERMANENT_REDIRECTS,
@@ -120,7 +119,10 @@ def health() -> dict:
     """
     payload: dict = {"status": "ok"}
     settings = get_settings()
-    payload["proxy_trust_configured"] = proxy_trust_configured(settings)
+    payload["admin_login_source_trust"] = {
+        "configured": settings.admin_login_source_trust_configured,
+        "uvicorn_proxy_headers": False,
+    }
     if not settings.database_configured:
         return payload
     try:

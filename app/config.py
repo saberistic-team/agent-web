@@ -5,6 +5,12 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from app.trusted_proxy import (
+    DEFAULT_CLOUDFLARE_EDGE_CIDRS,
+    DEFAULT_RENDER_TRUSTED_PROXY_CIDRS,
+    parse_cidr_list,
+)
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -27,8 +33,9 @@ class Settings:
     admin_login_rate_limit: int = 5
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
-    forwarded_allow_ips: str = ""
-    cloudflare_trusted_cidrs: str = ""
+    admin_trust_proxy_headers: bool = False
+    admin_trusted_proxy_cidrs: str = ""
+    admin_cloudflare_edge_cidrs: str = ""
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -75,6 +82,30 @@ class Settings:
         return True
 
     @property
+    def admin_trusted_proxy_networks(
+        self,
+    ) -> tuple:
+        """Parsed trusted immediate-peer CIDRs for admin login source resolution."""
+        if self.admin_trusted_proxy_cidrs.strip():
+            return parse_cidr_list(self.admin_trusted_proxy_cidrs)
+        if self.admin_trust_proxy_headers:
+            return parse_cidr_list("", defaults=DEFAULT_RENDER_TRUSTED_PROXY_CIDRS)
+        return ()
+
+    @property
+    def admin_cloudflare_edge_networks(self) -> tuple:
+        """Parsed Cloudflare edge CIDRs used to prove CF-Connecting-IP hops."""
+        if self.admin_cloudflare_edge_cidrs.strip():
+            return parse_cidr_list(self.admin_cloudflare_edge_cidrs)
+        if self.admin_trusted_proxy_networks:
+            return parse_cidr_list("", defaults=DEFAULT_CLOUDFLARE_EDGE_CIDRS)
+        return ()
+
+    @property
+    def admin_login_source_trust_configured(self) -> bool:
+        return bool(self.admin_trusted_proxy_networks)
+
+    @property
     def analytics_enabled(self) -> bool:
         """True only when explicitly enabled and a Plausible domain is set."""
         flag = os.environ.get("ANALYTICS_ENABLED", "").lower()
@@ -110,8 +141,12 @@ def get_settings() -> Settings:
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
         brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
-        forwarded_allow_ips=os.environ.get("FORWARDED_ALLOW_IPS", "").strip(),
-        cloudflare_trusted_cidrs=os.environ.get(
-            "ADMIN_CLOUDFLARE_TRUSTED_CIDRS", ""
+        admin_trust_proxy_headers=os.environ.get(
+            "ADMIN_TRUST_PROXY_HEADERS", ""
+        ).lower()
+        in ("1", "true", "yes"),
+        admin_trusted_proxy_cidrs=os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "").strip(),
+        admin_cloudflare_edge_cidrs=os.environ.get(
+            "ADMIN_CLOUDFLARE_EDGE_CIDRS", ""
         ).strip(),
     )
