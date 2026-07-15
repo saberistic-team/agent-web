@@ -79,7 +79,21 @@ def test_preview_section_main_html_includes_mock_table() -> None:
     assert "Preview data — not production" in html
     assert "Companies" in html
     assert "admin-table" in html
-    assert "Industry" in html
+    assert "Category" in html
+
+
+@pytest.mark.unit
+def test_preview_contacts_section_includes_roles_column() -> None:
+    rows = build_preview_section_rows("/admin/contacts", rng=random.Random(11))
+    assert all(len(row) == 6 for row in rows)
+    html = render_preview_section_main(
+        label="Contacts",
+        summary="People, roles, and outreach history",
+        active_path="/admin/contacts",
+        rng=random.Random(11),
+    )
+    assert "Roles" in html
+    assert rows[0][0] in html
 
 
 @pytest.mark.unit
@@ -114,69 +128,6 @@ def test_preview_audit_events_seed_stable() -> None:
     assert 4 <= len(a) <= 8
     assert a[0]["action"]
     assert a[0]["actor"]
-
-
-@pytest.mark.unit
-def test_preview_contacts_rows_have_buying_roles_column() -> None:
-    rows = build_preview_section_rows("/admin/contacts", rng=random.Random(21))
-    assert 4 <= len(rows) <= 8
-    assert all(len(row) == 6 for row in rows)
-
-
-@pytest.mark.unit
-def test_preview_contact_detail_seed_stable() -> None:
-    from app.admin_preview import PREVIEW_CONTACT_IDS, build_preview_contact_detail, render_preview_contact_detail
-
-    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
-    a = build_preview_contact_detail(1, rng=random.Random(4), now=now)
-    b = build_preview_contact_detail(1, rng=random.Random(4), now=now)
-    sparse = build_preview_contact_detail(2, rng=random.Random(4), now=now)
-    assert a == b
-    assert a is not None and sparse is not None
-    assert a["email"] is not None and sparse["email"] is None
-    assert a["buying_roles"]
-    html = render_preview_contact_detail(
-        contact_id=PREVIEW_CONTACT_IDS[0],
-        csrf_token="tok",
-        rng=random.Random(4),
-    )
-    assert "Founder" in html
-    assert "Technical buyer" in html
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_admin_preview_contacts_list_and_detail_have_mock_data(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from argon2 import PasswordHasher
-    from fastapi.testclient import TestClient
-
-    from app.admin_preview import PREVIEW_CONTACT_IDS
-    from app.main import app
-
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
-    monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
-    monkeypatch.setenv(
-        "ADMIN_PASSWORD_HASH",
-        PasswordHasher().hash("preview"),
-    )
-    monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
-    monkeypatch.delenv("DATABASE_URL", raising=False)
-    client = TestClient(app, follow_redirects=False)
-    listing = client.get("/admin/contacts")
-    assert listing.status_code == 200
-    assert "No contacts match this search." not in listing.text
-    assert "Buying roles" in listing.text
-    assert "/admin/contacts/new" in listing.text
-    detail = client.get(f"/admin/contacts/{PREVIEW_CONTACT_IDS[0]}")
-    assert detail.status_code == 200
-    assert "Profile" in detail.text
-    sparse = client.get(f"/admin/contacts/{PREVIEW_CONTACT_IDS[1]}")
-    assert sparse.status_code == 200
-    assert "Influencer" in sparse.text
 
 
 @pytest.mark.unit
@@ -215,6 +166,10 @@ def test_admin_preview_briefs_list_and_detail_have_mock_data(
     assert "Pending" in emptyish.text
     missing = client.get("/admin/briefs/999")
     assert missing.status_code == 404
+    db_unavailable = client.get("/admin/briefs/503")
+    assert db_unavailable.status_code == 503
+    assert "Briefs temporarily unavailable" in db_unavailable.text
+    assert "Could not load this brief from the database." in db_unavailable.text
     audit = client.get("/admin/audit")
     assert audit.status_code == 200
     assert "No audit events recorded yet." not in audit.text

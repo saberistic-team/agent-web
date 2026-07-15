@@ -21,6 +21,28 @@ unchanged; CRM tables are storage-only until later admin/import issues wire rout
 Route handlers must not embed SQL. Use `app/db.py` for brief/payment flows and
 `app/crm_service.py` + `app/repositories/` for CRM reads/writes.
 
+## Transaction ownership
+
+Repositories perform SQL only — they never call `conn.commit()` or
+`conn.rollback()`. The **service layer** (or route handler for auth-only flows)
+owns the single commit/rollback boundary via `crm_transaction()` in
+`app/crm_uow.py`.
+
+| Caller | Boundary | What commits atomically |
+|--------|----------|-------------------------|
+| `CrmService` mutations | `with crm_transaction(conn):` | Business writes + required audit event |
+| `CrmService.import_batch` | same | Source-record inserts + `import.batch` audit |
+| `CrmService.link_project_brief_source` | same | Brief-to-CRM source linkage (brief conversion) |
+| Admin login success | `crm_transaction` in `admin_routes._issue_session` | Prior-session revocation (if any) + new session row + `auth.login.success` audit |
+| Admin logout (authenticated) | `crm_transaction` in `admin_logout` | Session revocation + `auth.logout` audit |
+| Admin login failure | `crm_transaction` in `_record_login_failure` | `auth.login.failure` audit only (best-effort) |
+
+When auditing is **required** for an operation, a failed audit insert propagates
+and rolls back the related business mutation. Login-failure and anonymous-logout
+audits are best-effort (`required=False`) and do not block the operator flow.
+
+See [AUDIT_EVENTS.md](AUDIT_EVENTS.md) for append-only audit semantics.
+
 ## Identifiers
 
 - **Brief rows** keep `SERIAL` primary keys (`project_briefs.id`) for Stripe metadata
@@ -40,10 +62,25 @@ Route handlers must not embed SQL. Use `app/db.py` for brief/payment flows and
 | `id` | `UUID` | PK |
 | `created_at`, `updated_at` | `TIMESTAMPTZ` | Auto on insert; `updated_at` set on update |
 | `name` | `TEXT` | Required |
-| `website` | `TEXT` | Optional |
+| `website` | `TEXT` | Optional display/source URL retained for compatibility |
+| `domain` | `TEXT` | Optional normalized hostname for search and duplicate warnings |
+| `category` | `TEXT` | Optional: `fintech`, `ai_infrastructure`, `digital_assets`, `investor`, `other` |
+| `stage` | `TEXT` | Optional lifecycle/funding stage |
+| `headcount_estimate` | `INTEGER` | Optional non-negative estimate |
+| `funding_summary` | `TEXT` | Optional human-readable funding context |
+| `target_status` | `TEXT` | Optional target disposition |
+| `last_verified_at` | `DATE` | Optional source verification date |
+| `notes` | `TEXT` | Optional operator notes |
+| `archived_at` | `TIMESTAMPTZ` | Soft archive timestamp; related records remain untouched |
 | `status` | `TEXT` | `prospect`, `active`, `inactive` |
 
-Indexes: `status`, `website`.
+Indexes: `status`, `website`, `domain`, `category`, `stage`, `target_status`,
+`archived_at`, `last_verified_at`.
+
+`app/companies.py` owns the category/stage/target registries and normalizes domains
+before storage. Unknown registry values are validation errors; blank optional values
+remain unset. A matching active normalized domain produces a non-blocking duplicate
+warning rather than preventing a save.
 
 ### `contacts`
 
@@ -51,30 +88,33 @@ Indexes: `status`, `website`.
 |--------|------|-------|
 | `id` | `UUID` | PK |
 | `company_id` | `UUID` | FK → `companies`, `ON DELETE SET NULL` |
-| `email` | `TEXT` | Optional; unique when set |
-| `full_name` | `TEXT` | Required for admin create |
+| `full_name` | `TEXT` | Required display name |
 | `title` | `TEXT` | Optional job title |
-| `profile_url` | `TEXT` | LinkedIn or other profile URL |
-| `email_provenance` | `TEXT` | How the email was obtained |
-| `email_permission` | `TEXT` | Permission basis for using the email |
-| `last_interaction_at` | `TIMESTAMPTZ` | Last touchpoint |
-| `relationship_strength` | `INTEGER` | 1–5 scale |
-| `notes` | `TEXT` | Free-form context |
-| `status` | `TEXT` | `active`, `archived` |
+| `profile_url` | `TEXT` | Optional LinkedIn/profile URL (normalized on save) |
+| `email` | `TEXT` | Optional; partial unique index when set and not archived |
+| `email_permitted` | `BOOLEAN` | Whether outreach email is permitted |
+| `email_provenance` | `TEXT` | Optional source of email (`linkedin`, `introducer`, etc.) |
+| `last_interaction_at` | `DATE` | Optional last touch date |
+| `relationship_strength` | `TEXT` | Optional: `weak`, `moderate`, `strong`, `unknown` |
+| `notes` | `TEXT` | Optional operator notes |
+| `archived_at` | `TIMESTAMPTZ` | Soft archive timestamp |
 
-Indexes: `company_id`, `email`, `profile_url`, `status`, `full_name`.
+Indexes: `company_id`, `email` (partial unique), `profile_url`, `archived_at`, `full_name`.
+
+`app/contacts.py` owns buying-role and relationship registries, normalizes profile URLs
+and emails, and surfaces non-blocking duplicate warnings for profile URL, email, and
+name+company combinations.
 
 ### `contact_buying_roles`
 
-Junction table for multiple buying-role tags per contact ([#105](https://github.com/saberistic-team/agent-web/issues/105)).
+Junction table linking contacts to one or more buying roles.
 
 | Column | Type | Notes |
 |--------|------|-------|
-| `id` | `UUID` | PK |
 | `contact_id` | `UUID` | FK → `contacts`, `ON DELETE CASCADE` |
 | `role` | `TEXT` | `founder`, `technical_buyer`, `executive_buyer`, `influencer`, `investor`, `introducer`, `other` |
 
-Unique: `(contact_id, role)`. Index on `contact_id`.
+Primary key: `(contact_id, role)`. Index on `role`.
 
 ### `source_records`
 
@@ -167,7 +207,9 @@ Short-lived pre-authentication browser flows for login CSRF ([#139](https://gith
 | `created_at`, `expires_at` | `TIMESTAMPTZ` | 15-minute TTL enforced at read |
 | `consumed_at` | `TIMESTAMPTZ` | Set on each login POST (one-time use) |
 
-Index: `flow_token_hash`. See [ADMIN_AUTH.md](ADMIN_AUTH.md).
+Index: `flow_token_hash`. Partial indexes on `expires_at` (unconsumed) and
+`consumed_at` (consumed) support bounded cleanup (migration `009`). See
+[ADMIN_AUTH.md](ADMIN_AUTH.md).
 
 ### `admin_login_rate_limits`
 
@@ -197,9 +239,8 @@ Migrations live in `app/migrations/definitions.py` and are applied at startup vi
 | `004` | `admin_sessions` | Server-side admin session rows |
 | `005` | `admin_login_rate_limits` | Shared admin login rate-limit state |
 | `006` | `admin_csrf_binding` | Login-flow CSRF rows and session CSRF column |
-| `007` | `audit_events` | Append-only audit trail |
-| `008` | `research_records` | Typed research records with provenance and expiry |
-| `009` | `contact_buying_roles` | Contact profile fields, archive status, buying roles |
+| `007` | `research_records` | Typed research records with provenance and expiry |
+| `010` | `company_records` | Company firmographics, normalized domain, and soft archival |
 
 Applied versions are recorded in `schema_migrations`. Steps are **idempotent**
 (`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`) so empty and existing Render Postgres

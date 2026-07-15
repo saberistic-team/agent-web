@@ -69,16 +69,13 @@ def test_company_repository_crud() -> None:
 
 
 @pytest.mark.unit
-def test_contact_repository_create_lookup_roles_and_archive() -> None:
+def test_contact_repository_create_and_lookup() -> None:
     repo = PostgresContactRepository()
     row = {
         "id": CONTACT_ID,
         "email": "lead@example.com",
         "full_name": "Lead",
         "company_id": COMPANY_ID,
-        "title": "CTO",
-        "profile_url": "https://linkedin.com/in/lead",
-        "status": "active",
     }
     conn = _mock_conn(row)
 
@@ -87,51 +84,22 @@ def test_contact_repository_create_lookup_roles_and_archive() -> None:
         full_name="Lead",
         email="lead@example.com",
         company_id=COMPANY_ID,
-        title="CTO",
-        profile_url="https://linkedin.com/in/lead",
+        buying_roles=["founder"],
     )
-    assert created["full_name"] == "Lead"
-    insert_sql = str(conn.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
-    assert "INSERT INTO contacts" in insert_sql
-    assert "title" in insert_sql
+    assert created["email"] == "lead@example.com"
+    conn.commit.assert_not_called()
 
     conn2 = _mock_conn(row)
     assert repo.get_by_email(conn2, "lead@example.com")["id"] == CONTACT_ID
 
     conn3 = _mock_conn([row])
+    conn3.cursor.return_value.__enter__.return_value.fetchall.side_effect = [
+        [row],
+        [],
+    ]
     contacts = repo.list_for_company(conn3, COMPANY_ID, limit=10)
     assert len(contacts) == 1
-    list_sql = str(conn3.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
-    assert "status = 'active'" in list_sql
-
-    archived = {**row, "status": "archived"}
-    conn4 = _mock_conn(archived)
-    updated = repo.update(conn4, CONTACT_ID, status="archived")
-    assert updated is not None
-    assert updated["status"] == "archived"
-
-    conn5 = _mock_conn(None)
-    conn5.cursor.return_value.__enter__.return_value.fetchall.return_value = [
-        {"role": "founder"},
-        {"role": "technical_buyer"},
-    ]
-    roles = repo.get_buying_roles(conn5, CONTACT_ID)
-    assert roles == ["founder", "technical_buyer"]
-
-    conn6 = _mock_conn(None)
-    repo.set_buying_roles(conn6, CONTACT_ID, ["founder", "investor"])
-    role_sql_calls = [
-        str(call.args[0])
-        for call in conn6.cursor.return_value.__enter__.return_value.execute.call_args_list
-    ]
-    assert any("DELETE FROM contact_buying_roles" in sql for sql in role_sql_calls)
-    assert any("INSERT INTO contact_buying_roles" in sql for sql in role_sql_calls)
-
-    conn7 = _mock_conn([row])
-    conn7.cursor.return_value.__enter__.return_value.fetchone.return_value = {"total": 1}
-    page, total = repo.list_page(conn7, query="lead", limit=10, offset=0)
-    assert total == 1
-    assert len(page) == 1
+    assert contacts[0]["buying_roles"] == []
 
 
 @pytest.mark.unit

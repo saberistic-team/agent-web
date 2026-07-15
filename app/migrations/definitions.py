@@ -281,31 +281,63 @@ CREATE INDEX IF NOT EXISTS idx_research_records_observed_at
     ),
     Migration(
         version="009",
-        name="contact_buying_roles",
+        name="admin_login_flows_cleanup_indexes",
         up_sql="""
-ALTER TABLE contacts ALTER COLUMN email DROP NOT NULL;
+CREATE INDEX IF NOT EXISTS admin_login_flows_expires_at_idx
+    ON admin_login_flows (expires_at)
+    WHERE consumed_at IS NULL;
+CREATE INDEX IF NOT EXISTS admin_login_flows_consumed_at_idx
+    ON admin_login_flows (consumed_at)
+    WHERE consumed_at IS NOT NULL;
+""",
+    ),
+    Migration(
+        version="010",
+        name="company_records",
+        up_sql="""
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS domain TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS category TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS stage TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS headcount_estimate INTEGER;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS funding_summary TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS target_status TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS last_verified_at DATE;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
 
+CREATE INDEX IF NOT EXISTS idx_companies_domain ON companies (domain);
+CREATE INDEX IF NOT EXISTS idx_companies_category ON companies (category);
+CREATE INDEX IF NOT EXISTS idx_companies_stage ON companies (stage);
+CREATE INDEX IF NOT EXISTS idx_companies_target_status ON companies (target_status);
+CREATE INDEX IF NOT EXISTS idx_companies_archived_at ON companies (archived_at);
+CREATE INDEX IF NOT EXISTS idx_companies_last_verified_at ON companies (last_verified_at);
+""",
+    ),
+    Migration(
+        version="011",
+        name="contact_records",
+        up_sql="""
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS title TEXT;
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS profile_url TEXT;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS email_permitted BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS email_provenance TEXT;
-ALTER TABLE contacts ADD COLUMN IF NOT EXISTS email_permission TEXT;
-ALTER TABLE contacts ADD COLUMN IF NOT EXISTS last_interaction_at TIMESTAMPTZ;
-ALTER TABLE contacts ADD COLUMN IF NOT EXISTS relationship_strength INTEGER
-    CHECK (
-        relationship_strength IS NULL
-        OR (relationship_strength >= 1 AND relationship_strength <= 5)
-    );
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS last_interaction_at DATE;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS relationship_strength TEXT;
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS notes TEXT;
-ALTER TABLE contacts ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active'
-    CHECK (status IN ('active', 'archived'));
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
+
+ALTER TABLE contacts ALTER COLUMN email DROP NOT NULL;
+
+ALTER TABLE contacts DROP CONSTRAINT IF EXISTS contacts_email_unique;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_email_active_unique
+    ON contacts (LOWER(email))
+    WHERE email IS NOT NULL AND archived_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_contacts_profile_url ON contacts (profile_url);
-CREATE INDEX IF NOT EXISTS idx_contacts_status ON contacts (status);
+CREATE INDEX IF NOT EXISTS idx_contacts_archived_at ON contacts (archived_at);
 CREATE INDEX IF NOT EXISTS idx_contacts_full_name ON contacts (full_name);
 
 CREATE TABLE IF NOT EXISTS contact_buying_roles (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     contact_id UUID NOT NULL REFERENCES contacts (id) ON DELETE CASCADE,
     role TEXT NOT NULL
         CHECK (role IN (
@@ -317,11 +349,11 @@ CREATE TABLE IF NOT EXISTS contact_buying_roles (
             'introducer',
             'other'
         )),
-    CONSTRAINT contact_buying_roles_unique UNIQUE (contact_id, role)
+    PRIMARY KEY (contact_id, role)
 );
 
-CREATE INDEX IF NOT EXISTS idx_contact_buying_roles_contact_id
-    ON contact_buying_roles (contact_id);
+CREATE INDEX IF NOT EXISTS idx_contact_buying_roles_role
+    ON contact_buying_roles (role);
 """,
     ),
 

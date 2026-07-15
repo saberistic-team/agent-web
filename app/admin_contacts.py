@@ -1,141 +1,116 @@
-"""Admin contact list, forms, and company association views."""
+"""Admin HTML for contact record management."""
 
 from __future__ import annotations
 
 import html
-from datetime import datetime
 from typing import Any
-from uuid import UUID
 
-from app import contacts as contacts_module
 from app.admin_layout import render_admin_shell
+from app.contacts import (
+    BUYING_ROLES,
+    EMAIL_PROVENANCES,
+    RELATIONSHIP_STRENGTHS,
+    format_last_interaction,
+)
 
 
 def _esc(value: Any) -> str:
-    if value is None:
-        return ""
-    return html.escape(str(value))
+    return "" if value is None else html.escape(str(value), quote=True)
 
 
-def _format_roles(roles: list[str]) -> str:
+def _options(registry: dict[str, str], selected: str | None, *, empty: str = "Any") -> str:
+    rows = [f'<option value="">{html.escape(empty)}</option>']
+    rows.extend(
+        f'<option value="{_esc(key)}"{" selected" if key == selected else ""}>{_esc(label)}</option>'
+        for key, label in registry.items()
+    )
+    return "\n".join(rows)
+
+
+def _company_options(companies: list[dict[str, Any]], selected: str | None) -> str:
+    rows = ['<option value="">Unassigned</option>']
+    rows.extend(
+        f'<option value="{_esc(company["id"])}"{" selected" if str(company["id"]) == str(selected) else ""}>'
+        f'{_esc(company.get("name"))}</option>'
+        for company in companies
+    )
+    return "\n".join(rows)
+
+
+def _role_checkboxes(selected: list[str] | None) -> str:
+    selected_set = set(selected or [])
+    return "\n".join(
+        f'<label class="admin-checkbox"><input type="checkbox" name="buying_roles" value="{_esc(key)}"'
+        f'{" checked" if key in selected_set else ""} /> {_esc(label)}</label>'
+        for key, label in BUYING_ROLES.items()
+    )
+
+
+def _contact_form(
+    *,
+    action: str,
+    csrf_token: str,
+    contact: dict[str, Any] | None = None,
+    companies: list[dict[str, Any]] | None = None,
+) -> str:
+    contact = contact or {}
+    companies = companies or []
+    return f"""<form class="admin-form" method="post" action="{_esc(action)}">
+      <input type="hidden" name="csrf_token" value="{_esc(csrf_token)}" />
+      <div class="field"><label for="full_name">Name</label><input id="full_name" name="full_name" required maxlength="500" value="{_esc(contact.get("full_name"))}" /></div>
+      <div class="field"><label for="title">Title</label><input id="title" name="title" maxlength="500" value="{_esc(contact.get("title"))}" /></div>
+      <div class="field"><label for="profile_url">LinkedIn / profile URL</label><input id="profile_url" name="profile_url" type="url" maxlength="2000" placeholder="https://linkedin.com/in/..." value="{_esc(contact.get("profile_url"))}" /></div>
+      <div class="field"><label for="company_id">Company</label><select id="company_id" name="company_id">{_company_options(companies, contact.get("company_id"))}</select></div>
+      <div class="field"><label for="email">Email</label><input id="email" name="email" type="email" maxlength="320" value="{_esc(contact.get("email"))}" /></div>
+      <div class="field"><label><input type="checkbox" name="email_permitted" value="1"{" checked" if contact.get("email_permitted") else ""} /> Email permitted for outreach</label></div>
+      <div class="field"><label for="email_provenance">Email provenance</label><select id="email_provenance" name="email_provenance">{_options(EMAIL_PROVENANCES, contact.get("email_provenance"), empty="Unspecified")}</select></div>
+      <div class="field"><label for="last_interaction_at">Last interaction</label><input id="last_interaction_at" name="last_interaction_at" type="date" value="{_esc(contact.get("last_interaction_at"))}" /></div>
+      <div class="field"><label for="relationship_strength">Relationship strength</label><select id="relationship_strength" name="relationship_strength">{_options(RELATIONSHIP_STRENGTHS, contact.get("relationship_strength"), empty="Unspecified")}</select></div>
+      <fieldset class="field"><legend>Buying roles</legend>{_role_checkboxes(contact.get("buying_roles"))}</fieldset>
+      <div class="field"><label for="notes">Notes</label><textarea id="notes" name="notes" rows="5" maxlength="10000">{_esc(contact.get("notes"))}</textarea></div>
+      <button class="cta admin-submit" type="submit">Save contact</button>
+    </form>"""
+
+
+def _role_labels(roles: list[str] | None) -> str:
     if not roles:
         return "—"
-    labels = [contacts_module.BUYING_ROLE_LABELS.get(role, role) for role in roles]
-    return ", ".join(labels)
-
-
-def _format_datetime(value: Any) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, datetime):
-        return value.strftime("%Y-%m-%d")
-    return str(value)[:10]
-
-
-def _role_checkboxes(selected: list[str]) -> str:
-    items: list[str] = []
-    for role in contacts_module.BUYING_ROLES:
-        label = contacts_module.BUYING_ROLE_LABELS[role]
-        checked = " checked" if role in selected else ""
-        items.append(
-            f"""            <label class="admin-check">
-              <input type="checkbox" name="buying_roles" value="{role}"{checked} />
-              <span>{html.escape(label)}</span>
-            </label>"""
-        )
-    return "\n".join(items)
-
-
-def _company_options(companies: list[dict[str, Any]], selected_id: str | None) -> str:
-    options = ['            <option value="">— No company —</option>']
-    for company in companies:
-        company_id = str(company["id"])
-        selected = " selected" if selected_id == company_id else ""
-        name = _esc(company.get("name"))
-        options.append(f'            <option value="{company_id}"{selected}>{name}</option>')
-    return "\n".join(options)
-
-
-def _warnings_block(warnings: list[str]) -> str:
-    if not warnings:
-        return ""
-    items = "\n".join(f"            <li>{_esc(w)}</li>" for w in warnings)
-    return f"""          <div class="admin-warnings" role="alert">
-            <p class="admin-warnings-title">Possible duplicates</p>
-            <ul>
-{items}
-            </ul>
-          </div>"""
+    return ", ".join(BUYING_ROLES.get(role, role) for role in roles)
 
 
 def render_contacts_list_page(
     *,
-    admin_username: str,
     contacts: list[dict[str, Any]],
-    query: str,
-    include_archived: bool,
-    warnings: list[str] | None = None,
-    csrf_token: str = "",
+    companies_by_id: dict[str, dict[str, Any]],
+    filters: dict[str, str | None],
+    csrf_token: str,
+    admin_username: str,
 ) -> str:
-    archived_checked = " checked" if include_archived else ""
-    rows: list[str] = []
-    for contact in contacts:
-        contact_id = _esc(contact["id"])
-        name = _esc(contacts_module.contact_display_name(contact))
-        title = _esc(contact.get("title"))
-        company = _esc(contact.get("company_name") or "—")
-        roles = _esc(_format_roles(contact.get("buying_roles", [])))
-        archived = "Yes" if contact.get("is_archived") else "No"
-        rows.append(
-            f"""            <tr>
-              <td><a href="/admin/contacts/{contact_id}">{name}</a></td>
-              <td>{title or "—"}</td>
-              <td>{company}</td>
-              <td>{roles}</td>
-              <td>{archived}</td>
-            </tr>"""
-        )
-    table_body = "\n".join(rows) if rows else """            <tr>
-              <td colspan="5">No contacts found.</td>
-            </tr>"""
-    warning_html = _warnings_block(warnings or [])
-    main = f"""        <section class="admin-section" aria-labelledby="contacts-title">
-          <div class="admin-section-head">
-            <div>
-              <p class="admin-eyebrow">CRM</p>
-              <h1 class="admin-title" id="contacts-title">Contacts</h1>
-            </div>
-            <a class="admin-button" href="/admin/contacts/new">New contact</a>
-          </div>
-{warning_html}
-          <form class="admin-toolbar" method="get" action="/admin/contacts">
-            <label class="admin-field admin-field-inline">
-              <span class="admin-label">Search</span>
-              <input type="search" name="q" value="{_esc(query)}" placeholder="Name, email, title, company" />
-            </label>
-            <label class="admin-check admin-check-inline">
-              <input type="checkbox" name="include_archived" value="1"{archived_checked} />
-              <span>Include archived</span>
-            </label>
-            <button type="submit" class="admin-button admin-button-secondary">Search</button>
-          </form>
-          <div class="admin-table-wrap">
-            <table class="admin-table">
-              <thead>
-                <tr>
-                  <th scope="col">Name</th>
-                  <th scope="col">Title</th>
-                  <th scope="col">Company</th>
-                  <th scope="col">Buying roles</th>
-                  <th scope="col">Archived</th>
-                </tr>
-              </thead>
-              <tbody>
-{table_body}
-              </tbody>
-            </table>
-          </div>
-        </section>"""
+    rows = "".join(
+        f"""<tr>
+          <td><a href="/admin/contacts/{_esc(row["id"])}">{_esc(row.get("full_name") or row.get("email") or row["id"])}</a></td>
+          <td>{_esc(row.get("title") or "—")}</td>
+          <td>{_esc(companies_by_id.get(str(row.get("company_id")), {}).get("name") or "—")}</td>
+          <td>{_esc(_role_labels(row.get("buying_roles")))}</td>
+          <td>{_esc(row.get("email") or "—")}</td>
+          <td>{_esc(format_last_interaction(row.get("last_interaction_at")))}</td>
+        </tr>"""
+        for row in contacts
+    ) or '<tr><td colspan="6">No contacts match these filters.</td></tr>'
+    company_filter_options = _company_options(
+        list(companies_by_id.values()),
+        filters.get("company_id"),
+    )
+    main = f"""<section class="admin-section" aria-labelledby="contacts-title">
+      <div class="admin-section-head"><div><p class="admin-eyebrow">CRM</p><h1 class="admin-title" id="contacts-title">Contacts</h1></div><a class="cta" href="/admin/contacts/new">Add contact</a></div>
+      <form class="admin-form" method="get" action="/admin/contacts">
+        <div class="field"><label for="q">Search</label><input id="q" name="q" value="{_esc(filters.get("q"))}" placeholder="Name, email, title, or profile URL" /></div>
+        <div class="field"><label for="company-filter">Company</label><select id="company-filter" name="company_id">{company_filter_options}</select></div>
+        <div class="field"><label><input type="checkbox" name="archived" value="1"{" checked" if filters.get("archived") else ""} /> Include archived</label></div>
+        <button class="cta admin-submit" type="submit">Filter</button>
+      </form>
+      <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Name</th><th>Title</th><th>Company</th><th>Roles</th><th>Email</th><th>Last touch</th></tr></thead><tbody>{rows}</tbody></table></div>
+    </section>"""
     return render_admin_shell(
         title="Contacts",
         main=main,
@@ -147,263 +122,31 @@ def render_contacts_list_page(
 
 def render_contact_form_page(
     *,
+    csrf_token: str,
     admin_username: str,
-    companies: list[dict[str, Any]],
     contact: dict[str, Any] | None = None,
-    warnings: list[str] | None = None,
-    error: str | None = None,
-    is_new: bool = False,
-    csrf_token: str = "",
+    companies: list[dict[str, Any]] | None = None,
+    error_message: str | None = None,
+    warnings: list[Any] | None = None,
 ) -> str:
-    contact = contact or {}
-    contact_id = contact.get("id")
-    title_label = "New contact" if is_new else "Edit contact"
-    form_action = "/admin/contacts/new" if is_new else f"/admin/contacts/{_esc(contact_id)}"
-    name = _esc(contact.get("name"))
-    job_title = _esc(contact.get("title"))
-    profile_url = _esc(contact.get("profile_url"))
-    email = _esc(contact.get("email"))
-    email_permission = contact.get("email_permission") or ""
-    email_provenance = _esc(contact.get("email_provenance"))
-    relationship = contact.get("relationship_strength") or ""
-    notes = _esc(contact.get("notes"))
-    last_interaction = _format_datetime(contact.get("last_interaction_at"))
-    selected_company = str(contact.get("company_id")) if contact.get("company_id") else None
-    selected_roles = contact.get("buying_roles", [])
-    is_archived = bool(contact.get("is_archived"))
-
-    permission_options = []
-    for perm in contacts_module.EMAIL_PERMISSIONS:
-        selected = " selected" if email_permission == perm else ""
-        label = contacts_module.EMAIL_PERMISSION_LABELS[perm]
-        permission_options.append(
-            f'              <option value="{perm}"{selected}>{html.escape(label)}</option>'
-        )
-
-    strength_options = ['              <option value="">—</option>']
-    for strength in contacts_module.RELATIONSHIP_STRENGTHS:
-        selected = " selected" if relationship == strength else ""
-        label = contacts_module.RELATIONSHIP_STRENGTH_LABELS[strength]
-        strength_options.append(
-            f'              <option value="{strength}"{selected}>{html.escape(label)}</option>'
-        )
-
-    error_html = ""
-    if error:
-        error_html = f'          <p class="admin-error" role="alert">{_esc(error)}</p>'
-    warning_html = _warnings_block(warnings or [])
-    csrf_field = ""
-    if csrf_token:
-        csrf_field = (
-            f'            <input type="hidden" name="csrf_token" '
-            f'value="{html.escape(csrf_token, quote=True)}" />\n'
-        )
-
-    archive_block = ""
-    if not is_new and contact_id:
-        if is_archived:
-            archive_block = f"""          <p class="admin-note">This contact is archived.</p>
-          <button type="submit" formaction="/admin/contacts/{_esc(contact_id)}/restore" class="admin-button admin-button-secondary">Restore</button>"""
-        else:
-            archive_block = f"""          <button type="submit" formaction="/admin/contacts/{_esc(contact_id)}/archive" class="admin-button admin-button-secondary">Archive</button>"""
-
-    main = f"""        <section class="admin-section" aria-labelledby="contact-form-title">
-          <p class="admin-eyebrow">CRM</p>
-          <h1 class="admin-title" id="contact-form-title">{html.escape(title_label)}</h1>
-{error_html}
-{warning_html}
-          <form class="admin-form" method="post" action="{form_action}">
-{csrf_field}            <fieldset class="admin-fieldset">
-              <legend>Identity</legend>
-              <label class="admin-field">
-                <span class="admin-label">Name</span>
-                <input type="text" name="name" value="{name}" required maxlength="200" />
-              </label>
-              <label class="admin-field">
-                <span class="admin-label">Title</span>
-                <input type="text" name="title" value="{job_title}" maxlength="200" />
-              </label>
-              <label class="admin-field">
-                <span class="admin-label">Profile URL</span>
-                <input type="url" name="profile_url" value="{profile_url}" maxlength="500" placeholder="https://linkedin.com/in/…" />
-              </label>
-              <label class="admin-field">
-                <span class="admin-label">Company</span>
-                <select name="company_id">
-{_company_options(companies, selected_company)}
-                </select>
-              </label>
-            </fieldset>
-            <fieldset class="admin-fieldset">
-              <legend>Email (optional)</legend>
-              <label class="admin-field">
-                <span class="admin-label">Email</span>
-                <input type="email" name="email" value="{email}" maxlength="320" />
-              </label>
-              <label class="admin-field">
-                <span class="admin-label">Permission</span>
-                <select name="email_permission">
-                  <option value="">—</option>
-{chr(10).join(permission_options)}
-                </select>
-              </label>
-              <label class="admin-field">
-                <span class="admin-label">Provenance</span>
-                <input type="text" name="email_provenance" value="{email_provenance}" maxlength="200" placeholder="e.g. LinkedIn export, intro" />
-              </label>
-            </fieldset>
-            <fieldset class="admin-fieldset">
-              <legend>Relationship</legend>
-              <label class="admin-field">
-                <span class="admin-label">Last interaction</span>
-                <input type="date" name="last_interaction_at" value="{last_interaction}" />
-              </label>
-              <label class="admin-field">
-                <span class="admin-label">Relationship strength</span>
-                <select name="relationship_strength">
-{chr(10).join(strength_options)}
-                </select>
-              </label>
-              <label class="admin-field">
-                <span class="admin-label">Notes</span>
-                <textarea name="notes" rows="4" maxlength="5000">{notes}</textarea>
-              </label>
-            </fieldset>
-            <fieldset class="admin-fieldset">
-              <legend>Buying roles</legend>
-              <div class="admin-check-group">
-{_role_checkboxes(selected_roles)}
-              </div>
-            </fieldset>
-            <div class="admin-form-actions">
-              <button type="submit" class="admin-button">Save contact</button>
-              <a class="admin-button admin-button-secondary" href="/admin/contacts">Cancel</a>
-{archive_block}
-            </div>
-          </form>
-        </section>"""
+    is_new = contact is None
+    action = "/admin/contacts" if is_new else f"/admin/contacts/{contact['id']}/edit"
+    title = "Add contact" if is_new else f"Edit {contact.get('full_name', '')}"
+    warning_html = "".join(
+        f'<li>{_esc(item.reason)} match: <a href="/admin/contacts/{_esc(item.contact_id)}">{_esc(item.full_name)}</a> ({_esc(item.detail)}).</li>'
+        for item in (warnings or [])
+    )
+    main = f"""<section class="admin-section" aria-labelledby="contact-form-title">
+      <p class="admin-breadcrumb"><a href="/admin/contacts">Contacts</a></p>
+      <h1 class="admin-title" id="contact-form-title">{_esc(title)}</h1>
+      {'<p class="form-error" role="alert">' + _esc(error_message) + '</p>' if error_message else ''}
+      {'<ul class="form-error" role="status">' + warning_html + '</ul>' if warning_html else ''}
+      {_contact_form(action=action, csrf_token=csrf_token, contact=contact, companies=companies)}
+    </section>"""
     return render_admin_shell(
-        title=title_label,
+        title=title,
         main=main,
         active_path="/admin/contacts",
         admin_username=admin_username,
         csrf_token=csrf_token,
     )
-
-
-def render_company_detail_page(
-    *,
-    admin_username: str,
-    company: dict[str, Any],
-    contacts: list[dict[str, Any]],
-    csrf_token: str = "",
-) -> str:
-    company_id = _esc(company["id"])
-    company_name = _esc(company.get("name"))
-    website = _esc(company.get("website") or "—")
-    status = _esc(company.get("status") or "—")
-
-    rows: list[str] = []
-    for contact in contacts:
-        contact_id = _esc(contact["id"])
-        name = _esc(contacts_module.contact_display_name(contact))
-        title = _esc(contact.get("title") or "—")
-        roles = _esc(_format_roles(contact.get("buying_roles", [])))
-        strength = _esc(
-            contacts_module.RELATIONSHIP_STRENGTH_LABELS.get(
-                str(contact.get("relationship_strength") or ""),
-                contact.get("relationship_strength") or "—",
-            )
-        )
-        rows.append(
-            f"""            <tr>
-              <td><a href="/admin/contacts/{contact_id}">{name}</a></td>
-              <td>{title}</td>
-              <td>{roles}</td>
-              <td>{strength}</td>
-            </tr>"""
-        )
-    table_body = "\n".join(rows) if rows else """            <tr>
-              <td colspan="4">No contacts associated with this company.</td>
-            </tr>"""
-
-    main = f"""        <section class="admin-section" aria-labelledby="company-title">
-          <p class="admin-eyebrow">Company</p>
-          <h1 class="admin-title" id="company-title">{company_name}</h1>
-          <dl class="admin-meta">
-            <div><dt>Website</dt><dd>{website}</dd></div>
-            <div><dt>Status</dt><dd>{status}</dd></div>
-          </dl>
-          <div class="admin-section-head">
-            <h2 class="admin-subtitle">Associated contacts</h2>
-            <a class="admin-button" href="/admin/contacts/new?company_id={company_id}">Add contact</a>
-          </div>
-          <div class="admin-table-wrap">
-            <table class="admin-table">
-              <thead>
-                <tr>
-                  <th scope="col">Name</th>
-                  <th scope="col">Title</th>
-                  <th scope="col">Buying roles</th>
-                  <th scope="col">Relationship</th>
-                </tr>
-              </thead>
-              <tbody>
-{table_body}
-              </tbody>
-            </table>
-          </div>
-          <p class="admin-note"><a href="/admin/companies">Back to companies</a></p>
-        </section>"""
-    return render_admin_shell(
-        title=company_name,
-        main=main,
-        active_path="/admin/companies",
-        admin_username=admin_username,
-        csrf_token=csrf_token,
-    )
-
-
-def parse_contact_form(
-    *,
-    name: str,
-    title: str = "",
-    profile_url: str = "",
-    company_id: str = "",
-    email: str = "",
-    email_permission: str = "",
-    email_provenance: str = "",
-    last_interaction_at: str = "",
-    relationship_strength: str = "",
-    notes: str = "",
-    buying_roles: list[str] | None = None,
-) -> dict[str, Any]:
-    parsed_company: UUID | None = None
-    if company_id.strip():
-        parsed_company = UUID(company_id.strip())
-
-    parsed_last_interaction: datetime | None = None
-    if last_interaction_at.strip():
-        parsed_last_interaction = datetime.fromisoformat(last_interaction_at.strip())
-
-    perm = email_permission.strip() or None
-    if perm and perm not in contacts_module.EMAIL_PERMISSIONS:
-        perm = None
-
-    strength = relationship_strength.strip() or None
-    if strength and strength not in contacts_module.RELATIONSHIP_STRENGTHS:
-        strength = None
-
-    return {
-        "name": name.strip(),
-        "title": title.strip() or None,
-        "profile_url": profile_url.strip() or None,
-        "company_id": parsed_company,
-        "email": email.strip() or None,
-        "email_permission": perm,
-        "email_provenance": email_provenance.strip() or None,
-        "last_interaction_at": parsed_last_interaction,
-        "relationship_strength": strength,
-        "notes": notes.strip() or None,
-        "buying_roles": contacts_module.parse_buying_roles(buying_roles or []),
-    }
