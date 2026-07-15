@@ -106,6 +106,15 @@ a dirty PR as unfinished Builder work.
    when markers remain or import fails (typical breaks: dropped `admin_router`,
    missing Protocol exports, obsolete Basic-auth imports). Status
    `broken_after_resolve` → `waiting` handoff — never Reviewer.
+   **Pre-handoff smoke (mandatory even when `mergeable: clean`):** Builder also
+   clones the PR head and smoke-imports before writing `reviewer` handoff.
+   Stale heads with `NameError: admin_router` / `CORRELATION_HEADER` are
+   mergeable but still break Reviewer screenshots — that was a Builder↔Reviewer
+   loop on CRM PRs. Known import gaps may be auto-repaired (`repair_main_wiring`)
+   once; persistent smoke failure stays `waiting`.
+   **Circular routers:** mount feature routers from `app.main` only — never
+   `include_router` a module that imports `require_admin_session` from
+   `admin_routes` back into `admin_routes` (ImportError loop on #107).
 4. Comment `### builder_conflict_context` and `### builder_conflict_result` on
    the issue.
 5. **Re-check** `mergeable` / `mergeable_state`. Only when clean → hand off
@@ -176,6 +185,25 @@ Hide one with CSS at each breakpoint. Reviewer hard-fails when desktop
 `.admin-nav-link` nodes exist but none are visible
 (`format_admin_nav_hard_fail` / `desktop_nav_invisible`).
 
+**Grid stretch:** `.admin-layout` must not default-stretch `.admin-nav` to the
+main column’s height (`align-items` / `align-self: start`, content-sized sticky
+sidebar). Collapsed mobile `.admin-nav-toggle` must size to its summary
+(`height: fit-content` / no inherited min-height). Guard with CSS tests.
+
+## Screenshot evidence vs product CSS (anti-loop)
+
+Reviewer loads `screenshot_deploy.py` from the **PR head first** (then `main`)
+— see [docs/SCREENSHOTS.md](../docs/SCREENSHOTS.md). When acceptance needs
+tablet / narrow-desktop / open-mobile-nav shots that the matrix does not yet
+emit:
+
+1. **Extend** `scripts/screenshot_deploy.py` + `docs/SCREENSHOTS.md` + tests on
+   **this same PR** (do not open a parallel PR).
+2. Do **not** keep rewriting product CSS when AI review already approved the
+   layout and the only hard-fail is “missing `branch-*-mobile-open.png` /
+   tablet / narrow-desktop” — that is a capture-matrix gap, not another CSS
+   churn (learned from [#167](https://github.com/saberistic-team/agent-web/issues/167)).
+
 ## Constraints
 
 - **Never push to the default branch** (`main` / `master`).
@@ -200,7 +228,11 @@ and network timeouts (`scripts/github_api.py`). Cursor local SDK retries
 Do **not** escalate / `status:blocked` for:
 
 - Cursor Bridge `ReadTimeout` / `retryable=True` (re-enter `status:queued` via
-  `waiting` handoff — learned from [#104](https://github.com/saberistic-team/agent-web/issues/104))
+  `waiting` handoff — learned from [#104](https://github.com/saberistic-team/agent-web/issues/104)
+  / [#108](https://github.com/saberistic-team/agent-web/issues/108))
+- Bridge argv bug `Missing value for --tool-callback-auth-token` (tokens starting
+  with `-`; SDK may say `retryable=False` but Builder still requeues —
+  `scripts/cursor_sdk_patch.py` patches token minting)
 - Soft “too many files” budgets after a raise of `CURSOR_MAX_FILES` (requeue;
   learned from [#105](https://github.com/saberistic-team/agent-web/issues/105))
 - Single transient Contents API `500` / timeout

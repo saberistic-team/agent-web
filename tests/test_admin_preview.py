@@ -79,7 +79,7 @@ def test_preview_section_main_html_includes_mock_table() -> None:
     assert "Preview data — not production" in html
     assert "Companies" in html
     assert "admin-table" in html
-    assert "Industry" in html
+    assert "Category" in html
 
 
 @pytest.mark.unit

@@ -6,6 +6,7 @@ import html
 from typing import Any
 
 from app.admin_layout import render_admin_shell
+from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES, TARGET_STATUSES
 from app.research_records import (
     RECORD_TYPE_LABELS,
     RESEARCH_RECORD_TYPES,
@@ -189,6 +190,21 @@ def render_admin_company_research_page(
 ) -> str:
     company_name = html.escape(str(company.get("name", "")))
     company_id = html.escape(str(company["id"]), quote=True)
+    company_fields = (
+        ("Domain", company.get("domain") or company.get("website")),
+        ("Category", COMPANY_CATEGORIES.get(str(company.get("category")), company.get("category"))),
+        ("Stage", COMPANY_STAGES.get(str(company.get("stage")), company.get("stage"))),
+        ("Headcount estimate", company.get("headcount_estimate")),
+        ("Funding", company.get("funding_summary")),
+        ("Target status", TARGET_STATUSES.get(str(company.get("target_status")), company.get("target_status"))),
+        ("Last verified", company.get("last_verified_at")),
+    )
+    facts_html = "".join(
+        f"<div><dt>{html.escape(label)}</dt><dd>{html.escape(str(value or '—'))}</dd></div>"
+        for label, value in company_fields
+    )
+    archive_action = "restore" if company.get("archived_at") else "archive"
+    archive_label = "Restore company" if company.get("archived_at") else "Archive company"
     error_html = ""
     if error_message:
         error_html = (
@@ -221,6 +237,12 @@ def render_admin_company_research_page(
           <p class="admin-breadcrumb"><a href="/admin/companies">Companies</a> / {company_name}</p>
           <h1 class="admin-title" id="company-research-title">{company_name}</h1>
           <p class="admin-lede">Research records for company <code>{company_id}</code>.</p>
+          <p><a class="cta" href="/admin/companies/{company_id}/edit">Edit company</a></p>
+          <dl class="research-provenance">{facts_html}</dl>
+          <form method="post" action="/admin/companies/{company_id}/{archive_action}">
+            <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}" />
+            <button class="admin-exit" type="submit">{archive_label}</button>
+          </form>
           <h2 class="admin-section-heading">Contacts</h2>
           <ul class="admin-list">{contact_links}
           </ul>

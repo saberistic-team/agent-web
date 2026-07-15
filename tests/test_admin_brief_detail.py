@@ -95,6 +95,26 @@ def _back_filters() -> BriefListFilters:
 
 
 @pytest.mark.unit
+def test_parse_brief_id_accepts_valid_positive_integers() -> None:
+    assert brief_service.parse_brief_id("1") == 1
+    assert brief_service.parse_brief_id("42") == 42
+    assert brief_service.parse_brief_id("999999999") == 999999999
+    assert brief_service.parse_brief_id(str(brief_service.MAX_BRIEF_ID)) == brief_service.MAX_BRIEF_ID
+
+
+@pytest.mark.unit
+def test_parse_brief_id_rejects_invalid_identifiers() -> None:
+    assert brief_service.parse_brief_id("") is None
+    assert brief_service.parse_brief_id("0") is None
+    assert brief_service.parse_brief_id("-1") is None
+    assert brief_service.parse_brief_id("-") is None
+    assert brief_service.parse_brief_id("not-a-number") is None
+    assert brief_service.parse_brief_id("42x") is None
+    assert brief_service.parse_brief_id("2147483648") is None
+    assert brief_service.parse_brief_id("999999999999999999") is None
+
+
+@pytest.mark.unit
 def test_get_brief_delegates_to_repository() -> None:
     conn = MagicMock()
     repo = MagicMock()
@@ -266,6 +286,22 @@ def test_render_admin_brief_database_unavailable_includes_retry_and_back_link() 
 
 @pytest.mark.unit
 @pytest.mark.integration
+def test_admin_brief_detail_anonymous_malformed_ids_redirect_to_login() -> None:
+    for path in (
+        "/admin/briefs/not-a-number",
+        "/admin/briefs/0",
+        "/admin/briefs/-5",
+        "/admin/briefs/999999999",
+        "/admin/briefs/2147483648",
+    ):
+        response = client.get(path)
+        assert response.status_code == 303, path
+        assert "/admin/login" in response.headers["location"], path
+        assert "application/json" not in response.headers.get("content-type", ""), path
+
+
+@pytest.mark.unit
+@pytest.mark.integration
 def test_admin_brief_detail_requires_auth() -> None:
     response = client.get("/admin/briefs/42")
     assert response.status_code == 303
@@ -343,16 +379,58 @@ def test_admin_brief_detail_database_error_returns_authenticated_503_without_lea
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_admin_brief_detail_malformed_id_returns_validation_error() -> None:
+def test_admin_brief_detail_malformed_id_returns_authenticated_admin_shell_404() -> None:
     token_hash = admin_auth.hash_session_token("detail-bad-id")
     row = _session_row(token_hash=token_hash)
     with mock_db_connection():
         with patch("app.admin_routes.db.get_admin_session_by_token_hash", return_value=row):
-            response = client.get(
-                "/admin/briefs/not-a-number",
-                cookies={SESSION_COOKIE_NAME: "detail-bad-id"},
-            )
-    assert response.status_code == 422
+            with patch("app.admin_routes.brief_service.get_brief") as get_brief:
+                response = client.get(
+                    "/admin/briefs/not-a-number",
+                    cookies={SESSION_COOKIE_NAME: "detail-bad-id"},
+                )
+    assert response.status_code == 404
+    assert "Brief not found" in response.text
+    assert "No project brief exists with ID #not-a-number" in response.text
+    assert 'meta name="robots" content="noindex, nofollow"' in response.text
+    assert "application/json" not in response.headers.get("content-type", "")
+    get_brief.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_admin_brief_detail_negative_id_returns_authenticated_404_without_db() -> None:
+    token_hash = admin_auth.hash_session_token("detail-negative-id")
+    row = _session_row(token_hash=token_hash)
+    with mock_db_connection():
+        with patch("app.admin_routes.db.get_admin_session_by_token_hash", return_value=row):
+            with patch("app.admin_routes.brief_service.get_brief") as get_brief:
+                response = client.get(
+                    "/admin/briefs/-5",
+                    cookies={SESSION_COOKIE_NAME: "detail-negative-id"},
+                )
+    assert response.status_code == 404
+    assert "Brief not found" in response.text
+    assert "No project brief exists with ID #-5" in response.text
+    get_brief.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_admin_brief_detail_oversized_id_returns_authenticated_404_without_db() -> None:
+    token_hash = admin_auth.hash_session_token("detail-oversized-id")
+    row = _session_row(token_hash=token_hash)
+    with mock_db_connection():
+        with patch("app.admin_routes.db.get_admin_session_by_token_hash", return_value=row):
+            with patch("app.admin_routes.brief_service.get_brief") as get_brief:
+                response = client.get(
+                    "/admin/briefs/2147483648",
+                    cookies={SESSION_COOKIE_NAME: "detail-oversized-id"},
+                )
+    assert response.status_code == 404
+    assert "Brief not found" in response.text
+    assert "No project brief exists with ID #2147483648" in response.text
+    get_brief.assert_not_called()
 
 
 @pytest.mark.unit
@@ -372,7 +450,7 @@ def test_admin_brief_detail_zero_id_returns_authenticated_404() -> None:
                 )
     assert response.status_code == 404
     assert "Brief not found" in response.text
-    get_brief.assert_called_once()
+    get_brief.assert_not_called()
 
 
 @pytest.mark.unit
