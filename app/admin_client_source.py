@@ -136,6 +136,23 @@ def _immediate_peer(request: Request) -> str | None:
     return host or None
 
 
+def _combined_header_values(request: Request, name: str) -> str:
+    """Join every raw header instance sharing ``name`` (RFC 7230 field-line equivalence).
+
+    ``Request.headers.get`` only returns the first occurrence; duplicate header
+    lines (rather than one comma-joined value) must not silently drop later
+    values, since that would let a spoofed first header line hide a genuine
+    trailing hop from the trusted-chain walk.
+    """
+    needle = name.lower().encode("latin-1")
+    values = [
+        value.decode("latin-1")
+        for header_name, value in request.scope.get("headers", [])
+        if header_name.lower() == needle
+    ]
+    return ",".join(values)
+
+
 def _log_invalid_forwarding(path: SourceResolutionPath) -> None:
     global _invalid_forwarding_log_at
     now = time.monotonic()
@@ -152,6 +169,17 @@ def reset_client_source_telemetry_for_tests() -> None:
     """Reset rate-limited invalid-forwarding telemetry (tests only)."""
     global _invalid_forwarding_log_at
     _invalid_forwarding_log_at = 0.0
+
+
+def resolve_trusted_proxy_cidr_strings(settings: Settings) -> tuple[str, ...]:
+    """Configured ``ADMIN_TRUSTED_PROXY_CIDRS`` entries as a tuple of strings.
+
+    Used for deployment-verification metadata (``/health``) — never includes
+    raw request data, only the operator-configured boundary.
+    """
+    return tuple(
+        part.strip() for part in settings.admin_trusted_proxy_cidrs.split(",") if part.strip()
+    )
 
 
 def resolve_admin_login_client_source(
@@ -204,7 +232,7 @@ def resolve_admin_login_client_source(
 
     forwarding_trusted = _forwarding_trusted_networks(settings)
 
-    xff_header = request.headers.get("x-forwarded-for", "")
+    xff_header = _combined_header_values(request, "x-forwarded-for")
     if xff_header:
         chain = _split_forwarding_chain(xff_header)
         resolved = _resolve_from_forwarding_chain(chain, forwarding_trusted)
@@ -219,7 +247,7 @@ def resolve_admin_login_client_source(
             path=SourceResolutionPath.INVALID_FORWARDING,
         )
 
-    forwarded_header = request.headers.get("forwarded", "")
+    forwarded_header = _combined_header_values(request, "forwarded")
     if forwarded_header:
         chain = _parse_forwarded_header(forwarded_header)
         resolved = _resolve_from_forwarding_chain(chain, forwarding_trusted)
@@ -234,7 +262,7 @@ def resolve_admin_login_client_source(
             path=SourceResolutionPath.INVALID_FORWARDING,
         )
 
-    cf_connecting_ip = request.headers.get("cf-connecting-ip", "")
+    cf_connecting_ip = _combined_header_values(request, "cf-connecting-ip")
     if cf_connecting_ip:
         resolved = normalize_ip(cf_connecting_ip)
         if resolved is not None and not ip_in_trusted_networks(resolved, forwarding_trusted):
@@ -252,3 +280,12 @@ def resolve_admin_login_client_source(
         source=_UNKNOWN_SOURCE,
         path=SourceResolutionPath.INVALID_FORWARDING,
     )
+
+
+def client_ip(request: Request, settings: Settings) -> str:
+    """Normalized effective client address string (see ``docs/ADMIN_AUTH.md``).
+
+    Convenience wrapper around :func:`resolve_admin_login_client_source` for
+    callers that only need the resolved address, not the telemetry path.
+    """
+    return resolve_admin_login_client_source(request, settings).source

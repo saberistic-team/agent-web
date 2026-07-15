@@ -121,11 +121,11 @@ def health() -> dict:
     payload: dict = {"status": "ok"}
     settings = get_settings()
     trusted_cidrs = resolve_trusted_proxy_cidr_strings(settings)
-    if trusted_cidrs:
-        payload["admin_proxy_trust"] = (
-            settings.admin_trusted_proxy_preset.strip()
-            or "custom_cidrs"
-        )
+    if settings.admin_trust_proxy_headers and trusted_cidrs:
+        payload["admin_proxy_trust"] = {
+            "enabled": True,
+            "trusted_proxy_entry_count": len(trusted_cidrs),
+        }
     if not settings.database_configured:
         return payload
     try:

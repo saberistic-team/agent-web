@@ -51,7 +51,7 @@ def proxy_trust_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("BASE_URL", "http://testserver")
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "3")
     monkeypatch.setenv("ADMIN_TRUST_PROXY_HEADERS", "true")
-    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_IPS", "10.0.0.0/8")
+    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
     admin_auth.reset_login_rate_limiter()
 
 

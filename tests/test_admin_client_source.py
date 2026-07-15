@@ -221,6 +221,45 @@ def test_address_format_edge_cases(
 
 
 @pytest.mark.unit
+def test_missing_peer_resolves_to_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = _trusted_settings(monkeypatch)
+    request = _request(peer=None)
+    _add_header(request, "x-forwarded-for", REAL_CLIENT)
+    resolution = resolve_admin_login_client_source(request, settings)
+    assert resolution.source == "unknown"
+    assert resolution.path is SourceResolutionPath.MISSING_PEER
+
+
+@pytest.mark.unit
+def test_duplicate_xff_header_lines_are_combined_not_dropped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Duplicate header *lines* (not one comma-joined value) must not hide hops."""
+    settings = _trusted_settings(monkeypatch)
+    request = _request(peer=RENDER_LB)
+    _add_header(request, "x-forwarded-for", ATTACKER_SPOOF)
+    _add_header(request, "x-forwarded-for", f"{REAL_CLIENT}, {CF_EDGE}, {RENDER_LB}")
+    resolution = resolve_admin_login_client_source(request, settings)
+    assert resolution.source == REAL_CLIENT
+    assert resolution.path is SourceResolutionPath.TRUSTED_XFF
+
+
+@pytest.mark.unit
+def test_duplicate_cf_connecting_ip_headers_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = _trusted_settings(monkeypatch)
+    request = _request(peer=RENDER_LB)
+    _add_header(request, "cf-connecting-ip", REAL_CLIENT)
+    _add_header(request, "cf-connecting-ip", ATTACKER_SPOOF)
+    resolution = resolve_admin_login_client_source(request, settings)
+    assert resolution.path is SourceResolutionPath.INVALID_FORWARDING
+    assert resolution.source == "unknown"
+
+
+@pytest.mark.unit
 def test_rotating_spoofed_headers_share_one_limiter_source(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
