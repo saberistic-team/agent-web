@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Freeze digests for migrations that have shipped to production.
 
-After deploy health succeeds, post-deploy calls ``maybe_commit_freeze`` so any
-migration still missing from ``FROZEN_MIGRATION_DIGESTS`` is recorded on
-``main`` with a meta commit (``deploy: freeze …``) that does not re-trigger
-Render. New migrations stay editable until the next healthy production deploy.
+After Render deploy, the dedicated CI job ``Freeze shipped migrations`` waits
+for ``/health`` then calls ``maybe_commit_freeze`` so any migration still
+missing from ``FROZEN_MIGRATION_DIGESTS`` is recorded on ``main`` with a meta
+commit (``deploy: freeze …``) that does not re-trigger Render. New migrations
+stay editable until the next healthy production deploy.
 """
 
 from __future__ import annotations
@@ -83,9 +84,17 @@ def apply_freeze_to_definitions(text: str, digests: dict[str, str]) -> str:
     updated = updated.replace(
         "# When adding a new migration, leave prior entries unchanged and freeze the\n"
         "# new version only after it has shipped to production.\n",
+        "# When adding a new migration, leave prior entries unchanged. The CI job\n"
+        '# "Freeze shipped migrations" (scripts/freeze_shipped_migrations.py) freezes\n'
+        "# new versions after a healthy production deploy — do not hand-edit shipped digests.\n",
+    )
+    updated = updated.replace(
         "# When adding a new migration, leave prior entries unchanged. Post-deploy\n"
         "# (scripts/freeze_shipped_migrations.py) freezes new versions after a healthy\n"
         "# production deploy — do not hand-edit shipped digests.\n",
+        "# When adding a new migration, leave prior entries unchanged. The CI job\n"
+        '# "Freeze shipped migrations" (scripts/freeze_shipped_migrations.py) freezes\n'
+        "# new versions after a healthy production deploy — do not hand-edit shipped digests.\n",
     )
     return updated
 
@@ -145,6 +154,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Commit freeze to GitHub (requires --repo)",
     )
+    parser.add_argument(
+        "--wait-healthy",
+        action="store_true",
+        help="Poll production /health before --commit (uses DEPLOY_BASE_URL)",
+    )
     parser.add_argument("--repo", default="", help="owner/name for --commit")
     parser.add_argument("--branch", default="main")
     parser.add_argument(
@@ -155,6 +169,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     root = (args.root or repo_root()).resolve()
+    scripts_dir = Path(__file__).resolve().parent
+    if str(scripts_dir) not in sys.path:
+        sys.path.insert(0, str(scripts_dir))
 
     missing = missing_frozen_digests(root)
     if args.check:
@@ -181,7 +198,14 @@ def main(argv: list[str] | None = None) -> int:
         if not repo:
             print("FAIL: --repo required with --commit", file=sys.stderr)
             return 1
-        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        if args.wait_healthy:
+            from screenshot_deploy import resolve_base_url, wait_healthy
+
+            base_url = resolve_base_url()
+            print(f"freeze_migrations: waiting for health at {base_url}")
+            health = wait_healthy(base_url)
+            slim = {k: v for k, v in health.items() if not str(k).startswith("_")}
+            print(f"freeze_migrations: healthy {slim}")
         maybe_commit_freeze(repo, args.branch, root=root)
         return 0
 

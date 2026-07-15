@@ -69,6 +69,43 @@ jobs:
           echo
           echo "Triggered Render deploy for https://saberistic.com"
 
+  freeze-migrations:
+    name: Freeze shipped migrations
+    needs: deploy
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      !startsWith(github.event.head_commit.message, 'review: record') &&
+      !startsWith(github.event.head_commit.message, 'deploy: record') &&
+      !startsWith(github.event.head_commit.message, 'deploy: freeze')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Mint Builder token for freeze commit
+        id: builder
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.BUILDER_APP_ID }}
+          private-key: ${{ secrets.BUILDER_PRIVATE_KEY }}
+      - name: Wait for healthy deploy and freeze digests
+        env:
+          GITHUB_TOKEN: ${{ steps.builder.outputs.token }}
+          DEPLOY_BASE_URL: ${{ vars.DEPLOY_BASE_URL }}
+        run: |
+          set -euo pipefail
+          # Allow Render a moment after the deploy hook before health polling.
+          sleep 20
+          python scripts/freeze_shipped_migrations.py \
+            --commit \
+            --wait-healthy \
+            --repo "${{ github.repository }}" \
+            --branch main
+
   post-deploy-visual:
     name: Post-deploy screenshots
     needs: deploy
