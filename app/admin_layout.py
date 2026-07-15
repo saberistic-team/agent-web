@@ -109,14 +109,11 @@ ADMIN_SCREENSHOT_EXPECTED_STATUS: dict[str, int] = {
 }
 
 
-def render_archive_action_button(*, archived: bool, entity: str) -> str:
-    """Return themed Archive/Restore submit button for company/contact forms."""
-    label = f"Restore {entity}" if archived else f"Archive {entity}"
-    modifier = "admin-action--secondary" if archived else "admin-action--destructive"
-    return (
-        f'<button class="admin-action {modifier}" type="submit">'
-        f"{html.escape(label)}</button>"
-    )
+def archive_action_button_class(*, archived: bool) -> str:
+    """Return semantic classes for archive (destructive) or restore (secondary) actions."""
+    if archived:
+        return "admin-action admin-action--restore"
+    return "admin-action admin-action--destructive"
 
 
 def _active_nav_label(active_path: str) -> str:
