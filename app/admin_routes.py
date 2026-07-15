@@ -27,7 +27,7 @@ from app.brief_conversion import (
 )
 from app.contacts import BUYING_ROLES, ContactCreate, ContactSafeSummary, ContactUpdate
 from app.crm_uow import crm_transaction
-from app.actor_context import actor_context_from_request, anonymous_actor_context, correlation_id_from_request
+from app.actor_context import actor_context_from_request, correlation_id_from_request
 from app.admin_layout import ADMIN_NAV_LINKS, render_admin_shell
 from app.admin_preview import (
     PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR,
@@ -554,39 +554,34 @@ def admin_login_submit(
 @router.post("/logout")
 def admin_logout(
     request: Request,
-    csrf_token: str = Form(..., alias="csrf_token"),
+    csrf_token: str | None = Form(default=None, alias="csrf_token"),
 ) -> Response:
     settings = get_settings()
     _require_admin_auth_configured(settings)
     session = _load_valid_session(request, settings)
     if session is not None:
-        if not admin_auth.verify_session_csrf_request(request, csrf_token, settings):
+        if not csrf_token or not admin_auth.verify_session_csrf_request(
+            request, csrf_token, settings
+        ):
             raise HTTPException(status_code=400, detail=admin_auth.INVALID_REQUEST_MESSAGE)
         raw_token = admin_auth.read_session_token(request)
         if raw_token is not None:
             token_hash = admin_auth.hash_session_token(raw_token)
             with db.db_connection(settings.database_url) as conn:
                 with crm_transaction(conn):
-                    db.revoke_admin_session(conn, token_hash=token_hash)
-                    audit_service.record_logout(
-                        conn,
-                        actor_context=actor_context_from_request(
-                            request, actor=session.admin_username
-                        ),
-                        session_id=session.id,
-                    )
-    else:
-        if settings.database_url:
-            try:
-                with db.db_connection(settings.database_url) as conn:
-                    with crm_transaction(conn):
+                    revoked = db.revoke_admin_session(conn, token_hash=token_hash)
+                    if revoked:
                         audit_service.record_logout(
                             conn,
-                            actor_context=anonymous_actor_context(request),
-                            session_id=None,
+                            actor_context=actor_context_from_request(
+                                request, actor=session.admin_username
+                            ),
+                            session_id=session.id,
                         )
-            except Exception:
-                logger.exception("Failed to record anonymous logout audit event")
+        response = RedirectResponse(url="/admin/login", status_code=303)
+        admin_auth.clear_session_cookie(response, settings)
+        return response
+
     response = RedirectResponse(url="/admin/login", status_code=303)
     admin_auth.clear_session_cookie(response, settings)
     return response

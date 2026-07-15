@@ -47,7 +47,10 @@ def admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
 @contextmanager
 def mock_db_connection() -> Generator[MagicMock, None, None]:
     conn = MagicMock()
-    with patch("app.admin_routes.db.db_connection") as admin_conn:
+    with (
+        patch("app.admin_routes.db.db_connection") as admin_conn,
+        patch("app.admin_routes.db.revoke_admin_session", return_value=True),
+    ):
         admin_conn.return_value.__enter__.return_value = conn
         admin_conn.return_value.__exit__.return_value = None
         yield conn
@@ -356,7 +359,8 @@ def test_authenticated_logout_audit_is_required() -> None:
 
 
 @pytest.mark.unit
-def test_anonymous_logout_audit_is_best_effort() -> None:
+def test_anonymous_logout_service_call_is_best_effort_only() -> None:
+    """Direct service calls with no session id remain best-effort; routes do not invoke them."""
     conn = MagicMock()
     repo = MagicMock()
     repo.append.side_effect = RuntimeError("audit down")
@@ -615,6 +619,7 @@ def test_db_session_helpers() -> None:
         {"id": 7},
         {"id": 7, "admin_username": TEST_USERNAME, "revoked_at": None},
     ]
+    cursor.rowcount = 1
 
     session_id = db_module.create_admin_session(
         conn,
@@ -627,7 +632,8 @@ def test_db_session_helpers() -> None:
     row = db_module.get_admin_session_by_token_hash(conn, "hash")
     assert row["id"] == 7
 
-    db_module.revoke_admin_session(conn, token_hash="hash")
+    revoked = db.revoke_admin_session(conn, token_hash="hash")
+    assert revoked is True
     conn.commit.assert_not_called()
     conn.rollback.assert_not_called()
 

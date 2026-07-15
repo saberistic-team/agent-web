@@ -355,10 +355,12 @@ def _mock_update_admin_session_csrf(
             row["csrf_token_hash"] = csrf_token_hash
 
 
-def _mock_revoke_admin_session(conn: MagicMock, *, token_hash: str) -> None:
+def _mock_revoke_admin_session(conn: MagicMock, *, token_hash: str) -> bool:
     row = _session_store.get(token_hash)
-    if row is not None:
-        row["revoked_at"] = datetime.now(timezone.utc)
+    if row is None or row.get("revoked_at") is not None:
+        return False
+    row["revoked_at"] = datetime.now(timezone.utc)
+    return True
 
 
 @contextmanager
