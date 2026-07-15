@@ -14,6 +14,7 @@ from app.pipeline import (
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_pipeline_supports_all_required_stages() -> None:
     expected = {
         "researching",
@@ -33,6 +34,7 @@ def test_pipeline_supports_all_required_stages() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 @pytest.mark.parametrize(
     ("from_stage", "to_stage"),
     [
@@ -54,6 +56,7 @@ def test_adjacent_transitions_allowed_without_confirm(from_stage: str, to_stage:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 @pytest.mark.parametrize(
     ("from_stage", "to_stage"),
     [
@@ -70,6 +73,7 @@ def test_side_exit_requires_reason(from_stage: str, to_stage: str) -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_skip_forward_requires_confirm() -> None:
     with pytest.raises(ConfirmRequiredError):
         validate_transition("researching", "contacted")
@@ -77,6 +81,7 @@ def test_skip_forward_requires_confirm() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_reopen_from_lost_requires_confirm() -> None:
     with pytest.raises(ConfirmRequiredError):
         validate_transition("lost", "researching", reason="Re-engaged")
@@ -84,12 +89,14 @@ def test_reopen_from_lost_requires_confirm() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_same_stage_is_rejected() -> None:
     with pytest.raises(InvalidTransitionError, match="already"):
         validate_transition("qualified", "qualified")
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_multi_step_backward_requires_confirm() -> None:
     with pytest.raises(ConfirmRequiredError):
         validate_transition("diagnostic_paid", "qualified")
@@ -97,6 +104,7 @@ def test_multi_step_backward_requires_confirm() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_validate_stage_and_activity_type_reject_unknown_values() -> None:
     from app.pipeline import InvalidStageError, validate_activity_type, validate_stage
 
@@ -107,11 +115,13 @@ def test_validate_stage_and_activity_type_reject_unknown_values() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_reopen_from_lost_to_main_path_with_confirm() -> None:
     validate_transition("lost", "qualified", reason="Back in play", confirm=True)
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_transition_between_lost_and_nurture_requires_confirm() -> None:
     with pytest.raises(ConfirmRequiredError):
         validate_transition("lost", "nurture", reason="Long-term follow-up")

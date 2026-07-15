@@ -228,6 +228,11 @@ body.admin-app {
   color: var(--ink);
 }
 
+.admin-empty {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .admin-empty code {
   color: var(--ink);
   background: color-mix(in srgb, var(--surface) 90%, transparent);

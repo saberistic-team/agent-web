@@ -33,6 +33,14 @@ class PostgresCompanyRepository:
         name: str,
         website: str | None = None,
         status: str = "prospect",
+        domain: str | None = None,
+        category: str | None = None,
+        stage: str | None = None,
+        headcount_estimate: int | None = None,
+        funding_summary: str | None = None,
+        target_status: str | None = None,
+        last_verified_at: date | None = None,
+        notes: str | None = None,
         pipeline_stage: str = "researching",
         owner: str | None = None,
         expected_value: float | None = None,
@@ -41,12 +49,18 @@ class PostgresCompanyRepository:
             cur.execute(
                 """
                 INSERT INTO companies (
-                    name, website, status, pipeline_stage, owner, expected_value
+                    name, website, status, domain, category, stage,
+                    headcount_estimate, funding_summary, target_status,
+                    last_verified_at, notes, pipeline_stage, owner, expected_value
                 )
-                VALUES (%s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING *
                 """,
-                (name, website, status, pipeline_stage, owner, expected_value),
+                (
+                    name, website, status, domain, category, stage,
+                    headcount_estimate, funding_summary, target_status,
+                    last_verified_at, notes, pipeline_stage, owner, expected_value,
+                ),
             )
             row = cur.fetchone()
         return dict(row)
@@ -135,6 +149,14 @@ class PostgresCompanyRepository:
         name: str | None = None,
         website: str | None = None,
         status: str | None = None,
+        domain: str | None = None,
+        category: str | None = None,
+        stage: str | None = None,
+        headcount_estimate: int | None = None,
+        funding_summary: str | None = None,
+        target_status: str | None = None,
+        last_verified_at: date | None = None,
+        notes: str | None = None,
         pipeline_stage: str | None = None,
         next_action: str | None = None,
         next_action_due_at: datetime | None = None,
@@ -155,6 +177,19 @@ class PostgresCompanyRepository:
         if status is not None:
             fields.append("status = %s")
             values.append(status)
+        for column, value in (
+            ("domain", domain),
+            ("category", category),
+            ("stage", stage),
+            ("headcount_estimate", headcount_estimate),
+            ("funding_summary", funding_summary),
+            ("target_status", target_status),
+            ("last_verified_at", last_verified_at),
+            ("notes", notes),
+        ):
+            if value is not None:
+                fields.append(f"{column} = %s")
+                values.append(value)
         if pipeline_stage is not None:
             fields.append("pipeline_stage = %s")
             values.append(pipeline_stage)
@@ -192,6 +227,32 @@ class PostgresCompanyRepository:
                 RETURNING *
                 """,
                 values,
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def archive(self, conn: psycopg.Connection, company_id: UUID) -> dict[str, Any] | None:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE companies SET archived_at = %s, updated_at = %s
+                WHERE id = %s AND archived_at IS NULL
+                RETURNING *
+                """,
+                (_now(), _now(), company_id),
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def restore(self, conn: psycopg.Connection, company_id: UUID) -> dict[str, Any] | None:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE companies SET archived_at = NULL, updated_at = %s
+                WHERE id = %s AND archived_at IS NOT NULL
+                RETURNING *
+                """,
+                (_now(), company_id),
             )
             row = cur.fetchone()
         return dict(row) if row else None

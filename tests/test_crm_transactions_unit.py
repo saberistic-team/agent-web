@@ -271,6 +271,7 @@ def test_import_batch_commits_once_with_audit() -> None:
             contacts=MagicMock(),
             source_records=source_repo,
             activities=MagicMock(),
+            stage_history=MagicMock(),
             research_records=MagicMock(),
             admin_users=MagicMock(),
         )
@@ -307,6 +308,7 @@ def test_import_batch_rolls_back_business_writes_when_audit_fails() -> None:
             contacts=MagicMock(),
             source_records=source_repo,
             activities=MagicMock(),
+            stage_history=MagicMock(),
             research_records=MagicMock(),
             admin_users=MagicMock(),
         )
@@ -343,6 +345,7 @@ def test_import_batch_rolls_back_when_business_write_fails() -> None:
             contacts=MagicMock(),
             source_records=source_repo,
             activities=MagicMock(),
+            stage_history=MagicMock(),
             research_records=MagicMock(),
             admin_users=MagicMock(),
         )
@@ -380,6 +383,7 @@ def test_import_batch_retry_after_rollback() -> None:
             contacts=MagicMock(),
             source_records=source_repo,
             activities=MagicMock(),
+            stage_history=MagicMock(),
             research_records=MagicMock(),
             admin_users=MagicMock(),
         )
@@ -421,6 +425,7 @@ def test_delete_entity_rolls_back_when_audit_fails() -> None:
             contacts=MagicMock(),
             source_records=MagicMock(),
             activities=MagicMock(),
+            stage_history=MagicMock(),
             research_records=MagicMock(),
             admin_users=MagicMock(),
         )

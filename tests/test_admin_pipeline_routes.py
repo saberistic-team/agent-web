@@ -77,6 +77,7 @@ def _login(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_pipeline_routes_require_authentication(monkeypatch: pytest.MonkeyPatch) -> None:
     with admin_env(monkeypatch):
         response = client.get("/admin/api/pipeline/stages")
@@ -85,6 +86,7 @@ def test_pipeline_routes_require_authentication(monkeypatch: pytest.MonkeyPatch)
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_list_pipeline_stages_when_authenticated(monkeypatch: pytest.MonkeyPatch) -> None:
     with admin_env(monkeypatch):
         with patch("app.admin_pipeline_routes.require_admin_session") as require_session:
@@ -97,6 +99,7 @@ def test_list_pipeline_stages_when_authenticated(monkeypatch: pytest.MonkeyPatch
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_transition_stage_returns_confirm_required(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.crm_service import ConfirmRequiredError
 
@@ -117,6 +120,7 @@ def test_transition_stage_returns_confirm_required(monkeypatch: pytest.MonkeyPat
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_transition_stage_success(monkeypatch: pytest.MonkeyPatch) -> None:
     with admin_env(monkeypatch):
         with patch("app.admin_pipeline_routes.require_admin_session") as require_session:
@@ -136,6 +140,7 @@ def test_transition_stage_success(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_list_overdue_actions_route(monkeypatch: pytest.MonkeyPatch) -> None:
     with admin_env(monkeypatch):
         with patch("app.admin_pipeline_routes.require_admin_session") as require_session:
@@ -157,6 +162,7 @@ def test_list_overdue_actions_route(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_record_activity_route(monkeypatch: pytest.MonkeyPatch) -> None:
     with admin_env(monkeypatch):
         with patch("app.admin_pipeline_routes.require_admin_session") as require_session:
@@ -180,6 +186,7 @@ def test_record_activity_route(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_list_companies_route(monkeypatch: pytest.MonkeyPatch) -> None:
     with admin_env(monkeypatch):
         with patch("app.admin_pipeline_routes.require_admin_session") as require_session:
@@ -195,6 +202,7 @@ def test_list_companies_route(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_get_company_detail_route_returns_404(monkeypatch: pytest.MonkeyPatch) -> None:
     with admin_env(monkeypatch):
         with patch("app.admin_pipeline_routes.require_admin_session") as require_session:
@@ -207,6 +215,7 @@ def test_get_company_detail_route_returns_404(monkeypatch: pytest.MonkeyPatch) -
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_update_next_action_route(monkeypatch: pytest.MonkeyPatch) -> None:
     with admin_env(monkeypatch):
         with patch("app.admin_pipeline_routes.require_admin_session") as require_session:
@@ -226,6 +235,7 @@ def test_update_next_action_route(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_list_upcoming_actions_route(monkeypatch: pytest.MonkeyPatch) -> None:
     with admin_env(monkeypatch):
         with patch("app.admin_pipeline_routes.require_admin_session") as require_session:
@@ -243,6 +253,7 @@ def test_list_upcoming_actions_route(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_list_activity_types_route(monkeypatch: pytest.MonkeyPatch) -> None:
     with admin_env(monkeypatch):
         with patch("app.admin_pipeline_routes.require_admin_session") as require_session:

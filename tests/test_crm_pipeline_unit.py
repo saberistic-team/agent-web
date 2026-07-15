@@ -49,6 +49,7 @@ def _service_with_mocks() -> tuple[CrmService, MagicMock, dict[str, MagicMock]]:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_company_repository_pipeline_queries() -> None:
     repo = PostgresCompanyRepository()
     overdue_row = {
@@ -85,6 +86,7 @@ def test_company_repository_pipeline_queries() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_stage_history_repository_create_and_list() -> None:
     repo = PostgresStageHistoryRepository()
     row = {
@@ -114,6 +116,7 @@ def test_stage_history_repository_create_and_list() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_audit_event_repository_list_for_entity() -> None:
     repo = PostgresAuditEventRepository()
     row = {
@@ -136,6 +139,7 @@ def test_audit_event_repository_list_for_entity() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_transition_company_stage_writes_history_activity_and_audit() -> None:
     service, conn, repos = _service_with_mocks()
     repos["companies"].get_by_id.return_value = {
@@ -170,6 +174,7 @@ def test_transition_company_stage_writes_history_activity_and_audit() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_transition_to_lost_requires_reason() -> None:
     service, conn, repos = _service_with_mocks()
     repos["companies"].get_by_id.return_value = {
@@ -189,6 +194,7 @@ def test_transition_to_lost_requires_reason() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_skip_transition_requires_confirm() -> None:
     service, conn, repos = _service_with_mocks()
     repos["companies"].get_by_id.return_value = {
@@ -208,6 +214,7 @@ def test_skip_transition_requires_confirm() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_update_company_next_action_writes_audit_event() -> None:
     service, conn, repos = _service_with_mocks()
     repos["companies"].get_by_id.return_value = {
@@ -245,6 +252,7 @@ def test_update_company_next_action_writes_audit_event() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_list_overdue_and_upcoming_actions_delegate_to_repository() -> None:
     service, conn, repos = _service_with_mocks()
     repos["companies"].list_overdue_actions.return_value = [{"id": COMPANY_ID}]
@@ -262,6 +270,7 @@ def test_list_overdue_and_upcoming_actions_delegate_to_repository() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_record_activity_with_actor_writes_audit_event() -> None:
     service, conn, repos = _service_with_mocks()
     repos["activities"].create.return_value = {
@@ -286,6 +295,7 @@ def test_record_activity_with_actor_writes_audit_event() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_get_company_pipeline_detail_returns_none_for_missing_company() -> None:
     service, conn, repos = _service_with_mocks()
     repos["companies"].get_by_id.return_value = None
@@ -294,6 +304,7 @@ def test_get_company_pipeline_detail_returns_none_for_missing_company() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_get_company_pipeline_detail_assembles_related_records() -> None:
     service, conn, repos = _service_with_mocks()
     repos["companies"].get_by_id.return_value = {"id": COMPANY_ID, "pipeline_stage": "qualified"}
@@ -314,6 +325,7 @@ def test_get_company_pipeline_detail_assembles_related_records() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_list_companies_by_stage_validates_stage_name() -> None:
     from app.pipeline import InvalidStageError
 
@@ -324,6 +336,7 @@ def test_list_companies_by_stage_validates_stage_name() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_update_company_next_action_raises_for_missing_company() -> None:
     from app.pipeline import InvalidStageError
 
@@ -340,6 +353,7 @@ def test_update_company_next_action_raises_for_missing_company() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_company_repository_update_pipeline_fields() -> None:
     repo = PostgresCompanyRepository()
     updated = {
@@ -368,6 +382,7 @@ def test_company_repository_update_pipeline_fields() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_company_repository_list_by_pipeline_stage() -> None:
     repo = PostgresCompanyRepository()
     row = {"id": COMPANY_ID, "pipeline_stage": "qualified"}
