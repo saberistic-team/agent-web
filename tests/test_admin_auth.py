@@ -565,7 +565,7 @@ def test_admin_preview_mode_allows_dashboard_without_login(
     assert dash.status_code == 200
     assert "Preview data — not production" in dash.text
     assert "Overdue next actions" in dash.text
-    assert "Companies by stage" in dash.text
+    assert "Companies by funding stage" in dash.text
     login = client.get("/admin/login")
     assert login.status_code == 200
     assert "Admin sign in" in login.text
