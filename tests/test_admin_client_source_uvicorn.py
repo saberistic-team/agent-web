@@ -16,7 +16,8 @@ from pathlib import Path
 import pytest
 
 from app.admin_auth import LOGIN_FLOW_COOKIE_NAME
-from tests.test_admin_auth import TEST_LIMITER_SECRET, TEST_HASH, TEST_PASSWORD, TEST_SECRET, TEST_USERNAME
+from tests.conftest import TEST_LIMITER_SECRET
+from tests.test_admin_auth import TEST_HASH, TEST_PASSWORD, TEST_SECRET, TEST_USERNAME
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TRUSTED_PROXY_CIDRS = "10.0.0.0/8,103.21.244.0/22"
