@@ -68,7 +68,7 @@ body.admin-app {
   padding: 0;
 }
 
-/* Form-action buttons — distinct from link-like .admin-exit and primary .cta */
+/* Form-action buttons — distinct from link-like .admin-exit top-bar controls. */
 .admin-action {
   display: inline-block;
   margin: 0;
@@ -78,87 +78,70 @@ body.admin-app {
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  text-decoration: none;
   line-height: 1.2;
-  appearance: none;
-  -webkit-appearance: none;
-  cursor: pointer;
   border-radius: 2px;
-  border: 1px solid transparent;
-  background: transparent;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
   color: var(--ink);
+  cursor: pointer;
   transition:
     background 0.15s ease,
-    border-color 0.15s ease,
     color 0.15s ease,
+    border-color 0.15s ease,
     transform 0.15s ease;
 }
 
-.admin-action--archive {
-  color: #e8a090;
-  border-color: color-mix(in srgb, #e05a5a 55%, var(--line));
-  background: color-mix(in srgb, #e05a5a 10%, transparent);
-}
-
-.admin-action--archive:hover {
-  color: #ffb4b4;
-  border-color: #e05a5a;
-  background: color-mix(in srgb, #e05a5a 18%, transparent);
-}
-
-.admin-action--archive:focus-visible {
-  color: #ffb4b4;
-  border-color: #e05a5a;
-  background: color-mix(in srgb, #e05a5a 18%, transparent);
-  outline: 2px solid #e05a5a;
-  outline-offset: 2px;
-}
-
-.admin-action--archive:active:not(:disabled):not([aria-disabled="true"]) {
-  background: color-mix(in srgb, #e05a5a 25%, transparent);
-  transform: translateY(1px);
-}
-
-.admin-action--archive:disabled,
-.admin-action--archive[aria-disabled="true"] {
-  opacity: 0.45;
-  cursor: not-allowed;
-  color: #c89088;
-  border-color: color-mix(in srgb, #e05a5a 30%, var(--line));
-  background: color-mix(in srgb, #e05a5a 6%, transparent);
-}
-
-.admin-action--restore {
+.admin-action:hover {
+  border-color: var(--accent);
   color: var(--ink);
-  border-color: var(--line);
-  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
 }
 
-.admin-action--restore:hover {
-  color: var(--accent);
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
-}
-
-.admin-action--restore:focus-visible {
-  color: var(--accent);
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
+.admin-action:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.admin-action--restore:active:not(:disabled):not([aria-disabled="true"]) {
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
+.admin-action:active:not(:disabled) {
   transform: translateY(1px);
 }
 
-.admin-action--restore:disabled,
-.admin-action--restore[aria-disabled="true"] {
+.admin-action:disabled,
+.admin-action[aria-disabled="true"] {
   opacity: 0.45;
   cursor: not-allowed;
-  color: var(--muted);
   border-color: var(--line);
-  background: color-mix(in srgb, var(--surface) 35%, transparent);
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  color: var(--muted);
+}
+
+.admin-action--destructive {
+  border-color: color-mix(in srgb, #e05a5a 55%, var(--line));
+  background: color-mix(in srgb, #e05a5a 14%, var(--surface));
+  color: #ffb4b4;
+}
+
+.admin-action--destructive:hover:not(:disabled) {
+  border-color: #e05a5a;
+  background: color-mix(in srgb, #e05a5a 22%, var(--surface));
+  color: #ffc8c8;
+}
+
+.admin-action--destructive:focus-visible {
+  outline-color: #e05a5a;
+}
+
+.admin-action--secondary {
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  color: var(--muted);
+}
+
+.admin-action--secondary:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
 }
 
 .admin-layout {

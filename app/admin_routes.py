@@ -40,9 +40,13 @@ from app.admin_preview import (
     PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR,
     PREVIEW_BRIEF_DATABASE_ERROR_ID,
     PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID,
-    build_preview_company_research_context,
-    build_preview_contact_form_context,
-    build_preview_contact_research_context,
+    PREVIEW_CRM_COMPANY_ACTIVE_ID,
+    PREVIEW_CRM_COMPANY_ARCHIVED_ID,
+    PREVIEW_CRM_CONTACT_ACTIVE_ID,
+    PREVIEW_CRM_CONTACT_ARCHIVED_ID,
+    preview_company_crm_detail,
+    preview_contact_crm_detail,
+    preview_contact_crm_edit,
     preview_contact_restore_conflict,
 )
 from app.config import Settings, get_settings
@@ -706,20 +710,23 @@ def admin_company_research(
     session = require_admin_session(request)
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
-    if settings.admin_preview_enabled:
-        preview = build_preview_company_research_context(company_id)
-        if preview is not None:
-            company, contacts, records = preview
-            return HTMLResponse(
-                admin_research_pages.render_admin_company_research_page(
-                    company=company,
-                    contacts=contacts,
-                    records=records,
-                    csrf_token=csrf_token,
-                    admin_username=session.admin_username,
-                    error_message=error,
-                )
+    if settings.admin_preview_enabled and company_id in (
+        PREVIEW_CRM_COMPANY_ACTIVE_ID,
+        PREVIEW_CRM_COMPANY_ARCHIVED_ID,
+    ):
+        company, contacts, records = preview_company_crm_detail(
+            archived=company_id == PREVIEW_CRM_COMPANY_ARCHIVED_ID,
+        )
+        return HTMLResponse(
+            admin_research_pages.render_admin_company_research_page(
+                company=company,
+                contacts=contacts,
+                records=records,
+                csrf_token=csrf_token,
+                admin_username=session.admin_username,
+                error_message=error,
             )
+        )
     with db.db_connection(settings.database_url) as conn:
         company = _crm.get_company(conn, company_id)
         if company is None:
@@ -995,19 +1002,17 @@ def admin_contact_edit(
     session = require_admin_session(request)
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
-    if settings.admin_preview_enabled:
-        preview = build_preview_contact_form_context(contact_id)
-        if preview is not None:
-            contact, companies = preview
-            return HTMLResponse(
-                contact_pages.render_contact_form_page(
-                    csrf_token=csrf_token,
-                    admin_username=session.admin_username,
-                    companies=companies,
-                    contact=contact,
-                    error_message=error or warning,
-                )
+    if settings.admin_preview_enabled and contact_id == PREVIEW_CRM_CONTACT_ACTIVE_ID:
+        contact, companies = preview_contact_crm_edit()
+        return HTMLResponse(
+            contact_pages.render_contact_form_page(
+                csrf_token=csrf_token,
+                admin_username=session.admin_username,
+                companies=companies,
+                contact=contact,
+                error_message=error or warning,
             )
+        )
     with db.db_connection(settings.database_url) as conn:
         contact = _crm.get_contact(conn, contact_id)
         companies = _crm.list_companies(conn, limit=500)
@@ -1156,20 +1161,23 @@ def admin_contact_research(
     session = require_admin_session(request)
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
-    if settings.admin_preview_enabled:
-        preview = build_preview_contact_research_context(contact_id)
-        if preview is not None:
-            contact, company, records = preview
-            return HTMLResponse(
-                admin_research_pages.render_admin_contact_research_page(
-                    contact=contact,
-                    company=company,
-                    records=records,
-                    csrf_token=csrf_token,
-                    admin_username=session.admin_username,
-                    error_message=error,
-                )
+    if settings.admin_preview_enabled and contact_id in (
+        PREVIEW_CRM_CONTACT_ACTIVE_ID,
+        PREVIEW_CRM_CONTACT_ARCHIVED_ID,
+    ):
+        contact, company, records = preview_contact_crm_detail(
+            archived=contact_id == PREVIEW_CRM_CONTACT_ARCHIVED_ID,
+        )
+        return HTMLResponse(
+            admin_research_pages.render_admin_contact_research_page(
+                contact=contact,
+                company=company,
+                records=records,
+                csrf_token=csrf_token,
+                admin_username=session.admin_username,
+                error_message=error,
             )
+        )
     with db.db_connection(settings.database_url) as conn:
         contact = _crm.get_contact(conn, contact_id)
         if contact is None:

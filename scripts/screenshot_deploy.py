@@ -93,7 +93,6 @@ ADMIN_SCREENSHOT_ROUTES: tuple[str, ...] = (
     "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd01",
     "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd02",
     "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd01/edit",
-    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd02/edit",
 )
 
 # Fallback when app.admin_layout import fails (keep in sync).
