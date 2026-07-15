@@ -635,7 +635,7 @@ def build_preview_brief_rows(
         company = companies[i % len(companies)]
         brief_id = i + 1
         status = BRIEF_PAYMENT_STATUSES[0] if brief_id == 2 else rng.choice(BRIEF_PAYMENT_STATUSES)
-        # Keep id=1 rich/paid and id=2 unpaid+nullable so Reviewer shots cover both AC states.
+        # Keep id=1 rich/paid, id=2 unpaid+nullable, id=3 discounted paid for Reviewer shots.
         if brief_id == 1:
             status = "paid"
         elif brief_id == 3:
@@ -646,10 +646,10 @@ def build_preview_brief_rows(
         intent_id: str | None = None
         payment_subtotal_cents: int | None = None
         payment_discount_cents: int | None = None
-        payment_amount_cents: int | None = None
+        payment_total_cents: int | None = None
         payment_currency: str | None = None
-        stripe_promotion_code_id: str | None = None
         stripe_coupon_id: str | None = None
+        stripe_promotion_code_id: str | None = None
         if status == "paid":
             paid_at = created + timedelta(minutes=rng.randint(5, 90))
             session_id = f"cs_preview_{rng.randint(100000, 999999)}"
@@ -658,13 +658,13 @@ def build_preview_brief_rows(
             if brief_id == 3:
                 payment_subtotal_cents = 20_000
                 payment_discount_cents = 5_000
-                payment_amount_cents = 15_000
-                stripe_promotion_code_id = "promo_preview_discount"
-                stripe_coupon_id = "coupon_preview_discount"
-            elif brief_id == 1:
+                payment_total_cents = 15_000
+                stripe_promotion_code_id = f"promo_preview_{rng.randint(100000, 999999)}"
+                stripe_coupon_id = f"coupon_preview_{rng.randint(100000, 999999)}"
+            else:
                 payment_subtotal_cents = 20_000
                 payment_discount_cents = 0
-                payment_amount_cents = 20_000
+                payment_total_cents = 20_000
         utm_source = None if brief_id == 2 else rng.choice(UTM_SOURCES)
         utm_medium = None if brief_id == 2 else rng.choice(UTM_MEDIUMS)
         utm_campaign = None if brief_id == 2 else rng.choice(UTM_CAMPAIGNS)
@@ -695,10 +695,10 @@ def build_preview_brief_rows(
                 "paid_at": paid_at,
                 "payment_subtotal_cents": payment_subtotal_cents,
                 "payment_discount_cents": payment_discount_cents,
-                "payment_amount_cents": payment_amount_cents,
+                "payment_total_cents": payment_total_cents,
                 "payment_currency": payment_currency,
-                "stripe_promotion_code_id": stripe_promotion_code_id,
                 "stripe_coupon_id": stripe_coupon_id,
+                "stripe_promotion_code_id": stripe_promotion_code_id,
                 "utm_source": utm_source,
                 "utm_medium": utm_medium,
                 "utm_campaign": utm_campaign,

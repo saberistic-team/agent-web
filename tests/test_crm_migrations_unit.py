@@ -73,16 +73,15 @@ def test_brief_migrations_remain_idempotent() -> None:
 
 
 @pytest.mark.unit
-def test_brief_migrations_payment_details_is_idempotent() -> None:
-    migration = next(m for m in MIGRATIONS if m.name == "project_briefs_payment_details")
-    assert migration.version == "016"
+def test_project_brief_payment_migration_is_idempotent() -> None:
+    migration = next(m for m in MIGRATIONS if m.name == "project_briefs_payment_amounts")
     for column in (
         "payment_subtotal_cents",
         "payment_discount_cents",
-        "payment_amount_cents",
+        "payment_total_cents",
         "payment_currency",
-        "stripe_promotion_code_id",
         "stripe_coupon_id",
+        "stripe_promotion_code_id",
     ):
         assert f"ADD COLUMN IF NOT EXISTS {column}" in migration.up_sql
 

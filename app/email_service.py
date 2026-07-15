@@ -89,16 +89,6 @@ def notify_customer_of_brief_received(
     )
 
 
-def _format_paid_email_amount(brief: dict[str, Any]) -> str:
-    amount_cents = brief.get("payment_amount_cents")
-    if amount_cents is None:
-        return "$200"
-    cents = int(amount_cents)
-    if cents % 100 == 0:
-        return f"${cents / 100:.0f}"
-    return f"${cents / 100:.2f}"
-
-
 def notify_team_of_paid_brief(
     *,
     api_key: str,
@@ -106,15 +96,21 @@ def notify_team_of_paid_brief(
     notify_email: str,
     brief: dict[str, Any],
 ) -> dict[str, Any] | None:
+    amount_label = _format_brief_paid_amount(brief)
     body = (
         "Payment received for project brief\n\n"
         f"Website: {brief['website']}\n"
         f"Email: {brief['contact_value']}\n\n"
         f"Brief:\n{brief['brief']}\n\n"
         f"Brief ID: {brief['id']}\n"
+        f"Amount collected: {amount_label}\n"
         f"Stripe session: {brief.get('stripe_session_id') or 'n/a'}\n"
         f"Stripe payment intent: {brief.get('stripe_payment_intent_id') or 'n/a'}\n"
     )
+    if brief.get("stripe_promotion_code_id"):
+        body += f"Stripe promotion code: {brief['stripe_promotion_code_id']}\n"
+    if brief.get("stripe_coupon_id"):
+        body += f"Stripe coupon: {brief['stripe_coupon_id']}\n"
     return send_email(
         api_key=api_key,
         from_email=from_email,
@@ -124,16 +120,27 @@ def notify_team_of_paid_brief(
     )
 
 
+def _format_brief_paid_amount(brief: dict[str, Any]) -> str:
+    total_cents = brief.get("payment_total_cents")
+    if total_cents is None:
+        return "$200"
+    total = int(total_cents) / 100
+    if total == int(total):
+        return f"${int(total)}"
+    return f"${total:.2f}"
+
+
 def notify_customer_of_paid_brief(
     *,
     api_key: str,
     from_email: str,
     brief: dict[str, Any],
 ) -> dict[str, Any] | None:
+    amount_label = _format_brief_paid_amount(brief)
     body = (
         "Payment received — thank you.\n\n"
-        f"Your {_format_paid_email_amount(brief)} project brief payment was successful. "
-        "Our team will review your brief and follow up at this email address.\n\n"
+        f"Your {amount_label} project brief payment was successful. Our team will review "
+        "your brief and follow up at this email address.\n\n"
         f"Website: {brief['website']}\n\n"
         "— saberistic"
     )

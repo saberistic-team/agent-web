@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from dataclasses import dataclass
+from typing import Any
 
 import stripe
 
 
-class CheckoutPaymentDetails(TypedDict):
+@dataclass(frozen=True)
+class BriefCheckoutPayment:
+    """Amounts and discount identifiers from a completed Checkout Session."""
+
     subtotal_cents: int
     discount_cents: int
-    amount_cents: int
+    total_cents: int
     currency: str
-    promotion_code_id: str | None
-    coupon_id: str | None
+    stripe_coupon_id: str | None
+    stripe_promotion_code_id: str | None
 
 
 def create_checkout_session(
@@ -65,49 +69,53 @@ def extract_brief_id_from_session(session: dict[str, Any]) -> int | None:
 
 
 def _stripe_object_id(value: Any) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, str):
+    if isinstance(value, str) and value.strip():
         return value
     if isinstance(value, dict):
-        raw = value.get("id")
-        return str(raw) if raw else None
+        raw_id = value.get("id")
+        if isinstance(raw_id, str) and raw_id.strip():
+            return raw_id
     return None
 
 
-def extract_payment_details_from_session(session: dict[str, Any]) -> CheckoutPaymentDetails:
-    """Read subtotal, discount, final amount, and promo identifiers from a completed session."""
-    subtotal_cents = int(session.get("amount_subtotal") or 0)
-    amount_cents = int(session.get("amount_total") or 0)
-    currency = str(session.get("currency") or "usd").lower()
+def extract_payment_from_session(
+    session: dict[str, Any],
+    *,
+    list_price_cents: int,
+) -> BriefCheckoutPayment:
+    """Read Stripe-completed session totals; fall back to list price when absent."""
+    total_raw = session.get("amount_total")
+    if total_raw is None:
+        return BriefCheckoutPayment(
+            subtotal_cents=list_price_cents,
+            discount_cents=0,
+            total_cents=list_price_cents,
+            currency=str(session.get("currency") or "usd"),
+            stripe_coupon_id=None,
+            stripe_promotion_code_id=None,
+        )
 
+    total_cents = int(total_raw)
+    subtotal_cents = int(session.get("amount_subtotal") or total_cents)
     total_details = session.get("total_details") or {}
     discount_cents = int(total_details.get("amount_discount") or 0)
+    currency = str(session.get("currency") or "usd")
 
-    promotion_code_id: str | None = None
-    coupon_id: str | None = None
+    stripe_coupon_id: str | None = None
+    stripe_promotion_code_id: str | None = None
     breakdown = total_details.get("breakdown") or {}
-    for entry in breakdown.get("discounts") or []:
-        discount_obj = entry.get("discount") or {}
-        promotion_code_id = _stripe_object_id(discount_obj.get("promotion_code"))
-        coupon_id = _stripe_object_id(discount_obj.get("coupon"))
-        if promotion_code_id or coupon_id:
+    for item in breakdown.get("discounts") or []:
+        discount_obj = item.get("discount") or {}
+        stripe_coupon_id = _stripe_object_id(discount_obj.get("coupon"))
+        stripe_promotion_code_id = _stripe_object_id(discount_obj.get("promotion_code"))
+        if stripe_coupon_id or stripe_promotion_code_id:
             break
 
-    if not promotion_code_id and not coupon_id:
-        for entry in session.get("discounts") or []:
-            if not isinstance(entry, dict):
-                continue
-            promotion_code_id = _stripe_object_id(entry.get("promotion_code"))
-            coupon_id = _stripe_object_id(entry.get("coupon"))
-            if promotion_code_id or coupon_id:
-                break
-
-    return {
-        "subtotal_cents": subtotal_cents,
-        "discount_cents": discount_cents,
-        "amount_cents": amount_cents,
-        "currency": currency,
-        "promotion_code_id": promotion_code_id,
-        "coupon_id": coupon_id,
-    }
+    return BriefCheckoutPayment(
+        subtotal_cents=subtotal_cents,
+        discount_cents=discount_cents,
+        total_cents=total_cents,
+        currency=currency,
+        stripe_coupon_id=stripe_coupon_id,
+        stripe_promotion_code_id=stripe_promotion_code_id,
+    )
