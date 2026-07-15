@@ -30,6 +30,20 @@ Playwright can open admin pages **without login**.
   `app/admin_preview.py` whenever it adds a page (see `AGENTS/builder.md`).
 - See [ADMIN_AUTH.md](ADMIN_AUTH.md).
 
+**Production renderer routes** (preview uses the same page functions as authenticated
+production, with deterministic fixtures from `app/admin_preview.py`):
+
+| Route | Production renderer | Preview fixtures |
+|-------|---------------------|------------------|
+| `/admin/companies` | `admin_companies.render_companies_list_page` | `build_preview_companies` |
+| `/admin/contacts` | `admin_contacts.render_contacts_list_page` | `build_preview_contacts` |
+| `/admin/pipeline` | `admin_pipeline_pages.render_pipeline_list_page` | `build_preview_pipeline_companies` |
+| `/admin/briefs` | `admin_pages` brief list/detail | `build_preview_brief_rows` / `build_preview_brief_detail` |
+| `/admin` (dashboard) | `admin_dashboard_pages.render_acquisition_dashboard_page` | `build_preview_acquisition_dashboard_data` |
+
+Other admin nav pages still use generic `render_preview_section_main` tables until
+they gain production-backed list renderers.
+
 ### Expected-status visual fixtures
 
 Some admin routes intentionally return non-200 **HTML** error pages (for example
@@ -58,6 +72,29 @@ ADMIN_SCREENSHOT_EXPECTED_STATUS = {"/admin/briefs/503": 503}
 
 Generates `branch-admin-briefs-503.png` and `branch-admin-briefs-503-mobile.png`
 on the PR-head preview server.
+
+### CRM detail/editor fixtures
+
+Company, contact, and pipeline detail/editor routes use stable preview UUIDs in
+`app/admin_preview.py`. Reviewer captures each at desktop (1280×800) and mobile
+(390×844). Query params are encoded into filenames (e.g.
+`error=validation&focus=name` → `…-error-validation-focus-name.png`).
+
+| Route | Fixture / state | Intended markup |
+|-------|-----------------|-----------------|
+| `/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa` | `PREVIEW_COMPANY_POPULATED_ID` | Populated detail, **Archive company**, research evidence (URL/number/date/select/textarea), linked contacts |
+| `/admin/companies/new` | — | Empty create form |
+| `/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/edit` | populated | Filled edit form |
+| `/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa02` | `PREVIEW_COMPANY_ARCHIVED_ID` | **Restore company** on archived detail |
+| `/admin/companies/…/edit?error=validation&focus=name` | populated + query | `form-error` validation feedback + keyboard-focus on **Name** |
+| `/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb` | `PREVIEW_CONTACT_POPULATED_ID` | Populated detail, **Archive contact**, research form |
+| `/admin/contacts/new` | — | Empty create form (company select populated) |
+| `/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/edit` | populated | Filled edit form + **Archive contact** |
+| `/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbc/edit` | `PREVIEW_CONTACT_ARCHIVED_ID` | **Restore contact** on archived record |
+| `/admin/pipeline/11111111-1111-1111-1111-111111111111` | `PREVIEW_PIPELINE_COMPANY_IDS[0]` | Next action, Change stage, Log activity, stage history, activities |
+
+Unknown fixture IDs return HTTP 404 in preview mode — capture probes hard-fail
+when the configured route does not match the expected status.
 
 | Route kind | Examples | Behavior |
 |------------|----------|----------|
