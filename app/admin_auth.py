@@ -20,10 +20,7 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.admin_client_source import (
-    client_source_for_request,
-    resolve_admin_login_client_source,
-)
+from app.admin_client_source import resolve_admin_login_client_source_detail
 from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
@@ -239,14 +236,25 @@ def read_login_flow_token(request: Request) -> str | None:
 
 
 def client_ip(request: Request, settings: Settings) -> str:
-    """Resolve the client source IP for admin login rate limiting.
+    """Resolve the client source IP for rate limiting.
 
-    Delegates to :func:`resolve_admin_login_client_source`, which only trusts
-    forwarding headers when the immediate peer is within the configured
-    trusted-proxy boundary and derives client identity from the trusted edge
-    inward (never the raw leftmost ``X-Forwarded-For`` from an unverified peer).
+    Forwarding headers are honored only when the immediate peer is a member of
+    the configured trusted-proxy boundary (``ADMIN_TRUSTED_PROXY_CIDRS`` on
+    Render). Otherwise the direct peer address is used so clients cannot spoof
+    ``X-Forwarded-For``, ``Forwarded``, or ``CF-Connecting-IP``.
+
+    See :func:`app.admin_client_source.resolve_admin_login_client_source` and
+    ``docs/ADMIN_AUTH.md`` for the production Cloudflare → Render → Uvicorn
+    trust model.
     """
-    return client_source_for_request(request, settings)
+    return resolve_admin_login_client_source_detail(request, settings).source
+
+
+def _log_client_source_resolution(path: str) -> None:
+    _logger.info(
+        "Admin login client source resolved",
+        extra={"source_resolution_path": path},
+    )
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
@@ -370,8 +378,9 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    resolution = resolve_admin_login_client_source(request, settings)
+    resolution = resolve_admin_login_client_source_detail(request, settings)
     source = resolution.source
+    _log_client_source_resolution(resolution.path)
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,
@@ -423,7 +432,6 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "lockout_transition": admission.lockout_transition,
-                "client_source_resolution_path": resolution.path.value,
             },
         )
     elif admission.already_locked:
@@ -432,7 +440,6 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "already_locked": True,
-                "client_source_resolution_path": resolution.path.value,
             },
         )
     return LoginAdmissionResult(

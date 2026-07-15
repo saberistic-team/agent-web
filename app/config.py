@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from app.admin_client_source import parse_trusted_proxy_cidrs
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -28,8 +30,7 @@ class Settings:
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
     admin_trust_proxy_headers: bool = False
-    admin_trusted_proxy_cidrs: str = ""
-    admin_trust_cloudflare_edge: bool = False
+    admin_trusted_proxy_cidrs: tuple[str, ...] = ()
     uvicorn_forwarded_allow_ips: str = ""
     audit_page_size: int = 50
     brief_page_size: int = 50
@@ -116,10 +117,10 @@ def get_settings() -> Settings:
             "ADMIN_TRUST_PROXY_HEADERS", ""
         ).lower()
         in ("1", "true", "yes"),
-        admin_trusted_proxy_cidrs=os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "").strip(),
-        admin_trust_cloudflare_edge=os.environ.get(
-            "ADMIN_TRUST_CLOUDFLARE_EDGE", ""
-        ).lower()
-        in ("1", "true", "yes"),
-        uvicorn_forwarded_allow_ips=os.environ.get("UVICORN_FORWARDED_ALLOW_IPS", "").strip(),
+        admin_trusted_proxy_cidrs=parse_trusted_proxy_cidrs(
+            os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "")
+        ),
+        uvicorn_forwarded_allow_ips=os.environ.get(
+            "UVICORN_FORWARDED_ALLOW_IPS", ""
+        ).strip(),
     )
