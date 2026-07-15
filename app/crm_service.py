@@ -8,7 +8,7 @@ from typing import Any
 from uuid import UUID
 
 import psycopg
-from psycopg.errors import UniqueViolation
+from psycopg import errors as pg_errors
 
 from app import audit_service
 from app.acquisition_pipeline import (
@@ -21,20 +21,23 @@ from app.acquisition_pipeline import (
 )
 from app.actor_context import ActorContext
 from app.brief_conversion import (
+    BriefConversionError,
+    BriefConversionIdempotencyRace,
     BriefConversionValidationError,
     build_conversion_proposal,
     safe_conversion_payload,
 )
+from app.brief_conversion_lock import acquire_brief_conversion_lock
 from app.companies import CompanyCreate, CompanyUpdate, find_domain_duplicate_warnings, normalize_domain
 from app.contacts import (
     ContactCreate,
-    ContactRestoreResult,
-    ContactSafeSummary,
     ContactUpdate,
-    contact_safe_summary,
     find_email_duplicate_warnings,
     find_name_company_duplicate_warnings,
     find_profile_url_duplicate_warnings,
+    ContactRestoreResult,
+    ContactSafeSummary,
+    contact_safe_summary,
     normalize_email,
 )
 from app.crm_uow import crm_transaction
@@ -80,7 +83,8 @@ def default_crm_repositories() -> CrmRepositories:
     )
 
 
-def _is_contact_email_unique_violation(exc: UniqueViolation) -> bool:
+
+def _is_contact_email_unique_violation(exc: pg_errors.UniqueViolation) -> bool:
     diag = exc.diag
     if diag is None:
         return False
@@ -239,7 +243,48 @@ class CrmService:
             selected_contact_id=selected_contact_id,
         )
 
+        try:
+            return self._execute_brief_conversion(
+                conn,
+                brief=brief,
+                brief_id=brief_id,
+                actor_context=actor_context,
+                proposal=proposal,
+                pipeline_stage=pipeline_stage,
+                domain=domain,
+                email=email,
+                company_choice=company_choice,
+                contact_choice=contact_choice,
+                selected_company_id=selected_company_id,
+                selected_contact_id=selected_contact_id,
+            )
+        except BriefConversionIdempotencyRace:
+            winner = self.get_project_brief_source(conn, brief_id)
+            if winner is None:
+                raise BriefConversionError(
+                    "Brief conversion source link conflict but no winning record was found."
+                ) from None
+            return self._conversion_result_from_source(conn, winner, idempotent=True)
+
+    def _execute_brief_conversion(
+        self,
+        conn: psycopg.Connection,
+        *,
+        brief: dict[str, Any],
+        brief_id: int,
+        actor_context: ActorContext,
+        proposal: dict[str, Any],
+        pipeline_stage: str,
+        domain: str | None,
+        email: str,
+        company_choice: str,
+        contact_choice: str,
+        selected_company_id: UUID | None,
+        selected_contact_id: UUID | None,
+    ) -> dict[str, Any]:
         with crm_transaction(conn):
+            acquire_brief_conversion_lock(conn, brief_id)
+
             race = self.get_project_brief_source(conn, brief_id)
             if race is not None:
                 return self._conversion_result_from_source(conn, race, idempotent=True)
@@ -304,14 +349,20 @@ class CrmService:
                 **safe_conversion_payload(brief),
                 "pipeline_stage": pipeline_stage,
             }
-            source_record = self._repos.source_records.create(
-                conn,
-                source_type="project_brief",
-                external_id=str(brief_id),
-                company_id=UUID(str(company["id"])),
-                contact_id=UUID(str(contact["id"])),
-                payload=payload,
-            )
+            try:
+                source_record = self._repos.source_records.create(
+                    conn,
+                    source_type="project_brief",
+                    external_id=str(brief_id),
+                    company_id=UUID(str(company["id"])),
+                    contact_id=UUID(str(contact["id"])),
+                    payload=payload,
+                )
+            except pg_errors.UniqueViolation as exc:
+                if not self._is_brief_source_unique_violation(exc):
+                    raise
+                raise BriefConversionIdempotencyRace from exc
+
             self._repos.activities.create(
                 conn,
                 activity_type="status_change",
@@ -346,6 +397,15 @@ class CrmService:
             "source_record": source_record,
             "pipeline_stage": pipeline_stage,
         }
+
+    @staticmethod
+    def _is_brief_source_unique_violation(exc: pg_errors.UniqueViolation) -> bool:
+        diag = exc.diag
+        if diag is None:
+            return False
+        if diag.constraint_name == "source_records_type_external_unique":
+            return True
+        return diag.table_name == "source_records"
 
     def _conversion_result_from_source(
         self,
@@ -712,7 +772,7 @@ class CrmService:
                     },
                 )
                 return ContactRestoreResult(outcome="success", contact=restored)
-        except UniqueViolation as exc:
+        except pg_errors.UniqueViolation as exc:
             if not _is_contact_email_unique_violation(exc):
                 raise
             conflicting = self._active_email_conflict_for_restore(

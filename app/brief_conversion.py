@@ -17,6 +17,10 @@ class BriefAlreadyConvertedError(BriefConversionError):
     """Raised when a brief already has a source linkage record."""
 
 
+class BriefConversionIdempotencyRace(BriefConversionError):
+    """Internal signal: source_records uniqueness lost a concurrent conversion race."""
+
+
 class BriefConversionValidationError(BriefConversionError):
     """Raised when operator input fails validation."""
 
