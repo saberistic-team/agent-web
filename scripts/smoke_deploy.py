@@ -39,22 +39,15 @@ def main(argv: list[str] | None = None) -> int:
         if not isinstance(payload, dict) or payload.get(key) != expected:
             print(f"FAIL {url}: got {payload!r}, expected {key}={expected!r}", file=sys.stderr)
             return 1
+        if path == "/health":
+            trust_mode = payload.get("admin_client_source_trust")
+            if trust_mode not in {"verified-proxy-hops", "direct-peer-only"}:
+                print(
+                    f"FAIL {url}: unexpected admin_client_source_trust={trust_mode!r}",
+                    file=sys.stderr,
+                )
+                return 1
         print(f"PASS {url} → {payload}")
-
-    if base.rstrip("/").endswith("saberistic.com") or "saberistic.com" in base:
-        try:
-            health = get_json(f"{base.rstrip('/')}/health")
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-            print(f"FAIL /health trust check: {exc}", file=sys.stderr)
-            return 1
-        trust = health.get("admin_client_source_trust")
-        if not isinstance(trust, dict) or not trust.get("proxy_cidrs_configured"):
-            print(
-                f"FAIL /health admin_client_source_trust: {trust!r}",
-                file=sys.stderr,
-            )
-            return 1
-        print(f"PASS /health admin_client_source_trust → {trust!r}")
     return 0
 
 

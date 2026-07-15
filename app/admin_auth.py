@@ -20,7 +20,7 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.client_source import ClientSourceResolution, resolve_admin_login_client_source
+from app.admin_client_source import resolve_admin_login_client_source
 from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
@@ -236,16 +236,14 @@ def read_login_flow_token(request: Request) -> str | None:
 
 
 def client_ip(request: Request, settings: Settings) -> str:
-    """Resolve the client source for rate limiting (see ``client_source``)."""
-    return resolve_admin_login_client_source(request, settings).source
+    """Resolve the client source IP for admin login rate limiting.
 
-
-def resolve_admin_login_client_source_with_telemetry(
-    request: Request,
-    settings: Settings,
-) -> ClientSourceResolution:
-    """Resolve client source and expose non-sensitive resolution metadata."""
-    return resolve_admin_login_client_source(request, settings)
+    Forwarding headers are honored only when the immediate peer matches the
+    configured trusted-proxy boundary (see :mod:`app.admin_client_source`).
+    Untrusted peers, ambiguous single-hop ``X-Forwarded-For`` values, and
+    vendor headers sent directly to the public Render origin are ignored.
+    """
+    return resolve_admin_login_client_source(request, settings).address
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
@@ -369,8 +367,7 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    resolution = resolve_admin_login_client_source(request, settings)
-    source = resolution.source
+    source = client_ip(request, settings)
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,
@@ -416,18 +413,11 @@ def try_admit_login_attempt(
             store_unavailable=True,
         )
 
-    telemetry = {
-        "limiter_key_count": len(limiter_keys),
-        "source_resolution_path": resolution.path,
-    }
-    if resolution.ignored_untrusted_forwarding:
-        telemetry["ignored_untrusted_forwarding"] = True
-
     if admission.admitted:
         _logger.info(
             "Admin login attempt admitted",
             extra={
-                **telemetry,
+                "limiter_key_count": len(limiter_keys),
                 "lockout_transition": admission.lockout_transition,
             },
         )
@@ -435,7 +425,7 @@ def try_admit_login_attempt(
         _logger.info(
             "Admin login attempt throttled",
             extra={
-                **telemetry,
+                "limiter_key_count": len(limiter_keys),
                 "already_locked": True,
             },
         )
