@@ -56,10 +56,11 @@ class Settings:
             self.admin_username
             and self.admin_password_hash
             and self.admin_session_secret
+            and self.admin_login_limiter_secret
         )
         if self.admin_preview_mode:
             return creds
-        return bool(self.database_url and creds and self.admin_login_limiter_secret)
+        return bool(self.database_url and creds)
 
     @property
     def admin_preview_enabled(self) -> bool:

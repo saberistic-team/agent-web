@@ -61,12 +61,10 @@ class FakeRateLimitStore:
         rate_limit: int,
         window_seconds: int,
         lockout_seconds: int,
-        lock_check_keys: tuple[str, ...] | None = None,
     ) -> db.AdminLoginAdmission:
         with self._lock:
-            ordered_check_keys = tuple(sorted(set(lock_check_keys or limiter_keys)))
-            ordered_write_keys = tuple(sorted(limiter_keys))
-            for limiter_key in ordered_check_keys:
+            ordered_keys = tuple(sorted(limiter_keys))
+            for limiter_key in ordered_keys:
                 if limiter_key not in self.rows:
                     self.rows[limiter_key] = {
                         "failure_count": 0,
@@ -75,7 +73,7 @@ class FakeRateLimitStore:
                         "updated_at": now,
                     }
 
-            for limiter_key in ordered_check_keys:
+            for limiter_key in ordered_keys:
                 row = self.rows[limiter_key]
                 locked_until = row.get("locked_until")
                 if locked_until is not None and locked_until > now:
@@ -87,7 +85,7 @@ class FakeRateLimitStore:
                     )
 
             lockout_transition = False
-            for limiter_key in ordered_write_keys:
+            for limiter_key in ordered_keys:
                 row = self.rows[limiter_key]
                 window_start = now - timedelta(seconds=window_seconds)
                 if row["window_started_at"] < window_start:
@@ -179,7 +177,6 @@ def shared_rate_limiter(store: FakeRateLimitStore) -> Generator[None, None, None
         rate_limit: int,
         window_seconds: int,
         lockout_seconds: int,
-        lock_check_keys: tuple[str, ...] | None = None,
     ) -> db.AdminLoginAdmission:
         return store.try_admit(
             limiter_keys,
@@ -187,7 +184,6 @@ def shared_rate_limiter(store: FakeRateLimitStore) -> Generator[None, None, None
             rate_limit=rate_limit,
             window_seconds=window_seconds,
             lockout_seconds=lockout_seconds,
-            lock_check_keys=lock_check_keys,
         )
 
     def clear_many(conn: Any, *, limiter_keys: tuple[str, ...]) -> None:
@@ -535,6 +531,7 @@ def test_admin_preview_mode_allows_dashboard_without_login(
     monkeypatch.delenv("ADMIN_USERNAME", raising=False)
     monkeypatch.delenv("ADMIN_PASSWORD_HASH", raising=False)
     monkeypatch.delenv("ADMIN_SESSION_SECRET", raising=False)
+    monkeypatch.delenv("ADMIN_LOGIN_LIMITER_SECRET", raising=False)
     monkeypatch.delenv("DATABASE_URL", raising=False)
     dash = client.get("/admin")
     assert dash.status_code == 200
@@ -562,6 +559,7 @@ def test_admin_auth_settings_flags(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ADMIN_USERNAME", raising=False)
     monkeypatch.delenv("ADMIN_PASSWORD_HASH", raising=False)
     monkeypatch.delenv("ADMIN_SESSION_SECRET", raising=False)
+    monkeypatch.delenv("ADMIN_LOGIN_LIMITER_SECRET", raising=False)
     settings = get_settings()
     assert not settings.admin_auth_configured
 
@@ -624,9 +622,10 @@ def test_build_source_and_account_rate_limit_keys() -> None:
 def test_login_limiter_keys_include_account_for_configured_username() -> None:
     settings = get_settings()
     keys = admin_auth.login_limiter_keys(
-        settings=settings,
         submitted_username="Operator",
         client_source="203.0.113.1",
+        configured_admin_username="operator",
+        settings=settings,
     )
     assert len(keys) == 2
     assert admin_auth.build_source_rate_limit_key("203.0.113.1", settings) in keys
@@ -637,9 +636,10 @@ def test_login_limiter_keys_include_account_for_configured_username() -> None:
 def test_login_limiter_keys_source_only_for_unknown_username() -> None:
     settings = get_settings()
     keys = admin_auth.login_limiter_keys(
-        settings=settings,
         submitted_username="ghost",
         client_source="203.0.113.1",
+        configured_admin_username="operator",
+        settings=settings,
     )
     assert keys == (admin_auth.build_source_rate_limit_key("203.0.113.1", settings),)
 

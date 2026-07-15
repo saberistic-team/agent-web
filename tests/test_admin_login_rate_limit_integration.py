@@ -6,7 +6,7 @@ import os
 import threading
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Any, Iterator
+from typing import Iterator
 
 import psycopg
 import pytest
@@ -15,7 +15,6 @@ from psycopg.rows import dict_row
 from app import admin_auth, db
 from app.config import get_settings
 from app.migrations.runner import apply_migrations
-from tests.conftest import TEST_LIMITER_SECRET
 
 _REQUIRED = (os.environ.get("REQUIRE_TEST_DATABASE") or "").strip() in {"1", "true", "yes"}
 _DATABASE_URL = (os.environ.get("TEST_DATABASE_URL") or "").strip()
@@ -98,12 +97,7 @@ def _admit(
     )
 
 
-@pytest.fixture(autouse=True)
-def limiter_settings(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
-
-
-def _settings() -> Any:
+def _settings():
     return get_settings()
 
 
@@ -281,5 +275,65 @@ def test_cleanup_removes_stale_unlocked_rows(pg_conn: psycopg.Connection) -> Non
         window_seconds=60,
         lockout_seconds=60,
     )
+    assert deleted >= 1
+    assert _count_limiter_rows(pg_conn) == 0
+
+
+def _plain_sha256_limiter_digest(prefix: str, material: str) -> str:
+    import hashlib
+
+    payload = f"{prefix}:{material}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+@pytest.mark.integration
+def test_hmac_limiter_keys_persist_without_plain_sha256(pg_conn: psycopg.Connection) -> None:
+    settings = _settings()
+    source = "203.0.113.242"
+    source_key = admin_auth.build_source_rate_limit_key(source, settings)
+    plain = _plain_sha256_limiter_digest("src", source.lower())
+    assert source_key != plain
+    assert len(source_key) == 64
+
+    now = datetime(2026, 7, 15, tzinfo=timezone.utc)
+    _admit(pg_conn, keys=(source_key,), now=now, rate_limit=5)
+    pg_conn.commit()
+
+    row = pg_conn.execute(
+        "SELECT limiter_key FROM admin_login_rate_limits WHERE limiter_key = %s",
+        (source_key,),
+    ).fetchone()
+    assert row is not None
+    assert row["limiter_key"] == source_key
+    assert row["limiter_key"] != plain
+
+
+@pytest.mark.integration
+def test_rotation_cleanup_removes_stale_previous_secret_rows(pg_conn: psycopg.Connection) -> None:
+    settings = _settings()
+    previous_source = admin_auth.build_source_rate_limit_key(
+        "203.0.113.88",
+        settings,
+        secret="previous-login-limiter-secret-32chars!!",
+    )
+    stale_time = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    pg_conn.execute(
+        """
+        INSERT INTO admin_login_rate_limits (
+            limiter_key, failure_count, window_started_at, locked_until, updated_at
+        ) VALUES (%s, 1, %s, NULL, %s)
+        """,
+        (previous_source, stale_time, stale_time),
+    )
+    pg_conn.commit()
+    assert _count_limiter_rows(pg_conn) == 1
+
+    deleted = db.cleanup_expired_admin_login_rate_limits(
+        pg_conn,
+        now=stale_time + timedelta(seconds=2000),
+        window_seconds=60,
+        lockout_seconds=60,
+    )
+    pg_conn.commit()
     assert deleted >= 1
     assert _count_limiter_rows(pg_conn) == 0
