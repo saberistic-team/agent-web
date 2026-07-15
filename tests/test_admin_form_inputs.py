@@ -1,4 +1,8 @@
-"""Regression tests for dark-themed admin text-like form controls (#231)."""
+"""Regression tests for dark-themed admin text-like form controls (#231).
+
+Checkbox, radio, fieldset, and native date-picker theming for admin lives in
+``site/assets/admin.css`` (#235); this module guards ``site.css`` text-like rules.
+"""
 
 from __future__ import annotations
 
