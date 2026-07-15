@@ -338,7 +338,7 @@ def test_preview_pipeline_detail_includes_themed_text_like_inputs(
     )
     assert response.status_code == 200
     body = response.text
-    assert 'class="admin-form"' in body
+    assert 'class="admin-form admin-form--editor"' in body
     assert 'type="datetime-local"' in body
     assert 'name="pipeline_owner"' in body
     assert 'name="expected_value_cents"' in body

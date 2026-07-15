@@ -56,7 +56,7 @@ def render_imports_page(*, admin_username: str, csrf_token: str) -> str:
         </dl>
       </div>
 
-      <form class="admin-form linkedin-import-form" id="linkedin-import-form">
+      <form class="admin-form admin-form--editor linkedin-import-form" id="linkedin-import-form">
         <div class="field">
           <label for="linkedin-export-zip">LinkedIn export ZIP</label>
           <input

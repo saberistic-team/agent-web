@@ -56,7 +56,7 @@ def _contact_form(
 ) -> str:
     contact = contact or {}
     roles = contact.get("buying_roles") or []
-    return f"""<form class="admin-form" method="post" action="{_esc(action)}">
+    return f"""<form class="admin-form admin-form--editor" method="post" action="{_esc(action)}">
       <input type="hidden" name="csrf_token" value="{_esc(csrf_token)}" />
       <div class="field"><label for="full_name">Name</label><input id="full_name" name="full_name" required maxlength="500" value="{_esc(contact.get("full_name"))}" /></div>
       <div class="field"><label for="title">Title</label><input id="title" name="title" maxlength="500" value="{_esc(contact.get("title"))}" /></div>
@@ -101,7 +101,7 @@ def render_contacts_list_page(
     main = f"""<section class="admin-section" aria-labelledby="contacts-title">
       {banner_html}
       <div class="admin-section-head"><div><p class="admin-eyebrow">CRM</p><h1 class="admin-title" id="contacts-title">Contacts</h1></div><a class="cta" href="/admin/contacts/new">Add contact</a></div>
-      <form class="admin-form" method="get" action="/admin/contacts">
+      <form class="admin-form admin-form--compact" method="get" action="/admin/contacts">
         <div class="field"><label for="q">Search</label><input id="q" name="q" value="{_esc(filters.get("q"))}" placeholder="Name, email, title, or profile URL" /></div>
         <div class="field"><label for="company-filter">Company</label><select id="company-filter" name="company_id">{_company_options(companies, filters.get("company_id"))}</select></div>
         <div class="field"><label for="role-filter">Buying role</label><select id="role-filter" name="buying_role">{_options(BUYING_ROLES, filters.get("buying_role"))}</select></div>
