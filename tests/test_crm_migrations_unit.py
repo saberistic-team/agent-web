@@ -202,16 +202,6 @@ def test_acquisition_pipeline_migration_is_idempotent() -> None:
 
 
 @pytest.mark.unit
-def test_acquisition_pipeline_migration_check_constraint_uses_canonical_stages() -> None:
-    from app.pipeline_stages import parse_pipeline_stage_check_constraint, pipeline_stage_db_check_values
-
-    pipeline = next(m for m in MIGRATIONS if m.name == "acquisition_pipeline")
-    assert parse_pipeline_stage_check_constraint(pipeline.up_sql) == frozenset(
-        pipeline_stage_db_check_values()
-    )
-
-
-@pytest.mark.unit
 def test_migration_rollback_strategy_is_forward_only() -> None:
     for migration in MIGRATIONS:
         assert not hasattr(migration, "down_sql")
@@ -375,6 +365,14 @@ def test_audit_events_migration_is_append_only() -> None:
     assert "prevent_audit_events_mutation" in audit.up_sql
     assert "BEFORE UPDATE ON audit_events" in audit.up_sql
     assert "BEFORE DELETE ON audit_events" in audit.up_sql
+
+
+@pytest.mark.unit
+def test_acquisition_pipeline_migration_check_matches_registry() -> None:
+    from app.pipeline_stages import PIPELINE_STAGE_ORDER, extract_pipeline_stage_check_values
+
+    pipeline = next(m for m in MIGRATIONS if m.name == "acquisition_pipeline")
+    assert extract_pipeline_stage_check_values(pipeline.up_sql) == frozenset(PIPELINE_STAGE_ORDER)
 
 
 @pytest.mark.unit

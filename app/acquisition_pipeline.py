@@ -1,4 +1,4 @@
-"""Acquisition pipeline stages, activities, and transition rules."""
+"""Acquisition pipeline activities and transition rules."""
 
 from __future__ import annotations
 
@@ -13,7 +13,6 @@ from app.pipeline_stages import (
     STAGE_ORDER,
     TERMINAL_STAGES,
     pipeline_stage_label,
-    validate_pipeline_stage,
 )
 
 PIPELINE_ACTIVITY_TYPES: dict[str, str] = {
@@ -32,6 +31,13 @@ LEGACY_ACTIVITY_TYPES = frozenset({"email", "call", "status_change"})
 
 class PipelineTransitionError(ValueError):
     """Raised when a stage change is not allowed."""
+
+
+def validate_pipeline_stage(stage: str) -> str:
+    if stage not in PIPELINE_STAGES:
+        allowed = ", ".join(PIPELINE_STAGES)
+        raise ValueError(f"Invalid pipeline stage. Allowed: {allowed}")
+    return stage
 
 
 def validate_pipeline_activity_type(activity_type: str) -> str:

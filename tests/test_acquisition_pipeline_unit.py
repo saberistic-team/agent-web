@@ -11,14 +11,14 @@ from app.acquisition_pipeline import (
     validate_pipeline_activity_type,
     validate_pipeline_stage,
 )
-from app.pipeline_stages import PIPELINE_STAGES
+from app.pipeline_stages import PIPELINE_STAGES, PIPELINE_STAGE_ORDER
 
 pytestmark = [pytest.mark.unit, pytest.mark.integration]
 
 
 def test_pipeline_stage_registry_covers_acceptance_stages() -> None:
-    assert set(PIPELINE_STAGES) == set(PIPELINE_STAGES.keys())
-    assert len(PIPELINE_STAGES) == 12
+    assert set(PIPELINE_STAGES) == set(PIPELINE_STAGE_ORDER)
+    assert len(PIPELINE_STAGES) == len(PIPELINE_STAGE_ORDER)
 
 
 def test_adjacent_forward_transition_allowed() -> None:
@@ -88,8 +88,7 @@ def test_invalid_stage_rejected() -> None:
 
 
 def test_pipeline_stage_label_and_summary() -> None:
-    from app.acquisition_pipeline import pipeline_summary
-    from app.pipeline_stages import pipeline_stage_label
+    from app.acquisition_pipeline import pipeline_stage_label, pipeline_summary
 
     assert pipeline_stage_label("qualified") == "Qualified"
     assert pipeline_stage_label("") == "—"
