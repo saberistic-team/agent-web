@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import analytics_service, case_studies, db, email_service, insights, page_service, stripe_service
-from app.admin_auth import AdminLoginRequired, login_redirect_url, validate_admin_login_limiter_secrets
+from app.admin_auth import AdminLoginRequired, login_redirect_url, validate_admin_security_secrets
 from app.admin_pipeline_routes import router as admin_pipeline_router
 from app.admin_routes import router as admin_router
 from app.actor_context import CORRELATION_HEADER
@@ -50,7 +50,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     else:
         logger.warning("DATABASE_URL not set — brief persistence disabled")
     if settings.admin_auth_configured:
-        validate_admin_login_limiter_secrets(settings)
+        validate_admin_security_secrets(settings)
     yield
 
 
