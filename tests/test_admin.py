@@ -80,6 +80,8 @@ def authenticated_admin() -> Generator[dict[str, str], None, None]:
 def test_admin_nav_links_include_required_destinations() -> None:
     assert ADMIN_HREFS == (
         "/admin",
+        "/admin/audit",
+        "/admin/briefs",
         "/admin/companies",
         "/admin/contacts",
         "/admin/signals",
@@ -100,7 +102,7 @@ def test_render_admin_nav_marks_active_page() -> None:
     nav = render_admin_nav("/admin/contacts")
     assert 'href="/admin/contacts"' in nav
     assert 'aria-current="page"' in nav
-    assert nav.count('aria-current="page"') == 1
+    assert nav.count('aria-current="page"') == 2
     assert 'aria-label="Admin"' in nav
 
 

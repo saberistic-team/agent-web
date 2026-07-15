@@ -79,6 +79,7 @@ def render_contacts_list_page(
     filters: dict[str, str | None],
     csrf_token: str,
     admin_username: str,
+    companies: list[dict[str, Any]] | None = None,
 ) -> str:
     rows = "".join(
         f"""<tr>

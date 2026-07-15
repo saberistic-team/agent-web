@@ -245,6 +245,11 @@ class CrmService:
             include_archived=include_archived,
         )
 
+
+    def search_contacts(self, *args, **kwargs):
+        """Compat alias used by admin_crm_routes / older tests."""
+        return self.list_contacts(*args, **kwargs)
+
     def get_contact(
         self,
         conn: psycopg.Connection,
