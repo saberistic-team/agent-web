@@ -21,8 +21,8 @@ from fastapi.responses import Response
 
 from app import db
 from app.admin_client_source import (
-    client_ip,
     resolve_admin_login_client_source,
+    resolve_admin_login_client_source_text,
 )
 from app.config import Settings
 
@@ -238,6 +238,16 @@ def read_login_flow_token(request: Request) -> str | None:
     return token.strip() or None
 
 
+def client_ip(request: Request, settings: Settings) -> str:
+    """Resolve the client source for admin login rate limiting.
+
+    Delegates to :func:`app.admin_client_source.resolve_admin_login_client_source_text`
+    which only trusts forwarding headers after verifying the immediate peer against
+    ``ADMIN_TRUSTED_PROXY_CIDRS`` and walking the chain from right to left.
+    """
+    return resolve_admin_login_client_source_text(request, settings)
+
+
 def _digest_limiter_key(prefix: str, material: str) -> str:
     payload = f"{prefix}:{material}"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -359,8 +369,8 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    resolution = resolve_admin_login_client_source(request, settings)
-    source = resolution.source
+    source_resolution = resolve_admin_login_client_source(request, settings)
+    source = source_resolution.source
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,
@@ -412,7 +422,7 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "lockout_transition": admission.lockout_transition,
-                "client_source_path": resolution.path,
+                "client_source_resolution_path": source_resolution.path.value,
             },
         )
     elif admission.already_locked:
@@ -421,7 +431,7 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "already_locked": True,
-                "client_source_path": resolution.path,
+                "client_source_resolution_path": source_resolution.path.value,
             },
         )
     return LoginAdmissionResult(
