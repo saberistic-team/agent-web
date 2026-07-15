@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 import pytest
 from fastapi.testclient import TestClient
 
+from app.admin_auth import SESSION_COOKIE_NAME
 from app.admin_preview import (
     COMPANY_NAMES,
     PREVIEW_PIPELINE_COMPANY_IDS,
@@ -369,49 +370,31 @@ def test_preview_brief_conversion_states() -> None:
 
 
 @pytest.mark.unit
-def test_preview_archive_restore_pages_seed_stable() -> None:
+def test_preview_crm_archive_restore_detail_pages(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.admin_preview import (
-        PREVIEW_COMPANY_ARCHIVE_ID,
-        PREVIEW_CONTACT_ARCHIVE_ID,
-        preview_company_research_page,
-        preview_contact_edit_page,
-        preview_contact_research_page,
+        PREVIEW_CRM_COMPANY_ACTIVE_ID,
+        PREVIEW_CRM_CONTACT_ARCHIVED_ID,
+        preview_crm_company_detail,
+        preview_crm_contact_detail,
     )
 
-    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
-    company_a = preview_company_research_page(
-        PREVIEW_COMPANY_ARCHIVE_ID,
-        rng=random.Random(42),
-        now=now,
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    company = preview_crm_company_detail(PREVIEW_CRM_COMPANY_ACTIVE_ID, rng=random.Random(42))
+    contact = preview_crm_contact_detail(PREVIEW_CRM_CONTACT_ARCHIVED_ID, rng=random.Random(42))
+    client = TestClient(app, follow_redirects=False)
+    company_response = client.get(
+        f"/admin/companies/{PREVIEW_CRM_COMPANY_ACTIVE_ID}",
+        cookies={SESSION_COOKIE_NAME: "preview-screenshot-session"},
     )
-    company_b = preview_company_research_page(
-        PREVIEW_COMPANY_ARCHIVE_ID,
-        rng=random.Random(42),
-        now=now,
+    contact_response = client.get(
+        f"/admin/contacts/{PREVIEW_CRM_CONTACT_ARCHIVED_ID}",
+        cookies={SESSION_COOKIE_NAME: "preview-screenshot-session"},
     )
-    contact_a = preview_contact_research_page(
-        PREVIEW_CONTACT_ARCHIVE_ID,
-        rng=random.Random(42),
-        now=now,
-    )
-    contact_b = preview_contact_research_page(
-        PREVIEW_CONTACT_ARCHIVE_ID,
-        rng=random.Random(42),
-        now=now,
-    )
-    edit_a = preview_contact_edit_page(
-        PREVIEW_CONTACT_ARCHIVE_ID,
-        rng=random.Random(42),
-        now=now,
-    )
-    edit_b = preview_contact_edit_page(
-        PREVIEW_CONTACT_ARCHIVE_ID,
-        rng=random.Random(42),
-        now=now,
-    )
-    assert company_a == company_b
-    assert contact_a == contact_b
-    assert edit_a == edit_b
-    assert company_a is not None and company_a["company"]["archived_at"] is None
-    assert contact_a is not None and contact_a["contact"]["archived_at"] is None
-    assert edit_a is not None and len(edit_a["companies"]) >= 2
+    assert company_response.status_code == 200
+    assert contact_response.status_code == 200
+    assert company["company"]["name"] in company_response.text
+    assert contact["contact"]["full_name"] in contact_response.text
+    assert 'class="admin-action admin-action--destructive"' in company_response.text
+    assert 'class="admin-action admin-action--restore"' in contact_response.text

@@ -92,12 +92,13 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert",
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
+    "/admin/companies/cccccccc-cccc-cccc-cccc-cccccccccc01",
+    "/admin/companies/cccccccc-cccc-cccc-cccc-cccccccccc02",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd01",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd02",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd01/edit",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd02/edit",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
-    "/admin/companies/10101010-1010-1010-1010-101010101010",
-    "/admin/companies/20202020-2020-2020-2020-202020202020",
-    "/admin/contacts/30303030-3030-3030-3030-303030303030",
-    "/admin/contacts/40404040-4040-4040-4040-404040404040",
-    "/admin/contacts/40404040-4040-4040-4040-404040404040/edit",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
@@ -106,6 +107,15 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
 ADMIN_SCREENSHOT_EXPECTED_STATUS: dict[str, int] = {
     "/admin/briefs/503": 503,
 }
+
+
+def render_admin_archive_action_button(*, label: str, is_restore: bool) -> str:
+    """Return a themed Archive/Restore submit button (not top-bar link styling)."""
+    modifier = "admin-action--restore" if is_restore else "admin-action--destructive"
+    return (
+        f'<button class="admin-action {modifier}" type="submit">'
+        f"{html.escape(label)}</button>"
+    )
 
 
 def _active_nav_label(active_path: str) -> str:
