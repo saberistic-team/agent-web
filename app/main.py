@@ -21,11 +21,11 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import analytics_service, case_studies, db, email_service, insights, page_service, stripe_service
 from app.admin_auth import AdminLoginRequired, login_redirect_url
+from app.admin_secrets import validate_admin_security_secrets
 from app.admin_pipeline_routes import router as admin_pipeline_router
 from app.admin_routes import router as admin_router
 from app.actor_context import CORRELATION_HEADER
 from app.client_source import admin_proxy_trust_summary, client_source_policy_summary
-from app.admin_secrets import validate_admin_security_secrets
 from app.config import get_settings
 from app.models import BriefCreateRequest, BriefCreateResponse
 from app.seo import (

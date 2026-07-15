@@ -9,6 +9,10 @@ Each row in `audit_events` includes:
 | Field | Description |
 |-------|-------------|
 | `actor` | Authenticated admin username, `anonymous` for unauthenticated attempts, or a service identity |
+
+Unauthenticated login failures (`auth.login.failure`) always use `anonymous` as
+the actor. Submitted usernames, client addresses, and limiter digest inputs are
+never stored in audit rows, metadata, or reason text.
 | `action` | Stable action code (for example `auth.login.success`, `entity.delete`) |
 | `entity_type` | Logical entity category (`admin_session`, `company`, `pipeline`, …) |
 | `entity_id` | Entity identifier as text |
@@ -51,7 +55,16 @@ both commit or roll back together.
 | Brief-to-CRM linkage | `CrmService.link_project_brief_source` | Transactional write; audit ships with future routes |
 | Login success | `admin_routes._issue_session` | Prior-session revocation (if any) + new session + required audit atomically |
 | Logout (authenticated) | `admin_routes.admin_logout` | Revocation + required audit atomically when the session row transitions to revoked |
-| Login failure | `admin_routes` | Best-effort audit (`required=False`) |
+| Login failure | `admin_routes` | Best-effort audit (`required=False`); actor is always `anonymous` |
+
+### Historical login-failure actors (pre-#242)
+
+Before keyed limiter deployment, some `auth.login.failure` rows may list
+attacker-supplied usernames in the `actor` column. These rows are immutable;
+operators should treat such `actor` values as untrusted candidates, not
+authenticated identities. New events use `anonymous` exclusively. Remediation of
+historical rows requires an explicit data-governance decision — the application
+does not rewrite append-only audit history.
 
 `record_event(..., required=True)` propagates persistence errors. Security-sensitive
 mutations must not return success when a required audit event could not be stored.
@@ -106,7 +119,7 @@ or rolled-back logins never emit a new session cookie.
 | Action | When recorded |
 |--------|----------------|
 | `auth.login.success` | Valid admin login creates a server-side session |
-| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting (actor is always `anonymous`) |
+| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting |
 | `auth.logout` | Authenticated session revocation (live session → revoked) |
 | `import.batch` | Data import batches via `CrmService.commit_linkedin_import` / `import_batch` |
 | `import.batch.rollback` | Rollback of committed import batches via `CrmService.rollback_import_batch` |
@@ -117,34 +130,6 @@ or rolled-back logins never emit a new session cookie.
 | `export.request` | Export requests via `CrmService.request_export` |
 
 Auth events are wired in `app/admin_routes.py`. Other mutations record audit events through `CrmService` methods that future admin UI routes will call.
-
-### Login failure actor policy
-
-Every `auth.login.failure` event recorded **before** successful authentication uses
-the canonical actor `anonymous`. Submitted username candidates must not appear in
-`actor`, metadata, reason text, correlation identifiers, or application logs.
-
-Authenticated `auth.login.success` and post-login events retain the configured
-administrator username and session linkage.
-
-### Historical login-failure actors
-
-Prior to the keyed-limiter / anonymous-actor fix (#242), some deployments may have
-`auth.login.failure` rows whose `actor` column contains attacker-supplied username
-candidates from failed login POST bodies. Those rows are immutable under normal
-application code; do not disable append-only protections or rewrite history without
-an explicit data-governance decision. The forward fix prevents all new occurrences.
-
-To inventory exposure:
-
-```sql
-SELECT created_at, actor, action, correlation_id, summary_after
-FROM audit_events
-WHERE action = 'auth.login.failure'
-  AND actor <> 'anonymous'
-ORDER BY created_at DESC
-LIMIT 100;
-```
 
 ## Admin UI
 
@@ -210,6 +195,5 @@ ORDER BY 1 DESC;
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `AUDIT_PAGE_SIZE` | `50` | Admin audit list page size (max 100) |
-| `ADMIN_LOGIN_LIMITER_SECRET` | — | HMAC key for login limiter identifiers (see `docs/ADMIN_AUTH.md`) |
 
 Requires `DATABASE_URL` and admin auth env vars documented in `docs/ADMIN_AUTH.md`.
