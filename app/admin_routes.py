@@ -34,11 +34,7 @@ from app.contacts import (
     ContactUpdate,
 )
 from app.crm_uow import crm_transaction
-from app.actor_context import (
-    actor_context_from_request,
-    anonymous_actor_context,
-    correlation_id_from_request,
-)
+from app.actor_context import actor_context_from_request, correlation_id_from_request
 from app.admin_layout import ADMIN_NAV_LINKS, render_admin_shell
 from app.admin_preview import (
     PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR,
@@ -234,10 +230,6 @@ def _brief_detail_context(
 def _require_admin_auth_configured(settings: Settings) -> None:
     if not settings.admin_auth_configured:
         raise HTTPException(status_code=503, detail="Admin authentication not configured")
-    try:
-        admin_auth.validate_admin_login_limiter_configuration(settings)
-    except ValueError:
-        raise HTTPException(status_code=503, detail="Admin authentication not configured")
 
 
 def _preview_session(settings: Settings) -> admin_auth.AdminSession:
@@ -289,7 +281,7 @@ def _record_login_failure(
     settings = get_settings()
     if not settings.database_url:
         return
-    actor_context = anonymous_actor_context(request)
+    actor_context = actor_context_from_request(request, actor="anonymous")
     try:
         with db.db_connection(settings.database_url) as conn:
             with crm_transaction(conn):
@@ -531,9 +523,7 @@ def admin_login_submit(
                 reason="rate_limited",
             )
         else:
-            _record_login_failure(
-                request, reason="invalid_csrf"
-            )
+            _record_login_failure(request, reason="invalid_csrf")
         return _issue_login_flow_response(
             settings=settings,
             error_message=admin_auth.INVALID_CREDENTIALS_MESSAGE,

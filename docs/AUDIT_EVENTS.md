@@ -51,7 +51,10 @@ both commit or roll back together.
 | Brief-to-CRM linkage | `CrmService.link_project_brief_source` | Transactional write; audit ships with future routes |
 | Login success | `admin_routes._issue_session` | Prior-session revocation (if any) + new session + required audit atomically |
 | Logout (authenticated) | `admin_routes.admin_logout` | Revocation + required audit atomically when the session row transitions to revoked |
-| Login failure | `admin_routes` | Best-effort audit (`required=False`) |
+| Login failure | `admin_routes` | Best-effort audit (`required=False`); actor is always `anonymous` before authentication |
+
+Unauthenticated login failures never persist submitted username candidates in the audit
+row. See [Historical login-failure actors](#historical-login-failure-actors).
 
 `record_event(..., required=True)` propagates persistence errors. Security-sensitive
 mutations must not return success when a required audit event could not be stored.
@@ -106,7 +109,7 @@ or rolled-back logins never emit a new session cookie.
 | Action | When recorded |
 |--------|----------------|
 | `auth.login.success` | Valid admin login creates a server-side session |
-| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting |
+| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting (actor always `anonymous`) |
 | `auth.logout` | Authenticated session revocation (live session → revoked) |
 | `import.batch` | Data import batches via `CrmService.commit_linkedin_import` / `import_batch` |
 | `import.batch.rollback` | Rollback of committed import batches via `CrmService.rollback_import_batch` |
@@ -115,25 +118,6 @@ or rolled-back logins never emit a new session cookie.
 | `scoring_rule.update` | Scoring rule edits via `CrmService.update_scoring_rule` |
 | `analytics.config.update` | Analytics configuration via `CrmService.update_analytics_config` |
 | `export.request` | Export requests via `CrmService.request_export` |
-
-### Login failure actor policy
-
-Pre-authentication login failures (`auth.login.failure`) always use actor
-`anonymous`. Submitted username candidates must not appear in `actor`, metadata,
-reason text, correlation identifiers, logs, or metrics.
-
-Authenticated events (`auth.login.success`, `auth.logout`, CRM mutations) retain the
-verified administrator username in `actor`.
-
-#### Historical exposure (pre-#242)
-
-Before issue #242, some deployments could persist attacker-supplied username
-candidates in the immutable `actor` column for `auth.login.failure` rows even
-though `attempted_username` was excluded from metadata. These rows cannot be
-updated or deleted through application code (append-only triggers). Treat
-unexpected `actor` values on historical failure events as unverified spray
-candidates, not authenticated identities. New failures after #242 use `anonymous`
-only.
 
 Auth events are wired in `app/admin_routes.py`. Other mutations record audit events through `CrmService` methods that future admin UI routes will call.
 
@@ -202,4 +186,24 @@ ORDER BY 1 DESC;
 |----------|---------|---------|
 | `AUDIT_PAGE_SIZE` | `50` | Admin audit list page size (max 100) |
 
-Requires `DATABASE_URL` and admin auth env vars documented in `docs/ADMIN_AUTH.md`.
+Requires `DATABASE_URL`, admin auth env vars documented in `docs/ADMIN_AUTH.md`, and
+`ADMIN_LOGIN_LIMITER_SECRET` for keyed login throttling identifiers.
+
+## Historical login-failure actors
+
+Deployments before
+[#242](https://github.com/saberistic-team/agent-web/issues/242) could append
+`auth.login.failure` rows whose `actor` column contained attacker-supplied username
+candidates from the login form. Those rows remain immutable under the append-only
+policy — the application does not rewrite historical audit data.
+
+Forward fix (merged with #242):
+
+- Every new unauthenticated failure uses actor `anonymous`.
+- Submitted candidates are excluded from actor, metadata, reason text, logs, and
+  limiter state.
+
+Operational reporting should treat pre-#242 `auth.login.failure` actors as
+**untrusted identity claims** unless corroborated by a successful
+`auth.login.success` for the same correlation window. Remediation of historical rows,
+if required, is a data-governance decision outside normal application code paths.

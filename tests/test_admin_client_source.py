@@ -48,7 +48,7 @@ def _settings(
         admin_password_hash=base.admin_password_hash,
         admin_session_secret=base.admin_session_secret,
         admin_login_limiter_secret=base.admin_login_limiter_secret,
-        admin_login_limiter_secret_previous=base.admin_login_limiter_secret_previous,
+        admin_login_limiter_previous_secret=base.admin_login_limiter_previous_secret,
         admin_trusted_proxy_cidrs=proxy_cidrs,
         admin_trusted_edge_cidrs=edge_cidrs,
     )
