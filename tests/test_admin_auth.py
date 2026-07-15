@@ -30,7 +30,6 @@ TEST_USERNAME = "operator"
 TEST_PASSWORD = "correct-horse-battery-staple"
 TEST_HASH = PasswordHasher().hash(TEST_PASSWORD)
 TEST_SECRET = "test-session-secret-32chars-minimum"
-TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!!"
 
 _login_flows: dict[str, dict[str, Any]] = {}
 _session_store: dict[str, dict[str, Any]] = {}
@@ -62,10 +61,12 @@ class FakeRateLimitStore:
         rate_limit: int,
         window_seconds: int,
         lockout_seconds: int,
+        lock_check_keys: tuple[str, ...] | None = None,
     ) -> db.AdminLoginAdmission:
         with self._lock:
-            ordered_keys = tuple(sorted(limiter_keys))
-            for limiter_key in ordered_keys:
+            ordered_check_keys = tuple(sorted(set(lock_check_keys or limiter_keys)))
+            ordered_write_keys = tuple(sorted(limiter_keys))
+            for limiter_key in ordered_check_keys:
                 if limiter_key not in self.rows:
                     self.rows[limiter_key] = {
                         "failure_count": 0,
@@ -74,7 +75,7 @@ class FakeRateLimitStore:
                         "updated_at": now,
                     }
 
-            for limiter_key in ordered_keys:
+            for limiter_key in ordered_check_keys:
                 row = self.rows[limiter_key]
                 locked_until = row.get("locked_until")
                 if locked_until is not None and locked_until > now:
@@ -86,7 +87,7 @@ class FakeRateLimitStore:
                     )
 
             lockout_transition = False
-            for limiter_key in ordered_keys:
+            for limiter_key in ordered_write_keys:
                 row = self.rows[limiter_key]
                 window_start = now - timedelta(seconds=window_seconds)
                 if row["window_started_at"] < window_start:
@@ -178,6 +179,7 @@ def shared_rate_limiter(store: FakeRateLimitStore) -> Generator[None, None, None
         rate_limit: int,
         window_seconds: int,
         lockout_seconds: int,
+        lock_check_keys: tuple[str, ...] | None = None,
     ) -> db.AdminLoginAdmission:
         return store.try_admit(
             limiter_keys,
@@ -185,6 +187,7 @@ def shared_rate_limiter(store: FakeRateLimitStore) -> Generator[None, None, None
             rate_limit=rate_limit,
             window_seconds=window_seconds,
             lockout_seconds=lockout_seconds,
+            lock_check_keys=lock_check_keys,
         )
 
     def clear_many(conn: Any, *, limiter_keys: tuple[str, ...]) -> None:
@@ -234,8 +237,6 @@ def admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_USERNAME", TEST_USERNAME)
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_HASH)
     monkeypatch.setenv("ADMIN_SESSION_SECRET", TEST_SECRET)
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
-    monkeypatch.delenv("ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS", raising=False)
     monkeypatch.setenv("BASE_URL", "http://testserver")
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "5")
     monkeypatch.setenv("ADMIN_LOGIN_RATE_WINDOW_SECONDS", "900")
@@ -623,10 +624,9 @@ def test_build_source_and_account_rate_limit_keys() -> None:
 def test_login_limiter_keys_include_account_for_configured_username() -> None:
     settings = get_settings()
     keys = admin_auth.login_limiter_keys(
+        settings=settings,
         submitted_username="Operator",
         client_source="203.0.113.1",
-        configured_admin_username="operator",
-        settings=settings,
     )
     assert len(keys) == 2
     assert admin_auth.build_source_rate_limit_key("203.0.113.1", settings) in keys
@@ -637,10 +637,9 @@ def test_login_limiter_keys_include_account_for_configured_username() -> None:
 def test_login_limiter_keys_source_only_for_unknown_username() -> None:
     settings = get_settings()
     keys = admin_auth.login_limiter_keys(
+        settings=settings,
         submitted_username="ghost",
         client_source="203.0.113.1",
-        configured_admin_username="operator",
-        settings=settings,
     )
     assert keys == (admin_auth.build_source_rate_limit_key("203.0.113.1", settings),)
 

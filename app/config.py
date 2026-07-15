@@ -56,11 +56,10 @@ class Settings:
             self.admin_username
             and self.admin_password_hash
             and self.admin_session_secret
-            and self.admin_login_limiter_secret
         )
         if self.admin_preview_mode:
             return creds
-        return bool(self.database_url and creds)
+        return bool(self.database_url and creds and self.admin_login_limiter_secret)
 
     @property
     def admin_preview_enabled(self) -> bool:
@@ -102,7 +101,9 @@ def get_settings() -> Settings:
         admin_username=os.environ.get("ADMIN_USERNAME", "").strip(),
         admin_password_hash=os.environ.get("ADMIN_PASSWORD_HASH", "").strip(),
         admin_session_secret=os.environ.get("ADMIN_SESSION_SECRET", "").strip(),
-        admin_login_limiter_secret=os.environ.get("ADMIN_LOGIN_LIMITER_SECRET", "").strip(),
+        admin_login_limiter_secret=os.environ.get(
+            "ADMIN_LOGIN_LIMITER_SECRET", ""
+        ).strip(),
         admin_login_limiter_secret_previous=os.environ.get(
             "ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS", ""
         ).strip(),
