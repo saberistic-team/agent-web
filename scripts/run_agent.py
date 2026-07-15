@@ -102,6 +102,41 @@ def escalate(repo: str, issue: int, reason: str, assignee_hint: str | None = Non
     replace_status(repo, issue, "status:blocked")
 
 
+def is_retryable_codegen_failure(exc: BaseException) -> bool:
+    """True when Builder should re-enter ``status:queued`` instead of blocking.
+
+    Learned from [#104](https://github.com/saberistic-team/agent-web/issues/104)
+    (Cursor Bridge ``ReadTimeout``, ``retryable=True`` escalated to
+    ``status:blocked``) and [#105](https://github.com/saberistic-team/agent-web/issues/105)
+    (file-budget overrun → false human-review). Transient SDK/network failures and
+    soft budget hits are operator-retriable by the dispatcher — not external
+    blockers.
+    """
+    text = str(exc).lower()
+    compact = text.replace(" ", "")
+    if "retryable=true" in compact:
+        return True
+    # Bridge argv bug: token_urlsafe values starting with "-" → SDK reports
+    # retryable=False, but a requeue (or the token patch) recovers.
+    if "tool-callback-auth-token" in text or "bridge exited before discovery" in text:
+        return True
+    markers = (
+        "readtimeout",
+        "timed out",
+        "bridge request timed out",
+        "temporarily unavailable",
+        "connection reset",
+        "connection aborted",
+        "connection error",
+        "remoteprotocolerror",
+        "server disconnected",
+        "too many files",
+        "changed too many files",
+        "model proposed too many files",
+    )
+    return any(marker in text for marker in markers)
+
+
 def write_builder_handoff(mode: str) -> None:
     """Tell builder.yml how to advance labels: reviewer | done | blocked | waiting."""
     if mode not in {"reviewer", "done", "blocked", "waiting"}:
@@ -114,11 +149,15 @@ def handoff_builder_when_mergeable(repo: str, issue: int) -> None:
     """Resolve conflicts if needed; hand off to Reviewer only when the PR is clean.
 
     Unresolved conflicts re-enter the priority queue (``waiting``) so Builder
-    runs again — never send a dirty PR to Reviewer.
+    runs again — never send a dirty PR to Reviewer. Even mergeable/clean heads
+    are smoke-imported so stale NameErrors cannot bounce Reviewer↔Builder.
     """
     from builder_conflicts import (
+        linked_open_prs,
         linked_pr_conflict_status,
         maybe_resolve_pr_conflicts,
+        refresh_pr,
+        smoke_pr_head,
     )
 
     HANDOFF_DIR.mkdir(parents=True, exist_ok=True)
@@ -181,6 +220,56 @@ def handoff_builder_when_mergeable(repo: str, issue: int) -> None:
         )
         write_builder_handoff("waiting")
         return
+
+    # Always smoke the PR head — mergeable/clean heads can still NameError.
+    prs = linked_open_prs(repo, issue)
+    if prs:
+        pr = refresh_pr(repo, int(prs[0]["number"]))
+        try:
+            smoke = smoke_pr_head(repo, pr, push_repair=True)
+        except Exception as smoke_exc:
+            post_issue_comment(
+                repo,
+                issue,
+                (
+                    "### builder_smoke_result\n"
+                    f"- status: `failed`\n"
+                    f"- pr: #{pr.get('number')}\n"
+                    f"- error: `{smoke_exc}`\n"
+                    "- note: re-entering `status:queued` (smoke clone/import failed).\n"
+                ),
+            )
+            write_builder_handoff("waiting")
+            return
+        smoke_status = (smoke.get("status") or "").strip()
+        if smoke_status == "smoke_failed":
+            post_issue_comment(
+                repo,
+                issue,
+                (
+                    "### builder_smoke_result\n"
+                    f"- status: `smoke_failed`\n"
+                    f"- pr: #{smoke.get('pr')}\n"
+                    f"- smoke_error: `{smoke.get('smoke_error')}`\n"
+                    f"- repairs: `{smoke.get('repairs')}`\n"
+                    "- note: not handing off to Reviewer; re-entering "
+                    "`status:queued` until `from app.main import app` succeeds.\n"
+                ),
+            )
+            write_builder_handoff("waiting")
+            return
+        if smoke_status == "smoke_repaired":
+            post_issue_comment(
+                repo,
+                issue,
+                (
+                    "### builder_smoke_result\n"
+                    f"- status: `smoke_repaired`\n"
+                    f"- pr: #{smoke.get('pr')}\n"
+                    f"- repairs: `{smoke.get('repairs')}`\n"
+                    "- note: restored missing ``app.main`` wiring; proceeding to Reviewer.\n"
+                ),
+            )
 
     write_builder_handoff("reviewer")
 
@@ -616,20 +705,30 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
         # After codegen, merge base if dirty; hand off only when mergeable.
         handoff_builder_when_mergeable(repo, issue)
     except Exception as exc:
-        escalate(
-            repo,
-            issue,
-            (
-                "Codegen failed (Cursor SDK / OpenAI / GitHub Models).\n\n"
-                f"`{exc}`\n\n"
-                "Preferred: Cursor Agent SDK via `CURSOR_API_KEY` "
-                "(`CODEGEN_PROVIDER=cursor`, `CURSOR_RUNTIME=local` by default). "
-                "Optional: OpenAI (`OPENAI_API_KEY`) or GitHub Models (`MODELS_TOKEN`). "
-                "See docs/MODELS.md. "
-                "If `git/refs` returns 403 for the Builder App, grant the App "
-                "`contents: write` on this repository."
-            ),
+        detail = (
+            "Codegen failed (Cursor SDK / OpenAI / GitHub Models).\n\n"
+            f"`{exc}`\n\n"
+            "Preferred: Cursor Agent SDK via `CURSOR_API_KEY` "
+            "(`CODEGEN_PROVIDER=cursor`, `CURSOR_RUNTIME=local` by default). "
+            "Optional: OpenAI (`OPENAI_API_KEY`) or GitHub Models (`MODELS_TOKEN`). "
+            "See docs/MODELS.md. "
+            "If `git/refs` returns 403 for the Builder App, grant the App "
+            "`contents: write` on this repository."
         )
+        if is_retryable_codegen_failure(exc):
+            post_issue_comment(
+                repo,
+                issue,
+                (
+                    "### builder_codegen_retry\n"
+                    "- result: `waiting`\n"
+                    "- reason: transient / soft codegen failure (do not `status:blocked`)\n\n"
+                    f"{detail}\n"
+                ),
+            )
+            write_builder_handoff("waiting")
+            return
+        escalate(repo, issue, detail)
         write_builder_handoff("blocked")
 
 
@@ -883,8 +982,6 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
             format_admin_nav_hard_fail,
             format_empty_data_hard_fail,
             format_overflow_hard_fail,
-            format_probe_hard_fail,
-            format_screenshot_target_label,
             resolve_screenshot_targets,
             upload_to_branch,
         )
@@ -901,7 +998,7 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
                 "### reviewer_screenshots_pre\n"
                 "- production: skipped pre-merge "
                 "(saberistic.com shots are post-deploy only)\n"
-                "- targets (PR-affected): (none)\n"
+                "- routes (PR-affected): (none)\n"
                 "- note: no pages affected by this PR "
                 "(tests/docs/scripts only); screenshots skipped\n"
             )
@@ -918,14 +1015,19 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
                 branch_url=dual.branch_url,
                 branch_urls=branch_urls,
                 targets=targets,
+                captured=dual.branch_captured,
             )
             comment_on_issue_or_pr(repo, pr_number, body_shots)
             comment_on_issue_or_pr(repo, issue, body_shots)
-            target_labels = ", ".join(format_screenshot_target_label(t) for t in targets)
+            route_labels = [
+                f"`{t.route}`"
+                + (f" (HTTP {t.expected_status})" if t.expected_status != 200 else "")
+                for t in targets
+            ]
             screenshot_note = (
                 f"- screenshots_pre: {len(branch_urls)} branch posted on PR + issue "
                 "(no saberistic.com pre-merge shots)\n"
-                f"- screenshots_targets: {target_labels}\n"
+                f"- screenshots_routes: {', '.join(route_labels)}\n"
                 f"- screenshots_branch: `{dual.branch_url}`\n"
             )
             overflow_fail = format_overflow_hard_fail(dual.overflows)
@@ -955,15 +1057,6 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
                 )
             else:
                 screenshot_note += "- admin_nav_visible: `ok` (PR branch)\n"
-            probe_fail = format_probe_hard_fail(dual.probe_failures)
-            if probe_fail:
-                hard_fail_reasons.append(probe_fail)
-                screenshot_note += (
-                    f"- screenshot_probe: `fail` ({len(dual.probe_failures)} "
-                    "finding(s) on PR branch)\n"
-                )
-            else:
-                screenshot_note += "- screenshot_probe: `ok` (PR branch)\n"
         pr = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}")
         sha = pr["head"]["sha"]
     except Exception as exc:
@@ -973,23 +1066,24 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
 
     # OpenAI / Models AI review (required for approve path).
     ai_block = ""
+    ai_verdict: dict[str, Any] = {}
     try:
         from review_models import ai_review
 
-        verdict = ai_review(repo, issue, pr_number)
+        ai_verdict = ai_review(repo, issue, pr_number)
         ai_block += (
                     f"- ai_provider: `cursor-or-openai-or-models`\n"
-            f"- ai_model: `{verdict.get('model')}`\n"
-            f"- ai_decision: `{verdict.get('decision')}`\n"
-            f"- ai_summary: {verdict.get('summary')}\n"
+            f"- ai_model: `{ai_verdict.get('model')}`\n"
+            f"- ai_decision: `{ai_verdict.get('decision')}`\n"
+            f"- ai_summary: {ai_verdict.get('summary')}\n"
             "- ai_reasons:\n"
-            + "\n".join(f"  - {r}" for r in (verdict.get("reasons") or []))
+            + "\n".join(f"  - {r}" for r in (ai_verdict.get("reasons") or []))
             + "\n"
         )
-        if verdict.get("decision") != "approved":
+        if ai_verdict.get("decision") != "approved":
             hard_fail_reasons.append(
                 "AI reviewer rejected: "
-                + "; ".join(verdict.get("reasons") or ["does not meet acceptance"])
+                + "; ".join(ai_verdict.get("reasons") or ["does not meet acceptance"])
             )
     except Exception as exc:
         hard_fail_reasons.append(f"AI reviewer unavailable: {exc}")
@@ -1001,10 +1095,27 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
         from acceptance import post_checklist, update_issue_checkboxes, verify_acceptance
 
         acceptance = verify_acceptance(repo, issue, pr_number, use_ai=True)
+        product_incomplete = any(
+            i.get("status") not in {"done", "n/a"} and i.get("method") != "ai-error"
+            for i in (acceptance.get("items") or [])
+        )
+        infra_only_gap = bool(acceptance.get("ai_infra_failed")) and not product_incomplete
+        if (
+            infra_only_gap
+            and not acceptance.get("all_done")
+            and ai_verdict.get("decision") == "approved"
+        ):
+            # Defer to AI review so Cursor prose/JSON glitches do not bounce Builder.
+            acceptance = dict(acceptance)
+            acceptance["all_done"] = True
+            acceptance_note += (
+                "- acceptance_ai_infra: `deferred_to_ai_review` "
+                "(checklist AI unavailable; AI review approved)\n"
+            )
         checklist_comment = post_checklist(
             repo, issue, acceptance, role="reviewer"
         )
-        acceptance_note = (
+        acceptance_note += (
             f"- acceptance_all_done: `{str(bool(acceptance.get('all_done'))).lower()}`\n"
             f"- acceptance_checklist: {checklist_comment.get('html_url')}\n"
         )
@@ -1013,6 +1124,16 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
                 update_issue_checkboxes(repo, issue, acceptance)
             except Exception as body_exc:
                 acceptance_note += f"- acceptance_body_update: failed (`{body_exc}`)\n"
+        elif product_incomplete:
+            hard_fail_reasons.append(
+                "acceptance criteria incomplete — see acceptance_checklist comment "
+                + (checklist_comment.get("html_url") or "")
+            )
+        elif infra_only_gap:
+            hard_fail_reasons.append(
+                "acceptance AI unavailable and AI review did not approve — see "
+                + (checklist_comment.get("html_url") or "")
+            )
         else:
             hard_fail_reasons.append(
                 "acceptance criteria incomplete — see acceptance_checklist comment "

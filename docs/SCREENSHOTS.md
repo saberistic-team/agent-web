@@ -33,7 +33,7 @@ Playwright can open admin pages **without login**.
 | Route kind | Examples | Behavior |
 |------------|----------|----------|
 | **Admin (pre-merge)** | `/admin`, `/admin/companies`, …, `/admin/login` | Captured on PR head under `ADMIN_PREVIEW_MODE` when affected |
-| **Admin error fixtures (pre-merge)** | e.g. `/admin/briefs/503` (503) | Declared in `ADMIN_SCREENSHOT_TARGETS` with `expected_status`; probe must match status **and** HTML |
+| **Admin error fixtures (pre-merge)** | `/admin/briefs/503` (expected HTTP 503) | Declared in `ADMIN_SCREENSHOT_EXPECTED_STATUS`; probe accepts HTML only when status matches |
 | **Admin (post-deploy)** | `/admin/*` | **Never** screenshotted on saberistic.com |
 | **Health** | `/health` | Polled as **JSON evidence only** (never a PNG) |
 | **JSON APIs** | `/hello`, `/api/*`, `/webhooks/*` | Skipped |
@@ -49,6 +49,26 @@ Playwright can open admin pages **without login**.
 | `site/assets/*`, shared layout | All public (+ all admin pre-merge) | All public |
 | `app/admin_*` | All admin nav pages + `/admin/login` | None (skip) |
 | `tests/` / `docs/` / `scripts/` only | None | None |
+
+### Expected-status visual fixtures
+
+Some admin pages intentionally render **authenticated HTML error states** (for
+example brief detail database outage). Register them in two places:
+
+1. `ADMIN_SCREENSHOT_PATHS` in `app/admin_layout.py` (route list for discovery)
+2. `ADMIN_SCREENSHOT_EXPECTED_STATUS` in the same file (route → HTTP status,
+   default **200** when omitted)
+
+Keep the fallback map in `scripts/screenshot_deploy.py` in sync. The capture
+probe accepts a page only when:
+
+- the response status equals the declared expected status, and
+- the body is HTML (not JSON)
+
+Unexpected 4xx/5xx on ordinary 200 routes **fail capture** instead of being
+silently skipped. Missing expected error-state PNGs also fail. Reviewer PR
+comments list each route, expected status, and generated filenames
+(`branch-admin-briefs-503.png`, `branch-admin-briefs-503-mobile.png`, …).
 
 ## Pre-merge (Reviewer)
 
@@ -66,34 +86,7 @@ Playwright can open admin pages **without login**.
    least one visible `.admin-nav-link`. This catches nav trapped inside closed
    `<details>` (prefer a separate `.admin-nav-desktop` list outside details).
    Hard-fail via `format_admin_nav_hard_fail` / `desktop_nav_invisible`
-8. **Expected-status gate:** routes that deliberately return HTML error pages
-   (404, 503, …) must be registered in `app/admin_layout.py`
-   `ADMIN_SCREENSHOT_TARGETS` with `expected_status`. The capture probe accepts
-   the page only when the actual status matches and the body is HTML. Missing
-   expected error-state screenshots hard-fail via `format_probe_hard_fail`
-   (no silent skip). Ordinary 200 routes that return unexpected 4xx/5xx also
-   hard-fail.
-9. AI review + approve gates as usual
-
-### Registering expected-status visual fixtures
-
-Add an `AdminScreenshotTarget` to `ADMIN_SCREENSHOT_TARGETS` in
-`app/admin_layout.py`:
-
-```python
-AdminScreenshotTarget("/admin/briefs/503", expected_status=503),
-```
-
-Requirements:
-
-- The route must render **HTML** (not JSON) at the declared status under
-  `ADMIN_PREVIEW_MODE` (extend `app/admin_preview.py` when needed).
-- Authenticated admin error routes use the same preview session cookie as other
-  admin screenshots (`admin_screenshot_session_cookie`).
-- Reviewer comments list each target as `` `route` (status) `` plus expected
-  filenames (`branch-admin-briefs-503.png`, `branch-admin-briefs-503-mobile.png`).
-- Post-deploy production capture never includes `/admin/*` regardless of
-  `expected_status`.
+8. AI review + approve gates as usual
 
 ## Post-deploy (after merge to `main`)
 
@@ -106,7 +99,7 @@ Requirements:
 
 | Phase | Source | Filenames |
 |-------|--------|-----------|
-| Pre-merge | PR head (local uvicorn + `ADMIN_PREVIEW_MODE`) | `branch-home.png`, `branch-admin.png`, `branch-admin-briefs-503.png`, … |
+| Pre-merge | PR head (local uvicorn + `ADMIN_PREVIEW_MODE`) | `branch-home.png`, `branch-admin.png`, `branch-admin-companies.png`, … |
 | Post-deploy | Production (`saberistic.com`) | `post-*.png` (public only) |
 
 ## Config
