@@ -440,6 +440,10 @@ def test_login_success_and_failure_create_audit_events() -> None:
                             failure_audit.call_args.kwargs["reason"]
                             == "invalid_credentials"
                         )
+                        assert (
+                            failure_audit.call_args.kwargs["actor_context"].actor
+                            == "anonymous"
+                        )
 
 
 @pytest.mark.unit
@@ -542,7 +546,7 @@ def test_audit_login_and_logout_helpers() -> None:
     audit_service.record_login_success(conn, actor_context=actor, session_id=9, repository=repo)
     audit_service.record_login_failure(
         conn,
-        actor_context=actor,
+        actor_context=ActorContext(actor="anonymous", correlation_id="corr-auth"),
         reason="invalid_credentials",
         repository=repo,
     )

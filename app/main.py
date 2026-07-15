@@ -25,6 +25,7 @@ from app.admin_pipeline_routes import router as admin_pipeline_router
 from app.admin_routes import router as admin_router
 from app.actor_context import CORRELATION_HEADER
 from app.client_source import admin_proxy_trust_summary, client_source_policy_summary
+from app.admin_security import validate_admin_auth_security_settings
 from app.config import get_settings
 from app.models import BriefCreateRequest, BriefCreateResponse
 from app.seo import (
@@ -46,9 +47,7 @@ ASSETS_DIR = SITE_DIR / "assets"
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     if settings.admin_auth_configured:
-        from app.admin_auth import validate_admin_login_limiter_configuration
-
-        validate_admin_login_limiter_configuration(settings)
+        validate_admin_auth_security_settings(settings)
     if settings.database_configured:
         db.init_db(settings.database_url)
         logger.info("database schema ready")

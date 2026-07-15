@@ -1,56 +1,71 @@
-"""Fail-fast validation for admin authentication secrets."""
+"""Admin authentication secrets and privacy-preserving limiter identifiers."""
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import re
+from typing import Final
+
 from app.config import Settings
 
-ADMIN_SECRET_MIN_LENGTH = 32
+MIN_ADMIN_LOGIN_LIMITER_SECRET_BYTES: Final = 32
 
-_WEAK_SECRET_MARKERS = frozenset(
-    {
-        "changeme",
-        "change-me",
-        "placeholder",
-        "replace-me",
-        "example",
-        "your-secret",
-        "set-me",
-        "todo",
-    }
+LIMITER_DOMAIN_SOURCE: Final = "admin-login-limiter:src:v1"
+LIMITER_DOMAIN_ACCOUNT: Final = "admin-login-limiter:acct:v1"
+
+_PLACEHOLDER_PATTERN = re.compile(
+    r"(?i)^(changeme|change[_-]?me|replace[_-]?me|placeholder|your[_-]?secret|"
+    r"admin[_-]?login[_-]?limiter[_-]?secret|example|todo|fixme|secret)$"
 )
 
 
-def validate_admin_login_limiter_secret(value: str, *, env_name: str) -> None:
-    """Reject missing, weak, or placeholder limiter key material."""
-    secret = value.strip()
-    if not secret:
-        raise ValueError(f"{env_name} is required when admin authentication is configured")
-    if len(secret) < ADMIN_SECRET_MIN_LENGTH:
+def validate_admin_login_limiter_secret(value: str, *, env_name: str) -> bytes:
+    """Return UTF-8 secret bytes or raise ValueError for weak or missing material."""
+    stripped = value.strip()
+    if not stripped:
+        raise ValueError(f"{env_name} is required when admin authentication is enabled")
+    if _PLACEHOLDER_PATTERN.match(stripped):
+        raise ValueError(f"{env_name} must not be a placeholder value")
+    encoded = stripped.encode("utf-8")
+    if len(encoded) < MIN_ADMIN_LOGIN_LIMITER_SECRET_BYTES:
         raise ValueError(
-            f"{env_name} must be at least {ADMIN_SECRET_MIN_LENGTH} characters"
+            f"{env_name} must be at least {MIN_ADMIN_LOGIN_LIMITER_SECRET_BYTES} bytes"
         )
-    lowered = secret.lower()
-    for marker in _WEAK_SECRET_MARKERS:
-        if marker in lowered:
-            raise ValueError(f"{env_name} must not contain placeholder values")
+    return encoded
 
 
-def validate_admin_security_config(settings: Settings) -> None:
-    """Validate admin security secrets at process startup."""
-    if not settings.admin_auth_configured:
-        return
-    validate_admin_login_limiter_secret(
+def admin_login_limiter_secrets(settings: Settings) -> tuple[bytes, ...]:
+    """Return the active limiter secret and optional previous secret for rotation."""
+    current = validate_admin_login_limiter_secret(
         settings.admin_login_limiter_secret,
         env_name="ADMIN_LOGIN_LIMITER_SECRET",
     )
+    secrets: list[bytes] = [current]
     previous = settings.admin_login_limiter_previous_secret.strip()
     if previous:
-        validate_admin_login_limiter_secret(
+        previous_bytes = validate_admin_login_limiter_secret(
             previous,
             env_name="ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET",
         )
-        if previous == settings.admin_login_limiter_secret.strip():
-            raise ValueError(
-                "ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET must differ from "
-                "ADMIN_LOGIN_LIMITER_SECRET"
-            )
+        if previous_bytes != current:
+            secrets.append(previous_bytes)
+    return tuple(secrets)
+
+
+def digest_limiter_identifier(domain: str, material: str, secret: bytes) -> str:
+    """Return a keyed HMAC-SHA256 identifier with explicit domain separation."""
+    payload = f"{domain}:{material}".encode("utf-8")
+    return hmac.new(secret, payload, hashlib.sha256).hexdigest()
+
+
+def compare_limiter_identifiers(left: str, right: str) -> bool:
+    """Constant-time comparison for persisted limiter identifiers."""
+    return hmac.compare_digest(left, right)
+
+
+def validate_admin_auth_security_settings(settings: Settings) -> None:
+    """Fail fast on weak admin security configuration at process startup."""
+    if not settings.admin_auth_configured:
+        return
+    admin_login_limiter_secrets(settings)
