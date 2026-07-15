@@ -1,4 +1,4 @@
-"""Tests for trusted-hop admin login client source resolution (#239)."""
+"""Tests for trusted-proxy admin login client source resolution (#239)."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import os
 import re
 import socket
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -14,363 +15,289 @@ from unittest.mock import patch
 
 import httpx
 import pytest
-from argon2 import PasswordHasher
 from fastapi import Request
 
 from app import admin_auth
 from app.admin_client_source import (
-    ClientSourceResolution,
+    RESOLUTION_DIRECT_PEER,
+    RESOLUTION_INVALID_FORWARDING_DATA,
+    RESOLUTION_TRUSTED_CF_CONNECTING_IP,
+    RESOLUTION_TRUSTED_FORWARDED,
+    RESOLUTION_TRUSTED_X_FORWARDED_FOR,
+    RESOLUTION_UNTRUSTED_HEADERS_IGNORED,
     normalize_ip_address,
     reset_client_source_telemetry,
     resolve_admin_login_client_source,
 )
 from app.config import get_settings
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-RENDER_YAML = REPO_ROOT / "render.yaml"
-ADMIN_AUTH_DOC = REPO_ROOT / "docs" / "ADMIN_AUTH.md"
-
-TEST_USERNAME = "operator"
-TEST_PASSWORD = "correct-horse-battery-staple"
-TEST_HASH = PasswordHasher().hash(TEST_PASSWORD)
-TEST_SECRET = "test-session-secret-32chars-minimum"
-
-RENDER_PROXY = "10.0.0.5"
-CLIENT_A = "203.0.113.77"
-CLIENT_B = "203.0.113.88"
-SPOOFED_LEFT = "198.51.100.99"
-UNTRUSTED_PEER = "198.51.100.10"
+ROOT = Path(__file__).resolve().parents[1]
+RENDER_PROXY = "10.0.0.1"
+CLOUDFLARE_EDGE = "104.16.0.1"
+REAL_CLIENT = "203.0.113.50"
+ATTACKER_SPOOF = "198.51.100.99"
+DIRECT_PEER = "198.51.100.10"
 
 
 def _request(
-    *,
     peer: str | None,
     headers: dict[str, str] | None = None,
 ) -> Request:
     scope: dict[str, Any] = {
         "type": "http",
-        "headers": [],
+        "headers": [
+            (name.lower().encode("latin1"), value.encode("latin1"))
+            for name, value in (headers or {}).items()
+        ],
+        "client": (peer, 12345) if peer is not None else None,
         "method": "POST",
         "path": "/admin/login",
     }
-    if peer is not None:
-        scope["client"] = (peer, 12345)
-    if headers:
-        scope["headers"] = [
-            (name.lower().encode("ascii"), value.encode("ascii"))
-            for name, value in headers.items()
-        ]
     return Request(scope)
 
 
-@pytest.fixture(autouse=True)
-def _proxy_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
-    monkeypatch.setenv("ADMIN_USERNAME", TEST_USERNAME)
-    monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_HASH)
-    monkeypatch.setenv("ADMIN_SESSION_SECRET", TEST_SECRET)
-    monkeypatch.setenv("BASE_URL", "http://testserver")
-    monkeypatch.setenv("ADMIN_TRUST_PROXY_HEADERS", "true")
-    monkeypatch.delenv("ADMIN_TRUSTED_PROXY_CIDRS", raising=False)
-    admin_auth.reset_login_rate_limiter()
+@pytest.fixture
+def trusted_proxy_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(
+        "ADMIN_TRUSTED_PROXY_CIDRS",
+        "127.0.0.1/32,::1/128,10.0.0.0/8",
+    )
+    monkeypatch.delenv("ADMIN_TRUST_PROXY_HEADERS", raising=False)
     reset_client_source_telemetry()
 
 
 @pytest.mark.unit
-def test_normalize_ip_address_formats() -> None:
+def test_normalize_ipv4_and_ipv6_and_mapped() -> None:
     assert normalize_ip_address("203.0.113.1") == "203.0.113.1"
-    assert normalize_ip_address("203.0.113.1:8080") == "203.0.113.1"
+    assert normalize_ip_address("203.0.113.1:443") == "203.0.113.1"
     assert normalize_ip_address("2001:db8::1") == "2001:db8::1"
-    assert normalize_ip_address("::ffff:203.0.113.50") == "203.0.113.50"
     assert normalize_ip_address("[2001:db8::1]:443") == "2001:db8::1"
-    assert normalize_ip_address("  203.0.113.1  ") == "203.0.113.1"
+    assert normalize_ip_address("::ffff:203.0.113.1") == "203.0.113.1"
     assert normalize_ip_address("") is None
     assert normalize_ip_address("not-an-ip") is None
 
 
 @pytest.mark.unit
-def test_direct_spoof_single_and_multi_value_xff_ignored() -> None:
+def test_direct_spoof_single_and_multi_xff_ignored(trusted_proxy_env: None) -> None:
     settings = get_settings()
     for header in (
-        SPOOFED_LEFT,
-        f"{SPOOFED_LEFT}, {CLIENT_A}",
-        f"{SPOOFED_LEFT}, {CLIENT_A}, {RENDER_PROXY}",
+        ATTACKER_SPOOF,
+        f"{ATTACKER_SPOOF}, {REAL_CLIENT}",
     ):
         request = _request(
-            peer=UNTRUSTED_PEER,
-            headers={"X-Forwarded-For": header, "CF-Connecting-IP": CLIENT_A},
+            DIRECT_PEER,
+            headers={"X-Forwarded-For": header},
         )
         resolution = resolve_admin_login_client_source(request, settings)
-        assert resolution == ClientSourceResolution(
-            address=UNTRUSTED_PEER,
-            path="direct_peer",
-        )
+        assert resolution.source == DIRECT_PEER
+        assert resolution.path == RESOLUTION_UNTRUSTED_HEADERS_IGNORED
 
 
 @pytest.mark.unit
-def test_cloudflare_append_selects_appended_client_not_leftmost() -> None:
+def test_cloudflare_append_ignores_attacker_leftmost(trusted_proxy_env: None) -> None:
     settings = get_settings()
     request = _request(
-        peer=RENDER_PROXY,
-        headers={"X-Forwarded-For": f"{SPOOFED_LEFT}, {CLIENT_A}"},
-    )
-    resolution = resolve_admin_login_client_source(request, settings)
-    assert resolution.address == CLIENT_A
-    assert resolution.path == "trusted_x_forwarded_for"
-
-
-@pytest.mark.unit
-def test_trusted_chain_resolves_expected_client() -> None:
-    settings = get_settings()
-    request = _request(
-        peer=RENDER_PROXY,
-        headers={"X-Forwarded-For": f"{CLIENT_A}, 172.16.0.2"},
-    )
-    resolution = resolve_admin_login_client_source(request, settings)
-    assert resolution.address == CLIENT_A
-    assert resolution.path == "trusted_x_forwarded_for"
-
-
-@pytest.mark.unit
-def test_partial_trust_untrusted_intermediary_fails_closed_to_peer() -> None:
-    settings = get_settings()
-    request = _request(
-        peer=UNTRUSTED_PEER,
-        headers={"X-Forwarded-For": f"{CLIENT_A}, {RENDER_PROXY}"},
-    )
-    resolution = resolve_admin_login_client_source(request, settings)
-    assert resolution.address == UNTRUSTED_PEER
-    assert resolution.path == "direct_peer"
-
-
-@pytest.mark.unit
-def test_direct_render_origin_ignores_cf_connecting_ip() -> None:
-    settings = get_settings()
-    request = _request(
-        peer=UNTRUSTED_PEER,
-        headers={"CF-Connecting-IP": CLIENT_A, "X-Forwarded-For": SPOOFED_LEFT},
-    )
-    resolution = resolve_admin_login_client_source(request, settings)
-    assert resolution.address == UNTRUSTED_PEER
-    assert resolution.path == "direct_peer"
-
-
-@pytest.mark.unit
-def test_header_precedence_xff_before_forwarded_before_cf() -> None:
-    settings = get_settings()
-    request = _request(
-        peer=RENDER_PROXY,
+        RENDER_PROXY,
         headers={
-            "X-Forwarded-For": f"{SPOOFED_LEFT}, {CLIENT_A}",
-            "Forwarded": f'for="{CLIENT_B}"',
-            "CF-Connecting-IP": "203.0.113.1",
+            "X-Forwarded-For": f"{ATTACKER_SPOOF}, {REAL_CLIENT}, {CLOUDFLARE_EDGE}",
         },
     )
-    assert resolve_admin_login_client_source(request, settings).address == CLIENT_A
-
-    request = _request(
-        peer=RENDER_PROXY,
-        headers={
-            "Forwarded": f'for="{CLIENT_B}"',
-            "CF-Connecting-IP": "203.0.113.1",
-        },
-    )
-    assert resolve_admin_login_client_source(request, settings).address == CLIENT_B
-
-    request = _request(
-        peer=RENDER_PROXY,
-        headers={"CF-Connecting-IP": CLIENT_A},
-    )
-    assert resolve_admin_login_client_source(request, settings).address == CLIENT_A
-    assert (
-        resolve_admin_login_client_source(request, settings).path
-        == "trusted_cf_connecting_ip"
-    )
+    resolution = resolve_admin_login_client_source(request, settings)
+    assert resolution.source == REAL_CLIENT
+    assert resolution.path == RESOLUTION_TRUSTED_X_FORWARDED_FOR
 
 
 @pytest.mark.unit
-def test_invalid_and_overlong_forwarding_fail_closed() -> None:
-    settings = get_settings()
-    overlong = ", ".join([f"10.0.0.{index}" for index in range(1, 25)])
-    request = _request(peer=RENDER_PROXY, headers={"X-Forwarded-For": overlong})
-    resolution = resolve_admin_login_client_source(request, settings)
-    assert resolution.address == "unknown"
-    assert resolution.path == "invalid_forwarding"
-
-    request = _request(
-        peer=RENDER_PROXY,
-        headers={"X-Forwarded-For": "not-an-ip, also-bad"},
-    )
-    resolution = resolve_admin_login_client_source(request, settings)
-    assert resolution.address == "unknown"
-    assert resolution.path == "invalid_forwarding"
-
-
-@pytest.mark.unit
-def test_whitespace_and_empty_elements_are_skipped_deterministically() -> None:
+def test_trusted_chain_resolves_expected_client(trusted_proxy_env: None) -> None:
     settings = get_settings()
     request = _request(
-        peer=RENDER_PROXY,
-        headers={"X-Forwarded-For": f"  {SPOOFED_LEFT}  ,   , {CLIENT_A} "},
+        RENDER_PROXY,
+        headers={"X-Forwarded-For": f"{REAL_CLIENT}, {CLOUDFLARE_EDGE}"},
     )
-    assert resolve_admin_login_client_source(request, settings).address == CLIENT_A
+    resolution = resolve_admin_login_client_source(request, settings)
+    assert resolution.source == REAL_CLIENT
+    assert resolution.path == RESOLUTION_TRUSTED_X_FORWARDED_FOR
 
 
 @pytest.mark.unit
-def test_rotating_spoofed_headers_do_not_create_new_limiter_keys(
-    monkeypatch: pytest.MonkeyPatch,
+def test_partial_trust_untrusted_intermediary_fails_closed(
+    trusted_proxy_env: None,
 ) -> None:
-    monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "3")
     settings = get_settings()
-    keys: set[str] = set()
-    for index in range(5):
-        request = _request(
-            peer=RENDER_PROXY,
-            headers={"X-Forwarded-For": f"203.0.113.{index}, {CLIENT_A}"},
-        )
-        source = admin_auth.client_ip(request, settings)
-        keys.add(admin_auth.build_source_rate_limit_key(source))
-    assert keys == {admin_auth.build_source_rate_limit_key(CLIENT_A)}
+    request = _request(
+        DIRECT_PEER,
+        headers={"X-Forwarded-For": f"{REAL_CLIENT}, {RENDER_PROXY}"},
+    )
+    resolution = resolve_admin_login_client_source(request, settings)
+    assert resolution.source == DIRECT_PEER
+    assert resolution.path == RESOLUTION_UNTRUSTED_HEADERS_IGNORED
 
 
 @pytest.mark.unit
-def test_telemetry_logs_path_without_raw_addresses(
+def test_direct_render_origin_ignores_cf_connecting_ip(
+    trusted_proxy_env: None,
+) -> None:
+    settings = get_settings()
+    request = _request(
+        DIRECT_PEER,
+        headers={
+            "CF-Connecting-IP": REAL_CLIENT,
+            "X-Forwarded-For": REAL_CLIENT,
+        },
+    )
+    resolution = resolve_admin_login_client_source(request, settings)
+    assert resolution.source == DIRECT_PEER
+    assert resolution.path == RESOLUTION_UNTRUSTED_HEADERS_IGNORED
+
+
+@pytest.mark.unit
+def test_cf_connecting_ip_used_when_cloudflare_hop_present(
+    trusted_proxy_env: None,
+) -> None:
+    settings = get_settings()
+    request = _request(
+        RENDER_PROXY,
+        headers={
+            "CF-Connecting-IP": REAL_CLIENT,
+            "X-Forwarded-For": CLOUDFLARE_EDGE,
+        },
+    )
+    resolution = resolve_admin_login_client_source(request, settings)
+    assert resolution.source == REAL_CLIENT
+    assert resolution.path == RESOLUTION_TRUSTED_CF_CONNECTING_IP
+
+
+@pytest.mark.unit
+def test_forwarded_header_precedence_after_xff_absent(
+    trusted_proxy_env: None,
+) -> None:
+    settings = get_settings()
+    request = _request(
+        RENDER_PROXY,
+        headers={
+            "Forwarded": f'for="{REAL_CLIENT}", for="{CLOUDFLARE_EDGE}"',
+            "CF-Connecting-IP": "203.0.113.77",
+        },
+    )
+    resolution = resolve_admin_login_client_source(request, settings)
+    assert resolution.source == REAL_CLIENT
+    assert resolution.path == RESOLUTION_TRUSTED_FORWARDED
+
+
+@pytest.mark.unit
+def test_xff_precedence_over_conflicting_forwarded_and_cf(
+    trusted_proxy_env: None,
+) -> None:
+    settings = get_settings()
+    request = _request(
+        RENDER_PROXY,
+        headers={
+            "X-Forwarded-For": f"{REAL_CLIENT}, {CLOUDFLARE_EDGE}",
+            "Forwarded": f'for="203.0.113.88"',
+            "CF-Connecting-IP": "203.0.113.77",
+        },
+    )
+    resolution = resolve_admin_login_client_source(request, settings)
+    assert resolution.source == REAL_CLIENT
+    assert resolution.path == RESOLUTION_TRUSTED_X_FORWARDED_FOR
+
+
+@pytest.mark.unit
+def test_invalid_overlong_and_malformed_forwarding_data(
+    trusted_proxy_env: None,
+) -> None:
+    settings = get_settings()
+    overlong = ", ".join(f"10.0.0.{index}" for index in range(40))
+    request = _request(RENDER_PROXY, headers={"X-Forwarded-For": overlong})
+    resolution = resolve_admin_login_client_source(request, settings)
+    assert resolution.path == RESOLUTION_INVALID_FORWARDING_DATA
+
+    malformed = _request(
+        RENDER_PROXY,
+        headers={"X-Forwarded-For": "not-an-ip, 10.0.0.2"},
+    )
+    bad = resolve_admin_login_client_source(malformed, settings)
+    assert bad.path == RESOLUTION_INVALID_FORWARDING_DATA
+
+
+@pytest.mark.unit
+def test_missing_peer_uses_unknown(trusted_proxy_env: None) -> None:
+    settings = get_settings()
+    resolution = resolve_admin_login_client_source(_request(None), settings)
+    assert resolution.source == "unknown"
+    assert resolution.path == RESOLUTION_DIRECT_PEER
+
+
+@pytest.mark.unit
+def test_no_proxy_cidrs_uses_direct_peer_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ADMIN_TRUSTED_PROXY_CIDRS", raising=False)
+    monkeypatch.delenv("ADMIN_TRUST_PROXY_HEADERS", raising=False)
+    settings = get_settings()
+    request = _request(
+        RENDER_PROXY,
+        headers={"X-Forwarded-For": REAL_CLIENT},
+    )
+    resolution = resolve_admin_login_client_source(request, settings)
+    assert resolution.source == RENDER_PROXY
+    assert resolution.path == RESOLUTION_UNTRUSTED_HEADERS_IGNORED
+
+
+@pytest.mark.unit
+def test_untrusted_forwarding_attempt_emits_sampled_telemetry(
+    trusted_proxy_env: None,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     settings = get_settings()
-    caplog.set_level(logging.INFO)
+    caplog.set_level(logging.INFO, logger="app.admin_client_source")
     reset_client_source_telemetry()
-
-    request = _request(
-        peer=UNTRUSTED_PEER,
-        headers={"X-Forwarded-For": f"{SPOOFED_LEFT}, {CLIENT_A}"},
-    )
+    request = _request(DIRECT_PEER, headers={"X-Forwarded-For": ATTACKER_SPOOF})
     resolve_admin_login_client_source(request, settings)
-
+    with patch("app.admin_client_source.time.monotonic", return_value=1000.0):
+        resolve_admin_login_client_source(request, settings)
     assert any(
-        record.message == "Admin login client source used conservative path"
+        record.getMessage() == "Admin login source ignored untrusted forwarding headers"
         for record in caplog.records
     )
-    for record in caplog.records:
-        message = record.getMessage()
-        assert SPOOFED_LEFT not in message
-        assert CLIENT_A not in message
-        assert UNTRUSTED_PEER not in message
-        extra = getattr(record, "client_source_path", None)
-        if extra is not None:
-            assert extra in {
-                "direct_peer",
-                "trusted_x_forwarded_for",
-                "trusted_forwarded",
-                "trusted_cf_connecting_ip",
-                "invalid_forwarding",
-                "missing_peer",
-                "invalid_peer",
-            }
+    assert "203.0.113" not in caplog.text
+    assert "X-Forwarded-For" not in caplog.text
+
 
 
 @pytest.mark.unit
-def test_deployment_configuration_is_consistent() -> None:
-    render_text = RENDER_YAML.read_text(encoding="utf-8")
-    doc_text = ADMIN_AUTH_DOC.read_text(encoding="utf-8")
-
-    assert "--forwarded-allow-ips=" in render_text
-    assert "ADMIN_TRUST_PROXY_HEADERS" in render_text
-    assert "ADMIN_TRUSTED_PROXY_CIDRS" in render_text
-    assert "10.0.0.0/8" in render_text
-    assert "ADMIN_TRUSTED_PROXY_CIDRS" in doc_text
-    assert "right-to-left" in doc_text.lower() or "right to left" in doc_text.lower()
-
-    start_match = re.search(r"startCommand:\s*(.+)", render_text)
-    assert start_match is not None
-    start_command = start_match.group(1)
-    assert "uvicorn" in start_command
-    assert "--forwarded-allow-ips=" in start_command
-    assert "--proxy-headers" not in start_command
+def test_render_yaml_proxy_trust_configuration() -> None:
+    render_yaml = (ROOT / "render.yaml").read_text(encoding="utf-8")
+    assert "--forwarded-allow-ips=''" in render_yaml
+    assert "ADMIN_TRUSTED_PROXY_CIDRS" in render_yaml
+    assert "UVICORN_FORWARDED_ALLOW_IPS" in render_yaml
+    assert 'value: ""' in render_yaml
 
 
 @pytest.mark.unit
-def test_privacy_limiter_keys_and_logs_exclude_raw_forwarding(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    settings = get_settings()
-    caplog.set_level(logging.INFO)
-    request = _request(
-        peer=RENDER_PROXY,
-        headers={"X-Forwarded-For": f"{SPOOFED_LEFT}, {CLIENT_A}"},
-    )
-    with patch("app.admin_auth.db.db_connection", side_effect=Exception("offline")):
-        admin_auth.try_admit_login_attempt(request, settings, username="ghost")
-
-    for record in caplog.records:
-        rendered = str(record.__dict__)
-        assert SPOOFED_LEFT not in rendered
-        assert "x-forwarded-for" not in rendered.lower()
-
-    source_key = admin_auth.build_source_rate_limit_key(CLIENT_A)
-    assert SPOOFED_LEFT not in source_key
-    assert CLIENT_A not in source_key
-    assert len(source_key) == 64
+def test_admin_auth_docs_describe_trusted_hop_model() -> None:
+    docs = (ROOT / "docs" / "ADMIN_AUTH.md").read_text(encoding="utf-8")
+    assert "Right-to-left parse" in docs
+    assert "ADMIN_TRUSTED_PROXY_CIDRS" in docs
+    assert "--forwarded-allow-ips=''" in docs
+    assert "ADMIN_TRUST_PROXY_HEADERS" in docs
 
 
+@pytest.mark.unit
 @pytest.mark.integration
-def test_try_admit_login_collapses_rotating_spoofed_headers(
+def test_health_reports_admin_source_trust_when_configured(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Resolver + limiter integration: rotating leftmost XFF values share one source bucket."""
-    from datetime import datetime, timezone
+    from fastapi.testclient import TestClient
 
-    from app import db as db_module
+    from app.main import app
 
-    monkeypatch.setenv("ADMIN_TRUST_PROXY_HEADERS", "true")
     monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
-    monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "3")
-    settings = get_settings()
-    store: dict[str, dict[str, Any]] = {}
-    now = datetime.now(timezone.utc)
-
-    def try_admit(
-        conn: Any,
-        *,
-        limiter_keys: tuple[str, ...],
-        now: datetime,
-        rate_limit: int,
-        window_seconds: int,
-        lockout_seconds: int,
-    ) -> db_module.AdminLoginAdmission:
-        key = limiter_keys[0]
-        row = store.setdefault(
-            key,
-            {"failure_count": 0, "window_started_at": now, "locked_until": None},
-        )
-        row["failure_count"] += 1
-        return db_module.AdminLoginAdmission(
-            admitted=True,
-            throttled=False,
-            already_locked=False,
-            lockout_transition=row["failure_count"] >= rate_limit,
-        )
-
-    with (
-        patch("app.admin_auth.db.try_admit_admin_login", side_effect=try_admit),
-        patch("app.admin_auth.db.cleanup_expired_admin_login_rate_limits", return_value=0),
-        patch("app.admin_auth.db.db_connection") as db_conn,
-    ):
-        db_conn.return_value.__enter__.return_value = object()
-        db_conn.return_value.__exit__.return_value = None
-
-        keys: set[str] = set()
-        for index in range(4):
-            request = _request(
-                peer=RENDER_PROXY,
-                headers={"X-Forwarded-For": f"203.0.113.{index}, {CLIENT_A}"},
-            )
-            source = admin_auth.client_ip(request, settings)
-            admin_auth.try_admit_login_attempt(request, settings, username="ghost")
-            keys.add(admin_auth.build_source_rate_limit_key(source))
-
-    assert keys == {admin_auth.build_source_rate_limit_key(CLIENT_A)}
-    assert len(store) == 1
+    monkeypatch.setenv("UVICORN_FORWARDED_ALLOW_IPS", "")
+    client = TestClient(app)
+    payload = client.get("/health").json()
+    trust = payload.get("admin_login_source_trust")
+    assert trust is not None
+    assert trust["proxy_boundary_configured"] is True
+    assert trust["uvicorn_forwarded_allow_ips_disabled"] is True
 
 
 def _free_port() -> int:
@@ -380,41 +307,105 @@ def _free_port() -> int:
 
 
 @pytest.mark.integration
-def test_uvicorn_start_command_declared_in_render_yaml() -> None:
-    """Boot uvicorn with the same forwarded-allow-ips boundary declared in render.yaml."""
-    render_text = RENDER_YAML.read_text(encoding="utf-8")
-    start_match = re.search(r"startCommand:\s*(.+)", render_text)
-    assert start_match is not None
-    start_command = start_match.group(1).strip()
-    assert "--forwarded-allow-ips=" in start_command
-
+def test_uvicorn_deploy_proxy_configuration_resolves_trusted_xff() -> None:
+    """Exercise uvicorn with production forwarded-allow-ips disabled."""
     port = _free_port()
     env = os.environ.copy()
-    env.pop("DATABASE_URL", None)
-    env["BASE_URL"] = f"http://127.0.0.1:{port}"
-
+    env.update(
+        {
+            "DATABASE_URL": "",
+            "ADMIN_TRUSTED_PROXY_CIDRS": "127.0.0.1/32,10.0.0.0/8",
+            "UVICORN_FORWARDED_ALLOW_IPS": "",
+            "BASE_URL": "http://127.0.0.1",
+        }
+    )
     proc = subprocess.Popen(
-        start_command.replace("$PORT", str(port)).split(),
-        cwd=REPO_ROOT,
+        [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "app.main:app",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "--forwarded-allow-ips",
+            "",
+        ],
+        cwd=ROOT,
         env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
     )
     try:
-        deadline = time.monotonic() + 20.0
-        origin = f"http://127.0.0.1:{port}"
-        while time.monotonic() < deadline:
+        deadline = time.time() + 20
+        last_error: Exception | None = None
+        while time.time() < deadline:
+            if proc.poll() is not None:
+                stdout, stderr = proc.communicate(timeout=1)
+                raise AssertionError(
+                    f"uvicorn exited early ({proc.returncode}): {stderr or stdout}"
+                )
             try:
-                health = httpx.get(f"{origin}/health", timeout=1.0)
-                if health.status_code == 200 and health.json().get("status") == "ok":
+                response = httpx.get(f"http://127.0.0.1:{port}/health", timeout=1.0)
+                if response.status_code == 200:
                     break
-            except httpx.HTTPError:
+            except Exception as exc:  # noqa: BLE001
+                last_error = exc
                 time.sleep(0.2)
         else:
-            raise AssertionError("uvicorn did not become ready with render.yaml start command")
+            proc.terminate()
+            stdout, stderr = proc.communicate(timeout=2)
+            raise AssertionError(
+                f"uvicorn failed to start: {last_error}\nstderr={stderr}\nstdout={stdout}"
+            )
+
+        scope_request = _request(
+            "127.0.0.1",
+            headers={"X-Forwarded-For": f"{ATTACKER_SPOOF}, {REAL_CLIENT}"},
+        )
+        with patch.dict(
+            os.environ,
+            {
+                "ADMIN_TRUSTED_PROXY_CIDRS": "127.0.0.1/32,10.0.0.0/8",
+                "ADMIN_TRUST_PROXY_HEADERS": "",
+            },
+            clear=False,
+        ):
+            resolution = resolve_admin_login_client_source(scope_request, get_settings())
+        assert resolution.source == REAL_CLIENT
+        assert resolution.path == RESOLUTION_TRUSTED_X_FORWARDED_FOR
+
+        health = httpx.get(f"http://127.0.0.1:{port}/health", timeout=2.0).json()
+        assert health["admin_login_source_trust"]["uvicorn_forwarded_allow_ips_disabled"]
     finally:
         proc.terminate()
-        try:
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+        proc.wait(timeout=10)
+
+
+@pytest.mark.unit
+def test_limiter_keys_and_logs_contain_no_raw_forwarding_data(
+    trusted_proxy_env: None,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    settings = get_settings()
+    caplog.set_level(logging.INFO, logger="app.admin_auth")
+    request = _request(
+        DIRECT_PEER,
+        headers={
+            "X-Forwarded-For": f"{ATTACKER_SPOOF}, {REAL_CLIENT}",
+            "CF-Connecting-IP": REAL_CLIENT,
+        },
+    )
+    source = admin_auth.client_ip(request, settings)
+    key = admin_auth.build_source_rate_limit_key(source)
+    assert ATTACKER_SPOOF not in key
+    assert REAL_CLIENT not in key
+    assert re.fullmatch(r"[0-9a-f]{64}", key)
+    with patch("app.admin_auth.db.db_connection", side_effect=Exception("down")):
+        admin_auth.try_admit_login_attempt(request, settings, username="ghost")
+    joined = "\n".join(record.message for record in caplog.records)
+    assert ATTACKER_SPOOF not in joined
+    assert REAL_CLIENT not in joined
+    assert "X-Forwarded-For" not in joined

@@ -20,7 +20,7 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.admin_client_source import resolve_admin_login_client_source
+from app.admin_client_source import ClientSourceResolution, resolve_admin_login_client_source
 from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
@@ -238,9 +238,20 @@ def read_login_flow_token(request: Request) -> str | None:
 def client_ip(request: Request, settings: Settings) -> str:
     """Resolve the client source IP for rate limiting.
 
-    See :func:`resolve_admin_login_client_source` for the trusted-hop model.
+    Delegates to :func:`resolve_admin_login_client_source`, which applies the
+    configured trusted-proxy boundary and right-to-left forwarding-header parse.
     """
-    return resolve_admin_login_client_source(request, settings).address
+    return resolve_admin_login_client_source(request, settings).source
+
+
+def _log_source_resolution(resolution: ClientSourceResolution) -> None:
+    _logger.debug(
+        "Admin login client source resolved",
+        extra={
+            "source_resolution_path": resolution.path,
+            "untrusted_forwarding_attempt": resolution.untrusted_forwarding_attempt,
+        },
+    )
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
@@ -365,8 +376,8 @@ def try_admit_login_attempt(
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
     resolution = resolve_admin_login_client_source(request, settings)
-    source = resolution.address
-    resolution_path = resolution.path
+    source = resolution.source
+    _log_source_resolution(resolution)
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,
@@ -418,7 +429,6 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "lockout_transition": admission.lockout_transition,
-                "client_source_path": resolution_path,
             },
         )
     elif admission.already_locked:
@@ -427,7 +437,6 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "already_locked": True,
-                "client_source_path": resolution_path,
             },
         )
     return LoginAdmissionResult(
@@ -440,7 +449,7 @@ def try_admit_login_attempt(
 
 def is_login_throttled(request: Request, settings: Settings, *, username: str = "") -> bool:
     """Return whether login attempts are currently blocked (read-only helper)."""
-    source = client_ip(request, settings)
+    source = resolve_admin_login_client_source(request, settings).source
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,
@@ -469,7 +478,7 @@ def record_failed_login(request: Request, settings: Settings, *, username: str =
 def finalize_successful_login(request: Request, settings: Settings, *, username: str = "") -> None:
     """Clear account bucket state and release the current source admission reservation."""
     _ = username
-    source = client_ip(request, settings)
+    source = resolve_admin_login_client_source(request, settings).source
     source_key = build_source_rate_limit_key(source)
     account_keys = (
         (build_account_rate_limit_key(settings.admin_username),)
