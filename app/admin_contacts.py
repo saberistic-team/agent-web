@@ -79,7 +79,13 @@ def render_contacts_list_page(
     filters: dict[str, str | None],
     csrf_token: str,
     admin_username: str,
+    preview_banner: str | None = None,
 ) -> str:
+    banner_html = ""
+    if preview_banner:
+        banner_html = (
+            f'<p class="admin-preview-banner" role="status">{_esc(preview_banner)}</p>'
+        )
     company_names = {str(row["id"]): row.get("name", "") for row in companies}
     rows = "".join(
         f"""<tr>
@@ -93,6 +99,7 @@ def render_contacts_list_page(
         for row in contacts
     ) or '<tr><td colspan="6">No contacts match these filters.</td></tr>'
     main = f"""<section class="admin-section" aria-labelledby="contacts-title">
+      {banner_html}
       <div class="admin-section-head"><div><p class="admin-eyebrow">CRM</p><h1 class="admin-title" id="contacts-title">Contacts</h1></div><a class="cta" href="/admin/contacts/new">Add contact</a></div>
       <form class="admin-form" method="get" action="/admin/contacts">
         <div class="field"><label for="q">Search</label><input id="q" name="q" value="{_esc(filters.get("q"))}" placeholder="Name, email, title, or profile URL" /></div>

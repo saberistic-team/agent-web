@@ -41,11 +41,18 @@ from app.admin_preview import (
     PREVIEW_BRIEF_DATABASE_ERROR_ID,
     PREVIEW_COMPANY_DETAIL_ARCHIVE_ID,
     PREVIEW_COMPANY_DETAIL_RESTORE_ID,
+    PREVIEW_COMPANY_VALIDATION_ERROR,
     PREVIEW_CONTACT_DETAIL_ARCHIVE_ID,
     PREVIEW_CONTACT_DETAIL_RESTORE_ID,
     PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID,
+    build_preview_companies_for_select,
+    build_preview_company,
+    build_preview_company_contacts,
     build_preview_company_detail,
+    build_preview_company_research,
+    build_preview_contact,
     build_preview_contact_detail,
+    build_preview_contact_research,
     preview_contact_restore_conflict,
 )
 from app.config import Settings, get_settings
@@ -614,20 +621,30 @@ def admin_companies(
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
-        from app.admin_preview import render_preview_section_main
+        from app.admin_preview import build_preview_companies
 
-        link = next(item for item in ADMIN_NAV_LINKS if item["href"] == "/admin/companies")
+        filters = {
+            "q": q,
+            "category": category if category in COMPANY_CATEGORIES else None,
+            "stage": stage if stage in COMPANY_STAGES else None,
+            "target_status": target_status if target_status in TARGET_STATUSES else None,
+            "freshness": freshness if freshness in FRESHNESS_FILTERS else None,
+            "archived": "1" if archived else None,
+        }
         return HTMLResponse(
-            render_admin_shell(
-                title=link["label"],
-                main=render_preview_section_main(
-                    label=link["label"],
-                    summary=link["summary"],
-                    active_path="/admin/companies",
+            company_pages.render_companies_list_page(
+                companies=build_preview_companies(
+                    query=filters["q"],
+                    category=filters["category"],
+                    stage=filters["stage"],
+                    target_status=filters["target_status"],
+                    freshness=filters["freshness"],
+                    include_archived=archived,
                 ),
-                active_path="/admin/companies",
-                admin_username=session.admin_username,
+                filters=filters,
                 csrf_token=csrf_token,
+                admin_username=session.admin_username,
+                preview_banner="Preview data — not production",
             )
         )
     filters = {
@@ -709,11 +726,18 @@ def admin_company_research(
     session = require_admin_session(request)
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
-    if settings.admin_preview_enabled and company_id in (
-        PREVIEW_COMPANY_DETAIL_ARCHIVE_ID,
-        PREVIEW_COMPANY_DETAIL_RESTORE_ID,
-    ):
-        company, contacts, records = build_preview_company_detail(company_id)
+    if settings.admin_preview_enabled:
+        if company_id in (
+            PREVIEW_COMPANY_DETAIL_ARCHIVE_ID,
+            PREVIEW_COMPANY_DETAIL_RESTORE_ID,
+        ):
+            company, contacts, records = build_preview_company_detail(company_id)
+        else:
+            company = build_preview_company(company_id)
+            if company is None:
+                raise HTTPException(status_code=404, detail="Company not found")
+            contacts = build_preview_company_contacts(company_id)
+            records = build_preview_company_research(company_id)
         return HTMLResponse(
             admin_research_pages.render_admin_company_research_page(
                 company=company,
@@ -747,7 +771,23 @@ def admin_company_edit(
     request: Request, company_id: UUID, error: str | None = None, warning: str | None = None
 ) -> HTMLResponse:
     session = require_admin_session(request)
-    csrf_token = _session_csrf_for_forms(request, get_settings())
+    settings = get_settings()
+    csrf_token = _session_csrf_for_forms(request, settings)
+    if settings.admin_preview_enabled:
+        company = build_preview_company(company_id)
+        if company is None:
+            raise HTTPException(status_code=404, detail="Company not found")
+        error_message = error or warning
+        if request.query_params.get("error") == "validation":
+            error_message = PREVIEW_COMPANY_VALIDATION_ERROR
+        return HTMLResponse(
+            company_pages.render_company_form_page(
+                csrf_token=csrf_token,
+                admin_username=session.admin_username,
+                company=company,
+                error_message=error_message,
+            )
+        )
     with db.db_connection(get_settings().database_url) as conn:
         company = _crm.get_company(conn, company_id)
     if company is None:
@@ -895,20 +935,34 @@ def admin_contacts(
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
-        from app.admin_preview import render_preview_section_main
+        from app.admin_preview import build_preview_contacts
 
-        link = next(item for item in ADMIN_NAV_LINKS if item["href"] == "/admin/contacts")
+        parsed_company_id: UUID | None = None
+        if company_id:
+            try:
+                parsed_company_id = UUID(company_id)
+            except ValueError:
+                parsed_company_id = None
+        filters = {
+            "q": q,
+            "company_id": company_id if parsed_company_id else None,
+            "buying_role": buying_role if buying_role in BUYING_ROLES else None,
+            "archived": "1" if archived else None,
+        }
+        contacts, companies = build_preview_contacts(
+            query=filters["q"],
+            company_id=parsed_company_id,
+            buying_role=filters["buying_role"],
+            include_archived=archived,
+        )
         return HTMLResponse(
-            render_admin_shell(
-                title=link["label"],
-                main=render_preview_section_main(
-                    label=link["label"],
-                    summary=link["summary"],
-                    active_path="/admin/contacts",
-                ),
-                active_path="/admin/contacts",
-                admin_username=session.admin_username,
+            contact_pages.render_contacts_list_page(
+                contacts=contacts,
+                companies=companies,
+                filters=filters,
                 csrf_token=csrf_token,
+                admin_username=session.admin_username,
+                preview_banner="Preview data — not production",
             )
         )
     parsed_company_id: UUID | None = None
@@ -946,8 +1000,17 @@ def admin_contacts(
 @router.get("/contacts/new", response_class=HTMLResponse)
 def admin_contact_new(request: Request) -> HTMLResponse:
     session = require_admin_session(request)
-    csrf_token = _session_csrf_for_forms(request, get_settings())
-    with db.db_connection(get_settings().database_url) as conn:
+    settings = get_settings()
+    csrf_token = _session_csrf_for_forms(request, settings)
+    if settings.admin_preview_enabled:
+        return HTMLResponse(
+            contact_pages.render_contact_form_page(
+                csrf_token=csrf_token,
+                admin_username=session.admin_username,
+                companies=build_preview_companies_for_select(),
+            )
+        )
+    with db.db_connection(settings.database_url) as conn:
         companies = _crm.list_companies(conn, limit=500)
     return HTMLResponse(
         contact_pages.render_contact_form_page(
@@ -999,12 +1062,18 @@ def admin_contact_edit(
     session = require_admin_session(request)
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
-    if settings.admin_preview_enabled and contact_id in (
-        PREVIEW_CONTACT_DETAIL_ARCHIVE_ID,
-        PREVIEW_CONTACT_DETAIL_RESTORE_ID,
-    ):
-        contact, company, _records = build_preview_contact_detail(contact_id)
-        companies = [company] if company is not None else []
+    if settings.admin_preview_enabled:
+        if contact_id in (
+            PREVIEW_CONTACT_DETAIL_ARCHIVE_ID,
+            PREVIEW_CONTACT_DETAIL_RESTORE_ID,
+        ):
+            contact, company, _records = build_preview_contact_detail(contact_id)
+            companies = [company] if company is not None else []
+        else:
+            contact = build_preview_contact(contact_id)
+            if contact is None:
+                raise HTTPException(status_code=404, detail="Contact not found")
+            companies = build_preview_companies_for_select()
         return HTMLResponse(
             contact_pages.render_contact_form_page(
                 csrf_token=csrf_token,
@@ -1162,11 +1231,21 @@ def admin_contact_research(
     session = require_admin_session(request)
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
-    if settings.admin_preview_enabled and contact_id in (
-        PREVIEW_CONTACT_DETAIL_ARCHIVE_ID,
-        PREVIEW_CONTACT_DETAIL_RESTORE_ID,
-    ):
-        contact, company, records = build_preview_contact_detail(contact_id)
+    if settings.admin_preview_enabled:
+        if contact_id in (
+            PREVIEW_CONTACT_DETAIL_ARCHIVE_ID,
+            PREVIEW_CONTACT_DETAIL_RESTORE_ID,
+        ):
+            contact, company, records = build_preview_contact_detail(contact_id)
+        else:
+            contact = build_preview_contact(contact_id)
+            if contact is None:
+                raise HTTPException(status_code=404, detail="Contact not found")
+            company = None
+            company_id = contact.get("company_id")
+            if company_id is not None:
+                company = build_preview_company(UUID(str(company_id)))
+            records = build_preview_contact_research(contact_id)
         return HTMLResponse(
             admin_research_pages.render_admin_contact_research_page(
                 contact=contact,
