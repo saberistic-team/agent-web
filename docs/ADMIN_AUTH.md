@@ -63,6 +63,29 @@ server-side; raw tokens appear in HTML forms only and are never logged.
 7. On success, the flow cookie is cleared and a new authenticated session is
    minted (session fixation resistance).
 
+#### Verified PostgreSQL concurrency (#243)
+
+Integration tests in
+``tests/test_admin_login_flow_claim_pg_integration.py`` race **independent**
+``psycopg`` connections (separate transactions, no Python lock around the
+claim) against one ``admin_login_flows`` row. PostgreSQL row locking and the
+conditional ``UPDATE … RETURNING`` determine the outcome:
+
+| Scenario | PostgreSQL behavior |
+|----------|---------------------|
+| Two or more concurrent valid claims | Exactly one ``RETURNING`` row; all others zero-row |
+| Loser at the route layer | Failed security claim (HTTP 400); no password verify, session, or ``auth.login.success`` audit |
+| Winner with invalid credentials | One password verify and one replacement flow; loser cannot consume the replacement |
+| Uncommitted winning ``UPDATE`` rolled back | Row remains claimable; a later transaction may claim |
+| Claim at ``expires_at`` | Zero-row update (``expires_at > now`` is strict) |
+| Cleanup vs in-flight claim | Cleanup never deletes active (unexpired, unconsumed) rows |
+
+CI sets ``REQUIRE_TEST_DATABASE=1`` so these tests fail closed when
+``TEST_DATABASE_URL`` is missing. Fast mocked unit tests in
+``tests/test_admin_login_flow_claim_concurrency.py`` and
+``tests/test_admin_login_flow_concurrency.py`` remain supplemental branch
+coverage.
+
 Stale flows are removed opportunistically when minting a new flow
 (see [Login flow retention](#login-flow-retention)). Only hashed tokens are
 stored; cleanup never logs or returns raw flow or CSRF values.
