@@ -60,8 +60,10 @@ def test_cursor_model_dict_without_max_mode(monkeypatch: pytest.MonkeyPatch) -> 
 def test_cursor_model_selection_builds_sdk_type(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # cursor-sdk lives in requirements-agents.txt (kept out of the lean
+    # Render/hello-API requirements.txt); skip where it isn't installed.
+    ModelSelection = pytest.importorskip("cursor_sdk").ModelSelection
     from cursor_model import cursor_model_selection
-    from cursor_sdk import ModelSelection
 
     monkeypatch.delenv("CURSOR_MODEL", raising=False)
     monkeypatch.delenv("CURSOR_MAX_MODE", raising=False)
