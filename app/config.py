@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import os
 import ipaddress
-from dataclasses import dataclass
-from functools import cached_property
-
-from app.ip_networks import parse_networks
+import os
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -31,10 +28,11 @@ class Settings:
     admin_login_rate_limit: int = 5
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
-    admin_trust_proxy_headers: bool = False
     admin_trusted_proxy_ips: str = ""
-    admin_cloudflare_edge_ips: str = ""
-    admin_forwarded_allow_ips: str = ""
+    admin_trusted_proxy_networks: tuple[
+        ipaddress.IPv4Network | ipaddress.IPv6Network, ...
+    ] = field(default_factory=tuple)
+    uvicorn_forwarded_allow_ips: str = ""
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -49,24 +47,6 @@ class Settings:
     @property
     def email_configured(self) -> bool:
         return bool(self.resend_api_key)
-
-    @cached_property
-    def admin_trusted_proxy_networks(
-        self,
-    ) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
-        spec = self.admin_trusted_proxy_ips.strip()
-        if not spec:
-            return ()
-        return parse_networks(spec)
-
-    @cached_property
-    def admin_cloudflare_edge_networks(
-        self,
-    ) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
-        spec = self.admin_cloudflare_edge_ips.strip()
-        if not spec:
-            return ()
-        return parse_networks(spec)
 
     @property
     def admin_preview_mode(self) -> bool:
@@ -107,6 +87,26 @@ class Settings:
         return bool(self.plausible_domain)
 
 
+def _parse_trusted_proxy_networks(
+    raw: str,
+) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+    networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
+    for part in raw.split(","):
+        token = part.strip()
+        if not token:
+            continue
+        try:
+            if "/" in token:
+                networks.append(ipaddress.ip_network(token, strict=False))
+            elif ":" in token:
+                networks.append(ipaddress.ip_network(f"{token}/128", strict=False))
+            else:
+                networks.append(ipaddress.ip_network(f"{token}/32", strict=False))
+        except ValueError:
+            continue
+    return tuple(networks)
+
+
 def get_settings() -> Settings:
     return Settings(
         database_url=os.environ.get("DATABASE_URL", ""),
@@ -134,13 +134,11 @@ def get_settings() -> Settings:
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
         brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
-        admin_trust_proxy_headers=os.environ.get(
-            "ADMIN_TRUST_PROXY_HEADERS", ""
-        ).lower()
-        in ("1", "true", "yes"),
         admin_trusted_proxy_ips=os.environ.get("ADMIN_TRUSTED_PROXY_IPS", "").strip(),
-        admin_cloudflare_edge_ips=os.environ.get(
-            "ADMIN_CLOUDFLARE_EDGE_IPS", ""
+        admin_trusted_proxy_networks=_parse_trusted_proxy_networks(
+            os.environ.get("ADMIN_TRUSTED_PROXY_IPS", "")
+        ),
+        uvicorn_forwarded_allow_ips=os.environ.get(
+            "UVICORN_FORWARDED_ALLOW_IPS", ""
         ).strip(),
-        admin_forwarded_allow_ips=os.environ.get("ADMIN_FORWARDED_ALLOW_IPS", "").strip(),
     )
