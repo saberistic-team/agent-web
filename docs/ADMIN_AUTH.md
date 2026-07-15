@@ -199,47 +199,127 @@ Visit `http://localhost:8000/admin/login`.
 Failed login attempts are tracked in the `admin_login_rate_limits` Postgres table so
 limits apply consistently across web processes, instances, and deployments.
 
-### Limiter key strategy
+### Limiter bucket strategy
 
-Each attempt is keyed by a SHA-256 hash of `normalized_username:client_source`:
+Each login attempt resolves one or two privacy-preserving bucket keys. Only SHA-256
+digests are persisted — never raw usernames, passwords, client IPs, forwarding
+headers, CSRF tokens, or session secrets.
 
-- **Username** — submitted value lowercased and stripped (not stored in the table).
-- **Client source** — resolved IP from :func:`client_ip` (not stored in the table).
+| Bucket | Key material | Applies when |
+|--------|--------------|--------------|
+| **Source-wide** | `admin-login:source:{client_source}` | Every login POST |
+| **Account** | `admin-login:account:{configured_admin_username}` | Submitted username matches the configured operator (case-insensitive) |
 
-Only the hash (`limiter_key`) is persisted.
+Username rotation cannot bypass throttling: every attempt from the same effective
+client source shares one source-wide bucket regardless of submitted username.
 
-### Trusted proxy handling
+Distributed attacks against the configured operator username are also constrained
+by the shared account bucket across sources.
 
-Set `ADMIN_TRUST_PROXY_HEADERS=true` when the app runs behind a trusted reverse
-proxy (e.g. Render) so `X-Forwarded-For` is used for the client source. Leave it
-unset or `false` for local development and direct connections; spoofed forwarding
-headers are ignored and the direct peer address is used instead.
+### Client source identity
 
-### Lockout and recovery
+Resolved by :func:`client_ip`:
 
-- After `ADMIN_LOGIN_RATE_LIMIT` failures within `ADMIN_LOGIN_RATE_WINDOW_SECONDS`,
-  further attempts are blocked until `ADMIN_LOGIN_LOCKOUT_SECONDS` elapse.
-- A successful login deletes the limiter row for that key (and clears any in-memory
-  fallback state).
-- Expired rows are removed opportunistically on failed-login writes (retention is
-  `2 × max(window, lockout)`).
+- **Trusted proxy enabled** (`ADMIN_TRUST_PROXY_HEADERS=true`) — left-most
+  `X-Forwarded-For` value (e.g. Render load balancer). Use only when the app
+  listens behind a trusted reverse proxy that strips spoofed forwarding headers.
+- **Trusted proxy disabled** (default for local dev) — direct peer address from
+  the connection; spoofed `X-Forwarded-For` is ignored.
+- **IPv4 / IPv6** — used as-is from the trusted peer or forwarded chain.
+- **Missing peer** — resolves to `unknown`; all such clients share one bucket.
+
+### Configured thresholds
+
+Environment variables:
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `ADMIN_LOGIN_RATE_LIMIT` | `5` | Maximum password-verification attempts per bucket per window |
+| `ADMIN_LOGIN_RATE_WINDOW_SECONDS` | `900` | Rolling window that resets failure counters |
+| `ADMIN_LOGIN_LOCKOUT_SECONDS` | `900` | Active lockout duration once a bucket reaches the limit |
+
+Within a window, at most `ADMIN_LOGIN_RATE_LIMIT` requests may reach Argon2
+verification per applicable bucket. The lockout starts when a bucket reaches the
+limit; further attempts are rejected until `locked_until` expires or the window
+resets.
+
+### Atomic admission
+
+Password verification is gated by :func:`admit_login_verification`, which performs
+one transactional reservation in Postgres using `SELECT … FOR UPDATE` across all
+applicable buckets. Concurrent requests cannot all pass based on the same
+pre-increment state across separate connections, processes, or instances.
+
+Flow:
+
+1. **Read-only lock check** — reject already-locked buckets without writes.
+2. **CSRF validation** — cheap path; invalid CSRF records a failure without Argon2.
+3. **Atomic admission** — increment shared counters and decide whether Argon2 may run.
+4. **Credential verification** — only when admitted.
+
+Successful login releases the source-wide admission reserved for that verification
+(decrementing the source bucket without clearing unrelated abuse history) and clears
+the **account** bucket only.
+
+### Rejected-request write control
+
+Requests rejected by the limiter:
+
+- Do **not** invoke Argon2 verification.
+- Retain the existing login-flow cookie when possible (CSRF hash is rotated in place).
+- Do **not** append one immutable audit event per repeated denial during an active
+  lockout; audit records are written only on the lockout transition.
+
+### Input bounds
+
+Enforced before hashing, normalization, storage, or expensive work:
+
+| Field | Max length |
+|-------|------------|
+| Username | 128 |
+| Password | 256 |
+| CSRF token | 256 |
+| Login-flow cookie | 256 |
+
+Oversized values receive the same generic *Invalid username or password* response.
+
+### Observability
+
+Structured logs (no raw identifiers or secrets):
+
+| Event | When |
+|-------|------|
+| `admin_login_admission` | Admission granted or denied |
+| `admin_login_throttled` | Active lockout or admission denial |
+| `admin_login_failure_recorded` | CSRF-path failure persisted |
+| `admin_login_limiter_store_failure` | Postgres unavailable; conservative fallback |
 
 ### When Postgres is unavailable
 
 If the shared limiter cannot be reached, the app logs a warning and applies a
-conservative in-memory fallback (2 failures per 60 seconds per key). This fails
+conservative in-memory fallback (2 admissions per 60 seconds per bucket). This fails
 closed without creating a permanent lockout — the fallback window is short and
 resets automatically. Restore database connectivity to resume shared enforcement.
 
-### Manual cleanup
+### Cleanup
 
-To prune stale limiter rows manually:
+Expired rows are removed opportunistically on admission and failure writes
+(retention is `2 × max(window, lockout)`). Deletion is batched and safe across
+multiple application instances.
+
+Manual cleanup:
 
 ```sql
 DELETE FROM admin_login_rate_limits
 WHERE updated_at < NOW() - INTERVAL '30 minutes'
   AND (locked_until IS NULL OR locked_until < NOW());
 ```
+
+### Legacy note
+
+Older revisions keyed limiters by `normalized_username:client_source`. Current
+deployments use source-wide and account buckets only; arbitrary usernames cannot
+create an unbounded key namespace.
 
 ## Login flow retention
 

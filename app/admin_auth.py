@@ -39,9 +39,17 @@ INVALID_CREDENTIALS_MESSAGE = "Invalid username or password."
 INVALID_REQUEST_MESSAGE = "Invalid request."
 LOGIN_THROTTLED_MESSAGE = "Too many login attempts. Try again later."
 
+# Bounded login-form inputs — enforced before hashing, normalization, or Argon2.
+LOGIN_USERNAME_MAX_LENGTH = 128
+LOGIN_PASSWORD_MAX_LENGTH = 256
+LOGIN_CSRF_MAX_LENGTH = 256
+LOGIN_FLOW_TOKEN_MAX_LENGTH = 256
+
 # Conservative in-memory fallback when shared Postgres limiter storage is unavailable.
 _FALLBACK_RATE_LIMIT = 2
 _FALLBACK_WINDOW_SECONDS = 60
+_LIMITER_KEY_PREFIX_SOURCE = "admin-login:source:"
+_LIMITER_KEY_PREFIX_ACCOUNT = "admin-login:account:"
 
 _password_hasher = PasswordHasher()
 _fallback_lock = Lock()
@@ -54,6 +62,16 @@ class AdminLoginRequired(Exception):
 
     def __init__(self, next_path: str) -> None:
         self.next_path = next_path
+
+
+@dataclass(frozen=True)
+class LoginAdmissionOutcome:
+    """Result of the atomic shared-store admission gate before Argon2."""
+
+    admitted: bool
+    store_unavailable: bool = False
+    lockout_transition: bool = False
+    already_locked: bool = False
 
 
 @dataclass(frozen=True)
@@ -224,6 +242,10 @@ def client_ip(request: Request, settings: Settings) -> str:
     Forwarding headers are honored only when ``ADMIN_TRUST_PROXY_HEADERS`` is
     enabled (e.g. behind Render's load balancer). Otherwise the direct peer
     address is used so clients cannot spoof ``X-Forwarded-For``.
+
+    IPv4 and IPv6 addresses are used as-is from the trusted peer or forwarded
+    chain. Missing peer information resolves to ``unknown`` so all such clients
+    share one conservative source bucket.
     """
     if settings.admin_trust_proxy_headers:
         forwarded = request.headers.get("x-forwarded-for", "")
@@ -234,68 +256,178 @@ def client_ip(request: Request, settings: Settings) -> str:
     return "unknown"
 
 
-def build_rate_limit_key(username: str, client_source: str) -> str:
-    """Derive a durable limiter key without storing raw username or IP.
+def _digest_limiter_key(prefix: str, material: str) -> str:
+    payload = f"{prefix}{material}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
-    Key strategy: SHA-256 of ``normalized_username:client_source`` where the
-    username is lowercased/stripped and the client source is the resolved IP
-    from :func:`client_ip`.
-    """
-    normalized_username = username.strip().lower()
-    material = f"{normalized_username}:{client_source}"
+
+def build_source_limiter_key(client_source: str) -> str:
+    """Source-wide bucket identity — independent of submitted username."""
+    return _digest_limiter_key(_LIMITER_KEY_PREFIX_SOURCE, client_source)
+
+
+def build_account_limiter_key(settings: Settings) -> str:
+    """Account bucket for the configured operator username."""
+    normalized = settings.admin_username.strip().lower()
+    return _digest_limiter_key(_LIMITER_KEY_PREFIX_ACCOUNT, normalized)
+
+
+def build_rate_limit_key(username: str, client_source: str) -> str:
+    """Backward-compatible helper used by older tests and docs."""
+    material = f"{username.strip().lower()}:{client_source}"
     return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
-def _is_fallback_throttled(limiter_key: str) -> bool:
+def resolve_login_limiter_keys(
+    *,
+    submitted_username: str,
+    client_source: str,
+    settings: Settings,
+) -> list[str]:
+    """Return durable bucket keys for the current login attempt."""
+    keys = [build_source_limiter_key(client_source)]
+    normalized = submitted_username.strip().lower()
+    configured = settings.admin_username.strip().lower()
+    if normalized and configured and secrets.compare_digest(normalized, configured):
+        keys.append(build_account_limiter_key(settings))
+    return keys
+
+
+def login_inputs_within_limits(
+    *,
+    username: str,
+    password: str,
+    csrf_token: str,
+    flow_token: str | None = None,
+) -> bool:
+    if len(username) > LOGIN_USERNAME_MAX_LENGTH:
+        return False
+    if len(password) > LOGIN_PASSWORD_MAX_LENGTH:
+        return False
+    if len(csrf_token) > LOGIN_CSRF_MAX_LENGTH:
+        return False
+    if flow_token is not None and len(flow_token) > LOGIN_FLOW_TOKEN_MAX_LENGTH:
+        return False
+    return True
+
+
+def _fallback_keys_for_request(
+    request: Request,
+    settings: Settings,
+    *,
+    username: str,
+) -> list[str]:
+    return resolve_login_limiter_keys(
+        submitted_username=username,
+        client_source=client_ip(request, settings),
+        settings=settings,
+    )
+
+
+def _is_fallback_throttled(limiter_keys: list[str]) -> bool:
     now = time.time()
     with _fallback_lock:
-        entry = _fallback_attempts.get(limiter_key)
-        if entry is None:
-            return False
-        count, window_start = entry
-        if now - window_start >= _FALLBACK_WINDOW_SECONDS:
-            del _fallback_attempts[limiter_key]
-            return False
-        return count >= _FALLBACK_RATE_LIMIT
+        for limiter_key in limiter_keys:
+            entry = _fallback_attempts.get(limiter_key)
+            if entry is None:
+                continue
+            count, window_start = entry
+            if now - window_start >= _FALLBACK_WINDOW_SECONDS:
+                del _fallback_attempts[limiter_key]
+                continue
+            if count >= _FALLBACK_RATE_LIMIT:
+                return True
+    return False
 
 
-def _record_fallback_failure(limiter_key: str) -> None:
+def _record_fallback_failure(limiter_keys: list[str]) -> None:
     now = time.time()
     with _fallback_lock:
-        count, window_start = _fallback_attempts.get(limiter_key, (0, now))
-        if now - window_start >= _FALLBACK_WINDOW_SECONDS:
-            count = 0
-            window_start = now
-        _fallback_attempts[limiter_key] = (count + 1, window_start)
+        for limiter_key in limiter_keys:
+            count, window_start = _fallback_attempts.get(limiter_key, (0, now))
+            if now - window_start >= _FALLBACK_WINDOW_SECONDS:
+                count = 0
+                window_start = now
+            _fallback_attempts[limiter_key] = (count + 1, window_start)
 
 
-def _clear_fallback_failure(limiter_key: str) -> None:
+def _admit_fallback_failure(limiter_keys: list[str]) -> LoginAdmissionOutcome:
+    now = time.time()
     with _fallback_lock:
-        _fallback_attempts.pop(limiter_key, None)
+        for limiter_key in limiter_keys:
+            entry = _fallback_attempts.get(limiter_key)
+            if entry is None:
+                continue
+            count, window_start = entry
+            if now - window_start >= _FALLBACK_WINDOW_SECONDS:
+                continue
+            if count >= _FALLBACK_RATE_LIMIT:
+                return LoginAdmissionOutcome(admitted=False, already_locked=True)
+
+        lockout_transition = False
+        peak_count = 0
+        for limiter_key in limiter_keys:
+            count, window_start = _fallback_attempts.get(limiter_key, (0, now))
+            if now - window_start >= _FALLBACK_WINDOW_SECONDS:
+                count = 0
+                window_start = now
+            count += 1
+            if count >= _FALLBACK_RATE_LIMIT:
+                lockout_transition = True
+            peak_count = max(peak_count, count)
+            _fallback_attempts[limiter_key] = (count, window_start)
+
+        if peak_count > _FALLBACK_RATE_LIMIT:
+            return LoginAdmissionOutcome(
+                admitted=False,
+                lockout_transition=lockout_transition,
+            )
+        return LoginAdmissionOutcome(
+            admitted=True,
+            lockout_transition=lockout_transition,
+        )
 
 
-def is_login_throttled(request: Request, settings: Settings, *, username: str = "") -> bool:
-    limiter_key = build_rate_limit_key(username, client_ip(request, settings))
+def _clear_fallback_failure(limiter_keys: list[str]) -> None:
+    with _fallback_lock:
+        for limiter_key in limiter_keys:
+            _fallback_attempts.pop(limiter_key, None)
+
+
+def is_login_locked(request: Request, settings: Settings, *, username: str = "") -> bool:
+    """Read-only check for an active lockout across applicable buckets."""
+    limiter_keys = _fallback_keys_for_request(request, settings, username=username)
     now = datetime.now(timezone.utc)
     try:
         with db.db_connection(settings.database_url) as conn:
-            return db.is_admin_login_throttled(conn, limiter_key=limiter_key, now=now)
+            return db.is_admin_login_locked(conn, limiter_keys=limiter_keys, now=now)
     except Exception:
         _logger.warning(
             "Admin login rate limiter unavailable; using conservative fallback",
+            extra={"event": "admin_login_limiter_store_failure", "phase": "lock_check"},
             exc_info=True,
         )
-        return _is_fallback_throttled(limiter_key)
+        return _is_fallback_throttled(limiter_keys)
 
 
-def record_failed_login(request: Request, settings: Settings, *, username: str = "") -> None:
-    limiter_key = build_rate_limit_key(username, client_ip(request, settings))
+def is_login_throttled(request: Request, settings: Settings, *, username: str = "") -> bool:
+    return is_login_locked(request, settings, username=username)
+
+
+def admit_login_verification(
+    request: Request,
+    settings: Settings,
+    *,
+    username: str = "",
+) -> LoginAdmissionOutcome:
+    """Atomically reserve one password-verification attempt in shared storage."""
+    limiter_keys = _fallback_keys_for_request(request, settings, username=username)
     now = datetime.now(timezone.utc)
     try:
         with db.db_connection(settings.database_url) as conn:
-            db.record_admin_login_failure(
+            admitted, lockout_transition = db.admit_admin_login_attempt(
                 conn,
-                limiter_key=limiter_key,
+                limiter_keys=limiter_keys,
                 now=now,
                 rate_limit=settings.admin_login_rate_limit,
                 window_seconds=settings.admin_login_rate_window_seconds,
@@ -307,23 +439,89 @@ def record_failed_login(request: Request, settings: Settings, *, username: str =
                 window_seconds=settings.admin_login_rate_window_seconds,
                 lockout_seconds=settings.admin_login_lockout_seconds,
             )
+        outcome = LoginAdmissionOutcome(
+            admitted=admitted,
+            lockout_transition=lockout_transition,
+            already_locked=not admitted and not lockout_transition,
+        )
+        _logger.info(
+            "Admin login admission %s",
+            "granted" if admitted else "denied",
+            extra={
+                "event": "admin_login_admission",
+                "admitted": admitted,
+                "lockout_transition": lockout_transition,
+                "bucket_count": len(limiter_keys),
+            },
+        )
+        return outcome
+    except Exception:
+        _logger.warning(
+            "Admin login rate limiter unavailable; using conservative fallback",
+            extra={"event": "admin_login_limiter_store_failure", "phase": "admission"},
+            exc_info=True,
+        )
+        return _admit_fallback_failure(limiter_keys)
+
+
+def record_failed_login(request: Request, settings: Settings, *, username: str = "") -> None:
+    """Record a cheap-path failure (e.g. invalid CSRF) against shared buckets."""
+    limiter_keys = _fallback_keys_for_request(request, settings, username=username)
+    now = datetime.now(timezone.utc)
+    try:
+        with db.db_connection(settings.database_url) as conn:
+            db.record_admin_login_failures(
+                conn,
+                limiter_keys=limiter_keys,
+                now=now,
+                rate_limit=settings.admin_login_rate_limit,
+                window_seconds=settings.admin_login_rate_window_seconds,
+                lockout_seconds=settings.admin_login_lockout_seconds,
+            )
+            db.cleanup_expired_admin_login_rate_limits(
+                conn,
+                now=now,
+                window_seconds=settings.admin_login_rate_window_seconds,
+                lockout_seconds=settings.admin_login_lockout_seconds,
+            )
+        _logger.info(
+            "Admin login limiter failure recorded",
+            extra={"event": "admin_login_failure_recorded", "bucket_count": len(limiter_keys)},
+        )
     except Exception:
         _logger.warning(
             "Admin login rate limiter unavailable; recording fallback failure",
+            extra={"event": "admin_login_limiter_store_failure", "phase": "record_failure"},
             exc_info=True,
         )
-        _record_fallback_failure(limiter_key)
+        _record_fallback_failure(limiter_keys)
 
 
 def clear_login_rate_limit(request: Request, settings: Settings, *, username: str = "") -> None:
-    limiter_key = build_rate_limit_key(username, client_ip(request, settings))
-    _clear_fallback_failure(limiter_key)
+    """Finalize successful login limiter state.
+
+    Releases the source-wide admission reserved for the successful verification
+    and clears the account bucket. Source-wide protections remain for unrelated
+    abuse that never reached a successful login.
+    """
+    del username
+    source_key = build_source_limiter_key(client_ip(request, settings))
+    account_key = build_account_limiter_key(settings)
+    _clear_fallback_failure([account_key])
+    now = datetime.now(timezone.utc)
     try:
         with db.db_connection(settings.database_url) as conn:
-            db.clear_admin_login_rate_limit(conn, limiter_key=limiter_key)
+            db.release_admin_login_admission(
+                conn,
+                limiter_key=source_key,
+                now=now,
+                rate_limit=settings.admin_login_rate_limit,
+            )
+            db.clear_admin_login_rate_limits(conn, limiter_keys=[account_key])
     except Exception:
         _logger.warning(
             "Admin login rate limiter unavailable; cleared fallback only",
+            extra={"event": "admin_login_limiter_store_failure", "phase": "clear_account"},
             exc_info=True,
         )
 

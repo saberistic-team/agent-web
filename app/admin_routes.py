@@ -257,13 +257,11 @@ def _record_login_failure(
     request: Request,
     *,
     reason: str,
-    attempted_username: str | None = None,
 ) -> None:
     settings = get_settings()
     if not settings.database_url:
         return
-    actor = attempted_username.strip() if attempted_username else "anonymous"
-    actor_context = actor_context_from_request(request, actor=actor)
+    actor_context = anonymous_actor_context(request)
     try:
         with db.db_connection(settings.database_url) as conn:
             with crm_transaction(conn):
@@ -271,7 +269,6 @@ def _record_login_failure(
                     conn,
                     actor_context=actor_context,
                     reason=reason,
-                    attempted_username=attempted_username,
                 )
     except Exception:
         logger.exception("Failed to record login failure audit event")
@@ -320,6 +317,46 @@ def _issue_login_flow_response(
     )
     admin_auth.set_login_flow_cookie(response, raw_flow_token, settings)
     return response
+
+
+def _throttled_login_response_preserving_flow(
+    request: Request,
+    *,
+    settings: Settings,
+    next_path: str | None = None,
+) -> HTMLResponse:
+    """Return a throttled login form without consuming or replacing the flow."""
+    raw_flow_token = admin_auth.read_login_flow_token(request)
+    if (
+        raw_flow_token is not None
+        and len(raw_flow_token) <= admin_auth.LOGIN_FLOW_TOKEN_MAX_LENGTH
+    ):
+        flow_hash = admin_auth.hash_session_token(raw_flow_token)
+        raw_csrf_token = admin_auth.generate_csrf_value()
+        csrf_hash = admin_auth.hash_csrf_token(raw_csrf_token)
+        with db.db_connection(settings.database_url) as conn:
+            refreshed = db.update_admin_login_flow_csrf(
+                conn,
+                flow_token_hash=flow_hash,
+                csrf_token_hash=csrf_hash,
+            )
+        if refreshed:
+            response = HTMLResponse(
+                admin_pages.render_admin_login_page(
+                    csrf_token=raw_csrf_token,
+                    error_message=admin_auth.LOGIN_THROTTLED_MESSAGE,
+                    next_path=next_path,
+                ),
+                status_code=429,
+            )
+            admin_auth.set_login_flow_cookie(response, raw_flow_token, settings)
+            return response
+    return _issue_login_flow_response(
+        settings=settings,
+        error_message=admin_auth.LOGIN_THROTTLED_MESSAGE,
+        next_path=next_path,
+        status_code=429,
+    )
 
 
 def _verify_login_flow_csrf(
@@ -428,34 +465,19 @@ def admin_login_submit(
       form with a new CSRF token, and retain the replacement flow cookie.
     * **Invalid credentials** — same as invalid CSRF: consumed flow is not
       replayable; the replacement flow binds the returned CSRF token.
-    * **Rate limited** — consume the submitted flow and retain a replacement so
-      the operator can retry after lockout without refreshing.
+    * **Rate limited** — retain the existing flow when possible; refresh only the
+      CSRF hash so retries after lockout do not amplify flow or audit writes.
     * **Success** — clear the pre-auth flow cookie and issue the session cookie.
     """
     settings = get_settings()
     _require_admin_auth_configured(settings)
-    normalized_username = username.strip()
-
-    if admin_auth.is_login_throttled(request, settings, username=normalized_username):
-        _record_login_failure(
-            request, reason="rate_limited", attempted_username=normalized_username
-        )
-        _consume_login_flow(request, settings)
-        return _issue_login_flow_response(
-            settings=settings,
-            error_message=admin_auth.LOGIN_THROTTLED_MESSAGE,
-            next_path=next,
-            status_code=429,
-        )
-
-    csrf_valid = _verify_login_flow_csrf(request, settings, csrf_token)
-    _consume_login_flow(request, settings)
-
-    if not csrf_valid:
-        admin_auth.record_failed_login(request, settings, username=normalized_username)
-        _record_login_failure(
-            request, reason="invalid_csrf", attempted_username=normalized_username
-        )
+    flow_token = admin_auth.read_login_flow_token(request)
+    if not admin_auth.login_inputs_within_limits(
+        username=username,
+        password=password,
+        csrf_token=csrf_token,
+        flow_token=flow_token,
+    ):
         return _issue_login_flow_response(
             settings=settings,
             error_message=admin_auth.INVALID_CREDENTIALS_MESSAGE,
@@ -463,11 +485,57 @@ def admin_login_submit(
             status_code=400,
         )
 
-    if not admin_auth.verify_admin_credentials(normalized_username, password, settings):
-        admin_auth.record_failed_login(request, settings, username=normalized_username)
-        _record_login_failure(
-            request, reason="invalid_credentials", attempted_username=normalized_username
+    normalized_username = username.strip()
+
+    if admin_auth.is_login_locked(request, settings, username=normalized_username):
+        logger.info(
+            "Admin login denied by active lockout",
+            extra={"event": "admin_login_throttled", "phase": "lock_check"},
         )
+        return _throttled_login_response_preserving_flow(
+            request,
+            settings=settings,
+            next_path=next,
+        )
+
+    csrf_valid = _verify_login_flow_csrf(request, settings, csrf_token)
+    if not csrf_valid:
+        _consume_login_flow(request, settings)
+        admin_auth.record_failed_login(request, settings, username=normalized_username)
+        _record_login_failure(request, reason="invalid_csrf")
+        return _issue_login_flow_response(
+            settings=settings,
+            error_message=admin_auth.INVALID_CREDENTIALS_MESSAGE,
+            next_path=next,
+            status_code=400,
+        )
+
+    admission = admin_auth.admit_login_verification(
+        request,
+        settings,
+        username=normalized_username,
+    )
+    if not admission.admitted:
+        if admission.lockout_transition:
+            _record_login_failure(request, reason="rate_limited")
+        logger.info(
+            "Admin login denied by admission gate",
+            extra={
+                "event": "admin_login_throttled",
+                "phase": "admission",
+                "lockout_transition": admission.lockout_transition,
+            },
+        )
+        return _throttled_login_response_preserving_flow(
+            request,
+            settings=settings,
+            next_path=next,
+        )
+
+    _consume_login_flow(request, settings)
+
+    if not admin_auth.verify_admin_credentials(normalized_username, password, settings):
+        _record_login_failure(request, reason="invalid_credentials")
         return _issue_login_flow_response(
             settings=settings,
             error_message=admin_auth.INVALID_CREDENTIALS_MESSAGE,

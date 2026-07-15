@@ -88,8 +88,8 @@ def test_audit_migration_present_and_ordered() -> None:
 @pytest.mark.unit
 def test_pending_migrations_includes_audit_after_sessions() -> None:
     pending = pending_migrations(applied_versions={"001", "002", "003", "004", "005", "006"})
-    assert len(pending) == 9
-    assert [m.version for m in pending] == ["007", "008", "009", "010", "011", "012", "013", "014", "015"]
+    assert len(pending) == 8
+    assert [m.version for m in pending] == ["007", "008", "009", "010", "011", "012", "013", "014"]
 
 
 @pytest.mark.unit
@@ -605,6 +605,11 @@ def test_postgres_audit_repository_list_page() -> None:
 
 @pytest.mark.unit
 def test_db_session_helpers() -> None:
+    import importlib
+
+    import app.db as db_module
+
+    importlib.reload(db_module)
     conn = MagicMock()
     cursor = MagicMock()
     conn.cursor.return_value.__enter__.return_value = cursor
@@ -613,7 +618,7 @@ def test_db_session_helpers() -> None:
         {"id": 7, "admin_username": TEST_USERNAME, "revoked_at": None},
     ]
 
-    session_id = db.create_admin_session(
+    session_id = db_module.create_admin_session(
         conn,
         token_hash="hash",
         admin_username=TEST_USERNAME,
@@ -621,10 +626,10 @@ def test_db_session_helpers() -> None:
     )
     assert session_id == 7
 
-    row = db.get_admin_session_by_token_hash(conn, "hash")
+    row = db_module.get_admin_session_by_token_hash(conn, "hash")
     assert row["id"] == 7
 
-    db.revoke_admin_session(conn, token_hash="hash")
+    db_module.revoke_admin_session(conn, token_hash="hash")
     conn.commit.assert_not_called()
     conn.rollback.assert_not_called()
 
