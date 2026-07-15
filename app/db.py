@@ -398,107 +398,68 @@ def _admin_login_window_expired(
     return started < now - timedelta(seconds=window_seconds)
 
 
-def reconcile_admin_login_limiter_aliases(
+def reconcile_rotated_limiter_keys(
     conn: psycopg.Connection,
     *,
-    alias_pairs: tuple[tuple[str, str], ...],
+    key_pairs: tuple[tuple[str, str], ...],
     now: datetime,
-    window_seconds: int,
-    lockout_seconds: int,
 ) -> None:
-    """Merge previous-key limiter rows into canonical rows during secret rotation."""
-    if not alias_pairs:
-        return
-
-    with conn.cursor() as cur:
-        for canonical_key, legacy_key in alias_pairs:
-            if canonical_key == legacy_key:
-                continue
-
+    """Merge rows keyed under a previous rotation secret into current identifiers."""
+    for current_key, previous_key in key_pairs:
+        if current_key == previous_key:
+            continue
+        with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT limiter_key, failure_count, window_started_at, locked_until, updated_at
+                SELECT limiter_key, failure_count, window_started_at, locked_until
                 FROM admin_login_rate_limits
-                WHERE limiter_key = %s
+                WHERE limiter_key = ANY(%s)
                 FOR UPDATE
                 """,
-                (legacy_key,),
+                ([current_key, previous_key],),
             )
-            legacy_row = cur.fetchone()
-            if legacy_row is None:
+            rows = {str(row["limiter_key"]): row for row in cur.fetchall()}
+            previous_row = rows.get(previous_key)
+            if previous_row is None:
+                conn.commit()
                 continue
 
-            cur.execute(
-                """
-                SELECT limiter_key, failure_count, window_started_at, locked_until, updated_at
-                FROM admin_login_rate_limits
-                WHERE limiter_key = %s
-                FOR UPDATE
-                """,
-                (canonical_key,),
-            )
-            canonical_row = cur.fetchone()
-
-            legacy_started = legacy_row["window_started_at"]
-            if legacy_started.tzinfo is None:
-                legacy_started = legacy_started.replace(tzinfo=timezone.utc)
-            legacy_locked = _normalize_limiter_locked_until(legacy_row["locked_until"])
-            legacy_count = int(legacy_row["failure_count"])
-
-            if canonical_row is None:
+            current_row = rows.get(current_key)
+            if current_row is None:
                 cur.execute(
                     """
-                    INSERT INTO admin_login_rate_limits (
-                        limiter_key, failure_count, window_started_at, locked_until, updated_at
-                    )
-                    VALUES (%s, %s, %s, %s, %s)
-                    ON CONFLICT (limiter_key) DO NOTHING
+                    UPDATE admin_login_rate_limits
+                    SET limiter_key = %s,
+                        updated_at = %s
+                    WHERE limiter_key = %s
                     """,
-                    (
-                        canonical_key,
-                        legacy_count,
-                        legacy_started,
-                        legacy_locked,
-                        legacy_row["updated_at"],
-                    ),
+                    (current_key, now, previous_key),
                 )
-                cur.execute(
-                    "DELETE FROM admin_login_rate_limits WHERE limiter_key = %s",
-                    (legacy_key,),
-                )
+                conn.commit()
                 continue
 
-            canonical_started = canonical_row["window_started_at"]
-            if canonical_started.tzinfo is None:
-                canonical_started = canonical_started.replace(tzinfo=timezone.utc)
-            canonical_locked = _normalize_limiter_locked_until(canonical_row["locked_until"])
-            canonical_count = int(canonical_row["failure_count"])
-
-            legacy_window_active = not _admin_login_window_expired(
-                legacy_started,
-                now=now,
-                window_seconds=window_seconds,
+            merged_count = max(
+                int(current_row["failure_count"]),
+                int(previous_row["failure_count"]),
             )
-            canonical_window_active = not _admin_login_window_expired(
-                canonical_started,
-                now=now,
-                window_seconds=window_seconds,
+            current_window = current_row["window_started_at"]
+            previous_window = previous_row["window_started_at"]
+            if current_window.tzinfo is None:
+                current_window = current_window.replace(tzinfo=timezone.utc)
+            if previous_window.tzinfo is None:
+                previous_window = previous_window.replace(tzinfo=timezone.utc)
+            merged_window = (
+                current_window
+                if int(current_row["failure_count"]) >= int(previous_row["failure_count"])
+                else previous_window
             )
-
-            merged_count = canonical_count
-            merged_started = canonical_started
-            if legacy_window_active:
-                if canonical_window_active:
-                    merged_count = max(canonical_count, legacy_count)
-                    merged_started = min(canonical_started, legacy_started)
-                else:
-                    merged_count = legacy_count
-                    merged_started = legacy_started
-
-            merged_locked = canonical_locked
-            if legacy_locked is not None and legacy_locked > now:
-                if merged_locked is None or legacy_locked > merged_locked:
-                    merged_locked = legacy_locked
+            current_locked = _normalize_limiter_locked_until(current_row["locked_until"])
+            previous_locked = _normalize_limiter_locked_until(previous_row["locked_until"])
+            merged_locked: datetime | None = None
+            if current_locked and previous_locked:
+                merged_locked = max(current_locked, previous_locked)
+            else:
+                merged_locked = current_locked or previous_locked
 
             cur.execute(
                 """
@@ -509,14 +470,13 @@ def reconcile_admin_login_limiter_aliases(
                     updated_at = %s
                 WHERE limiter_key = %s
                 """,
-                (merged_count, merged_started, merged_locked, now, canonical_key),
+                (merged_count, merged_window, merged_locked, now, current_key),
             )
             cur.execute(
                 "DELETE FROM admin_login_rate_limits WHERE limiter_key = %s",
-                (legacy_key,),
+                (previous_key,),
             )
-
-        conn.commit()
+            conn.commit()
 
 
 def try_admit_admin_login(
