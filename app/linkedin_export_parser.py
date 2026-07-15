@@ -302,7 +302,14 @@ def parse_linkedin_export_zip(data: bytes) -> LinkedInExportPreview:
         base = _normalize_basename(path)
         if base in APPROVED_BASENAMES:
             if base in approved_paths:
-                warnings.append(f"Duplicate approved file {base!r}; using {path!r}")
+                zf.close()
+                return LinkedInExportPreview(
+                    ok=False,
+                    errors=(
+                        f"Duplicate approved file {base!r} found at multiple paths: "
+                        f"{approved_paths[base]!r} and {path!r}",
+                    ),
+                )
             approved_paths[base] = path
         elif _looks_like_ignored_export_file(path):
             ignored.append(path)
