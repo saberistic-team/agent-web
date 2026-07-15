@@ -2,14 +2,9 @@
 
 from __future__ import annotations
 
-import ipaddress
 import os
 from dataclasses import dataclass
-
-from app.admin_client_source import (
-    PRODUCTION_TRUSTED_PROXY_IPS,
-    parse_trusted_proxy_networks,
-)
+from functools import cached_property
 
 
 @dataclass(frozen=True)
@@ -33,10 +28,9 @@ class Settings:
     admin_login_rate_limit: int = 5
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
-    admin_trust_proxy_headers: bool = False
-    admin_trusted_proxy_networks: tuple[
-        ipaddress.IPv4Network | ipaddress.IPv6Network, ...
-    ] = ()
+    admin_trusted_proxy_ips: str = ""
+    admin_trusted_cloudflare_ips: str = ""
+    admin_trust_cloudflare_edge: bool = False
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -90,6 +84,18 @@ class Settings:
             return False
         return bool(self.plausible_domain)
 
+    @cached_property
+    def admin_trusted_proxy_networks(self) -> tuple:
+        from app.proxy_trust import parse_trusted_networks
+
+        return parse_trusted_networks(self.admin_trusted_proxy_ips)
+
+    @cached_property
+    def admin_cloudflare_networks(self) -> tuple:
+        from app.proxy_trust import parse_trusted_networks
+
+        return parse_trusted_networks(self.admin_trusted_cloudflare_ips)
+
 
 def get_settings() -> Settings:
     return Settings(
@@ -118,11 +124,12 @@ def get_settings() -> Settings:
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
         brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
-        admin_trust_proxy_headers=os.environ.get(
-            "ADMIN_TRUST_PROXY_HEADERS", ""
+        admin_trusted_proxy_ips=os.environ.get("ADMIN_TRUSTED_PROXY_IPS", "").strip(),
+        admin_trusted_cloudflare_ips=os.environ.get(
+            "ADMIN_TRUSTED_CLOUDFLARE_IPS", ""
+        ).strip(),
+        admin_trust_cloudflare_edge=os.environ.get(
+            "ADMIN_TRUST_CLOUDFLARE_EDGE", ""
         ).lower()
         in ("1", "true", "yes"),
-        admin_trusted_proxy_networks=parse_trusted_proxy_networks(
-            os.environ.get("ADMIN_TRUSTED_PROXY_IPS", PRODUCTION_TRUSTED_PROXY_IPS)
-        ),
     )

@@ -237,7 +237,9 @@ def admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "5")
     monkeypatch.setenv("ADMIN_LOGIN_RATE_WINDOW_SECONDS", "900")
     monkeypatch.setenv("ADMIN_LOGIN_LOCKOUT_SECONDS", "900")
-    monkeypatch.delenv("ADMIN_TRUST_PROXY_HEADERS", raising=False)
+    monkeypatch.delenv("ADMIN_TRUSTED_PROXY_IPS", raising=False)
+    monkeypatch.delenv("ADMIN_TRUSTED_CLOUDFLARE_IPS", raising=False)
+    monkeypatch.delenv("ADMIN_TRUST_CLOUDFLARE_EDGE", raising=False)
     admin_auth.reset_login_rate_limiter()
     _login_flows.clear()
     _session_store.clear()
@@ -471,31 +473,10 @@ def _login(
     next_path: str | None = None,
     headers: dict[str, str] | None = None,
 ) -> Any:
-    return _login_client(
-        client,
-        username=username,
-        password=password,
-        csrf_token=csrf_token,
-        cookies=cookies,
-        next_path=next_path,
-        headers=headers,
-    )
-
-
-def _login_client(
-    http_client: TestClient,
-    *,
-    username: str = TEST_USERNAME,
-    password: str = TEST_PASSWORD,
-    csrf_token: str | None = None,
-    cookies: dict[str, str] | None = None,
-    next_path: str | None = None,
-    headers: dict[str, str] | None = None,
-) -> Any:
     with mock_db_connection():
         if csrf_token is None:
             if cookies is None:
-                csrf_token, cookies = _parse_login_form(http_client.get("/admin/login"))
+                csrf_token, cookies = _parse_login_form(client.get("/admin/login"))
             else:
                 raise ValueError("csrf_token is required when cookies are provided")
         data = {
@@ -505,12 +486,7 @@ def _login_client(
         }
         if next_path is not None:
             data["next"] = next_path
-        return http_client.post(
-            "/admin/login",
-            data=data,
-            cookies=cookies or {},
-            headers=headers or {},
-        )
+        return client.post("/admin/login", data=data, cookies=cookies or {}, headers=headers or {})
 
 
 def _extract_session_cookie(response: Any) -> str | None:
@@ -677,7 +653,7 @@ def test_build_rate_limit_key_hashes_username_and_source() -> None:
 def test_client_ip_ignores_forwarded_without_trusted_proxy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("ADMIN_TRUST_PROXY_HEADERS", raising=False)
+    monkeypatch.delenv("ADMIN_TRUSTED_PROXY_IPS", raising=False)
     settings = get_settings()
     request = _request_with_client("198.51.100.10")
     request.headers.__dict__["_list"].append((b"x-forwarded-for", b"203.0.113.99"))
@@ -685,10 +661,9 @@ def test_client_ip_ignores_forwarded_without_trusted_proxy(
 
 
 @pytest.mark.unit
-def test_client_ip_uses_trusted_hop_parser_when_proxy_trust_enabled(
+def test_client_ip_uses_forwarded_chain_when_trusted_proxy_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_TRUST_PROXY_HEADERS", "true")
     monkeypatch.setenv("ADMIN_TRUSTED_PROXY_IPS", "10.0.0.0/8")
     settings = get_settings()
     request = _request_with_client("10.0.0.1")
@@ -1041,25 +1016,61 @@ def test_rate_limit_expires_after_lockout(
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_rate_limit_uses_resolved_client_when_trusted_peer(
+def test_rate_limit_uses_forwarded_ip_when_trusted(
     rate_limit_store: FakeRateLimitStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_TRUST_PROXY_HEADERS", "true")
     monkeypatch.setenv("ADMIN_TRUSTED_PROXY_IPS", "10.0.0.0/8")
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
-    trusted_client = TestClient(app, client=("10.0.0.5", 50000), follow_redirects=False)
-    with shared_rate_limiter(rate_limit_store):
-        headers = {"CF-Connecting-IP": "203.0.113.77"}
-        assert _login_client(trusted_client, username="ghost", password="wrong", headers=headers).status_code == 401
-        assert _login_client(trusted_client, username="ghost", password="wrong", headers=headers).status_code == 401
-        assert _login_client(trusted_client, username="ghost", password="wrong", headers=headers).status_code == 429
+    from tests.test_admin_proxy_trust import _client_behind_render
 
-        rotated_spoof = {
-            "CF-Connecting-IP": "203.0.113.77",
-            "X-Forwarded-For": "203.0.113.88, 203.0.113.77",
-        }
-        assert _login_client(trusted_client, username="ghost", password="wrong", headers=rotated_spoof).status_code == 429
+    render_client = _client_behind_render()
+    from tests.test_admin_auth import (
+        _mock_claim_admin_login_flow,
+        _mock_cleanup_stale_admin_login_flows,
+        _mock_create_admin_login_flow,
+        _parse_login_form,
+        mock_db_connection,
+    )
+
+    def _attempt(forwarded: str) -> int:
+        with mock_db_connection():
+            form = render_client.get("/admin/login")
+            csrf_token, flow_cookie = _parse_login_form(form)
+            response = render_client.post(
+                "/admin/login",
+                data={
+                    "username": "ghost",
+                    "password": "wrong",
+                    "csrf_token": csrf_token,
+                },
+                headers={"X-Forwarded-For": forwarded},
+                cookies=flow_cookie,
+            )
+            return response.status_code
+
+    with (
+        shared_rate_limiter(rate_limit_store),
+        patch(
+            "app.admin_auth.db.create_admin_login_flow",
+            side_effect=_mock_create_admin_login_flow,
+        ),
+        patch(
+            "app.admin_auth.db.cleanup_stale_admin_login_flows",
+            side_effect=_mock_cleanup_stale_admin_login_flows,
+        ),
+        patch(
+            "app.admin_auth.db.claim_admin_login_flow",
+            side_effect=_mock_claim_admin_login_flow,
+        ),
+    ):
+        client_ip = "203.0.113.77"
+        assert _attempt(f"{client_ip}, 10.0.0.1") == 401
+        assert _attempt(f"{client_ip}, 10.0.0.1") == 401
+        assert _attempt(f"{client_ip}, 10.0.0.1") == 429
+
+        other_ip = "203.0.113.88"
+        assert _attempt(f"{other_ip}, 10.0.0.1") == 401
 
 
 @pytest.mark.unit
@@ -1068,7 +1079,7 @@ def test_rate_limit_ignores_spoofed_forwarded_without_trust(
     rate_limit_store: FakeRateLimitStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("ADMIN_TRUST_PROXY_HEADERS", raising=False)
+    monkeypatch.delenv("ADMIN_TRUSTED_PROXY_IPS", raising=False)
     with shared_rate_limiter(rate_limit_store):
         for i in range(5):
             forwarded = f"203.0.113.{i}"
@@ -1267,7 +1278,6 @@ def test_account_rate_limit_blocks_configured_username_across_sources(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
-    monkeypatch.setenv("ADMIN_TRUST_PROXY_HEADERS", "true")
     with shared_rate_limiter(rate_limit_store):
         assert _login(password="wrong", headers={"X-Forwarded-For": "203.0.113.1"}).status_code == 401
         assert _login(password="wrong", headers={"X-Forwarded-For": "203.0.113.2"}).status_code == 401

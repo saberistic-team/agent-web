@@ -20,8 +20,11 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.admin_client_source import resolve_admin_login_client_source
 from app.config import Settings
+from app.proxy_trust import (
+    log_source_resolution_telemetry,
+    resolve_admin_login_client_source,
+)
 
 SESSION_COOKIE_NAME = "admin_session"
 LOGIN_FLOW_COOKIE_NAME = "admin_login_flow"
@@ -236,8 +239,18 @@ def read_login_flow_token(request: Request) -> str | None:
 
 
 def client_ip(request: Request, settings: Settings) -> str:
-    """Resolve the client source for rate limiting (see ``resolve_admin_login_client_source``)."""
-    return resolve_admin_login_client_source(request, settings)
+    """Resolve the client source IP for rate limiting.
+
+    Forwarding headers are honored only when the immediate TCP peer appears in
+    ``ADMIN_TRUSTED_PROXY_IPS``. Otherwise the direct peer address is used so
+    clients cannot spoof ``X-Forwarded-For``, ``Forwarded``, or
+    ``CF-Connecting-IP``.
+
+    See :func:`resolve_admin_login_client_source` and ``docs/ADMIN_AUTH.md``.
+    """
+    resolution = resolve_admin_login_client_source(request, settings)
+    log_source_resolution_telemetry(resolution)
+    return resolution.source
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
@@ -361,7 +374,9 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    source = client_ip(request, settings)
+    resolution = resolve_admin_login_client_source(request, settings)
+    log_source_resolution_telemetry(resolution)
+    source = resolution.source
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,
@@ -413,6 +428,7 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "lockout_transition": admission.lockout_transition,
+                "source_resolution_path": resolution.path,
             },
         )
     elif admission.already_locked:
