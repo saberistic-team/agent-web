@@ -35,6 +35,10 @@ from app.contacts import (
     find_email_duplicate_warnings,
     find_name_company_duplicate_warnings,
     find_profile_url_duplicate_warnings,
+    ContactRestoreResult,
+    ContactSafeSummary,
+    contact_safe_summary,
+    normalize_email,
 )
 from app.crm_uow import crm_transaction
 from app.pipeline import initial_pipeline_stage_for_brief_status, pipeline_stage_label, validate_stage
@@ -77,6 +81,14 @@ def default_crm_repositories() -> CrmRepositories:
         admin_users=PostgresAdminUserRepository(),
         pipeline=PostgresPipelineRepository(),
     )
+
+
+
+def _is_contact_email_unique_violation(exc: pg_errors.UniqueViolation) -> bool:
+    diag = exc.diag
+    if diag is None:
+        return False
+    return (diag.constraint_name or "") == "idx_contacts_email_unique"
 
 
 class CrmService:
@@ -719,10 +731,103 @@ class CrmService:
             return self._repos.contacts.archive(conn, contact_id)
 
     def restore_contact(
-        self, conn: psycopg.Connection, contact_id: UUID
-    ) -> dict[str, Any] | None:
-        with crm_transaction(conn):
-            return self._repos.contacts.restore(conn, contact_id)
+        self,
+        conn: psycopg.Connection,
+        contact_id: UUID,
+        *,
+        actor_context: ActorContext,
+    ) -> ContactRestoreResult:
+        archived = self._repos.contacts.get_by_id(conn, contact_id)
+        if archived is None or archived.get("archived_at") is None:
+            return ContactRestoreResult(outcome="not_found")
+
+        conflicting = self._active_email_conflict_for_restore(
+            conn,
+            archived,
+            exclude_contact_id=contact_id,
+        )
+        if conflicting is not None:
+            return ContactRestoreResult(
+                outcome="conflict",
+                archived_contact=archived,
+                conflicting_contact=conflicting,
+            )
+
+        try:
+            with crm_transaction(conn):
+                restored = self._repos.contacts.restore(conn, contact_id)
+                if restored is None:
+                    return ContactRestoreResult(outcome="not_found")
+                audit_service.record_contact_restore(
+                    conn,
+                    actor_context=actor_context,
+                    contact_id=str(contact_id),
+                    summary_before={
+                        "archived_at": archived.get("archived_at"),
+                        "full_name": archived.get("full_name"),
+                    },
+                    summary_after={
+                        "archived_at": None,
+                        "full_name": restored.get("full_name"),
+                    },
+                )
+                return ContactRestoreResult(outcome="success", contact=restored)
+        except pg_errors.UniqueViolation as exc:
+            if not _is_contact_email_unique_violation(exc):
+                raise
+            conflicting = self._active_email_conflict_for_restore(
+                conn,
+                archived,
+                exclude_contact_id=contact_id,
+            )
+            return ContactRestoreResult(
+                outcome="conflict",
+                archived_contact=archived,
+                conflicting_contact=conflicting,
+            )
+
+    def get_contact_restore_conflict(
+        self,
+        conn: psycopg.Connection,
+        contact_id: UUID,
+    ) -> ContactRestoreResult | None:
+        archived = self._repos.contacts.get_by_id(conn, contact_id)
+        if archived is None or archived.get("archived_at") is None:
+            return None
+        conflicting = self._active_email_conflict_for_restore(
+            conn,
+            archived,
+            exclude_contact_id=contact_id,
+        )
+        if conflicting is None:
+            return None
+        return ContactRestoreResult(
+            outcome="conflict",
+            archived_contact=archived,
+            conflicting_contact=conflicting,
+        )
+
+    def _active_email_conflict_for_restore(
+        self,
+        conn: psycopg.Connection,
+        archived_contact: dict[str, Any],
+        *,
+        exclude_contact_id: UUID,
+    ) -> ContactSafeSummary | None:
+        try:
+            normalized = normalize_email(archived_contact.get("email"))
+        except ValueError:
+            return None
+        if normalized is None:
+            return None
+        active = self._repos.contacts.get_active_by_email(
+            conn,
+            normalized,
+            exclude_contact_id=exclude_contact_id,
+        )
+        if active is None:
+            return None
+        return contact_safe_summary(active, company_name=active.get("company_name"))
 
     def list_research_for_company(
         self,
