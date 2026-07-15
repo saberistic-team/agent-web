@@ -5,7 +5,7 @@ from __future__ import annotations
 import html
 from typing import Any
 
-from app.admin_layout import archive_restore_action_class, render_admin_shell
+from app.admin_layout import render_admin_archive_restore_button, render_admin_shell
 from app.contacts import (
     BUYING_ROLES,
     EMAIL_PERMISSIONS,
@@ -125,12 +125,13 @@ def render_contact_form_page(
     )
     archive_html = ""
     if contact is not None:
-        archive_action = "restore" if contact.get("archived_at") else "archive"
-        archive_label = "Restore contact" if contact.get("archived_at") else "Archive contact"
-        archive_class = archive_restore_action_class(is_archived=bool(contact.get("archived_at")))
-        archive_html = f"""<form method="post" action="/admin/contacts/{_esc(contact["id"])}/{archive_action}">
+        is_archived = bool(contact.get("archived_at"))
+        archive_action = "restore" if is_archived else "archive"
+        archive_label = "Restore contact" if is_archived else "Archive contact"
+        archive_button = render_admin_archive_restore_button(label=archive_label, archived=is_archived)
+        archive_html = f"""<form class="admin-record-action" method="post" action="/admin/contacts/{_esc(contact["id"])}/{archive_action}">
         <input type="hidden" name="csrf_token" value="{_esc(csrf_token)}" />
-        <button class="{archive_class}" type="submit">{archive_label}</button>
+        {archive_button}
       </form>"""
     main = f"""<section class="admin-section" aria-labelledby="contact-form-title">
       <p class="admin-breadcrumb"><a href="/admin/contacts">Contacts</a></p>

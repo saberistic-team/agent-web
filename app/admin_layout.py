@@ -92,12 +92,6 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert",
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
-    "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-    "/admin/companies/cccccccc-cccc-cccc-cccc-cccccccccccc",
-    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
-    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd",
-    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/edit",
-    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd/edit",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
 )
 
@@ -107,13 +101,6 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
 ADMIN_SCREENSHOT_EXPECTED_STATUS: dict[str, int] = {
     "/admin/briefs/503": 503,
 }
-
-
-def archive_restore_action_class(*, is_archived: bool) -> str:
-    """CSS classes for archive (destructive) or restore (secondary) form buttons."""
-    if is_archived:
-        return "admin-action admin-action--secondary"
-    return "admin-action admin-action--destructive"
 
 
 def _active_nav_label(active_path: str) -> str:
@@ -159,6 +146,15 @@ def render_admin_nav(active_path: str) -> str:
             </ul>
           </details>
         </nav>"""
+
+
+def render_admin_archive_restore_button(*, label: str, archived: bool) -> str:
+    """Return a themed Archive (destructive) or Restore (secondary) submit button."""
+    modifier = "admin-action--secondary" if archived else "admin-action--destructive"
+    return (
+        f'<button class="admin-action {modifier}" type="submit">'
+        f"{html.escape(label)}</button>"
+    )
 
 
 def render_admin_shell(
