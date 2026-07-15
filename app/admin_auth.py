@@ -20,8 +20,8 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
+from app.client_source import ClientSourceResolution, resolve_admin_login_client_source
 from app.config import Settings
-from app.trusted_proxy import ClientSourceResolution, resolve_client_source
 
 SESSION_COOKIE_NAME = "admin_session"
 LOGIN_FLOW_COOKIE_NAME = "admin_login_flow"
@@ -235,45 +235,24 @@ def read_login_flow_token(request: Request) -> str | None:
     return token.strip() or None
 
 
-def resolve_admin_login_client_source(
+def client_ip(request: Request, settings: Settings) -> str:
+    """Resolve the client source IP for rate limiting.
+
+    Forwarding headers are honored only when ``ADMIN_TRUST_PROXY_HEADERS`` is
+    enabled and the immediate peer matches ``FORWARDED_ALLOW_IPS``. The
+    resolver walks ``X-Forwarded-For`` right-to-left (Cloudflare append
+    semantics) and ignores single-hop or vendor-only headers that could be
+    spoofed at the public origin.
+    """
+    return resolve_admin_login_client_source(request, settings).source
+
+
+def resolve_client_source_for_login(
     request: Request,
     settings: Settings,
 ) -> ClientSourceResolution:
-    """Resolve the effective admin-login client source for shared rate limiting.
-
-    Forwarding headers are honored only when ``ADMIN_TRUST_PROXY_HEADERS`` is
-    enabled **and** the immediate TCP peer is within the configured trusted-proxy
-    boundary. Untrusted peers always use the direct peer address so clients cannot
-    spoof ``X-Forwarded-For``, ``Forwarded``, or ``CF-Connecting-IP``.
-
-    Source identity notes:
-
-    * **IPv4 / IPv6** — normalized deterministically (including IPv4-mapped IPv6)
-      before hashing into the source bucket digest.
-    * **Missing peer** — falls back to ``unknown`` so attempts still share one
-      bucket instead of creating an unbounded namespace.
-    * **Trusted chain** — walks ``X-Forwarded-For`` / ``Forwarded`` right-to-left,
-      skipping configured proxy hops. ``CF-Connecting-IP`` is accepted only when
-      a Cloudflare edge header proves the request transited the public edge.
-    """
-    peer_host = request.client.host if request.client is not None else None
-    resolution = resolve_client_source(
-        peer_host=peer_host,
-        headers=request.headers,
-        trust_proxy_headers=settings.admin_trust_proxy_headers,
-        trusted_proxy_cidrs=settings.admin_trusted_proxy_cidrs,
-    )
-    if resolution.rejected_forwarding:
-        _logger.info(
-            "Admin login source resolution used conservative fallback",
-            extra={"source_resolution_path": resolution.path},
-        )
-    return resolution
-
-
-def client_ip(request: Request, settings: Settings) -> str:
-    """Return the resolved client source string for rate limiting."""
-    return resolve_admin_login_client_source(request, settings).source
+    """Return resolved source identity and telemetry path for admin login."""
+    return resolve_admin_login_client_source(request, settings)
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
@@ -397,7 +376,8 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    source = client_ip(request, settings)
+    resolution = resolve_client_source_for_login(request, settings)
+    source = resolution.source
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,
@@ -423,7 +403,10 @@ def try_admit_login_attempt(
     except Exception:
         _logger.warning(
             "Admin login rate limiter unavailable; using conservative fallback",
-            extra={"limiter_key_count": len(limiter_keys)},
+            extra={
+                "limiter_key_count": len(limiter_keys),
+                "resolution_path": resolution.path,
+            },
             exc_info=True,
         )
         if _is_fallback_throttled(limiter_keys):
@@ -449,6 +432,7 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "lockout_transition": admission.lockout_transition,
+                "resolution_path": resolution.path,
             },
         )
     elif admission.already_locked:
@@ -457,6 +441,7 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "already_locked": True,
+                "resolution_path": resolution.path,
             },
         )
     return LoginAdmissionResult(

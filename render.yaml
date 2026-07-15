@@ -10,7 +10,7 @@ services:
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: bash scripts/run_uvicorn.sh
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips $FORWARDED_ALLOW_IPS
     healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
@@ -47,7 +47,7 @@ services:
         sync: false
       - key: ADMIN_SESSION_TTL_SECONDS
         value: "86400"
+      - key: FORWARDED_ALLOW_IPS
+        value: "*"
       - key: ADMIN_TRUST_PROXY_HEADERS
         value: "true"
-      - key: FORWARDED_ALLOW_IPS
-        value: "127.0.0.1"
