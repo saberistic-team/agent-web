@@ -1068,11 +1068,6 @@ for _link in ADMIN_NAV_LINKS:
     )
 
 
-from app.admin_pipeline_routes import router as pipeline_router
-
-router.include_router(pipeline_router)
-
-
 @router.get("", response_class=HTMLResponse)
 @router.get("/", response_class=HTMLResponse)
 def admin_dashboard(request: Request) -> HTMLResponse:
