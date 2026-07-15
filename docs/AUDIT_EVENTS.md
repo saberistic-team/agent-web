@@ -51,10 +51,20 @@ both commit or roll back together.
 | Brief-to-CRM linkage | `CrmService.link_project_brief_source` | Transactional write; audit ships with future routes |
 | Login success | `admin_routes._issue_session` | Prior-session revocation (if any) + new session + required audit atomically |
 | Logout (authenticated) | `admin_routes.admin_logout` | Revocation + required audit atomically when the session row transitions to revoked |
-| Login failure | `admin_routes` | Best-effort audit (`required=False`); actor is always `anonymous` before authentication |
+| Login failure | `admin_routes` | Best-effort audit (`required=False`); actor is always `anonymous` |
 
-Unauthenticated login failures never persist submitted username candidates in the audit
-row. See [Historical login-failure actors](#historical-login-failure-actors).
+Unauthenticated login failures never persist the submitted username in ``actor``,
+metadata, or reason text. Failure reasons are a small server-defined enum
+(``invalid_credentials``, ``invalid_csrf``, ``rate_limited``).
+
+### Historical login-failure actors (pre-#242)
+
+Deployments before keyed limiter identifiers and anonymous failure actors (#242)
+may have stored attacker-supplied usernames in immutable ``audit_events.actor``
+rows for ``auth.login.failure`` events. Those rows are append-only and are not
+rewritten automatically. Operators who need accurate actor reporting should
+treat pre-remediation rows as potentially attacker-controlled identities and
+obtain an explicit data-governance decision before any manual remediation.
 
 `record_event(..., required=True)` propagates persistence errors. Security-sensitive
 mutations must not return success when a required audit event could not be stored.
@@ -186,24 +196,4 @@ ORDER BY 1 DESC;
 |----------|---------|---------|
 | `AUDIT_PAGE_SIZE` | `50` | Admin audit list page size (max 100) |
 
-Requires `DATABASE_URL`, admin auth env vars documented in `docs/ADMIN_AUTH.md`, and
-`ADMIN_LOGIN_LIMITER_SECRET` for keyed login throttling identifiers.
-
-## Historical login-failure actors
-
-Deployments before
-[#242](https://github.com/saberistic-team/agent-web/issues/242) could append
-`auth.login.failure` rows whose `actor` column contained attacker-supplied username
-candidates from the login form. Those rows remain immutable under the append-only
-policy — the application does not rewrite historical audit data.
-
-Forward fix (merged with #242):
-
-- Every new unauthenticated failure uses actor `anonymous`.
-- Submitted candidates are excluded from actor, metadata, reason text, logs, and
-  limiter state.
-
-Operational reporting should treat pre-#242 `auth.login.failure` actors as
-**untrusted identity claims** unless corroborated by a successful
-`auth.login.success` for the same correlation window. Remediation of historical rows,
-if required, is a data-governance decision outside normal application code paths.
+Requires `DATABASE_URL` and admin auth env vars documented in `docs/ADMIN_AUTH.md`.
