@@ -133,6 +133,7 @@ def test_record_company_with_contact_commits_once_on_success() -> None:
             activities=MagicMock(),
             research_records=MagicMock(),
             admin_users=MagicMock(),
+            stage_history=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -164,6 +165,7 @@ def test_record_company_with_contact_rolls_back_when_contact_fails() -> None:
             activities=MagicMock(),
             research_records=MagicMock(),
             admin_users=MagicMock(),
+            stage_history=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -197,6 +199,7 @@ def test_single_record_service_operations_commit_once() -> None:
             activities=activity_repo,
             research_records=MagicMock(),
             admin_users=MagicMock(),
+            stage_history=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -230,6 +233,7 @@ def test_read_methods_do_not_change_transaction_state() -> None:
             activities=MagicMock(),
             research_records=MagicMock(),
             admin_users=admin_repo,
+            stage_history=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -273,6 +277,7 @@ def test_import_batch_commits_once_with_audit() -> None:
             activities=MagicMock(),
             research_records=MagicMock(),
             admin_users=MagicMock(),
+            stage_history=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -309,6 +314,7 @@ def test_import_batch_rolls_back_business_writes_when_audit_fails() -> None:
             activities=MagicMock(),
             research_records=MagicMock(),
             admin_users=MagicMock(),
+            stage_history=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -345,6 +351,7 @@ def test_import_batch_rolls_back_when_business_write_fails() -> None:
             activities=MagicMock(),
             research_records=MagicMock(),
             admin_users=MagicMock(),
+            stage_history=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -382,6 +389,7 @@ def test_import_batch_retry_after_rollback() -> None:
             activities=MagicMock(),
             research_records=MagicMock(),
             admin_users=MagicMock(),
+            stage_history=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -423,6 +431,7 @@ def test_delete_entity_rolls_back_when_audit_fails() -> None:
             activities=MagicMock(),
             research_records=MagicMock(),
             admin_users=MagicMock(),
+            stage_history=MagicMock(),
         )
     )
     conn = MagicMock()

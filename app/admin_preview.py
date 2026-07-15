@@ -66,6 +66,13 @@ CONTENT_KINDS = ("insight", "case-study", "landing", "brief copy")
 BRIEF_PAYMENT_STATUSES = ("pending_payment", "paid", "abandoned")
 # Reserved preview detail id for ADMIN_PREVIEW_MODE database-unavailable screenshots.
 PREVIEW_BRIEF_DATABASE_ERROR_ID = 503
+# Brief already linked to CRM/pipeline in preview screenshots.
+PREVIEW_BRIEF_CONVERTED_ID = 3
+# Brief convert preview with explicit domain/email matches for Reviewer shots.
+PREVIEW_BRIEF_CONVERT_MATCHES_ID = 4
+PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR = (
+    "Select an existing company match or choose to create a new company."
+)
 BRIEF_TEXTS = (
     "Need a technical architecture review of our payments platform — "
     "API boundaries, retention, and rollout sequencing.",
@@ -574,12 +581,91 @@ def build_preview_brief_detail(
     return None
 
 
+def preview_pipeline_available() -> bool:
+    return True
+
+
+def preview_brief_conversion_state(brief_id: int) -> dict[str, object] | None:
+    """Return linked CRM state for converted preview briefs."""
+    if brief_id != PREVIEW_BRIEF_CONVERTED_ID:
+        return None
+    company_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    return {
+        "company": {
+            "id": company_id,
+            "name": "Northwind Labs",
+            "pipeline_stage": "diagnostic_paid",
+        },
+        "contact": {
+            "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+            "email": "alex.nguyen@northwindlabs.io",
+        },
+        "pipeline_stage": "diagnostic_paid",
+    }
+
+
+def preview_brief_convert_matches(
+    brief_id: int,
+    *,
+    price_cents: int,
+) -> dict[str, object]:
+    from app.brief_conversion import build_conversion_proposal
+
+    brief = build_preview_brief_detail(brief_id)
+    if brief is None:
+        return {"proposal": {}, "company_matches": [], "contact_matches": []}
+    proposal = build_conversion_proposal(dict(brief), price_cents=price_cents)
+    company_matches: list[dict[str, object]] = []
+    contact_matches: list[dict[str, object]] = []
+    if brief_id in (1, PREVIEW_BRIEF_CONVERT_MATCHES_ID):
+        company_matches.append(
+            {
+                "id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+                "name": "Northwind Labs (existing)",
+                "domain": proposal.get("domain"),
+            }
+        )
+    if brief_id == PREVIEW_BRIEF_CONVERT_MATCHES_ID:
+        contact_matches.append(
+            {
+                "id": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+                "email": proposal.get("contact_email"),
+                "company_id": company_matches[0]["id"] if company_matches else None,
+            }
+        )
+    return {
+        "proposal": proposal,
+        "company_matches": company_matches,
+        "contact_matches": contact_matches,
+    }
+
+
+def preview_brief_convert_post(
+    brief_id: int,
+    *,
+    company_mode: str,
+    contact_mode: str,
+    selected_company_id: object,
+    selected_contact_id: object,
+) -> str | None:
+    """Simulate validation errors for preview POST; None means success."""
+    if brief_id == PREVIEW_BRIEF_CONVERT_MATCHES_ID:
+        if company_mode == "existing" and selected_company_id is None:
+            return "Select an existing company match or choose to create a new company."
+        if contact_mode == "existing" and selected_contact_id is None:
+            return "Select the existing contact match or choose to create a new contact."
+    if brief_id == PREVIEW_BRIEF_CONVERTED_ID:
+        return None
+    return None
+
+
 AUDIT_ACTIONS = (
     "admin.login.success",
     "admin.logout",
     "import.batch",
     "entity.delete",
     "pipeline.update",
+    "brief.convert",
 )
 
 

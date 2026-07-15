@@ -21,11 +21,15 @@ from app.companies import (
     CompanyCreate,
     CompanyUpdate,
 )
+from app.brief_conversion import (
+    BriefConversionValidationError,
+    pipeline_capabilities_available,
+)
 from app.contacts import BUYING_ROLES, ContactCreate, ContactUpdate
 from app.crm_uow import crm_transaction
 from app.actor_context import actor_context_from_request, anonymous_actor_context, correlation_id_from_request
 from app.admin_layout import ADMIN_NAV_LINKS, render_admin_shell
-from app.admin_preview import PREVIEW_BRIEF_DATABASE_ERROR_ID
+from app.admin_preview import PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR, PREVIEW_BRIEF_DATABASE_ERROR_ID
 from app.config import Settings, get_settings
 from app.crm_service import CrmService
 from app.research_records import ResearchRecordCreate
@@ -154,6 +158,36 @@ def _contact_form_payload(**values: object) -> dict[str, object]:
     elif isinstance(roles, str):
         payload["buying_roles"] = [roles]
     return payload
+
+
+def _parse_link_choice(raw: str | None) -> tuple[str, UUID | None]:
+    """Parse ``new`` or ``existing:{uuid}`` form values."""
+    if not raw or raw.strip() == "new":
+        return "new", None
+    text = raw.strip()
+    if text.startswith("existing:"):
+        try:
+            return "existing", UUID(text.split(":", 1)[1])
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid selection.") from exc
+    if text == "existing":
+        return "existing", None
+    raise HTTPException(status_code=400, detail="Invalid selection.")
+
+
+def _brief_detail_context(
+    conn,
+    *,
+    brief: dict,
+    settings: Settings,
+) -> tuple[bool, dict | None]:
+    if not pipeline_capabilities_available(settings):
+        return False, None
+    source = _crm.get_project_brief_source(conn, int(brief["id"]))
+    if source is None:
+        return True, None
+    result = _crm.get_brief_conversion_state(conn, int(brief["id"]))
+    return True, result
 
 
 def _require_admin_auth_configured(settings: Settings) -> None:
@@ -1181,6 +1215,11 @@ def admin_brief_detail(
                 ),
                 status_code=404,
             )
+        from app.admin_preview import preview_brief_conversion_state, preview_pipeline_available
+
+        pipeline_available = preview_pipeline_available()
+        conversion = preview_brief_conversion_state(parsed_brief_id)
+        converted = request.query_params.get("converted") == "1"
         return HTMLResponse(
             admin_pages.render_admin_brief_detail_page(
                 admin_username=session.admin_username,
@@ -1188,6 +1227,9 @@ def admin_brief_detail(
                 back_filters=back_filters,
                 price_cents=settings.brief_price_cents,
                 csrf_token=csrf_token,
+                pipeline_available=pipeline_available and conversion is None,
+                conversion=conversion,
+                converted=converted,
             )
         )
     if not settings.database_url:
@@ -1233,6 +1275,13 @@ def admin_brief_detail(
             ),
             status_code=404,
         )
+    converted = request.query_params.get("converted") == "1"
+    with db.db_connection(settings.database_url) as conn:
+        pipeline_available, conversion = _brief_detail_context(
+            conn,
+            brief=brief,
+            settings=settings,
+        )
     return HTMLResponse(
         admin_pages.render_admin_brief_detail_page(
             admin_username=session.admin_username,
@@ -1240,8 +1289,184 @@ def admin_brief_detail(
             back_filters=back_filters,
             price_cents=settings.brief_price_cents,
             csrf_token=csrf_token,
+            pipeline_available=pipeline_available and conversion is None,
+            conversion=conversion,
+            converted=converted,
         )
     )
+
+
+@router.get("/briefs/{brief_id}/convert", response_class=HTMLResponse)
+def admin_brief_convert_preview(
+    request: Request,
+    brief_id: str,
+    page: int = 1,
+    q: str | None = None,
+    status: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> HTMLResponse:
+    session = require_admin_session(request)
+    settings = get_settings()
+    csrf_token = _issue_session_csrf(settings, session.id) if session.id else ""
+    back_filters = brief_service.normalize_list_back_params(
+        page=page,
+        q=q,
+        status=status,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    parsed_brief_id = brief_service.parse_brief_id(brief_id)
+    if parsed_brief_id is None:
+        return HTMLResponse(
+            admin_pages.render_admin_brief_not_found(
+                brief_id=brief_id,
+                admin_username=session.admin_username,
+                back_filters=back_filters,
+                csrf_token=csrf_token,
+            ),
+            status_code=404,
+        )
+    if not pipeline_capabilities_available(settings) and not settings.admin_preview_enabled:
+        raise HTTPException(status_code=503, detail="Pipeline conversion is unavailable.")
+
+    if settings.admin_preview_enabled:
+        from app.admin_preview import preview_brief_convert_matches
+
+        brief = brief_service.preview_brief_detail(parsed_brief_id)
+        if brief is None:
+            return HTMLResponse(
+                admin_pages.render_admin_brief_not_found(
+                    brief_id=parsed_brief_id,
+                    admin_username=session.admin_username,
+                    back_filters=back_filters,
+                    csrf_token=csrf_token,
+                ),
+                status_code=404,
+            )
+        preview = preview_brief_convert_matches(
+            parsed_brief_id,
+            price_cents=settings.brief_price_cents,
+        )
+        error_message = request.query_params.get("error")
+        if error_message == "validation":
+            error_message = PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR
+        return HTMLResponse(
+            admin_pages.render_admin_brief_convert_page(
+                admin_username=session.admin_username,
+                brief=brief,
+                back_filters=back_filters,
+                preview=preview,
+                csrf_token=csrf_token,
+                error_message=error_message,
+            )
+        )
+
+    if not settings.database_url:
+        raise HTTPException(status_code=503, detail="Pipeline conversion is unavailable.")
+
+    with db.db_connection(settings.database_url) as conn:
+        brief = brief_service.get_brief(conn, parsed_brief_id)
+        if brief is None:
+            return HTMLResponse(
+                admin_pages.render_admin_brief_not_found(
+                    brief_id=parsed_brief_id,
+                    admin_username=session.admin_username,
+                    back_filters=back_filters,
+                    csrf_token=csrf_token,
+                ),
+                status_code=404,
+            )
+        if _crm.get_project_brief_source(conn, parsed_brief_id) is not None:
+            return RedirectResponse(
+                url=f"/admin/briefs/{parsed_brief_id}?converted=1",
+                status_code=303,
+            )
+        preview = _crm.find_brief_conversion_matches(
+            conn,
+            brief,
+            price_cents=settings.brief_price_cents,
+        )
+    return HTMLResponse(
+        admin_pages.render_admin_brief_convert_page(
+            admin_username=session.admin_username,
+            brief=brief,
+            back_filters=back_filters,
+            preview=preview,
+            csrf_token=csrf_token,
+            error_message=request.query_params.get("error"),
+        )
+    )
+
+
+@router.post("/briefs/{brief_id}/convert")
+def admin_brief_convert_confirm(
+    request: Request,
+    brief_id: str,
+    csrf_token: str = Form(...),
+    company_choice: str = Form(default="new"),
+    contact_choice: str = Form(default="new"),
+    page: int = 1,
+    q: str | None = Form(default=None),
+    status: str | None = Form(default=None),
+    date_from: str | None = Form(default=None),
+    date_to: str | None = Form(default=None),
+) -> RedirectResponse:
+    session = require_admin_session(request)
+    _verify_session_csrf(session, csrf_token)
+    settings = get_settings()
+    parsed_brief_id = brief_service.parse_brief_id(brief_id)
+    if parsed_brief_id is None:
+        raise HTTPException(status_code=404, detail="Brief not found.")
+    if not pipeline_capabilities_available(settings) and not settings.admin_preview_enabled:
+        raise HTTPException(status_code=503, detail="Pipeline conversion is unavailable.")
+
+    company_mode, selected_company_id = _parse_link_choice(company_choice)
+    contact_mode, selected_contact_id = _parse_link_choice(contact_choice)
+    detail_url = f"/admin/briefs/{parsed_brief_id}?converted=1"
+
+    if settings.admin_preview_enabled:
+        from app.admin_preview import preview_brief_convert_post
+
+        error = preview_brief_convert_post(
+            parsed_brief_id,
+            company_mode=company_mode,
+            contact_mode=contact_mode,
+            selected_company_id=selected_company_id,
+            selected_contact_id=selected_contact_id,
+        )
+        if error:
+            return RedirectResponse(
+                url=f"/admin/briefs/{parsed_brief_id}/convert?error={quote(error)}",
+                status_code=303,
+            )
+        return RedirectResponse(url=detail_url, status_code=303)
+
+    if not settings.database_url:
+        raise HTTPException(status_code=503, detail="Pipeline conversion is unavailable.")
+
+    actor_context = actor_context_from_request(request, actor=session.admin_username)
+    try:
+        with db.db_connection(settings.database_url) as conn:
+            brief = brief_service.get_brief(conn, parsed_brief_id)
+            if brief is None:
+                raise HTTPException(status_code=404, detail="Brief not found.")
+            _crm.convert_project_brief(
+                conn,
+                brief=brief,
+                actor_context=actor_context,
+                price_cents=settings.brief_price_cents,
+                company_choice=company_mode,
+                contact_choice=contact_mode,
+                selected_company_id=selected_company_id,
+                selected_contact_id=selected_contact_id,
+            )
+    except BriefConversionValidationError as exc:
+        return RedirectResponse(
+            url=f"/admin/briefs/{parsed_brief_id}/convert?error={quote(str(exc))}",
+            status_code=303,
+        )
+    return RedirectResponse(url=detail_url, status_code=303)
 
 
 @router.get("/audit", response_class=HTMLResponse)

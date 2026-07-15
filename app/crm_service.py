@@ -10,7 +10,12 @@ import psycopg
 
 from app import audit_service
 from app.actor_context import ActorContext
-from app.companies import CompanyCreate, CompanyUpdate, find_domain_duplicate_warnings
+from app.brief_conversion import (
+    BriefConversionValidationError,
+    build_conversion_proposal,
+    safe_conversion_payload,
+)
+from app.companies import CompanyCreate, CompanyUpdate, find_domain_duplicate_warnings, normalize_domain
 from app.contacts import (
     ContactCreate,
     ContactUpdate,
@@ -19,14 +24,17 @@ from app.contacts import (
     find_profile_url_duplicate_warnings,
 )
 from app.crm_uow import crm_transaction
+from app.pipeline import initial_pipeline_stage_for_brief_status, pipeline_stage_label, validate_stage
 from app.repositories import (
     ActivityRepository,
     AdminUserRepository,
     CompanyRepository,
+    CompanyStageHistoryRepository,
     ContactRepository,
     PostgresActivityRepository,
     PostgresAdminUserRepository,
     PostgresCompanyRepository,
+    PostgresCompanyStageHistoryRepository,
     PostgresContactRepository,
     PostgresResearchRecordRepository,
     PostgresSourceRecordRepository,
@@ -43,6 +51,7 @@ class CrmRepositories:
     activities: ActivityRepository
     research_records: ResearchRecordRepository
     admin_users: AdminUserRepository
+    stage_history: CompanyStageHistoryRepository
 
 
 def default_crm_repositories() -> CrmRepositories:
@@ -53,6 +62,7 @@ def default_crm_repositories() -> CrmRepositories:
         activities=PostgresActivityRepository(),
         research_records=PostgresResearchRecordRepository(),
         admin_users=PostgresAdminUserRepository(),
+        stage_history=PostgresCompanyStageHistoryRepository(),
     )
 
 
@@ -125,6 +135,285 @@ class CrmService:
                 payload=payload,
             )
         return record
+
+    def get_project_brief_source(
+        self,
+        conn: psycopg.Connection,
+        brief_id: int,
+    ) -> dict[str, Any] | None:
+        return self._repos.source_records.get_by_source(
+            conn,
+            source_type="project_brief",
+            external_id=str(brief_id),
+        )
+
+    def get_brief_conversion_state(
+        self,
+        conn: psycopg.Connection,
+        brief_id: int,
+    ) -> dict[str, Any] | None:
+        source = self.get_project_brief_source(conn, brief_id)
+        if source is None:
+            return None
+        return self._conversion_result_from_source(conn, source, idempotent=True)
+
+    def find_brief_conversion_matches(
+        self,
+        conn: psycopg.Connection,
+        brief: dict[str, Any],
+        *,
+        price_cents: int,
+    ) -> dict[str, Any]:
+        proposal = build_conversion_proposal(brief, price_cents=price_cents)
+        domain = proposal.get("domain")
+        email = proposal["contact_email"]
+        companies = (
+            self._repos.companies.find_by_domain(conn, str(domain))
+            if domain
+            else []
+        )
+        contact = self._repos.contacts.get_by_email(conn, email)
+        contacts = [contact] if contact else []
+        return {
+            "proposal": proposal,
+            "company_matches": companies,
+            "contact_matches": contacts,
+        }
+
+    def convert_project_brief(
+        self,
+        conn: psycopg.Connection,
+        *,
+        brief: dict[str, Any],
+        actor_context: ActorContext,
+        price_cents: int,
+        company_choice: str,
+        contact_choice: str,
+        selected_company_id: UUID | None = None,
+        selected_contact_id: UUID | None = None,
+    ) -> dict[str, Any]:
+        """Create or link CRM records and pipeline state for one project brief."""
+        brief_id = int(brief["id"])
+        existing = self.get_project_brief_source(conn, brief_id)
+        if existing is not None:
+            return self._conversion_result_from_source(conn, existing, idempotent=True)
+
+        proposal = build_conversion_proposal(brief, price_cents=price_cents)
+        pipeline_stage = initial_pipeline_stage_for_brief_status(str(brief.get("status", "")))
+        validate_stage(pipeline_stage)
+        domain = proposal.get("domain")
+        email = proposal["contact_email"]
+        company_matches = (
+            self._repos.companies.find_by_domain(conn, str(domain))
+            if domain
+            else []
+        )
+        contact_match = self._repos.contacts.get_by_email(conn, email)
+        self._validate_conversion_choices(
+            company_choice=company_choice,
+            contact_choice=contact_choice,
+            company_matches=company_matches,
+            contact_match=contact_match,
+            selected_company_id=selected_company_id,
+            selected_contact_id=selected_contact_id,
+        )
+
+        with crm_transaction(conn):
+            race = self.get_project_brief_source(conn, brief_id)
+            if race is not None:
+                return self._conversion_result_from_source(conn, race, idempotent=True)
+
+            if company_choice == "existing":
+                assert selected_company_id is not None
+                company = self._repos.companies.get_by_id(conn, selected_company_id)
+                if company is None:
+                    raise BriefConversionValidationError("Selected company was not found.")
+                from_stage = str(company.get("pipeline_stage") or "researching")
+            else:
+                from_stage = "researching"
+                company = self._repos.companies.create(
+                    conn,
+                    name=str(proposal["company_name"]),
+                    website=str(proposal["website"]),
+                    domain=domain,
+                    pipeline_stage=pipeline_stage,
+                    expected_value=proposal.get("expected_value"),
+                )
+
+            if contact_choice == "existing":
+                assert selected_contact_id is not None
+                contact = self._repos.contacts.get_by_id(conn, selected_contact_id)
+                if contact is None:
+                    raise BriefConversionValidationError("Selected contact was not found.")
+            else:
+                contact = self._repos.contacts.create(
+                    conn,
+                    email=email,
+                    full_name=proposal.get("contact_name"),
+                    company_id=UUID(str(company["id"])),
+                )
+
+            if company_choice == "existing":
+                updated = self._repos.companies.set_pipeline_stage(
+                    conn,
+                    UUID(str(company["id"])),
+                    pipeline_stage=pipeline_stage,
+                    expected_value=proposal.get("expected_value"),
+                )
+                if updated is not None:
+                    company = updated
+
+            if from_stage != pipeline_stage:
+                self._repos.stage_history.record(
+                    conn,
+                    company_id=UUID(str(company["id"])),
+                    from_stage=from_stage,
+                    to_stage=pipeline_stage,
+                    changed_by=actor_context.actor,
+                    reason="Brief conversion",
+                    metadata={"brief_id": brief_id},
+                )
+
+            payload = {
+                **safe_conversion_payload(brief),
+                "pipeline_stage": pipeline_stage,
+            }
+            source_record = self._repos.source_records.create(
+                conn,
+                source_type="project_brief",
+                external_id=str(brief_id),
+                company_id=UUID(str(company["id"])),
+                contact_id=UUID(str(contact["id"])),
+                payload=payload,
+            )
+            self._repos.activities.create(
+                conn,
+                activity_type="status_change",
+                summary=(
+                    f"Added brief #{brief_id} to pipeline at "
+                    f"{pipeline_stage_label(pipeline_stage)}"
+                ),
+                company_id=UUID(str(company["id"])),
+                contact_id=UUID(str(contact["id"])),
+                source_record_id=UUID(str(source_record["id"])),
+                metadata={"brief_id": brief_id, "pipeline_stage": pipeline_stage},
+            )
+            audit_service.record_brief_convert(
+                conn,
+                actor_context=actor_context,
+                brief_id=str(brief_id),
+                summary_after={
+                    "brief_id": brief_id,
+                    "brief_status": brief.get("status"),
+                    "company_id": str(company["id"]),
+                    "contact_id": str(contact["id"]),
+                    "pipeline_stage": pipeline_stage,
+                    "outcome": "linked",
+                },
+            )
+
+        return {
+            "idempotent": False,
+            "brief_id": brief_id,
+            "company": company,
+            "contact": contact,
+            "source_record": source_record,
+            "pipeline_stage": pipeline_stage,
+        }
+
+    def _conversion_result_from_source(
+        self,
+        conn: psycopg.Connection,
+        source_record: dict[str, Any],
+        *,
+        idempotent: bool,
+    ) -> dict[str, Any]:
+        company_id = source_record.get("company_id")
+        contact_id = source_record.get("contact_id")
+        company = (
+            self._repos.companies.get_by_id(conn, UUID(str(company_id)))
+            if company_id
+            else None
+        )
+        contact = (
+            self._repos.contacts.get_by_id(conn, UUID(str(contact_id)))
+            if contact_id
+            else None
+        )
+        payload = source_record.get("payload") or {}
+        pipeline_stage = payload.get("pipeline_stage") or (
+            company.get("pipeline_stage") if company else None
+        )
+        return {
+            "idempotent": idempotent,
+            "brief_id": int(source_record.get("external_id") or 0),
+            "company": company,
+            "contact": contact,
+            "source_record": source_record,
+            "pipeline_stage": pipeline_stage,
+        }
+
+    def _validate_conversion_choices(
+        self,
+        *,
+        company_choice: str,
+        contact_choice: str,
+        company_matches: list[dict[str, Any]],
+        contact_match: dict[str, Any] | None,
+        selected_company_id: UUID | None,
+        selected_contact_id: UUID | None,
+    ) -> None:
+        if company_choice not in {"new", "existing"}:
+            raise BriefConversionValidationError("Choose whether to create or link a company.")
+        if contact_choice not in {"new", "existing"}:
+            raise BriefConversionValidationError("Choose whether to create or link a contact.")
+
+        if company_matches and company_choice == "existing":
+            if selected_company_id is None:
+                raise BriefConversionValidationError(
+                    "Select an existing company match or choose to create a new company."
+                )
+            allowed = {UUID(str(row["id"])) for row in company_matches}
+            if selected_company_id not in allowed:
+                raise BriefConversionValidationError("Selected company does not match the brief domain.")
+
+        if not company_matches and company_choice == "existing":
+            raise BriefConversionValidationError("No existing company matches this domain.")
+
+        if contact_match is None and contact_choice == "existing":
+            raise BriefConversionValidationError("No existing contact matches this email.")
+
+        if contact_match is not None and contact_choice == "existing":
+            if selected_contact_id is None:
+                raise BriefConversionValidationError(
+                    "Select the existing contact match or choose to create a new contact."
+                )
+            if selected_contact_id != UUID(str(contact_match["id"])):
+                raise BriefConversionValidationError("Selected contact does not match the brief email.")
+        elif contact_match is not None and contact_choice == "new":
+            raise BriefConversionValidationError(
+                "A contact with this email already exists — link the existing contact."
+            )
+
+        if company_choice == "existing" and selected_company_id is None:
+            raise BriefConversionValidationError("A company selection is required.")
+        if contact_choice == "existing" and selected_contact_id is None:
+            raise BriefConversionValidationError("A contact selection is required.")
+
+        if (
+            company_choice == "existing"
+            and contact_choice == "existing"
+            and selected_company_id is not None
+            and selected_contact_id is not None
+        ):
+            contact = contact_match
+            if contact is None:
+                raise BriefConversionValidationError("Selected contact was not found.")
+            linked_company = contact.get("company_id")
+            if linked_company is not None and UUID(str(linked_company)) != selected_company_id:
+                raise BriefConversionValidationError(
+                    "Selected contact belongs to a different company — adjust your selection."
+                )
 
     def get_admin_user_by_email(
         self,

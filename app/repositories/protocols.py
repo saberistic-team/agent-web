@@ -25,6 +25,9 @@ class CompanyRepository(Protocol):
         target_status: str | None = None,
         last_verified_at: date | None = None,
         notes: str | None = None,
+        pipeline_stage: str = "researching",
+        expected_value: float | None = None,
+        owner: str | None = None,
     ) -> dict[str, Any]: ...
 
     def get_by_id(self, conn: psycopg.Connection, company_id: UUID) -> dict[str, Any] | None: ...
@@ -67,6 +70,29 @@ class CompanyRepository(Protocol):
     def archive(self, conn: psycopg.Connection, company_id: UUID) -> dict[str, Any] | None: ...
 
     def restore(self, conn: psycopg.Connection, company_id: UUID) -> dict[str, Any] | None: ...
+
+    def set_pipeline_stage(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        pipeline_stage: str,
+        expected_value: float | None = None,
+    ) -> dict[str, Any] | None: ...
+
+
+class CompanyStageHistoryRepository(Protocol):
+    def record(
+        self,
+        conn: psycopg.Connection,
+        *,
+        company_id: UUID,
+        from_stage: str,
+        to_stage: str,
+        changed_by: str,
+        reason: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]: ...
 
 
 class ContactRepository(Protocol):
