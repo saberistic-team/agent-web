@@ -86,7 +86,7 @@ def test_admin_app_declares_dark_color_scheme_and_accent() -> None:
 @pytest.mark.unit
 def test_admin_checkbox_radio_use_accent_color() -> None:
     css = _admin_css()
-    block = _rule_block(css, ".admin-form input[type=\"checkbox\"],")
+    block = _rule_block(css, '.admin-form input[type="checkbox"],')
     assert "accent-color: var(--accent)" in block
     assert '.admin-form input[type="radio"]' in block
     assert "cursor: pointer" in block
@@ -95,11 +95,11 @@ def test_admin_checkbox_radio_use_accent_color() -> None:
 @pytest.mark.unit
 def test_admin_checkbox_radio_focus_and_disabled_states() -> None:
     css = _admin_css()
-    focus_block = _rule_block(css, ".admin-form input[type=\"checkbox\"]:focus-visible,")
+    focus_block = _rule_block(css, '.admin-form input[type="checkbox"]:focus-visible,')
     assert "outline: 2px solid var(--accent)" in focus_block
     assert '.admin-form input[type="radio"]:focus-visible' in focus_block
 
-    disabled_block = _rule_block(css, ".admin-form input[type=\"checkbox\"]:disabled,")
+    disabled_block = _rule_block(css, '.admin-form input[type="checkbox"]:disabled,')
     assert "opacity: 0.65" in disabled_block
     assert "cursor: not-allowed" in disabled_block
 
@@ -134,7 +134,7 @@ def test_admin_checkbox_label_and_fieldset_styles() -> None:
 @pytest.mark.unit
 def test_brief_filter_and_admin_date_controls_use_dark_color_scheme() -> None:
     css = _admin_css()
-    block = _rule_block(css, ".admin-form input[type=\"date\"],")
+    block = _rule_block(css, '.admin-form input[type="date"],')
     assert "color-scheme: dark" in block
     assert '.brief-filter input[type="date"]' in block
     assert "::-webkit-calendar-picker-indicator" in css
@@ -332,6 +332,44 @@ def test_preview_pipeline_detail_includes_native_controls(
     assert 'type="datetime-local"' in body
     assert 'name="confirm"' in body
     assert 'type="checkbox"' in body
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_preview_companies_page_includes_archived_checkbox(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _preview_client(monkeypatch)
+    response = client.get(
+        "/admin/companies",
+        cookies={SESSION_COOKIE_NAME: "preview-screenshot-session"},
+    )
+    assert response.status_code == 200
+    body = response.text
+    assert 'class="admin-form"' in body
+    assert 'name="archived"' in body
+    assert 'type="checkbox"' in body
+    assert "Include archived" in body
+    assert "No companies match these filters." not in body
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_preview_contacts_page_includes_archived_checkbox(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _preview_client(monkeypatch)
+    response = client.get(
+        "/admin/contacts",
+        cookies={SESSION_COOKIE_NAME: "preview-screenshot-session"},
+    )
+    assert response.status_code == 200
+    body = response.text
+    assert 'class="admin-form"' in body
+    assert 'name="archived"' in body
+    assert 'type="checkbox"' in body
+    assert "Include archived" in body
+    assert "No contacts match these filters." not in body
 
 
 @pytest.mark.unit

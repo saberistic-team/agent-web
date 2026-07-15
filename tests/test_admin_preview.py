@@ -290,6 +290,31 @@ def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytes
 
 
 @pytest.mark.unit
+def test_preview_crm_companies_seed_stable() -> None:
+    from app.admin_preview import build_preview_crm_companies
+
+    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
+    a = build_preview_crm_companies(rng=random.Random(42), now=now)
+    b = build_preview_crm_companies(rng=random.Random(42), now=now)
+    assert a == b
+    assert len(a) >= 4
+    assert a[0]["name"] in COMPANY_NAMES
+
+
+@pytest.mark.unit
+def test_preview_crm_contacts_seed_stable() -> None:
+    from app.admin_preview import build_preview_crm_contacts
+
+    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
+    a_contacts, a_companies = build_preview_crm_contacts(rng=random.Random(42), now=now)
+    b_contacts, b_companies = build_preview_crm_contacts(rng=random.Random(42), now=now)
+    assert a_contacts == b_contacts
+    assert a_companies == b_companies
+    assert len(a_contacts) >= 4
+    assert a_contacts[0]["full_name"]
+
+
+@pytest.mark.unit
 def test_preview_pipeline_companies_seed_stable() -> None:
     now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
     a = build_preview_pipeline_companies(rng=random.Random(42), now=now)

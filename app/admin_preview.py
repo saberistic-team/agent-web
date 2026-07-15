@@ -101,6 +101,21 @@ PREVIEW_PIPELINE_COMPANY_IDS = (
     UUID("44444444-4444-4444-4444-444444444444"),
     UUID("55555555-5555-5555-5555-555555555555"),
 )
+PREVIEW_CRM_COMPANY_IDS = (
+    UUID("c1111111-1111-1111-1111-111111111111"),
+    UUID("c2222222-2222-2222-2222-222222222222"),
+    UUID("c3333333-3333-3333-3333-333333333333"),
+    UUID("c4444444-4444-4444-4444-444444444444"),
+    UUID("c5555555-5555-5555-5555-555555555555"),
+    UUID("c6666666-6666-6666-6666-666666666666"),
+)
+PREVIEW_CRM_CONTACT_IDS = (
+    UUID("d1111111-1111-1111-1111-111111111111"),
+    UUID("d2222222-2222-2222-2222-222222222222"),
+    UUID("d3333333-3333-3333-3333-333333333333"),
+    UUID("d4444444-4444-4444-4444-444444444444"),
+    UUID("d5555555-5555-5555-5555-555555555555"),
+)
 _SECTION_COLUMNS: dict[str, tuple[str, ...]] = {
     "/admin/companies": ("Company", "Category", "Stage", "Target", "Verified"),
     "/admin/contacts": ("Name", "Roles", "Company", "Email", "Last touch"),
@@ -553,6 +568,68 @@ def build_preview_pipeline_companies(
             }
         )
     return companies
+
+
+def build_preview_crm_companies(
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> list[dict[str, object]]:
+    """Randomized CRM company rows for ADMIN_PREVIEW_MODE list screenshots."""
+    from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES, TARGET_STATUSES
+
+    rng = rng or _preview_rng()
+    now = now or datetime.now(timezone.utc)
+    category_keys = list(COMPANY_CATEGORIES)
+    stage_keys = list(COMPANY_STAGES)
+    target_keys = list(TARGET_STATUSES)
+    companies: list[dict[str, object]] = []
+    for index, company_id in enumerate(PREVIEW_CRM_COMPANY_IDS):
+        name = COMPANY_NAMES[index % len(COMPANY_NAMES)]
+        companies.append(
+            {
+                "id": company_id,
+                "name": name,
+                "category": rng.choice(category_keys),
+                "stage": stage_keys[index % len(stage_keys)],
+                "target_status": rng.choice(target_keys),
+                "last_verified_at": (now - timedelta(days=rng.randint(1, 120))).date().isoformat(),
+            }
+        )
+    return companies
+
+
+def build_preview_crm_contacts(
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    """Randomized CRM contact rows and company options for preview list pages."""
+    from app.contacts import BUYING_ROLES
+
+    rng = rng or _preview_rng()
+    now = now or datetime.now(timezone.utc)
+    companies = build_preview_crm_companies(rng=rng, now=now)
+    role_keys = list(BUYING_ROLES)
+    contacts: list[dict[str, object]] = []
+    for index, contact_id in enumerate(PREVIEW_CRM_CONTACT_IDS):
+        company = companies[index % len(companies)]
+        first = CONTACT_FIRST[index % len(CONTACT_FIRST)]
+        last = CONTACT_LAST[index % len(CONTACT_LAST)]
+        company_name = str(company["name"])
+        contacts.append(
+            {
+                "id": contact_id,
+                "full_name": f"{first} {last}",
+                "title": rng.choice(("CTO", "VP Engineering", "Founder", "Head of Product")),
+                "buying_roles": rng.sample(role_keys, k=rng.randint(1, min(2, len(role_keys)))),
+                "company_id": company["id"],
+                "company_name": company_name,
+                "email": _slug_email(first, last, company_name, rng),
+                "last_interaction_at": (now - timedelta(days=rng.randint(1, 90))).date().isoformat(),
+            }
+        )
+    return contacts, companies
 
 
 def build_preview_pipeline_detail(

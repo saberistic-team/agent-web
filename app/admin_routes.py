@@ -26,7 +26,13 @@ from app.brief_conversion import (
     effective_brief_price_cents,
     pipeline_capabilities_available,
 )
-from app.contacts import BUYING_ROLES, ContactCreate, ContactSafeSummary, ContactUpdate
+from app.contacts import (
+    BUYING_ROLES,
+    ContactCreate,
+    ContactEmailConflictError,
+    ContactSafeSummary,
+    ContactUpdate,
+)
 from app.crm_uow import crm_transaction
 from app.actor_context import actor_context_from_request, correlation_id_from_request
 from app.admin_layout import ADMIN_NAV_LINKS, render_admin_shell
@@ -602,20 +608,22 @@ def admin_companies(
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
-        from app.admin_preview import render_preview_section_main
+        from app.admin_preview import build_preview_crm_companies
 
-        link = next(item for item in ADMIN_NAV_LINKS if item["href"] == "/admin/companies")
+        filters = {
+            "q": q,
+            "category": category if category in COMPANY_CATEGORIES else None,
+            "stage": stage if stage in COMPANY_STAGES else None,
+            "target_status": target_status if target_status in TARGET_STATUSES else None,
+            "freshness": freshness if freshness in FRESHNESS_FILTERS else None,
+            "archived": "1" if archived else None,
+        }
         return HTMLResponse(
-            render_admin_shell(
-                title=link["label"],
-                main=render_preview_section_main(
-                    label=link["label"],
-                    summary=link["summary"],
-                    active_path="/admin/companies",
-                ),
-                active_path="/admin/companies",
-                admin_username=session.admin_username,
+            company_pages.render_companies_list_page(
+                companies=build_preview_crm_companies(),
+                filters=filters,
                 csrf_token=csrf_token,
+                admin_username=session.admin_username,
             )
         )
     filters = {
@@ -868,20 +876,28 @@ def admin_contacts(
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
-        from app.admin_preview import render_preview_section_main
+        from app.admin_preview import build_preview_crm_contacts
 
-        link = next(item for item in ADMIN_NAV_LINKS if item["href"] == "/admin/contacts")
+        parsed_company_id: UUID | None = None
+        if company_id:
+            try:
+                parsed_company_id = UUID(company_id)
+            except ValueError:
+                parsed_company_id = None
+        filters = {
+            "q": q,
+            "company_id": company_id if parsed_company_id else None,
+            "buying_role": buying_role if buying_role in BUYING_ROLES else None,
+            "archived": "1" if archived else None,
+        }
+        contacts, companies = build_preview_crm_contacts()
         return HTMLResponse(
-            render_admin_shell(
-                title=link["label"],
-                main=render_preview_section_main(
-                    label=link["label"],
-                    summary=link["summary"],
-                    active_path="/admin/contacts",
-                ),
-                active_path="/admin/contacts",
-                admin_username=session.admin_username,
+            contact_pages.render_contacts_list_page(
+                contacts=contacts,
+                companies=companies,
+                filters=filters,
                 csrf_token=csrf_token,
+                admin_username=session.admin_username,
             )
         )
     parsed_company_id: UUID | None = None
@@ -952,8 +968,11 @@ def admin_contact_create(
         contact = ContactCreate(**_contact_form_payload(**locals()))
     except (ValueError, TypeError, ValidationError) as exc:
         return RedirectResponse(url=f"/admin/contacts/new?error={quote(str(exc))}", status_code=303)
-    with db.db_connection(get_settings().database_url) as conn:
-        result = _crm.create_contact(conn, contact=contact)
+    try:
+        with db.db_connection(get_settings().database_url) as conn:
+            result = _crm.create_contact(conn, contact=contact)
+    except ContactEmailConflictError as exc:
+        return RedirectResponse(url=f"/admin/contacts/new?error={quote(str(exc))}", status_code=303)
     warnings = result["duplicate_warnings"]
     warning = f"{len(warnings)} possible duplicate(s)" if warnings else ""
     return RedirectResponse(
@@ -1008,8 +1027,13 @@ def admin_contact_update(
         return RedirectResponse(
             url=f"/admin/contacts/{contact_id}/edit?error={quote(str(exc))}", status_code=303
         )
-    with db.db_connection(get_settings().database_url) as conn:
-        result = _crm.update_contact(conn, contact_id, contact=contact)
+    try:
+        with db.db_connection(get_settings().database_url) as conn:
+            result = _crm.update_contact(conn, contact_id, contact=contact)
+    except ContactEmailConflictError as exc:
+        return RedirectResponse(
+            url=f"/admin/contacts/{contact_id}/edit?error={quote(str(exc))}", status_code=303
+        )
     if result is None:
         raise HTTPException(status_code=404, detail="Contact not found")
     warnings = result["duplicate_warnings"]
