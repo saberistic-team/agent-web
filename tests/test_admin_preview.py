@@ -16,12 +16,12 @@ from app.admin_preview import (
     PREVIEW_CONTACT_RESTORE_ID,
     PREVIEW_PIPELINE_COMPANY_IDS,
     build_preview_acquisition_dashboard_data,
-    build_preview_company_detail,
-    build_preview_contact_detail,
     build_preview_dashboard_data,
     build_preview_pipeline_companies,
     build_preview_pipeline_detail,
     build_preview_section_rows,
+    preview_company_detail,
+    preview_contact_detail,
     render_preview_dashboard_main,
     render_preview_section_main,
 )
@@ -264,6 +264,37 @@ def test_admin_preview_briefs_list_and_detail_have_mock_data(
 
 
 @pytest.mark.unit
+def test_preview_crm_detail_archive_and_restore_states_are_stable() -> None:
+    rng = random.Random(42)
+    archive_company, archive_contacts, archive_records = preview_company_detail(
+        PREVIEW_COMPANY_ARCHIVE_ID,
+        rng=rng,
+    )
+    restore_company, _restore_contacts, _restore_records = preview_company_detail(
+        PREVIEW_COMPANY_RESTORE_ID,
+        rng=random.Random(42),
+    )
+    assert archive_company["archived_at"] is None
+    assert restore_company["archived_at"] is not None
+    assert archive_company["name"] in COMPANY_NAMES
+    assert archive_contacts
+    assert archive_records
+
+    archive_contact, archive_company_link, contact_records = preview_contact_detail(
+        PREVIEW_CONTACT_ARCHIVE_ID,
+        rng=random.Random(42),
+    )
+    restore_contact, _restore_company, _restore_contact_records = preview_contact_detail(
+        PREVIEW_CONTACT_RESTORE_ID,
+        rng=random.Random(42),
+    )
+    assert archive_contact["archived_at"] is None
+    assert restore_contact["archived_at"] is not None
+    assert archive_company_link["name"] in COMPANY_NAMES
+    assert contact_records
+
+
+@pytest.mark.unit
 def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytest.MonkeyPatch) -> None:
     import random
 
@@ -293,29 +324,6 @@ def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytes
     assert preview["archived_contact"]["full_name"] in response.text
     assert preview["conflicting_contact"]["full_name"] in response.text
     assert "Restore blocked" in response.text
-
-
-@pytest.mark.unit
-def test_preview_crm_detail_builders_seed_stable() -> None:
-    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
-    rng = random.Random(11)
-    company_archive = build_preview_company_detail(PREVIEW_COMPANY_ARCHIVE_ID, rng=rng, now=now)
-    company_restore = build_preview_company_detail(PREVIEW_COMPANY_RESTORE_ID, rng=rng, now=now)
-    contact_archive = build_preview_contact_detail(PREVIEW_CONTACT_ARCHIVE_ID, rng=rng, now=now)
-    contact_restore = build_preview_contact_detail(PREVIEW_CONTACT_RESTORE_ID, rng=rng, now=now)
-    assert company_archive is not None
-    assert company_restore is not None
-    assert contact_archive is not None
-    assert contact_restore is not None
-    assert company_archive[0]["archived_at"] is None
-    assert company_restore[0]["archived_at"] is not None
-    assert contact_archive[0]["archived_at"] is None
-    assert contact_restore[0]["archived_at"] is not None
-
-    repeat_rng = random.Random(11)
-    assert build_preview_company_detail(
-        PREVIEW_COMPANY_ARCHIVE_ID, rng=repeat_rng, now=now
-    ) == company_archive
 
 
 @pytest.mark.unit

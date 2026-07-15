@@ -4,6 +4,13 @@ from __future__ import annotations
 
 import html
 
+from app.admin_preview import (
+    PREVIEW_COMPANY_ARCHIVE_ID,
+    PREVIEW_COMPANY_RESTORE_ID,
+    PREVIEW_CONTACT_ARCHIVE_ID,
+    PREVIEW_CONTACT_RESTORE_ID,
+)
+
 ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
     {
         "label": "Dashboard",
@@ -93,12 +100,12 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
-    "/admin/companies/c1111111-1111-1111-1111-111111111111",
-    "/admin/companies/c2222222-2222-2222-2222-222222222222",
-    "/admin/contacts/d1111111-1111-1111-1111-111111111111",
-    "/admin/contacts/d2222222-2222-2222-2222-222222222222",
-    "/admin/contacts/d1111111-1111-1111-1111-111111111111/edit",
-    "/admin/contacts/d2222222-2222-2222-2222-222222222222/edit",
+    f"/admin/companies/{PREVIEW_COMPANY_ARCHIVE_ID}",
+    f"/admin/companies/{PREVIEW_COMPANY_RESTORE_ID}",
+    f"/admin/contacts/{PREVIEW_CONTACT_ARCHIVE_ID}",
+    f"/admin/contacts/{PREVIEW_CONTACT_RESTORE_ID}",
+    f"/admin/contacts/{PREVIEW_CONTACT_ARCHIVE_ID}/edit",
+    f"/admin/contacts/{PREVIEW_CONTACT_RESTORE_ID}/edit",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
@@ -107,12 +114,6 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
 ADMIN_SCREENSHOT_EXPECTED_STATUS: dict[str, int] = {
     "/admin/briefs/503": 503,
 }
-
-
-def archive_action_button_class(*, is_archived: bool) -> str:
-    """Semantic classes for archive (destructive) vs restore (secondary) form actions."""
-    modifier = "admin-action--secondary" if is_archived else "admin-action--destructive"
-    return f"admin-action {modifier}"
 
 
 def _active_nav_label(active_path: str) -> str:
