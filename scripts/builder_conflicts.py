@@ -30,6 +30,29 @@ MAX_FILE_CHARS = 60_000
 SMOKE_IMPORT = "from app.main import app"
 SMOKE_TIMEOUT_SEC = 90
 
+# Symbols commonly dropped during conflict/codegen that break ``app.main``.
+MAIN_WIRING_IMPORTS: tuple[tuple[str, str], ...] = (
+    (
+        "admin_router",
+        "from app.admin_routes import router as admin_router",
+    ),
+    (
+        "CORRELATION_HEADER",
+        "from app.actor_context import CORRELATION_HEADER",
+    ),
+    (
+        "AdminLoginRequired",
+        "from app.admin_auth import AdminLoginRequired, login_redirect_url",
+    ),
+    (
+        "login_redirect_url",
+        "from app.admin_auth import AdminLoginRequired, login_redirect_url",
+    ),
+)
+_NAMEERROR_RE = re.compile(
+    r"NameError: name '([A-Za-z_][A-Za-z0-9_]*)' is not defined"
+)
+
 
 def linked_open_prs(repo: str, issue: int) -> list[dict[str, Any]]:
     owner, name = split_repo(repo)
@@ -40,6 +63,185 @@ def linked_open_prs(repo: str, issue: int) -> list[dict[str, Any]]:
         for pr in prs
         if needle in (pr.get("title") or "") or needle in (pr.get("body") or "")
     ]
+
+
+def repair_main_wiring(text: str) -> tuple[str, list[str]]:
+    """Ensure known ``app.main`` symbols have their imports. Returns (text, added)."""
+    added: list[str] = []
+    lines = text.splitlines(keepends=True)
+    existing = set(lines)
+    insert_at = 0
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("from ") or stripped.startswith("import "):
+            insert_at = i + 1
+        elif stripped and not stripped.startswith("#") and insert_at:
+            break
+    for symbol, stmt in MAIN_WIRING_IMPORTS:
+        if symbol not in text:
+            continue
+        # Already imported under this name or as ``router as admin_router``.
+        if re.search(rf"\bas {re.escape(symbol)}\b", text) or re.search(
+            rf"^from .+ import .*\b{re.escape(symbol)}\b", text, re.M
+        ):
+            continue
+        if any(stmt in line for line in lines):
+            continue
+        line = stmt + "\n"
+        if line in existing:
+            continue
+        lines.insert(insert_at, line)
+        existing.add(line)
+        insert_at += 1
+        added.append(symbol)
+    return "".join(lines), added
+
+
+def try_repair_main_after_smoke(
+    root: Path, smoke_detail: str
+) -> tuple[bool, str]:
+    """If smoke failed on a known NameError, repair ``app/main.py`` in place."""
+    match = _NAMEERROR_RE.search(smoke_detail or "")
+    if not match:
+        return False, "no NameError to repair"
+    main_path = root / "app" / "main.py"
+    if not main_path.is_file():
+        return False, "app/main.py missing"
+    original = main_path.read_text(encoding="utf-8")
+    fixed, added = repair_main_wiring(original)
+    if not added or fixed == original:
+        return False, f"no wiring repair for {match.group(1)}"
+    main_path.write_text(fixed, encoding="utf-8")
+    return True, f"added imports for: {', '.join(added)}"
+
+
+def smoke_import_app(cwd: Path) -> tuple[bool, str]:
+    """Import ``app.main`` after a merge; return ``(ok, detail)``."""
+    env = {**os.environ, "PYTHONPATH": str(cwd)}
+    # Preview/auth settings are optional for import; avoid requiring secrets.
+    env.setdefault("ADMIN_PREVIEW_MODE", "1")
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-c", SMOKE_IMPORT],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=SMOKE_TIMEOUT_SEC,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return False, f"smoke timed out after {SMOKE_TIMEOUT_SEC}s ({SMOKE_IMPORT})"
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip() or f"exit {proc.returncode}"
+        return False, detail[:800]
+    return True, "ok"
+
+
+def smoke_and_maybe_repair_app(cwd: Path) -> tuple[bool, str, list[str]]:
+    """Smoke ``app.main``; attempt one known-import repair on NameError."""
+    ok, detail = smoke_import_app(cwd)
+    repairs: list[str] = []
+    if ok:
+        return True, detail, repairs
+    repaired, note = try_repair_main_after_smoke(cwd, detail)
+    if not repaired:
+        return False, detail, repairs
+    repairs.append(note)
+    ok2, detail2 = smoke_import_app(cwd)
+    if ok2:
+        return True, detail2, repairs
+    return False, detail2, repairs
+
+
+def clone_pr_head(repo: str, pr: dict[str, Any], *, dest: Path) -> Path:
+    """Shallow-clone the PR head ref into ``dest`` (must not exist)."""
+    owner, name = split_repo(repo)
+    head_ref = (pr.get("head") or {}).get("ref")
+    if not head_ref:
+        raise GitHubError(f"PR #{pr.get('number')} missing head.ref")
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if not token:
+        raise GitHubError("missing GITHUB_TOKEN for PR head smoke clone")
+    clone_url = f"https://x-access-token:{token}@github.com/{owner}/{name}.git"
+    parent = dest.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    _run_git(
+        ["clone", "--branch", head_ref, "--single-branch", clone_url, str(dest)],
+        cwd=parent,
+    )
+    return dest
+
+
+def smoke_pr_head(
+    repo: str,
+    pr: dict[str, Any],
+    *,
+    push_repair: bool = True,
+) -> dict[str, Any]:
+    """Clone PR head and smoke-import ``app.main`` (even when mergeable/clean).
+
+    Optional wiring repair is committed + pushed when smoke recovers, so stale
+    broken heads stop looping Builder↔Reviewer without needing a new conflict.
+    """
+    pr_number = int(pr["number"])
+    head_ref = (pr.get("head") or {}).get("ref") or ""
+    with tempfile.TemporaryDirectory(prefix="builder-smoke-") as tmp:
+        root = Path(tmp) / "repo"
+        clone_pr_head(repo, pr, dest=root)
+        ok, detail, repairs = smoke_and_maybe_repair_app(root)
+        if ok and repairs and push_repair:
+            _run_git(["config", "user.name", "saberistic-agent-web-builder"], cwd=root)
+            _run_git(
+                ["config", "user.email", "builder@users.noreply.github.com"],
+                cwd=root,
+            )
+            _run_git(["add", "--", "app/main.py"], cwd=root)
+            commit = _run_git(
+                [
+                    "commit",
+                    "-m",
+                    f"builder: repair app.main wiring after smoke (#{pr_number})",
+                ],
+                cwd=root,
+                check=False,
+            )
+            if commit.returncode != 0:
+                return {
+                    "status": "smoke_ok",
+                    "pr": pr_number,
+                    "head": head_ref,
+                    "smoke_error": None,
+                    "repairs": repairs,
+                    "pushed": False,
+                    "note": "repair applied locally but commit failed",
+                }
+            _run_git(["push", "origin", f"HEAD:{head_ref}"], cwd=root)
+            return {
+                "status": "smoke_repaired",
+                "pr": pr_number,
+                "head": head_ref,
+                "smoke_error": None,
+                "repairs": repairs,
+                "pushed": True,
+            }
+        if ok:
+            return {
+                "status": "smoke_ok",
+                "pr": pr_number,
+                "head": head_ref,
+                "smoke_error": None,
+                "repairs": repairs,
+                "pushed": False,
+            }
+        return {
+            "status": "smoke_failed",
+            "pr": pr_number,
+            "head": head_ref,
+            "smoke_error": detail,
+            "repairs": repairs,
+            "pushed": False,
+        }
 
 
 def refresh_pr(repo: str, pr_number: int) -> dict[str, Any]:
@@ -283,29 +485,6 @@ def leftover_conflict_markers(cwd: Path, paths: list[str]) -> list[str]:
     return dirty
 
 
-def smoke_import_app(cwd: Path) -> tuple[bool, str]:
-    """Import ``app.main`` after a merge; return ``(ok, detail)``."""
-    env = {**os.environ, "PYTHONPATH": str(cwd)}
-    # Preview/auth settings are optional for import; avoid requiring secrets.
-    env.setdefault("ADMIN_PREVIEW_MODE", "1")
-    try:
-        proc = subprocess.run(
-            [sys.executable, "-c", SMOKE_IMPORT],
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            env=env,
-            timeout=SMOKE_TIMEOUT_SEC,
-            check=False,
-        )
-    except subprocess.TimeoutExpired:
-        return False, f"smoke timed out after {SMOKE_TIMEOUT_SEC}s ({SMOKE_IMPORT})"
-    if proc.returncode != 0:
-        detail = (proc.stderr or proc.stdout or "").strip() or f"exit {proc.returncode}"
-        return False, detail[:800]
-    return True, "ok"
-
-
 def default_resolve_file(
     path: str,
     conflicted_text: str,
@@ -325,7 +504,7 @@ def default_resolve_file(
         "Never drop imports, router wiring (`admin_router`), Protocol/repository "
         "exports, cookie/session symbol names, or migration catalog entries that "
         "either side defines — union both sides when unsure. Prefer keeping "
-        "main's auth/session APIs when they conflict with obsolete Basic-auth tests."
+        "main's auth/session APIs when they conflict with obsolete Basic-auth tests. Never create circular imports between `app.admin_routes` and feature routers (`admin_pipeline_routes`, etc.): mount feature routers from `app.main` only — do not `include_router` them at the bottom of admin_routes."
     )
     user = (
         f"{brief}\n\n"
@@ -436,6 +615,30 @@ def merge_default_into_pr_branch(
             check=False,
         )
         if merge.returncode == 0:
+            smoke_ok, smoke_detail, repairs = smoke_and_maybe_repair_app(root)
+            if not smoke_ok:
+                return {
+                    "status": "broken_after_resolve",
+                    "pr": pr_number,
+                    "head": head_ref,
+                    "base": base_ref,
+                    "conflicted": [],
+                    "leftover_markers": [],
+                    "smoke_error": smoke_detail,
+                    "repairs": repairs,
+                    "pushed": False,
+                }
+            if repairs:
+                _run_git(["add", "--", "app/main.py"], cwd=root)
+                _run_git(
+                    [
+                        "commit",
+                        "-m",
+                        f"builder: repair app.main wiring after merge (#{pr_number})",
+                    ],
+                    cwd=root,
+                    check=False,
+                )
             if push:
                 _run_git(["push", "origin", f"HEAD:{head_ref}"], cwd=root)
             return {
@@ -444,6 +647,7 @@ def merge_default_into_pr_branch(
                 "head": head_ref,
                 "base": base_ref,
                 "conflicted": [],
+                "repairs": repairs,
             }
 
         conflicted = list_unmerged_paths(root)
@@ -489,7 +693,18 @@ def merge_default_into_pr_branch(
         # Fail closed: do not push or claim ``resolved`` when markers remain or
         # ``app.main`` no longer imports (classic Builder↔Reviewer loop).
         marker_hits = leftover_conflict_markers(root, resolved_paths)
-        smoke_ok, smoke_detail = smoke_import_app(root)
+        smoke_ok, smoke_detail, repairs = smoke_and_maybe_repair_app(root)
+        if repairs:
+            _run_git(["add", "--", "app/main.py"], cwd=root)
+            _run_git(
+                [
+                    "commit",
+                    "-m",
+                    f"builder: repair app.main wiring after conflict resolve (#{pr_number})",
+                ],
+                cwd=root,
+                check=False,
+            )
         if marker_hits or not smoke_ok:
             return {
                 "status": "broken_after_resolve",
@@ -499,6 +714,7 @@ def merge_default_into_pr_branch(
                 "conflicted": resolved_paths,
                 "leftover_markers": marker_hits,
                 "smoke_error": None if smoke_ok else smoke_detail,
+                "repairs": repairs,
                 "pushed": False,
             }
 
@@ -510,6 +726,7 @@ def merge_default_into_pr_branch(
             "head": head_ref,
             "base": base_ref,
             "conflicted": resolved_paths,
+            "repairs": repairs,
         }
 
 

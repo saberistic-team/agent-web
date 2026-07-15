@@ -23,7 +23,15 @@ is set. OpenAI and GitHub Models are backups (OpenAI quota is often exhausted).
    **Pitfall:** a “resolved” merge that drops imports / router wiring / Protocol
    exports breaks CI (`NameError` / `ImportError`) and also loops — resolution
    must smoke `from app.main import app` before push (`broken_after_resolve`
-   → `waiting`, never Reviewer).
+   → `waiting`, never Reviewer). **Also smoke mergeable/clean PR heads** before
+   handoff; an already-broken remote head can be `mergeable: true` while
+   `admin_router` / `CORRELATION_HEADER` are undefined.
+   **Pitfall:** Cursor local bridge rejects callback tokens that start with `-`
+   (`Missing value for --tool-callback-auth-token`). SDK may mark
+   `retryable=False`, but Builder must treat it as `waiting` and patch token
+   minting (`scripts/cursor_sdk_patch.py`) — never `status:blocked`.
+   **Pitfall:** acceptance checklist AI returning non-JSON must not invent
+   product `not_done` rows that bounce Builder when AI review already approved.
    **Pitfall:** per-file Contents API commits (Builder file loop or Reviewer
    screenshots) storm CI and race other merges — codegen/uploads must use
    `put_files` / `put_file_batch` / batched `upload_to_branch` (one commit).

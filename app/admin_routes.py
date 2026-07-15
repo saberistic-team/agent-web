@@ -11,7 +11,8 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import ValidationError
 
-from app import admin, admin_auth, admin_companies as company_pages, admin_pages, admin_research_pages, audit_service, brief_service, db
+from app import admin, admin_auth, admin_companies as company_pages, admin_dashboard_pages, admin_pages, admin_research_pages, audit_service, brief_service, db
+from app.acquisition_dashboard import AcquisitionDashboardData, load_acquisition_dashboard
 from app.companies import (
     COMPANY_CATEGORIES,
     COMPANY_STAGES,
@@ -27,6 +28,7 @@ from app.admin_preview import PREVIEW_BRIEF_DATABASE_ERROR_ID
 from app.config import Settings, get_settings
 from app.crm_service import CrmService
 from app.research_records import ResearchRecordCreate
+from app.repositories.postgres import get_repositories
 
 logger = logging.getLogger(__name__)
 
@@ -1079,7 +1081,58 @@ for _link in ADMIN_NAV_LINKS:
 @router.get("", response_class=HTMLResponse)
 @router.get("/", response_class=HTMLResponse)
 def admin_dashboard(request: Request) -> HTMLResponse:
-    return _render_admin_shell_page(request, "/admin")
+    session = require_admin_session(request)
+    settings = get_settings()
+    csrf_token = ""
+    if session.id:
+        csrf_token = _issue_session_csrf(settings, session.id)
+    if settings.admin_preview_enabled:
+        from app.admin_preview import build_preview_acquisition_dashboard_data
+
+        return HTMLResponse(
+            admin_dashboard_pages.render_acquisition_dashboard_page(
+                data=build_preview_acquisition_dashboard_data(),
+                admin_username=session.admin_username,
+                csrf_token=csrf_token,
+                preview_banner="Preview data — not production",
+            )
+        )
+    dashboard_data: AcquisitionDashboardData | None = None
+    db_error = False
+    if settings.database_url:
+        try:
+            with db.db_connection(settings.database_url) as conn:
+                dashboard_data = load_acquisition_dashboard(
+                    conn,
+                    get_repositories().acquisition_dashboard,
+                )
+        except Exception:
+            logger.exception("Failed to load acquisition dashboard")
+            db_error = True
+    if dashboard_data is None:
+        from datetime import datetime as dt
+
+        dashboard_data = AcquisitionDashboardData(
+            company_counts_by_stage=(),
+            company_counts_by_category=(),
+            contact_counts_by_stage=(),
+            contact_counts_by_category=(),
+            overdue_actions=(),
+            upcoming_actions=(),
+            recent_evidence=(),
+            stale_evidence=(),
+            without_decision_maker=(),
+            without_next_action=(),
+            generated_at=dt.now(timezone.utc),
+        )
+    return HTMLResponse(
+        admin_dashboard_pages.render_acquisition_dashboard_page(
+            data=dashboard_data,
+            admin_username=session.admin_username,
+            csrf_token=csrf_token,
+            db_error=db_error,
+        )
+    )
 
 
 @router.api_route("/{full_path:path}", methods=["GET", "HEAD"], response_model=None)

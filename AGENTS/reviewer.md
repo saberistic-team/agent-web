@@ -16,7 +16,10 @@ Before approving you must:
    budget on a conflicted PR. Merge conflicts are always Builder work on the
    same PR head.
 2. Capture **headless Chromium screenshots** via Actions Playwright
-   (`scripts/screenshot_deploy.py`) at **desktop and mobile** viewports for
+   (`scripts/screenshot_deploy.py`, preferring the **PR-head** copy under
+   `COVERAGE_ROOT` when present — see [docs/SCREENSHOTS.md](../docs/SCREENSHOTS.md))
+   at **desktop and mobile** viewports (plus admin tablet / narrow-desktop /
+   open-mobile-nav evidence routes when the PR-head script defines them) for
    **PR-affected pages on the PR head only** (local uvicorn with
    `ADMIN_PREVIEW_MODE` so admin pages can be captured without login). Do **not**
    screenshot saberistic.com pre-merge — production shots are post-deploy:
@@ -101,7 +104,11 @@ Any of these is an automatic request-changes — do not approve:
   `.admin-nav-link` nodes exist but none are visible (common when nav links live
   inside a closed `<details>` without a separate desktop list) — Builder must
   keep the desktop list **outside** `<details>` (`format_admin_nav_hard_fail`)
-- Acceptance checklist incomplete (`all_done: false` or missing)
+- Acceptance checklist incomplete (`all_done: false` or missing) when criteria
+  are product-failed. **Exception:** acceptance AI infra/parse failures
+  (`method: ai-error`, e.g. Cursor returned prose instead of JSON) are **not**
+  Builder work when the AI PR review already `approved` — defer to that verdict
+  and do not `REQUEST_CHANGES` solely for the checklist transport glitch.
 
 Coverage gaps, missing tests, CI assertion failures, visual overflow, empty
 preview shells, invisible desktop admin nav, and **merge conflicts** are
@@ -114,6 +121,16 @@ When posting `### acceptance_checklist`, mark a criterion **not_done** if
 screenshot evidence contradicts it (e.g. empty desktop sidebar while claiming
 “desktop navigation unchanged”). Do not set `all_done: true` while any
 screenshot-backed criterion fails.
+
+**Anti-loop (learned from [#167](https://github.com/saberistic-team/agent-web/issues/167)):**
+If AI review **approved** the product change and the only incomplete criteria are
+missing capture modes (open mobile menu, tablet, narrow desktop) that the
+**loaded** `screenshot_deploy` matrix does not emit, request changes once with
+an explicit “extend `screenshot_deploy` on this PR” note — do **not** keep
+requeuing Builder for the same missing filenames after the matrix was already
+extended on the PR head. Prefer CSS/layout guardrail tests + available
+`branch-*` shots (including `*-mobile-open` / `*-tablet` / `*-narrow-desktop`
+when present) when judging layout sizing.
 
 ## Judgment call
 

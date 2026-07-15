@@ -539,6 +539,9 @@ def build_with_cursor(
 
     try:
         import cursor_sdk  # noqa: F401
+        from cursor_sdk_patch import patch_callback_auth_tokens
+
+        patch_callback_auth_tokens()
     except ImportError as exc:
         raise GitHubError(
             "cursor-sdk is not installed; pip install -r requirements-agents.txt"

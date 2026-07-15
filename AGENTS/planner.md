@@ -56,6 +56,13 @@ without re-planning. The parent is then marked done by the workflow.
   yet merged. Phrase deploy-dependent outcomes as “published in the PR / ready
   to deploy” (e.g. routes + editorial review doc on the PR head) so Reviewer
   can approve pre-merge without waiting for Gate + Render.
+- Acceptance criteria that need **non-default screenshot evidence** (open mobile
+  menus, tablet / intermediate widths beyond 390×844 and 1280×800) must either
+  (a) be satisfiable by CSS/layout guardrail tests plus standard desktop+mobile
+  shots, or (b) ship on the **same** issue with matching
+  `scripts/screenshot_deploy.py` capture-matrix changes. Demanding evidence the
+  capture pipeline cannot emit creates Builder↔Reviewer loops
+  ([#167](https://github.com/saberistic-team/agent-web/issues/167)).
 - You did not push commits, open implementation PRs, or edit product code.
 
 ## Constraints

@@ -72,12 +72,17 @@ body.admin-app {
   display: grid;
   grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
   gap: 0;
-  min-height: calc(100vh - 72px);
+  align-items: start;
   min-width: 0;
   width: 100%;
 }
 
 .admin-nav {
+  /* Override legacy header-nav flex rules from site.css; size to links only. */
+  display: block;
+  align-self: start;
+  margin-left: 0;
+  margin-right: 0;
   border-right: 1px solid var(--line);
   background: color-mix(in srgb, var(--surface) 55%, transparent);
   padding: 1.25rem clamp(1rem, 3vw, 1.5rem);
@@ -608,6 +613,17 @@ body.admin-app {
 }
 
 @media (min-width: 769px) {
+  .dashboard-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-nav {
+    position: sticky;
+    top: 0;
+    max-height: 100vh;
+    overflow-y: auto;
+  }
+
   .admin-nav-desktop {
     display: flex;
   }
@@ -681,6 +697,12 @@ body.admin-app {
 
   .admin-nav-toggle {
     display: block;
+    width: 100%;
+  }
+
+  .admin-nav-toggle:not([open]) {
+    height: fit-content;
+    min-height: 0;
   }
 
   .admin-nav-mobile-list {

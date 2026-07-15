@@ -8,8 +8,8 @@ ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
     {
         "label": "Dashboard",
         "href": "/admin",
-        "milestone": "Admin foundation",
-        "summary": "Operational overview and brief summaries",
+        "milestone": "CRM core",
+        "summary": "Acquisition pipeline and daily attention queues",
     },
     {
         "label": "Audit",
@@ -89,6 +89,13 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/2",
     "/admin/briefs/503",
 )
+
+# Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
+# Register preview-only ids in app/admin_preview.py so ADMIN_PREVIEW_MODE
+# renders populated error shells, not JSON or empty pages.
+ADMIN_SCREENSHOT_EXPECTED_STATUS: dict[str, int] = {
+    "/admin/briefs/503": 503,
+}
 
 
 def _active_nav_label(active_path: str) -> str:
