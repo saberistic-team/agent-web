@@ -74,7 +74,7 @@ def test_render_contact_form_page_new_and_edit() -> None:
     assert "Edit Pat" in edit_html
     assert f"/admin/contacts/{CONTACT_ID}/edit" in edit_html
     assert "Archive contact" in edit_html
-    assert 'class="admin-action-button admin-action-destructive"' in edit_html
+    assert 'class="admin-action-btn admin-action-btn--destructive"' in edit_html
     assert "Possible duplicate" in edit_html
 
 
@@ -87,4 +87,4 @@ def test_render_contact_form_page_shows_archived_state() -> None:
         contact={"id": CONTACT_ID, "full_name": "Pat", "archived_at": "2026-01-01"},
     )
     assert "Restore contact" in html
-    assert 'class="admin-action-button admin-action-restore"' in html
+    assert 'class="admin-action-btn admin-action-btn--restore"' in html
