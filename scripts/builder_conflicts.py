@@ -121,11 +121,25 @@ def try_repair_main_after_smoke(
     return True, f"added imports for: {', '.join(added)}"
 
 
-def _smoke_env(cwd: Path) -> dict[str, str]:
+def _smoke_env(cwd: Path, *, for_import: bool = False) -> dict[str, str]:
     env = {**os.environ, "PYTHONPATH": str(cwd)}
-    # Preview/auth settings are optional for import; avoid requiring secrets.
-    env.setdefault("ADMIN_PREVIEW_MODE", "1")
+    if for_import:
+        # Import-only: preview unlocks admin wiring without requiring secrets.
+        env.setdefault("ADMIN_PREVIEW_MODE", "1")
+    else:
+        # Full pytest must match CI. Preview mode short-circuits auth and breaks
+        # login redirects / authenticated fixtures across the admin suite.
+        env.pop("ADMIN_PREVIEW_MODE", None)
     return env
+
+
+def _truncate_pytest_detail(detail: str, *, limit: int) -> str:
+    """Keep the failure summary when truncating long pytest output."""
+    detail = detail.strip()
+    if len(detail) <= limit:
+        return detail
+    # Progress dots are at the start; FAILURES / short summary are at the end.
+    return detail[-limit:]
 
 
 def smoke_import_app(cwd: Path) -> tuple[bool, str]:
@@ -136,7 +150,7 @@ def smoke_import_app(cwd: Path) -> tuple[bool, str]:
             cwd=cwd,
             capture_output=True,
             text=True,
-            env=_smoke_env(cwd),
+            env=_smoke_env(cwd, for_import=True),
             timeout=SMOKE_TIMEOUT_SEC,
             check=False,
         )
@@ -168,7 +182,7 @@ def smoke_pytest_collect(cwd: Path) -> tuple[bool, str]:
         )
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout or "").strip() or f"exit {proc.returncode}"
-        return False, detail[:1200]
+        return False, _truncate_pytest_detail(detail, limit=1200)
     return True, "ok"
 
 
@@ -196,7 +210,7 @@ def smoke_pytest_run(cwd: Path) -> tuple[bool, str]:
         )
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout or "").strip() or f"exit {proc.returncode}"
-        return False, detail[:1600]
+        return False, _truncate_pytest_detail(detail, limit=1600)
     return True, "ok"
 
 

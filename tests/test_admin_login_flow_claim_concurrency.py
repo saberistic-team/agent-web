@@ -373,24 +373,33 @@ def test_claim_database_failure_does_not_verify_or_set_session_cookie(
     assert LOGIN_FLOW_COOKIE_NAME not in response.cookies
 
 
-def test_rate_limit_burn_failure_redirects_without_verify(
+def test_rate_limit_denies_without_claim_or_verify(
     rate_limit_store: Any,
 ) -> None:
+    from app.admin_auth import LoginAdmissionResult
+
     csrf_token, cookies = _fetch_flow()
+    denied = LoginAdmissionResult(
+        admitted=False,
+        throttled=True,
+        already_locked=True,
+        lockout_transition=False,
+    )
 
     with shared_rate_limiter(rate_limit_store):
         with mock_db_connection():
-            with patch("app.admin_auth.is_login_throttled", return_value=True):
-                with patch(
-                    "app.admin_routes._try_burn_login_flow_cookie",
-                    side_effect=RuntimeError("burn failed"),
-                ):
+            with patch(
+                "app.admin_auth.try_admit_login_attempt",
+                return_value=denied,
+            ):
+                with patch("app.admin_routes.db.claim_admin_login_flow") as claim:
                     with patch("app.admin_auth.verify_admin_credentials") as verify:
                         response = _login_post(csrf_token=csrf_token, cookies=cookies)
 
+    claim.assert_not_called()
     verify.assert_not_called()
-    assert response.status_code == 303
-    assert response.headers["location"].startswith("/admin/login")
+    assert response.status_code == 429
+    assert admin_auth.LOGIN_THROTTLED_MESSAGE in response.text
     assert SESSION_COOKIE_NAME not in response.cookies
 
 

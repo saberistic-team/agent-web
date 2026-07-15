@@ -16,13 +16,18 @@ def _now() -> datetime:
 
 @pytest.mark.unit
 def test_cleanup_stale_admin_login_flows_deletes_expired_and_consumed() -> None:
+    import importlib
+
+    import app.db as db_module
+
+    importlib.reload(db_module)
     conn = MagicMock()
     cur = MagicMock()
     conn.cursor.return_value.__enter__.return_value = cur
     cur.rowcount = 4
     now = _now()
 
-    deleted = db.cleanup_stale_admin_login_flows(
+    deleted = db_module.cleanup_stale_admin_login_flows(
         conn,
         now=now,
         expired_retention_seconds=admin_auth.LOGIN_FLOW_EXPIRED_RETENTION_SECONDS,
@@ -48,13 +53,18 @@ def test_cleanup_stale_admin_login_flows_deletes_expired_and_consumed() -> None:
 
 @pytest.mark.unit
 def test_cleanup_stale_admin_login_flows_respects_batch_size() -> None:
+    import importlib
+
+    import app.db as db_module
+
+    importlib.reload(db_module)
     conn = MagicMock()
     cur = MagicMock()
     conn.cursor.return_value.__enter__.return_value = cur
     cur.rowcount = 50
     now = _now()
 
-    deleted = db.cleanup_stale_admin_login_flows(
+    deleted = db_module.cleanup_stale_admin_login_flows(
         conn,
         now=now,
         expired_retention_seconds=admin_auth.LOGIN_FLOW_EXPIRED_RETENTION_SECONDS,

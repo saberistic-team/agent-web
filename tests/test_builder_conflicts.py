@@ -326,6 +326,27 @@ def test_smoke_pytest_run_reports_failure(tmp_path, monkeypatch) -> None:
     assert "Companies by stage" in detail
 
 
+def test_smoke_env_keeps_preview_only_for_import(tmp_path, monkeypatch) -> None:
+    from builder_conflicts import _smoke_env
+
+    monkeypatch.delenv("ADMIN_PREVIEW_MODE", raising=False)
+    import_env = _smoke_env(tmp_path, for_import=True)
+    assert import_env.get("ADMIN_PREVIEW_MODE") == "1"
+
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    pytest_env = _smoke_env(tmp_path)
+    assert "ADMIN_PREVIEW_MODE" not in pytest_env
+
+
+def test_truncate_pytest_detail_keeps_tail_summary() -> None:
+    from builder_conflicts import _truncate_pytest_detail
+
+    body = ("." * 2000) + "\nFAILED tests/test_audit_events.py::test_pending_migrations\n"
+    out = _truncate_pytest_detail(body, limit=80)
+    assert "test_pending_migrations" in out
+    assert len(out) == 80
+
+
 def test_repair_main_wiring_adds_missing_imports() -> None:
     from builder_conflicts import repair_main_wiring
 

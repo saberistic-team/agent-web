@@ -603,6 +603,11 @@ def test_postgres_audit_repository_list_page() -> None:
 
 @pytest.mark.unit
 def test_db_session_helpers() -> None:
+    import importlib
+
+    import app.db as db_module
+
+    importlib.reload(db_module)
     conn = MagicMock()
     cursor = MagicMock()
     conn.cursor.return_value.__enter__.return_value = cursor
@@ -611,7 +616,7 @@ def test_db_session_helpers() -> None:
         {"id": 7, "admin_username": TEST_USERNAME, "revoked_at": None},
     ]
 
-    session_id = db.create_admin_session(
+    session_id = db_module.create_admin_session(
         conn,
         token_hash="hash",
         admin_username=TEST_USERNAME,
@@ -619,10 +624,10 @@ def test_db_session_helpers() -> None:
     )
     assert session_id == 7
 
-    row = db.get_admin_session_by_token_hash(conn, "hash")
+    row = db_module.get_admin_session_by_token_hash(conn, "hash")
     assert row["id"] == 7
 
-    db.revoke_admin_session(conn, token_hash="hash")
+    db_module.revoke_admin_session(conn, token_hash="hash")
     conn.commit.assert_not_called()
     conn.rollback.assert_not_called()
 
