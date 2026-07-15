@@ -13,7 +13,7 @@ import json
 
 from app.brief_service import BriefListFilters
 from app.config import Settings
-from app.pipeline import pipeline_stage_label
+from app.pipeline_registry import pipeline_stage_display_label as pipeline_stage_label
 
 
 def render_admin_login_page(

@@ -4,43 +4,13 @@ from __future__ import annotations
 
 from typing import Final
 
-PIPELINE_STAGES: Final[tuple[str, ...]] = (
-    "researching",
-    "qualified",
-    "ready_for_outreach",
-    "contacted",
-    "replied",
-    "discovery_scheduled",
-    "diagnostic_proposed",
-    "diagnostic_paid",
-    "larger_engagement",
-    "won",
-    "lost",
-    "nurture",
+from app.pipeline_registry import (
+    BRIEF_STATUS_INITIAL_PIPELINE_STAGE,
+    PIPELINE_STAGE_ORDER,
+    pipeline_stage_display_label,
 )
 
-PIPELINE_STAGE_LABELS: Final[dict[str, str]] = {
-    "researching": "Researching",
-    "qualified": "Qualified",
-    "ready_for_outreach": "Ready for outreach",
-    "contacted": "Contacted",
-    "replied": "Replied",
-    "discovery_scheduled": "Discovery scheduled",
-    "diagnostic_proposed": "Diagnostic proposed",
-    "diagnostic_paid": "Diagnostic paid",
-    "larger_engagement": "Larger engagement",
-    "won": "Won",
-    "lost": "Lost",
-    "nurture": "Nurture",
-}
-
-# Initial pipeline stage when converting a project brief. Payment state comes from
-# the brief row only — never from operator form input.
-BRIEF_STATUS_INITIAL_PIPELINE_STAGE: Final[dict[str, str]] = {
-    "paid": "diagnostic_paid",
-    "pending_payment": "qualified",
-    "abandoned": "qualified",
-}
+PIPELINE_STAGES: Final[tuple[str, ...]] = PIPELINE_STAGE_ORDER
 
 
 class PipelineError(Exception):
@@ -66,4 +36,4 @@ def initial_pipeline_stage_for_brief_status(brief_status: str) -> str:
 
 
 def pipeline_stage_label(stage: str) -> str:
-    return PIPELINE_STAGE_LABELS.get(stage, stage.replace("_", " ").title())
+    return pipeline_stage_display_label(stage)

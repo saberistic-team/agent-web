@@ -7,36 +7,15 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-PIPELINE_STAGES: dict[str, str] = {
-    "researching": "Researching",
-    "qualified": "Qualified",
-    "ready_for_outreach": "Ready for outreach",
-    "contacted": "Contacted",
-    "replied": "Replied",
-    "discovery_scheduled": "Discovery scheduled",
-    "diagnostic_proposed": "Diagnostic proposed",
-    "diagnostic_paid": "Diagnostic paid",
-    "larger_engagement": "Larger engagement",
-    "won": "Won",
-    "lost": "Lost",
-    "nurture": "Nurture",
-}
-
-STAGE_ORDER: tuple[str, ...] = (
-    "researching",
-    "qualified",
-    "ready_for_outreach",
-    "contacted",
-    "replied",
-    "discovery_scheduled",
-    "diagnostic_proposed",
-    "diagnostic_paid",
-    "larger_engagement",
-    "won",
+from app.pipeline_registry import (
+    PIPELINE_STAGE_ORDER,
+    TERMINAL_STAGES,
+    pipeline_stage_display_label,
+    pipeline_stages_ordered,
 )
 
-TERMINAL_STAGES = frozenset({"won", "lost"})
-SIDE_EXIT_STAGES = frozenset({"lost", "nurture"})
+PIPELINE_STAGES: dict[str, str] = pipeline_stages_ordered()
+STAGE_ORDER: tuple[str, ...] = PIPELINE_STAGE_ORDER
 
 PIPELINE_ACTIVITY_TYPES: dict[str, str] = {
     "note": "Note",
@@ -59,7 +38,7 @@ class PipelineTransitionError(ValueError):
 def pipeline_stage_label(stage: str | None) -> str:
     if not stage:
         return "—"
-    return PIPELINE_STAGES.get(stage, stage.replace("_", " ").title())
+    return pipeline_stage_display_label(stage)
 
 
 def validate_pipeline_stage(stage: str) -> str:

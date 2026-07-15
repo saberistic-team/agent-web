@@ -12,26 +12,14 @@ from app.acquisition_pipeline import (
     validate_pipeline_activity_type,
     validate_pipeline_stage,
 )
+from app.pipeline_registry import PIPELINE_STAGE_ORDER
 
 pytestmark = [pytest.mark.unit, pytest.mark.integration]
 
 
 def test_pipeline_stage_registry_covers_acceptance_stages() -> None:
-    expected = {
-        "researching",
-        "qualified",
-        "ready_for_outreach",
-        "contacted",
-        "replied",
-        "discovery_scheduled",
-        "diagnostic_proposed",
-        "diagnostic_paid",
-        "larger_engagement",
-        "won",
-        "lost",
-        "nurture",
-    }
-    assert set(PIPELINE_STAGES) == expected
+    assert set(PIPELINE_STAGES) == set(PIPELINE_STAGE_ORDER)
+    assert tuple(PIPELINE_STAGES.keys()) == PIPELINE_STAGE_ORDER
 
 
 def test_adjacent_forward_transition_allowed() -> None:

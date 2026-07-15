@@ -6,11 +6,8 @@ import html
 from datetime import datetime
 from typing import Any
 
-from app.acquisition_pipeline import (
-    PIPELINE_ACTIVITY_TYPES,
-    PIPELINE_STAGES,
-    pipeline_stage_label,
-)
+from app.acquisition_pipeline import PIPELINE_ACTIVITY_TYPES, pipeline_stage_label
+from app.pipeline_registry import pipeline_stages_ordered
 from app.admin_layout import render_admin_shell
 
 
@@ -36,7 +33,7 @@ def _stage_options(selected: str | None) -> str:
     rows = [f'<option value="">{html.escape("Any stage")}</option>']
     rows.extend(
         f'<option value="{_esc(key)}"{" selected" if key == selected else ""}>{_esc(label)}</option>'
-        for key, label in PIPELINE_STAGES.items()
+        for key, label in pipeline_stages_ordered().items()
     )
     return "\n".join(rows)
 
@@ -136,7 +133,7 @@ def render_pipeline_detail_page(
     ) or '<tr><td colspan="3">No activities yet.</td></tr>'
     stage_transition_options = "\n".join(
         f'<option value="{_esc(key)}">{_esc(label)}</option>'
-        for key, label in PIPELINE_STAGES.items()
+        for key, label in pipeline_stages_ordered().items()
         if key != stage
     )
     due_value = ""
