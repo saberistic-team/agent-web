@@ -40,11 +40,14 @@ def _parse_due_at(raw: str | None) -> datetime | None:
 @router.get("", response_class=HTMLResponse)
 @router.get("/", response_class=HTMLResponse)
 def admin_pipeline_list(request: Request, stage: str | None = None) -> HTMLResponse:
-    from app.admin_routes import _issue_session_csrf, _verify_session_csrf, require_admin_session
+    from app.admin_routes import (
+        _session_csrf_for_forms,
+        require_admin_session,
+    )
 
     session = require_admin_session(request)
     settings = get_settings()
-    csrf_token = _issue_session_csrf(settings, session.id) if session.id else ""
+    csrf_token = _session_csrf_for_forms(request, settings)
 
     if settings.admin_preview_enabled:
         from app.admin_preview import build_preview_pipeline_companies
@@ -81,11 +84,14 @@ def admin_pipeline_list(request: Request, stage: str | None = None) -> HTMLRespo
 
 @router.get("/{company_id}", response_class=HTMLResponse)
 def admin_pipeline_detail(request: Request, company_id: UUID) -> HTMLResponse:
-    from app.admin_routes import _issue_session_csrf, _verify_session_csrf, require_admin_session
+    from app.admin_routes import (
+        _session_csrf_for_forms,
+        require_admin_session,
+    )
 
     session = require_admin_session(request)
     settings = get_settings()
-    csrf_token = _issue_session_csrf(settings, session.id) if session.id else ""
+    csrf_token = _session_csrf_for_forms(request, settings)
 
     if settings.admin_preview_enabled:
         from app.admin_preview import build_preview_pipeline_detail
@@ -136,10 +142,14 @@ def admin_pipeline_stage_change(
     nurture_reason: str | None = Form(None),
     confirm: str | None = Form(None),
 ) -> RedirectResponse:
-    from app.admin_routes import _issue_session_csrf, _verify_session_csrf, require_admin_session
+    from app.admin_routes import (
+        _session_csrf_for_forms,
+        _verify_session_csrf,
+        require_admin_session,
+    )
 
     session = require_admin_session(request)
-    _verify_session_csrf(session, csrf_token)
+    _verify_session_csrf(request, session, csrf_token)
     settings = get_settings()
     if settings.admin_preview_enabled:
         return RedirectResponse(url=f"/admin/pipeline/{company_id}", status_code=303)
@@ -172,17 +182,12 @@ def admin_pipeline_stage_change(
             activities = _crm._repos.activities.list_for_company(conn, company_id)
         if company is None:
             raise HTTPException(status_code=404, detail="Company not found") from exc
-        csrf = ""
-        if session.id:
-            from app.admin_routes import _issue_session_csrf
-
-            csrf = _issue_session_csrf(settings, session.id)
         return HTMLResponse(
             render_pipeline_detail_page(
                 company=company,
                 history=history,
                 activities=activities,
-                csrf_token=csrf,
+                csrf_token=_session_csrf_for_forms(request, settings),
                 admin_username=session.admin_username,
                 error_message=str(exc),
             ),
@@ -205,7 +210,7 @@ def admin_pipeline_next_action(
     from app.admin_routes import _verify_session_csrf, require_admin_session
 
     session = require_admin_session(request)
-    _verify_session_csrf(session, csrf_token)
+    _verify_session_csrf(request, session, csrf_token)
     settings = get_settings()
     if settings.admin_preview_enabled:
         return RedirectResponse(url=f"/admin/pipeline/{company_id}", status_code=303)
@@ -248,7 +253,7 @@ def admin_pipeline_activity(
     from app.admin_routes import _verify_session_csrf, require_admin_session
 
     session = require_admin_session(request)
-    _verify_session_csrf(session, csrf_token)
+    _verify_session_csrf(request, session, csrf_token)
     settings = get_settings()
     if settings.admin_preview_enabled:
         return RedirectResponse(url=f"/admin/pipeline/{company_id}", status_code=303)

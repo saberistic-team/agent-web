@@ -123,7 +123,7 @@ def test_brief_detail_shows_add_to_pipeline_when_available() -> None:
                 with patch("app.admin_routes._crm") as crm:
                     crm.get_project_brief_source.return_value = None
                     with patch(
-                        "app.admin_routes._issue_session_csrf",
+                        "app.admin_routes._session_csrf_for_forms",
                         return_value=CSRF_TOKEN,
                     ):
                         response = client.get(
@@ -151,7 +151,7 @@ def test_brief_detail_shows_linked_records_when_converted() -> None:
                         "pipeline_stage": "diagnostic_paid",
                     }
                     with patch(
-                        "app.admin_routes._issue_session_csrf",
+                        "app.admin_routes._session_csrf_for_forms",
                         return_value=CSRF_TOKEN,
                     ):
                         response = client.get(
@@ -192,7 +192,7 @@ def test_convert_preview_renders_proposed_fields_and_matches() -> None:
                     crm.get_project_brief_source.return_value = None
                     crm.find_brief_conversion_matches.return_value = preview
                     with patch(
-                        "app.admin_routes._issue_session_csrf",
+                        "app.admin_routes._session_csrf_for_forms",
                         return_value=CSRF_TOKEN,
                     ):
                         response = client.get(
@@ -210,18 +210,19 @@ def test_convert_preview_renders_proposed_fields_and_matches() -> None:
 @pytest.mark.integration
 def test_convert_post_success_redirects_with_converted_flag() -> None:
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
-        with mock_db_connection() as conn:
-            with patch("app.admin_routes.brief_service.get_brief", return_value=_detail_brief()):
-                with patch("app.admin_routes._crm") as crm:
-                    crm.convert_project_brief.return_value = {"idempotent": False}
-                    response = client.post(
-                        "/admin/briefs/42/convert",
-                        data={
-                            "csrf_token": CSRF_TOKEN,
-                            "company_choice": "new",
-                            "contact_choice": "new",
-                        },
-                    )
+        with patch("app.admin_routes._verify_session_csrf"):
+            with mock_db_connection() as conn:
+                with patch("app.admin_routes.brief_service.get_brief", return_value=_detail_brief()):
+                    with patch("app.admin_routes._crm") as crm:
+                        crm.convert_project_brief.return_value = {"idempotent": False}
+                        response = client.post(
+                            "/admin/briefs/42/convert",
+                            data={
+                                "csrf_token": CSRF_TOKEN,
+                                "company_choice": "new",
+                                "contact_choice": "new",
+                            },
+                        )
     assert response.status_code == 303
     assert response.headers["location"] == "/admin/briefs/42?converted=1"
     crm.convert_project_brief.assert_called_once()
@@ -231,20 +232,21 @@ def test_convert_post_success_redirects_with_converted_flag() -> None:
 @pytest.mark.integration
 def test_convert_post_validation_error_returns_to_preview() -> None:
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
-        with mock_db_connection():
-            with patch("app.admin_routes.brief_service.get_brief", return_value=_detail_brief()):
-                with patch("app.admin_routes._crm") as crm:
-                    crm.convert_project_brief.side_effect = BriefConversionValidationError(
-                        "Select an existing company match or choose to create a new company."
-                    )
-                    response = client.post(
-                        "/admin/briefs/42/convert",
-                        data={
-                            "csrf_token": CSRF_TOKEN,
-                            "company_choice": "existing",
-                            "contact_choice": "new",
-                        },
-                    )
+        with patch("app.admin_routes._verify_session_csrf"):
+            with mock_db_connection():
+                with patch("app.admin_routes.brief_service.get_brief", return_value=_detail_brief()):
+                    with patch("app.admin_routes._crm") as crm:
+                        crm.convert_project_brief.side_effect = BriefConversionValidationError(
+                            "Select an existing company match or choose to create a new company."
+                        )
+                        response = client.post(
+                            "/admin/briefs/42/convert",
+                            data={
+                                "csrf_token": CSRF_TOKEN,
+                                "company_choice": "existing",
+                                "contact_choice": "new",
+                            },
+                        )
     assert response.status_code == 303
     assert "/admin/briefs/42/convert?error=" in response.headers["location"]
 
@@ -253,26 +255,27 @@ def test_convert_post_validation_error_returns_to_preview() -> None:
 @pytest.mark.integration
 def test_convert_post_is_idempotent_on_repeat_submission() -> None:
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
-        with mock_db_connection():
-            with patch("app.admin_routes.brief_service.get_brief", return_value=_detail_brief()):
-                with patch("app.admin_routes._crm") as crm:
-                    crm.convert_project_brief.return_value = {"idempotent": True}
-                    first = client.post(
-                        "/admin/briefs/42/convert",
-                        data={
-                            "csrf_token": CSRF_TOKEN,
-                            "company_choice": "new",
-                            "contact_choice": "new",
-                        },
-                    )
-                    second = client.post(
-                        "/admin/briefs/42/convert",
-                        data={
-                            "csrf_token": CSRF_TOKEN,
-                            "company_choice": "new",
-                            "contact_choice": "new",
-                        },
-                    )
+        with patch("app.admin_routes._verify_session_csrf"):
+            with mock_db_connection():
+                with patch("app.admin_routes.brief_service.get_brief", return_value=_detail_brief()):
+                    with patch("app.admin_routes._crm") as crm:
+                        crm.convert_project_brief.return_value = {"idempotent": True}
+                        first = client.post(
+                            "/admin/briefs/42/convert",
+                            data={
+                                "csrf_token": CSRF_TOKEN,
+                                "company_choice": "new",
+                                "contact_choice": "new",
+                            },
+                        )
+                        second = client.post(
+                            "/admin/briefs/42/convert",
+                            data={
+                                "csrf_token": CSRF_TOKEN,
+                                "company_choice": "new",
+                                "contact_choice": "new",
+                            },
+                        )
     assert first.status_code == 303
     assert second.status_code == 303
     assert crm.convert_project_brief.call_count == 2
@@ -318,7 +321,7 @@ def test_convert_get_renders_matches_for_unconverted_brief() -> None:
                     crm.get_project_brief_source.return_value = None
                     crm.find_brief_conversion_matches.return_value = preview
                     with patch(
-                        "app.admin_routes._issue_session_csrf",
+                        "app.admin_routes._session_csrf_for_forms",
                         return_value=CSRF_TOKEN,
                     ):
                         response = client.get("/admin/briefs/42/convert")
@@ -332,7 +335,7 @@ def test_convert_get_renders_matches_for_unconverted_brief() -> None:
 def test_preview_mode_convert_pages_use_mock_data(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
-        with patch("app.admin_routes._issue_session_csrf", return_value=CSRF_TOKEN):
+        with patch("app.admin_routes._session_csrf_for_forms", return_value=CSRF_TOKEN):
             detail = client.get("/admin/briefs/1")
             convert_page = client.get("/admin/briefs/4/convert")
             converted = client.get("/admin/briefs/3")
@@ -351,7 +354,7 @@ def test_preview_mode_convert_pages_use_mock_data(monkeypatch: pytest.MonkeyPatc
 def test_preview_convert_validation_error_renders_alert(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
-        with patch("app.admin_routes._issue_session_csrf", return_value=CSRF_TOKEN):
+        with patch("app.admin_routes._session_csrf_for_forms", return_value=CSRF_TOKEN):
             response = client.get("/admin/briefs/4/convert?error=validation")
     assert response.status_code == 200
     assert "form-error" in response.text
