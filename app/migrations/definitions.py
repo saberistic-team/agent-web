@@ -368,6 +368,18 @@ ALTER TABLE companies ADD COLUMN IF NOT EXISTS expected_value_cents INTEGER;
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS pipeline_loss_reason TEXT;
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS pipeline_nurture_reason TEXT;
 
+UPDATE companies SET pipeline_stage = 'researching' WHERE pipeline_stage IS NULL;
+ALTER TABLE companies ALTER COLUMN pipeline_stage SET DEFAULT 'researching';
+ALTER TABLE companies ALTER COLUMN pipeline_stage SET NOT NULL;
+
+ALTER TABLE companies DROP CONSTRAINT IF EXISTS companies_pipeline_stage_check;
+ALTER TABLE companies ADD CONSTRAINT companies_pipeline_stage_check
+    CHECK (pipeline_stage IN (
+        'researching', 'qualified', 'ready_for_outreach', 'contacted', 'replied',
+        'discovery_scheduled', 'diagnostic_proposed', 'diagnostic_paid',
+        'larger_engagement', 'won', 'lost', 'nurture'
+    ));
+
 CREATE INDEX IF NOT EXISTS idx_companies_pipeline_stage
     ON companies (pipeline_stage)
     WHERE pipeline_stage IS NOT NULL;

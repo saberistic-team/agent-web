@@ -69,6 +69,22 @@ class CompanyRepository(Protocol):
     def restore(self, conn: psycopg.Connection, company_id: UUID) -> dict[str, Any] | None: ...
 
 
+class CompanyStageHistoryRepository(Protocol):
+    """Alternate history protocol from main; prefer PipelineRepository."""
+
+    def record(
+        self,
+        conn: psycopg.Connection,
+        *,
+        company_id: UUID,
+        from_stage: str,
+        to_stage: str,
+        changed_by: str,
+        reason: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]: ...
+
+
 class ContactRepository(Protocol):
     def create(
         self,

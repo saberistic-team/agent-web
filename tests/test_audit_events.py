@@ -198,6 +198,32 @@ def test_representative_mutation_helpers_call_record_event() -> None:
 
 
 @pytest.mark.unit
+def test_record_brief_convert_redacts_sensitive_fields() -> None:
+    conn = MagicMock()
+    repo = MagicMock()
+    actor = _actor("corr-brief")
+    audit_service.record_brief_convert(
+        conn,
+        actor_context=actor,
+        brief_id="42",
+        summary_after={
+            "brief_id": 42,
+            "brief_status": "paid",
+            "company_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            "contact_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+            "pipeline_stage": "diagnostic_paid",
+            "email": "hidden@example.com",
+            "brief": "secret text",
+        },
+        repository=repo,
+    )
+    payload = repo.append.call_args.kwargs
+    assert payload["action"] == audit_service.ACTION_BRIEF_CONVERT
+    assert payload["summary_after"]["email"] == audit_service.REDACTED_VALUE
+    assert payload["summary_after"]["brief"] == audit_service.REDACTED_VALUE
+
+
+@pytest.mark.unit
 def test_crm_service_audited_mutations_record_events() -> None:
     conn = MagicMock()
     source_repo = MagicMock()
@@ -645,6 +671,20 @@ def test_redact_value_truncates_long_strings() -> None:
     assert isinstance(safe, str)
     assert len(safe) < len(long_text)
     assert safe.endswith("…")
+
+
+@pytest.mark.unit
+def test_redact_value_handles_nested_and_scalar_types() -> None:
+    assert audit_service.redact_value(None) is None
+    assert audit_service.redact_value([{"email": "a@b.co"}]) == [{"email": REDACTED_VALUE}]
+    assert audit_service.redact_value(42) == 42
+    assert audit_service.redact_value(True) is True
+
+    class _Token:
+        def __str__(self) -> str:
+            return "token"
+
+    assert audit_service.redact_value(_Token()) == "token"
 
 
 @pytest.mark.unit

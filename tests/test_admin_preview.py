@@ -233,3 +233,35 @@ def test_preview_pipeline_detail_nullable_fields() -> None:
     assert company["next_action"] is None
     assert len(history) >= 2
     assert len(activities) >= 2
+
+
+@pytest.mark.unit
+def test_preview_acquisition_dashboard_data_is_populated() -> None:
+    data = build_preview_acquisition_dashboard_data()
+    assert data.company_counts_by_stage
+    assert data.overdue_actions
+    assert data.recent_evidence
+    assert data.without_decision_maker
+
+
+@pytest.mark.unit
+def test_preview_brief_conversion_states() -> None:
+    from app.admin_preview import (
+        PREVIEW_BRIEF_CONVERTED_ID,
+        PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR,
+        preview_brief_conversion_state,
+        preview_brief_convert_matches,
+        preview_pipeline_available,
+    )
+
+    assert PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR
+
+    assert preview_pipeline_available() is True
+    assert preview_brief_conversion_state(1) is None
+    linked = preview_brief_conversion_state(PREVIEW_BRIEF_CONVERTED_ID)
+    assert linked is not None
+    assert linked["pipeline_stage"] == "diagnostic_paid"
+    matches = preview_brief_convert_matches(4, price_cents=20_000)
+    assert matches["company_matches"]
+    assert matches["contact_matches"]
+    assert matches["proposal"]["pipeline_stage"] in {"qualified", "diagnostic_paid"}

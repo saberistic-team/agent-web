@@ -67,6 +67,7 @@ ACTION_PIPELINE_NEXT_ACTION = "pipeline.next_action_updated"
 ACTION_SCORING_RULE_UPDATE = "scoring_rule.update"
 ACTION_ANALYTICS_CONFIG_UPDATE = "analytics.config.update"
 ACTION_EXPORT_REQUEST = "export.request"
+ACTION_BRIEF_CONVERT = "brief.convert"
 
 
 def _is_sensitive_key(key: str) -> bool:
@@ -406,5 +407,24 @@ def record_export_request(
         entity_type="export",
         entity_id=export_type,
         summary_after={"export_type": export_type, "filters": filters or {}},
+        repository=repository,
+    )
+
+
+def record_brief_convert(
+    conn: psycopg.Connection,
+    *,
+    actor_context: ActorContext,
+    brief_id: str,
+    summary_after: dict[str, Any] | None = None,
+    repository: AuditEventRepository | None = None,
+) -> dict[str, Any] | None:
+    return record_event(
+        conn,
+        actor_context=actor_context,
+        action=ACTION_BRIEF_CONVERT,
+        entity_type="project_brief",
+        entity_id=brief_id,
+        summary_after=summary_after,
         repository=repository,
     )

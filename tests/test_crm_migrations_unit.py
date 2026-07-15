@@ -193,6 +193,15 @@ def test_admin_login_flows_cleanup_indexes_migration_is_idempotent() -> None:
 
 
 @pytest.mark.unit
+def test_acquisition_pipeline_migration_is_idempotent() -> None:
+    pipeline = next(m for m in MIGRATIONS if m.name == "acquisition_pipeline")
+    assert pipeline.version == "013"
+    assert "pipeline_stage" in pipeline.up_sql
+    assert "pipeline_stage_history" in pipeline.up_sql
+    assert "diagnostic_paid" in pipeline.up_sql
+
+
+@pytest.mark.unit
 def test_migration_rollback_strategy_is_forward_only() -> None:
     for migration in MIGRATIONS:
         assert not hasattr(migration, "down_sql")

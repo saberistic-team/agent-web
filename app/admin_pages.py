@@ -13,6 +13,7 @@ import json
 
 from app.brief_service import BriefListFilters
 from app.config import Settings
+from app.pipeline import pipeline_stage_label
 
 
 def render_admin_login_page(
@@ -512,6 +513,9 @@ def render_admin_brief_detail_page(
     back_filters: BriefListFilters,
     price_cents: int,
     csrf_token: str = "",
+    pipeline_available: bool = False,
+    conversion: dict[str, Any] | None = None,
+    converted: bool = False,
 ) -> str:
     brief_id = brief.get("id", "")
     status = str(brief.get("status", ""))
@@ -554,6 +558,63 @@ def render_admin_brief_detail_page(
     email = html.escape(str(brief.get("contact_value", "")))
     brief_text = html.escape(str(brief.get("brief", "")))
 
+    pipeline_section = ""
+    if conversion is not None:
+        company = conversion.get("company") or {}
+        contact = conversion.get("contact") or {}
+        stage = conversion.get("pipeline_stage") or company.get("pipeline_stage")
+        stage_label = html.escape(pipeline_stage_label(str(stage)) if stage else "—")
+        company_href = html.escape(f"/admin/companies/{company.get('id')}", quote=True)
+        contact_id = contact.get("id")
+        contact_href = (
+            html.escape(f"/admin/contacts/{contact_id}", quote=True) if contact_id else ""
+        )
+        contact_email = html.escape(str(contact.get("email", "—")))
+        contact_cell = (
+            f'<a href="{contact_href}">{contact_email}</a>' if contact_href else contact_email
+        )
+        pipeline_href = html.escape("/admin/pipeline", quote=True)
+        pipeline_section = f"""
+          <section class="brief-detail-section" aria-labelledby="brief-pipeline-linked-title">
+            <h2 class="brief-detail-heading" id="brief-pipeline-linked-title">Pipeline linkage</h2>
+            <p class="admin-note">This brief is linked to CRM and pipeline records.</p>
+            <dl class="brief-detail-dl">
+              <div class="brief-detail-row">
+                <dt>Company</dt>
+                <dd><a href="{company_href}">{html.escape(str(company.get("name", "—")))}</a></dd>
+              </div>
+              <div class="brief-detail-row">
+                <dt>Contact</dt>
+                <dd>{contact_cell}</dd>
+              </div>
+              <div class="brief-detail-row">
+                <dt>Pipeline stage</dt>
+                <dd><a href="{pipeline_href}">{stage_label}</a></dd>
+              </div>
+            </dl>
+          </section>"""
+    elif pipeline_available:
+        convert_href = html.escape(
+            f"/admin/briefs/{html.escape(str(brief_id), quote=True)}/convert",
+            quote=True,
+        )
+        pipeline_section = f"""
+          <section class="brief-detail-section" aria-labelledby="brief-pipeline-action-title">
+            <h2 class="brief-detail-heading" id="brief-pipeline-action-title">Pipeline</h2>
+            <p class="admin-note">
+              Convert this intake record into company, contact, and pipeline records.
+              The original brief text and payment state stay unchanged.
+            </p>
+            <p><a class="cta admin-submit" href="{convert_href}">Add to pipeline</a></p>
+          </section>"""
+
+    success_banner = ""
+    if converted:
+        success_banner = """
+          <p class="admin-note" role="status">
+            Brief added to pipeline. Linked records are shown below.
+          </p>"""
+
     main = f"""        <section class="admin-panel" aria-labelledby="admin-brief-detail-title">
           <p class="brief-detail-back">
             <a class="audit-pager-link" href="{back_href}">← Back to briefs</a>
@@ -563,6 +624,7 @@ def render_admin_brief_detail_page(
           <p class="admin-lede">
             Read-only intake record. Payment state is derived from Stripe — not editable here.
           </p>
+          {success_banner}
           <dl class="brief-detail-dl">
             <div class="brief-detail-row">
               <dt>Submitted (UTC)</dt>
@@ -611,9 +673,152 @@ def render_admin_brief_detail_page(
               </div>
             </dl>
           </section>
+          {pipeline_section}
         </section>"""
     return render_admin_shell(
         title=f"Brief #{brief_id}",
+        main=main,
+        active_path="/admin/briefs",
+        admin_username=admin_username,
+        csrf_token=csrf_token,
+    )
+
+
+def _format_proposed_value(value: Any) -> str:
+    if value is None or str(value).strip() == "":
+        return '<span class="audit-muted">—</span>'
+    return html.escape(str(value))
+
+
+def _render_match_radios(
+    *,
+    choice_name: str,
+    matches: list[dict[str, Any]],
+) -> str:
+    if not matches:
+        return ""
+    rows: list[str] = []
+    for match in matches:
+        match_id = str(match.get("id", ""))
+        safe_id = html.escape(match_id, quote=True)
+        label_parts = [str(match.get("name") or match.get("email") or match_id)]
+        if match.get("domain"):
+            label_parts.append(f"({match.get('domain')})")
+        elif match.get("company_id"):
+            label_parts.append(f"(company {match.get('company_id')})")
+        label = html.escape(" ".join(label_parts))
+        rows.append(
+            f'<label class="brief-convert-match">'
+            f'<input type="radio" name="{html.escape(choice_name, quote=True)}" '
+            f'value="existing:{safe_id}" />'
+            f" Link {label}</label>"
+        )
+    return "\n".join(rows)
+
+
+def render_admin_brief_convert_page(
+    *,
+    admin_username: str,
+    brief: dict[str, Any],
+    back_filters: BriefListFilters,
+    preview: dict[str, Any],
+    csrf_token: str,
+    error_message: str | None = None,
+) -> str:
+    brief_id = brief.get("id", "")
+    back_href = html.escape(_briefs_href(back_filters), quote=True)
+    detail_href = html.escape(f"/admin/briefs/{brief_id}", quote=True)
+    proposal = preview.get("proposal") or {}
+    company_matches: list[dict[str, Any]] = list(preview.get("company_matches") or [])
+    contact_matches: list[dict[str, Any]] = list(preview.get("contact_matches") or [])
+
+    error_html = ""
+    if error_message:
+        error_html = (
+            f'<p class="form-error" role="alert">{html.escape(error_message)}</p>'
+        )
+
+    company_match_html = _render_match_radios(
+        choice_name="company_choice",
+        matches=company_matches,
+    )
+    contact_match_html = _render_match_radios(
+        choice_name="contact_choice",
+        matches=contact_matches,
+    )
+
+    default_company_choice = "existing" if company_matches else "new"
+    default_contact_choice = "existing" if contact_matches else "new"
+    company_new_checked = " checked" if default_company_choice == "new" else ""
+    contact_new_checked = " checked" if default_contact_choice == "new" else ""
+
+    expected_value = proposal.get("expected_value")
+    expected_display = (
+        f"${expected_value:.0f}" if isinstance(expected_value, (int, float)) else "—"
+    )
+
+    main = f"""        <section class="admin-panel" aria-labelledby="admin-brief-convert-title">
+          <p class="brief-detail-back">
+            <a class="audit-pager-link" href="{detail_href}">← Back to brief #{html.escape(str(brief_id))}</a>
+          </p>
+          <p class="admin-eyebrow">Brief intake</p>
+          <h1 class="admin-title" id="admin-brief-convert-title">Add brief #{html.escape(str(brief_id))} to pipeline</h1>
+          <p class="admin-lede">
+            Review proposed CRM and pipeline fields. Existing matches are shown for your
+            selection — nothing is merged automatically.
+          </p>
+          {error_html}
+          <section class="brief-detail-section" aria-labelledby="brief-convert-preview-title">
+            <h2 class="brief-detail-heading" id="brief-convert-preview-title">Proposed records</h2>
+            <dl class="brief-detail-dl">
+              <div class="brief-detail-row">
+                <dt>Company name</dt>
+                <dd>{_format_proposed_value(proposal.get("company_name"))}</dd>
+              </div>
+              <div class="brief-detail-row">
+                <dt>Website / domain</dt>
+                <dd>{_format_proposed_value(proposal.get("website"))} · {_format_proposed_value(proposal.get("domain"))}</dd>
+              </div>
+              <div class="brief-detail-row">
+                <dt>Contact email</dt>
+                <dd>{_format_proposed_value(proposal.get("contact_email"))}</dd>
+              </div>
+              <div class="brief-detail-row">
+                <dt>Initial pipeline stage</dt>
+                <dd>{html.escape(str(proposal.get("pipeline_stage_label", "—")))}</dd>
+              </div>
+              <div class="brief-detail-row">
+                <dt>Expected value</dt>
+                <dd>{html.escape(expected_display)}</dd>
+              </div>
+              <div class="brief-detail-row">
+                <dt>Payment status (source)</dt>
+                <dd>{_format_proposed_value(proposal.get("brief_status"))}</dd>
+              </div>
+            </dl>
+          </section>
+          <form class="admin-form brief-convert-form" method="post" action="/admin/briefs/{html.escape(str(brief_id), quote=True)}/convert">
+            <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}" />
+            <fieldset class="brief-convert-fieldset">
+              <legend>Company</legend>
+              <label class="brief-convert-choice">
+                <input type="radio" name="company_choice" value="new"{company_new_checked} /> Create new company
+              </label>
+              {company_match_html}
+            </fieldset>
+            <fieldset class="brief-convert-fieldset">
+              <legend>Contact</legend>
+              <label class="brief-convert-choice">
+                <input type="radio" name="contact_choice" value="new"{contact_new_checked} /> Create new contact
+              </label>
+              {contact_match_html}
+            </fieldset>
+            <button class="cta admin-submit" type="submit">Confirm and add to pipeline</button>
+            <p class="admin-note"><a href="{detail_href}">Cancel</a></p>
+          </form>
+        </section>"""
+    return render_admin_shell(
+        title=f"Convert brief #{brief_id}",
         main=main,
         active_path="/admin/briefs",
         admin_username=admin_username,
