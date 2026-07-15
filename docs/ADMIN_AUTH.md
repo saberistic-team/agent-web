@@ -63,6 +63,21 @@ server-side; raw tokens appear in HTML forms only and are never logged.
 7. On success, the flow cookie is cleared and a new authenticated session is
    minted (session fixation resistance).
 
+#### Concurrency verification (#243)
+
+The conditional `UPDATE … RETURNING` claim is verified under real PostgreSQL
+concurrency with independent connections, overlapping transactions, and
+route-level replay tests (`tests/test_admin_login_flow_claim_integration.py`).
+PostgreSQL row locking decides the winner: exactly one concurrent claimant
+receives a row; every other claimant observes a zero-row `RETURNING`, and the
+login route treats that as a failed security claim without password verification,
+session mutation, or `auth.login.success` audit writes.
+
+**Rollback semantics:** `claim_admin_login_flow` commits the consumption update
+before returning to the route. An uncommitted claim `UPDATE` that is rolled back
+leaves `consumed_at` unchanged, so a later claimant may still win. Once the
+claim commit succeeds, the flow cannot be reclaimed.
+
 Stale flows are removed opportunistically when minting a new flow
 (see [Login flow retention](#login-flow-retention)). Only hashed tokens are
 stored; cleanup never logs or returns raw flow or CSRF values.
