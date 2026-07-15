@@ -200,6 +200,10 @@ def test_merge_fetch_uses_explicit_refspec_for_single_branch_clone(monkeypatch) 
         "builder_conflicts.summarize_recent_closed_work",
         lambda repo, **kwargs: "",
     )
+    monkeypatch.setattr(
+        "builder_conflicts.smoke_and_maybe_repair_app",
+        lambda cwd: (True, "ok", []),
+    )
 
     work_dir = Path("/tmp/builder-conflict-test-repo")
     pr = {
@@ -240,6 +244,27 @@ def test_smoke_import_app_reports_failure(tmp_path) -> None:
     ok, detail = smoke_import_app(tmp_path)
     assert ok is False
     assert detail
+
+
+def test_repair_main_wiring_adds_missing_imports() -> None:
+    from builder_conflicts import repair_main_wiring
+
+    src = (
+        "from fastapi import FastAPI\n"
+        "\n"
+        "app = FastAPI()\n"
+        "app.include_router(admin_router)\n"
+        "hdr = CORRELATION_HEADER\n"
+    )
+    fixed, added = repair_main_wiring(src)
+    assert "admin_router" in added
+    assert "CORRELATION_HEADER" in added
+    assert "from app.admin_routes import router as admin_router" in fixed
+    assert "from app.actor_context import CORRELATION_HEADER" in fixed
+    # Idempotent
+    again, added2 = repair_main_wiring(fixed)
+    assert added2 == []
+    assert again == fixed
 
 
 def test_merge_conflict_resolve_skips_push_when_smoke_fails(monkeypatch, tmp_path) -> None:
@@ -287,8 +312,8 @@ def test_merge_conflict_resolve_skips_push_when_smoke_fails(monkeypatch, tmp_pat
         lambda path, text, brief, chat=None: "from broken import x\n",
     )
     monkeypatch.setattr(
-        "builder_conflicts.smoke_import_app",
-        lambda cwd: (False, "NameError: name 'admin_router' is not defined"),
+        "builder_conflicts.smoke_and_maybe_repair_app",
+        lambda cwd: (False, "NameError: name 'admin_router' is not defined", []),
     )
 
     pr = {
@@ -307,6 +332,17 @@ def test_merge_conflict_resolve_skips_push_when_smoke_fails(monkeypatch, tmp_pat
     assert result["status"] == "broken_after_resolve"
     assert result.get("pushed") is False
     assert "admin_router" in (result.get("smoke_error") or "")
+
+
+def test_is_retryable_includes_bridge_auth_token() -> None:
+    from run_agent import is_retryable_codegen_failure
+
+    assert is_retryable_codegen_failure(
+        RuntimeError(
+            "Cursor SDK local startup failed (retryable=True): "
+            "Bridge request timed out: ReadTimeout: timed out"
+        )
+    )
 
 
 def test_linked_pr_conflict_status_clean(monkeypatch) -> None:

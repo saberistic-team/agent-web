@@ -12,6 +12,7 @@ from run_agent import is_retryable_codegen_failure
     "message",
     [
         "Cursor SDK local startup failed (retryable=True): Bridge request timed out: ReadTimeout: timed out",
+        "Cursor SDK local startup failed (retryable=False): Bridge exited before discovery with status 1: Missing value for --tool-callback-auth-token",
         "Cursor changed too many files (32 > 30): app/admin_companies.py, app/contacts.py",
         "model proposed too many files (15 > 12)",
         "RemoteProtocolError: Server disconnected",

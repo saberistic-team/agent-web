@@ -48,6 +48,9 @@ def chat_cursor(system: str, user: str, model: str | None = None) -> tuple[str, 
     model = model or os.environ.get("CURSOR_MODEL") or DEFAULT_CURSOR_MODEL
     try:
         from cursor_sdk import Agent, AgentOptions, LocalAgentOptions
+        from cursor_sdk_patch import patch_callback_auth_tokens
+
+        patch_callback_auth_tokens()
     except ImportError as exc:
         raise GitHubError(
             "cursor-sdk is not installed; pip install -r requirements-agents.txt"
