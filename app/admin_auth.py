@@ -20,11 +20,7 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.admin_client_source import (
-    ClientSourceResolution,
-    log_admin_login_source_resolution,
-    resolve_admin_login_client_source,
-)
+from app.admin_client_source import resolve_admin_login_client_source
 from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
@@ -239,16 +235,22 @@ def read_login_flow_token(request: Request) -> str | None:
     return token.strip() or None
 
 
-def resolve_admin_login_client_source_for_limiter(
-    request: Request,
-    settings: Settings,
-) -> ClientSourceResolution:
-    """Resolve limiter source identity with trusted-proxy verification."""
-    return resolve_admin_login_client_source(request, settings)
-
-
 def client_ip(request: Request, settings: Settings) -> str:
-    """Return the resolved client source string for rate limiting."""
+    """Resolve the client source IP for rate limiting.
+
+    Forwarded headers are honored only when the immediate TCP peer is a member
+    of ``ADMIN_TRUSTED_PROXY_IPS``. See :func:`resolve_admin_login_client_source`
+    for the production Cloudflare → Render trust model and header precedence.
+
+    Source identity notes:
+
+    * **IPv4 / IPv6** — normalized deterministically before digesting (IPv4-mapped
+      IPv6 collapses to dotted quad).
+    * **Missing peer** — falls back to ``unknown`` so attempts still share one
+      bucket instead of creating an unbounded namespace.
+    * **Untrusted peer** — spoofed ``X-Forwarded-For``, ``Forwarded``, and
+      ``CF-Connecting-IP`` values are ignored.
+    """
     return resolve_admin_login_client_source(request, settings).source
 
 
@@ -373,11 +375,10 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    resolution = resolve_admin_login_client_source_for_limiter(request, settings)
-    log_admin_login_source_resolution(resolution)
+    source = client_ip(request, settings)
     limiter_keys = login_limiter_keys(
         submitted_username=username,
-        client_source=resolution.source,
+        client_source=source,
         configured_admin_username=settings.admin_username,
     )
     now = datetime.now(timezone.utc)
@@ -426,7 +427,6 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "lockout_transition": admission.lockout_transition,
-                "source_resolution_path": resolution.path.value,
             },
         )
     elif admission.already_locked:
@@ -435,7 +435,6 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "already_locked": True,
-                "source_resolution_path": resolution.path.value,
             },
         )
     return LoginAdmissionResult(
