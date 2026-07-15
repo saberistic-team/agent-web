@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
-TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!"
+TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!!"
 
 
 @pytest.fixture(autouse=True)
-def _admin_login_limiter_secret_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Ensure admin auth tests have keyed limiter secret material configured."""
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
-    monkeypatch.delenv("ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS", raising=False)
+def _default_admin_login_limiter_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Provide a strong default limiter secret for tests unless explicitly cleared."""
+    if not os.environ.get("ADMIN_LOGIN_LIMITER_SECRET"):
+        monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
