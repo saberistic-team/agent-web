@@ -49,23 +49,40 @@ Playwright can open admin pages **without login**.
 | `app/admin_*` | All admin nav pages + `/admin/login` | None (skip) |
 | `tests/` / `docs/` / `scripts/` only | None | None |
 
+## Which script Reviewer runs
+
+Reviewer Actions check out **agent scripts from `main`**, and the product tree
+into `COVERAGE_ROOT` (`pr-head/`). Screenshot capture loads
+`screenshot_deploy.py` from **`pr-head/scripts/` first**, then falls back to
+`main` (`scripts/run_agent.load_screenshot_deploy`, learned from [#167](https://github.com/saberistic-team/agent-web/issues/167)).
+
+That means Builder can extend the capture matrix (extra viewports, open mobile
+nav) on the **same product PR** and Reviewer will use those helpers in the same
+cycle. Orchestration glue (`run_agent.py`, workflows) still comes from `main`
+until merged.
+
 ## Pre-merge (Reviewer)
 
 1. Resolves **PR-affected routes** (public + admin when relevant)
 2. Starts **local uvicorn** with `ADMIN_PREVIEW_MODE=1` on the PR head
 3. Captures desktop (1280×800) + mobile (390×844) → `branch-*.png` only
-4. Uploads under `.agent/screenshots/pr-<n>/` and comments
+4. When admin files change, also captures **admin nav evidence** on
+   `/admin`, `/admin/audit`, and `/admin/briefs`: tablet (768×1024),
+   narrow-desktop (1024×800), and open mobile disclosure
+   (`branch-*-mobile-open.png`)
+5. Uploads under `.agent/screenshots/pr-<n>/` and comments
    `### reviewer_screenshots_pre` on the **PR and issue** (titles above images)
-5. Does **not** hit saberistic.com
-6. **Empty-shell gate:** Playwright inspects admin HTML for empty data tables /
+6. Does **not** hit saberistic.com
+7. **Empty-shell gate:** Playwright inspects admin HTML for empty data tables /
    “no … yet” / placeholder milestone copy and Reviewer **hard-fails** so
    Builder must extend `app/admin_preview.py` (see
    `format_empty_data_hard_fail`)
-7. **Desktop admin-nav gate:** on desktop viewports, admin shells must show at
-   least one visible `.admin-nav-link`. This catches nav trapped inside closed
-   `<details>` (prefer a separate `.admin-nav-desktop` list outside details).
-   Hard-fail via `format_admin_nav_hard_fail` / `desktop_nav_invisible`
-8. AI review + approve gates as usual
+8. **Desktop admin-nav gate:** on desktop and narrow-desktop viewports, admin
+   shells must show at least one visible `.admin-nav-link`. This catches nav
+   trapped inside closed `<details>` (prefer a separate `.admin-nav-desktop`
+   list outside details). Hard-fail via `format_admin_nav_hard_fail` /
+   `desktop_nav_invisible`
+9. AI review + approve gates as usual
 
 ## Post-deploy (after merge to `main`)
 

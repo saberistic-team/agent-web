@@ -185,6 +185,25 @@ Hide one with CSS at each breakpoint. Reviewer hard-fails when desktop
 `.admin-nav-link` nodes exist but none are visible
 (`format_admin_nav_hard_fail` / `desktop_nav_invisible`).
 
+**Grid stretch:** `.admin-layout` must not default-stretch `.admin-nav` to the
+main column’s height (`align-items` / `align-self: start`, content-sized sticky
+sidebar). Collapsed mobile `.admin-nav-toggle` must size to its summary
+(`height: fit-content` / no inherited min-height). Guard with CSS tests.
+
+## Screenshot evidence vs product CSS (anti-loop)
+
+Reviewer loads `screenshot_deploy.py` from the **PR head first** (then `main`)
+— see [docs/SCREENSHOTS.md](../docs/SCREENSHOTS.md). When acceptance needs
+tablet / narrow-desktop / open-mobile-nav shots that the matrix does not yet
+emit:
+
+1. **Extend** `scripts/screenshot_deploy.py` + `docs/SCREENSHOTS.md` + tests on
+   **this same PR** (do not open a parallel PR).
+2. Do **not** keep rewriting product CSS when AI review already approved the
+   layout and the only hard-fail is “missing `branch-*-mobile-open.png` /
+   tablet / narrow-desktop” — that is a capture-matrix gap, not another CSS
+   churn (learned from [#167](https://github.com/saberistic-team/agent-web/issues/167)).
+
 ## Constraints
 
 - **Never push to the default branch** (`main` / `master`).

@@ -1,8 +1,11 @@
 from screenshot_deploy import (
+    ADMIN_EXTRA_VIEWPORTS,
+    ADMIN_NAV_EVIDENCE_ROUTES,
     VIEWPORTS,
     admin_screenshot_session_cookie,
     discover_screenshot_routes,
     format_overflow_hard_fail,
+    is_admin_nav_evidence_route,
     is_admin_screenshot_route,
     is_production_pre_shot,
     is_public_screenshot_route,
@@ -42,6 +45,26 @@ def test_screenshot_basename_mobile_suffix() -> None:
     assert screenshot_basename("pre", "/about", "mobile") == "pre-about-mobile.png"
     assert screenshot_basename("post", "/about", "mobile") == "post-about-mobile.png"
     assert screenshot_basename("branch", "/", "mobile") == "branch-home-mobile.png"
+    assert screenshot_basename("branch", "/admin", "mobile-open") == (
+        "branch-admin-mobile-open.png"
+    )
+
+
+def test_admin_nav_evidence_routes_and_extra_viewports() -> None:
+    assert "/admin" in ADMIN_NAV_EVIDENCE_ROUTES
+    assert "/admin/audit" in ADMIN_NAV_EVIDENCE_ROUTES
+    assert "/admin/briefs" in ADMIN_NAV_EVIDENCE_ROUTES
+    assert is_admin_nav_evidence_route("/admin/audit")
+    assert not is_admin_nav_evidence_route("/admin/companies")
+    extra_names = {name for name, _, _ in ADMIN_EXTRA_VIEWPORTS}
+    assert extra_names == {"tablet", "narrow-desktop"}
+    by_name = {name: (w, h) for name, w, h in ADMIN_EXTRA_VIEWPORTS}
+    assert by_name["tablet"] == (768, 1024)
+    assert by_name["narrow-desktop"] == (1024, 800)
+    assert screenshot_basename("branch", "/admin", "tablet") == "branch-admin-tablet.png"
+    assert screenshot_basename("branch", "/admin", "narrow-desktop") == (
+        "branch-admin-narrow-desktop.png"
+    )
 
 
 def test_is_production_pre_shot() -> None:
