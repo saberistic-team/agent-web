@@ -101,6 +101,25 @@ operator is never left without a valid server-side session. The session cookie i
 set on the redirect response only after the transaction exits successfully; failed
 or rolled-back logins never emit a new session cookie.
 
+#### Login failure actor policy
+
+Every ``auth.login.failure`` event recorded **before** successful authentication uses
+``actor = anonymous``. Submitted usernames, client sources, limiter digest inputs,
+and limiter secrets must not appear in the audit row (actor, metadata, reason text),
+structured logs, or metrics. Failure ``reason`` values are a small server-defined set
+(for example ``invalid_credentials``, ``invalid_csrf``, ``rate_limited``).
+
+Authenticated ``auth.login.success`` and ``auth.logout`` events continue to use the
+verified administrator username and session linkage.
+
+#### Historical login-failure actors (pre-#242)
+
+Before issue #242, some ``auth.login.failure`` rows could retain attacker-supplied
+usernames in ``audit_events.actor``. Those rows are append-only and are **not**
+rewritten by the forward fix. Security reviews should treat pre-migration failure
+actors as untrusted unless corroborated by session linkage. All new failure events
+use ``anonymous``.
+
 ## Audited actions
 
 | Action | When recorded |
@@ -117,22 +136,6 @@ or rolled-back logins never emit a new session cookie.
 | `export.request` | Export requests via `CrmService.request_export` |
 
 Auth events are wired in `app/admin_routes.py`. Other mutations record audit events through `CrmService` methods that future admin UI routes will call.
-
-### Login-failure actor policy
-
-Unauthenticated login failures always persist `actor = anonymous`. Submitted
-username candidates must not appear in `actor`, `metadata`, or `summary_after`.
-Reason values are server-defined enums only (`invalid_credentials`, `invalid_csrf`,
-`rate_limited`).
-
-### Historical exposure (pre-#242)
-
-Deployments before keyed limiter identifiers and anonymous failure actors (issue
-#242) may have appended `auth.login.failure` rows whose `actor` column contains
-attacker-supplied username candidates. Those rows are immutable under normal
-application policy. Do not disable append-only protections or rewrite history
-without an explicit data-governance decision. The forward fix in #242 prevents new
-occurrences regardless of how historical rows are handled.
 
 ## Admin UI
 
