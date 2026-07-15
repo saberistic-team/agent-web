@@ -92,12 +92,12 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert",
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
-    "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
     "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-    "/admin/companies/cccccccc-cccc-cccc-cccc-cccccccccccc",
-    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    "/admin/companies/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    "/admin/contacts/cccccccc-cccc-cccc-cccc-cccccccccccc",
     "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd",
     "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddddd/edit",
+    "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
@@ -106,27 +106,6 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
 ADMIN_SCREENSHOT_EXPECTED_STATUS: dict[str, int] = {
     "/admin/briefs/503": 503,
 }
-
-
-def archive_restore_button_class(*, archived: bool) -> str:
-    """Return semantic admin action classes for archive (destructive) or restore."""
-    variant = "secondary" if archived else "destructive"
-    return f"admin-action admin-action--{variant}"
-
-
-def render_archive_restore_form(
-    *,
-    post_url: str,
-    csrf_token: str,
-    label: str,
-    archived: bool,
-) -> str:
-    """Render a CSRF-protected archive/restore form with themed action styling."""
-    button_class = archive_restore_button_class(archived=archived)
-    return f"""<form method="post" action="{html.escape(post_url, quote=True)}">
-        <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}" />
-        <button class="{button_class}" type="submit">{html.escape(label)}</button>
-      </form>"""
 
 
 def _active_nav_label(active_path: str) -> str:

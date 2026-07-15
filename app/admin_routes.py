@@ -40,9 +40,9 @@ from app.admin_preview import (
     PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR,
     PREVIEW_BRIEF_DATABASE_ERROR_ID,
     PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID,
-    build_preview_company_research,
+    build_preview_company_detail,
+    build_preview_contact_detail,
     build_preview_contact_edit,
-    build_preview_contact_research,
     preview_contact_restore_conflict,
 )
 from app.config import Settings, get_settings
@@ -707,7 +707,7 @@ def admin_company_research(
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
-        preview = build_preview_company_research(company_id)
+        preview = build_preview_company_detail(company_id)
         if preview is not None:
             company, contacts, records = preview
             return HTMLResponse(
@@ -1157,7 +1157,7 @@ def admin_contact_research(
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
-        preview = build_preview_contact_research(contact_id)
+        preview = build_preview_contact_detail(contact_id)
         if preview is not None:
             contact, company, records = preview
             return HTMLResponse(
