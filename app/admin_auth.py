@@ -29,24 +29,6 @@ CSRF_MAX_AGE_SECONDS = 900
 LIMITER_DOMAIN_SOURCE = "src"
 LIMITER_DOMAIN_ACCOUNT = "acct"
 LIMITER_KEY_HEX_LENGTH = 64
-LIMITER_SECRET_MIN_LENGTH = 32
-_PLACEHOLDER_LIMITER_SECRETS = frozenset(
-    {
-        "changeme",
-        "change-me",
-        "placeholder",
-        "secret",
-        "password",
-        "admin",
-        "test",
-        "dev",
-        "development",
-        "example",
-        "your-secret-here",
-        "replace-me",
-        "placeholder-placeholder-placeholder!",
-    }
-)
 # Authenticated session CSRF lifetime matches ``ADMIN_SESSION_TTL_SECONDS`` (see
 # ``derive_session_csrf_token``). Tokens are not rotated on navigation so forms
 # stay valid across multiple tabs until the session expires, is revoked, or is
@@ -285,39 +267,6 @@ def _digest_limiter_key(secret: str, domain: str, material: str) -> str:
     """Return a keyed, domain-separated HMAC-SHA256 limiter identifier."""
     message = f"{domain}:{material}".encode("utf-8")
     return hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
-
-
-def validate_admin_login_limiter_secret(secret: str, *, env_name: str) -> None:
-    """Fail fast when limiter key material is missing, weak, or a placeholder."""
-    if not secret:
-        raise ValueError(f"{env_name} is required when admin authentication is enabled")
-    if len(secret) < LIMITER_SECRET_MIN_LENGTH:
-        raise ValueError(f"{env_name} must be at least {LIMITER_SECRET_MIN_LENGTH} characters")
-    if secret != secret.strip():
-        raise ValueError(f"{env_name} must not contain leading or trailing whitespace")
-    if any(ord(ch) < 32 for ch in secret):
-        raise ValueError(f"{env_name} must not contain control characters")
-    if secret.strip().lower() in _PLACEHOLDER_LIMITER_SECRETS:
-        raise ValueError(f"{env_name} must not be a placeholder value")
-
-
-def validate_admin_security_config(settings: Settings) -> None:
-    """Validate admin security secrets before serving authenticated routes."""
-    validate_admin_login_limiter_secret(
-        settings.admin_login_limiter_secret,
-        env_name="ADMIN_LOGIN_LIMITER_SECRET",
-    )
-    previous = settings.admin_login_limiter_secret_previous
-    if previous:
-        validate_admin_login_limiter_secret(
-            previous,
-            env_name="ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS",
-        )
-        if hmac.compare_digest(previous, settings.admin_login_limiter_secret):
-            raise ValueError(
-                "ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS must differ from "
-                "ADMIN_LOGIN_LIMITER_SECRET"
-            )
 
 
 def _limiter_key_variants(

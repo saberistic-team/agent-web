@@ -23,6 +23,7 @@ from app.admin_auth import (
     LIMITER_DOMAIN_SOURCE,
     LIMITER_KEY_HEX_LENGTH,
 )
+from app.admin_secrets import validate_admin_login_limiter_secret, validate_admin_security_secrets
 from app.config import Settings, get_settings
 from app.crm_uow import crm_transaction
 from app.main import app
@@ -81,7 +82,7 @@ def limiter_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _plain_sha256_limiter_key(domain: str, material: str) -> str:
-    payload = f"{domain}:{material}"
+    payload = f"{domain}:{material.strip().lower()}"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -143,6 +144,7 @@ def test_limiter_domain_separation() -> None:
         (" changeme-is-long-enough-for-length-check!!", "ADMIN_LOGIN_LIMITER_SECRET", "leading or trailing whitespace"),
         ("placeholder-placeholder-placeholder!", "ADMIN_LOGIN_LIMITER_SECRET", "placeholder"),
         ("test-limiter-secret-32chars-minimum!!\x00", "ADMIN_LOGIN_LIMITER_SECRET", "control characters"),
+        ("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "ADMIN_LOGIN_LIMITER_SECRET", "low-entropy"),
     ],
 )
 def test_limiter_secret_validation_rejects_weak_material(
@@ -151,17 +153,17 @@ def test_limiter_secret_validation_rejects_weak_material(
     message: str,
 ) -> None:
     with pytest.raises(ValueError, match=message):
-        admin_auth.validate_admin_login_limiter_secret(secret, env_name=env_name)
+        validate_admin_login_limiter_secret(secret, env_name=env_name)
 
 
 @pytest.mark.unit
-def test_validate_admin_security_config_rejects_matching_previous_secret() -> None:
+def test_validate_admin_security_secrets_rejects_matching_previous_secret() -> None:
     settings = _settings(
         admin_login_limiter_secret=TEST_LIMITER_SECRET,
         admin_login_limiter_secret_previous=TEST_LIMITER_SECRET,
     )
     with pytest.raises(ValueError, match="must differ"):
-        admin_auth.validate_admin_security_config(settings)
+        validate_admin_security_secrets(settings)
 
 
 @pytest.mark.unit
@@ -169,72 +171,7 @@ def test_startup_validation_requires_limiter_secret(monkeypatch: pytest.MonkeyPa
     monkeypatch.delenv("ADMIN_LOGIN_LIMITER_SECRET", raising=False)
     settings = get_settings()
     with pytest.raises(ValueError, match="ADMIN_LOGIN_LIMITER_SECRET is required"):
-        admin_auth.validate_admin_security_config(settings)
-
-
-@pytest.mark.unit
-def test_rotation_previous_key_blocks_until_cleanup(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS", TEST_LIMITER_SECRET_PREVIOUS)
-    current_settings = get_settings()
-    previous_settings = _settings(
-        admin_login_limiter_secret=TEST_LIMITER_SECRET_PREVIOUS,
-        admin_login_limiter_secret_previous="",
-    )
-
-    source = "testclient"
-    previous_key = admin_auth.build_source_rate_limit_key(source, previous_settings)
-    current_key = admin_auth.build_source_rate_limit_key(source, current_settings)
-    assert previous_key != current_key
-
-    store = _FakeRateLimitStore()
-    now = datetime.now(timezone.utc)
-    store.rows[previous_key] = {
-        "failure_count": 5,
-        "window_started_at": now,
-        "locked_until": now + timedelta(minutes=15),
-        "updated_at": now,
-    }
-
-    with _shared_rate_limiter(store):
-        request = _login_request()
-        admission = admin_auth.try_admit_login_attempt(
-            request,
-            current_settings,
-            username=TEST_USERNAME,
-        )
-    assert not admission.admitted
-    assert admission.already_locked
-    assert current_key not in store.rows
-
-
-@pytest.mark.unit
-def test_rotation_cleanup_removes_stale_previous_key_rows() -> None:
-    settings = _settings(
-        admin_login_limiter_secret=TEST_LIMITER_SECRET,
-        admin_login_limiter_secret_previous=TEST_LIMITER_SECRET_PREVIOUS,
-    )
-    previous_settings = _settings(
-        admin_login_limiter_secret=TEST_LIMITER_SECRET_PREVIOUS,
-        admin_login_limiter_secret_previous="",
-    )
-    source = "testclient"
-    previous_key = admin_auth.build_source_rate_limit_key(source, previous_settings)
-    store = _FakeRateLimitStore()
-    stale = datetime.now(timezone.utc) - timedelta(hours=2)
-    store.rows[previous_key] = {
-        "failure_count": 1,
-        "window_started_at": stale,
-        "locked_until": None,
-        "updated_at": stale,
-    }
-
-    with _shared_rate_limiter(store):
-        request = _login_request()
-        admin_auth.try_admit_login_attempt(request, settings, username=TEST_USERNAME)
-
-    assert previous_key not in store.rows
+        validate_admin_security_secrets(settings)
 
 
 class _FakeRateLimitStore:
@@ -374,6 +311,71 @@ def _login_request() -> Any:
 
 
 @pytest.mark.unit
+def test_rotation_previous_key_blocks_until_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS", TEST_LIMITER_SECRET_PREVIOUS)
+    current_settings = get_settings()
+    previous_settings = _settings(
+        admin_login_limiter_secret=TEST_LIMITER_SECRET_PREVIOUS,
+        admin_login_limiter_secret_previous="",
+    )
+
+    source = "testclient"
+    previous_key = admin_auth.build_source_rate_limit_key(source, previous_settings)
+    current_key = admin_auth.build_source_rate_limit_key(source, current_settings)
+    assert previous_key != current_key
+
+    store = _FakeRateLimitStore()
+    now = datetime.now(timezone.utc)
+    store.rows[previous_key] = {
+        "failure_count": 5,
+        "window_started_at": now,
+        "locked_until": now + timedelta(minutes=15),
+        "updated_at": now,
+    }
+
+    with _shared_rate_limiter(store):
+        request = _login_request()
+        admission = admin_auth.try_admit_login_attempt(
+            request,
+            current_settings,
+            username=TEST_USERNAME,
+        )
+    assert not admission.admitted
+    assert admission.already_locked
+    assert current_key not in store.rows
+
+
+@pytest.mark.unit
+def test_rotation_cleanup_removes_stale_previous_key_rows() -> None:
+    settings = _settings(
+        admin_login_limiter_secret=TEST_LIMITER_SECRET,
+        admin_login_limiter_secret_previous=TEST_LIMITER_SECRET_PREVIOUS,
+    )
+    previous_settings = _settings(
+        admin_login_limiter_secret=TEST_LIMITER_SECRET_PREVIOUS,
+        admin_login_limiter_secret_previous="",
+    )
+    source = "testclient"
+    previous_key = admin_auth.build_source_rate_limit_key(source, previous_settings)
+    store = _FakeRateLimitStore()
+    stale = datetime.now(timezone.utc) - timedelta(hours=2)
+    store.rows[previous_key] = {
+        "failure_count": 1,
+        "window_started_at": stale,
+        "locked_until": None,
+        "updated_at": stale,
+    }
+
+    with _shared_rate_limiter(store):
+        request = _login_request()
+        admin_auth.try_admit_login_attempt(request, settings, username=TEST_USERNAME)
+
+    assert previous_key not in store.rows
+
+
+@pytest.mark.unit
 @pytest.mark.integration
 def test_unknown_username_failure_audit_uses_anonymous_actor() -> None:
     repo = MagicMock()
@@ -426,7 +428,7 @@ def test_configured_username_wrong_password_keeps_anonymous_actor() -> None:
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_invalid_flow_and_lockout_audit_events_use_anonymous_actor() -> None:
+def test_invalid_flow_audit_event_uses_anonymous_actor() -> None:
     repo = MagicMock()
     repo.append.return_value = {"id": "evt-failure"}
     store = FakeRateLimitStore()
@@ -449,6 +451,35 @@ def test_invalid_flow_and_lockout_audit_events_use_anonymous_actor() -> None:
                         assert (
                             repo.append.call_args.kwargs["metadata"]["reason"] == "invalid_csrf"
                         )
+                        serialized = json.dumps(repo.append.call_args.kwargs)
+                        assert ATTACKER_USERNAME not in serialized
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_lockout_transition_audit_event_uses_anonymous_actor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "1")
+    repo = MagicMock()
+    repo.append.return_value = {"id": "evt-failure"}
+    store = FakeRateLimitStore()
+    with shared_rate_limiter(store):
+        with mock_db_connection():
+            with patch("app.admin_routes._try_claim_login_flow", return_value=True):
+                with patch("app.audit_service.get_repositories") as get_repos:
+                    get_repos.return_value.audit_events = repo
+                    response = client.post(
+                        "/admin/login",
+                        data={
+                            "username": ATTACKER_USERNAME,
+                            "password": "wrong-password",
+                            "csrf_token": "flow-csrf",
+                        },
+                    )
+                    assert response.status_code == 401
+                    assert repo.append.call_args.kwargs["actor"] == "anonymous"
+                    assert repo.append.call_args.kwargs["metadata"]["reason"] == "rate_limited"
 
 
 @pytest.mark.unit

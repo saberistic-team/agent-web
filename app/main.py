@@ -45,9 +45,9 @@ ASSETS_DIR = SITE_DIR / "assets"
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     if settings.admin_auth_configured:
-        from app.admin_auth import validate_admin_security_config
+        from app.admin_secrets import validate_admin_security_secrets
 
-        validate_admin_security_config(settings)
+        validate_admin_security_secrets(settings)
     if settings.database_configured:
         db.init_db(settings.database_url)
         logger.info("database schema ready")
