@@ -237,9 +237,8 @@ def admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "5")
     monkeypatch.setenv("ADMIN_LOGIN_RATE_WINDOW_SECONDS", "900")
     monkeypatch.setenv("ADMIN_LOGIN_LOCKOUT_SECONDS", "900")
-    monkeypatch.delenv("ADMIN_TRUST_PROXY_HEADERS", raising=False)
     monkeypatch.delenv("ADMIN_TRUSTED_PROXY_CIDRS", raising=False)
-    monkeypatch.delenv("ADMIN_CLOUDFLARE_PROXY_CIDRS", raising=False)
+    monkeypatch.delenv("ADMIN_CLOUDFLARE_EDGE_CIDRS", raising=False)
     admin_auth.reset_login_rate_limiter()
     _login_flows.clear()
     _session_store.clear()
@@ -653,7 +652,8 @@ def test_build_rate_limit_key_hashes_username_and_source() -> None:
 def test_client_ip_ignores_forwarded_without_trusted_proxy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("ADMIN_TRUST_PROXY_HEADERS", raising=False)
+    monkeypatch.delenv("ADMIN_TRUSTED_PROXY_CIDRS", raising=False)
+    monkeypatch.delenv("ADMIN_CLOUDFLARE_EDGE_CIDRS", raising=False)
     settings = get_settings()
     request = _request_with_client("198.51.100.10")
     request.headers.__dict__["_list"].append((b"x-forwarded-for", b"203.0.113.99"))
@@ -661,16 +661,69 @@ def test_client_ip_ignores_forwarded_without_trusted_proxy(
 
 
 @pytest.mark.unit
-def test_client_ip_uses_trusted_chain_when_proxy_cidrs_configured(
+def test_client_ip_uses_trusted_xff_chain_when_peer_is_proxy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
+    monkeypatch.setenv("ADMIN_CLOUDFLARE_EDGE_CIDRS", "198.51.100.0/24")
+    settings = get_settings()
+    request = _request_with_client("10.0.0.1")
+    request.headers.__dict__["_list"].append(
+        (b"x-forwarded-for", b"203.0.113.50, 198.51.100.20")
+    )
+    assert admin_auth.client_ip(request, settings) == "203.0.113.50"
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_rotating_spoofed_xff_does_not_create_new_limiter_rows(
+    rate_limit_store: FakeRateLimitStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
     settings = get_settings()
-    request = _request_with_client("10.0.0.1")
-    request.headers.__dict__["_list"].append(
-        (b"x-forwarded-for", b"203.0.113.50, 10.0.0.1")
-    )
-    assert admin_auth.client_ip(request, settings) == "203.0.113.50"
+    keys_seen: set[str] = set()
+
+    with shared_rate_limiter(rate_limit_store):
+        for index in range(8):
+            request = _request_with_client("10.0.0.5")
+            request.headers.__dict__["_list"].append(
+                (b"x-forwarded-for", f"203.0.113.{index}, 203.0.113.250".encode("ascii"))
+            )
+            source = admin_auth.client_ip(request, settings)
+            assert source == "203.0.113.250"
+            keys_seen.add(admin_auth.build_source_rate_limit_key(source))
+            admin_auth.try_admit_login_attempt(request, settings, username=f"user-{index}")
+
+    assert len(keys_seen) == 1
+    assert len(rate_limit_store.rows) == 1
+
+
+@pytest.mark.unit
+def test_limiter_keys_never_store_raw_source_material() -> None:
+    source_key = admin_auth.build_source_rate_limit_key("203.0.113.50")
+    assert "203.0.113.50" not in source_key
+    assert len(source_key) == 64
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_health_reports_proxy_trust_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json()["admin_proxy_trust"] == "configured"
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_health_reports_proxy_trust_disabled_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ADMIN_TRUSTED_PROXY_CIDRS", raising=False)
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json()["admin_proxy_trust"] == "disabled"
 
 
 @pytest.mark.unit
@@ -975,7 +1028,7 @@ def test_successful_login_clears_account_rate_limit_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
-    source_key = admin_auth.build_source_rate_limit_key("unknown")
+    source_key = admin_auth.build_source_rate_limit_key("testclient")
     account_key = admin_auth.build_account_rate_limit_key(TEST_USERNAME)
     with shared_rate_limiter(rate_limit_store):
         with mock_db_connection():
@@ -1004,7 +1057,7 @@ def test_rate_limit_expires_after_lockout(
         assert _login(password="wrong").status_code == 401
         assert _login(password="wrong").status_code == 429
 
-        source_key = admin_auth.build_source_rate_limit_key("unknown")
+        source_key = admin_auth.build_source_rate_limit_key("testclient")
         account_key = admin_auth.build_account_rate_limit_key(TEST_USERNAME)
         expired_lock = datetime.now(timezone.utc) - timedelta(seconds=1)
         for key in (source_key, account_key):
@@ -1016,43 +1069,55 @@ def test_rate_limit_expires_after_lockout(
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_rate_limit_uses_trusted_client_source(
+def test_rate_limit_uses_resolved_source_when_trusted_peer(
     rate_limit_store: FakeRateLimitStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Covered in depth by tests/test_admin_client_source.py; smoke via admission API."""
-    from tests.test_admin_client_source import CF_EDGE, RENDER_LB, _make_request
-    from tests.test_admin_client_source import _settings_with_proxy_trust
-
+    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
+    monkeypatch.setenv("ADMIN_CLOUDFLARE_EDGE_CIDRS", "198.51.100.0/24")
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
-    settings = _settings_with_proxy_trust(monkeypatch)
+    settings = get_settings()
 
-    def admit(client_ip: str) -> bool:
-        request = _make_request(
-            RENDER_LB,
-            {
-                "X-Forwarded-For": f"{client_ip}, {CF_EDGE}",
-                "CF-Connecting-IP": client_ip,
-            },
+    def _trusted_login(
+        *,
+        xff: str,
+        username: str = "ghost",
+        password: str = "wrong",
+    ) -> Any:
+        csrf_token, cookies = _fetch_login_form()
+        request = _request_with_client("10.0.0.5")
+        request.headers.__dict__["_list"].append((b"x-forwarded-for", xff.encode("ascii")))
+        source = admin_auth.client_ip(request, settings)
+        source_key = admin_auth.build_source_rate_limit_key(source)
+        admission = rate_limit_store.try_admit(
+            (source_key,),
+            datetime.now(timezone.utc),
+            rate_limit=2,
+            window_seconds=900,
+            lockout_seconds=900,
         )
-        return admin_auth.try_admit_login_attempt(
-            request, settings, username="ghost"
-        ).admitted
+        return admission, source
 
     with shared_rate_limiter(rate_limit_store):
-        assert admit("203.0.113.77") is True
-        assert admit("203.0.113.77") is True
-        assert admit("203.0.113.77") is False
-        assert admit("203.0.113.88") is True
+        first, first_source = _trusted_login(xff="203.0.113.77")
+        second, second_source = _trusted_login(xff="203.0.113.77")
+        third, third_source = _trusted_login(xff="203.0.113.77")
+        other, other_source = _trusted_login(xff="203.0.113.88")
+
+    assert first_source == second_source == third_source == "203.0.113.77"
+    assert first.admitted and second.admitted and not third.admitted
+    assert other_source == "203.0.113.88"
+    assert other.admitted
 
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_rate_limit_ignores_spoofed_forwarded_without_trust(
+def test_rate_limit_ignores_spoofed_forwarded_without_trusted_peer(
     rate_limit_store: FakeRateLimitStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("ADMIN_TRUST_PROXY_HEADERS", raising=False)
+    monkeypatch.delenv("ADMIN_TRUSTED_PROXY_CIDRS", raising=False)
+    monkeypatch.delenv("ADMIN_CLOUDFLARE_EDGE_CIDRS", raising=False)
     with shared_rate_limiter(rate_limit_store):
         for i in range(5):
             forwarded = f"203.0.113.{i}"
@@ -1118,7 +1183,7 @@ def test_username_rotation_stops_password_verification_at_source_threshold(
                     assert response.status_code == 429
 
     assert verify_calls["count"] == 3
-    source_key = admin_auth.build_source_rate_limit_key("unknown")
+    source_key = admin_auth.build_source_rate_limit_key("testclient")
     assert len(rate_limit_store.rows) == 1
     assert source_key in rate_limit_store.rows
 
@@ -1250,29 +1315,33 @@ def test_account_rate_limit_blocks_configured_username_across_sources(
     rate_limit_store: FakeRateLimitStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from tests.test_admin_client_source import CF_EDGE, RENDER_LB, _make_request
-    from tests.test_admin_client_source import _settings_with_proxy_trust
-
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
-    settings = _settings_with_proxy_trust(monkeypatch)
+    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
+    monkeypatch.setenv("ADMIN_CLOUDFLARE_EDGE_CIDRS", "198.51.100.0/24")
+    settings = get_settings()
 
-    def admit(client_ip: str) -> bool:
-        request = _make_request(
-            RENDER_LB,
-            {
-                "X-Forwarded-For": f"{client_ip}, {CF_EDGE}",
-                "CF-Connecting-IP": client_ip,
-            },
+    def _admit_for_xff(xff: str) -> db.AdminLoginAdmission:
+        request = _request_with_client("10.0.0.5")
+        request.headers.__dict__["_list"].append((b"x-forwarded-for", xff.encode("ascii")))
+        keys = admin_auth.login_limiter_keys(
+            submitted_username=TEST_USERNAME,
+            client_source=admin_auth.client_ip(request, settings),
+            configured_admin_username=settings.admin_username,
         )
-        return admin_auth.try_admit_login_attempt(
-            request, settings, username=TEST_USERNAME
-        ).admitted
+        return rate_limit_store.try_admit(
+            keys,
+            datetime.now(timezone.utc),
+            rate_limit=2,
+            window_seconds=900,
+            lockout_seconds=900,
+        )
 
     with shared_rate_limiter(rate_limit_store):
-        assert admit("203.0.113.1") is True
-        assert admit("203.0.113.2") is True
-        blocked = admit("203.0.113.3")
-    assert blocked is False
+        assert _admit_for_xff("203.0.113.1, 198.51.100.20").admitted
+        assert _admit_for_xff("203.0.113.2, 198.51.100.20").admitted
+        blocked = _admit_for_xff("203.0.113.3, 198.51.100.20")
+    assert not blocked.admitted
+    assert blocked.throttled
 
 
 @pytest.mark.unit

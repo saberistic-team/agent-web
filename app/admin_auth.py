@@ -20,7 +20,10 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.admin_client_source import client_source_for_limiter
+from app.admin_client_source import (
+    client_ip_from_resolution,
+    resolve_admin_login_client_source,
+)
 from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
@@ -236,27 +239,13 @@ def read_login_flow_token(request: Request) -> str | None:
 
 
 def client_ip(request: Request, settings: Settings) -> str:
-    """Resolve the client source IP for rate limiting.
+    """Resolve the client source for admin login rate limiting.
 
-    Forwarding headers are honored only when the immediate peer matches
-    ``ADMIN_TRUSTED_PROXY_CIDRS`` and the hop chain passes strict
-    right-to-left trusted-proxy validation (see ``admin_client_source``).
-    Direct peers and ambiguous chains fall back to the normalized peer
-    address or ``unknown`` so clients cannot spoof ``X-Forwarded-For``,
-    ``Forwarded``, or ``CF-Connecting-IP`` without traversing the configured
-    proxy boundary.
-
-    Source identity notes:
-
-    * **IPv4 / IPv6** — stored only as keyed digests; normalized addresses
-      are passed into the source bucket (e.g. ``203.0.113.1``,
-      ``2001:db8::1``).
-    * **Missing peer** — falls back to ``unknown`` so attempts still share one
-      bucket instead of creating an unbounded namespace.
-    * **Trusted proxy chain** — resolved via :func:`client_source_for_limiter`;
-      spoofed left-most ``X-Forwarded-For`` values are ignored.
+    Forwarding headers are honored only when the immediate TCP peer is listed in
+    ``ADMIN_TRUSTED_PROXY_CIDRS``. See :func:`resolve_admin_login_client_source`
+    for the trusted-hop parser and header precedence rules.
     """
-    return client_source_for_limiter(request, settings)
+    return client_ip_from_resolution(resolve_admin_login_client_source(request, settings))
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:

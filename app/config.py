@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import ipaddress
 import os
 from dataclasses import dataclass
+from functools import cached_property
+
+from app.proxy_trust import parse_trusted_proxy_networks
 
 
 @dataclass(frozen=True)
@@ -27,8 +31,9 @@ class Settings:
     admin_login_rate_limit: int = 5
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
-    admin_trusted_proxy_cidrs: tuple[str, ...] = ()
-    admin_cloudflare_proxy_cidrs: tuple[str, ...] = ()
+    admin_trusted_proxy_cidrs: str = ""
+    admin_cloudflare_edge_cidrs: str = ""
+    uvicorn_forwarded_allow_ips: str = ""
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -44,15 +49,32 @@ class Settings:
     def email_configured(self) -> bool:
         return bool(self.resend_api_key)
 
+    @cached_property
+    def admin_trusted_proxy_networks(
+        self,
+    ) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+        return parse_trusted_proxy_networks(self.admin_trusted_proxy_cidrs)
+
+    @cached_property
+    def admin_cloudflare_edge_networks(
+        self,
+    ) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+        return parse_trusted_proxy_networks(self.admin_cloudflare_edge_cidrs)
+
+    @cached_property
+    def admin_forwarding_hop_networks(
+        self,
+    ) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+        return self.admin_trusted_proxy_networks + self.admin_cloudflare_edge_networks
+
+    @property
+    def admin_proxy_trust_configured(self) -> bool:
+        return bool(self.admin_trusted_proxy_cidrs.strip())
+
     @property
     def admin_preview_mode(self) -> bool:
         flag = os.environ.get("ADMIN_PREVIEW_MODE", "").lower()
         return flag in ("1", "true", "yes")
-
-    @property
-    def admin_trust_proxy_headers(self) -> bool:
-        """True when explicit trusted-proxy CIDRs are configured (legacy name)."""
-        return bool(self.admin_trusted_proxy_cidrs)
 
     @property
     def admin_auth_configured(self) -> bool:
@@ -115,13 +137,11 @@ def get_settings() -> Settings:
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
         brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
-        admin_trusted_proxy_cidrs=_parse_csv_env("ADMIN_TRUSTED_PROXY_CIDRS"),
-        admin_cloudflare_proxy_cidrs=_parse_csv_env("ADMIN_CLOUDFLARE_PROXY_CIDRS"),
+        admin_trusted_proxy_cidrs=os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "").strip(),
+        admin_cloudflare_edge_cidrs=os.environ.get(
+            "ADMIN_CLOUDFLARE_EDGE_CIDRS", ""
+        ).strip(),
+        uvicorn_forwarded_allow_ips=os.environ.get(
+            "UVICORN_FORWARDED_ALLOW_IPS", ""
+        ).strip(),
     )
-
-
-def _parse_csv_env(name: str) -> tuple[str, ...]:
-    raw = os.environ.get(name, "")
-    if not raw.strip():
-        return ()
-    return tuple(part.strip() for part in raw.split(",") if part.strip())

@@ -20,7 +20,6 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import analytics_service, case_studies, db, email_service, insights, page_service, stripe_service
-from app.admin_client_source import proxy_trust_health_summary
 from app.admin_auth import AdminLoginRequired, login_redirect_url
 from app.admin_pipeline_routes import router as admin_pipeline_router
 from app.admin_routes import router as admin_router
@@ -118,8 +117,12 @@ def health() -> dict:
     liveness into 503 (that breaks readiness probes and unit tests that set a
     unused DATABASE_URL).
     """
+    payload: dict = {"status": "ok"}
     settings = get_settings()
-    payload: dict = {"status": "ok", "proxy_trust": proxy_trust_health_summary(settings)}
+    if settings.admin_proxy_trust_configured:
+        payload["admin_proxy_trust"] = "configured"
+    else:
+        payload["admin_proxy_trust"] = "disabled"
     if not settings.database_configured:
         return payload
     try:
