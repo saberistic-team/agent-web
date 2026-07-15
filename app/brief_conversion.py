@@ -66,7 +66,8 @@ def build_conversion_proposal(
     pipeline_stage = initial_pipeline_stage_for_brief_status(brief_status)
     expected_value: float | None = None
     if brief_status == "paid":
-        expected_value = round(price_cents / 100, 2)
+        paid_cents = effective_brief_price_cents(brief, list_price_cents=price_cents)
+        expected_value = round(paid_cents / 100, 2)
     return {
         "company_name": derive_company_name(website=str(brief.get("website", "")), domain=domain),
         "website": str(brief.get("website", "")),

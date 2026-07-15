@@ -345,6 +345,8 @@ async def stripe_webhook(request: Request) -> JSONResponse:
 
     paid_amount_cents = paid_brief.get("payment_amount_cents")
     if paid_amount_cents is None:
+        paid_amount_cents = payment_details.get("payment_amount_cents")
+    if paid_amount_cents is None:
         paid_amount_cents = settings.brief_price_cents
 
     try:

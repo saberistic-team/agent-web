@@ -32,7 +32,7 @@ FAKE_PAID_BRIEF: dict[str, Any] = {
     "stripe_payment_intent_id": "pi_test_123",
     "paid_at": "2026-07-11T00:00:00+00:00",
     "payment_subtotal_cents": 20_000,
-    "payment_discount_cents": 0,
+    "payment_discount_cents": None,
     "payment_amount_cents": 20_000,
     "payment_currency": "usd",
 }
@@ -66,14 +66,11 @@ def _completed_session(
     coupon_id: str | None = None,
 ) -> dict[str, Any]:
     discounts: list[dict[str, Any]] = []
-    if amount_discount > 0 and (promotion_code_id or coupon_id):
+    if promotion_code_id or coupon_id:
         discounts.append(
             {
-                "amount": amount_discount,
-                "discount": {
-                    "promotion_code": {"id": promotion_code_id} if promotion_code_id else None,
-                    "coupon": {"id": coupon_id} if coupon_id else None,
-                },
+                "promotion_code": {"id": promotion_code_id} if promotion_code_id else None,
+                "coupon": {"id": coupon_id} if coupon_id else None,
             }
         )
     return {
@@ -83,22 +80,20 @@ def _completed_session(
         "amount_subtotal": amount_subtotal,
         "amount_total": amount_total,
         "currency": "usd",
-        "total_details": {
-            "amount_discount": amount_discount,
-            "breakdown": {"discounts": discounts},
-        },
+        "total_details": {"amount_discount": amount_discount},
+        "discounts": discounts,
     }
 
 
 @pytest.mark.unit
 def test_extract_payment_details_full_price() -> None:
     payment = stripe_service.extract_payment_details_from_session(_completed_session())
-    assert payment["subtotal_cents"] == 20_000
-    assert payment["discount_cents"] == 0
-    assert payment["amount_cents"] == 20_000
-    assert payment["currency"] == "usd"
-    assert payment["promotion_code_id"] is None
-    assert payment["coupon_id"] is None
+    assert payment["payment_subtotal_cents"] == 20_000
+    assert payment["payment_discount_cents"] is None
+    assert payment["payment_amount_cents"] == 20_000
+    assert payment["payment_currency"] == "usd"
+    assert payment["stripe_promotion_code_id"] is None
+    assert payment["stripe_coupon_id"] is None
 
 
 @pytest.mark.unit
@@ -111,11 +106,11 @@ def test_extract_payment_details_discounted() -> None:
             coupon_id="coupon_xyz",
         )
     )
-    assert payment["subtotal_cents"] == 20_000
-    assert payment["discount_cents"] == 5_000
-    assert payment["amount_cents"] == 15_000
-    assert payment["promotion_code_id"] == "promo_abc"
-    assert payment["coupon_id"] == "coupon_xyz"
+    assert payment["payment_subtotal_cents"] == 20_000
+    assert payment["payment_discount_cents"] == 5_000
+    assert payment["payment_amount_cents"] == 15_000
+    assert payment["stripe_promotion_code_id"] == "promo_abc"
+    assert payment["stripe_coupon_id"] == "coupon_xyz"
 
 
 @pytest.mark.unit
@@ -129,8 +124,8 @@ def test_extract_payment_details_hundred_percent_off() -> None:
             coupon_id="coupon_free",
         )
     )
-    assert payment["amount_cents"] == 0
-    assert payment["discount_cents"] == 20_000
+    assert payment["payment_amount_cents"] == 0
+    assert payment["payment_discount_cents"] == 20_000
 
 
 @pytest.mark.unit
@@ -163,7 +158,7 @@ def test_stripe_webhook_full_price_persists_payment_totals() -> None:
         stripe_session_id="cs_test_123",
         stripe_payment_intent_id="pi_test_123",
         payment_subtotal_cents=20_000,
-        payment_discount_cents=0,
+        payment_discount_cents=None,
         payment_amount_cents=20_000,
         payment_currency="usd",
         stripe_promotion_code_id=None,
@@ -351,7 +346,7 @@ def test_abandoned_checkout_does_not_mark_paid() -> None:
 def test_project_briefs_payment_details_migration_is_idempotent() -> None:
     from app.migrations.definitions import MIGRATIONS
 
-    migration = next(m for m in MIGRATIONS if m.name == "project_briefs_payment_details")
+    migration = next(m for m in MIGRATIONS if m.name == "project_brief_payment_details")
     assert migration.version == "016"
     for column in (
         "payment_subtotal_cents",
@@ -376,6 +371,7 @@ def test_existing_paid_rows_keep_nullable_payment_fields() -> None:
         "stripe_promotion_code_id": None,
         "stripe_coupon_id": None,
     }
-    from app.admin_pages import _format_paid_amount_summary
+    from app.admin_pages import _brief_paid_amount_cents, _brief_payment_summary_lines
 
-    assert _format_paid_amount_summary(legacy_paid, list_price_cents=20_000) == "$200"
+    assert _brief_paid_amount_cents(legacy_paid, list_price_cents=20_000) == 20_000
+    assert _brief_payment_summary_lines(legacy_paid, list_price_cents=20_000) == ["$200"]

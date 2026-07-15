@@ -361,8 +361,7 @@ def test_render_admin_briefs_page_shows_discounted_payment_amount() -> None:
         price_cents=20_000,
     )
     assert "$150" in html_out
-    assert "Discount −$50" in html_out
-    assert "List $200" in html_out
+    assert "$200 − $50 = $150 USD" in html_out
 
 
 @pytest.mark.unit
