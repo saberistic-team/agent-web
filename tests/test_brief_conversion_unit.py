@@ -468,14 +468,14 @@ def test_build_conversion_proposal_uses_brief_payment_not_operator_input() -> No
     discounted = build_conversion_proposal(
         {
             **_brief(status="paid"),
-            "payment_amount_cents": 15_000,
+            "amount_total_cents": 10_000,
         },
         price_cents=20_000,
     )
     unpaid = build_conversion_proposal(_brief(status="pending_payment"), price_cents=20_000)
     assert paid["pipeline_stage"] == "diagnostic_paid"
     assert paid["expected_value"] == 200.0
-    assert discounted["expected_value"] == 150.0
+    assert discounted["expected_value"] == 100.0
     assert unpaid["pipeline_stage"] == "qualified"
     assert unpaid["expected_value"] is None
 

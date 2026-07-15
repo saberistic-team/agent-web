@@ -65,6 +65,10 @@ def _sample_brief() -> dict[str, Any]:
         "contact_value": "ops@acme.example",
         "status": "paid",
         "paid_at": datetime(2026, 7, 14, 10, 45, tzinfo=timezone.utc),
+        "amount_subtotal_cents": 20_000,
+        "amount_discount_cents": 0,
+        "amount_total_cents": 20_000,
+        "currency": "usd",
         "utm_source": "linkedin",
         "utm_campaign": "spring-launch",
     }
@@ -304,32 +308,6 @@ def test_render_admin_briefs_page_database_error_state() -> None:
 
 
 @pytest.mark.unit
-def test_render_admin_briefs_page_shows_discounted_payment_amount() -> None:
-    brief = _sample_brief()
-    brief["payment_subtotal_cents"] = 20_000
-    brief["payment_discount_cents"] = 5_000
-    brief["payment_amount_cents"] = 15_000
-    html_out = render_admin_briefs_page(
-        admin_username=TEST_USERNAME,
-        briefs=[brief],
-        filters=BriefListFilters(
-            page=1,
-            per_page=50,
-            query=None,
-            status=None,
-            date_from=None,
-            date_to=None,
-            date_from_raw=None,
-            date_to_raw=None,
-        ),
-        total=1,
-        price_cents=20_000,
-    )
-    assert "$150" in html_out
-    assert "−$50 discount" in html_out
-
-
-@pytest.mark.unit
 def test_render_admin_briefs_page_preserves_filter_params_in_pager() -> None:
     filters = BriefListFilters(
         page=2,
@@ -356,6 +334,32 @@ def test_render_admin_briefs_page_preserves_filter_params_in_pager() -> None:
     assert "date_to=2026-07-14" in html_out
     assert "$200" in html_out
     assert "linkedin / spring-launch" in html_out
+
+
+@pytest.mark.unit
+def test_render_admin_briefs_page_shows_discounted_collected_amount() -> None:
+    filters = BriefListFilters(
+        page=1,
+        per_page=50,
+        query=None,
+        status=None,
+        date_from=None,
+        date_to=None,
+        date_from_raw=None,
+        date_to_raw=None,
+    )
+    brief = _sample_brief()
+    brief["amount_discount_cents"] = 10_000
+    brief["amount_total_cents"] = 10_000
+    html_out = render_admin_briefs_page(
+        admin_username=TEST_USERNAME,
+        briefs=[brief],
+        filters=filters,
+        total=1,
+        price_cents=20_000,
+    )
+    assert "$100 (discounted)" in html_out
+    assert "$200" not in html_out.split("Payment")[1]
 
 
 @pytest.mark.unit

@@ -472,13 +472,14 @@ CREATE INDEX IF NOT EXISTS idx_import_batch_rows_entity_id
 
     Migration(
         version="015",
-        name="project_briefs_payment_amounts",
+        name="project_briefs_payment_columns",
         up_sql="""
-ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS payment_subtotal_cents INTEGER;
-ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS payment_discount_cents INTEGER;
-ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS payment_amount_cents INTEGER;
-ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS payment_currency TEXT;
+ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS amount_subtotal_cents INTEGER;
+ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS amount_discount_cents INTEGER;
+ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS amount_total_cents INTEGER;
+ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS currency TEXT;
 ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS stripe_promotion_code_id TEXT;
+ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS stripe_coupon_id TEXT;
 """,
     ),
 

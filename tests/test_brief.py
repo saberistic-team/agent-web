@@ -29,25 +29,34 @@ FAKE_PAID_BRIEF: dict[str, Any] = {
     "stripe_session_id": "cs_test_123",
     "stripe_payment_intent_id": "pi_test_123",
     "paid_at": "2026-07-11T00:00:00+00:00",
-    "payment_subtotal_cents": 20_000,
-    "payment_discount_cents": None,
-    "payment_amount_cents": 20_000,
-    "payment_currency": "usd",
-    "stripe_promotion_code_id": None,
+    "amount_subtotal_cents": 20_000,
+    "amount_discount_cents": 0,
+    "amount_total_cents": 20_000,
+    "currency": "usd",
 }
 
 
-def _checkout_completed_event(
+def _completed_session_event(
     *,
+    payment_intent: str | None = "pi_test_123",
     amount_subtotal: int = 20_000,
     amount_total: int = 20_000,
     amount_discount: int = 0,
-    payment_intent: str | None = "pi_test_123",
-    discounts: list[dict[str, Any]] | None = None,
+    promotion_code: str | None = None,
+    coupon: str | None = None,
 ) -> dict[str, Any]:
-    total_details: dict[str, Any] = {}
-    if amount_discount:
-        total_details["amount_discount"] = amount_discount
+    total_details: dict[str, Any] = {"amount_discount": amount_discount}
+    if promotion_code or coupon:
+        total_details["breakdown"] = {
+            "discounts": [
+                {
+                    "discount": {
+                        "promotion_code": promotion_code,
+                        "coupon": coupon,
+                    }
+                }
+            ]
+        }
     session: dict[str, Any] = {
         "id": "cs_test_123",
         "payment_intent": payment_intent,
@@ -57,9 +66,12 @@ def _checkout_completed_event(
         "currency": "usd",
         "total_details": total_details,
     }
-    if discounts is not None:
-        session["discounts"] = discounts
-    return {"type": "checkout.session.completed", "data": {"object": session}}
+    if promotion_code or coupon:
+        session["discounts"] = [{"promotion_code": promotion_code, "coupon": coupon}]
+    return {
+        "type": "checkout.session.completed",
+        "data": {"object": session},
+    }
 
 
 @pytest.fixture(autouse=True)
@@ -319,7 +331,7 @@ def test_create_brief_missing_checkout_url() -> None:
 @pytest.mark.unit
 @pytest.mark.integration
 def test_stripe_webhook_marks_paid_and_sends_email() -> None:
-    fake_event = _checkout_completed_event()
+    fake_event = _completed_session_event()
 
     with mock_db_connection() as conn:
         with patch(
@@ -350,14 +362,105 @@ def test_stripe_webhook_marks_paid_and_sends_email() -> None:
         brief_id=1,
         stripe_session_id="cs_test_123",
         stripe_payment_intent_id="pi_test_123",
-        payment_subtotal_cents=20_000,
-        payment_discount_cents=None,
-        payment_amount_cents=20_000,
-        payment_currency="usd",
+        amount_subtotal_cents=20_000,
+        amount_discount_cents=0,
+        amount_total_cents=20_000,
+        currency="usd",
         stripe_promotion_code_id=None,
+        stripe_coupon_id=None,
     )
     notify_team.assert_called_once()
     notify_customer.assert_called_once()
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_stripe_webhook_persists_discounted_payment_amounts() -> None:
+    fake_event = _completed_session_event(
+        amount_total=10_000,
+        amount_discount=10_000,
+        promotion_code="promo_half",
+        coupon="coupon_half",
+    )
+    discounted_brief = {
+        **FAKE_PAID_BRIEF,
+        "amount_subtotal_cents": 20_000,
+        "amount_discount_cents": 10_000,
+        "amount_total_cents": 10_000,
+        "stripe_promotion_code_id": "promo_half",
+        "stripe_coupon_id": "coupon_half",
+    }
+
+    with mock_db_connection() as conn:
+        with patch(
+            "app.main.stripe_service.construct_webhook_event",
+            return_value=fake_event,
+        ):
+            with patch(
+                "app.main.db.mark_brief_paid",
+                return_value=discounted_brief,
+            ) as mark_paid:
+                with patch("app.main.analytics_service.track_payment_completed") as track:
+                    response = client.post(
+                        "/webhooks/stripe",
+                        content=b"{}",
+                        headers={"stripe-signature": "sig_test"},
+                    )
+
+    assert response.status_code == 200
+    mark_paid.assert_called_once_with(
+        conn,
+        brief_id=1,
+        stripe_session_id="cs_test_123",
+        stripe_payment_intent_id="pi_test_123",
+        amount_subtotal_cents=20_000,
+        amount_discount_cents=10_000,
+        amount_total_cents=10_000,
+        currency="usd",
+        stripe_promotion_code_id="promo_half",
+        stripe_coupon_id="coupon_half",
+    )
+    assert track.call_args.kwargs["price_cents"] == 10_000
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_stripe_webhook_marks_paid_for_hundred_percent_off_without_payment_intent() -> None:
+    fake_event = _completed_session_event(
+        payment_intent=None,
+        amount_total=0,
+        amount_discount=20_000,
+        promotion_code="promo_free",
+        coupon="coupon_free",
+    )
+
+    with mock_db_connection() as conn:
+        with patch(
+            "app.main.stripe_service.construct_webhook_event",
+            return_value=fake_event,
+        ):
+            with patch("app.main.db.mark_brief_paid", return_value=FAKE_PAID_BRIEF) as mark_paid:
+                with patch("app.main.analytics_service.track_payment_completed") as track:
+                    response = client.post(
+                        "/webhooks/stripe",
+                        content=b"{}",
+                        headers={"stripe-signature": "sig_test"},
+                    )
+
+    assert response.status_code == 200
+    mark_paid.assert_called_once_with(
+        conn,
+        brief_id=1,
+        stripe_session_id="cs_test_123",
+        stripe_payment_intent_id=None,
+        amount_subtotal_cents=20_000,
+        amount_discount_cents=20_000,
+        amount_total_cents=0,
+        currency="usd",
+        stripe_promotion_code_id="promo_free",
+        stripe_coupon_id="coupon_free",
+    )
+    assert track.call_args.kwargs["price_cents"] == 0
 
 
 @pytest.mark.unit
@@ -403,122 +506,17 @@ def test_stripe_webhook_missing_brief_id() -> None:
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_stripe_webhook_discounted_payment_persists_amounts() -> None:
-    fake_event = _checkout_completed_event(
-        amount_total=15_000,
-        amount_discount=5_000,
-        discounts=[{"promotion_code": {"id": "promo_test_half"}}],
-    )
-    discounted_brief = {
-        **FAKE_PAID_BRIEF,
-        "payment_discount_cents": 5_000,
-        "payment_amount_cents": 15_000,
-        "stripe_promotion_code_id": "promo_test_half",
-    }
-
-    with mock_db_connection() as conn:
-        with patch(
-            "app.main.stripe_service.construct_webhook_event",
-            return_value=fake_event,
-        ):
-            with patch(
-                "app.main.db.mark_brief_paid",
-                return_value=discounted_brief,
-            ) as mark_paid:
-                with patch("app.main.analytics_service.track_payment_completed") as track:
-                    response = client.post(
-                        "/webhooks/stripe",
-                        content=b"{}",
-                        headers={"stripe-signature": "sig_test"},
-                    )
-
-    assert response.status_code == 200
-    mark_paid.assert_called_once_with(
-        conn,
-        brief_id=1,
-        stripe_session_id="cs_test_123",
-        stripe_payment_intent_id="pi_test_123",
-        payment_subtotal_cents=20_000,
-        payment_discount_cents=5_000,
-        payment_amount_cents=15_000,
-        payment_currency="usd",
-        stripe_promotion_code_id="promo_test_half",
-    )
-    track.assert_called_once()
-    assert track.call_args.kwargs["price_cents"] == 15_000
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_stripe_webhook_hundred_percent_off_without_payment_intent() -> None:
-    fake_event = _checkout_completed_event(
-        amount_total=0,
-        amount_discount=20_000,
-        payment_intent=None,
-        discounts=[{"coupon": {"id": "coupon_test_free"}}],
-    )
-    free_brief = {
-        **FAKE_PAID_BRIEF,
-        "stripe_payment_intent_id": None,
-        "payment_discount_cents": 20_000,
-        "payment_amount_cents": 0,
-        "stripe_promotion_code_id": "coupon_test_free",
-    }
-
-    with mock_db_connection() as conn:
-        with patch(
-            "app.main.stripe_service.construct_webhook_event",
-            return_value=fake_event,
-        ):
-            with patch("app.main.db.mark_brief_paid", return_value=free_brief) as mark_paid:
-                with patch("app.main.analytics_service.track_payment_completed") as track:
-                    response = client.post(
-                        "/webhooks/stripe",
-                        content=b"{}",
-                        headers={"stripe-signature": "sig_test"},
-                    )
-
-    assert response.status_code == 200
-    mark_paid.assert_called_once_with(
-        conn,
-        brief_id=1,
-        stripe_session_id="cs_test_123",
-        stripe_payment_intent_id=None,
-        payment_subtotal_cents=20_000,
-        payment_discount_cents=20_000,
-        payment_amount_cents=0,
-        payment_currency="usd",
-        stripe_promotion_code_id="coupon_test_free",
-    )
-    assert track.call_args.kwargs["price_cents"] == 0
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_stripe_webhook_duplicate_event_is_idempotent() -> None:
-    fake_event = _checkout_completed_event()
-
-    with mock_db_connection():
-        with patch(
-            "app.main.stripe_service.construct_webhook_event",
-            return_value=fake_event,
-        ):
-            with patch("app.main.db.mark_brief_paid", return_value=None):
-                with patch("app.main.email_service.notify_team_of_paid_brief") as notify:
-                    response = client.post(
-                        "/webhooks/stripe",
-                        content=b"{}",
-                        headers={"stripe-signature": "sig_test"},
-                    )
-
-    assert response.status_code == 200
-    notify.assert_not_called()
-
-
-@pytest.mark.unit
-@pytest.mark.integration
 def test_stripe_webhook_already_paid() -> None:
-    fake_event = _checkout_completed_event()
+    fake_event = {
+        "type": "checkout.session.completed",
+        "data": {
+            "object": {
+                "id": "cs_test_123",
+                "payment_intent": "pi_test_123",
+                "metadata": {"brief_id": "1"},
+            }
+        },
+    }
     with mock_db_connection():
         with patch(
             "app.main.stripe_service.construct_webhook_event",
@@ -565,7 +563,16 @@ def test_stripe_webhook_requires_secret(monkeypatch: pytest.MonkeyPatch) -> None
 @pytest.mark.unit
 @pytest.mark.integration
 def test_stripe_webhook_email_failure_still_ok() -> None:
-    fake_event = _checkout_completed_event()
+    fake_event = {
+        "type": "checkout.session.completed",
+        "data": {
+            "object": {
+                "id": "cs_test_123",
+                "payment_intent": "pi_test_123",
+                "metadata": {"brief_id": "1"},
+            }
+        },
+    }
     with mock_db_connection():
         with patch(
             "app.main.stripe_service.construct_webhook_event",

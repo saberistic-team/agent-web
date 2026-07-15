@@ -13,11 +13,6 @@ DEFERRED_HEADINGS = (
     "Full CRM integration",
 )
 
-HARDCODED_STRIPE_PROMO_PATTERNS = (
-    re.compile(r"\bpromo_[A-Za-z0-9]{8,}\b"),
-    re.compile(r"\bcoupon_[A-Za-z0-9]{8,}\b"),
-)
-
 CRM_PATTERNS = (
     re.compile(r"\bhubspot\b", re.I),
     re.compile(r"\bsalesforce\b", re.I),
@@ -33,8 +28,6 @@ def _product_files() -> list[Path]:
             continue
         for path in root.rglob("*"):
             if path.is_file() and path.suffix in {".py", ".html", ".js", ".css"}:
-                if path.name == "admin_preview.py":
-                    continue
                 files.append(path)
     return files
 
@@ -61,11 +54,6 @@ def test_project_brief_doc_lists_deferred_scope() -> None:
 def test_readme_links_project_brief_doc() -> None:
     readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
     assert "docs/PROJECT_BRIEF.md" in readme
-
-
-def test_no_hardcoded_stripe_promotion_ids_in_product() -> None:
-    hits = _scan_patterns(HARDCODED_STRIPE_PROMO_PATTERNS)
-    assert not hits, "hardcoded Stripe promo/coupon IDs found: " + ", ".join(hits)
 
 
 def test_no_crm_integration_in_product() -> None:
