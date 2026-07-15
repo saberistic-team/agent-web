@@ -24,7 +24,6 @@ from app.admin_auth import AdminLoginRequired, login_redirect_url
 from app.admin_pipeline_routes import router as admin_pipeline_router
 from app.admin_routes import router as admin_router
 from app.actor_context import CORRELATION_HEADER
-from app.admin_client_source import deployment_trust_flags
 from app.config import get_settings
 from app.models import BriefCreateRequest, BriefCreateResponse
 from app.seo import (
@@ -120,8 +119,11 @@ def health() -> dict:
     """
     payload: dict = {"status": "ok"}
     settings = get_settings()
-    if settings.admin_auth_configured:
-        payload["admin_client_source_trust"] = deployment_trust_flags(settings)
+    if settings.admin_trust_proxy_headers:
+        payload["admin_proxy_trust"] = {
+            "enabled": True,
+            "trusted_network_count": len(settings.admin_trusted_proxy_networks),
+        }
     if not settings.database_configured:
         return payload
     try:

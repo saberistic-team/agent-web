@@ -20,7 +20,7 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.admin_client_source import resolve_admin_login_client_source_detail
+from app.client_source import resolve_admin_login_client_source
 from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
@@ -238,23 +238,11 @@ def read_login_flow_token(request: Request) -> str | None:
 def client_ip(request: Request, settings: Settings) -> str:
     """Resolve the client source IP for rate limiting.
 
-    Forwarding headers are honored only when the immediate peer is a member of
-    the configured trusted-proxy boundary (``ADMIN_TRUSTED_PROXY_CIDRS`` on
-    Render). Otherwise the direct peer address is used so clients cannot spoof
-    ``X-Forwarded-For``, ``Forwarded``, or ``CF-Connecting-IP``.
-
-    See :func:`app.admin_client_source.resolve_admin_login_client_source` and
-    ``docs/ADMIN_AUTH.md`` for the production Cloudflare → Render → Uvicorn
-    trust model.
+    Delegates to :func:`resolve_admin_login_client_source`, which honors
+    forwarding headers only when the immediate peer is a configured trusted
+    proxy (see ``ADMIN_TRUSTED_PROXY_IPS``).
     """
-    return resolve_admin_login_client_source_detail(request, settings).source
-
-
-def _log_client_source_resolution(path: str) -> None:
-    _logger.info(
-        "Admin login client source resolved",
-        extra={"source_resolution_path": path},
-    )
+    return resolve_admin_login_client_source(request, settings)
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
@@ -378,9 +366,7 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    resolution = resolve_admin_login_client_source_detail(request, settings)
-    source = resolution.source
-    _log_client_source_resolution(resolution.path)
+    source = client_ip(request, settings)
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,
