@@ -5,41 +5,6 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-# Render internal / loopback peers that terminate TLS in production.
-DEFAULT_TRUSTED_PROXY_CIDRS: tuple[str, ...] = (
-    "10.0.0.0/8",
-    "172.16.0.0/12",
-    "192.168.0.0/16",
-    "127.0.0.1",
-    "::1/128",
-)
-
-# Cloudflare published IPv4 ranges — skipped when walking X-Forwarded-For.
-DEFAULT_TRUSTED_HOP_CIDRS: tuple[str, ...] = (
-    "173.245.48.0/20",
-    "103.21.244.0/22",
-    "103.22.200.0/22",
-    "103.31.4.0/22",
-    "141.101.64.0/18",
-    "108.162.192.0/18",
-    "190.93.240.0/20",
-    "188.114.96.0/20",
-    "197.234.240.0/22",
-    "198.41.128.0/17",
-    "162.158.0.0/15",
-    "104.16.0.0/13",
-    "104.24.0.0/14",
-    "172.64.0.0/13",
-    "131.0.72.0/22",
-)
-
-
-def parse_cidr_list(raw: str) -> tuple[str, ...]:
-    """Parse a comma-separated CIDR/host list, ignoring empty tokens."""
-    if not raw.strip():
-        return ()
-    return tuple(part.strip() for part in raw.split(",") if part.strip())
-
 
 @dataclass(frozen=True)
 class Settings:
@@ -62,9 +27,8 @@ class Settings:
     admin_login_rate_limit: int = 5
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
-    admin_trusted_proxy_cidrs: tuple[str, ...] = ()
-    admin_trusted_hop_cidrs: tuple[str, ...] = ()
-    admin_cloudflare_hop_cidrs: tuple[str, ...] = DEFAULT_TRUSTED_HOP_CIDRS
+    admin_trust_proxy_headers: bool = False
+    admin_trusted_proxy_cidrs: str = ""
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -146,31 +110,11 @@ def get_settings() -> Settings:
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
         brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
-        admin_trusted_proxy_cidrs=_resolve_trusted_proxy_cidrs(),
-        admin_trusted_hop_cidrs=_resolve_trusted_hop_cidrs(),
-        admin_cloudflare_hop_cidrs=_resolve_cloudflare_hop_cidrs(),
+        admin_trust_proxy_headers=os.environ.get(
+            "ADMIN_TRUST_PROXY_HEADERS", ""
+        ).lower()
+        in ("1", "true", "yes"),
+        admin_trusted_proxy_cidrs=os.environ.get(
+            "ADMIN_TRUSTED_PROXY_CIDRS", ""
+        ).strip(),
     )
-
-
-def _resolve_trusted_proxy_cidrs() -> tuple[str, ...]:
-    explicit = parse_cidr_list(os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", ""))
-    if explicit:
-        return explicit
-    legacy = os.environ.get("ADMIN_TRUST_PROXY_HEADERS", "").lower()
-    if legacy in ("1", "true", "yes"):
-        return DEFAULT_TRUSTED_PROXY_CIDRS
-    return ()
-
-
-def _resolve_trusted_hop_cidrs() -> tuple[str, ...]:
-    explicit = parse_cidr_list(os.environ.get("ADMIN_TRUSTED_HOP_CIDRS", ""))
-    if explicit:
-        return explicit
-    return DEFAULT_TRUSTED_PROXY_CIDRS + DEFAULT_TRUSTED_HOP_CIDRS
-
-
-def _resolve_cloudflare_hop_cidrs() -> tuple[str, ...]:
-    explicit = parse_cidr_list(os.environ.get("ADMIN_CLOUDFLARE_HOP_CIDRS", ""))
-    if explicit:
-        return explicit
-    return DEFAULT_TRUSTED_HOP_CIDRS

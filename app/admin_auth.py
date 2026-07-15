@@ -20,8 +20,8 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.admin_client_source import resolve_admin_login_client_source
 from app.config import Settings
+from app.proxy_trust import resolve_admin_login_client_source
 
 SESSION_COOKIE_NAME = "admin_session"
 LOGIN_FLOW_COOKIE_NAME = "admin_login_flow"
@@ -238,24 +238,12 @@ def read_login_flow_token(request: Request) -> str | None:
 def client_ip(request: Request, settings: Settings) -> str:
     """Resolve the client source IP for rate limiting.
 
-    Forwarding headers are honored only when the immediate TCP peer is inside
-    ``ADMIN_TRUSTED_PROXY_CIDRS``. Otherwise the direct peer address is used so
-    clients cannot spoof ``X-Forwarded-For``, ``Forwarded``, or
-    ``CF-Connecting-IP``.
-
-    Source identity notes:
-
-    * **IPv4 / IPv6** — stored only as keyed digests; the resolved string is
-      passed verbatim into the source bucket (e.g. ``203.0.113.1``,
-      ``2001:db8::1``).
-    * **Missing peer** — falls back to ``unknown`` so attempts still share one
-      bucket instead of creating an unbounded namespace.
-    * **Trusted proxy boundary** — when the peer is verified, client identity
-      is derived from ``CF-Connecting-IP`` (Cloudflare path only),
-      ``X-Forwarded-For``, or ``Forwarded`` using right-to-left trusted-hop
-      parsing.
+    Delegates to :func:`app.proxy_trust.resolve_admin_login_client_source`, which
+    trusts forwarding headers only after the immediate peer matches
+    ``ADMIN_TRUSTED_PROXY_CIDRS``. Raw addresses are never logged; only keyed
+    digests are stored in shared limiter rows.
     """
-    return resolve_admin_login_client_source(request, settings).source
+    return resolve_admin_login_client_source(request, settings).source_material
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
@@ -379,8 +367,7 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    source_resolution = resolve_admin_login_client_source(request, settings)
-    source = source_resolution.source
+    source = client_ip(request, settings)
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,
@@ -432,7 +419,6 @@ def try_admit_login_attempt(
             extra={
                 "limiter_key_count": len(limiter_keys),
                 "lockout_transition": admission.lockout_transition,
-                "source_resolution_path": source_resolution.path.value,
             },
         )
     elif admission.already_locked:
