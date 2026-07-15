@@ -107,56 +107,6 @@ def test_preview_brief_rows_randomized_and_seed_stable() -> None:
 
 
 @pytest.mark.unit
-def test_preview_contact_detail_fixtures_are_seed_stable() -> None:
-    from app.admin_preview import PREVIEW_CONTACT_ID_1, build_preview_contact_detail
-
-    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
-    full = build_preview_contact_detail(1, rng=random.Random(4), now=now)
-    sparse = build_preview_contact_detail(2, rng=random.Random(4), now=now)
-    assert full is not None and sparse is not None
-    assert full["id"] == PREVIEW_CONTACT_ID_1
-    assert full["email"] and full["profile_url"]
-    assert sparse["email"] is None and sparse["profile_url"] is None
-    assert build_preview_contact_detail(999) is None
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_admin_preview_contacts_list_and_edit_have_mock_data(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from argon2 import PasswordHasher
-    from fastapi.testclient import TestClient
-
-    from app.admin_preview import PREVIEW_CONTACT_ID_1, PREVIEW_CONTACT_ID_2
-    from app.main import app
-
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
-    monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
-    monkeypatch.setenv(
-        "ADMIN_PASSWORD_HASH",
-        PasswordHasher().hash("preview"),
-    )
-    monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
-    monkeypatch.delenv("DATABASE_URL", raising=False)
-    client = TestClient(app, follow_redirects=False)
-    listing = client.get("/admin/contacts")
-    assert listing.status_code == 200
-    assert "admin-empty-title" not in listing.text
-    assert "admin-table" in listing.text
-    assert "Roles" in listing.text
-    edit = client.get(f"/admin/contacts/{PREVIEW_CONTACT_ID_1}/edit")
-    assert edit.status_code == 200
-    assert "Save contact" in edit.text
-    assert "VP Engineering" in edit.text
-    sparse = client.get(f"/admin/contacts/{PREVIEW_CONTACT_ID_2}/edit")
-    assert sparse.status_code == 200
-    assert "Founder" in sparse.text
-
-
-@pytest.mark.unit
 def test_preview_audit_events_seed_stable() -> None:
     from app.admin_preview import build_preview_audit_events
 

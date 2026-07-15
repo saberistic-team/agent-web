@@ -7,7 +7,7 @@ from typing import Any
 
 from app.admin_layout import render_admin_shell
 from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES, TARGET_STATUSES
-from app.contacts import BUYING_ROLES
+from app.contacts import format_buying_roles
 from app.research_records import (
     RECORD_TYPE_LABELS,
     RESEARCH_RECORD_TYPES,
@@ -211,29 +211,23 @@ def render_admin_company_research_page(
         error_html = (
             f'<p class="form-error" role="alert">{html.escape(error_message)}</p>'
         )
-    contact_rows = ""
+    contact_links = ""
     for contact in contacts:
         contact_id = html.escape(str(contact["id"]), quote=True)
-        display_name = html.escape(
-            str(contact.get("full_name") or contact.get("email") or contact["id"])
+        label = html.escape(str(contact.get("full_name") or contact.get("email") or contact["id"]))
+        title = html.escape(str(contact.get("title") or ""))
+        roles = html.escape(format_buying_roles(contact.get("buying_roles")))
+        contact_links += (
+            f'<li><a href="/admin/contacts/{contact_id}">{label}</a>'
+            f'{f" — {title}" if title else ""}'
+            f'{f" ({roles})" if roles != "—" else ""}'
+            f' · <a href="/admin/contacts/{contact_id}/edit">Edit</a></li>'
         )
-        title = html.escape(str(contact.get("title") or "—"))
-        roles = html.escape(
-            ", ".join(
-                BUYING_ROLES.get(role, role) for role in (contact.get("buying_roles") or [])
-            )
-            or "—"
-        )
-        email = html.escape(str(contact.get("email") or "—"))
-        contact_rows += (
-            f"<tr><td><a href=\"/admin/contacts/{contact_id}/edit\">{display_name}</a></td>"
-            f"<td>{title}</td><td>{roles}</td><td>{email}</td></tr>"
-        )
-    if not contact_rows:
-        contact_rows = '<tr><td colspan="4">No contacts linked.</td></tr>'
+    if not contact_links:
+        contact_links = '<li>No contacts linked. <a href="/admin/contacts/new">Add contact</a></li>'
     contact_options = "\n".join(
         f'              <option value="{html.escape(str(contact["id"]), quote=True)}">'
-        f'{html.escape(str(contact.get("full_name") or contact.get("email", "")))}</option>'
+        f'{html.escape(str(contact.get("full_name") or contact.get("email") or contact["id"]))}</option>'
         for contact in contacts
     )
     records_html = ""
@@ -256,8 +250,8 @@ def render_admin_company_research_page(
             <button class="admin-exit" type="submit">{archive_label}</button>
           </form>
           <h2 class="admin-section-heading">Contacts</h2>
-          <p><a class="cta" href="/admin/contacts/new?company_id={company_id}">Add contact</a></p>
-          <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Name</th><th>Title</th><th>Roles</th><th>Email</th></tr></thead><tbody>{contact_rows}</tbody></table></div>
+          <ul class="admin-list">{contact_links}
+          </ul>
           <h2 class="admin-section-heading">Attach record</h2>
           {error_html}
           <form class="admin-form research-form" method="post" action="/admin/companies/{company_id}/research">
@@ -287,7 +281,6 @@ def render_admin_contact_research_page(
     error_message: str | None = None,
 ) -> str:
     email = html.escape(str(contact.get("email", "")))
-    full_name = html.escape(str(contact.get("full_name") or contact.get("email") or contact["id"]))
     contact_id = html.escape(str(contact["id"]), quote=True)
     company_link = ""
     if company is not None:
@@ -309,11 +302,9 @@ def render_admin_contact_research_page(
         records_html = '<p class="admin-note">No research records yet.</p>'
     form_body = _research_form_body(csrf_token=csrf_token)
     main = f"""        <section class="admin-research" aria-labelledby="contact-research-title">
-          <p class="admin-breadcrumb"><a href="/admin/contacts">Contacts</a> / {full_name}</p>
-          <h1 class="admin-title" id="contact-research-title">{full_name}</h1>
+          <h1 class="admin-title" id="contact-research-title">{email}</h1>
           {company_link}
           <p class="admin-lede">Research records for contact <code>{contact_id}</code>.</p>
-          <p><a class="cta" href="/admin/contacts/{contact_id}/edit">Edit contact</a></p>
           <h2 class="admin-section-heading">Attach record</h2>
           {error_html}
           <form class="admin-form research-form" method="post" action="/admin/contacts/{contact_id}/research">
@@ -325,7 +316,7 @@ def render_admin_contact_research_page(
           </div>
         </section>"""
     return render_admin_shell(
-        title=f"Research — {full_name}",
+        title=f"Research — {email}",
         main=main,
         active_path="/admin/contacts",
         admin_username=admin_username,

@@ -21,17 +21,19 @@ BUYING_ROLES: dict[str, str] = {
     "other": "Other",
 }
 RELATIONSHIP_STRENGTHS: dict[str, str] = {
-    "unknown": "Unknown",
-    "weak": "Weak",
-    "moderate": "Moderate",
     "strong": "Strong",
-    "champion": "Champion",
+    "warm": "Warm",
+    "neutral": "Neutral",
+    "cold": "Cold",
+    "unknown": "Unknown",
 }
-EMAIL_PERMISSIONS: dict[str, str] = {
-    "permitted": "Permitted to email",
-    "inferred": "Inferred / unverified",
-    "unverified": "Unverified",
-    "do_not_contact": "Do not contact",
+EMAIL_PROVENANCES: dict[str, str] = {
+    "manual": "Manual entry",
+    "introduction": "Introduction",
+    "public_profile": "Public profile",
+    "import": "Import",
+    "event": "Event",
+    "other": "Other",
 }
 
 _WHITESPACE_RE = re.compile(r"\s+")
@@ -59,15 +61,13 @@ def normalize_profile_url(value: str | None) -> str | None:
     if not text:
         return None
     parsed = urlparse(text if "://" in text else f"https://{text}")
-    if parsed.scheme not in ("http", "https") or not parsed.hostname:
-        raise ValueError("profile URL must be a valid http(s) URL")
-    host = parsed.hostname.rstrip(".").lower()
+    if not parsed.scheme or not parsed.netloc:
+        raise ValueError("profile URL must be a valid URL")
+    host = parsed.netloc.lower()
     if host.startswith("www."):
         host = host[4:]
-    if "linkedin.com" in host:
-        host = "linkedin.com"
-    path = parsed.path.rstrip("/") or ""
-    return f"https://{host}{path}".lower()
+    path = parsed.path.rstrip("/") or "/"
+    return f"{host}{path}"
 
 
 def _validate_registry(value: str | None, registry: dict[str, str], field: str) -> str | None:
@@ -78,19 +78,19 @@ def _validate_registry(value: str | None, registry: dict[str, str], field: str) 
     return value
 
 
-def _validate_buying_roles(values: list[str]) -> list[str]:
+def _validate_buying_roles(values: list[str] | None) -> list[str]:
     if not values:
         return []
     seen: set[str] = set()
     normalized: list[str] = []
     for value in values:
-        if not value or not value.strip():
+        role = value.strip()
+        if not role or role in seen:
             continue
-        if value not in BUYING_ROLES:
-            raise ValueError(f"unknown buying role: {value}")
-        if value not in seen:
-            seen.add(value)
-            normalized.append(value)
+        if role not in BUYING_ROLES:
+            raise ValueError(f"unknown buying role: {role}")
+        seen.add(role)
+        normalized.append(role)
     return normalized
 
 
@@ -100,7 +100,8 @@ class ContactCreate(BaseModel):
     title: str | None = Field(default=None, max_length=500)
     profile_url: str | None = Field(default=None, max_length=2000)
     email: str | None = Field(default=None, max_length=320)
-    email_permission: str | None = None
+    email_permitted: bool | None = None
+    email_provenance: str | None = None
     last_interaction_at: datetime | None = None
     relationship_strength: str | None = None
     notes: str | None = Field(default=None, max_length=10000)
@@ -124,10 +125,10 @@ class ContactCreate(BaseModel):
     def validate_profile_url(cls, value: str | None) -> str | None:
         return normalize_profile_url(value)
 
-    @field_validator("email_permission")
+    @field_validator("email_provenance")
     @classmethod
-    def validate_email_permission(cls, value: str | None) -> str | None:
-        return _validate_registry(value, EMAIL_PERMISSIONS, "email permission")
+    def validate_email_provenance(cls, value: str | None) -> str | None:
+        return _validate_registry(value, EMAIL_PROVENANCES, "email provenance")
 
     @field_validator("relationship_strength")
     @classmethod
@@ -136,15 +137,13 @@ class ContactCreate(BaseModel):
 
     @field_validator("buying_roles")
     @classmethod
-    def validate_buying_roles(cls, values: list[str]) -> list[str]:
-        return _validate_buying_roles(values)
+    def validate_roles(cls, value: list[str] | None) -> list[str]:
+        return _validate_buying_roles(value)
 
     @model_validator(mode="after")
-    def email_requires_permission_when_set(self) -> "ContactCreate":
-        if self.email and self.email_permission is None:
-            self.email_permission = "unverified"
-        if not self.email:
-            self.email_permission = None
+    def email_permission_requires_email(self) -> "ContactCreate":
+        if self.email is None and (self.email_permitted is not None or self.email_provenance):
+            raise ValueError("email provenance requires an email address")
         return self
 
 
@@ -247,33 +246,20 @@ def find_name_company_duplicate_warnings(
     return warnings
 
 
-def collect_contact_duplicate_warnings(
-    contacts: list[dict[str, Any]],
-    *,
-    full_name: str,
-    company_id: UUID,
-    profile_url: str | None = None,
-    email: str | None = None,
-    exclude_contact_id: UUID | None = None,
-) -> list[ContactDuplicateWarning]:
-    seen: set[str] = set()
-    combined: list[ContactDuplicateWarning] = []
-    for warning in (
-        find_profile_url_duplicate_warnings(
-            contacts, profile_url=profile_url, exclude_contact_id=exclude_contact_id
-        )
-        + find_email_duplicate_warnings(
-            contacts, email=email, exclude_contact_id=exclude_contact_id
-        )
-        + find_name_company_duplicate_warnings(
-            contacts,
-            full_name=full_name,
-            company_id=company_id,
-            exclude_contact_id=exclude_contact_id,
-        )
-    ):
-        key = f"{warning.contact_id}:{warning.reason}"
-        if key not in seen:
+def merge_duplicate_warnings(*groups: list[ContactDuplicateWarning]) -> list[ContactDuplicateWarning]:
+    seen: set[tuple[str, str]] = set()
+    merged: list[ContactDuplicateWarning] = []
+    for group in groups:
+        for warning in group:
+            key = (warning.contact_id, warning.reason)
+            if key in seen:
+                continue
             seen.add(key)
-            combined.append(warning)
-    return combined
+            merged.append(warning)
+    return merged
+
+
+def format_buying_roles(values: list[str] | None) -> str:
+    if not values:
+        return "—"
+    return ", ".join(BUYING_ROLES.get(value, value) for value in values)

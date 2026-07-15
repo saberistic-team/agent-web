@@ -193,13 +193,12 @@ def test_admin_login_flows_cleanup_indexes_migration_is_idempotent() -> None:
 
 
 @pytest.mark.unit
-def test_contact_records_migration_adds_roles_and_optional_email() -> None:
-    contact_records = next(m for m in MIGRATIONS if m.name == "contact_records")
-    assert contact_records.version == "011"
-    assert "contact_buying_roles" in contact_records.up_sql
-    assert "technical_buyer" in contact_records.up_sql
-    assert "ALTER COLUMN email DROP NOT NULL" in contact_records.up_sql
-    assert "idx_contacts_email_active" in contact_records.up_sql
+def test_contact_records_migration_is_idempotent() -> None:
+    contacts = next(m for m in MIGRATIONS if m.name == "contact_records")
+    assert contacts.version == "011"
+    assert "contact_buying_roles" in contacts.up_sql
+    assert "contacts_email_unique_nonempty" in contacts.up_sql
+    assert "archived_at TIMESTAMPTZ" in contacts.up_sql
 
 
 @pytest.mark.unit

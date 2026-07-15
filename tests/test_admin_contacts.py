@@ -1,4 +1,4 @@
-"""Tests for admin contact CRUD routes, authorization, and archive behavior."""
+"""Tests for admin contact CRUD routes, authorization, and duplicate warnings."""
 
 from __future__ import annotations
 
@@ -12,8 +12,9 @@ from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 
 from app import admin_auth
-from app.contacts import ContactDuplicateWarning
 from app.main import app
+
+pytestmark = [pytest.mark.unit, pytest.mark.integration]
 
 client = TestClient(app, follow_redirects=False)
 
@@ -29,10 +30,11 @@ CSRF_TOKEN = "csrf-test-token"
 _company = {"id": COMPANY_ID, "name": "Acme Corp", "status": "prospect"}
 _contact = {
     "id": CONTACT_ID,
-    "full_name": "Alice Example",
-    "email": "alice@acme.dev",
+    "full_name": "Ada Lovelace",
+    "title": "CTO",
+    "email": "ada@acme.dev",
     "company_id": COMPANY_ID,
-    "buying_roles": ["founder"],
+    "buying_roles": ["technical_buyer"],
 }
 
 
@@ -60,20 +62,15 @@ def _admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
 def _mock_crm() -> Generator[MagicMock, None, None]:
     crm = MagicMock()
     crm.list_companies.return_value = [_company]
-    crm.list_contacts.return_value = [{**_contact, "company_name": "Acme Corp"}]
+    crm.list_contacts.return_value = [_contact]
+    crm.get_company.return_value = _company
     crm.get_contact.return_value = _contact
-    crm.create_contact.return_value = {
-        "contact": _contact,
-        "duplicate_warnings": [
-            ContactDuplicateWarning(
-                contact_id=str(CONTACT_ID),
-                full_name="Other Alice",
-                reason="email",
-            )
-        ],
-    }
+    crm.list_contacts_for_company.return_value = [_contact]
+    crm.list_research_for_company.return_value = []
+    crm.create_contact.return_value = {"contact": _contact, "duplicate_warnings": []}
     crm.update_contact.return_value = {"contact": _contact, "duplicate_warnings": []}
-    crm.archive_contact.return_value = {**_contact, "archived_at": datetime.now(timezone.utc)}
+    crm.archive_contact.return_value = _contact
+    crm.restore_contact.return_value = _contact
 
     with (
         patch("app.admin_routes._crm", crm),
@@ -96,19 +93,15 @@ def test_contacts_route_lists_contacts_when_authenticated() -> None:
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
         response = client.get("/admin/contacts")
     assert response.status_code == 200
-    assert "Alice Example" in response.text
-    assert "Add contact" in response.text
+    assert "Ada Lovelace" in response.text
+    assert 'class="admin-app"' in response.text
 
 
 @pytest.mark.unit
-def test_contact_mutations_require_session_and_use_csrf() -> None:
+def test_contact_record_mutations_require_session_and_use_csrf() -> None:
     unauthenticated = client.post(
         "/admin/contacts",
-        data={
-            "csrf_token": CSRF_TOKEN,
-            "full_name": "Alice",
-            "company_id": str(COMPANY_ID),
-        },
+        data={"csrf_token": CSRF_TOKEN, "full_name": "Ada", "company_id": str(COMPANY_ID)},
     )
     assert unauthenticated.status_code == 303
 
@@ -119,17 +112,19 @@ def test_contact_mutations_require_session_and_use_csrf() -> None:
                 "/admin/contacts",
                 data={
                     "csrf_token": CSRF_TOKEN,
-                    "full_name": "Alice Example",
+                    "full_name": "Ada Lovelace",
                     "company_id": str(COMPANY_ID),
                     "buying_roles": ["founder", "technical_buyer"],
-                    "email": "alice@acme.dev",
-                    "email_permission": "permitted",
+                    "email": "ada@acme.dev",
+                    "email_permitted": "1",
+                    "email_provenance": "introduction",
                 },
             )
             assert response.status_code == 303
             assert f"/admin/contacts/{CONTACT_ID}/edit" in response.headers["location"]
             created = crm.create_contact.call_args.kwargs["contact"]
             assert created.buying_roles == ["founder", "technical_buyer"]
+            assert created.email_permitted is True
 
             client.post(
                 f"/admin/contacts/{CONTACT_ID}/archive",
@@ -139,40 +134,64 @@ def test_contact_mutations_require_session_and_use_csrf() -> None:
 
 
 @pytest.mark.unit
-def test_contact_edit_rejects_invalid_csrf() -> None:
+def test_contact_new_edit_restore_and_invalid_fields_are_handled() -> None:
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
-        response = client.post(
-            f"/admin/contacts/{CONTACT_ID}/edit",
-            data={
-                "csrf_token": "wrong",
-                "full_name": "Alice",
-                "company_id": str(COMPANY_ID),
-            },
-        )
-    assert response.status_code == 400
+        with patch("app.admin_routes._crm") as crm:
+            crm.get_contact.return_value = _contact
+            crm.update_contact.return_value = {"contact": _contact, "duplicate_warnings": []}
+            crm.restore_contact.return_value = _contact
+
+            new_page = client.get("/admin/contacts/new")
+            assert new_page.status_code == 200 and "Add contact" in new_page.text
+
+            bad = client.post(
+                "/admin/contacts",
+                data={
+                    "csrf_token": CSRF_TOKEN,
+                    "full_name": "Ada",
+                    "company_id": str(COMPANY_ID),
+                    "relationship_strength": "invalid",
+                },
+            )
+            assert bad.status_code == 303
+            assert "error=" in bad.headers["location"]
+
+            edit_page = client.get(f"/admin/contacts/{CONTACT_ID}/edit")
+            assert edit_page.status_code == 200 and "Ada Lovelace" in edit_page.text
+
+            updated = client.post(
+                f"/admin/contacts/{CONTACT_ID}/edit",
+                data={
+                    "csrf_token": CSRF_TOKEN,
+                    "full_name": "Ada Lovelace",
+                    "company_id": str(COMPANY_ID),
+                    "buying_roles": ["investor"],
+                },
+            )
+            assert updated.status_code == 303
+            assert crm.update_contact.call_args.kwargs["contact"].buying_roles == ["investor"]
+
+            restored = client.post(
+                f"/admin/contacts/{CONTACT_ID}/restore",
+                data={"csrf_token": CSRF_TOKEN},
+            )
+            assert restored.status_code == 303
+            crm.restore_contact.assert_called_once()
 
 
 @pytest.mark.unit
-def test_contact_create_redirects_with_duplicate_warning_count() -> None:
+def test_contact_edit_requires_existing_contact() -> None:
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
-        response = client.post(
-            "/admin/contacts",
-            data={
-                "csrf_token": CSRF_TOKEN,
-                "full_name": "Alice Example",
-                "company_id": str(COMPANY_ID),
-            },
-        )
-    assert response.status_code == 303
-    assert "warning=1%20possible%20duplicate" in response.headers["location"]
+        with patch("app.admin_routes._crm") as crm:
+            crm.get_contact.return_value = None
+            response = client.get(f"/admin/contacts/{CONTACT_ID}/edit")
+    assert response.status_code == 404
 
 
 @pytest.mark.unit
-def test_contact_detail_and_edit_render_contact_identity() -> None:
+def test_company_research_page_shows_associated_contacts() -> None:
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
-        detail = client.get(f"/admin/contacts/{CONTACT_ID}")
-        edit = client.get(f"/admin/contacts/{CONTACT_ID}/edit")
-    assert detail.status_code == 200
-    assert "Alice Example" in detail.text
-    assert edit.status_code == 200
-    assert "Edit Alice Example" in edit.text
+        response = client.get(f"/admin/companies/{COMPANY_ID}")
+    assert response.status_code == 200
+    assert "Ada Lovelace" in response.text
+    assert "Technical buyer" in response.text

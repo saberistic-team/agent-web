@@ -69,6 +69,7 @@ def test_company_repository_crud() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_contact_repository_create_and_lookup() -> None:
     repo = PostgresContactRepository()
     row = {
@@ -92,8 +93,7 @@ def test_contact_repository_create_and_lookup() -> None:
     assert repo.get_by_email(conn2, "lead@example.com")["id"] == CONTACT_ID
 
     conn3 = _mock_conn([row])
-    cur3 = conn3.cursor.return_value.__enter__.return_value
-    cur3.fetchall.side_effect = [[row], []]
+    conn3.cursor.return_value.__enter__.return_value.fetchall.side_effect = [[row], []]
     contacts = repo.list_for_company(conn3, COMPANY_ID, limit=10)
     assert len(contacts) == 1
 

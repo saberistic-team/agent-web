@@ -9,7 +9,6 @@ import pytest
 
 from app.crm_service import CrmRepositories, CrmService
 from app.companies import CompanyCreate, CompanyUpdate
-from app.contacts import ContactCreate, ContactUpdate
 from app.repositories.postgres import (
     PostgresActivityRepository,
     PostgresAdminUserRepository,
@@ -317,53 +316,64 @@ def test_company_crud_helpers_commit_and_return_nonblocking_domain_warnings() ->
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_contact_crud_helpers_commit_and_return_nonblocking_duplicate_warnings() -> None:
+    from app.contacts import ContactCreate, ContactDuplicateWarning, ContactUpdate
+
     contact_repo = MagicMock()
-    duplicate = {
-        "id": UUID("99999999-9999-9999-9999-999999999999"),
-        "full_name": "Other",
-        "email": "alice@acme.dev",
-        "profile_url": "https://linkedin.com/in/alice",
-        "company_id": COMPANY_ID,
-    }
-    contact_repo.find_by_profile_url.return_value = [duplicate]
-    contact_repo.get_by_email.return_value = duplicate
-    contact_repo.find_by_name_and_company.return_value = []
+    contact_repo.find_by_profile_url.return_value = [
+        {"id": CONTACT_ID, "full_name": "Existing", "profile_url": "linkedin.com/in/ada"}
+    ]
+    contact_repo.get_by_email.return_value = {"id": CONTACT_ID, "full_name": "Existing", "email": "ada@example.com"}
+    contact_repo.find_by_name_company.return_value = [
+        {"id": CONTACT_ID, "full_name": "Ada Lovelace", "company_id": COMPANY_ID}
+    ]
     contact_repo.create.return_value = {
         "id": CONTACT_ID,
-        "full_name": "Alice",
-        "email": "alice@acme.dev",
+        "full_name": "Ada Lovelace",
+        "company_id": COMPANY_ID,
         "buying_roles": ["founder"],
     }
     contact_repo.update.return_value = {
         "id": CONTACT_ID,
-        "full_name": "Alice Updated",
-        "buying_roles": ["founder", "technical_buyer"],
+        "full_name": "Ada Lovelace",
+        "company_id": COMPANY_ID,
+        "buying_roles": ["investor"],
+    }
+    contact_repo.get_by_id.return_value = {
+        "id": CONTACT_ID,
+        "full_name": "Ada Lovelace",
+        "company_id": COMPANY_ID,
+        "buying_roles": ["investor"],
     }
     contact_repo.archive.return_value = {"id": CONTACT_ID, "archived_at": "now"}
-    service, conn, _ = _service_with_mocks(contact_repo=contact_repo)
+    contact_repo.restore.return_value = {"id": CONTACT_ID, "archived_at": None}
+    contact_repo.list_all.return_value = [{"id": CONTACT_ID, "full_name": "Ada Lovelace"}]
 
-    created = service.create_contact(
-        conn,
-        contact=ContactCreate(
-            full_name="Alice",
-            email="alice@acme.dev",
-            profile_url="https://linkedin.com/in/alice",
-            company_id=COMPANY_ID,
-            buying_roles=["founder"],
-        ),
+    service, conn, _ = _service_with_mocks(contact_repo=contact_repo)
+    payload = ContactCreate(
+        full_name="Ada Lovelace",
+        company_id=COMPANY_ID,
+        profile_url="https://linkedin.com/in/ada",
+        email="ada@example.com",
+        buying_roles=["founder"],
     )
-    assert created["contact"]["full_name"] == "Alice"
-    assert len(created["duplicate_warnings"]) >= 1
+    created = service.create_contact(conn, contact=payload)
+    assert created["contact"]["buying_roles"] == ["founder"]
+    assert len(created["duplicate_warnings"]) == 3
+    assert all(isinstance(item, ContactDuplicateWarning) for item in created["duplicate_warnings"])
+
     updated = service.update_contact(
         conn,
         CONTACT_ID,
         contact=ContactUpdate(
-            full_name="Alice Updated",
+            full_name="Ada Lovelace",
             company_id=COMPANY_ID,
-            buying_roles=["founder", "technical_buyer"],
+            buying_roles=["investor"],
         ),
     )
-    assert updated is not None and updated["contact"]["full_name"] == "Alice Updated"
+    assert updated is not None and updated["contact"]["buying_roles"] == ["investor"]
     assert service.archive_contact(conn, CONTACT_ID)["archived_at"] == "now"
-    assert conn.commit.call_count == 3
+    assert service.restore_contact(conn, CONTACT_ID)["archived_at"] is None
+    assert len(service.list_contacts(conn)) == 1
+    assert conn.commit.call_count == 4
