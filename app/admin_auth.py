@@ -20,7 +20,10 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.admin_client_source import log_source_resolution, resolve_admin_login_client_source
+from app.admin_client_source import (
+    ClientSourceResolution,
+    resolve_admin_login_client_source,
+)
 from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
@@ -238,25 +241,29 @@ def read_login_flow_token(request: Request) -> str | None:
 def client_ip(request: Request, settings: Settings) -> str:
     """Resolve the client source IP for rate limiting.
 
-    Forwarding headers are honored only when ``ADMIN_TRUST_PROXY_HEADERS`` is
-    enabled **and** ``ADMIN_TRUSTED_PROXY_CIDRS`` is configured. The immediate
-    TCP peer must match the trusted boundary; client identity is then derived
-    via a right-to-left trusted-hop walk (never the raw left-most
-    ``X-Forwarded-For`` value from an unverified peer).
+    Forwarding headers are honored only after a verified trusted-proxy hop
+    (see :func:`resolve_admin_login_client_source`). Direct peers and spoofed
+    headers never select the leftmost ``X-Forwarded-For`` value.
 
-    See :func:`resolve_admin_login_client_source` and ``docs/ADMIN_AUTH.md``.
+    Source identity notes:
+
+    * **IPv4 / IPv6** — stored only as keyed digests; normalized addresses are
+      passed into the source bucket (e.g. ``203.0.113.1``, ``2001:db8::1``).
+    * **Missing peer** — falls back to ``unknown`` so attempts still share one
+      bucket instead of creating an unbounded namespace.
+    * **Trusted proxy chain** — walks ``X-Forwarded-For`` from right to left
+      across configured proxy CIDRs; vendor headers require a verified edge hop.
     """
-    return resolve_admin_login_client_source(request, settings).source
-
-
-def resolve_admin_login_client_source_for_limiter(
-    request: Request,
-    settings: Settings,
-) -> str:
-    """Alias used by tests and limiter helpers."""
     resolution = resolve_admin_login_client_source(request, settings)
-    log_source_resolution(resolution)
+    _log_source_resolution(resolution)
     return resolution.source
+
+
+def _log_source_resolution(resolution: ClientSourceResolution) -> None:
+    _logger.debug(
+        "Admin login client source resolved",
+        extra={"resolution_path": resolution.path.value},
+    )
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
@@ -380,7 +387,7 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    source = resolve_admin_login_client_source_for_limiter(request, settings)
+    source = client_ip(request, settings)
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,
