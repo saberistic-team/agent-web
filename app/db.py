@@ -402,6 +402,7 @@ def try_admit_admin_login(
     conn: psycopg.Connection,
     *,
     limiter_keys: tuple[str, ...],
+    guard_keys: tuple[str, ...] = (),
     now: datetime,
     rate_limit: int,
     window_seconds: int,
@@ -409,11 +410,11 @@ def try_admit_admin_login(
 ) -> AdminLoginAdmission:
     """Atomically decide whether a login attempt may reach password verification.
 
-    All ``limiter_keys`` are locked in sorted order inside one transaction so
-    concurrent requests cannot overshoot the configured threshold. When any key
-    is actively locked, admission is denied without incrementing counters.
+    ``limiter_keys`` are incremented on admission. ``guard_keys`` are locked and
+    checked for active lockouts but are not incremented, which preserves rotation
+    windows without double-counting attempts.
     """
-    if not limiter_keys:
+    if not limiter_keys and not guard_keys:
         return AdminLoginAdmission(
             admitted=True,
             throttled=False,
@@ -421,7 +422,8 @@ def try_admit_admin_login(
             lockout_transition=False,
         )
 
-    ordered_keys = tuple(sorted(limiter_keys))
+    ordered_keys = tuple(sorted(set(limiter_keys) | set(guard_keys)))
+    increment_keys = set(limiter_keys)
     with conn.cursor() as cur:
         for limiter_key in ordered_keys:
             cur.execute(
@@ -462,6 +464,8 @@ def try_admit_admin_login(
         updates: dict[str, tuple[int, datetime, datetime | None]] = {}
         lockout_transition = False
         for limiter_key in ordered_keys:
+            if limiter_key not in increment_keys:
+                continue
             row = rows[limiter_key]
             window_started_at = row["window_started_at"]
             if window_started_at.tzinfo is None:

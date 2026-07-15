@@ -32,7 +32,6 @@ TEST_USERNAME = "operator"
 TEST_PASSWORD = "correct-horse-battery-staple"
 TEST_HASH = PasswordHasher().hash(TEST_PASSWORD)
 TEST_SECRET = "test-session-secret-32chars-minimum"
-TEST_LIMITER_SECRET = "prod-limiter-secret-32chars-minimum!"
 
 
 @pytest.fixture(autouse=True)
@@ -41,7 +40,6 @@ def admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_USERNAME", TEST_USERNAME)
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_HASH)
     monkeypatch.setenv("ADMIN_SESSION_SECRET", TEST_SECRET)
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
     monkeypatch.setenv("BASE_URL", "http://testserver")
     admin_auth.reset_login_rate_limiter()
 
@@ -544,7 +542,7 @@ def test_audit_login_and_logout_helpers() -> None:
     audit_service.record_login_success(conn, actor_context=actor, session_id=9, repository=repo)
     audit_service.record_login_failure(
         conn,
-        actor_context=ActorContext(actor="anonymous", correlation_id="corr-auth"),
+        actor_context=actor,
         reason="invalid_credentials",
         repository=repo,
     )

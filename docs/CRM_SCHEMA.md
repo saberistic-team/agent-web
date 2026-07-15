@@ -306,7 +306,7 @@ Stores hashed limiter keys only — no raw usernames or client IPs.
 
 | Column | Type | Notes |
 |--------|------|-------|
-| `limiter_key` | `TEXT` | PK; HMAC-SHA-256 of domain-prefixed source or account bucket material (keyed with `ADMIN_LOGIN_LIMITER_SECRET`) |
+| `limiter_key` | `TEXT` | PK; HMAC-SHA256 hex digest of domain-prefixed bucket material keyed by `ADMIN_LOGIN_LIMITER_SECRET` |
 | `failure_count` | `INTEGER` | Reserved attempts / failures in the current window |
 | `window_started_at` | `TIMESTAMPTZ` | Start of the counting window |
 | `locked_until` | `TIMESTAMPTZ` | Lockout expiry when limit exceeded |
