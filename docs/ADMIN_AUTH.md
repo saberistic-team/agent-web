@@ -164,14 +164,16 @@ access logs or metrics for operational visibility if needed.
 | `DATABASE_URL` | Yes | Render Postgres connection string (stores `admin_sessions`, `admin_login_flows`) |
 | `ADMIN_USERNAME` | Yes | Operator username (plain text identifier) |
 | `ADMIN_PASSWORD_HASH` | Yes | Argon2id hash of the operator password |
-| `ADMIN_SESSION_SECRET` | Yes | Retained for configuration parity (≥ 32 random bytes); CSRF is session-bound, not HMAC-signed with this secret |
-| `ADMIN_LOGIN_LIMITER_SECRET` | Yes | Key for HMAC-SHA256 login limiter identifiers (≥ 32 random bytes; environment-specific) |
-| `ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS` | Optional | Previous limiter secret during rotation; guards active lockouts while counters increment under the current secret |
+| `ADMIN_SESSION_SECRET` | Yes | Session CSRF HMAC key (≥ 32 random bytes) |
+| `ADMIN_LOGIN_LIMITER_SECRET` | Yes | HMAC key for privacy-preserving login rate-limiter identifiers (≥ 32 random bytes; independent per environment) |
+| `ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS` | Optional | Previous limiter HMAC key during rotation (see [Limiter key rotation](#limiter-key-rotation)) |
 | `ADMIN_SESSION_TTL_SECONDS` | Optional | Session lifetime in seconds (default `86400`) |
 | `ADMIN_LOGIN_RATE_LIMIT` | Optional | Failed login attempts allowed per window (default `5`) |
 | `ADMIN_LOGIN_RATE_WINDOW_SECONDS` | Optional | Rate-limit counting window in seconds (default `900`) |
 | `ADMIN_LOGIN_LOCKOUT_SECONDS` | Optional | Lockout duration after limit exceeded (default `900`) |
-| `ADMIN_TRUST_PROXY_HEADERS` | Optional | Trust `X-Forwarded-For` for client source (default off; set `true` on Render) |
+| `ADMIN_TRUSTED_PROXY_CIDRS` | Production | Comma-separated trusted proxy CIDRs/IPs for the immediate peer and in-chain hops (Render load balancer / private networks on Render; empty locally) |
+| `ADMIN_TRUSTED_EDGE_CIDRS` | Production | Comma-separated public edge CIDRs (Cloudflare) stripped from the right of `X-Forwarded-For` before selecting the client |
+| `ADMIN_TRUST_PROXY_HEADERS` | **Deprecated** | Legacy boolean; ignored for source resolution unless paired with explicit CIDR settings above. Remove after migration. |
 | `ADMIN_PREVIEW_MODE` | Optional | **CI / local only.** When `1`/`true`, protected `/admin` GET pages render without login and admin pages fill with **randomized mock data** for Playwright screenshots. Hard-disabled if `BASE_URL` contains `saberistic.com`. Never set on production Render. |
 | `ADMIN_PREVIEW_SEED` | Optional | Seed for mock admin randomization (stable screenshots/tests). |
 | `BASE_URL` | Yes | Public site URL; `https://…` enables `Secure` session cookies |
@@ -198,7 +200,7 @@ print(secrets.token_urlsafe(48))
 PY
 ```
 
-Generate an independent login limiter secret (do not reuse the session secret):
+Generate a limiter secret (must differ from `ADMIN_SESSION_SECRET` in production):
 
 ```bash
 python - <<'PY'
@@ -212,7 +214,7 @@ On Render, add:
 1. `ADMIN_USERNAME` — e.g. `operator`
 2. `ADMIN_PASSWORD_HASH` — output from the Argon2 command
 3. `ADMIN_SESSION_SECRET` — output from the secrets command
-4. `ADMIN_LOGIN_LIMITER_SECRET` — output from a second secrets command
+4. `ADMIN_LOGIN_LIMITER_SECRET` — independent output from the limiter secrets command
 
 Redeploy after changing any of the above.
 
@@ -232,21 +234,6 @@ Redeploy after changing any of the above.
 2. Update the variable in Render and redeploy.
 3. CSRF tokens are session- and flow-bound; rotating this secret does not
    invalidate active sessions or in-flight login flows.
-
-### Login limiter secret rotation
-
-1. Generate a new `ADMIN_LOGIN_LIMITER_SECRET`.
-2. Set `ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS` to the **current** value, then update
-   `ADMIN_LOGIN_LIMITER_SECRET` to the new value and redeploy.
-3. During the overlap window, active lockouts under the previous secret still
-   block admission, but counters increment only under the current secret.
-4. Remove `ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS` after lockouts under the old
-   secret have expired and stale limiter rows have been cleaned up.
-
-Rotating without the previous-secret overlap resets effective rate-limit history:
-existing rows keyed under the old secret become unreachable and are removed by
-bounded cleanup once retention elapses. Use distinct secrets in test, preview,
-and production environments.
 
 ### Emergency session revocation
 
@@ -269,8 +256,8 @@ export DATABASE_URL=postgresql://…
 export ADMIN_USERNAME=operator
 export ADMIN_PASSWORD_HASH='…'
 export ADMIN_SESSION_SECRET='…'
-export ADMIN_LOGIN_LIMITER_SECRET='…'
 export BASE_URL=http://localhost:8000
+# Leave ADMIN_TRUSTED_PROXY_CIDRS unset so spoofed forwarding headers are ignored.
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -283,37 +270,99 @@ limits apply consistently across web processes, instances, and deployments.
 
 ### Limiter key strategy
 
-Each attempt consults one or two privacy-preserving HMAC-SHA256 buckets (only the
+Each attempt consults one or two privacy-preserving HMAC-SHA-256 buckets (only the
 64-character hex digest is stored as ``limiter_key``):
 
 | Bucket | Domain prefix | Key material | Purpose |
 |--------|---------------|--------------|---------|
-| **Source-wide** | ``src`` | normalized client source | Stops username rotation from one client source |
-| **Account-wide** | ``acct`` | normalized configured admin username | Limits distributed attempts against the configured admin account |
+| **Source-wide** | `src` | normalized client source | Stops username rotation from one client source |
+| **Account-wide** | `acct` | normalized configured admin username | Limits distributed attempts against the configured admin account |
 
-Digests use ``ADMIN_LOGIN_LIMITER_SECRET`` with explicit domain separation
-(``src:…`` and ``acct:…`` payloads). A database reader without the secret cannot
-confirm guessed IP addresses or usernames by hashing alone.
+Digests are computed as ``HMAC-SHA-256(ADMIN_LOGIN_LIMITER_SECRET, "{domain}:{material}")``.
+A database reader without the secret cannot verify guessed IP addresses or usernames
+by hashing candidate values offline.
 
 The submitted username is normalized (lowercased/stripped) only to decide whether the
 account bucket applies. Unknown usernames still share the source bucket for their
 client source; responses remain generic.
 
 Raw usernames, passwords, IP addresses, forwarding headers, CSRF tokens, limiter
-secrets, and digest inputs are never written to limiter rows or limiter
-observability logs.
+secrets, and digest inputs are never written to limiter rows or limiter observability
+logs.
+
+### Limiter key rotation
+
+Rotating ``ADMIN_LOGIN_LIMITER_SECRET`` changes every stored ``limiter_key``. Rows
+written under the previous secret become unreachable unless
+``ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS`` is set to the old value during a bounded
+rotation window.
+
+During rotation:
+
+1. Set ``ADMIN_LOGIN_LIMITER_SECRET`` to the new value.
+2. Set ``ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS`` to the retiring secret.
+3. Deploy. Admission consults **both** current and previous digests for each bucket
+   so active lockouts and counters remain enforceable.
+4. After ``2 × max(window, lockout)`` seconds (when prior-key rows are eligible for
+   cleanup), clear ``ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS`` and redeploy.
+
+If rotation is performed without setting the previous secret, effective rate-limit
+history resets immediately (new rows, prior lockouts ignored). Use only during a
+controlled maintenance window.
+
+Startup validation rejects missing, weak, placeholder, or identical current/previous
+limiter secrets when admin authentication is configured.
 
 ### Client source resolution
 
-Resolved client source comes from :func:`client_ip`:
+Resolved client source comes from :func:`resolve_admin_login_client_source`
+(``app/client_source.py``). Production traffic follows **Cloudflare → Render load
+balancer → Uvicorn**; trust is enforced at both Uvicorn (``--proxy-headers`` +
+``--forwarded-allow-ips`` in ``render.yaml``) and the application resolver.
 
-- **IPv4 / IPv6** — used verbatim in the source bucket digest (e.g. ``203.0.113.1``,
-  ``2001:db8::1``).
-- **Missing peer** — ``unknown`` (still one shared bucket).
-- **Trusted proxy** — when ``ADMIN_TRUST_PROXY_HEADERS=true``, the left-most
-  ``X-Forwarded-For`` value is used (Render and similar deployments).
-- **Direct connections / local dev** — leave proxy trust off; spoofed
-  ``X-Forwarded-For`` values are ignored and the direct peer address is used.
+| Environment | Immediate peer | Forwarding headers |
+|-------------|------------------|--------------------|
+| **Production** (via Cloudflare) | Render private/LB address in ``ADMIN_TRUSTED_PROXY_CIDRS`` | ``X-Forwarded-For`` parsed right-to-left; contiguous trusted hops (Render + Cloudflare edge CIDRs) stripped before selecting the client |
+| **Direct Render origin** | Untrusted public peer | Ignored — limiter uses the direct peer only |
+| **Local / tests** | Loopback or test client | Ignored when CIDR lists are empty |
+| **Preview / CI** | Test client | Same as local unless tests set explicit CIDR fixtures |
+
+Rules:
+
+- **IPv4 / IPv6** — normalized (including IPv4-mapped IPv6) and digested; never
+  logged or stored in raw form.
+- **Missing peer** — ``unknown`` (one shared bucket).
+- **Untrusted peer** — direct peer address; ``X-Forwarded-For``, ``Forwarded``,
+  and ``CF-Connecting-IP`` cannot influence the limiter key.
+- **Trusted peer** — walk ``X-Forwarded-For`` from the right, removing trusted
+  proxy hops. Exactly one remaining non-trusted address is the client. Multiple
+  remaining hops (partial trust / sandwich) fail closed to the direct peer.
+- **``CF-Connecting-IP``** — used only when the peer is trusted **and** a
+  Cloudflare-range hop appears in the validated ``X-Forwarded-For`` chain.
+- **Precedence** — ``X-Forwarded-For`` → ``Forwarded`` → ``CF-Connecting-IP``
+  (with edge proof). Conflicting values follow this order.
+- **Telemetry** — structured logs record ``resolution_path`` only (no raw
+  addresses or header chains). Invalid/untrusted forwarding attempts are sampled.
+
+Verify deployed settings after release:
+
+```bash
+curl -sS https://saberistic.com/health | jq '.admin_client_source_policy'
+# Expect mode "trusted_proxy_cidrs" with non-zero network counts in production.
+
+curl -sS https://saberistic.com/health | jq '.admin_proxy_trust'
+# Expect {"enabled": true, "trusted_proxy_entry_count": <non-zero>}.
+# scripts/smoke_deploy.py checks this block on every production/Render deploy.
+```
+
+#### Rollback / recovery
+
+If proxy CIDRs are misconfigured and every request shares one limiter source
+(typically the Render peer address), operators can temporarily clear
+``ADMIN_TRUSTED_PROXY_CIDRS`` and ``ADMIN_TRUSTED_EDGE_CIDRS`` in Render and
+redeploy. The resolver falls back to **direct peer only** (fail closed against
+header spoofing). Restore the version-controlled values in ``render.yaml`` once
+the correct trust boundary is confirmed.
 
 ### Atomic admission
 
