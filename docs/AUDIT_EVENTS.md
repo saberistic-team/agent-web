@@ -81,6 +81,24 @@ emitted only after the transaction exits successfully.
 Repeat logout submissions for an already-revoked or unknown session perform
 idempotent browser cleanup only — no additional immutable audit rows.
 
+### Admin login failure actor policy
+
+Every `auth.login.failure` event emitted **before** successful authentication uses
+actor `anonymous`. The audit service does not persist submitted username candidates
+in actor, metadata, reason text, or correlation identifiers. Failure reasons are
+a small server-defined enum (`invalid_credentials`, `invalid_csrf`, `rate_limited`).
+
+Authenticated `auth.login.success` and `auth.logout` events retain the configured
+administrator username and session linkage.
+
+#### Historical immutable rows (pre–#242)
+
+Deployments before keyed limiter identifiers and anonymous failure actors may have
+append-only rows where `actor` contains a submitted login username candidate rather
+than `anonymous`. Application code does not rewrite or delete historical audit rows.
+Forward deployments prevent all new occurrences. Remediating historical exposure
+requires an explicit data-governance decision outside normal application code.
+
 Anonymous logout traffic is not stored in `audit_events`. Operational visibility,
 if needed, should use bounded HTTP access logs or metrics — never the append-only
 admin audit table.
@@ -101,44 +119,12 @@ operator is never left without a valid server-side session. The session cookie i
 set on the redirect response only after the transaction exits successfully; failed
 or rolled-back logins never emit a new session cookie.
 
-### Login failure actor policy (#242)
-
-Every `auth.login.failure` event recorded **before** successful authentication uses
-the canonical actor `anonymous`. Submitted username candidates are never stored in
-`actor`, `metadata`, `reason` text, correlation identifiers, structured logs, or
-limiter state. Failure reasons are a small server-defined enum (`invalid_credentials`,
-`invalid_csrf`, `rate_limited`).
-
-Authenticated events (`auth.login.success`, `auth.logout`, and CRM mutations) retain
-the live administrator username in `actor` with session linkage as before.
-
-#### Historical immutable rows (pre-#242)
-
-Deployments before #242 could persist attacker-supplied username candidates in the
-`actor` column of `auth.login.failure` rows. `audit_events` remains append-only;
-application code does not rewrite historical rows. Security reporting should treat
-pre-#242 failure actors as potentially attacker-controlled unless corroborated by
-authenticated session evidence. The forward fix prevents all new occurrences.
-
-To inventory exposure:
-
-```sql
-SELECT created_at, actor, action, summary_after
-FROM audit_events
-WHERE action = 'auth.login.failure'
-  AND actor <> 'anonymous'
-ORDER BY created_at DESC;
-```
-
-Remediation of historical rows requires an explicit data-governance decision outside
-normal application code (append-only protections must not be silently disabled).
-
 ## Audited actions
 
 | Action | When recorded |
 |--------|----------------|
 | `auth.login.success` | Valid admin login creates a server-side session |
-| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting |
+| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting (actor is always `anonymous`) |
 | `auth.logout` | Authenticated session revocation (live session → revoked) |
 | `import.batch` | Data import batches via `CrmService.commit_linkedin_import` / `import_batch` |
 | `import.batch.rollback` | Rollback of committed import batches via `CrmService.rollback_import_batch` |

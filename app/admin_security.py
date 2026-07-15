@@ -1,76 +1,67 @@
-"""Fail-fast validation for admin security secrets."""
+"""Startup validation for admin authentication secrets."""
 
 from __future__ import annotations
-
-import re
 
 from app.config import Settings
 
 MIN_ADMIN_SECRET_LENGTH = 32
 
-_PLACEHOLDER_PATTERNS = (
-    re.compile(r"^changeme$", re.I),
-    re.compile(r"^replace[-_]?me$", re.I),
-    re.compile(r"^example$", re.I),
-    re.compile(r"^placeholder$", re.I),
-    re.compile(r"^your[-_]?secret", re.I),
-    re.compile(r"^todo$", re.I),
+_WEAK_SECRET_LITERALS = frozenset(
+    {
+        "changeme",
+        "change-me",
+        "placeholder",
+        "replace-me",
+        "secret",
+        "admin",
+        "password",
+        "test",
+        "dev",
+        "local",
+    }
 )
 
 
-def weak_secret_reason(secret: str) -> str | None:
-    """Return a human-readable reason when *secret* is unusable, else ``None``."""
-    if not secret:
-        return "missing"
-    if len(secret) < MIN_ADMIN_SECRET_LENGTH:
-        return f"shorter than {MIN_ADMIN_SECRET_LENGTH} characters"
-    if len(set(secret)) == 1:
-        return "repeated single character"
-    for pattern in _PLACEHOLDER_PATTERNS:
-        if pattern.search(secret):
-            return "placeholder value"
-    return None
+class AdminSecurityConfigurationError(ValueError):
+    """Raised when required admin security configuration is missing or weak."""
 
 
-def _admin_startup_validation_required(settings: Settings) -> bool:
-    """True when admin auth is expected to be operational (or preview-enabled)."""
-    core = bool(
-        settings.admin_username
-        and settings.admin_password_hash
-        and settings.admin_session_secret
+def _validate_admin_secret_value(
+    value: str,
+    *,
+    env_name: str,
+    required: bool,
+) -> None:
+    normalized = value.strip()
+    if not normalized:
+        if required:
+            raise AdminSecurityConfigurationError(f"{env_name} is required when admin auth is configured")
+        return
+    if len(normalized) < MIN_ADMIN_SECRET_LENGTH:
+        raise AdminSecurityConfigurationError(
+            f"{env_name} must be at least {MIN_ADMIN_SECRET_LENGTH} characters"
+        )
+    if normalized.lower() in _WEAK_SECRET_LITERALS:
+        raise AdminSecurityConfigurationError(f"{env_name} must not use a placeholder value")
+
+
+def validate_admin_security_settings(settings: Settings) -> None:
+    """Fail fast when admin auth is configured with weak limiter key material."""
+    if not settings.admin_username:
+        return
+    _validate_admin_secret_value(
+        settings.admin_login_limiter_secret,
+        env_name="ADMIN_LOGIN_LIMITER_SECRET",
+        required=True,
     )
-    if settings.admin_preview_mode:
-        return core
-    return bool(settings.database_configured and core)
-
-
-def validate_admin_security_config(settings: Settings) -> None:
-    """Raise when admin auth is configured but required secrets are weak."""
-    if not _admin_startup_validation_required(settings):
-        return
-
-    for name, secret in (
-        ("ADMIN_SESSION_SECRET", settings.admin_session_secret),
-        ("ADMIN_LOGIN_LIMITER_SECRET", settings.admin_login_limiter_secret),
-    ):
-        reason = weak_secret_reason(secret)
-        if reason:
-            raise ValueError(
-                f"{name} is invalid ({reason}); set a strong environment-specific value"
+    previous = settings.admin_login_limiter_secret_previous.strip()
+    if previous:
+        _validate_admin_secret_value(
+            previous,
+            env_name="ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS",
+            required=True,
+        )
+        if previous == settings.admin_login_limiter_secret.strip():
+            raise AdminSecurityConfigurationError(
+                "ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS must differ from ADMIN_LOGIN_LIMITER_SECRET"
             )
-
-    previous = settings.admin_login_limiter_previous_secret
-    if not previous:
-        return
-
-    reason = weak_secret_reason(previous)
-    if reason:
-        raise ValueError(
-            "ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET is invalid "
-            f"({reason}); unset or set a strong value"
-        )
-    if previous == settings.admin_login_limiter_secret:
-        raise ValueError(
-            "ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET must differ from "
-            "ADMIN_LOGIN_LIMITER_SECRET during rotation"
-        )

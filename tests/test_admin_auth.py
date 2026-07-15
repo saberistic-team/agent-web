@@ -644,9 +644,10 @@ def test_login_limiter_keys_source_only_for_unknown_username() -> None:
 
 @pytest.mark.unit
 def test_build_rate_limit_key_hashes_username_and_source() -> None:
-    key_a = admin_auth.build_rate_limit_key("Operator", "203.0.113.1")
-    key_b = admin_auth.build_rate_limit_key("operator", "203.0.113.1")
-    key_c = admin_auth.build_rate_limit_key("operator", "203.0.113.2")
+    settings = get_settings()
+    key_a = admin_auth.build_rate_limit_key("Operator", "203.0.113.1", settings)
+    key_b = admin_auth.build_rate_limit_key("operator", "203.0.113.1", settings)
+    key_c = admin_auth.build_rate_limit_key("operator", "203.0.113.2", settings)
     assert key_a == key_b
     assert key_a != key_c
     assert len(key_a) == 64
