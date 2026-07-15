@@ -24,6 +24,7 @@ from app.admin_auth import AdminLoginRequired, login_redirect_url
 from app.admin_pipeline_routes import router as admin_pipeline_router
 from app.admin_routes import router as admin_router
 from app.actor_context import CORRELATION_HEADER
+from app.admin_client_source import proxy_trust_health_summary
 from app.config import get_settings
 from app.models import BriefCreateRequest, BriefCreateResponse
 from app.seo import (
@@ -64,6 +65,14 @@ async def redirect_unauthenticated_admin(
     exc: AdminLoginRequired,
 ) -> RedirectResponse:
     return RedirectResponse(url=login_redirect_url(exc.next_path), status_code=303)
+
+
+@app.middleware("http")
+async def capture_transport_peer(request: Request, call_next):
+    """Preserve the immediate peer before uvicorn proxy-header rewriting."""
+    if request.scope.get("client") is not None:
+        request.state.transport_peer = request.scope["client"]
+    return await call_next(request)
 
 
 @app.middleware("http")
@@ -119,6 +128,7 @@ def health() -> dict:
     """
     payload: dict = {"status": "ok"}
     settings = get_settings()
+    payload["admin_proxy_trust"] = proxy_trust_health_summary(settings)
     if not settings.database_configured:
         return payload
     try:

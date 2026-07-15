@@ -20,10 +20,7 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.admin_client_source import (
-    ClientSourceResolution,
-    resolve_admin_login_client_source,
-)
+from app.admin_client_source import resolve_admin_login_client_source
 from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
@@ -239,31 +236,19 @@ def read_login_flow_token(request: Request) -> str | None:
 
 
 def client_ip(request: Request, settings: Settings) -> str:
-    """Resolve the client source IP for rate limiting.
+    """Resolve the client source IP for admin login rate limiting.
 
-    Forwarding headers are honored only after a verified trusted-proxy hop
-    (see :func:`resolve_admin_login_client_source`). Direct peers and spoofed
-    headers never select the leftmost ``X-Forwarded-For`` value.
+    Forwarding headers are honored only when the immediate transport peer is a
+    member of ``ADMIN_TRUSTED_PROXY_CIDRS`` (Render load balancer private
+    networks in production). A right-to-left trusted-hop parser selects the
+    client address; vendor headers such as ``CF-Connecting-IP`` are accepted
+    only after a verified Cloudflare hop in the forwarding chain.
 
-    Source identity notes:
-
-    * **IPv4 / IPv6** — stored only as keyed digests; normalized addresses are
-      passed into the source bucket (e.g. ``203.0.113.1``, ``2001:db8::1``).
-    * **Missing peer** — falls back to ``unknown`` so attempts still share one
-      bucket instead of creating an unbounded namespace.
-    * **Trusted proxy chain** — walks ``X-Forwarded-For`` from right to left
-      across configured proxy CIDRs; vendor headers require a verified edge hop.
+    Resolved addresses are normalized (IPv4, IPv6, IPv4-mapped IPv6) and stored
+    only as keyed digests. Missing or malformed forwarding data falls back to
+    the direct peer or ``unknown``.
     """
-    resolution = resolve_admin_login_client_source(request, settings)
-    _log_source_resolution(resolution)
-    return resolution.source
-
-
-def _log_source_resolution(resolution: ClientSourceResolution) -> None:
-    _logger.debug(
-        "Admin login client source resolved",
-        extra={"resolution_path": resolution.path.value},
-    )
+    return resolve_admin_login_client_source(request, settings).address
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:

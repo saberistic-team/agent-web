@@ -5,12 +5,6 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from app.proxy_trust_constants import (
-    default_uvicorn_forwarded_allow_ips,
-    parse_cidr_list,
-    production_trusted_proxy_cidrs,
-)
-
 
 @dataclass(frozen=True)
 class Settings:
@@ -33,9 +27,10 @@ class Settings:
     admin_login_rate_limit: int = 5
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
+    admin_trust_proxy_headers: bool = False
     admin_trusted_proxy_cidrs: tuple[str, ...] = ()
+    admin_cloudflare_trust_enabled: bool = False
     admin_cloudflare_proxy_cidrs: tuple[str, ...] = ()
-    uvicorn_forwarded_allow_ips: str = ""
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -117,25 +112,21 @@ def get_settings() -> Settings:
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
         brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
-        admin_trusted_proxy_cidrs=_resolve_admin_trusted_proxy_cidrs(),
-        admin_cloudflare_proxy_cidrs=parse_cidr_list(
-            os.environ.get("ADMIN_CLOUDFLARE_PROXY_CIDRS", "")
-        ),
-        uvicorn_forwarded_allow_ips=os.environ.get(
-            "UVICORN_FORWARDED_ALLOW_IPS", default_uvicorn_forwarded_allow_ips()
-        ).strip(),
+        admin_trust_proxy_headers=os.environ.get(
+            "ADMIN_TRUST_PROXY_HEADERS", ""
+        ).lower()
+        in ("1", "true", "yes"),
+        admin_trusted_proxy_cidrs=_parse_csv_env("ADMIN_TRUSTED_PROXY_CIDRS"),
+        admin_cloudflare_trust_enabled=os.environ.get(
+            "ADMIN_CLOUDFLARE_TRUST_ENABLED", ""
+        ).lower()
+        in ("1", "true", "yes"),
+        admin_cloudflare_proxy_cidrs=_parse_csv_env("ADMIN_CLOUDFLARE_PROXY_CIDRS"),
     )
 
 
-def _resolve_admin_trusted_proxy_cidrs() -> tuple[str, ...]:
-    explicit = parse_cidr_list(os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", ""))
-    if explicit:
-        return explicit
-    legacy_flag = os.environ.get("ADMIN_TRUST_PROXY_HEADERS", "").lower() in (
-        "1",
-        "true",
-        "yes",
-    )
-    if legacy_flag:
-        return production_trusted_proxy_cidrs()
-    return ()
+def _parse_csv_env(name: str) -> tuple[str, ...]:
+    raw = os.environ.get(name, "")
+    if not raw.strip():
+        return ()
+    return tuple(part.strip() for part in raw.split(",") if part.strip())
