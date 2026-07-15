@@ -1,61 +1,48 @@
-"""Deployment configuration tests for admin proxy trust settings."""
+"""Deployment configuration consistency for admin proxy trust (#239)."""
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import pytest
 
-from app.proxy_trust_constants import (
-    default_uvicorn_forwarded_allow_ips,
-    production_trusted_proxy_cidrs,
-)
-from app.config import get_settings
+from app.client_source import DEFAULT_CLOUDFLARE_EDGE_CIDRS, RENDER_TRUSTED_PROXY_CIDRS
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RENDER_YAML = REPO_ROOT / "render.yaml"
-
-
-def _render_env_value(key: str) -> str:
-    text = RENDER_YAML.read_text(encoding="utf-8")
-    match = re.search(
-        rf"- key: {re.escape(key)}\n\s+value: \"([^\"]+)\"",
-        text,
-    )
-    assert match is not None, f"missing {key} in render.yaml"
-    return match.group(1)
+ADMIN_AUTH_DOC = REPO_ROOT / "docs" / "ADMIN_AUTH.md"
 
 
 @pytest.mark.unit
-def test_render_yaml_declares_uvicorn_forwarded_allow_ips() -> None:
-    text = RENDER_YAML.read_text(encoding="utf-8")
-    assert "--forwarded-allow-ips" in text
-    assert "${UVICORN_FORWARDED_ALLOW_IPS}" in text
-    forwarded_allow_ips = _render_env_value("UVICORN_FORWARDED_ALLOW_IPS")
-    trusted_proxy_cidrs = _render_env_value("ADMIN_TRUSTED_PROXY_CIDRS")
-    assert "10.0.0.0/8" in forwarded_allow_ips
-    assert "173.245.48.0/20" in trusted_proxy_cidrs
+def test_render_start_command_uses_asgi_entrypoint_and_proxy_flags() -> None:
+    content = RENDER_YAML.read_text(encoding="utf-8")
+    assert "uvicorn app.asgi:app" in content
+    assert "--proxy-headers" in content
+    assert "--forwarded-allow-ips=" in content
 
 
 @pytest.mark.unit
-def test_render_proxy_settings_match_application_defaults(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    forwarded_allow_ips = _render_env_value("UVICORN_FORWARDED_ALLOW_IPS")
-    trusted_proxy_cidrs = _render_env_value("ADMIN_TRUSTED_PROXY_CIDRS")
-    monkeypatch.setenv("UVICORN_FORWARDED_ALLOW_IPS", forwarded_allow_ips)
-    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_CIDRS", trusted_proxy_cidrs)
-    settings = get_settings()
-    assert settings.uvicorn_forwarded_allow_ips == forwarded_allow_ips
-    assert settings.admin_trusted_proxy_cidrs == tuple(
-        cidr.strip() for cidr in trusted_proxy_cidrs.split(",") if cidr.strip()
-    )
+def test_render_proxy_env_matches_trusted_proxy_cidrs() -> None:
+    content = RENDER_YAML.read_text(encoding="utf-8")
+    expected = ",".join(RENDER_TRUSTED_PROXY_CIDRS)
+    assert "ADMIN_TRUST_PROXY_HEADERS" in content
+    assert f'ADMIN_TRUSTED_PROXY_IPS\n        value: "{expected}"' in content
+    assert f'ADMIN_FORWARDED_ALLOW_IPS\n        value: "{expected}"' in content
 
 
 @pytest.mark.unit
-def test_production_defaults_include_render_internal_and_cloudflare_ranges() -> None:
-    trusted = production_trusted_proxy_cidrs()
-    assert "10.0.0.0/8" in trusted
-    assert "173.245.48.0/20" in trusted
-    assert default_uvicorn_forwarded_allow_ips().startswith("10.0.0.0/8")
+def test_render_declares_cloudflare_edge_cidrs() -> None:
+    content = RENDER_YAML.read_text(encoding="utf-8")
+    expected = ",".join(DEFAULT_CLOUDFLARE_EDGE_CIDRS)
+    assert f'ADMIN_CLOUDFLARE_EDGE_IPS\n        value: "{expected}"' in content
+
+
+@pytest.mark.unit
+def test_admin_auth_doc_documents_trusted_proxy_model() -> None:
+    content = ADMIN_AUTH_DOC.read_text(encoding="utf-8")
+    assert "ADMIN_TRUSTED_PROXY_IPS" in content
+    assert "ADMIN_CLOUDFLARE_EDGE_IPS" in content
+    assert "ADMIN_FORWARDED_ALLOW_IPS" in content
+    assert "right-to-left" in content.lower() or "right to left" in content.lower()
+    assert "CF-Connecting-IP" in content
+    assert "rollback" in content.lower()
