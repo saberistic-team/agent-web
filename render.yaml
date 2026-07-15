@@ -10,9 +10,7 @@ services:
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: >-
-      uvicorn app.main:app --host 0.0.0.0 --port $PORT
-      --forwarded-allow-ips=127.0.0.1
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --forwarded-allow-ips 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.1,::1
     healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
@@ -51,5 +49,7 @@ services:
         value: "86400"
       - key: ADMIN_TRUST_PROXY_HEADERS
         value: "true"
-      - key: ADMIN_LOGIN_TRUST_FORWARDED_HEADERS
-        value: "true"
+      - key: ADMIN_TRUSTED_PROXY_CIDRS
+        value: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.1,::1"
+      - key: FORWARDED_ALLOW_IPS
+        value: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.1,::1"

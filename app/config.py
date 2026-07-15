@@ -5,12 +5,6 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from app.proxy_trust_constants import (
-    DEFAULT_MAX_FORWARDED_CHAIN_LENGTH,
-    DEFAULT_TRUSTED_FORWARDED_NETWORKS,
-    DEFAULT_TRUSTED_IMMEDIATE_PEER_NETWORKS,
-)
-
 
 @dataclass(frozen=True)
 class Settings:
@@ -33,10 +27,9 @@ class Settings:
     admin_login_rate_limit: int = 5
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
-    admin_login_trust_forwarded_headers: bool = False
-    admin_login_trusted_immediate_peer_networks: tuple[str, ...] = DEFAULT_TRUSTED_IMMEDIATE_PEER_NETWORKS
-    admin_login_trusted_forwarded_networks: tuple[str, ...] = DEFAULT_TRUSTED_FORWARDED_NETWORKS
-    admin_login_max_forwarded_chain_length: int = DEFAULT_MAX_FORWARDED_CHAIN_LENGTH
+    admin_trust_proxy_headers: bool = False
+    admin_trusted_proxy_cidrs: tuple[str, ...] = ()
+    forwarded_allow_ips: str = "127.0.0.1"
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -118,36 +111,18 @@ def get_settings() -> Settings:
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
         brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
-        admin_login_trust_forwarded_headers=_env_flag(
-            "ADMIN_LOGIN_TRUST_FORWARDED_HEADERS",
-            fallback=_env_flag("ADMIN_TRUST_PROXY_HEADERS"),
-        ),
-        admin_login_trusted_immediate_peer_networks=_parse_network_list_env(
-            "ADMIN_LOGIN_TRUSTED_IMMEDIATE_PEER_NETWORKS",
-            DEFAULT_TRUSTED_IMMEDIATE_PEER_NETWORKS,
-        ),
-        admin_login_trusted_forwarded_networks=_parse_network_list_env(
-            "ADMIN_LOGIN_TRUSTED_FORWARDED_NETWORKS",
-            DEFAULT_TRUSTED_FORWARDED_NETWORKS,
-        ),
-        admin_login_max_forwarded_chain_length=int(
-            os.environ.get(
-                "ADMIN_LOGIN_MAX_FORWARDED_CHAIN_LENGTH",
-                str(DEFAULT_MAX_FORWARDED_CHAIN_LENGTH),
-            )
-        ),
+        admin_trust_proxy_headers=os.environ.get(
+            "ADMIN_TRUST_PROXY_HEADERS", ""
+        ).lower()
+        in ("1", "true", "yes"),
+        admin_trusted_proxy_cidrs=_parse_csv_env("ADMIN_TRUSTED_PROXY_CIDRS"),
+        forwarded_allow_ips=os.environ.get("FORWARDED_ALLOW_IPS", "127.0.0.1").strip()
+        or "127.0.0.1",
     )
 
 
-def _env_flag(name: str, *, fallback: bool = False) -> bool:
-    raw = os.environ.get(name, "")
-    if not raw and fallback:
-        return True
-    return raw.lower() in ("1", "true", "yes")
-
-
-def _parse_network_list_env(name: str, defaults: tuple[str, ...]) -> tuple[str, ...]:
+def _parse_csv_env(name: str) -> tuple[str, ...]:
     raw = os.environ.get(name, "")
     if not raw.strip():
-        return defaults
+        return ()
     return tuple(part.strip() for part in raw.split(",") if part.strip())

@@ -41,21 +41,30 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(f"PASS {url} → {payload}")
 
-    health = get_json(f"{base}/health")
-    proxy_trust = health.get("admin_client_source")
-    if not isinstance(proxy_trust, dict):
-        print(
-            f"FAIL {base}/health: missing admin_client_source deploy verification block",
-            file=sys.stderr,
-        )
-        return 1
-    if proxy_trust.get("resolution_strategy") != "verified_hop_parse":
-        print(
-            f"FAIL {base}/health: unexpected admin_client_source strategy {proxy_trust!r}",
-            file=sys.stderr,
-        )
-        return 1
-    print(f"PASS {base}/health admin_client_source → {proxy_trust}")
+    if base.rstrip("/").endswith("saberistic.com"):
+        health = get_json(f"{base}/health")
+        trust = health.get("admin_login_source_trust")
+        if not isinstance(trust, dict):
+            print(
+                f"FAIL {base}/health: missing admin_login_source_trust metadata",
+                file=sys.stderr,
+            )
+            return 1
+        if not trust.get("enabled"):
+            print(
+                f"FAIL {base}/health: admin login proxy trust disabled in production",
+                file=sys.stderr,
+            )
+            return 1
+        if not trust.get("proxy_boundary_configured") or not trust.get(
+            "forwarded_allow_ips_configured"
+        ):
+            print(
+                f"FAIL {base}/health: admin login proxy boundary not configured",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"PASS {base}/health → admin_login_source_trust configured")
     return 0
 
 

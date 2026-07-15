@@ -24,7 +24,6 @@ from app.admin_auth import AdminLoginRequired, login_redirect_url
 from app.admin_pipeline_routes import router as admin_pipeline_router
 from app.admin_routes import router as admin_router
 from app.actor_context import CORRELATION_HEADER
-from app.client_source import deployment_proxy_trust_summary
 from app.config import get_settings
 from app.models import BriefCreateRequest, BriefCreateResponse
 from app.seo import (
@@ -120,7 +119,11 @@ def health() -> dict:
     """
     payload: dict = {"status": "ok"}
     settings = get_settings()
-    payload["admin_client_source"] = deployment_proxy_trust_summary(settings)
+    payload["admin_login_source_trust"] = {
+        "enabled": settings.admin_trust_proxy_headers,
+        "proxy_boundary_configured": bool(settings.admin_trusted_proxy_cidrs),
+        "forwarded_allow_ips_configured": settings.forwarded_allow_ips != "127.0.0.1",
+    }
     if not settings.database_configured:
         return payload
     try:

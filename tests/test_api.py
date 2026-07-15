@@ -10,15 +10,10 @@ client = TestClient(app)
 
 @pytest.mark.unit
 def test_health_handler_unit() -> None:
-    assert health()["status"] == "ok"
-
-
-@pytest.mark.unit
-def test_health_reports_admin_source_trust_when_configured(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("ADMIN_TRUSTED_PROXY_IPS", "10.0.0.0/8")
-    assert health()["admin_source_trust"] == "trusted_proxy_boundary"
+    payload = health()
+    assert payload["status"] == "ok"
+    assert "admin_login_source_trust" in payload
+    assert payload["admin_login_source_trust"]["enabled"] is False
 
 
 @pytest.mark.unit

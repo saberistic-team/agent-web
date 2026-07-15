@@ -21,7 +21,7 @@ from fastapi.responses import Response
 
 from app import db
 from app.admin_client_source import (
-    emit_client_source_resolution_telemetry,
+    log_client_source_telemetry,
     resolve_admin_login_client_source,
 )
 from app.config import Settings
@@ -239,23 +239,15 @@ def read_login_flow_token(request: Request) -> str | None:
 
 
 def client_ip(request: Request, settings: Settings) -> str:
-    """Resolve the client source IP for rate limiting.
+    """Resolve the client source IP for admin login rate limiting.
 
-    Forwarding headers are honored only when the immediate TCP peer matches
-    ``ADMIN_LOGIN_TRUSTED_IMMEDIATE_PEER_NETWORKS`` and forwarded-header trust
-    is enabled. Parsed ``X-Forwarded-For`` chains walk trusted hops from the
-    right (Cloudflare append semantics) rather than trusting the left-most
-    value from arbitrary clients.
-
-    Source identity notes:
-
-    * **IPv4 / IPv6** — stored only as keyed digests; normalized before hashing.
-    * **Missing peer** — falls back to ``unknown`` so attempts still share one
-      bucket instead of creating an unbounded namespace.
-    * **Untrusted peer** — spoofed ``X-Forwarded-For``, ``Forwarded``, and
-      ``CF-Connecting-IP`` values are ignored; the direct peer is used.
+    Delegates to :func:`resolve_admin_login_client_source`, which only trusts
+    forwarding headers after verifying the immediate peer against
+    ``ADMIN_TRUSTED_PROXY_CIDRS`` and walking the documented hop order.
     """
-    return resolve_admin_login_client_source(request, settings).source
+    resolution = resolve_admin_login_client_source(request, settings)
+    log_client_source_telemetry(resolution)
+    return resolution.source
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
@@ -379,9 +371,7 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    resolution = resolve_admin_login_client_source(request, settings)
-    emit_client_source_resolution_telemetry(resolution.path)
-    source = resolution.source
+    source = client_ip(request, settings)
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,
