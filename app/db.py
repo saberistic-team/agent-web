@@ -19,6 +19,24 @@ def init_db(database_url: str) -> None:
         apply_migrations(conn)
 
 
+def latest_schema_version(database_url: str) -> str | None:
+    """Return the highest applied ``schema_migrations.version``, or None."""
+    with psycopg.connect(database_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT version
+                FROM schema_migrations
+                ORDER BY version DESC
+                LIMIT 1
+                """
+            )
+            row = cur.fetchone()
+    if row is None:
+        return None
+    return str(row[0])
+
+
 @contextmanager
 def db_connection(database_url: str) -> Generator[psycopg.Connection, None, None]:
     with psycopg.connect(database_url, row_factory=dict_row) as conn:
@@ -235,29 +253,6 @@ def consume_admin_login_flow(conn: psycopg.Connection, *, flow_token_hash: str) 
         conn.commit()
 
 
-def update_admin_login_flow_csrf(
-    conn: psycopg.Connection,
-    *,
-    flow_token_hash: str,
-    csrf_token_hash: str,
-) -> bool:
-    """Rotate the CSRF hash for an active, unconsumed login flow."""
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            UPDATE admin_login_flows
-            SET csrf_token_hash = %s
-            WHERE flow_token_hash = %s
-              AND consumed_at IS NULL
-              AND expires_at > NOW()
-            """,
-            (csrf_token_hash, flow_token_hash),
-        )
-        updated = cur.rowcount > 0
-        conn.commit()
-    return updated
-
-
 def cleanup_stale_admin_login_flows(
     conn: psycopg.Connection,
     *,
@@ -303,253 +298,36 @@ def cleanup_stale_admin_login_flows(
     return deleted
 
 
-def is_admin_login_throttled(
-    conn: psycopg.Connection,
-    *,
-    limiter_key: str,
-    now: datetime,
-) -> bool:
-    """Return True when a single limiter bucket is in an active lockout window."""
-    return is_admin_login_locked(conn, limiter_keys=[limiter_key], now=now)
-
-
-def is_admin_login_locked(
-    conn: psycopg.Connection,
-    *,
-    limiter_keys: list[str],
-    now: datetime,
-) -> bool:
-    """Read-only check: True when any bucket is currently locked."""
-    if not limiter_keys:
-        return False
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT locked_until
-            FROM admin_login_rate_limits
-            WHERE limiter_key = ANY(%s)
-            """,
-            (limiter_keys,),
-        )
-        rows = cur.fetchall()
-    for row in rows:
-        locked_until = row["locked_until"]
-        if locked_until is None:
-            continue
-        if locked_until.tzinfo is None:
-            locked_until = locked_until.replace(tzinfo=timezone.utc)
-        if locked_until > now:
-            return True
-    return False
-
-
-def _upsert_admin_login_limiter_row(
-    cur: psycopg.Cursor,
-    *,
-    limiter_key: str,
-    failure_count: int,
-    window_started_at: datetime,
-    locked_until: datetime | None,
-    updated_at: datetime,
-) -> None:
-    cur.execute(
-        """
-        INSERT INTO admin_login_rate_limits (
-            limiter_key, failure_count, window_started_at, locked_until, updated_at
-        )
-        VALUES (%s, %s, %s, %s, %s)
-        ON CONFLICT (limiter_key) DO UPDATE SET
-            failure_count = EXCLUDED.failure_count,
-            window_started_at = EXCLUDED.window_started_at,
-            locked_until = EXCLUDED.locked_until,
-            updated_at = EXCLUDED.updated_at
-        """,
-        (
-            limiter_key,
-            failure_count,
-            window_started_at,
-            locked_until,
-            updated_at,
-        ),
-    )
-
-
-def _next_limiter_failure_state(
-    row: dict[str, Any] | None,
-    *,
-    now: datetime,
-    window_seconds: int,
-    rate_limit: int,
-    lockout_seconds: int,
-) -> tuple[int, datetime, datetime | None, bool, bool]:
-    """Compute the next bucket state for one failed or admitted attempt.
-
-    Returns ``(failure_count, window_started_at, locked_until, admitted,
-    lockout_transition)``. ``lockout_transition`` is True when this mutation
-    newly enters an active lockout window.
-    """
-    window_cutoff = now.timestamp() - window_seconds
-    prior_locked_until = None
-    if row is not None:
-        prior_locked_until = row["locked_until"]
-        if prior_locked_until is not None and prior_locked_until.tzinfo is None:
-            prior_locked_until = prior_locked_until.replace(tzinfo=timezone.utc)
-        if prior_locked_until is not None and prior_locked_until > now:
-            return (
-                int(row["failure_count"]),
-                row["window_started_at"],
-                prior_locked_until,
-                False,
-                False,
-            )
-        window_started_at = row["window_started_at"]
-        if window_started_at.tzinfo is None:
-            window_started_at = window_started_at.replace(tzinfo=timezone.utc)
-        if prior_locked_until is not None and prior_locked_until <= now:
-            failure_count = 1
-            window_started_at = now
-        elif window_started_at.timestamp() < window_cutoff:
-            failure_count = 1
-            window_started_at = now
-        else:
-            failure_count = int(row["failure_count"]) + 1
-    else:
-        failure_count = 1
-        window_started_at = now
-
-    if failure_count > rate_limit:
-        locked_until = now + timedelta(seconds=lockout_seconds)
-        lockout_transition = prior_locked_until is None or prior_locked_until <= now
-        return failure_count, window_started_at, locked_until, False, lockout_transition
-
-    locked_until = None
-    lockout_transition = False
-    if failure_count >= rate_limit:
-        locked_until = now + timedelta(seconds=lockout_seconds)
-        lockout_transition = prior_locked_until is None or prior_locked_until <= now
-    return failure_count, window_started_at, locked_until, True, lockout_transition
-
-
 def admit_admin_login_attempt(
     conn: psycopg.Connection,
     *,
-    limiter_keys: list[str],
+    limiter_keys: tuple[str, ...],
     now: datetime,
     rate_limit: int,
     window_seconds: int,
     lockout_seconds: int,
 ) -> tuple[bool, bool]:
-    """Atomically reserve one password-verification attempt across buckets.
+    """Atomically reserve one login attempt across all ``limiter_keys``.
 
-    Returns ``(admitted, lockout_transition)``. Concurrent callers cannot all pass
-    based on the same pre-increment state because each bucket row is locked with
-    ``SELECT … FOR UPDATE`` inside one transaction.
+    Returns ``(admitted, newly_locked)``. When any bucket is locked or already at
+    the configured threshold, the transaction rolls back and no bucket is updated.
     """
-    unique_keys = sorted(set(limiter_keys))
-    if not unique_keys:
+    if not limiter_keys:
         return True, False
 
-    lockout_transition = False
-    with conn.transaction():
-        rows_by_key: dict[str, dict[str, Any] | None] = {}
-        computed: list[
-            tuple[str, int, datetime, datetime | None, bool, bool]
-        ] = []
-        with conn.cursor() as cur:
-            for limiter_key in unique_keys:
-                cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (limiter_key,))
-                cur.execute(
-                    """
-                    SELECT failure_count, window_started_at, locked_until
-                    FROM admin_login_rate_limits
-                    WHERE limiter_key = %s
-                    FOR UPDATE
-                    """,
-                    (limiter_key,),
+    newly_locked = False
+    with conn.cursor() as cur:
+        for limiter_key in limiter_keys:
+            cur.execute(
+                """
+                INSERT INTO admin_login_rate_limits (
+                    limiter_key, failure_count, window_started_at, locked_until, updated_at
                 )
-                row = cur.fetchone()
-                rows_by_key[limiter_key] = row
-                computed.append(
-                    (limiter_key,)
-                    + _next_limiter_failure_state(
-                        row,
-                        now=now,
-                        window_seconds=window_seconds,
-                        rate_limit=rate_limit,
-                        lockout_seconds=lockout_seconds,
-                    )
-                )
-
-        already_locked = any(
-            row is not None
-            and row.get("locked_until") is not None
-            and (
-                row["locked_until"].replace(tzinfo=timezone.utc)
-                if row["locked_until"].tzinfo is None
-                else row["locked_until"]
+                VALUES (%s, 0, %s, NULL, %s)
+                ON CONFLICT (limiter_key) DO NOTHING
+                """,
+                (limiter_key, now, now),
             )
-            > now
-            for row in rows_by_key.values()
-        )
-        if already_locked:
-            return False, False
-
-        denied = [item for item in computed if not item[4]]
-        if denied:
-            lockout_transition = any(item[5] for item in denied)
-            with conn.cursor() as cur:
-                for (
-                    limiter_key,
-                    failure_count,
-                    window_started_at,
-                    locked_until,
-                    _admitted,
-                    transitioned,
-                ) in denied:
-                    if not transitioned and failure_count <= rate_limit:
-                        continue
-                    _upsert_admin_login_limiter_row(
-                        cur,
-                        limiter_key=limiter_key,
-                        failure_count=failure_count,
-                        window_started_at=window_started_at,
-                        locked_until=locked_until,
-                        updated_at=now,
-                    )
-            return False, lockout_transition
-
-        lockout_transition = any(item[5] for item in computed)
-        with conn.cursor() as cur:
-            for (
-                limiter_key,
-                failure_count,
-                window_started_at,
-                locked_until,
-                _admitted,
-                _transitioned,
-            ) in computed:
-                _upsert_admin_login_limiter_row(
-                    cur,
-                    limiter_key=limiter_key,
-                    failure_count=failure_count,
-                    window_started_at=window_started_at,
-                    locked_until=locked_until,
-                    updated_at=now,
-                )
-    return True, lockout_transition
-
-
-def release_admin_login_admission(
-    conn: psycopg.Connection,
-    *,
-    limiter_key: str,
-    now: datetime,
-    rate_limit: int,
-) -> None:
-    """Release one admitted verification slot after successful login."""
-    with conn.transaction():
-        with conn.cursor() as cur:
-            cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (limiter_key,))
             cur.execute(
                 """
                 SELECT failure_count, window_started_at, locked_until
@@ -560,23 +338,148 @@ def release_admin_login_admission(
                 (limiter_key,),
             )
             row = cur.fetchone()
-            if row is None or int(row["failure_count"]) <= 0:
-                return
-            failure_count = int(row["failure_count"]) - 1
+            if row is None:
+                conn.rollback()
+                return False, newly_locked
+
+            failure_count = int(row["failure_count"])
+            window_started_at = row["window_started_at"]
             locked_until = row["locked_until"]
-            if locked_until is not None:
-                if locked_until.tzinfo is None:
-                    locked_until = locked_until.replace(tzinfo=timezone.utc)
-                if failure_count < rate_limit:
-                    locked_until = None
-            _upsert_admin_login_limiter_row(
-                cur,
-                limiter_key=limiter_key,
-                failure_count=failure_count,
-                window_started_at=row["window_started_at"],
-                locked_until=locked_until,
-                updated_at=now,
+            if window_started_at.tzinfo is None:
+                window_started_at = window_started_at.replace(tzinfo=timezone.utc)
+            if locked_until is not None and locked_until.tzinfo is None:
+                locked_until = locked_until.replace(tzinfo=timezone.utc)
+
+            if locked_until is not None and locked_until > now:
+                conn.rollback()
+                return False, newly_locked
+
+            window_expired = window_started_at < now - timedelta(seconds=window_seconds)
+            lockout_expired = locked_until is not None and locked_until <= now
+            if window_expired or lockout_expired:
+                failure_count = 0
+                window_started_at = now
+                locked_until = None
+
+            if failure_count >= rate_limit:
+                if locked_until is None or locked_until <= now:
+                    locked_until = now + timedelta(seconds=lockout_seconds)
+                    newly_locked = True
+                cur.execute(
+                    """
+                    UPDATE admin_login_rate_limits
+                    SET locked_until = %s, updated_at = %s
+                    WHERE limiter_key = %s
+                    """,
+                    (locked_until, now, limiter_key),
+                )
+                conn.rollback()
+                return False, newly_locked
+
+            failure_count += 1
+            next_locked_until = locked_until
+            if failure_count >= rate_limit:
+                next_locked_until = now + timedelta(seconds=lockout_seconds)
+                newly_locked = True
+
+            cur.execute(
+                """
+                UPDATE admin_login_rate_limits
+                SET failure_count = %s,
+                    window_started_at = %s,
+                    locked_until = %s,
+                    updated_at = %s
+                WHERE limiter_key = %s
+                """,
+                (
+                    failure_count,
+                    window_started_at,
+                    next_locked_until,
+                    now,
+                    limiter_key,
+                ),
             )
+
+        conn.commit()
+        return True, newly_locked
+
+
+def release_admin_login_admission(
+    conn: psycopg.Connection,
+    *,
+    limiter_keys: tuple[str, ...],
+    now: datetime,
+    rate_limit: int,
+) -> None:
+    """Undo one admitted reservation after successful password verification."""
+    if not limiter_keys:
+        return
+
+    with conn.cursor() as cur:
+        for limiter_key in limiter_keys:
+            cur.execute(
+                """
+                SELECT failure_count, locked_until
+                FROM admin_login_rate_limits
+                WHERE limiter_key = %s
+                FOR UPDATE
+                """,
+                (limiter_key,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                continue
+
+            failure_count = max(0, int(row["failure_count"]) - 1)
+            locked_until = row["locked_until"]
+            if locked_until is not None and locked_until.tzinfo is None:
+                locked_until = locked_until.replace(tzinfo=timezone.utc)
+            if failure_count < rate_limit:
+                locked_until = None
+
+            if failure_count == 0:
+                cur.execute(
+                    "DELETE FROM admin_login_rate_limits WHERE limiter_key = %s",
+                    (limiter_key,),
+                )
+            else:
+                cur.execute(
+                    """
+                    UPDATE admin_login_rate_limits
+                    SET failure_count = %s,
+                        locked_until = %s,
+                        updated_at = %s
+                    WHERE limiter_key = %s
+                    """,
+                    (failure_count, locked_until, now, limiter_key),
+                )
+        conn.commit()
+
+
+def is_admin_login_throttled(
+    conn: psycopg.Connection,
+    *,
+    limiter_key: str,
+    now: datetime,
+) -> bool:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT locked_until
+            FROM admin_login_rate_limits
+            WHERE limiter_key = %s
+            """,
+            (limiter_key,),
+        )
+        row = cur.fetchone()
+    if row is None:
+        return False
+    locked_until = row["locked_until"]
+    if locked_until is None:
+        return False
+    if locked_until.tzinfo is None:
+        locked_until = locked_until.replace(tzinfo=timezone.utc)
+    return locked_until > now
 
 
 def record_admin_login_failure(
@@ -588,77 +491,65 @@ def record_admin_login_failure(
     window_seconds: int,
     lockout_seconds: int,
 ) -> None:
-    record_admin_login_failures(
-        conn,
-        limiter_keys=[limiter_key],
-        now=now,
-        rate_limit=rate_limit,
-        window_seconds=window_seconds,
-        lockout_seconds=lockout_seconds,
-    )
-
-
-def record_admin_login_failures(
-    conn: psycopg.Connection,
-    *,
-    limiter_keys: list[str],
-    now: datetime,
-    rate_limit: int,
-    window_seconds: int,
-    lockout_seconds: int,
-) -> None:
-    unique_keys = sorted(set(limiter_keys))
-    if not unique_keys:
-        return
-    with conn.transaction():
-        with conn.cursor() as cur:
-            for limiter_key in unique_keys:
-                cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (limiter_key,))
-                cur.execute(
-                    """
-                    SELECT failure_count, window_started_at, locked_until
-                    FROM admin_login_rate_limits
-                    WHERE limiter_key = %s
-                    FOR UPDATE
-                    """,
-                    (limiter_key,),
-                )
-                row = cur.fetchone()
-                failure_count, window_started_at, locked_until, _admitted, _transitioned = (
-                    _next_limiter_failure_state(
-                        row,
-                        now=now,
-                        window_seconds=window_seconds,
-                        rate_limit=rate_limit,
-                        lockout_seconds=lockout_seconds,
-                    )
-                )
-                _upsert_admin_login_limiter_row(
-                    cur,
-                    limiter_key=limiter_key,
-                    failure_count=failure_count,
-                    window_started_at=window_started_at,
-                    locked_until=locked_until,
-                    updated_at=now,
-                )
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO admin_login_rate_limits (
+                limiter_key, failure_count, window_started_at, locked_until, updated_at
+            )
+            VALUES (%s, 1, %s, NULL, %s)
+            ON CONFLICT (limiter_key) DO UPDATE SET
+                failure_count = CASE
+                    WHEN admin_login_rate_limits.window_started_at
+                        < %s - make_interval(secs => %s)
+                    THEN 1
+                    ELSE admin_login_rate_limits.failure_count + 1
+                END,
+                window_started_at = CASE
+                    WHEN admin_login_rate_limits.window_started_at
+                        < %s - make_interval(secs => %s)
+                    THEN %s
+                    ELSE admin_login_rate_limits.window_started_at
+                END,
+                locked_until = CASE
+                    WHEN (
+                        CASE
+                            WHEN admin_login_rate_limits.window_started_at
+                                < %s - make_interval(secs => %s)
+                            THEN 1
+                            ELSE admin_login_rate_limits.failure_count + 1
+                        END
+                    ) >= %s
+                    THEN %s + make_interval(secs => %s)
+                    ELSE admin_login_rate_limits.locked_until
+                END,
+                updated_at = %s
+            """,
+            (
+                limiter_key,
+                now,
+                now,
+                now,
+                window_seconds,
+                now,
+                window_seconds,
+                now,
+                now,
+                window_seconds,
+                rate_limit,
+                now,
+                lockout_seconds,
+                now,
+            ),
+        )
+        conn.commit()
 
 
 def clear_admin_login_rate_limit(conn: psycopg.Connection, *, limiter_key: str) -> None:
-    clear_admin_login_rate_limits(conn, limiter_keys=[limiter_key])
-
-
-def clear_admin_login_rate_limits(
-    conn: psycopg.Connection,
-    *,
-    limiter_keys: list[str],
-) -> None:
-    unique_keys = sorted(set(limiter_keys))
-    if not unique_keys:
-        return
     with conn.cursor() as cur:
         cur.execute(
-            "DELETE FROM admin_login_rate_limits WHERE limiter_key = ANY(%s)",
-            (unique_keys,),
+            "DELETE FROM admin_login_rate_limits WHERE limiter_key = %s",
+            (limiter_key,),
         )
         conn.commit()
 
