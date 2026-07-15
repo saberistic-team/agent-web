@@ -20,8 +20,10 @@ from fastapi import Request
 from fastapi.responses import Response
 
 from app import db
-from app.client_source import client_ip as resolve_client_ip
-from app.client_source import resolve_client_source
+from app.admin_client_source import (
+    emit_client_source_resolution_telemetry,
+    resolve_admin_login_client_source,
+)
 from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
@@ -237,14 +239,23 @@ def read_login_flow_token(request: Request) -> str | None:
 
 
 def client_ip(request: Request, settings: Settings) -> str:
-    """Resolve the client source for admin login rate limiting.
+    """Resolve the client source IP for rate limiting.
 
-    Delegates to :mod:`app.client_source`, which applies verified-hop parsing
-    when ``ADMIN_TRUST_PROXY_HEADERS`` is enabled and the immediate peer is
-    within ``ADMIN_TRUSTED_PROXY_IPS``. Raw forwarding headers from untrusted
-    peers are ignored.
+    Forwarding headers are honored only when the immediate TCP peer matches
+    ``ADMIN_LOGIN_TRUSTED_IMMEDIATE_PEER_NETWORKS`` and forwarded-header trust
+    is enabled. Parsed ``X-Forwarded-For`` chains walk trusted hops from the
+    right (Cloudflare append semantics) rather than trusting the left-most
+    value from arbitrary clients.
+
+    Source identity notes:
+
+    * **IPv4 / IPv6** — stored only as keyed digests; normalized before hashing.
+    * **Missing peer** — falls back to ``unknown`` so attempts still share one
+      bucket instead of creating an unbounded namespace.
+    * **Untrusted peer** — spoofed ``X-Forwarded-For``, ``Forwarded``, and
+      ``CF-Connecting-IP`` values are ignored; the direct peer is used.
     """
-    return resolve_client_ip(request, settings)
+    return resolve_admin_login_client_source(request, settings).source
 
 
 def _digest_limiter_key(prefix: str, material: str) -> str:
@@ -368,8 +379,9 @@ def try_admit_login_attempt(
     username: str = "",
 ) -> LoginAdmissionResult:
     """Atomically reserve shared limiter capacity before password verification."""
-    resolve_client_source(request, settings)
-    source = client_ip(request, settings)
+    resolution = resolve_admin_login_client_source(request, settings)
+    emit_client_source_resolution_telemetry(resolution.path)
+    source = resolution.source
     limiter_keys = login_limiter_keys(
         submitted_username=username,
         client_source=source,

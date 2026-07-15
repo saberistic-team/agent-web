@@ -2,31 +2,14 @@
 
 from __future__ import annotations
 
-import ipaddress
 import os
 from dataclasses import dataclass
 
-
-def parse_trusted_proxy_networks(
-    raw: str,
-) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
-    """Parse comma-separated trusted proxy CIDRs and host addresses."""
-    networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
-    for item in raw.split(","):
-        token = item.strip()
-        if not token:
-            continue
-        try:
-            if "/" in token:
-                network = ipaddress.ip_network(token, strict=False)
-            else:
-                addr = ipaddress.ip_address(token)
-                network = ipaddress.ip_network(f"{addr}/{addr.max_prefixlen}", strict=False)
-            if isinstance(network, (ipaddress.IPv4Network, ipaddress.IPv6Network)):
-                networks.append(network)
-        except ValueError:
-            continue
-    return tuple(networks)
+from app.proxy_trust_constants import (
+    DEFAULT_MAX_FORWARDED_CHAIN_LENGTH,
+    DEFAULT_TRUSTED_FORWARDED_NETWORKS,
+    DEFAULT_TRUSTED_IMMEDIATE_PEER_NETWORKS,
+)
 
 
 @dataclass(frozen=True)
@@ -50,10 +33,10 @@ class Settings:
     admin_login_rate_limit: int = 5
     admin_login_rate_window_seconds: int = 900
     admin_login_lockout_seconds: int = 900
-    admin_trust_proxy_headers: bool = False
-    admin_trusted_proxy_networks: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...] = ()
-    admin_trust_cloudflare_edge: bool = False
-    uvicorn_forwarded_allow_ips: str = "127.0.0.1"
+    admin_login_trust_forwarded_headers: bool = False
+    admin_login_trusted_immediate_peer_networks: tuple[str, ...] = DEFAULT_TRUSTED_IMMEDIATE_PEER_NETWORKS
+    admin_login_trusted_forwarded_networks: tuple[str, ...] = DEFAULT_TRUSTED_FORWARDED_NETWORKS
+    admin_login_max_forwarded_chain_length: int = DEFAULT_MAX_FORWARDED_CHAIN_LENGTH
     audit_page_size: int = 50
     brief_page_size: int = 50
 
@@ -135,19 +118,36 @@ def get_settings() -> Settings:
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
         brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
-        admin_trust_proxy_headers=os.environ.get(
-            "ADMIN_TRUST_PROXY_HEADERS", ""
-        ).lower()
-        in ("1", "true", "yes"),
-        admin_trusted_proxy_networks=parse_trusted_proxy_networks(
-            os.environ.get("ADMIN_TRUSTED_PROXY_IPS", "")
+        admin_login_trust_forwarded_headers=_env_flag(
+            "ADMIN_LOGIN_TRUST_FORWARDED_HEADERS",
+            fallback=_env_flag("ADMIN_TRUST_PROXY_HEADERS"),
         ),
-        admin_trust_cloudflare_edge=os.environ.get(
-            "ADMIN_TRUST_CLOUDFLARE_EDGE", ""
-        ).lower()
-        in ("1", "true", "yes"),
-        uvicorn_forwarded_allow_ips=os.environ.get(
-            "UVICORN_FORWARDED_ALLOW_IPS", "127.0.0.1"
-        ).strip()
-        or "127.0.0.1",
+        admin_login_trusted_immediate_peer_networks=_parse_network_list_env(
+            "ADMIN_LOGIN_TRUSTED_IMMEDIATE_PEER_NETWORKS",
+            DEFAULT_TRUSTED_IMMEDIATE_PEER_NETWORKS,
+        ),
+        admin_login_trusted_forwarded_networks=_parse_network_list_env(
+            "ADMIN_LOGIN_TRUSTED_FORWARDED_NETWORKS",
+            DEFAULT_TRUSTED_FORWARDED_NETWORKS,
+        ),
+        admin_login_max_forwarded_chain_length=int(
+            os.environ.get(
+                "ADMIN_LOGIN_MAX_FORWARDED_CHAIN_LENGTH",
+                str(DEFAULT_MAX_FORWARDED_CHAIN_LENGTH),
+            )
+        ),
     )
+
+
+def _env_flag(name: str, *, fallback: bool = False) -> bool:
+    raw = os.environ.get(name, "")
+    if not raw and fallback:
+        return True
+    return raw.lower() in ("1", "true", "yes")
+
+
+def _parse_network_list_env(name: str, defaults: tuple[str, ...]) -> tuple[str, ...]:
+    raw = os.environ.get(name, "")
+    if not raw.strip():
+        return defaults
+    return tuple(part.strip() for part in raw.split(",") if part.strip())
