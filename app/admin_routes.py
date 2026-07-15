@@ -264,13 +264,11 @@ def _record_login_failure(
     request: Request,
     *,
     reason: str,
-    attempted_username: str | None = None,
 ) -> None:
     settings = get_settings()
     if not settings.database_url:
         return
-    actor = attempted_username.strip() if attempted_username else "anonymous"
-    actor_context = actor_context_from_request(request, actor=actor)
+    actor_context = actor_context_from_request(request, actor="anonymous")
     try:
         with db.db_connection(settings.database_url) as conn:
             with crm_transaction(conn):
@@ -278,7 +276,6 @@ def _record_login_failure(
                     conn,
                     actor_context=actor_context,
                     reason=reason,
-                    attempted_username=attempted_username,
                 )
     except Exception:
         logger.exception("Failed to record login failure audit event")
@@ -511,12 +508,9 @@ def admin_login_submit(
             _record_login_failure(
                 request,
                 reason="rate_limited",
-                attempted_username=normalized_username,
             )
         else:
-            _record_login_failure(
-                request, reason="invalid_csrf", attempted_username=normalized_username
-            )
+            _record_login_failure(request, reason="invalid_csrf")
         return _issue_login_flow_response(
             settings=settings,
             error_message=admin_auth.INVALID_CREDENTIALS_MESSAGE,
@@ -529,14 +523,9 @@ def admin_login_submit(
             _record_login_failure(
                 request,
                 reason="rate_limited",
-                attempted_username=normalized_username,
             )
         else:
-            _record_login_failure(
-                request,
-                reason="invalid_credentials",
-                attempted_username=normalized_username,
-            )
+            _record_login_failure(request, reason="invalid_credentials")
         return _issue_login_flow_response(
             settings=settings,
             error_message=admin_auth.INVALID_CREDENTIALS_MESSAGE,

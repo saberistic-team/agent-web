@@ -116,6 +116,30 @@ or rolled-back logins never emit a new session cookie.
 | `analytics.config.update` | Analytics configuration via `CrmService.update_analytics_config` |
 | `export.request` | Export requests via `CrmService.request_export` |
 
+### Unauthenticated login-failure actor policy
+
+Every ``auth.login.failure`` event produced **before** successful authentication
+uses actor ``anonymous``. Submitted usernames, email addresses, and other
+attacker-chosen identifiers must not appear in ``actor``, ``metadata``,
+``summary_after``, reason text, logs, metrics, or exception strings. Only a
+small server-defined reason enum is stored (for example ``invalid_credentials``,
+``invalid_csrf``, ``rate_limited``).
+
+Authenticated ``auth.login.success`` and ``auth.logout`` events retain the
+configured administrator username in ``actor`` and link to the session id where
+applicable.
+
+### Historical immutable rows (pre-#242)
+
+Deployments before keyed limiter identifiers and anonymous failure actors may
+have ``auth.login.failure`` rows whose ``actor`` column contains a submitted
+username candidate (the separate ``attempted_username`` metadata field was
+already excluded). These rows are append-only; application code does not rewrite
+or delete them. Security reporting should treat such historical ``actor`` values
+as unauthenticated candidates, not authenticated administrator identities.
+Remediating historical rows requires an explicit data-governance decision outside
+normal application mutation paths.
+
 Auth events are wired in `app/admin_routes.py`. Other mutations record audit events through `CrmService` methods that future admin UI routes will call.
 
 ## Admin UI
