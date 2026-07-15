@@ -101,31 +101,34 @@ operator is never left without a valid server-side session. The session cookie i
 set on the redirect response only after the transaction exits successfully; failed
 or rolled-back logins never emit a new session cookie.
 
-#### Login failure actor policy
+### Unauthenticated login failure actor policy
 
-Every ``auth.login.failure`` event recorded **before** successful authentication uses
-``actor = anonymous``. Submitted usernames, client sources, limiter digest inputs,
-and limiter secrets must not appear in the audit row (actor, metadata, reason text),
-structured logs, or metrics. Failure ``reason`` values are a small server-defined set
-(for example ``invalid_credentials``, ``invalid_csrf``, ``rate_limited``).
+Every `auth.login.failure` event recorded **before** successful authentication uses
+the canonical actor `anonymous`. Submitted username candidates, client source
+addresses, limiter digest inputs, and limiter secrets are never stored in the
+audit `actor`, `metadata`, or `summary_after` fields, and failure reasons are
+limited to server-defined enums such as `invalid_credentials`, `invalid_csrf`, and
+`rate_limited`.
 
-Authenticated ``auth.login.success`` and ``auth.logout`` events continue to use the
-verified administrator username and session linkage.
+Authenticated events (`auth.login.success`, `auth.logout`, and post-login CRM
+mutations) continue to record the verified administrator username in `actor`.
 
-#### Historical login-failure actors (pre-#242)
+#### Historical rows (pre-#242)
 
-Before issue #242, some ``auth.login.failure`` rows could retain attacker-supplied
-usernames in ``audit_events.actor``. Those rows are append-only and are **not**
-rewritten by the forward fix. Security reviews should treat pre-migration failure
-actors as untrusted unless corroborated by session linkage. All new failure events
-use ``anonymous``.
+Deployments before issue #242 may contain `auth.login.failure` rows whose `actor`
+column holds attacker-supplied username candidates from the login form. These rows
+are append-only and are **not** rewritten or deleted by application code. Security
+reporting must treat such historical `actor` values as untrusted candidate strings,
+not authenticated administrator identities. The forward fix in #242 prevents all
+new occurrences; remediation of historical immutable rows requires an explicit
+data-governance decision outside normal application rollback.
 
 ## Audited actions
 
 | Action | When recorded |
 |--------|----------------|
 | `auth.login.success` | Valid admin login creates a server-side session |
-| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting (actor is always `anonymous`) |
+| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting |
 | `auth.logout` | Authenticated session revocation (live session → revoked) |
 | `import.batch` | Data import batches via `CrmService.commit_linkedin_import` / `import_batch` |
 | `import.batch.rollback` | Rollback of committed import batches via `CrmService.rollback_import_batch` |
