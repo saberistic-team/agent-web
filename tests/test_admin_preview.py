@@ -290,6 +290,71 @@ def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytes
 
 
 @pytest.mark.unit
+def test_preview_crm_archive_restore_detail_pages(monkeypatch: pytest.MonkeyPatch) -> None:
+    import random
+
+    from argon2 import PasswordHasher
+
+    from app.admin_preview import (
+        PREVIEW_COMPANY_ARCHIVE_ID,
+        PREVIEW_COMPANY_RESTORE_ID,
+        PREVIEW_CONTACT_ARCHIVE_ID,
+        PREVIEW_CONTACT_RESTORE_ID,
+        preview_company_research_detail,
+        preview_contact_research_detail,
+    )
+
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "11")
+    monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
+    monkeypatch.setenv(
+        "ADMIN_PASSWORD_HASH",
+        PasswordHasher().hash("preview"),
+    )
+    monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
+    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    rng = random.Random(11)
+    company_preview = preview_company_research_detail(PREVIEW_COMPANY_ARCHIVE_ID, rng=rng)
+    assert company_preview is not None
+    company, _contacts, records = company_preview
+    assert records
+    client = TestClient(app, follow_redirects=False)
+
+    archive_company = client.get(f"/admin/companies/{PREVIEW_COMPANY_ARCHIVE_ID}")
+    assert archive_company.status_code == 200
+    assert company["name"] in archive_company.text
+    assert 'class="admin-btn admin-btn--destructive"' in archive_company.text
+    assert "Archive company" in archive_company.text
+
+    restore_company = client.get(f"/admin/companies/{PREVIEW_COMPANY_RESTORE_ID}")
+    assert restore_company.status_code == 200
+    assert 'class="admin-btn admin-btn--secondary"' in restore_company.text
+    assert "Restore company" in restore_company.text
+
+    archive_contact = client.get(f"/admin/contacts/{PREVIEW_CONTACT_ARCHIVE_ID}")
+    assert archive_contact.status_code == 200
+    contact_preview = preview_contact_research_detail(
+        PREVIEW_CONTACT_ARCHIVE_ID,
+        rng=random.Random(11),
+    )
+    assert contact_preview is not None
+    assert contact_preview[0]["full_name"] in archive_contact.text
+    assert 'class="admin-btn admin-btn--destructive"' in archive_contact.text
+    assert "Archive contact" in archive_contact.text
+
+    restore_contact = client.get(f"/admin/contacts/{PREVIEW_CONTACT_RESTORE_ID}")
+    assert restore_contact.status_code == 200
+    assert 'class="admin-btn admin-btn--secondary"' in restore_contact.text
+    assert "Restore contact" in restore_contact.text
+
+    edit_contact = client.get(f"/admin/contacts/{PREVIEW_CONTACT_ARCHIVE_ID}/edit")
+    assert edit_contact.status_code == 200
+    assert 'class="admin-btn admin-btn--destructive"' in edit_contact.text
+    assert "Archive contact" in edit_contact.text
+
+
+@pytest.mark.unit
 def test_preview_pipeline_companies_seed_stable() -> None:
     now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
     a = build_preview_pipeline_companies(rng=random.Random(42), now=now)

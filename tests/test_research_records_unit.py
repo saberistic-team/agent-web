@@ -221,6 +221,18 @@ def test_admin_research_page_renderers_cover_company_and_contact(
     )
     assert "research-type-badge--fact" in company_html
     assert "bad input" in company_html
+    assert 'class="admin-btn admin-btn--destructive"' in company_html
+    assert "Archive company" in company_html
+
+    archived_company = {**company, "archived_at": "2026-07-01T00:00:00+00:00"}
+    company_restore_html = render_admin_company_research_page(
+        company=archived_company,
+        contacts=[contact],
+        records=[record],
+        csrf_token="csrf",
+    )
+    assert 'class="admin-btn admin-btn--secondary"' in company_restore_html
+    assert "Restore company" in company_restore_html
 
     contact_html = render_admin_contact_research_page(
         contact=contact,
@@ -229,3 +241,15 @@ def test_admin_research_page_renderers_cover_company_and_contact(
         csrf_token="csrf",
     )
     assert "research-type-badge--fact" in contact_html
+    assert 'class="admin-btn admin-btn--destructive"' in contact_html
+    assert "Archive contact" in contact_html
+
+    archived_contact = {**contact, "archived_at": "2026-07-01T00:00:00+00:00"}
+    contact_restore_html = render_admin_contact_research_page(
+        contact=archived_contact,
+        company=company,
+        records=[record],
+        csrf_token="csrf",
+    )
+    assert 'class="admin-btn admin-btn--secondary"' in contact_restore_html
+    assert "Restore contact" in contact_restore_html

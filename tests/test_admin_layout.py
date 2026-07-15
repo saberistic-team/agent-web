@@ -136,6 +136,46 @@ def test_render_admin_nav_unknown_path_uses_admin_label() -> None:
 
 
 @pytest.mark.unit
+def test_admin_css_archive_action_buttons_reset_native_appearance() -> None:
+    css = ADMIN_CSS.read_text(encoding="utf-8")
+    base_block = css.split(".admin-btn {", 1)[1].split("}", 1)[0]
+    assert "appearance: none" in base_block
+    assert "background:" in base_block
+    assert "border:" in base_block
+    assert "padding:" in base_block
+    assert "cursor: pointer" in base_block
+    assert "border-radius:" in base_block
+    assert "#fff" not in base_block
+    assert "white" not in base_block.lower()
+
+    destructive_block = css.split(".admin-btn--destructive {", 1)[1].split("}", 1)[0]
+    assert "background:" in destructive_block
+    assert "#e05a5a" in destructive_block
+
+    secondary_block = css.split(".admin-btn--secondary {", 1)[1].split("}", 1)[0]
+    assert "background:" in secondary_block
+    assert "border-color:" in secondary_block
+
+    assert ".admin-btn--destructive:hover" in css
+    assert ".admin-btn--destructive:focus-visible" in css
+    assert ".admin-btn--destructive:active" in css
+    assert ".admin-btn--destructive:disabled" in css
+    assert ".admin-btn--secondary:hover" in css
+    assert ".admin-btn--secondary:focus-visible" in css
+    assert ".admin-btn--secondary:active" in css
+    assert ".admin-btn--secondary:disabled" in css
+    assert ".admin-btn:disabled" in css
+
+
+@pytest.mark.unit
+def test_archive_action_button_class_semantics() -> None:
+    from app.admin_layout import archive_action_button_class
+
+    assert archive_action_button_class(archived=False) == "admin-btn admin-btn--destructive"
+    assert archive_action_button_class(archived=True) == "admin-btn admin-btn--secondary"
+
+
+@pytest.mark.unit
 def test_admin_css_mobile_nav_and_table_scroll_guardrails() -> None:
     css = ADMIN_CSS.read_text(encoding="utf-8")
     assert "@media (min-width: 769px)" in css
