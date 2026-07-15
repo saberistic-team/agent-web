@@ -51,7 +51,7 @@ both commit or roll back together.
 | Brief-to-CRM linkage | `CrmService.link_project_brief_source` | Transactional write; audit ships with future routes |
 | Login success | `admin_routes._issue_session` | Prior-session revocation (if any) + new session + required audit atomically |
 | Logout (authenticated) | `admin_routes.admin_logout` | Revocation + required audit atomically when the session row transitions to revoked |
-| Login failure | `admin_routes` | Best-effort audit (`required=False`) |
+| Login failure | `admin_routes` | Best-effort audit (`required=False`); actor is always `anonymous` |
 
 `record_event(..., required=True)` propagates persistence errors. Security-sensitive
 mutations must not return success when a required audit event could not be stored.
@@ -85,15 +85,6 @@ Anonymous logout traffic is not stored in `audit_events`. Operational visibility
 if needed, should use bounded HTTP access logs or metrics — never the append-only
 admin audit table.
 
-### Historical audit exposure (pre-#242)
-
-Before keyed limiter digests and anonymous failure actors shipped, some
-``auth.login.failure`` rows may list attacker-supplied username candidates in the
-``actor`` column. These rows are immutable — application code must not rewrite
-historical audit data. Reporting should treat ``auth.login.failure`` events whose
-``actor`` is neither ``anonymous`` nor the configured administrator username as
-legacy unauthenticated attempts, not authenticated operators.
-
 ### Admin login session boundary
 
 `admin_routes._issue_session` opens one `db_connection` and one `crm_transaction`
@@ -126,6 +117,19 @@ or rolled-back logins never emit a new session cookie.
 | `export.request` | Export requests via `CrmService.request_export` |
 
 Auth events are wired in `app/admin_routes.py`. Other mutations record audit events through `CrmService` methods that future admin UI routes will call.
+
+### Login failure actor policy
+
+Unauthenticated login failures (`auth.login.failure`) always persist
+`actor = anonymous`. Submitted username candidates must not appear in the actor
+column, metadata, reason text, or correlation identifiers. This prevents
+attacker-supplied strings from becoming permanent security-ledger identities.
+
+**Historical note:** Deployments that recorded login failures before issue #242
+may have attacker-supplied values in the `actor` column for some
+`auth.login.failure` rows. Those rows remain append-only; remediation requires an
+explicit data-governance decision (for example, archival annotation or offline
+reporting filters). The forward fix prevents all new occurrences.
 
 ## Admin UI
 
