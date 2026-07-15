@@ -33,6 +33,9 @@ Optional overrides:
 - **Live Postgres (optional locally, required in CI):** schema reconcile tests in
   `tests/test_pipeline_schema_reconcile.py` use `TEST_DATABASE_URL`. CI sets
   `REQUIRE_TEST_DATABASE=1` so those tests fail closed when the URL is missing.
+  Admin login-flow atomic claim concurrency
+  (`tests/test_admin_login_flow_claim_pg_integration.py`, #243) and login rate
+  limiter integration tests use the same URL/guard pattern.
 - **Contract (real PostgreSQL, `tests/pg_contract/`):** the broad
   migrations/repositories/transactions/concurrency harness (#228). It runs
   against a real engine so migration-version drift, invalid joined SQL,

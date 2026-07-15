@@ -507,6 +507,8 @@ def test_admin_preview_mode_renders_section_mock_data(
     monkeypatch.delenv("DATABASE_URL", raising=False)
     response = client.get("/admin/companies")
     assert response.status_code == 200
-    assert "Preview data — not production" in response.text
     assert "admin-table" in response.text
     assert "Companies" in response.text
+    assert 'name="archived"' in response.text
+    assert "Include archived" in response.text
+    assert "No companies match these filters." not in response.text

@@ -93,6 +93,8 @@ ADMIN_SCREENSHOT_ROUTES: tuple[str, ...] = (
     "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd04",
     "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd03/edit",
     "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd04/edit",
+    "/admin/companies?archived=1",
+    "/admin/contacts?archived=1",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
     "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
     "/admin/companies/new",
