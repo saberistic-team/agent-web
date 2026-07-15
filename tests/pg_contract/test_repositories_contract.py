@@ -80,8 +80,10 @@ def test_contact_repository_crud_and_joined_queries(
     )
     contact_id = contact["id"]
 
-    # get_by_email is case-insensitive (LOWER(email)).
-    assert contacts.get_by_email(migrated_conn, "dana.lead@acme.example") is not None
+    # Active email identity lookup is case-insensitive (LOWER(email)).
+    assert (
+        contacts.get_active_by_email(migrated_conn, "dana.lead@acme.example") is not None
+    )
 
     # get_active_by_email joins companies and returns company_name.
     active = contacts.get_active_by_email(migrated_conn, "dana.lead@acme.example")
@@ -109,8 +111,13 @@ def test_contact_repository_crud_and_joined_queries(
 
     archived = contacts.archive(migrated_conn, contact_id)
     assert archived is not None and archived["archived_at"] is not None
-    # Archived contacts are not returned by the active-aware lookup.
+    # Archived contacts are not returned by the active-aware lookup (#226).
     assert contacts.get_active_by_email(migrated_conn, "dana.lead@acme.example") is None
+    # ...but remain discoverable via the archive-aware lookup for restore/review.
+    archived_match = contacts.get_archived_by_email(
+        migrated_conn, "dana.lead@acme.example"
+    )
+    assert archived_match is not None and archived_match["id"] == contact_id
     restored = contacts.restore(migrated_conn, contact_id)
     assert restored is not None and restored["archived_at"] is None
 
