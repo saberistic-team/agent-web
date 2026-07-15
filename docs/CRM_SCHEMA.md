@@ -112,6 +112,48 @@ Indexes: `company_id`, partial unique on `LOWER(email)`, `profile_url`, `archive
 `app/contacts.py` owns buying-role and relationship registries. Duplicate warnings for
 normalized profile URL, email, and name/company combinations are non-blocking.
 
+#### Email identity resolution (active vs archived)
+
+Contact email identity is **active/archive-aware** ([#226](https://github.com/saberistic-team/agent-web/issues/226)).
+Active and archived lookups are separate, explicit repository operations:
+
+| Operation | Filter | Guarantee | Use |
+|-----------|--------|-----------|-----|
+| `ContactRepository.get_active_by_email` | `archived_at IS NULL` | At most one deterministic row (backed by partial unique index `idx_contacts_email_unique`) | The only lookup that drives active create/link/lookup workflows |
+| `ContactRepository.get_archived_by_email` | `archived_at IS NOT NULL` | Most recently archived row | Surface a **restore/review** option only |
+
+Rules:
+
+- **One normalization policy.** `app/contacts.normalize_email` (trim + lowercase +
+  `@` validation) is the single policy for create, edit, restore, active/archived
+  lookup, and brief conversion (`normalize_brief_email` delegates to it). Matching
+  is always case-insensitive.
+- **Archived rows are never silently linked** as an active CRM contact. An archived
+  match is only ever offered for restore/review; active workflows that share an
+  email with an archived row always resolve to the active row.
+- **Safe conflicts, not 500s.** A create/update that would collide with
+  `idx_contacts_email_unique` raises `ContactEmailConflictError`, which route
+  handlers turn into a friendly validation redirect instead of an HTTP 500.
+
+#### Brief conversion contact linking + company-association rule
+
+`CrmService.convert_project_brief` create/link is deterministic and idempotent
+(the `source_records` uniqueness backstop short-circuits repeats):
+
+- No active email match → create one active contact.
+- Active email match → link that active contact (a duplicate `new` choice is a
+  validation error).
+- Archived-only match → surfaced as `archived_contact_match` for restore/review;
+  never auto-linked.
+
+**Company-association rule.** When a brief supplies a company, linking an existing
+active contact only *fills in* a **missing** company association
+(`contacts.company_id IS NULL` → set to the brief's company). A contact that
+already belongs to a company keeps that association and is **never silently
+reassigned**; an explicit selection that points a contact at a different company
+is rejected as a validation error. Enforced in
+`CrmService._associate_contact_company`.
+
 ### `source_records`
 
 | Column | Type | Notes |
