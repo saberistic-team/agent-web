@@ -44,6 +44,10 @@ Optional overrides:
   Reusable fixtures/helpers live in `tests/pg_contract/conftest.py`. Without
   `TEST_DATABASE_URL` the suite skips locally; CI sets `REQUIRE_TEST_DATABASE=1`
   so it fails closed instead.
+- **Backup / restore (#128):** `scripts/crm_backup.py` exports a redacted CRM
+  manifest and verifies restored databases (table counts, migration noop). See
+  [BACKUP_RESTORE.md](BACKUP_RESTORE.md). Unit tests: `tests/test_crm_backup.py`;
+  live Postgres: `tests/pg_contract/test_backup_restore_contract.py`.
 - **Browser (Playwright, `tests/test_linkedin_import_browser.py`):** drives a
   real Chromium browser against the actual authenticated `/admin/imports`
   page to exercise the client-side ZIP parser
