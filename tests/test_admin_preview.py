@@ -32,7 +32,6 @@ from app.admin_preview import (
     build_preview_pipeline_companies,
     build_preview_pipeline_detail,
     build_preview_section_rows,
-    clear_preview_context_cache,
     preview_company_fixture_ids,
     preview_contact_fixture_ids,
     render_preview_dashboard_main,
@@ -41,6 +40,49 @@ from app.admin_preview import (
 from app.admin_auth import SESSION_COOKIE_NAME
 from app.admin_dashboard_pages import render_acquisition_dashboard_page
 from app.main import app
+from app.preview_context import reset_preview_context_cache
+
+
+@pytest.fixture(autouse=True)
+def _reset_preview_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    reset_preview_context_cache()
+    monkeypatch.delenv("ADMIN_PREVIEW_REFERENCE_TIME", raising=False)
+
+
+@pytest.mark.unit
+def test_preview_companies_identical_desktop_mobile_responses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
+    monkeypatch.setenv("ADMIN_PREVIEW_REFERENCE_TIME", "2026-07-15T12:00:00+00:00")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    reset_preview_context_cache()
+    client = TestClient(app, follow_redirects=False)
+    cookies = {SESSION_COOKIE_NAME: "preview-screenshot-session"}
+    desktop = client.get("/admin/companies", cookies=cookies)
+    mobile = client.get("/admin/companies", cookies=cookies)
+    assert desktop.status_code == 200
+    assert mobile.text == desktop.text
+    assert "Northwind Labs" in desktop.text
+
+
+@pytest.mark.unit
+def test_preview_route_order_does_not_change_companies_html(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
+    monkeypatch.setenv("ADMIN_PREVIEW_REFERENCE_TIME", "2026-07-15T12:00:00+00:00")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    reset_preview_context_cache()
+    client = TestClient(app, follow_redirects=False)
+    cookies = {SESSION_COOKIE_NAME: "preview-screenshot-session"}
+    baseline = client.get("/admin/companies", cookies=cookies).text
+    client.get("/admin/briefs", cookies=cookies)
+    client.get("/admin/audit", cookies=cookies)
+    after = client.get("/admin/companies", cookies=cookies).text
+    assert baseline == after
 
 
 @pytest.mark.unit
@@ -280,6 +322,8 @@ def test_admin_preview_briefs_list_and_detail_have_mock_data(
 
 @pytest.mark.unit
 def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytest.MonkeyPatch) -> None:
+    import random
+
     from argon2 import PasswordHasher
 
     from app.admin_preview import (
@@ -289,6 +333,7 @@ def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytes
 
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "7")
+    monkeypatch.setenv("ADMIN_PREVIEW_REFERENCE_TIME", "2026-07-15T12:00:00+00:00")
     monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
     monkeypatch.setenv(
         "ADMIN_PASSWORD_HASH",
@@ -298,7 +343,7 @@ def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytes
     monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "preview-limiter-secret-32chars-minimum!!")
     monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    clear_preview_context_cache()
+    reset_preview_context_cache()
     preview = preview_contact_restore_conflict()
     client = TestClient(app, follow_redirects=False)
     response = client.get(
@@ -320,6 +365,7 @@ def test_preview_company_detail_archive_and_restore_actions(
 
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "11")
+    monkeypatch.setenv("ADMIN_PREVIEW_REFERENCE_TIME", "2026-07-15T12:00:00+00:00")
     monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
     monkeypatch.setenv(
         "ADMIN_PASSWORD_HASH",
@@ -329,7 +375,7 @@ def test_preview_company_detail_archive_and_restore_actions(
     monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "preview-limiter-secret-32chars-minimum!!")
     monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    clear_preview_context_cache()
+    reset_preview_context_cache()
     company, _contacts, _records = build_preview_company_detail(
         PREVIEW_COMPANY_DETAIL_ARCHIVE_ID,
     )
@@ -370,6 +416,7 @@ def test_preview_contact_detail_and_edit_archive_restore_actions(
 
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "12")
+    monkeypatch.setenv("ADMIN_PREVIEW_REFERENCE_TIME", "2026-07-15T12:00:00+00:00")
     monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
     monkeypatch.setenv(
         "ADMIN_PASSWORD_HASH",
@@ -379,7 +426,7 @@ def test_preview_contact_detail_and_edit_archive_restore_actions(
     monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "preview-limiter-secret-32chars-minimum!!")
     monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    clear_preview_context_cache()
+    reset_preview_context_cache()
     contact, _company, _records = build_preview_contact_detail(
         PREVIEW_CONTACT_DETAIL_ARCHIVE_ID,
     )

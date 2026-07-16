@@ -25,15 +25,13 @@ Playwright can open admin pages **without login**.
 - Admin shell pages fill with **mock intake/CRM data with randomization**
   (dashboard stats, section tables, **briefs list/detail**, etc.) so screenshots
   look like a live operator shell — never real production rows and never an
-  empty “no records yet” shell for newly built admin surfaces.
-- **Deterministic preview context** (issue #338): the screenshot launcher sets
-  checked-in defaults for `ADMIN_PREVIEW_SEED`, `ADMIN_PREVIEW_REFERENCE_TIME`,
-  and `ADMIN_PREVIEW_FIXTURE_VERSION`. Each route/fixture namespace derives its
-  own RNG from the root seed so request order and desktop/mobile capture order
-  do not perturb fixture data. Override seed/time explicitly for exploratory
-  local shots; malformed values fail fast or fall back to documented defaults —
-  never unseeded wall-clock randomness.
-- Builder must extend `app/admin_preview.py` whenever it adds a page (see
+  empty “no records yet” shell for newly built admin surfaces. Standard
+  screenshot runs set stable ``ADMIN_PREVIEW_SEED`` and
+  ``ADMIN_PREVIEW_REFERENCE_TIME`` (see `app/preview_context.py`); developers
+  may override both for exploratory visual testing. Bump
+  ``PREVIEW_FIXTURE_VERSION`` in `app/preview_context.py` when fixture
+  semantics change and regenerate Reviewer baselines intentionally. Builder
+  must extend `app/admin_preview.py` whenever it adds a page (see
   `AGENTS/builder.md`).
 - See [ADMIN_AUTH.md](ADMIN_AUTH.md).
 
@@ -145,10 +143,7 @@ until merged.
    narrow-desktop (1024×800), and open mobile disclosure
    (`branch-*-mobile-open.png`)
 5. Uploads under `.agent/screenshots/pr-<n>/` and comments
-   `### reviewer_screenshots_pre` on the **PR and issue** (titles above images).
-   Branch captures also write `branch-reproducibility.json` and list seed,
-   reference time, fixture version, head SHA, browser version, and viewports
-   in the PR comment.
+   `### reviewer_screenshots_pre` on the **PR and issue** (titles above images)
 6. Does **not** hit saberistic.com
 7. **Empty-shell gate:** Playwright inspects admin HTML for empty data tables /
    “no … yet” / placeholder milestone copy and Reviewer **hard-fails** so
@@ -180,9 +175,9 @@ until merged.
 | Name | Type | Purpose |
 |------|------|---------|
 | `ADMIN_PREVIEW_MODE` | env | Set `1` on PR preview server only (script sets this) |
-| `ADMIN_PREVIEW_SEED` | env | Root seed for preview fixtures (default `338`; launcher sets explicitly) |
-| `ADMIN_PREVIEW_REFERENCE_TIME` | env | Frozen UTC ISO timestamp for time-derived fields (default `2026-07-14T12:00:00+00:00`) |
-| `ADMIN_PREVIEW_FIXTURE_VERSION` | env | Fixture schema version; bump when row shapes change and regenerate baselines |
+| `ADMIN_PREVIEW_SEED` | env | Root seed for deterministic mock data (default in `app/preview_context.py`) |
+| `ADMIN_PREVIEW_REFERENCE_TIME` | env | Frozen ISO timestamp for time-derived preview fields |
+| `ADMIN_PREVIEW_FIXTURE_VERSION` | env | Fixture schema version recorded in screenshot evidence |
 | `DEPLOY_BASE_URL` | variable | default `https://saberistic.com` (post-deploy) |
 | `COVERAGE_ROOT` / `PR_HEAD_ROOT` | env | PR checkout root for branch screenshots |
 | `SCREENSHOTS_REQUIRED` | variable | default true for Reviewer when pages are affected |
@@ -190,22 +185,6 @@ until merged.
 | `RENDER_DEPLOY_HOOK_URL` | secret | deploy trigger |
 | `RENDER_API_KEY` | secret | poll deploy status until live/failed |
 | `RENDER_SERVICE_ID` | secret | optional `srv-…` if not parseable from the hook URL |
-
-### Fixture versioning and baseline updates
-
-Preview fixture data is versioned via `ADMIN_PREVIEW_FIXTURE_VERSION` (constant
-`PREVIEW_FIXTURE_VERSION` in `app/admin_preview.py`). When you change mock row
-shapes, date boundaries, or namespace derivation:
-
-1. Bump `PREVIEW_FIXTURE_VERSION` in `app/admin_preview.py`.
-2. Re-run the full Reviewer screenshot suite on a clean PR head (same seed/time
-   defaults unless intentionally changing them).
-3. Compare `branch-reproducibility.json` and paired desktop/mobile PNGs; accept
-   intentional visual diffs in review.
-4. Document the version bump in the PR body so reviewers know baselines shifted.
-
-Developers can override `ADMIN_PREVIEW_SEED` / `ADMIN_PREVIEW_REFERENCE_TIME` for
-local exploratory shots; CI and the screenshot launcher always set explicit values.
 
 ## Scripts / workflows
 
