@@ -264,6 +264,39 @@ other direct `put_files(repo, "main", ...)` / `git/refs/heads/main` PATCH
 call sites before adding new ones) will hit the identical 422 and should use
 the same open-PR-with-auto-merge pattern rather than a bypass actor.
 
+### Post-deploy screenshots hit the same 422 (issue #366)
+
+The prior audit for this section checked `scripts/screenshot_deploy.py` and
+`scripts/codegen_models.py`'s `put_files()` call sites and found both only
+ever target `builder/*` PR head branches — but missed
+`scripts/post_deploy_visual.py`, a separate script that *imports*
+`upload_to_branch()` from `screenshot_deploy.py` and calls it (and
+`record_health()`) with the **default branch** (`main`) as the target. The
+`Post-deploy screenshots` CI job hit the identical
+`Changes must be made through a pull request` 422 once live enforcement was
+restored, for the same structural reason as issue #362.
+
+The fix follows the exact same pattern: `post_deploy_visual.py` now commits
+`/health` JSON and screenshot uploads onto a deterministic
+`deploy/screenshots-<sha>` branch (`record_branch_name()`), opens a PR
+against `main` (or reuses one via `find_open_pr_for_branch` if a rerun for
+the same deploy sha already has one open), and enables native auto-merge
+(`open_or_reuse_record_pr()`) — one human CODEOWNER approval lands it, no
+extra click. The PR title starts with `deploy: record post-deploy artifacts`
+so the eventual squash-merge commit on `main` still matches the `test` /
+`deploy` jobs' `startsWith(..., 'deploy: record')` skip filter and does not
+re-trigger the deploy pipeline.
+
+A separate bug compounded the same CI run: `ci.yml` interpolated
+`${{ github.event.head_commit.message }}` directly into the
+`--commit-message "..."` shell string. A commit message that itself quoted a
+422 error (containing a literal `"`) closed that string early and spilled the
+remainder into unrecognized `argv`, failing the job before it ever reached
+the push. Commit messages (and any other untrusted `github.event.*` text) must
+be passed to `run:` steps via `env:` and referenced as `"$VAR"`, never
+interpolated straight into the script string — this avoids both the quoting
+break and generic Actions script-injection risk.
+
 ## Recovery and break-glass
 
 Use break-glass only when a protected workflow blocks a production incident or
