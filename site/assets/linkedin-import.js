@@ -459,13 +459,20 @@
       });
   }
 
+  function countCsvFields(line) {
+    if (!line.trim()) {
+      return 0;
+    }
+    return parseCsvLine(line).length;
+  }
+
   function findHeaderLineIndex(lines) {
-    var maxScan = Math.min(lines.length, LIMITS.maxPreambleScanLines || 20);
-    for (var i = 0; i < maxScan; i += 1) {
+    var limit = Math.min(lines.length, LIMITS.maxPreambleScanLines || 20);
+    for (var i = 0; i < limit; i += 1) {
       if (!lines[i].trim()) {
         continue;
       }
-      if (parseCsvLine(lines[i]).length > 1) {
+      if (countCsvFields(lines[i]) > 1) {
         return i;
       }
     }
@@ -507,13 +514,15 @@
     });
 
     var rows = [];
+    var dataRowCount = 0;
     for (var i = headerIndex + 1; i < lines.length; i += 1) {
-      if (i > LIMITS.maxCsvRows) {
-        warnings.push(basenameKey + ": truncated at " + LIMITS.maxCsvRows.toLocaleString() + " rows");
-        break;
-      }
       if (!lines[i].trim()) {
         continue;
+      }
+      dataRowCount += 1;
+      if (dataRowCount > LIMITS.maxCsvRows) {
+        warnings.push(basenameKey + ": truncated at " + LIMITS.maxCsvRows.toLocaleString() + " rows");
+        break;
       }
       var values = parseCsvLine(lines[i]);
       var row = {};
