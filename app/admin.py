@@ -73,6 +73,10 @@ def render_admin_page(
             )
             # render_acquisition_dashboard_page returns full shell; short-circuit.
             return main
+        if active_path == "/admin/imports":
+            from app.admin_preview import render_preview_imports_main
+
+            main = render_preview_imports_main()
         else:
             main = render_preview_section_main(
                 label=link["label"],

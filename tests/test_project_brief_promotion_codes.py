@@ -143,7 +143,7 @@ def test_stripe_webhook_full_price_persists_payment_totals() -> None:
     with mock_db_connection() as conn:
         with patch("app.main.stripe_service.construct_webhook_event", return_value=fake_event):
             with patch("app.main.db.mark_brief_paid", return_value=paid_row) as mark_paid:
-                with patch("app.main.analytics_service.track_payment_completed") as track_payment:
+                with patch("app.main.server_analytics.record_payment_completed") as track_payment:
                     response = client.post(
                         "/webhooks/stripe",
                         content=b"{}",
@@ -172,7 +172,7 @@ def test_stripe_webhook_discounted_persists_payment_totals_and_analytics() -> No
     with mock_db_connection() as conn:
         with patch("app.main.stripe_service.construct_webhook_event", return_value=fake_event):
             with patch("app.main.db.mark_brief_paid", return_value=paid_row) as mark_paid:
-                with patch("app.main.analytics_service.track_payment_completed") as track_payment:
+                with patch("app.main.server_analytics.record_payment_completed") as track_payment:
                     response = client.post(
                         "/webhooks/stripe",
                         content=b"{}",
@@ -196,7 +196,7 @@ def test_stripe_webhook_free_session_without_payment_intent() -> None:
     with mock_db_connection():
         with patch("app.main.stripe_service.construct_webhook_event", return_value=fake_event):
             with patch("app.main.db.mark_brief_paid", return_value=paid_row) as mark_paid:
-                with patch("app.main.analytics_service.track_payment_completed") as track_payment:
+                with patch("app.main.server_analytics.record_payment_completed") as track_payment:
                     response = client.post(
                         "/webhooks/stripe",
                         content=b"{}",

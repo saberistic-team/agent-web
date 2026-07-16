@@ -684,6 +684,13 @@ ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS analytics_session_id UUID;
     ),
     Migration(
         version="019",
+        name="contact_field_sources",
+        up_sql="""
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS field_sources JSONB NOT NULL DEFAULT '{}'::jsonb;
+""",
+    ),
+    Migration(
+        version="020",
         name="admin_login_rate_limits_cleanup_idx",
         up_sql="""
 CREATE INDEX IF NOT EXISTS admin_login_rate_limits_cleanup_idx

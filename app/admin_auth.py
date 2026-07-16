@@ -453,17 +453,10 @@ def try_admit_login_attempt(
     now = datetime.now(timezone.utc)
     try:
         with db.db_connection(settings.database_url) as conn:
-            for rotation_key in rotation_keys:
-                if db.is_admin_login_throttled(conn, limiter_key=rotation_key, now=now):
-                    return LoginAdmissionResult(
-                        admitted=False,
-                        throttled=True,
-                        already_locked=True,
-                        lockout_transition=False,
-                    )
             admission = db.try_admit_admin_login(
                 conn,
                 limiter_keys=limiter_keys,
+                guard_keys=rotation_keys,
                 now=now,
                 rate_limit=settings.admin_login_rate_limit,
                 window_seconds=settings.admin_login_rate_window_seconds,

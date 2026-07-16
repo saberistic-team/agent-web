@@ -83,13 +83,16 @@ class FakeRateLimitStore:
         limiter_keys: tuple[str, ...],
         now: datetime,
         *,
+        guard_keys: tuple[str, ...] = (),
         rate_limit: int,
         window_seconds: int,
         lockout_seconds: int,
     ) -> db.AdminLoginAdmission:
         with self._lock:
-            ordered_keys = tuple(sorted(limiter_keys))
-            for limiter_key in ordered_keys:
+            ordered_limiter_keys = tuple(sorted(limiter_keys))
+            ordered_guard_keys = tuple(sorted(set(guard_keys)))
+
+            for limiter_key in ordered_limiter_keys:
                 if limiter_key not in self.rows:
                     self.rows[limiter_key] = {
                         "failure_count": 0,
@@ -98,7 +101,20 @@ class FakeRateLimitStore:
                         "updated_at": now,
                     }
 
-            for limiter_key in ordered_keys:
+            for guard_key in ordered_guard_keys:
+                row = self.rows.get(guard_key)
+                if row is None:
+                    continue
+                locked_until = row.get("locked_until")
+                if locked_until is not None and locked_until > now:
+                    return db.AdminLoginAdmission(
+                        admitted=False,
+                        throttled=True,
+                        already_locked=True,
+                        lockout_transition=False,
+                    )
+
+            for limiter_key in ordered_limiter_keys:
                 row = self.rows[limiter_key]
                 locked_until = row.get("locked_until")
                 if locked_until is not None and locked_until > now:
@@ -110,7 +126,7 @@ class FakeRateLimitStore:
                     )
 
             lockout_transition = False
-            for limiter_key in ordered_keys:
+            for limiter_key in ordered_limiter_keys:
                 row = self.rows[limiter_key]
                 window_start = now - timedelta(seconds=window_seconds)
                 if row["window_started_at"] < window_start:
@@ -199,6 +215,7 @@ def shared_rate_limiter(store: FakeRateLimitStore) -> Generator[None, None, None
         conn: Any,
         *,
         limiter_keys: tuple[str, ...],
+        guard_keys: tuple[str, ...] = (),
         now: datetime,
         rate_limit: int,
         window_seconds: int,
@@ -207,6 +224,7 @@ def shared_rate_limiter(store: FakeRateLimitStore) -> Generator[None, None, None
         return store.try_admit(
             limiter_keys,
             now,
+            guard_keys=guard_keys,
             rate_limit=rate_limit,
             window_seconds=window_seconds,
             lockout_seconds=lockout_seconds,
