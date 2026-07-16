@@ -12,7 +12,7 @@ Covers the three-state patch contract at every boundary:
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import MagicMock, patch
 from uuid import UUID
@@ -26,8 +26,8 @@ from app.acquisition_pipeline import PipelineNextActionUpdate
 from app.actor_context import ActorContext
 from app.admin_auth import SESSION_COOKIE_NAME
 from app.admin_routes import _company_form_payload, _contact_form_payload
-from app.companies import CompanyUpdate
-from app.contacts import ContactUpdate
+from app.companies import CompanyUpdate, company_audit_summary
+from app.contacts import ContactUpdate, contact_audit_summary
 from app.crm_service import CrmRepositories, CrmService
 from app.main import app
 from app.patch import UNSET
@@ -456,6 +456,37 @@ def test_contact_form_payload_maps_blanks_to_none() -> None:
         assert payload[field] is None
     dumped = ContactUpdate(**payload).model_dump(exclude_unset=True)
     assert dumped["email"] is None and dumped["company_id"] is None
+
+
+@pytest.mark.unit
+def test_company_audit_summary_includes_nullable_fields() -> None:
+    summary = company_audit_summary(
+        {
+            "name": "Acme",
+            "notes": "Warm intro",
+            "last_verified_at": date(2025, 1, 15),
+        }
+    )
+    assert summary["notes"] == "Warm intro"
+    assert summary["last_verified_at"] == "2025-01-15"
+    assert "email" not in summary
+
+
+@pytest.mark.unit
+def test_contact_audit_summary_omits_email() -> None:
+    summary = contact_audit_summary(
+        {
+            "full_name": "Ada",
+            "email": "secret@example.com",
+            "title": "CTO",
+            "company_id": COMPANY_ID,
+            "buying_roles": ["founder"],
+        }
+    )
+    assert "email" not in summary
+    assert summary["title"] == "CTO"
+    assert summary["company_id"] == str(COMPANY_ID)
+    assert summary["buying_roles"] == ["founder"]
 
 
 # --------------------------------------------------------------------------- #

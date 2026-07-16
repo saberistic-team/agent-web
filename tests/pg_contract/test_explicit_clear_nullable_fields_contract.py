@@ -55,6 +55,7 @@ CONTACT_NULLABLE_FIELDS: list[tuple[str, Any, Any]] = [
     ("profile_url", "https://linkedin.com/in/seed", "https://linkedin.com/in/new"),
     ("email", "seed@example.com", "new@example.com"),
     ("email_permission", "unknown", "permitted"),
+    ("company_id", "linked", "other"),
     ("last_interaction_at", date(2025, 2, 1), date(2025, 7, 1)),
     ("relationship_strength", "cold", "warm"),
     ("notes", "Met at conference", "Follow-up scheduled"),
