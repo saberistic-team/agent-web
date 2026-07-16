@@ -413,10 +413,14 @@ def try_admit_admin_login(
 ) -> AdminLoginAdmission:
     """Atomically decide whether a login attempt may reach password verification.
 
-    All ``limiter_keys`` are locked in sorted order inside one transaction so
-    concurrent requests cannot overshoot the configured threshold. When any key
-    in ``limiter_keys`` or ``guard_keys`` is actively locked, admission is denied
-    without incrementing counters. Only ``limiter_keys`` counters are incremented.
+    Current and guard rows are locked in ascending ``limiter_key`` order over the
+    union of ``limiter_keys`` and ``guard_keys`` inside one transaction so
+    mixed-version instances cannot deadlock and concurrent requests cannot
+    overshoot the configured threshold. Guard ``locked_until`` values are
+    evaluated after the row lock and before current-key counters increment.
+    When any key in ``limiter_keys`` or ``guard_keys`` is actively locked,
+    admission is denied without incrementing current counters. Only
+    ``limiter_keys`` counters are incremented.
     """
     if not limiter_keys:
         return AdminLoginAdmission(
@@ -426,32 +430,11 @@ def try_admit_admin_login(
             lockout_transition=False,
         )
 
-    ordered_keys = tuple(sorted(limiter_keys))
-    ordered_guard_keys = tuple(sorted(set(guard_keys) - set(ordered_keys)))
+    ordered_limiter_keys = tuple(sorted(limiter_keys))
+    ordered_guard_keys = tuple(sorted(set(guard_keys)))
+    all_locked_keys = tuple(sorted(set(limiter_keys) | set(guard_keys)))
     with conn.cursor() as cur:
-        if ordered_guard_keys:
-            cur.execute(
-                """
-                SELECT limiter_key, locked_until
-                FROM admin_login_rate_limits
-                WHERE limiter_key = ANY(%s)
-                ORDER BY limiter_key
-                FOR UPDATE
-                """,
-                (list(ordered_guard_keys),),
-            )
-            for row in cur.fetchall():
-                locked_until = _normalize_limiter_locked_until(row["locked_until"])
-                if locked_until is not None and locked_until > now:
-                    conn.commit()
-                    return AdminLoginAdmission(
-                        admitted=False,
-                        throttled=True,
-                        already_locked=True,
-                        lockout_transition=False,
-                    )
-
-        for limiter_key in ordered_keys:
+        for limiter_key in ordered_limiter_keys:
             cur.execute(
                 """
                 INSERT INTO admin_login_rate_limits (
@@ -463,19 +446,36 @@ def try_admit_admin_login(
                 (limiter_key, now, now),
             )
 
-        cur.execute(
-            """
-            SELECT limiter_key, failure_count, window_started_at, locked_until
-            FROM admin_login_rate_limits
-            WHERE limiter_key = ANY(%s)
-            ORDER BY limiter_key
-            FOR UPDATE
-            """,
-            (list(ordered_keys),),
-        )
-        rows = {str(row["limiter_key"]): row for row in cur.fetchall()}
+        if all_locked_keys:
+            cur.execute(
+                """
+                SELECT limiter_key, failure_count, window_started_at, locked_until
+                FROM admin_login_rate_limits
+                WHERE limiter_key = ANY(%s)
+                ORDER BY limiter_key
+                FOR UPDATE
+                """,
+                (list(all_locked_keys),),
+            )
+            rows = {str(row["limiter_key"]): row for row in cur.fetchall()}
+        else:
+            rows = {}
 
-        for limiter_key in ordered_keys:
+        for guard_key in ordered_guard_keys:
+            row = rows.get(guard_key)
+            if row is None:
+                continue
+            locked_until = _normalize_limiter_locked_until(row["locked_until"])
+            if locked_until is not None and locked_until > now:
+                conn.commit()
+                return AdminLoginAdmission(
+                    admitted=False,
+                    throttled=True,
+                    already_locked=True,
+                    lockout_transition=False,
+                )
+
+        for limiter_key in ordered_limiter_keys:
             row = rows[limiter_key]
             locked_until = _normalize_limiter_locked_until(row["locked_until"])
             if locked_until is not None and locked_until > now:
@@ -489,7 +489,7 @@ def try_admit_admin_login(
 
         updates: dict[str, tuple[int, datetime, datetime | None]] = {}
         lockout_transition = False
-        for limiter_key in ordered_keys:
+        for limiter_key in ordered_limiter_keys:
             row = rows[limiter_key]
             window_started_at = row["window_started_at"]
             if window_started_at.tzinfo is None:
@@ -514,7 +514,8 @@ def try_admit_admin_login(
 
             updates[limiter_key] = (failure_count, window_started_at, locked_until)
 
-        for limiter_key, (failure_count, window_started_at, locked_until) in updates.items():
+        for limiter_key in ordered_limiter_keys:
+            failure_count, window_started_at, locked_until = updates[limiter_key]
             cur.execute(
                 """
                 UPDATE admin_login_rate_limits
