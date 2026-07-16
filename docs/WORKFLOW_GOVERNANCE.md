@@ -11,57 +11,50 @@ The machine-readable inventory is
 It explicitly protects:
 
 - all GitHub Actions workflows (`.github/workflows/**`);
-- GitHub API and control-plane helpers (`scripts/github_api.py`,
-  `scripts/copilot_agent.py`);
-- dispatch, queue, and priority orchestration (`scripts/dispatch_queue.py`,
-  `scripts/milestones.py`, `scripts/priority.py`);
-- planner and project-board gates (`scripts/require_planner_plan.py`,
-  `scripts/project_sync.py`);
+- control-plane orchestration (`scripts/github_api.py`,
+  `scripts/copilot_agent.py`, `scripts/dispatch_queue.py`,
+  `scripts/require_planner_plan.py`, `scripts/priority.py`,
+  `scripts/milestones.py`, and `scripts/project_sync.py`);
 - reviewer and Gate automation (`scripts/review_*.py`,
-  `scripts/review_decision.py`, `scripts/review_models.py`,
-  `scripts/acceptance.py`, `scripts/check_permission.py`,
-  `scripts/pr_labels.py`, `scripts/run_agent.py`, `scripts/write_trace.py`,
-  and `scripts/digest_trace.py`);
+  `scripts/review_decision.py`, `scripts/acceptance.py`,
+  `scripts/check_permission.py`, `scripts/pr_labels.py`,
+  `scripts/run_agent.py`, `scripts/write_trace.py`,
+  `scripts/screenshot_deploy.py`, and `scripts/cursor_model.py`);
 - Builder prompts and configuration (`AGENTS/**`,
   `.github/copilot-instructions.md`, `scripts/codegen_*.py`,
-  `scripts/builder_conflicts.py`, `scripts/cursor_sdk_patch.py`,
-  `scripts/cursor_model.py`, and `scripts/screenshot_deploy.py`);
-- deploy and release automation (`scripts/render_deploy.py`,
+  `scripts/builder_conflicts.py`, and `scripts/cursor_sdk_patch.py`);
+- deploy and gate automation invoked from workflows (`scripts/render_deploy.py`,
   `scripts/freeze_shipped_migrations.py`, `scripts/post_deploy_visual.py`,
-  and `scripts/smoke_deploy.py`);
-- CI gates (`scripts/check_coverage.py`);
+  `scripts/digest_trace.py`, `scripts/check_coverage.py`, and
+  `scripts/smoke_deploy.py`);
 - the ownership, ruleset, documentation, and validation policy itself.
 
-### Fail-closed discovery
-
-`scripts/validate_workflow_governance.py` derives the privileged script
-inventory from **workflow execution and imports**, not only the manifest:
-
-1. parse every `.github/workflows/*.yml` for `python scripts/*.py` entrypoints;
-2. follow transitive `scripts/*.py` imports from those entrypoints;
-3. require every discovered script (plus explicitly listed dormant helpers such
-   as `scripts/copilot_agent.py`) to match a manifest pattern with human
-   CODEOWNERS.
-
-Adding a new workflow-invoked script without manifest coverage fails CI.
-Moving privileged logic into an unlisted helper imported by a protected script
-also fails CI. The manifest and `.github/CODEOWNERS` must stay synchronized in
-both directions.
-
-**Known discovery blind spot:** the transitive-helper walk only follows static
-`from X import ...` / `import X` statements. It does not follow
-`subprocess.run([..., "scripts/<name>.py", ...])` or `importlib` dynamic
-loading, so a privileged script reached only that way (for example
-`scripts/run_agent.py` invoking `scripts/smoke_deploy.py` via `subprocess.run`)
-is not auto-discovered — it must be added to the manifest and CODEOWNERS by
-hand, the same way `scripts/copilot_agent.py` is explicitly listed as a dormant
-helper. Treat any new `subprocess`/`importlib` invocation of a `scripts/*.py`
-file the same way until the discovery walk covers those call shapes too.
-
-When adding a new workflow-support path, add it to the inventory and
+When adding a new workflow-support path, add it to that inventory and
 `.github/CODEOWNERS` in the same pull request. CI runs
-`python scripts/validate_workflow_governance.py` and fails if any protected file
-has no owner, has a bot owner, or is missing from the discovered inventory.
+`python scripts/validate_workflow_governance.py` and fails if any existing
+protected file has no owner, has a bot owner, or if workflow-discovered or
+transitively imported orchestration scripts are missing from the manifest.
+
+## Discovery and fail-closed inventory
+
+The validator does not rely on the manifest alone. On every CI run it:
+
+1. parses `.github/workflows/*.yml` for `python scripts/<name>.py` run steps;
+2. follows local `import` / `from … import` edges and explicit
+   `scripts/<name>.py` references inside protected orchestration scripts; and
+3. requires every discovered `scripts/*.py` helper to match at least one manifest
+   pattern with human CODEOWNERS.
+
+That closes the bypass where privileged logic moves into an unlisted helper or a
+new workflow invokes an unprotected script. Manifest and CODEOWNERS must also
+stay synchronized in both directions: a CODEOWNERS rule cannot cover a path
+outside the manifest, and every manifest pattern must map to human owners.
+
+Unit tests in `tests/test_workflow_governance.py` cover workflow discovery,
+transitive tracing, unlisted-script failure, approval semantics, and ruleset
+shape. Set `VERIFY_LIVE_GOVERNANCE_RULESET=1` with `GITHUB_REPOSITORY` and
+`GITHUB_TOKEN` when validating the active ruleset against GitHub’s API (do not
+treat the checked-in JSON alone as proof of live enforcement).
 
 ## Who may approve
 
@@ -77,30 +70,52 @@ Once a human maintainer team exists, replace these individual entries with
 that team and update this document.
 
 For a PR touching a protected path, one of those humans who is **not the PR
-author** must submit an approving review. The author’s review does not satisfy
-GitHub’s required approval. The required CODEOWNER review cannot be satisfied
-by a workflow-controlled bot because no bot is a CODEOWNER. A Reviewer bot
-review may still help with the normal feature checklist, but it is not the
-independent authorization to merge this class of PR.
+author** must submit an approving review on the **current head commit**. The
+author's review does not satisfy GitHub's required approval. The required
+CODEOWNER review cannot be satisfied by a workflow-controlled bot because no
+bot is a CODEOWNER. A Reviewer bot review may still help with the normal feature
+checklist, but it is not the independent authorization to merge this class of
+PR. Stale approvals are dismissed when new commits land.
 
-Stale approvals after a material push are dismissed by the ruleset; a fresh
-independent human CODEOWNER approval is required before merge.
+## Bootstrap authorization for PR #252
 
-## Bootstrap authorization (PR #252)
+[PR #252](https://github.com/saberistic-team/agent-web/pull/252) introduced the
+#229 governance boundary on 2026-07-15. It was the **bootstrap** change: it
+created CODEOWNERS, the manifest, the validator, and ruleset
+[`#18975712`](https://github.com/saberistic-team/agent-web/rules/18975712) for
+the first time. GitHub therefore had no prior CODEOWNER requirement that could
+approve PR #252 itself.
 
-Issue [#229](https://github.com/saberistic-team/agent-web/issues/229) introduced
-this boundary. PR
-[#252](https://github.com/saberistic-team/agent-web/pull/252) was the audited
-**bootstrap** that landed the initial manifest, CODEOWNERS, ruleset document,
-validator, and tests.
+Authorization was recorded in the PR body under **Independent approval
+required**, with these audited constraints:
 
-That bootstrap PR merged with automation-only review because the protection did
-not yet exist. Two human repository administrators (`@saberistic` and
-`@mehdidehdar`) authorized the bootstrap out of band before merge and recorded
-the intent in the linked issue. Every subsequent protected-path change — including
-the proof PR for issue
-[#275](https://github.com/saberistic-team/agent-web/issues/275) — must receive
-an independent human CODEOWNER approval under the active ruleset.
+- two human repository administrators (`@saberistic`, `@mehdidehdar`,
+  `@Amirsharifico`) were named as the only valid CODEOWNERS;
+- the Reviewer bot checklist approval was explicitly documented as **non-authorizing**;
+- the ruleset shipped with **no bypass actors**; and
+- the merge was limited to the smallest bootstrap diff that enabled enforcement
+  for all subsequent protected-path changes.
+
+Future governance changes are normal protected-path PRs: they require an
+independent human CODEOWNER approval on the current head and must pass CI
+ownership validation. Do not merge bootstrap-style exceptions without the same
+public audit trail.
+
+## Proof PR and enforcement evidence
+
+After bootstrap, every protected-path change must demonstrate enforcement. The
+PR for issue #275 is the non-bootstrap proof: it expands the protected
+boundary, updates CODEOWNERS and the manifest together, and should merge only
+after an independent human CODEOWNER approves the current head while bot/agent
+approval remains non-authorizing.
+
+Evidence to attach on that PR:
+
+- `python scripts/validate_workflow_governance.py` output (`PASS`);
+- `pytest -q tests/test_workflow_governance.py` output;
+- the live ruleset validation command below; and
+- the GitHub review panel showing a human CODEOWNER approval on the latest
+  commit (bot reviews may coexist but do not satisfy merge requirements).
 
 ## Ruleset enforcement
 
@@ -121,23 +136,17 @@ gh api --method POST \
   --input .github/rulesets/independent-workflow-review.json
 ```
 
-Then validate the live configuration (do not rely on the checked-in JSON alone):
+Then validate the live configuration (required; checked-in JSON is not proof):
 
 ```bash
 gh api repos/saberistic-team/agent-web/rulesets \
   --jq '.[] | select(.name == "Require independent review for workflow governance")'
 
-# Or let the validator do it (requires GITHUB_TOKEN/GH_TOKEN):
-python scripts/validate_workflow_governance.py --check-live-ruleset
+VERIFY_LIVE_GOVERNANCE_RULESET=1 \
+  GITHUB_REPOSITORY=saberistic-team/agent-web \
+  GITHUB_TOKEN="$GITHUB_TOKEN" \
+  python scripts/validate_workflow_governance.py
 ```
-
-CI runs the second form on every PR: the "Validate workflow-governance
-ownership" step in `.github/workflows/ci.yml` passes
-`GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}` and the `--check-live-ruleset` flag,
-so a live drift (like the one described below) fails CI instead of only
-failing an out-of-band manual check. The default Actions token can read
-`GET /repos/{owner}/{repo}/rulesets` without any elevated `administration`
-scope.
 
 The active repository ruleset is
 [`#18975712`](https://github.com/saberistic-team/agent-web/rules/18975712).
@@ -149,66 +158,8 @@ ruleset URL and the setup/validation command output in the linked issue or PR.
 
 Rulesets enforce the approval mechanics; CODEOWNERS narrows the extra owner
 approval to the protected files. CI validates the repository-side inventory,
-ownership mapping, ruleset document, and (via `--check-live-ruleset`) the live
-ruleset itself, but it cannot replace GitHub’s review authorization.
-
-## Issue #229 label reconciliation
-
-Issue #229 is closed and complete with `status:done` and `review:approved` —
-**already reconciled**, not merely a target state. GitHub's issue timeline for
-#229 (`gh api repos/saberistic-team/agent-web/issues/229/timeline`) shows
-`saberistic-agent-web-builder[bot]` removing `status:needs-review` and adding
-`status:done` at `2026-07-16T02:12:01Z`. Re-verified live on 2026-07-16 via
-`gh issue view 229 --json labels`: no stale `status:needs-review` label
-remains. If automation ever re-applies it, reconcile with:
-
-```bash
-gh issue edit 229 --repo saberistic-team/agent-web \
-  --remove-label "status:needs-review"
-```
-
-## Non-bootstrap proof PR (PR #284 / issue #275)
-
-[PR #284](https://github.com/saberistic-team/agent-web/pull/284) (issue #275)
-is the first protected-path change after bootstrap. Verifying its own
-merge-gate enforcement against the **live** repository (not just the
-checked-in JSON) surfaced a real gap and its root cause, both fixed in this PR:
-
-- **The live ruleset had drifted from the checked-in policy.** `gh api
-  repos/saberistic-team/agent-web/rulesets/18975712` returned
-  `require_code_owner_review: false` even though the checked-in ruleset
-  document says `true`. A repo admin re-applied the checked-in policy
-  (`gh api --method PUT repos/saberistic-team/agent-web/rulesets/18975712
-  --input .github/rulesets/independent-workflow-review.json`); a fresh `gh
-  api` read confirmed `require_code_owner_review: true` afterward.
-- **CI never actually checked the live ruleset.** The validator supported (or
-  now supports again) `--check-live-ruleset`, but earlier revisions of this PR
-  either omitted the CI wiring (`GITHUB_TOKEN` + the flag) or dropped the live
-  API check from the script entirely. Either way, CI could report `PASS`
-  indefinitely regardless of live drift — this is how the ruleset drifted
-  unnoticed in the first place. Fixed for good in `.github/workflows/ci.yml`
-  and `scripts/validate_workflow_governance.py` together; see the "Ruleset
-  enforcement" section above.
-- **Bots cannot satisfy `require_code_owner_review` structurally, not just by
-  convention.** `gh api repos/saberistic-team/agent-web/collaborators` lists
-  only `@saberistic`, `@mehdidehdar`, and `@Amirsharifico`; the Reviewer and
-  Builder bots are not collaborators, so no bot approval can ever count as the
-  CODEOWNER review GitHub requires, independent of what CODEOWNERS says.
-- **Live behavioral evidence from this PR:** `@saberistic` (a CODEOWNER)
-  submitted an `APPROVED` review; the Reviewer bot later submitted
-  `CHANGES_REQUESTED`. `gh pr view 284 --json reviewDecision,mergeStateStatus`
-  reported `CHANGES_REQUESTED` / `BLOCKED` — GitHub applies latest-review-per-
-  reviewer semantics live, even with a genuine human CODEOWNER approval on
-  record.
-
-**What remains a real, undemonstrated gap:** a live click-through screenshot
-of the GitHub merge button blocked specifically by a *missing* CODEOWNER
-review (as opposed to an outstanding `CHANGES_REQUESTED`) was not produced.
-Doing that safely would require opening a disposable PR against a protected
-path and getting only a bot review on it, which risks triggering this
-repository's live Builder/Reviewer automation on a throwaway artifact. Left
-for a human maintainer to capture in a few minutes if a literal screenshot is
-required; it is not fabricated here.
+workflow discovery, transitive helper coverage, and ownership mapping, but it
+cannot replace GitHub's review authorization.
 
 ## Recovery and break-glass
 
@@ -239,13 +190,9 @@ feature review and Builder retry continue to use their current labels and
 automation; this policy adds a human CODEOWNER requirement only when protected
 files are changed.
 
-## Incident recovery checklist
+## Issue #229 status reconciliation
 
-| Step | Owner | Evidence |
-|------|-------|----------|
-| Declare incident issue | Human admin | Public issue link |
-| Disable ruleset temporarily | Human admin #1 | Settings audit log |
-| Land minimal repair | Human admin #2 | Merge commit |
-| Restore ruleset JSON | Human admin #1 | `gh api` validation output |
-| Re-run governance validator | Either admin | CI / local `validate_workflow_governance.py` |
-| Follow-up cleanup PR | Builder + human CODEOWNER | Independent approval on protected diff |
+Issue #229 is closed and complete. Its workflow labels were reconciled to
+`status:done` and `review:approved` after merge of PR #252. The earlier
+`status:needs-review` label was stale relative to the closed/completed state and
+has been removed.

@@ -7,52 +7,40 @@
 # GitHub Actions
 /.github/workflows/** @saberistic @mehdidehdar @Amirsharifico
 
-# GitHub API and control plane
+# Control-plane orchestration
 /scripts/github_api.py @saberistic @mehdidehdar @Amirsharifico
 /scripts/copilot_agent.py @saberistic @mehdidehdar @Amirsharifico
-
-# Dispatch and queue orchestration
 /scripts/dispatch_queue.py @saberistic @mehdidehdar @Amirsharifico
-/scripts/milestones.py @saberistic @mehdidehdar @Amirsharifico
-
-# Priority selection
-/scripts/priority.py @saberistic @mehdidehdar @Amirsharifico
-
-# Project board sync
-/scripts/project_sync.py @saberistic @mehdidehdar @Amirsharifico
-
-# Planner gate
 /scripts/require_planner_plan.py @saberistic @mehdidehdar @Amirsharifico
+/scripts/priority.py @saberistic @mehdidehdar @Amirsharifico
+/scripts/milestones.py @saberistic @mehdidehdar @Amirsharifico
+/scripts/project_sync.py @saberistic @mehdidehdar @Amirsharifico
 
 # Reviewer automation
 /scripts/review_*.py @saberistic @mehdidehdar @Amirsharifico
 /scripts/review_decision.py @saberistic @mehdidehdar @Amirsharifico
-/scripts/review_models.py @saberistic @mehdidehdar @Amirsharifico
 /scripts/acceptance.py @saberistic @mehdidehdar @Amirsharifico
 /scripts/check_permission.py @saberistic @mehdidehdar @Amirsharifico
 /scripts/pr_labels.py @saberistic @mehdidehdar @Amirsharifico
 /scripts/run_agent.py @saberistic @mehdidehdar @Amirsharifico
 /scripts/write_trace.py @saberistic @mehdidehdar @Amirsharifico
-/scripts/digest_trace.py @saberistic @mehdidehdar @Amirsharifico
+/scripts/screenshot_deploy.py @saberistic @mehdidehdar @Amirsharifico
+/scripts/cursor_model.py @saberistic @mehdidehdar @Amirsharifico
 
 # Builder prompts and configuration
 /scripts/codegen_*.py @saberistic @mehdidehdar @Amirsharifico
 /scripts/builder_conflicts.py @saberistic @mehdidehdar @Amirsharifico
 /scripts/cursor_sdk_patch.py @saberistic @mehdidehdar @Amirsharifico
-/scripts/cursor_model.py @saberistic @mehdidehdar @Amirsharifico
-/scripts/screenshot_deploy.py @saberistic @mehdidehdar @Amirsharifico
+/AGENTS/** @saberistic @mehdidehdar @Amirsharifico
+/.github/copilot-instructions.md @saberistic @mehdidehdar @Amirsharifico
 
-# Deploy and release
+# Deploy and gate automation
 /scripts/render_deploy.py @saberistic @mehdidehdar @Amirsharifico
 /scripts/freeze_shipped_migrations.py @saberistic @mehdidehdar @Amirsharifico
 /scripts/post_deploy_visual.py @saberistic @mehdidehdar @Amirsharifico
-
-# CI gates
+/scripts/digest_trace.py @saberistic @mehdidehdar @Amirsharifico
 /scripts/check_coverage.py @saberistic @mehdidehdar @Amirsharifico
 /scripts/smoke_deploy.py @saberistic @mehdidehdar @Amirsharifico
-
-/AGENTS/** @saberistic @mehdidehdar @Amirsharifico
-/.github/copilot-instructions.md @saberistic @mehdidehdar @Amirsharifico
 
 # Repository policy and the self-validating policy checker
 /docs/WORKFLOW_GOVERNANCE.md @saberistic @mehdidehdar @Amirsharifico
