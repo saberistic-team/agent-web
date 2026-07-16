@@ -20,6 +20,10 @@ from urllib.parse import parse_qs, urljoin, urlparse
 
 from github_api import GitHubError, api, post_issue_comment, put_files, split_repo
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 from app.admin_security import PREVIEW_BLOCKED_PROVIDER_ENV_VARS
 
 DEFAULT_BASE = "https://saberistic.com"
