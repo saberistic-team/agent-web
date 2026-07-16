@@ -165,6 +165,8 @@ access logs or metrics for operational visibility if needed.
 | `ADMIN_USERNAME` | Yes | Operator username (plain text identifier) |
 | `ADMIN_PASSWORD_HASH` | Yes | Argon2id hash of the operator password |
 | `ADMIN_SESSION_SECRET` | Yes | Retained for configuration parity (≥ 32 random bytes); CSRF is session-bound, not HMAC-signed with this secret |
+| `ADMIN_LOGIN_LIMITER_SECRET` | Yes | Dedicated HMAC key for login rate-limiter identifiers (≥ 32 bytes; environment-specific) |
+| `ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET` | Optional | Previous limiter secret during a bounded rotation window; active lockouts under the old key still block admission |
 | `ADMIN_SESSION_TTL_SECONDS` | Optional | Session lifetime in seconds (default `86400`) |
 | `ADMIN_LOGIN_RATE_LIMIT` | Optional | Failed login attempts allowed per window (default `5`) |
 | `ADMIN_LOGIN_RATE_WINDOW_SECONDS` | Optional | Rate-limit counting window in seconds (default `900`) |
@@ -198,11 +200,21 @@ print(secrets.token_urlsafe(48))
 PY
 ```
 
+Generate a login limiter secret (independent from `ADMIN_SESSION_SECRET`):
+
+```bash
+python - <<'PY'
+import secrets
+print(secrets.token_urlsafe(48))
+PY
+```
+
 On Render, add:
 
 1. `ADMIN_USERNAME` — e.g. `operator`
 2. `ADMIN_PASSWORD_HASH` — output from the Argon2 command
 3. `ADMIN_SESSION_SECRET` — output from the secrets command
+4. `ADMIN_LOGIN_LIMITER_SECRET` — output from a separate secrets command
 
 Redeploy after changing any of the above.
 
@@ -222,6 +234,32 @@ Redeploy after changing any of the above.
 2. Update the variable in Render and redeploy.
 3. CSRF tokens are session- and flow-bound; rotating this secret does not
    invalidate active sessions or in-flight login flows.
+
+### Login limiter secret rotation
+
+Limiter identifiers are HMAC-SHA256 digests keyed by `ADMIN_LOGIN_LIMITER_SECRET`.
+Rotating the secret changes every stored `limiter_key`, so existing Postgres rows
+become unreachable and effective rate-limit history resets for new attempts.
+
+Bounded overlap (recommended):
+
+1. Generate `NEW_SECRET` and keep the current value as `OLD_SECRET`.
+2. Set `ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET=OLD_SECRET` and
+   `ADMIN_LOGIN_LIMITER_SECRET=NEW_SECRET`, then redeploy.
+3. During the overlap window, active lockouts recorded under `OLD_SECRET` still
+   block admission; new counters are written only under `NEW_SECRET`.
+4. After `2 × max(window, lockout)` seconds, remove
+   `ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET` and redeploy again. Expired rows under
+   the previous key are eligible for opportunistic cleanup.
+
+Hard reset (acceptable when no active lockouts matter):
+
+1. Update `ADMIN_LOGIN_LIMITER_SECRET` only and redeploy.
+2. Optionally prune stale rows manually (see [Manual cleanup](#manual-cleanup)).
+
+Use different limiter secrets in test, preview, and production environments.
+The limiter secret is validated at application startup and must never appear in
+logs, responses, audit metadata, or exception strings.
 
 ### Emergency session revocation
 
@@ -258,13 +296,18 @@ limits apply consistently across web processes, instances, and deployments.
 
 ### Limiter key strategy
 
-Each attempt consults one or two privacy-preserving SHA-256 buckets (only the digest
-is stored as ``limiter_key``):
+Each attempt consults one or two privacy-preserving HMAC-SHA256 buckets (only the
+digest is stored as ``limiter_key``):
 
-| Bucket | Key material | Purpose |
-|--------|--------------|---------|
-| **Source-wide** | ``src:<normalized_client_source>`` | Stops username rotation from one client source |
-| **Account-wide** | ``acct:<normalized_configured_admin_username>`` | Limits distributed attempts against the configured admin account |
+| Bucket | Domain prefix | Key material | Purpose |
+|--------|---------------|--------------|---------|
+| **Source-wide** | ``src`` | normalized client source | Stops username rotation from one client source |
+| **Account-wide** | ``acct`` | normalized configured admin username | Limits distributed attempts against the configured admin account |
+
+Digests use ``ADMIN_LOGIN_LIMITER_SECRET`` (or the optional previous secret during
+rotation). A database reader without the secret cannot verify guessed IP addresses
+or usernames by hashing them directly. Plain SHA-256 of ``src:…`` or ``acct:…``
+material is never stored.
 
 The submitted username is normalized (lowercased/stripped) only to decide whether the
 account bucket applies. Unknown usernames still share the source bucket for their

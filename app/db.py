@@ -405,6 +405,7 @@ def try_admit_admin_login(
     conn: psycopg.Connection,
     *,
     limiter_keys: tuple[str, ...],
+    guard_keys: tuple[str, ...] = (),
     now: datetime,
     rate_limit: int,
     window_seconds: int,
@@ -414,7 +415,8 @@ def try_admit_admin_login(
 
     All ``limiter_keys`` are locked in sorted order inside one transaction so
     concurrent requests cannot overshoot the configured threshold. When any key
-    is actively locked, admission is denied without incrementing counters.
+    in ``limiter_keys`` or ``guard_keys`` is actively locked, admission is denied
+    without incrementing counters. Only ``limiter_keys`` counters are incremented.
     """
     if not limiter_keys:
         return AdminLoginAdmission(
@@ -425,7 +427,30 @@ def try_admit_admin_login(
         )
 
     ordered_keys = tuple(sorted(limiter_keys))
+    ordered_guard_keys = tuple(sorted(set(guard_keys) - set(ordered_keys)))
     with conn.cursor() as cur:
+        if ordered_guard_keys:
+            cur.execute(
+                """
+                SELECT limiter_key, locked_until
+                FROM admin_login_rate_limits
+                WHERE limiter_key = ANY(%s)
+                ORDER BY limiter_key
+                FOR UPDATE
+                """,
+                (list(ordered_guard_keys),),
+            )
+            for row in cur.fetchall():
+                locked_until = _normalize_limiter_locked_until(row["locked_until"])
+                if locked_until is not None and locked_until > now:
+                    conn.commit()
+                    return AdminLoginAdmission(
+                        admitted=False,
+                        throttled=True,
+                        already_locked=True,
+                        lockout_transition=False,
+                    )
+
         for limiter_key in ordered_keys:
             cur.execute(
                 """

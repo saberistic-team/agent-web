@@ -544,7 +544,6 @@ def test_audit_login_and_logout_helpers() -> None:
         conn,
         actor_context=actor,
         reason="invalid_credentials",
-        attempted_username="ghost",
         repository=repo,
     )
     audit_service.record_logout(conn, actor_context=actor, session_id=9, repository=repo)

@@ -248,6 +248,7 @@ def test_admin_preview_briefs_list_and_detail_have_mock_data(
         PasswordHasher().hash("preview"),
     )
     monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "preview-limiter-secret-32chars-minimum!!")
     monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     client = TestClient(app, follow_redirects=False)
@@ -295,6 +296,7 @@ def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytes
         PasswordHasher().hash("preview"),
     )
     monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "preview-limiter-secret-32chars-minimum!!")
     monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     preview = preview_contact_restore_conflict(rng=random.Random(7))
@@ -324,6 +326,7 @@ def test_preview_company_detail_archive_and_restore_actions(
         PasswordHasher().hash("preview"),
     )
     monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "preview-limiter-secret-32chars-minimum!!")
     monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     company, _contacts, _records = build_preview_company_detail(
@@ -374,6 +377,7 @@ def test_preview_contact_detail_and_edit_archive_restore_actions(
         PasswordHasher().hash("preview"),
     )
     monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "preview-limiter-secret-32chars-minimum!!")
     monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     contact, _company, _records = build_preview_contact_detail(
@@ -638,6 +642,7 @@ def test_preview_company_contact_routes_return_expected_status(
         PasswordHasher().hash("preview"),
     )
     monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "preview-limiter-secret-32chars-minimum!!")
     monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     client = TestClient(app, follow_redirects=False)

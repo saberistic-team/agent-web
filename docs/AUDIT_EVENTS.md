@@ -107,6 +107,30 @@ or rolled-back logins never emit a new session cookie.
 |--------|----------------|
 | `auth.login.success` | Valid admin login creates a server-side session |
 | `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting |
+
+### Unauthenticated login-failure actor policy
+
+Every `auth.login.failure` event recorded **before** successful authentication uses
+the canonical actor `anonymous`. Submitted username candidates, email addresses,
+control characters, or other attacker-chosen identifiers must not appear in:
+
+- the `actor` column
+- `summary_after` / `metadata` JSON
+- server-defined `reason` enums (`invalid_credentials`, `invalid_csrf`, `rate_limited`, …)
+- structured logs, metrics, or exception strings tied to the failure path
+
+Authenticated `auth.login.success`, `auth.logout`, and post-login CRM mutations
+continue to record the live administrator username in `actor`.
+
+#### Historical immutable rows (pre-#242)
+
+Deployments that accepted admin logins before keyed limiter identifiers and the
+anonymous-actor policy shipped may contain legacy `auth.login.failure` rows whose
+`actor` column holds a submitted username candidate. Those rows are append-only;
+application code does not rewrite or delete them. Security reporting should treat
+such values as unauthenticated guesses, not authenticated identities. The forward
+fix in #242 prevents all new occurrences regardless of any archival decision on
+legacy rows.
 | `auth.logout` | Authenticated session revocation (live session → revoked) |
 | `import.batch` | Data import batches via `CrmService.commit_linkedin_import` / `import_batch` |
 | `import.batch.rollback` | Rollback of committed import batches via `CrmService.rollback_import_batch` |

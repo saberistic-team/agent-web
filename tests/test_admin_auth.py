@@ -54,6 +54,7 @@ TEST_USERNAME = "operator"
 TEST_PASSWORD = "correct-horse-battery-staple"
 TEST_HASH = PasswordHasher().hash(TEST_PASSWORD)
 TEST_SECRET = "test-session-secret-32chars-minimum"
+TEST_LIMITER_SECRET = "test-login-limiter-secret-32chars-min"
 
 _login_flows: dict[str, dict[str, Any]] = {}
 _session_store: dict[str, dict[str, Any]] = {}
@@ -257,6 +258,7 @@ def admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_USERNAME", TEST_USERNAME)
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_HASH)
     monkeypatch.setenv("ADMIN_SESSION_SECRET", TEST_SECRET)
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
     monkeypatch.setenv("BASE_URL", "http://testserver")
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "5")
     monkeypatch.setenv("ADMIN_LOGIN_RATE_WINDOW_SECONDS", "900")
@@ -584,6 +586,7 @@ def test_admin_auth_settings_flags(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ADMIN_USERNAME", raising=False)
     monkeypatch.delenv("ADMIN_PASSWORD_HASH", raising=False)
     monkeypatch.delenv("ADMIN_SESSION_SECRET", raising=False)
+    monkeypatch.delenv("ADMIN_LOGIN_LIMITER_SECRET", raising=False)
     settings = get_settings()
     assert not settings.admin_auth_configured
 
@@ -631,36 +634,41 @@ def test_csrf_value_rejects_missing_or_malformed() -> None:
 
 @pytest.mark.unit
 def test_build_source_and_account_rate_limit_keys() -> None:
-    source_a = admin_auth.build_source_rate_limit_key("203.0.113.1")
-    source_b = admin_auth.build_source_rate_limit_key("203.0.113.2")
+    settings = get_settings()
+    source_a = admin_auth.build_source_rate_limit_key("203.0.113.1", settings)
+    source_b = admin_auth.build_source_rate_limit_key("203.0.113.2", settings)
     assert source_a != source_b
     assert len(source_a) == 64
 
-    account_a = admin_auth.build_account_rate_limit_key("Operator")
-    account_b = admin_auth.build_account_rate_limit_key("operator")
+    account_a = admin_auth.build_account_rate_limit_key("Operator", settings)
+    account_b = admin_auth.build_account_rate_limit_key("operator", settings)
     assert account_a == account_b
 
 
 @pytest.mark.unit
 def test_login_limiter_keys_include_account_for_configured_username() -> None:
+    settings = get_settings()
     keys = admin_auth.login_limiter_keys(
         submitted_username="Operator",
         client_source="203.0.113.1",
         configured_admin_username="operator",
+        settings=settings,
     )
     assert len(keys) == 2
-    assert admin_auth.build_source_rate_limit_key("203.0.113.1") in keys
-    assert admin_auth.build_account_rate_limit_key("operator") in keys
+    assert admin_auth.build_source_rate_limit_key("203.0.113.1", settings) in keys
+    assert admin_auth.build_account_rate_limit_key("operator", settings) in keys
 
 
 @pytest.mark.unit
 def test_login_limiter_keys_source_only_for_unknown_username() -> None:
+    settings = get_settings()
     keys = admin_auth.login_limiter_keys(
         submitted_username="ghost",
         client_source="203.0.113.1",
         configured_admin_username="operator",
+        settings=settings,
     )
-    assert keys == (admin_auth.build_source_rate_limit_key("203.0.113.1"),)
+    assert keys == (admin_auth.build_source_rate_limit_key("203.0.113.1", settings),)
 
 
 @pytest.mark.unit
@@ -1014,8 +1022,9 @@ def test_successful_login_clears_account_rate_limit_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
-    source_key = admin_auth.build_source_rate_limit_key("testclient")
-    account_key = admin_auth.build_account_rate_limit_key(TEST_USERNAME)
+    settings = get_settings()
+    source_key = admin_auth.build_source_rate_limit_key("testclient", settings)
+    account_key = admin_auth.build_account_rate_limit_key(TEST_USERNAME, settings)
     with shared_rate_limiter(rate_limit_store):
         with mock_db_connection():
             assert _login(password="wrong").status_code == 401
@@ -1043,8 +1052,9 @@ def test_rate_limit_expires_after_lockout(
         assert _login(password="wrong").status_code == 401
         assert _login(password="wrong").status_code == 429
 
-        source_key = admin_auth.build_source_rate_limit_key("testclient")
-        account_key = admin_auth.build_account_rate_limit_key(TEST_USERNAME)
+        settings = get_settings()
+        source_key = admin_auth.build_source_rate_limit_key("testclient", settings)
+        account_key = admin_auth.build_account_rate_limit_key(TEST_USERNAME, settings)
         expired_lock = datetime.now(timezone.utc) - timedelta(seconds=1)
         for key in (source_key, account_key):
             rate_limit_store.rows[key]["locked_until"] = expired_lock
@@ -1119,7 +1129,8 @@ def test_rotating_spoofed_forwarded_headers_share_trusted_peer_bucket(
                 assert response.status_code == 429
 
     assert len(rate_limit_store.rows) == 1
-    source_key = admin_auth.build_source_rate_limit_key(TEST_RENDER_PEER)
+    settings = get_settings()
+    source_key = admin_auth.build_source_rate_limit_key(TEST_RENDER_PEER, settings)
     assert source_key in rate_limit_store.rows
 
 
@@ -1201,7 +1212,8 @@ def test_username_rotation_stops_password_verification_at_source_threshold(
                     assert response.status_code == 429
 
     assert verify_calls["count"] == 3
-    source_key = admin_auth.build_source_rate_limit_key("testclient")
+    settings = get_settings()
+    source_key = admin_auth.build_source_rate_limit_key("testclient", settings)
     assert len(rate_limit_store.rows) == 1
     assert source_key in rate_limit_store.rows
 
@@ -1303,7 +1315,8 @@ def test_concurrent_login_admission_respects_shared_threshold(
     admitted_count = {"value": 0}
     lock = threading.Lock()
     now = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    source_key = admin_auth.build_source_rate_limit_key("203.0.113.77")
+    settings = get_settings()
+    source_key = admin_auth.build_source_rate_limit_key("203.0.113.77", settings)
 
     def worker() -> None:
         barrier.wait()
