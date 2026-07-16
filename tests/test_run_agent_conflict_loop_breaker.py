@@ -40,6 +40,11 @@ REAL_WORLD_ERROR_CYCLE_2 = (
     "E   ImportError: cannot import name 'validate_admin_security_config' from "
     "'app.admin_security' (/tmp/builder-conflict-ahbbo6fx/repo/app/admin_security.py)\n"
 )
+# Real shape observed on #242: the posted comment body is truncated to the
+# tail of the pytest output, which sliced off the "cannot import name ...
+# from '<module>'" prefix entirely while leaving the closing file-path
+# fragment intact.
+REAL_WORLD_ERROR_TRUNCATED = "pytest collect failed: wxz8iny3/repo/app/admin_security.py)\n"
 
 
 def _conflict_result_comment(status: str, smoke_error: str | None = None) -> dict:
@@ -82,6 +87,24 @@ def test_real_world_cycles_with_different_symbol_and_temp_path_still_match() -> 
     differed even though every failure was the same dead-module import."""
     comments = []
     for error in (REAL_WORLD_ERROR_CYCLE_1, REAL_WORLD_ERROR_CYCLE_2, REAL_WORLD_ERROR_CYCLE_1):
+        comments.append(_conflict_result_comment("broken_after_resolve", error))
+        comments.append(_generic_followup("broken_after_resolve"))
+    with patch("run_agent.list_issue_comments", return_value=comments):
+        signature = repeated_conflict_smoke_signature("o/r", 242)
+    assert signature == "import-error:app.admin_security"
+
+
+@pytest.mark.unit
+def test_truncated_comment_body_still_yields_stable_signature() -> None:
+    """GitHub comment truncation keeps the tail, which slices off the
+    "cannot import name ... from" prefix but leaves the parenthetical
+    "(.../app/<module>.py)" file-path fragment — that must still match."""
+    comments = []
+    for error in (
+        REAL_WORLD_ERROR_TRUNCATED,
+        REAL_WORLD_ERROR_CYCLE_1,
+        REAL_WORLD_ERROR_TRUNCATED,
+    ):
         comments.append(_conflict_result_comment("broken_after_resolve", error))
         comments.append(_generic_followup("broken_after_resolve"))
     with patch("run_agent.list_issue_comments", return_value=comments):
