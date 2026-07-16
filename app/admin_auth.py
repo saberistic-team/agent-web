@@ -41,7 +41,7 @@ LOGIN_FLOW_EXPIRED_RETENTION_SECONDS = CSRF_MAX_AGE_SECONDS * 2
 # Retention after ``consumed_at`` before deleting one-time-used flows.
 LOGIN_FLOW_CONSUMED_RETENTION_SECONDS = CSRF_MAX_AGE_SECONDS
 LOGIN_FLOW_CLEANUP_BATCH_SIZE = 100
-# Opportunistic deletion batch after each admitted login attempt.
+# Opportunistic deletion batch for expired admin_login_rate_limits rows.
 LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE = 100
 INVALID_CREDENTIALS_MESSAGE = "Invalid username or password."
 INVALID_REQUEST_MESSAGE = "Invalid request."
@@ -469,33 +469,34 @@ def try_admit_login_attempt(
                 window_seconds=settings.admin_login_rate_window_seconds,
                 lockout_seconds=settings.admin_login_lockout_seconds,
             )
-            try:
-                cleanup_started = time.monotonic()
-                deleted = db.cleanup_expired_admin_login_rate_limits(
-                    conn,
-                    now=now,
-                    window_seconds=settings.admin_login_rate_window_seconds,
-                    lockout_seconds=settings.admin_login_lockout_seconds,
-                    batch_size=LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE,
-                )
-                _logger.info(
-                    "Admin login rate limit cleanup completed",
-                    extra={
-                        "batch_size": LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE,
-                        "deleted_count": deleted,
-                        "duration_ms": int((time.monotonic() - cleanup_started) * 1000),
-                        "backlog_may_remain": deleted >= LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE,
-                    },
-                )
-            except Exception:
-                _logger.warning(
-                    "Admin login rate limit cleanup failed; admission unaffected",
-                    extra={
-                        "batch_size": LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE,
-                        "error_category": "database_error",
-                    },
-                    exc_info=True,
-                )
+            if admission.admitted:
+                try:
+                    cleanup_started = time.perf_counter()
+                    deleted = db.cleanup_expired_admin_login_rate_limits(
+                        conn,
+                        now=now,
+                        window_seconds=settings.admin_login_rate_window_seconds,
+                        lockout_seconds=settings.admin_login_lockout_seconds,
+                        batch_size=LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE,
+                    )
+                    duration_ms = (time.perf_counter() - cleanup_started) * 1000
+                    _logger.info(
+                        "Admin login rate limit cleanup completed",
+                        extra={
+                            "batch_size": LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE,
+                            "deleted_count": deleted,
+                            "duration_ms": round(duration_ms, 2),
+                            "likely_backlog_remaining": (
+                                deleted >= LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE
+                            ),
+                        },
+                    )
+                except Exception:
+                    _logger.warning(
+                        "Admin login rate limit cleanup failed; admission unchanged",
+                        extra={"batch_size": LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE},
+                        exc_info=True,
+                    )
     except Exception:
         _logger.warning(
             "Admin login rate limiter unavailable; using conservative fallback",

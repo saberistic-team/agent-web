@@ -173,13 +173,10 @@ class FakeRateLimitStore:
             retention = max(window_seconds, lockout_seconds) * 2
             cutoff = now - timedelta(seconds=retention)
             expired = sorted(
-                (
-                    key
-                    for key, row in self.rows.items()
-                    if row["updated_at"] < cutoff
-                    and (row["locked_until"] is None or row["locked_until"] < now)
-                ),
-                key=lambda key: (self.rows[key]["updated_at"], key),
+                key
+                for key, row in self.rows.items()
+                if row["updated_at"] < cutoff
+                and (row["locked_until"] is None or row["locked_until"] < now)
             )[:batch_size]
             for key in expired:
                 del self.rows[key]

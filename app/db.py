@@ -629,12 +629,12 @@ def cleanup_expired_admin_login_rate_limits(
     lockout_seconds: int,
     batch_size: int,
 ) -> int:
-    """Delete expired limiter rows in a bounded, concurrent-safe batch.
+    """Delete expired login rate-limit rows in a bounded batch.
 
-    Eligible rows are those past ``2 × max(window, lockout)`` by ``updated_at``
-    with no active lockout. Selection is oldest-first (``updated_at``,
-    ``limiter_key``) and uses ``FOR UPDATE SKIP LOCKED`` so multiple instances
-    can drain the backlog without blocking one another.
+    Eligible rows have ``updated_at`` older than ``2 × max(window, lockout)``
+    and no active lockout (``locked_until`` is null or in the past). Selects
+    the oldest eligible rows first using ``updated_at`` and ``limiter_key``.
+    Uses ``FOR UPDATE SKIP LOCKED`` so concurrent instances claim disjoint batches.
     """
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
@@ -648,9 +648,9 @@ def cleanup_expired_admin_login_rate_limits(
                 FROM admin_login_rate_limits
                 WHERE updated_at < %s - make_interval(secs => %s)
                   AND (locked_until IS NULL OR locked_until < %s)
-                ORDER BY updated_at ASC, limiter_key ASC
-                LIMIT %s
+                ORDER BY updated_at, limiter_key
                 FOR UPDATE SKIP LOCKED
+                LIMIT %s
             )
             """,
             (now, retention_seconds, now, batch_size),

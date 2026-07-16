@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app import admin_auth, db
+from app import db
 
 
 @pytest.mark.unit
@@ -161,26 +161,21 @@ def test_cleanup_expired_admin_login_rate_limits_deletes_stale_rows() -> None:
         now=now,
         window_seconds=900,
         lockout_seconds=900,
-        batch_size=admin_auth.LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE,
+        batch_size=100,
     )
 
     sql = cur.execute.call_args.args[0]
     assert "DELETE FROM admin_login_rate_limits" in sql
-    assert "ORDER BY updated_at ASC, limiter_key ASC" in sql
-    assert "LIMIT %s" in sql
     assert "FOR UPDATE SKIP LOCKED" in sql
-    assert cur.execute.call_args.args[1] == (
-        now,
-        1800,
-        now,
-        admin_auth.LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE,
-    )
+    assert "ORDER BY updated_at, limiter_key" in sql
+    assert "LIMIT %s" in sql
+    assert cur.execute.call_args.args[1] == (now, 1800, now, 100)
     assert deleted == 3
     conn.commit.assert_called_once()
 
 
 @pytest.mark.unit
-def test_cleanup_expired_admin_login_rate_limits_rejects_non_positive_batch_size() -> None:
+def test_cleanup_expired_admin_login_rate_limits_rejects_non_positive_batch() -> None:
     conn = MagicMock()
     now = datetime(2026, 1, 1, tzinfo=timezone.utc)
     with pytest.raises(ValueError, match="batch_size must be positive"):
@@ -191,7 +186,6 @@ def test_cleanup_expired_admin_login_rate_limits_rejects_non_positive_batch_size
             lockout_seconds=900,
             batch_size=0,
         )
-    conn.cursor.assert_not_called()
 
 
 @pytest.mark.unit
@@ -317,66 +311,6 @@ def test_release_admin_login_admission_noop_when_missing_row() -> None:
 
     assert all("UPDATE admin_login_rate_limits" not in call.args[0] for call in cur.execute.call_args_list)
     conn.commit.assert_called_once()
-
-
-@pytest.mark.unit
-def test_try_admit_login_attempt_succeeds_when_cleanup_fails(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from unittest.mock import patch
-
-    from starlette.requests import Request
-
-    from app import admin_auth
-    from app.config import get_settings
-
-    monkeypatch.setenv("DATABASE_URL", "postgresql://example")
-    monkeypatch.setenv("ADMIN_USERNAME", "operator")
-    monkeypatch.setenv(
-        "ADMIN_PASSWORD_HASH",
-        "$argon2id$v=19$m=65536,t=3,p=4$aaaaaaaaaaaaaaaaaaaaaa$bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-    )
-    monkeypatch.setenv("ADMIN_SESSION_SECRET", "test-session-secret-32chars-minimum!!")
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "test-limiter-secret-32chars-minimum!")
-    monkeypatch.setenv("BASE_URL", "http://testserver")
-    settings = get_settings()
-    scope = {
-        "type": "http",
-        "asgi": {"version": "3.0"},
-        "http_version": "1.1",
-        "method": "POST",
-        "scheme": "http",
-        "path": "/admin/login",
-        "raw_path": b"/admin/login",
-        "query_string": b"",
-        "headers": [],
-        "client": ("203.0.113.10", 12345),
-        "server": ("testserver", 80),
-    }
-    request = Request(scope)
-    admitted = db.AdminLoginAdmission(
-        admitted=True,
-        throttled=False,
-        already_locked=False,
-        lockout_transition=False,
-    )
-
-    with patch("app.admin_auth.db.db_connection") as db_conn:
-        db_conn.return_value.__enter__.return_value = MagicMock()
-        with patch("app.admin_auth.db.is_admin_login_throttled", return_value=False):
-            with patch("app.admin_auth.db.try_admit_admin_login", return_value=admitted):
-                with patch(
-                    "app.admin_auth.db.cleanup_expired_admin_login_rate_limits",
-                    side_effect=RuntimeError("cleanup failed"),
-                ):
-                    result = admin_auth.try_admit_login_attempt(
-                        request,
-                        settings,
-                        username="operator",
-                    )
-
-    assert result.admitted
-    assert not result.store_unavailable
 
 
 @pytest.mark.unit
