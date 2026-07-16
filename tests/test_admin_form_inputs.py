@@ -161,6 +161,8 @@ def test_brief_convert_fieldset_and_choice_classes_themed() -> None:
     assert "cursor: pointer" in choice_block
     assert "accent-color: var(--accent)" in css
     assert ".brief-convert-match" in css
+    assert ".brief-convert-archived-panel" in css
+    assert ".brief-convert-ack" in css
     assert ".admin-checkbox" in css
 
 
@@ -430,48 +432,6 @@ def test_contact_form_buying_role_checkboxes_use_admin_checkbox_class() -> None:
     )
     assert 'class="admin-checkbox"' in html
     assert "<fieldset" in html
-
-
-@pytest.mark.unit
-def test_brief_convert_page_renders_archived_contact_panel() -> None:
-    archived_id = UUID("eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01")
-    html = admin_pages.render_admin_brief_convert_page(
-        admin_username="operator",
-        brief={"id": 42, "status": "paid"},
-        back_filters=BriefListFilters(
-            page=1,
-            per_page=25,
-            query=None,
-            status=None,
-            date_from=None,
-            date_to=None,
-            date_from_raw=None,
-            date_to_raw=None,
-        ),
-        preview={
-            "proposal": {
-                "company_name": "Northwind",
-                "pipeline_stage_label": "Diagnostic paid",
-                "contact_email": "ops@northwind.dev",
-            },
-            "company_matches": [],
-            "contact_matches": [],
-            "archived_contact_match": {
-                "id": archived_id,
-                "full_name": "Jordan Lee (archived)",
-                "email": "ops@northwind.dev",
-                "company_name": "Northwind Labs",
-                "archived_at": "2026-02-15T14:30:00+00:00",
-            },
-        },
-        csrf_token="csrf",
-    )
-    assert 'class="brief-convert-archived-panel"' in html
-    assert "Archived contact match" in html
-    assert "Jordan Lee (archived)" in html
-    assert f'href="/admin/contacts/{archived_id}/edit"' in html
-    assert 'name="acknowledge_archived_contact"' in html
-    assert 'name="contact_choice" value="new" checked' not in html
 
 
 @pytest.mark.unit

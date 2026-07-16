@@ -750,7 +750,6 @@ def test_preview_brief_conversion_states() -> None:
     from app.admin_preview import (
         PREVIEW_BRIEF_CONVERTED_ID,
         PREVIEW_BRIEF_CONVERT_ARCHIVED_ONLY_ID,
-        PREVIEW_BRIEF_CONVERT_ACTIVE_ARCHIVED_ID,
         PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR,
         preview_brief_conversion_state,
         preview_brief_convert_matches,
@@ -767,6 +766,7 @@ def test_preview_brief_conversion_states() -> None:
     matches = preview_brief_convert_matches(4, price_cents=20_000)
     assert matches["company_matches"]
     assert matches["contact_matches"]
+    assert matches["archived_contact_match"] is None
     assert matches["proposal"]["pipeline_stage"] in {"qualified", "diagnostic_paid"}
     archived_only = preview_brief_convert_matches(
         PREVIEW_BRIEF_CONVERT_ARCHIVED_ONLY_ID,
@@ -774,9 +774,4 @@ def test_preview_brief_conversion_states() -> None:
     )
     assert archived_only["contact_matches"] == []
     assert archived_only["archived_contact_match"] is not None
-    active_archived = preview_brief_convert_matches(
-        PREVIEW_BRIEF_CONVERT_ACTIVE_ARCHIVED_ID,
-        price_cents=20_000,
-    )
-    assert active_archived["contact_matches"]
-    assert active_archived["archived_contact_match"] is not None
+    assert archived_only["archived_contact_match"]["full_name"] == "Jordan Lee (archived)"

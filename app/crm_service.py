@@ -227,10 +227,13 @@ class CrmService:
             if domain
             else []
         )
-        # Active identity drives linking; archived history is surfaced separately (#226, #276).
+        # Active identity only drives linking. An archived-only match is surfaced
+        # separately as a restore/review option and is never auto-linked (#226).
         active_contact = self._repos.contacts.get_active_by_email(conn, email)
         contacts = [active_contact] if active_contact else []
-        archived_contact = self._repos.contacts.get_archived_by_email(conn, email)
+        archived_contact = (
+            None if active_contact else self._repos.contacts.get_archived_by_email(conn, email)
+        )
         return {
             "proposal": proposal,
             "company_matches": companies,
@@ -268,13 +271,15 @@ class CrmService:
             else []
         )
         contact_match = self._repos.contacts.get_active_by_email(conn, email)
-        archived_match = self._repos.contacts.get_archived_by_email(conn, email)
+        archived_contact_match = (
+            None if contact_match else self._repos.contacts.get_archived_by_email(conn, email)
+        )
         self._validate_conversion_choices(
             company_choice=company_choice,
             contact_choice=contact_choice,
             company_matches=company_matches,
             contact_match=contact_match,
-            archived_match=archived_match,
+            archived_contact_match=archived_contact_match,
             acknowledge_archived_contact=acknowledge_archived_contact,
             selected_company_id=selected_company_id,
             selected_contact_id=selected_contact_id,
@@ -603,8 +608,8 @@ class CrmService:
         contact_choice: str,
         company_matches: list[dict[str, Any]],
         contact_match: dict[str, Any] | None,
-        archived_match: dict[str, Any] | None,
-        acknowledge_archived_contact: bool,
+        archived_contact_match: dict[str, Any] | None = None,
+        acknowledge_archived_contact: bool = False,
         selected_company_id: UUID | None,
         selected_contact_id: UUID | None,
     ) -> None:
@@ -628,16 +633,6 @@ class CrmService:
         if contact_match is None and contact_choice == "existing":
             raise BriefConversionValidationError("No existing contact matches this email.")
 
-        if (
-            contact_choice == "new"
-            and contact_match is None
-            and archived_match is not None
-            and not acknowledge_archived_contact
-        ):
-            raise BriefConversionValidationError(
-                "Acknowledge the archived contact identity before creating a new active contact."
-            )
-
         if contact_match is not None and contact_choice == "existing":
             if selected_contact_id is None:
                 raise BriefConversionValidationError(
@@ -648,6 +643,17 @@ class CrmService:
         elif contact_match is not None and contact_choice == "new":
             raise BriefConversionValidationError(
                 "A contact with this email already exists — link the existing contact."
+            )
+
+        if (
+            archived_contact_match is not None
+            and contact_match is None
+            and contact_choice == "new"
+            and not acknowledge_archived_contact
+        ):
+            raise BriefConversionValidationError(
+                "Confirm you intend to create a new contact despite the archived identity "
+                "with this email."
             )
 
         if company_choice == "existing" and selected_company_id is None:

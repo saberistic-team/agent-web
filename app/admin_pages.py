@@ -760,59 +760,6 @@ def _format_proposed_value(value: Any) -> str:
     return html.escape(str(value))
 
 
-def _render_archived_contact_panel(archived_match: dict[str, Any]) -> str:
-    """Render a non-selectable archived identity panel for brief conversion (#276)."""
-    contact_id = str(archived_match.get("id", ""))
-    name = (
-        archived_match.get("full_name")
-        or archived_match.get("name")
-        or "Archived contact"
-    )
-    email = archived_match.get("email") or "—"
-    company = archived_match.get("company_name") or "—"
-    archived_at = archived_match.get("archived_at")
-    archived_display = (
-        _format_timestamp(archived_at)
-        if archived_at
-        else '<span class="audit-muted">—</span>'
-    )
-    review_href = html.escape(f"/admin/contacts/{contact_id}/edit", quote=True)
-    return f"""<section class="brief-convert-archived-panel" aria-labelledby="brief-convert-archived-title">
-      <h3 class="brief-convert-archived-heading" id="brief-convert-archived-title">Archived contact match</h3>
-      <p class="brief-convert-archived-note">
-        This email matches an archived contact. Archived records are never linked or
-        restored automatically — review or restore the archived contact before creating
-        a duplicate identity.
-      </p>
-      <dl class="brief-detail-dl brief-convert-archived-dl">
-        <div class="brief-detail-row">
-          <dt>Name</dt>
-          <dd>{html.escape(str(name))}</dd>
-        </div>
-        <div class="brief-detail-row">
-          <dt>Email</dt>
-          <dd>{html.escape(str(email))}</dd>
-        </div>
-        <div class="brief-detail-row">
-          <dt>Company</dt>
-          <dd>{html.escape(str(company))}</dd>
-        </div>
-        <div class="brief-detail-row">
-          <dt>Archived</dt>
-          <dd>{archived_display}</dd>
-        </div>
-      </dl>
-      <p><a class="audit-pager-link brief-convert-archived-review" href="{review_href}">Review archived contact</a></p>
-    </section>"""
-
-
-def _render_archived_acknowledgment_checkbox() -> str:
-    return """<label class="admin-checkbox brief-convert-archived-ack">
-      <input type="checkbox" name="acknowledge_archived_contact" value="1" />
-      I understand I am creating a new active contact despite this archived identity.
-    </label>"""
-
-
 def _render_match_radios(
     *,
     choice_name: str,
@@ -839,6 +786,52 @@ def _render_match_radios(
     return "\n".join(rows)
 
 
+def _render_archived_contact_panel(archived: dict[str, Any]) -> str:
+    contact_id = str(archived.get("id", ""))
+    safe_id = html.escape(contact_id, quote=True)
+    name = html.escape(str(archived.get("full_name") or "Archived contact"))
+    email = html.escape(str(archived.get("email") or "—"))
+    company_row = ""
+    company = archived.get("company_name")
+    if company:
+        company_row = f"""
+              <div class="brief-detail-row">
+                <dt>Company</dt>
+                <dd>{html.escape(str(company))}</dd>
+              </div>"""
+    archived_at = archived.get("archived_at")
+    archived_display = (
+        _format_timestamp(archived_at)
+        if archived_at
+        else '<span class="audit-muted">—</span>'
+    )
+    return f"""      <section class="brief-convert-archived-panel" aria-labelledby="brief-convert-archived-title">
+        <h2 class="brief-detail-heading" id="brief-convert-archived-title">Archived contact match</h2>
+        <p class="admin-note">
+          This email matches an archived contact. Archived contacts are never linked
+          as active records automatically — review or restore the archived identity first,
+          or explicitly choose to create a new contact below.
+        </p>
+        <dl class="brief-detail-dl">
+          <div class="brief-detail-row">
+            <dt>Name</dt>
+            <dd>{name}</dd>
+          </div>
+          <div class="brief-detail-row">
+            <dt>Email</dt>
+            <dd>{email}</dd>
+          </div>{company_row}
+          <div class="brief-detail-row">
+            <dt>Archived</dt>
+            <dd>{archived_display}</dd>
+          </div>
+        </dl>
+        <p class="brief-convert-archived-actions">
+          <a class="cta admin-action--secondary" href="/admin/contacts/{safe_id}/edit">Review archived contact</a>
+        </p>
+      </section>"""
+
+
 def render_admin_brief_convert_page(
     *,
     admin_username: str,
@@ -854,12 +847,10 @@ def render_admin_brief_convert_page(
     proposal = preview.get("proposal") or {}
     company_matches: list[dict[str, Any]] = list(preview.get("company_matches") or [])
     contact_matches: list[dict[str, Any]] = list(preview.get("contact_matches") or [])
-    archived_contact_match = preview.get("archived_contact_match")
-    archived_contact: dict[str, Any] | None = (
-        dict(archived_contact_match)
-        if isinstance(archived_contact_match, dict)
-        else None
-    )
+    archived_contact = preview.get("archived_contact_match")
+    archived_contact_panel = ""
+    if archived_contact and not contact_matches:
+        archived_contact_panel = _render_archived_contact_panel(archived_contact)
 
     error_html = ""
     if error_message:
@@ -875,27 +866,24 @@ def render_admin_brief_convert_page(
         choice_name="contact_choice",
         matches=contact_matches,
     )
-    archived_panel_html = (
-        _render_archived_contact_panel(archived_contact)
-        if archived_contact is not None
-        else ""
-    )
-    archived_ack_html = (
-        _render_archived_acknowledgment_checkbox()
-        if archived_contact is not None
-        else ""
-    )
 
     default_company_choice = "existing" if company_matches else "new"
-    if contact_matches:
-        default_contact_choice = "existing"
-    elif archived_contact is not None:
-        # Archived-only: require an explicit operator choice (#276).
-        default_contact_choice = None
-    else:
-        default_contact_choice = "new"
     company_new_checked = " checked" if default_company_choice == "new" else ""
-    contact_new_checked = " checked" if default_contact_choice == "new" else ""
+    has_archived_only = bool(archived_contact and not contact_matches)
+    contact_new_checked = ""
+    contact_choice_required = ""
+    contact_ack_html = ""
+    if contact_matches:
+        contact_new_checked = ""
+    elif has_archived_only:
+        contact_choice_required = " required"
+        contact_ack_html = """
+              <label class="brief-convert-ack">
+                <input type="checkbox" name="acknowledge_archived_contact" value="1" />
+                I confirm creating a new active contact despite the archived identity above.
+              </label>"""
+    else:
+        contact_new_checked = " checked"
 
     expected_value = proposal.get("expected_value")
     expected_display = (
@@ -951,14 +939,14 @@ def render_admin_brief_convert_page(
               </label>
               {company_match_html}
             </fieldset>
+            {archived_contact_panel}
             <fieldset class="brief-convert-fieldset">
               <legend>Contact</legend>
-              {archived_panel_html}
               <label class="brief-convert-choice">
-                <input type="radio" name="contact_choice" value="new"{contact_new_checked} /> Create new contact
+                <input type="radio" name="contact_choice" value="new"{contact_new_checked}{contact_choice_required} /> Create new contact
               </label>
               {contact_match_html}
-              {archived_ack_html}
+              {contact_ack_html}
             </fieldset>
             <button class="cta admin-submit" type="submit">Confirm and add to pipeline</button>
             <p class="admin-note"><a href="{detail_href}">Cancel</a></p>

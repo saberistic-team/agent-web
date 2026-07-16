@@ -1666,7 +1666,7 @@ def admin_brief_convert_confirm(
     csrf_token: str = Form(...),
     company_choice: str = Form(default="new"),
     contact_choice: str = Form(default="new"),
-    acknowledge_archived_contact: str | None = Form(default=None),
+    acknowledge_archived_contact: str = Form(default=""),
     page: int = 1,
     q: str | None = Form(default=None),
     status: str | None = Form(default=None),
@@ -1684,7 +1684,6 @@ def admin_brief_convert_confirm(
 
     company_mode, selected_company_id = _parse_link_choice(company_choice)
     contact_mode, selected_contact_id = _parse_link_choice(contact_choice)
-    acknowledge_archived = acknowledge_archived_contact == "1"
     detail_url = f"/admin/briefs/{parsed_brief_id}?converted=1"
 
     if settings.admin_preview_enabled:
@@ -1696,7 +1695,7 @@ def admin_brief_convert_confirm(
             contact_mode=contact_mode,
             selected_company_id=selected_company_id,
             selected_contact_id=selected_contact_id,
-            acknowledge_archived_contact=acknowledge_archived,
+            acknowledge_archived_contact=acknowledge_archived_contact == "1",
         )
         if error:
             return RedirectResponse(
@@ -1726,7 +1725,7 @@ def admin_brief_convert_confirm(
                 contact_choice=contact_mode,
                 selected_company_id=selected_company_id,
                 selected_contact_id=selected_contact_id,
-                acknowledge_archived_contact=acknowledge_archived,
+                acknowledge_archived_contact=acknowledge_archived_contact == "1",
             )
     except BriefConversionValidationError as exc:
         return RedirectResponse(

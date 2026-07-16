@@ -427,36 +427,27 @@ def test_preview_convert_validation_error_renders_alert(monkeypatch: pytest.Monk
     assert "Select an existing company match" in response.text
 
 
-ARCHIVED_CONTACT_ID = UUID("eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01")
-
-
 @pytest.mark.unit
-@pytest.mark.integration
-def test_convert_preview_renders_archived_contact_panel() -> None:
-    token_hash = admin_auth.hash_session_token("convert-archived")
-    row = _session_row(token_hash=token_hash)
+def test_convert_page_renders_archived_contact_panel() -> None:
+    archived_id = UUID("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")
     preview = {
         "proposal": {
             "company_name": "Acme",
-            "website": "https://acme.example",
-            "domain": "acme.example",
             "contact_email": "ops@acme.example",
-            "pipeline_stage_label": "Diagnostic paid",
-            "brief_status": "paid",
-            "expected_value": 200.0,
+            "pipeline_stage_label": "Qualified",
         },
         "company_matches": [],
         "contact_matches": [],
         "archived_contact_match": {
-            "id": ARCHIVED_CONTACT_ID,
-            "full_name": "Ops Lead (archived)",
+            "id": archived_id,
+            "full_name": "Jordan Lee",
             "email": "ops@acme.example",
-            "company_name": "Acme Corp",
-            "archived_at": "2026-02-15T14:30:00+00:00",
+            "company_name": "Northwind Labs",
+            "archived_at": "2026-01-15T12:00:00Z",
         },
     }
-    with mock_db_connection():
-        with patch("app.admin_routes.db.get_admin_session_by_token_hash", return_value=row):
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        with mock_db_connection():
             with patch("app.admin_routes.brief_service.get_brief", return_value=_detail_brief()):
                 with patch("app.admin_routes._crm") as crm:
                     crm.get_project_brief_source.return_value = None
@@ -465,46 +456,30 @@ def test_convert_preview_renders_archived_contact_panel() -> None:
                         "app.admin_routes._session_csrf_for_forms",
                         return_value=CSRF_TOKEN,
                     ):
-                        response = client.get(
-                            "/admin/briefs/42/convert",
-                            cookies={SESSION_COOKIE_NAME: "convert-archived"},
-                        )
+                        response = client.get("/admin/briefs/42/convert")
     assert response.status_code == 200
     body = response.text
+    assert "brief-convert-archived-panel" in body
     assert "Archived contact match" in body
-    assert "Ops Lead (archived)" in body
+    assert "Jordan Lee" in body
     assert "ops@acme.example" in body
-    assert "Acme Corp" in body
+    assert "Northwind Labs" in body
     assert "never linked" in body
-    assert "restored automatically" in body
-    assert f'href="/admin/contacts/{ARCHIVED_CONTACT_ID}/edit"' in body
-    assert 'name="acknowledge_archived_contact"' in body
+    assert f"/admin/contacts/{archived_id}/edit" in body
+    assert "acknowledge_archived_contact" in body
     assert 'name="contact_choice" value="new" checked' not in body
 
 
 @pytest.mark.unit
-@pytest.mark.integration
-def test_convert_preview_active_plus_archived_shows_both() -> None:
-    token_hash = admin_auth.hash_session_token("convert-both")
-    row = _session_row(token_hash=token_hash)
+def test_convert_page_hides_archived_panel_when_active_match_exists() -> None:
     preview = {
-        "proposal": {
-            "company_name": "Acme",
-            "contact_email": "ops@acme.example",
-            "pipeline_stage_label": "Diagnostic paid",
-        },
+        "proposal": {"company_name": "Acme", "pipeline_stage_label": "Qualified"},
         "company_matches": [],
         "contact_matches": [{"id": CONTACT_ID, "email": "ops@acme.example"}],
-        "archived_contact_match": {
-            "id": ARCHIVED_CONTACT_ID,
-            "full_name": "Ops Lead (archived)",
-            "email": "ops@acme.example",
-            "company_name": "Acme Corp",
-            "archived_at": "2026-01-10T09:15:00+00:00",
-        },
+        "archived_contact_match": None,
     }
-    with mock_db_connection():
-        with patch("app.admin_routes.db.get_admin_session_by_token_hash", return_value=row):
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        with mock_db_connection():
             with patch("app.admin_routes.brief_service.get_brief", return_value=_detail_brief()):
                 with patch("app.admin_routes._crm") as crm:
                     crm.get_project_brief_source.return_value = None
@@ -513,28 +488,23 @@ def test_convert_preview_active_plus_archived_shows_both() -> None:
                         "app.admin_routes._session_csrf_for_forms",
                         return_value=CSRF_TOKEN,
                     ):
-                        response = client.get(
-                            "/admin/briefs/42/convert",
-                            cookies={SESSION_COOKIE_NAME: "convert-both"},
-                        )
-    body = response.text
-    assert "Archived contact match" in body
-    assert re.search(
-        rf'value="existing:{CONTACT_ID}"[^>]*checked|checked[^>]*value="existing:{CONTACT_ID}"',
-        body,
-    ) or f'value="existing:{CONTACT_ID}"' in body
+                        response = client.get("/admin/briefs/42/convert")
+    assert response.status_code == 200
+    assert "brief-convert-archived-panel" not in response.text
+    assert "acknowledge_archived_contact" not in response.text
 
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_convert_post_requires_archived_acknowledgment() -> None:
+def test_convert_post_rejects_new_contact_without_archived_acknowledgment() -> None:
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
         with patch("app.admin_routes._verify_session_csrf"):
             with mock_db_connection():
                 with patch("app.admin_routes.brief_service.get_brief", return_value=_detail_brief()):
                     with patch("app.admin_routes._crm") as crm:
                         crm.convert_project_brief.side_effect = BriefConversionValidationError(
-                            "Acknowledge the archived contact identity before creating a new active contact."
+                            "Confirm you intend to create a new contact despite the archived identity "
+                            "with this email."
                         )
                         response = client.post(
                             "/admin/briefs/42/convert",
@@ -545,70 +515,28 @@ def test_convert_post_requires_archived_acknowledgment() -> None:
                             },
                         )
     assert response.status_code == 303
-    assert "Acknowledge%20the%20archived%20contact%20identity" in response.headers["location"]
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_convert_post_passes_archived_acknowledgment() -> None:
-    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
-        with patch("app.admin_routes._verify_session_csrf"):
-            with mock_db_connection():
-                with patch("app.admin_routes.brief_service.get_brief", return_value=_detail_brief()):
-                    with patch("app.admin_routes._crm") as crm:
-                        crm.convert_project_brief.return_value = {"idempotent": False}
-                        response = client.post(
-                            "/admin/briefs/42/convert",
-                            data={
-                                "csrf_token": CSRF_TOKEN,
-                                "company_choice": "new",
-                                "contact_choice": "new",
-                                "acknowledge_archived_contact": "1",
-                            },
-                        )
-    assert response.status_code == 303
+    assert "convert?error=" in response.headers["location"]
     crm.convert_project_brief.assert_called_once()
-    assert crm.convert_project_brief.call_args.kwargs["acknowledge_archived_contact"] is True
+    assert crm.convert_project_brief.call_args.kwargs["acknowledge_archived_contact"] is False
 
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_preview_archived_only_convert_renders_panel(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_preview_mode_archived_only_convert_page(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
         with patch("app.admin_routes._session_csrf_for_forms", return_value=CSRF_TOKEN):
             response = client.get("/admin/briefs/5/convert")
     assert response.status_code == 200
     body = response.text
-    assert "Archived contact match" in body
+    assert "brief-convert-archived-panel" in body
     assert "Jordan Lee (archived)" in body
-    assert f'href="/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01/edit"' in body
+    assert "Review archived contact" in body
 
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_preview_active_archived_convert_renders_both_states(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
-    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
-        with patch("app.admin_routes._session_csrf_for_forms", return_value=CSRF_TOKEN):
-            response = client.get("/admin/briefs/6/convert")
-    assert response.status_code == 200
-    body = response.text
-    assert "Archived contact match" in body
-    assert "Jordan Lee (archived)" in body
-    assert 'name="contact_choice"' in body
-    assert 'value="existing:ffffffff-ffff-ffff-ffff-fffffffffff1"' in body
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_preview_archived_only_post_rejects_without_acknowledgment(
+def test_preview_mode_rejects_convert_without_archived_acknowledgment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
@@ -623,4 +551,26 @@ def test_preview_archived_only_post_rejects_without_acknowledgment(
                 },
             )
     assert response.status_code == 303
-    assert "Acknowledge%20the%20archived%20contact%20identity" in response.headers["location"]
+    assert "convert?error=" in response.headers["location"]
+    assert "converted=1" not in response.headers["location"]
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_preview_mode_accepts_convert_with_archived_acknowledgment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        with patch("app.admin_routes._verify_session_csrf"):
+            response = client.post(
+                "/admin/briefs/5/convert",
+                data={
+                    "csrf_token": CSRF_TOKEN,
+                    "company_choice": "new",
+                    "contact_choice": "new",
+                    "acknowledge_archived_contact": "1",
+                },
+            )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/admin/briefs/5?converted=1"

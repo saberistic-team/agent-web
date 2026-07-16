@@ -135,18 +135,13 @@ def test_find_brief_conversion_matches_prefers_active_over_archived() -> None:
         "id": CONTACT_ID,
         "email": "ops@acme.example",
     }
-    archived_id = UUID("cccccccc-cccc-cccc-cccc-cccccccccccc")
-    repos["contacts"].get_archived_by_email.return_value = {
-        "id": archived_id,
-        "email": "ops@acme.example",
-        "archived_at": "2026-01-01T00:00:00Z",
-    }
 
     result = service.find_brief_conversion_matches(conn, _brief(), price_cents=20_000)
 
     assert result["contact_matches"] == [{"id": CONTACT_ID, "email": "ops@acme.example"}]
-    assert result["archived_contact_match"]["id"] == archived_id
-    repos["contacts"].get_archived_by_email.assert_called_once()
+    # Active match short-circuits the archived lookup entirely.
+    assert result["archived_contact_match"] is None
+    repos["contacts"].get_archived_by_email.assert_not_called()
 
 
 def test_find_brief_conversion_matches_surfaces_archived_for_review_only() -> None:
@@ -696,9 +691,10 @@ def test_convert_new_contact_not_linked_to_archived_match() -> None:
     service, conn, repos = _service_with_mocks()
     repos["source_records"].get_by_source.return_value = None
     repos["companies"].find_by_domain.return_value = []
+    # No *active* contact for the email — an archived row may exist but is ignored here.
     repos["contacts"].get_active_by_email.return_value = None
     repos["contacts"].get_archived_by_email.return_value = {
-        "id": OTHER_COMPANY_ID,
+        "id": CONTACT_ID,
         "email": "ops@acme.example",
         "archived_at": "2026-01-01T00:00:00Z",
     }
@@ -727,8 +723,56 @@ def test_convert_new_contact_not_linked_to_archived_match() -> None:
         )
 
     repos["contacts"].create.assert_called_once()
-    repos["contacts"].get_archived_by_email.assert_called()
+    repos["contacts"].get_archived_by_email.assert_called_once()
     assert result["contact"]["id"] == CONTACT_ID
+
+
+def test_convert_rejects_new_contact_without_archived_acknowledgment() -> None:
+    service, conn, repos = _service_with_mocks()
+    repos["source_records"].get_by_source.return_value = None
+    repos["companies"].find_by_domain.return_value = []
+    repos["contacts"].get_active_by_email.return_value = None
+    repos["contacts"].get_archived_by_email.return_value = {
+        "id": CONTACT_ID,
+        "email": "ops@acme.example",
+        "archived_at": "2026-01-01T00:00:00Z",
+    }
+
+    with pytest.raises(BriefConversionValidationError, match="archived identity"):
+        service.convert_project_brief(
+            conn,
+            brief=_brief(),
+            actor_context=ACTOR,
+            price_cents=20_000,
+            company_choice="new",
+            contact_choice="new",
+            acknowledge_archived_contact=False,
+        )
+
+
+def test_convert_rejects_new_contact_when_archived_was_restored_to_active() -> None:
+    """Revalidates on submit: restored archived contact blocks create-new (#276)."""
+    service, conn, repos = _service_with_mocks()
+    repos["source_records"].get_by_source.return_value = None
+    repos["companies"].find_by_domain.return_value = []
+    repos["contacts"].get_active_by_email.return_value = {
+        "id": CONTACT_ID,
+        "email": "ops@acme.example",
+        "company_id": None,
+    }
+
+    with pytest.raises(BriefConversionValidationError, match="already exists"):
+        service.convert_project_brief(
+            conn,
+            brief=_brief(),
+            actor_context=ACTOR,
+            price_cents=20_000,
+            company_choice="new",
+            contact_choice="new",
+            acknowledge_archived_contact=True,
+        )
+
+    repos["contacts"].get_archived_by_email.assert_not_called()
 
 
 def test_convert_project_brief_is_idempotent_when_already_linked() -> None:
@@ -902,49 +946,3 @@ def test_convert_rolls_back_when_audit_fails() -> None:
 
     conn.rollback.assert_called_once()
     conn.commit.assert_not_called()
-
-
-def test_convert_rejects_new_contact_without_archived_acknowledgment() -> None:
-    service, conn, repos = _service_with_mocks()
-    repos["source_records"].get_by_source.return_value = None
-    repos["companies"].find_by_domain.return_value = []
-    repos["contacts"].get_active_by_email.return_value = None
-    repos["contacts"].get_archived_by_email.return_value = {
-        "id": OTHER_COMPANY_ID,
-        "email": "ops@acme.example",
-        "archived_at": "2026-01-01T00:00:00Z",
-    }
-
-    with pytest.raises(
-        BriefConversionValidationError,
-        match="Acknowledge the archived contact identity",
-    ):
-        service.convert_project_brief(
-            conn,
-            brief=_brief(),
-            actor_context=ACTOR,
-            price_cents=20_000,
-            company_choice="new",
-            contact_choice="new",
-            acknowledge_archived_contact=False,
-        )
-
-
-def test_find_brief_conversion_matches_returns_active_and_archived_history() -> None:
-    service, conn, repos = _service_with_mocks()
-    repos["companies"].find_by_domain.return_value = []
-    archived_id = UUID("cccccccc-cccc-cccc-cccc-cccccccccccc")
-    repos["contacts"].get_active_by_email.return_value = {
-        "id": CONTACT_ID,
-        "email": "ops@acme.example",
-    }
-    repos["contacts"].get_archived_by_email.return_value = {
-        "id": archived_id,
-        "email": "ops@acme.example",
-        "archived_at": "2026-01-01T00:00:00Z",
-    }
-
-    result = service.find_brief_conversion_matches(conn, _brief(), price_cents=20_000)
-
-    assert result["contact_matches"][0]["id"] == CONTACT_ID
-    assert result["archived_contact_match"]["id"] == archived_id

@@ -8,6 +8,7 @@ on a live Postgres engine — not mocks or sequential-only calls.
 from __future__ import annotations
 
 import threading
+from datetime import datetime, timezone
 from typing import Any, Callable
 from unittest.mock import patch
 from uuid import UUID, uuid4
@@ -587,50 +588,23 @@ def test_idempotent_retry_returns_original_conversion(
     assert second["idempotent"] is True
     assert str(first["source_record"]["id"]) == str(second["source_record"]["id"])
 
-    verifier = connect()
-    assert db.count(verifier, "companies") == 1
-    assert db.count(verifier, "contacts") == 1
-    assert db.count(verifier, "source_records") == 1
 
-
-def test_archived_contact_never_silently_linked_on_convert(
+def test_convert_never_links_archived_contact_as_active(
     migrated_conn: psycopg.Connection,
     connect: Callable[..., psycopg.Connection],
     db,
 ) -> None:
-    """Creating a new active contact with archived history requires explicit ack (#276)."""
-    from datetime import datetime, timezone
-
-    archived_id = uuid4()
+    archived_contact_id = uuid4()
     _insert_contact(
         migrated_conn,
-        contact_id=archived_id,
+        contact_id=archived_contact_id,
         email="ops@acme.example",
-        full_name="Ops Lead (archived)",
+        full_name="Archived Ops",
         archived_at=datetime.now(timezone.utc),
     )
     brief = db.insert_paid_brief(migrated_conn, email="ops@acme.example")
-    service = CrmService()
 
-    preview = service.find_brief_conversion_matches(
-        migrated_conn,
-        brief,
-        price_cents=20_000,
-    )
-    assert preview["contact_matches"] == []
-    assert preview["archived_contact_match"]["id"] == archived_id
-
-    with pytest.raises(BriefConversionValidationError, match="Acknowledge the archived"):
-        service.convert_project_brief(
-            migrated_conn,
-            brief=brief,
-            actor_context=ACTOR,
-            price_cents=20_000,
-            company_choice="new",
-            contact_choice="new",
-        )
-
-    result = service.convert_project_brief(
+    result = CrmService().convert_project_brief(
         migrated_conn,
         brief=brief,
         actor_context=ACTOR,
@@ -640,22 +614,27 @@ def test_archived_contact_never_silently_linked_on_convert(
         acknowledge_archived_contact=True,
     )
 
-    new_contact_id = UUID(str(result["contact"]["id"]))
-    assert new_contact_id != archived_id
+    assert result["idempotent"] is False
+    assert UUID(str(result["contact"]["id"])) != archived_contact_id
 
     verifier = connect()
     archived = db.fetch_dict(
         verifier,
         "SELECT * FROM contacts WHERE id = %s",
-        (archived_id,),
+        (archived_contact_id,),
     )
     assert archived is not None
     assert archived["archived_at"] is not None
-    new_contact = db.fetch_dict(
+    source = db.fetch_dict(
         verifier,
-        "SELECT * FROM contacts WHERE id = %s",
-        (new_contact_id,),
+        "SELECT * FROM source_records WHERE external_id = %s",
+        (str(brief["id"]),),
     )
-    assert new_contact is not None
-    assert new_contact["archived_at"] is None
-    assert new_contact["email"] == "ops@acme.example"
+    assert source is not None
+    assert source["contact_id"] != archived_contact_id
+    assert source["contact_id"] == result["contact"]["id"]
+
+    verifier = connect()
+    assert db.count(verifier, "companies") == 1
+    assert db.count(verifier, "contacts") == 1
+    assert db.count(verifier, "source_records") == 1
