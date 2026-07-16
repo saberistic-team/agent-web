@@ -1,0 +1,189 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://saberistic.com/schemas/world-manifest-v0.json",
+  "title": "World Manifest v0",
+  "description": "JSON Schema for Manifest v0 field provenance (identity/experience/ai_role/trust sections). Spike validation uses spike/worldgraph/manifest_schema.py; production schema may converge with issue #199.",
+  "type": "object",
+  "required": ["schema_version", "identity", "experience", "ai_role", "trust"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "world-manifest-v0"
+    },
+    "identity": {
+      "type": "object",
+      "required": ["name", "canonical_url", "world_type", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "$ref": "#/$defs/provenString" },
+        "canonical_url": { "$ref": "#/$defs/provenUrl" },
+        "world_type": { "$ref": "#/$defs/provenString" },
+        "status": { "$ref": "#/$defs/provenString" },
+        "summary": { "$ref": "#/$defs/provenStringOrUnknown" },
+        "version": { "$ref": "#/$defs/provenStringOrUnknown" },
+        "creator": { "$ref": "#/$defs/provenStringOrUnknown" },
+        "operator": { "$ref": "#/$defs/provenStringOrUnknown" }
+      }
+    },
+    "experience": {
+      "type": "object",
+      "required": ["entry_points", "interaction_model", "persistence_model"],
+      "additionalProperties": false,
+      "properties": {
+        "entry_points": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/provenUrl" }
+        },
+        "interaction_model": { "$ref": "#/$defs/provenString" },
+        "persistence_model": { "$ref": "#/$defs/provenStringOrUnknown" },
+        "modalities": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/provenString" }
+        },
+        "access_requirements": { "$ref": "#/$defs/provenStringOrUnknown" }
+      }
+    },
+    "world_structure": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "setting": { "$ref": "#/$defs/provenStringOrUnknown" },
+        "rules_or_mechanics": { "$ref": "#/$defs/provenStringOrUnknown" },
+        "agents_and_characters": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/provenStringOrUnknown" }
+        },
+        "platforms": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/provenStringOrUnknown" }
+        }
+      }
+    },
+    "ai_role": {
+      "type": "object",
+      "required": ["material_ai_role", "ai_usage_phase"],
+      "additionalProperties": false,
+      "properties": {
+        "material_ai_role": { "$ref": "#/$defs/provenString" },
+        "ai_usage_phase": { "$ref": "#/$defs/provenString" },
+        "model_disclosures": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/provenStringOrUnknown" }
+        },
+        "human_control_boundaries": { "$ref": "#/$defs/provenStringOrUnknown" }
+      }
+    },
+    "trust": {
+      "type": "object",
+      "required": ["qualification_status", "claim_status"],
+      "additionalProperties": false,
+      "properties": {
+        "qualification_status": {
+          "type": "string",
+          "enum": ["qualifies", "excluded", "pending_review"]
+        },
+        "claim_status": {
+          "type": "string",
+          "enum": [
+            "unclaimed",
+            "creator_claimed",
+            "domain_verified",
+            "github_verified",
+            "email_domain_verified",
+            "saberistic_verified"
+          ]
+        },
+        "license_status": { "$ref": "#/$defs/provenStringOrUnknown" },
+        "safety_categories": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/provenStringOrUnknown" }
+        },
+        "content_rights_notes": { "$ref": "#/$defs/provenStringOrUnknown" }
+      }
+    },
+    "discovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tags": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/provenString" }
+        },
+        "semantic_description": { "$ref": "#/$defs/provenStringOrUnknown" },
+        "primary_call_to_action": { "$ref": "#/$defs/provenStringOrUnknown" }
+      }
+    }
+  },
+  "$defs": {
+    "provenance": {
+      "type": "object",
+      "required": ["source_kind", "confidence", "observed_at"],
+      "additionalProperties": false,
+      "properties": {
+        "source_kind": {
+          "type": "string",
+          "enum": [
+            "source_observation",
+            "creator_declared",
+            "derived",
+            "unknown"
+          ]
+        },
+        "source_url": { "type": ["string", "null"], "format": "uri" },
+        "evidence_snippet": { "type": ["string", "null"], "maxLength": 2000 },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "observed_at": { "type": "string", "format": "date-time" },
+        "verification_status": {
+          "type": "string",
+          "enum": [
+            "unverified",
+            "domain_verified",
+            "github_verified",
+            "email_domain_verified",
+            "saberistic_verified"
+          ]
+        }
+      }
+    },
+    "provenString": {
+      "type": "object",
+      "required": ["value", "provenance"],
+      "additionalProperties": false,
+      "properties": {
+        "value": { "type": "string", "minLength": 1 },
+        "provenance": { "$ref": "#/$defs/provenance" }
+      }
+    },
+    "provenUrl": {
+      "type": "object",
+      "required": ["value", "provenance"],
+      "additionalProperties": false,
+      "properties": {
+        "value": { "type": "string", "format": "uri" },
+        "provenance": { "$ref": "#/$defs/provenance" }
+      }
+    },
+    "provenStringOrUnknown": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["value", "provenance"],
+          "additionalProperties": false,
+          "properties": {
+            "value": { "const": "unknown" },
+            "provenance": {
+              "allOf": [{ "$ref": "#/$defs/provenance" }],
+              "properties": {
+                "source_kind": { "const": "unknown" },
+                "confidence": { "const": 0 }
+              }
+            }
+          }
+        },
+        { "$ref": "#/$defs/provenString" }
+      ]
+    }
+  }
+}
