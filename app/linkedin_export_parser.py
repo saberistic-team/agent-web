@@ -24,6 +24,7 @@ MAX_ZIP_ENTRIES = 500
 MAX_CSV_ROWS = 50_000
 MAX_FIELD_LENGTH = 10_000
 MAX_PATH_LENGTH = 512
+MAX_PREAMBLE_SCAN_LINES = 20
 
 APPROVED_BASENAMES: frozenset[str] = frozenset(
     {
@@ -136,35 +137,55 @@ def _is_nested_archive(path: str) -> bool:
     return any(base.endswith(suffix) for suffix in NESTED_ARCHIVE_SUFFIXES)
 
 
+def _is_blank_csv_row(row: list[str]) -> bool:
+    return not row or not any(str(cell).strip() for cell in row)
+
+
+def _locate_csv_header(reader: csv.reader, *, basename: str) -> list[str]:
+    """Skip leading blank lines and single-field preamble rows before the header."""
+    scanned = 0
+    for row in reader:
+        if _is_blank_csv_row(row):
+            continue
+        if scanned >= MAX_PREAMBLE_SCAN_LINES:
+            break
+        scanned += 1
+        if len(row) > 1:
+            return row
+    raise ValueError(f"{basename}: missing CSV header row")
+
+
 def _read_csv_rows(raw: bytes, *, basename: str) -> tuple[list[dict[str, str]], tuple[str, ...]]:
     warnings: list[str] = []
     text = raw.decode("utf-8-sig", errors="replace")
     if "\x00" in text:
         raise ValueError(f"{basename}: binary content is not valid CSV")
 
-    reader = csv.DictReader(io.StringIO(text))
-    if reader.fieldnames is None:
-        raise ValueError(f"{basename}: missing CSV header row")
+    reader = csv.reader(io.StringIO(text))
+    fieldnames = _locate_csv_header(reader, basename=basename)
 
-    header_lower = {name.strip().lower(): name for name in reader.fieldnames if name}
+    header_lower = {name.strip().lower(): name for name in fieldnames if name}
     required = _REQUIRED_HEADER_TOKENS.get(basename, ())
     for token in required:
         if not any(token in key for key in header_lower):
             warnings.append(f"{basename}: unexpected schema (missing '{token}' column)")
 
     rows: list[dict[str, str]] = []
-    for index, row in enumerate(reader, start=2):
-        if index - 1 > MAX_CSV_ROWS:
+    for index, row in enumerate(reader, start=1):
+        if index > MAX_CSV_ROWS:
             warnings.append(f"{basename}: truncated at {MAX_CSV_ROWS:,} rows")
             break
+        if _is_blank_csv_row(row):
+            continue
         cleaned: dict[str, str] = {}
-        for key, value in row.items():
-            if key is None:
+        for key_idx, key in enumerate(fieldnames):
+            if not key:
                 continue
+            value = row[key_idx] if key_idx < len(row) else ""
             cell = "" if value is None else str(value)
             if len(cell) > MAX_FIELD_LENGTH:
                 warnings.append(
-                    f"{basename}: row {index} field '{key}' exceeds max length; truncated"
+                    f"{basename}: row {index + 1} field '{key}' exceeds max length; truncated"
                 )
                 cell = cell[:MAX_FIELD_LENGTH]
             cleaned[key.strip()] = cell
@@ -420,5 +441,6 @@ def export_limits_for_client() -> dict[str, Any]:
         "maxCsvRows": MAX_CSV_ROWS,
         "maxFieldLength": MAX_FIELD_LENGTH,
         "maxPathLength": MAX_PATH_LENGTH,
+        "maxPreambleScanLines": MAX_PREAMBLE_SCAN_LINES,
         "approvedBasenames": sorted(APPROVED_BASENAMES),
     }

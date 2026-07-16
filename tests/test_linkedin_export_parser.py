@@ -44,6 +44,26 @@ CONNECTIONS_CSV = (
     "Bletchley,Cryptanalyst,03 Mar 2024\n"
 )
 
+CONNECTIONS_CSV_WITH_PREAMBLE = (
+    "Notes:\n"
+    '"When exporting your connection data, you may notice that some of the '
+    'email addresses are missing. You will only see email addresses for '
+    'connections who have allowed their connections to see or download their '
+    'email address using this setting https://www.linkedin.com/psettings/'
+    'privacy/email."\n'
+    "\n"
+    "First Name,Last Name,URL,Email Address,Company,Position,Connected On\n"
+    "Jane,Doe,https://www.linkedin.com/in/jane-doe,,Acme Corp,Engineer,10 Jul 2026\n"
+    "Ada,Lovelace,https://www.linkedin.com/in/ada-lovelace/,ada@example.com,"
+    "Analytical Engines,Engineer,01 Jan 2024\n"
+)
+
+CONNECTIONS_CSV_SINGLE_LINE_PREAMBLE = (
+    "Notes:\n"
+    "First Name,Last Name,URL\n"
+    "Ada,Lovelace,https://linkedin.com/in/ada-lovelace/\n"
+)
+
 MESSAGES_CSV = (
     "CONVERSATION ID,FROM,TO,SUBJECT,CONTENT,DATE,FOLDER\n"
     "conv-1,Ada Lovelace,Grace Hopper,Hello,Secret body text,2024-01-01,INBOX\n"
@@ -275,4 +295,49 @@ def test_export_limits_for_client_matches_parser_constants() -> None:
     limits = export_limits_for_client()
     assert limits["maxCompressedBytes"] == MAX_COMPRESSED_BYTES
     assert limits["maxFieldLength"] == MAX_FIELD_LENGTH
+    assert limits["maxPreambleScanLines"] == 20
     assert "connections.csv" in limits["approvedBasenames"]
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_parse_connections_csv_with_notes_preamble() -> None:
+    data = _build_export_zip({"Connections.csv": CONNECTIONS_CSV_WITH_PREAMBLE})
+    result = parse_linkedin_export_zip(data)
+    assert result.ok is True
+    assert result.connection_count == 2
+    assert not any("unexpected schema" in w.lower() for w in result.warnings)
+    assert not any("no rows with a recognizable profile url" in w.lower() for w in result.warnings)
+    conn_file = next(f for f in result.files if f.basename == "connections.csv")
+    assert conn_file.row_count == 2
+    assert conn_file.valid_rows == 2
+    assert conn_file.skipped_rows == 0
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_parse_connections_csv_with_single_line_preamble() -> None:
+    data = _build_export_zip({"Connections.csv": CONNECTIONS_CSV_SINGLE_LINE_PREAMBLE})
+    result = parse_linkedin_export_zip(data)
+    assert result.ok is True
+    assert result.connection_count == 1
+    assert not any("unexpected schema" in w.lower() for w in result.warnings)
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_parse_connections_csv_without_preamble_unchanged() -> None:
+    data = _build_export_zip({"Connections.csv": CONNECTIONS_CSV})
+    result = parse_linkedin_export_zip(data)
+    assert result.ok is True
+    assert result.connection_count == 3
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_rejects_headerless_csv_after_preamble_scan() -> None:
+    preamble_only = "\n".join(f"note line {i}" for i in range(25))
+    data = _build_export_zip({"Connections.csv": preamble_only})
+    result = parse_linkedin_export_zip(data)
+    assert result.ok is False
+    assert any("missing CSV header row" in err for err in result.errors)

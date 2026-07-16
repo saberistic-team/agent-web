@@ -12,6 +12,7 @@
     maxCsvRows: 50000,
     maxFieldLength: 10000,
     maxPathLength: 512,
+    maxPreambleScanLines: 20,
     approvedBasenames: [
       "connections.csv",
       "messages.csv",
@@ -470,8 +471,26 @@
     if (!lines.length) {
       throw new Error(basenameKey + ": missing CSV header row");
     }
-    var headers = parseCsvLine(lines[0]);
-    if (!headers.length) {
+    var headerLineIndex = -1;
+    var headers = [];
+    var scanned = 0;
+    var maxPreambleScanLines = LIMITS.maxPreambleScanLines || 20;
+    for (var li = 0; li < lines.length; li += 1) {
+      if (!lines[li].trim()) {
+        continue;
+      }
+      if (scanned >= maxPreambleScanLines) {
+        break;
+      }
+      scanned += 1;
+      var candidateFields = parseCsvLine(lines[li]);
+      if (candidateFields.length > 1) {
+        headerLineIndex = li;
+        headers = candidateFields;
+        break;
+      }
+    }
+    if (headerLineIndex < 0 || !headers.length) {
       throw new Error(basenameKey + ": missing CSV header row");
     }
     var warnings = [];
@@ -489,7 +508,7 @@
     });
 
     var rows = [];
-    for (var i = 1; i < lines.length; i += 1) {
+    for (var i = headerLineIndex + 1; i < lines.length; i += 1) {
       if (i > LIMITS.maxCsvRows) {
         warnings.push(basenameKey + ": truncated at " + LIMITS.maxCsvRows.toLocaleString() + " rows");
         break;
