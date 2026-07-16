@@ -1,6 +1,7 @@
 from screenshot_deploy import (
     ADMIN_EXTRA_VIEWPORTS,
     ADMIN_NAV_EVIDENCE_ROUTES,
+    OVERFLOW_SELECTORS,
     VIEWPORTS,
     admin_screenshot_session_cookie,
     discover_screenshot_routes,
@@ -25,6 +26,32 @@ def test_viewports_include_desktop_and_mobile() -> None:
     by_name = {name: (w, h) for name, w, h in VIEWPORTS}
     assert by_name["desktop"] == (1280, 800)
     assert by_name["mobile"] == (390, 844)
+
+
+def test_overflow_selectors_cover_admin_exit_actions() -> None:
+    """Regression (#237): Public site / Sign out must be checked for overflow."""
+    assert ".admin-exit-group" in OVERFLOW_SELECTORS
+
+
+def test_format_overflow_hard_fail_flags_admin_exit_group_on_mobile() -> None:
+    """The Playwright overflow check flags clipped exit actions on mobile."""
+    msg = format_overflow_hard_fail(
+        [
+            {
+                "viewport": "mobile",
+                "route": "/admin",
+                "selector": ".admin-exit-group",
+                "text": "Public site Sign out",
+                "left": 350,
+                "right": 460,
+                "viewport_width": 390,
+            }
+        ]
+    )
+    assert msg is not None
+    assert "visual readability" in msg
+    assert ".admin-exit-group" in msg
+    assert "/admin" in msg
 
 
 def test_screenshot_basename_desktop_keeps_legacy_names() -> None:
@@ -159,6 +186,50 @@ def test_admin_screenshot_routes_match_layout() -> None:
     brief_503 = next(t for t in targets if t.route == "/admin/briefs/503")
     assert brief_503.expected_status == 503
     assert ADMIN_SCREENSHOT_EXPECTED_STATUS["/admin/briefs/503"] == 503
+
+
+def test_admin_screenshot_paths_contain_crm_detail_editor_targets() -> None:
+    from app.admin_layout import ADMIN_SCREENSHOT_PATHS
+
+    paths = set(ADMIN_SCREENSHOT_PATHS)
+    assert "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" in paths
+    assert "/admin/companies/new" in paths
+    assert "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/edit" in paths
+    assert "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa02" in paths
+    assert (
+        "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/edit"
+        "?error=validation&focus=name"
+        in paths
+    )
+    assert "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb" in paths
+    assert "/admin/contacts/new" in paths
+    assert "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/edit" in paths
+    assert "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbc/edit" in paths
+    assert "/admin/pipeline/11111111-1111-1111-1111-111111111111" in paths
+
+
+def test_screenshot_basename_encodes_multipart_query() -> None:
+    assert screenshot_basename(
+        "branch",
+        "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/edit?error=validation&focus=name",
+        "desktop",
+    ) == (
+        "branch-admin-companies-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa-edit"
+        "-error-validation-focus-name.png"
+    )
+
+
+def test_focus_field_from_route_parses_query() -> None:
+    from screenshot_deploy import _focus_field_from_route
+
+    assert _focus_field_from_route("/admin/companies/x/edit?focus=name") == "name"
+    assert (
+        _focus_field_from_route(
+            "/admin/companies/x/edit?error=validation&focus=name"
+        )
+        == "name"
+    )
+    assert _focus_field_from_route("/admin/companies/x/edit") is None
 
 
 def test_routes_affected_by_single_html_file() -> None:

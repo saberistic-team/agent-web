@@ -47,6 +47,7 @@ FROZEN_MIGRATION_DIGESTS: dict[str, str] = {
     "014": "9bb2a99e936e5ab77f75d1f94556715667cb97bff7dc185007ccdfe32f28f050",
     "015": "014080f78e50242cb2e5518567634f7522f844bd55d7c4dcba4c970df73d07b0",
     "016": "91e3cc23c9f19bb17834385bcfad6cbc61d484c1b0f6097583e40d67780c95b9",
+    "017": "6fa2fe024a8d854ee329205cb3e9475a6e1527a1576df534611df99d6910e2f6",
 }
 
 
@@ -622,6 +623,55 @@ ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS payment_amount_cents INTEGER
 ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS payment_currency TEXT;
 ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS stripe_promotion_code_id TEXT;
 ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS stripe_coupon_id TEXT;
+""",
+    ),
+    Migration(
+        version="017",
+        name="first_party_analytics_events",
+        up_sql="""
+CREATE TABLE IF NOT EXISTS analytics_events (
+    id BIGSERIAL PRIMARY KEY,
+    idempotency_key TEXT NOT NULL,
+    event_name TEXT NOT NULL,
+    schema_version TEXT NOT NULL,
+    occurred_at TIMESTAMPTZ NOT NULL,
+    received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    anonymous_session_id UUID NOT NULL,
+    path_class TEXT NOT NULL,
+    referrer_class TEXT NOT NULL,
+    attribution JSONB NOT NULL DEFAULT '{}'::jsonb,
+    properties JSONB NOT NULL DEFAULT '{}'::jsonb,
+    consent_state TEXT NOT NULL,
+    linkage_state TEXT NOT NULL,
+    CONSTRAINT analytics_events_idempotency_key_unique UNIQUE (idempotency_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_analytics_events_occurred_at
+    ON analytics_events (occurred_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_analytics_events_session_id
+    ON analytics_events (anonymous_session_id, occurred_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_analytics_events_event_name
+    ON analytics_events (event_name, occurred_at DESC);
+
+CREATE TABLE IF NOT EXISTS analytics_sessions (
+    session_id UUID PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_analytics_sessions_expires_at
+    ON analytics_sessions (expires_at);
+
+CREATE TABLE IF NOT EXISTS analytics_event_rate_limits (
+    limiter_key TEXT PRIMARY KEY,
+    event_count INTEGER NOT NULL DEFAULT 0,
+    window_started_at TIMESTAMPTZ NOT NULL,
+    locked_until TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL
+);
 """,
     ),
 )

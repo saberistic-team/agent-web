@@ -65,7 +65,7 @@ def render_admin_login_page(
       <section class="block admin-page" aria-labelledby="admin-login-title">
         <h1 class="page-title" id="admin-login-title">Admin sign in</h1>
         <p class="admin-lede">Operator access only. No public registration.</p>
-        <form class="admin-form" method="post" action="/admin/login">
+        <form class="admin-form admin-form--compact" method="post" action="/admin/login">
           <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}" />
           {next_field}
           <div class="field">
@@ -867,7 +867,7 @@ def render_admin_brief_convert_page(
               </div>
             </dl>
           </section>
-          <form class="admin-form brief-convert-form" method="post" action="/admin/briefs/{html.escape(str(brief_id), quote=True)}/convert">
+          <form class="admin-form admin-form--editor brief-convert-form" method="post" action="/admin/briefs/{html.escape(str(brief_id), quote=True)}/convert">
             <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}" />
             <fieldset class="brief-convert-fieldset">
               <legend>Company</legend>

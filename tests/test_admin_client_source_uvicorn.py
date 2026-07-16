@@ -72,7 +72,6 @@ def test_uvicorn_trusted_proxy_chain_throttles_rotated_spoofed_headers() -> None
         "ADMIN_USERNAME": TEST_USERNAME,
         "ADMIN_PASSWORD_HASH": TEST_HASH,
         "ADMIN_SESSION_SECRET": TEST_SECRET,
-        "ADMIN_LOGIN_LIMITER_SECRET": "test-login-limiter-secret-32chars-min",
         "ADMIN_LOGIN_RATE_LIMIT": "2",
         "ADMIN_TRUSTED_PROXY_CIDRS": TRUSTED_PROXY_CIDRS,
         "UVICORN_FORWARDED_ALLOW_IPS": "127.0.0.0/8",

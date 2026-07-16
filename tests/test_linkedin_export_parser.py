@@ -245,14 +245,15 @@ def test_skips_invalid_profile_urls() -> None:
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_warns_on_duplicate_approved_file() -> None:
+def test_rejects_duplicate_approved_file() -> None:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
         zf.writestr("a/Connections.csv", CONNECTIONS_CSV)
         zf.writestr("b/Connections.csv", CONNECTIONS_CSV)
     result = parse_linkedin_export_zip(buf.getvalue())
-    assert result.ok is True
-    assert any("Duplicate approved file" in w for w in result.warnings)
+    assert result.ok is False
+    assert any("Duplicate approved file" in err for err in result.errors)
+    assert any("a/Connections.csv" in err and "b/Connections.csv" in err for err in result.errors)
 
 
 @pytest.mark.unit

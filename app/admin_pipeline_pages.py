@@ -78,7 +78,7 @@ def render_pipeline_list_page(
           <p class="admin-lede">Move qualified companies from research through paid engagements.</p>
         </div>
       </div>
-      <form class="admin-form" method="get" action="/admin/pipeline">
+      <form class="admin-form admin-form--compact" method="get" action="/admin/pipeline">
         <div class="field"><label for="stage-filter">Stage</label><select id="stage-filter" name="stage">{_stage_options(stage_filter)}</select></div>
         <button class="cta admin-submit" type="submit">Filter</button>
       </form>
@@ -148,7 +148,7 @@ def render_pipeline_detail_page(
       {'<p class="form-error" role="alert">' + _esc(error_message) + '</p>' if error_message else ''}
       <div class="dashboard-panel">
         <h2 class="admin-section-title">Next action</h2>
-        <form class="admin-form" method="post" action="/admin/pipeline/{_esc(company["id"])}/next-action">
+        <form class="admin-form admin-form--editor" method="post" action="/admin/pipeline/{_esc(company["id"])}/next-action">
           <input type="hidden" name="csrf_token" value="{_esc(csrf_token)}" />
           <div class="field"><label for="next_action">Action</label><textarea id="next_action" name="next_action" rows="3" maxlength="2000">{_esc(company.get("next_action"))}</textarea></div>
           <div class="field"><label for="next_action_due_at">Due</label><input id="next_action_due_at" name="next_action_due_at" type="datetime-local" value="{_esc(due_value)}" /></div>
@@ -159,7 +159,7 @@ def render_pipeline_detail_page(
       </div>
       <div class="dashboard-panel">
         <h2 class="admin-section-title">Change stage</h2>
-        <form class="admin-form" method="post" action="/admin/pipeline/{_esc(company["id"])}/stage">
+        <form class="admin-form admin-form--editor" method="post" action="/admin/pipeline/{_esc(company["id"])}/stage">
           <input type="hidden" name="csrf_token" value="{_esc(csrf_token)}" />
           <div class="field"><label for="to_stage">New stage</label><select id="to_stage" name="to_stage" required>{stage_transition_options}</select></div>
           <div class="field"><label for="loss_reason">Loss reason</label><input id="loss_reason" name="loss_reason" maxlength="2000" placeholder="Required when moving to Lost" /></div>
@@ -170,7 +170,7 @@ def render_pipeline_detail_page(
       </div>
       <div class="dashboard-panel">
         <h2 class="admin-section-title">Log activity</h2>
-        <form class="admin-form" method="post" action="/admin/pipeline/{_esc(company["id"])}/activities">
+        <form class="admin-form admin-form--editor" method="post" action="/admin/pipeline/{_esc(company["id"])}/activities">
           <input type="hidden" name="csrf_token" value="{_esc(csrf_token)}" />
           <div class="field"><label for="activity_type">Type</label><select id="activity_type" name="activity_type" required>{_activity_type_options()}</select></div>
           <div class="field"><label for="summary">Summary</label><textarea id="summary" name="summary" rows="3" required maxlength="5000"></textarea></div>

@@ -1,0 +1,168 @@
+{
+  "schema_version": "worldgraph-spike-corpus-v1",
+  "last_updated": "2026-07-15",
+  "sources": [
+    {
+      "id": "wg-narrative-001",
+      "category": "interactive_narrative",
+      "qualification": "qualifies",
+      "canonical_url": "https://example.com/worldgraph-spike/narrative/scene-alpha",
+      "fixture": "narrative-scene-alpha.html",
+      "source_type": "html_landing",
+      "notes": "Character-driven interactive scene with persistent session state."
+    },
+    {
+      "id": "wg-narrative-002",
+      "category": "interactive_narrative",
+      "qualification": "qualifies",
+      "canonical_url": "https://example.com/worldgraph-spike/narrative/storyforge",
+      "fixture": "narrative-storyforge.md",
+      "source_type": "repository_readme",
+      "notes": "Branching AI narrative with reproducible save slots."
+    },
+    {
+      "id": "wg-spatial-001",
+      "category": "ai_spatial",
+      "qualification": "qualifies",
+      "canonical_url": "https://example.com/worldgraph-spike/spatial/marble-demo",
+      "fixture": "spatial-marble-demo.html",
+      "source_type": "html_landing",
+      "notes": "Explorable AI-generated spatial environment with entry URL."
+    },
+    {
+      "id": "wg-spatial-002",
+      "category": "ai_spatial",
+      "qualification": "qualifies",
+      "canonical_url": "https://github.com/example-worlds/spatial-sandbox",
+      "fixture": "spatial-sandbox-readme.md",
+      "source_type": "repository_readme",
+      "notes": "Open spatial world with documented world API and version tag."
+    },
+    {
+      "id": "wg-simulation-001",
+      "category": "agent_simulation",
+      "qualification": "qualifies",
+      "canonical_url": "https://example.com/worldgraph-spike/sim/agent-colony",
+      "fixture": "simulation-agent-colony.html",
+      "source_type": "html_landing",
+      "notes": "Multi-agent society simulation with persistent world state."
+    },
+    {
+      "id": "wg-simulation-002",
+      "category": "agent_simulation",
+      "qualification": "qualifies",
+      "canonical_url": "https://github.com/example-worlds/research-sim",
+      "fixture": "simulation-research-readme.md",
+      "source_type": "repository_readme",
+      "notes": "Training simulation with agents, rules, and reproducible configs."
+    },
+    {
+      "id": "wg-game-001",
+      "category": "ai_game",
+      "qualification": "qualifies",
+      "canonical_url": "https://example.com/worldgraph-spike/game/npc-quest",
+      "fixture": "game-npc-quest.html",
+      "source_type": "html_landing",
+      "notes": "Playable game world with material AI NPC behavior."
+    },
+    {
+      "id": "wg-game-002",
+      "category": "ai_game",
+      "qualification": "qualifies",
+      "canonical_url": "https://example.com/worldgraph-spike/game/ugc-arena",
+      "fixture": "game-ugc-arena.json",
+      "source_type": "structured_json",
+      "notes": "UGC experience manifest with AI moderation hooks."
+    },
+    {
+      "id": "wg-social-001",
+      "category": "persistent_social",
+      "qualification": "qualifies",
+      "canonical_url": "https://example.com/worldgraph-spike/social/economy-hub",
+      "fixture": "social-economy-hub.html",
+      "source_type": "html_landing",
+      "notes": "Persistent social economy with player-affectable outcomes."
+    },
+    {
+      "id": "wg-social-002",
+      "category": "persistent_social",
+      "qualification": "qualifies",
+      "canonical_url": "https://example.com/worldgraph-spike/social/multiplayer-lounge",
+      "fixture": "social-multiplayer-lounge.md",
+      "source_type": "repository_readme",
+      "notes": "Multiplayer AI lounge with session persistence."
+    },
+    {
+      "id": "wg-hybrid-001",
+      "category": "hybrid",
+      "qualification": "qualifies",
+      "canonical_url": "https://example.com/worldgraph-spike/hybrid/storyverse",
+      "fixture": "hybrid-storyverse.html",
+      "source_type": "html_landing",
+      "notes": "Narrative plus explorable spatial rooms in one bounded world."
+    },
+    {
+      "id": "wg-opensource-001",
+      "category": "open_source",
+      "qualification": "qualifies",
+      "canonical_url": "https://github.com/example-worlds/open-agent-world",
+      "fixture": "opensource-agent-world-readme.md",
+      "source_type": "repository_readme",
+      "notes": "Creator-controlled repo with world rules, agents, and deploy docs."
+    },
+    {
+      "id": "wg-negative-001",
+      "category": "negative_static_media",
+      "qualification": "excluded",
+      "exclusion_reason": "static_ai_media_only",
+      "canonical_url": "https://example.com/worldgraph-spike/negative/image-gallery",
+      "fixture": "negative-image-gallery.html",
+      "source_type": "html_landing"
+    },
+    {
+      "id": "wg-negative-002",
+      "category": "negative_chatbot",
+      "qualification": "excluded",
+      "exclusion_reason": "single_purpose_assistant",
+      "canonical_url": "https://example.com/worldgraph-spike/negative/assistant",
+      "fixture": "negative-assistant.html",
+      "source_type": "html_landing"
+    },
+    {
+      "id": "wg-negative-003",
+      "category": "negative_engine",
+      "qualification": "excluded",
+      "exclusion_reason": "platform_product_not_world",
+      "canonical_url": "https://example.com/worldgraph-spike/negative/engine",
+      "fixture": "negative-engine.html",
+      "source_type": "html_landing"
+    },
+    {
+      "id": "wg-negative-004",
+      "category": "negative_model",
+      "qualification": "excluded",
+      "exclusion_reason": "foundation_model_not_world",
+      "canonical_url": "https://example.com/worldgraph-spike/negative/foundation-model",
+      "fixture": "negative-foundation-model.html",
+      "source_type": "html_landing"
+    },
+    {
+      "id": "wg-negative-005",
+      "category": "negative_marketing",
+      "qualification": "excluded",
+      "exclusion_reason": "no_stable_entry_point",
+      "canonical_url": "https://example.com/worldgraph-spike/negative/coming-soon",
+      "fixture": "negative-coming-soon.html",
+      "source_type": "html_landing"
+    },
+    {
+      "id": "wg-security-001",
+      "category": "security_control",
+      "qualification": "pending_review",
+      "canonical_url": "https://example.com/worldgraph-spike/security/injection-readme",
+      "fixture": "security-prompt-injection-readme.md",
+      "source_type": "repository_readme",
+      "notes": "Adversarial README with embedded instruction overrides."
+    }
+  ]
+}

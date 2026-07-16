@@ -1,0 +1,7 @@
+{
+  "name": "Lumen Grove",
+  "description": "Agent-mediated narrative world with structured lore and scout-friendly metadata.",
+  "url": "https://lumen-grove.example.net/play",
+  "capabilities": ["storytelling", "character-agents", "state-sync"],
+  "runtime_types": ["a2a-agent", "web-embed"]
+}

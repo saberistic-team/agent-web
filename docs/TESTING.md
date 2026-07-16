@@ -7,6 +7,7 @@ Reviewer and CI enforce coverage of the Render **service** code under `app/`:
 | Unit | `@pytest.mark.unit` | **90%** |
 | Integration | `@pytest.mark.integration` | **70%** |
 | PostgreSQL contract | `@pytest.mark.contract` | not a coverage gate (see below) |
+| Browser (Playwright) | `@pytest.mark.browser` | not a coverage gate (see below) |
 
 ## Commands
 
@@ -33,6 +34,9 @@ Optional overrides:
 - **Live Postgres (optional locally, required in CI):** schema reconcile tests in
   `tests/test_pipeline_schema_reconcile.py` use `TEST_DATABASE_URL`. CI sets
   `REQUIRE_TEST_DATABASE=1` so those tests fail closed when the URL is missing.
+  Admin login-flow atomic claim concurrency
+  (`tests/test_admin_login_flow_claim_pg_integration.py`, #243) and login rate
+  limiter integration tests use the same URL/guard pattern.
 - **Contract (real PostgreSQL, `tests/pg_contract/`):** the broad
   migrations/repositories/transactions/concurrency harness (#228). It runs
   against a real engine so migration-version drift, invalid joined SQL,
@@ -40,6 +44,16 @@ Optional overrides:
   Reusable fixtures/helpers live in `tests/pg_contract/conftest.py`. Without
   `TEST_DATABASE_URL` the suite skips locally; CI sets `REQUIRE_TEST_DATABASE=1`
   so it fails closed instead.
+- **Browser (Playwright, `tests/test_linkedin_import_browser.py`):** drives a
+  real Chromium browser against the actual authenticated `/admin/imports`
+  page to exercise the client-side ZIP parser
+  (`site/assets/linkedin-import.js`) end to end — the production bug class
+  (#224) lived in that browser JS, not the Python canonical spec. Skips
+  automatically when the `playwright` package isn't installed (`pip install
+  playwright==1.49.1 && python -m playwright install chromium`). Isolated in
+  its own workflow, `.github/workflows/browser-linkedin-import.yml`, path-
+  scoped to the importer surfaces so the fast unit/integration job stays
+  free of a Chromium install.
 
 ## Live PostgreSQL contract suite (#228)
 

@@ -24,7 +24,6 @@ TEST_USERNAME = "operator"
 TEST_PASSWORD = "correct-horse-battery-staple"
 TEST_HASH = PasswordHasher().hash(TEST_PASSWORD)
 TEST_SECRET = "test-session-secret-32chars-minimum"
-TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!!"
 
 PREVIEW_COMPANY_MATCH_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc"
 PREVIEW_CONTACT_MATCH_ID = "dddddddd-dddd-dddd-dddd-dddddddddddd"
@@ -37,7 +36,6 @@ def admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_USERNAME", TEST_USERNAME)
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_HASH)
     monkeypatch.setenv("ADMIN_SESSION_SECRET", TEST_SECRET)
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
     monkeypatch.setenv("BASE_URL", "http://testserver")
 
 
@@ -232,7 +230,7 @@ def test_pipeline_detail_renders_themed_checkbox_and_datetime() -> None:
     assert 'type="datetime-local"' in html
     assert 'name="confirm"' in html
     assert 'type="checkbox"' in html
-    assert 'class="admin-form"' in html
+    assert 'class="admin-form admin-form--editor"' in html
 
 
 @pytest.mark.unit
@@ -348,7 +346,7 @@ def test_preview_companies_page_includes_archived_checkbox(
     )
     assert response.status_code == 200
     body = response.text
-    assert 'class="admin-form"' in body
+    assert 'class="admin-form admin-form--compact"' in body
     assert 'name="archived"' in body
     assert 'type="checkbox"' in body
     assert "Include archived" in body
@@ -367,7 +365,7 @@ def test_preview_contacts_page_includes_archived_checkbox(
     )
     assert response.status_code == 200
     body = response.text
-    assert 'class="admin-form"' in body
+    assert 'class="admin-form admin-form--compact"' in body
     assert 'name="archived"' in body
     assert 'type="checkbox"' in body
     assert "Include archived" in body

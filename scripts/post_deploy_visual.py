@@ -16,6 +16,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from cursor_model import DEFAULT_CURSOR_MODEL, cursor_model_dict, cursor_model_selection
 from github_api import GitHubError, api, post_issue_comment, split_repo
 from screenshot_deploy import (
     PRE_BRANCH_PHASE,
@@ -28,7 +29,6 @@ from screenshot_deploy import (
     comment_markdown,
 )
 
-DEFAULT_CURSOR_MODEL = "composer-2.5"
 DEFAULT_OPENAI_MODEL = "gpt-4.1-mini"
 
 
@@ -219,7 +219,7 @@ def visual_ai_check_cursor(
         result = Agent.prompt(
             prompt,
             AgentOptions(
-                model=model,
+                model=cursor_model_selection(model),
                 api_key=key,
                 name="post-deploy-visual",
                 mode="plan",
@@ -231,7 +231,7 @@ def visual_ai_check_cursor(
             result = Agent.prompt(
                 prompt,
                 {
-                    "model": model,
+                    "model": cursor_model_dict(model),
                     "apiKey": key,
                     "name": "post-deploy-visual",
                     "mode": "plan",

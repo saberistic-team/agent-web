@@ -1,4 +1,9 @@
-"""Regression tests for dark-themed admin text-like form controls (#231)."""
+"""Regression tests for dark-themed admin text-like form controls (#231, #235).
+
+Checkbox/radio accent-color, fieldset borders, and date/datetime color-scheme
+theming are scoped to `site/assets/admin.css` (see `tests/test_admin_native_controls.py`),
+not the public `site/assets/site.css`.
+"""
 
 from __future__ import annotations
 
@@ -9,13 +14,15 @@ from uuid import UUID
 import pytest
 from fastapi.testclient import TestClient
 
-from app import admin_companies, admin_contacts, admin_research_pages
+from app import admin_companies, admin_contacts, admin_pages, admin_research_pages
 from app.admin_auth import SESSION_COOKIE_NAME
 from app.admin_pipeline_pages import render_pipeline_detail_page
-from app.admin_preview import PREVIEW_PIPELINE_COMPANY_IDS
+from app.admin_preview import PREVIEW_BRIEF_CONVERT_MATCHES_ID, PREVIEW_PIPELINE_COMPANY_IDS
+from app.brief_service import BriefListFilters
 from app.main import app
 
 SITE_CSS = Path(__file__).resolve().parents[1] / "site/assets/site.css"
+ADMIN_CSS = Path(__file__).resolve().parents[1] / "site/assets/admin.css"
 
 TEXT_LIKE_INPUT_TYPES = (
     "text",
@@ -27,10 +34,10 @@ TEXT_LIKE_INPUT_TYPES = (
     "datetime-local",
 )
 
+SELECTION_INPUT_TYPES = ("checkbox", "radio")
+
 EXCLUDED_INPUT_TYPES = (
     "hidden",
-    "checkbox",
-    "radio",
     "file",
     "submit",
     "button",
@@ -46,6 +53,10 @@ client = TestClient(app, follow_redirects=False)
 
 def _site_css() -> str:
     return SITE_CSS.read_text(encoding="utf-8")
+
+
+def _admin_css() -> str:
+    return ADMIN_CSS.read_text(encoding="utf-8")
 
 
 def _rule_block(css: str, selector_fragment: str) -> str:
@@ -92,7 +103,7 @@ def _text_like_inputs_in_admin_forms(html: str) -> list[str]:
             attrs = match.group(1)
             type_match = re.search(r'\btype="([^"]+)"', attrs)
             input_type = type_match.group(1) if type_match else ""
-            if input_type in EXCLUDED_INPUT_TYPES:
+            if input_type in EXCLUDED_INPUT_TYPES or input_type in SELECTION_INPUT_TYPES:
                 continue
             inputs.append(attrs)
     return inputs
@@ -123,6 +134,42 @@ def test_admin_form_css_covers_text_like_input_type(input_type: str) -> None:
 def test_admin_form_css_covers_untyped_inputs() -> None:
     css = _site_css()
     assert ".admin-form input:not([type])" in css
+
+
+@pytest.mark.unit
+def test_admin_app_scopes_dark_color_scheme() -> None:
+    css = _admin_css()
+    block = _rule_block(css, "body.admin-app {")
+    assert "color-scheme: dark" in block
+    site = _site_css()
+    assert "color-scheme" not in site.split(".brief-form")[0]
+
+
+@pytest.mark.unit
+def test_brief_filter_date_uses_dark_color_scheme() -> None:
+    css = _admin_css()
+    block = _rule_block(css, '.brief-filter input[type="date"]')
+    assert "color-scheme: dark" in block
+
+
+@pytest.mark.unit
+def test_brief_convert_fieldset_and_choice_classes_themed() -> None:
+    css = _admin_css()
+    fieldset_block = _rule_block(css, ".brief-convert-fieldset {")
+    assert "border: 1px solid var(--line)" in fieldset_block
+    choice_block = _rule_block(css, ".brief-convert-choice,")
+    assert "cursor: pointer" in choice_block
+    assert "accent-color: var(--accent)" in css
+    assert ".brief-convert-match" in css
+    assert ".admin-checkbox" in css
+
+
+@pytest.mark.unit
+def test_public_brief_form_css_unthemed_for_selection_controls() -> None:
+    css = _site_css()
+    public_slice = css.split(".admin-form")[0]
+    assert 'input[type="checkbox"]' not in public_slice
+    assert 'input[type="radio"]' not in public_slice
 
 
 @pytest.mark.unit
@@ -338,9 +385,109 @@ def test_preview_pipeline_detail_includes_themed_text_like_inputs(
     )
     assert response.status_code == 200
     body = response.text
-    assert 'class="admin-form"' in body
+    assert 'class="admin-form admin-form--editor"' in body
     assert 'type="datetime-local"' in body
     assert 'name="pipeline_owner"' in body
     assert 'name="expected_value_cents"' in body
     for attrs in _text_like_inputs_in_admin_forms(body):
         assert "style=" not in attrs
+
+
+@pytest.mark.unit
+def test_companies_list_archived_checkbox_renders_without_inline_styles() -> None:
+    html = admin_companies.render_companies_list_page(
+        admin_username="operator",
+        csrf_token="csrf",
+        filters={
+            "q": "",
+            "category": None,
+            "stage": None,
+            "target_status": None,
+            "freshness": None,
+            "archived": "1",
+        },
+        companies=[],
+    )
+    assert 'type="checkbox"' in html
+    assert "Include archived" in html
+    assert re.search(
+        r'<label>\s*<input type="checkbox" name="archived"[^>]*/>\s*Include archived\s*</label>',
+        html,
+    )
+
+
+@pytest.mark.unit
+def test_contact_form_buying_role_checkboxes_use_admin_checkbox_class() -> None:
+    html = admin_contacts.render_contact_form_page(
+        csrf_token="csrf",
+        admin_username="operator",
+        companies=[{"id": COMPANY_ID, "name": "Acme"}],
+        contact={
+            "id": CONTACT_ID,
+            "full_name": "Ada Lovelace",
+            "buying_roles": ["technical_buyer"],
+        },
+    )
+    assert 'class="admin-checkbox"' in html
+    assert "<fieldset" in html
+
+
+@pytest.mark.unit
+def test_brief_convert_page_renders_themed_selection_markup() -> None:
+    html = admin_pages.render_admin_brief_convert_page(
+        admin_username="operator",
+        brief={"id": PREVIEW_BRIEF_CONVERT_MATCHES_ID, "status": "paid"},
+        back_filters=BriefListFilters(
+            page=1,
+            per_page=25,
+            query=None,
+            status=None,
+            date_from=None,
+            date_to=None,
+            date_from_raw=None,
+            date_to_raw=None,
+        ),
+        preview={
+            "proposal": {
+                "company_name": "Northwind",
+                "pipeline_stage_label": "Diagnostic paid",
+            },
+            "company_matches": [
+                {"id": COMPANY_ID, "name": "Northwind Existing", "domain": "northwind.dev"},
+            ],
+            "contact_matches": [
+                {"id": CONTACT_ID, "email": "ops@northwind.dev"},
+            ],
+        },
+        csrf_token="csrf",
+    )
+    assert 'class="brief-convert-fieldset"' in html
+    assert 'class="brief-convert-choice"' in html
+    assert 'class="brief-convert-match"' in html
+    assert re.search(
+        r'<label class="brief-convert-choice">\s*<input type="radio" name="company_choice"',
+        html,
+    )
+    assert re.search(
+        r'<label class="brief-convert-match">\s*<input type="radio" name="company_choice"',
+        html,
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_preview_brief_convert_includes_native_selection_controls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    response = client.get(
+        f"/admin/briefs/{PREVIEW_BRIEF_CONVERT_MATCHES_ID}/convert",
+        cookies={SESSION_COOKIE_NAME: "preview-screenshot-session"},
+    )
+    assert response.status_code == 200
+    body = response.text
+    assert 'href="/assets/admin.css"' in body
+    assert 'class="brief-convert-fieldset"' in body
+    assert 'type="radio"' in body

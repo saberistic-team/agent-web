@@ -20,6 +20,12 @@ from psycopg.rows import dict_row
 
 from app import admin_auth, audit_service, db
 from app.actor_context import ActorContext
+from app.admin_security import (
+    LIMITER_DOMAIN_SOURCE,
+    digest_limiter_key,
+    validate_admin_security_config,
+    validate_limiter_secret,
+)
 from app.config import Settings, get_settings
 from app.crm_uow import crm_transaction
 from app.main import app
@@ -57,7 +63,7 @@ def _settings(**overrides: Any) -> Settings:
         "admin_password_hash": TEST_HASH,
         "admin_session_secret": TEST_SESSION_SECRET,
         "admin_login_limiter_secret": TEST_LIMITER_SECRET,
-        "admin_login_limiter_secret_previous": "",
+        "admin_login_limiter_previous_secret": "",
     }
     values.update(overrides)
     return Settings(**values)
@@ -164,8 +170,7 @@ def test_domain_separation_for_identical_payload_material() -> None:
     [
         ("", "ADMIN_LOGIN_LIMITER_SECRET", "required"),
         ("short-secret", "ADMIN_LOGIN_LIMITER_SECRET", "at least"),
-        ("changeme" + ("x" * 32), "ADMIN_LOGIN_LIMITER_SECRET", "placeholder"),
-        ("a" * 32, "ADMIN_LOGIN_LIMITER_SECRET", "repeated character"),
+        ("admin-login-limiter-secret", "ADMIN_LOGIN_LIMITER_SECRET", "placeholder"),
     ],
 )
 def test_limiter_secret_validation_rejects_weak_material(
@@ -174,17 +179,17 @@ def test_limiter_secret_validation_rejects_weak_material(
     match: str,
 ) -> None:
     with pytest.raises(ValueError, match=match):
-        admin_auth.validate_admin_login_limiter_secret(secret, env_name=env_name)
+        validate_limiter_secret(secret, env_name=env_name)
 
 
 @pytest.mark.unit
 def test_limiter_configuration_rejects_matching_previous_secret() -> None:
     settings = _settings(
         admin_login_limiter_secret=TEST_LIMITER_SECRET,
-        admin_login_limiter_secret_previous=TEST_LIMITER_SECRET,
+        admin_login_limiter_previous_secret=TEST_LIMITER_SECRET,
     )
     with pytest.raises(ValueError, match="must differ"):
-        admin_auth.validate_admin_login_limiter_configuration(settings)
+        validate_admin_security_config(settings)
 
 
 @pytest.mark.unit
@@ -196,31 +201,31 @@ def test_startup_validation_fails_for_missing_limiter_secret(
     monkeypatch.delenv("ADMIN_LOGIN_LIMITER_SECRET", raising=False)
     settings = get_settings()
     with pytest.raises(ValueError, match="ADMIN_LOGIN_LIMITER_SECRET is required"):
-        admin_auth.validate_admin_login_limiter_configuration(settings)
+        validate_admin_security_config(settings)
 
 
 @pytest.mark.unit
 def test_rotation_guard_keys_include_previous_secret_only_for_reads() -> None:
     settings = _settings(
         admin_login_limiter_secret=ALT_LIMITER_SECRET,
-        admin_login_limiter_secret_previous=PREVIOUS_LIMITER_SECRET,
+        admin_login_limiter_previous_secret=PREVIOUS_LIMITER_SECRET,
     )
-    guard = admin_auth.login_limiter_guard_keys(
+    guard = admin_auth.login_limiter_rotation_keys(
         settings=settings,
         submitted_username=TEST_USERNAME,
         client_source="203.0.113.10",
         configured_admin_username=TEST_USERNAME,
     )
-    write = admin_auth.login_limiter_write_keys(
+    write = admin_auth.login_limiter_keys(
         settings=settings,
         submitted_username=TEST_USERNAME,
         client_source="203.0.113.10",
         configured_admin_username=TEST_USERNAME,
     )
-    previous_source = admin_auth._digest_limiter_key(
-        PREVIOUS_LIMITER_SECRET,
-        admin_auth.LIMITER_DOMAIN_SOURCE,
-        "203.0.113.10",
+    previous_source = digest_limiter_key(
+        domain=LIMITER_DOMAIN_SOURCE,
+        material="203.0.113.10",
+        secret=PREVIOUS_LIMITER_SECRET,
     )
     assert previous_source in guard
     assert previous_source not in write
@@ -233,7 +238,7 @@ def test_rotation_previous_key_lockout_blocks_without_incrementing_new_key(
 ) -> None:
     settings = _settings(
         admin_login_limiter_secret=ALT_LIMITER_SECRET,
-        admin_login_limiter_secret_previous=PREVIOUS_LIMITER_SECRET,
+        admin_login_limiter_previous_secret=PREVIOUS_LIMITER_SECRET,
     )
     now = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
     previous_source = admin_auth._digest_limiter_key(

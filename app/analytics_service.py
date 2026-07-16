@@ -7,89 +7,54 @@ from typing import Any
 
 import httpx
 
+from app.analytics_event_schema import (
+    ALLOWED_PROPERTY_NAMES,
+    EVENT_CHECKOUT_OPENED,
+    EVENT_LEAD_PERSISTED,
+    EVENT_PAYMENT_COMPLETED,
+    SENSITIVE_PROPERTY_NAMES,
+    filter_properties,
+    sanitize_attribution,
+)
 from app.config import Settings
 
 logger = logging.getLogger(__name__)
 
 PLAUSIBLE_EVENTS_URL = "https://plausible.io/api/event"
 
-# Properties that must never be sent to analytics.
-SENSITIVE_PROPERTY_NAMES = frozenset(
-    {
-        "email",
-        "phone",
-        "website",
-        "brief",
-        "contact_value",
-        "contact_method",
-        "wallet_address",
-        "stripe_session_id",
-        "stripe_payment_intent_id",
-        "checkout_url",
-        "session_id",
-        "payment_intent",
-        "url",
-        "submitted_url",
-        "query_string",
-    }
-)
-
-# Allowlist for custom event properties.
-ALLOWED_PROPERTY_NAMES = frozenset(
-    {
-        "brief_id",
-        "price_cents",
-        "discount_cents",
-        "environment",
-        "utm_source",
-        "utm_medium",
-        "utm_campaign",
-        "utm_content",
-        "utm_term",
-        "page",
-        "contact_channel",
-        "funnel_step",
-        "case_study_slug",
-        "article_slug",
-    }
-)
-
-EVENT_LEAD_PERSISTED = "Lead Persisted"
-EVENT_CHECKOUT_OPENED = "Checkout Opened"
-EVENT_PAYMENT_COMPLETED = "Payment Completed"
+# Re-exported for backwards-compatible imports in tests and callers.
+__all__ = [
+    "ALLOWED_PROPERTY_NAMES",
+    "EVENT_CHECKOUT_OPENED",
+    "EVENT_LEAD_PERSISTED",
+    "EVENT_PAYMENT_COMPLETED",
+    "SENSITIVE_PROPERTY_NAMES",
+    "sanitize_properties",
+    "track_checkout_opened",
+    "track_event",
+    "track_lead_persisted",
+    "track_payment_completed",
+    "utm_props_from_mapping",
+]
 
 
 def sanitize_properties(props: dict[str, Any] | None) -> dict[str, str | int | bool]:
-    """Return only allowlisted, non-sensitive properties for analytics."""
+    """Return only allowlisted, non-sensitive properties for analytics transport."""
     if not props:
         return {}
-    sanitized: dict[str, str | int | bool] = {}
-    for key, value in props.items():
+    sanitized = filter_properties(props)
+    dropped = set(props) - set(sanitized)
+    for key in dropped:
         key_lower = key.lower()
         if key_lower in SENSITIVE_PROPERTY_NAMES:
             logger.warning("Blocked sensitive analytics property: %s", key)
-            continue
-        if key_lower not in ALLOWED_PROPERTY_NAMES:
+        elif key_lower not in ALLOWED_PROPERTY_NAMES:
             logger.warning("Blocked disallowed analytics property: %s", key)
-            continue
-        if value is None or value == "":
-            continue
-        if isinstance(value, bool):
-            sanitized[key_lower] = value
-        elif isinstance(value, int):
-            sanitized[key_lower] = value
-        elif isinstance(value, str):
-            sanitized[key_lower] = value
-        else:
-            sanitized[key_lower] = str(value)
     return sanitized
 
 
 def utm_props_from_mapping(utm: dict[str, str | None] | None) -> dict[str, str]:
-    if not utm:
-        return {}
-    keys = ("utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term")
-    return {key: value for key in keys if (value := utm.get(key))}
+    return sanitize_attribution(utm)
 
 
 def track_event(
