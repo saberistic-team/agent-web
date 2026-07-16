@@ -12,7 +12,7 @@
     maxCsvRows: 50000,
     maxFieldLength: 10000,
     maxPathLength: 512,
-    maxCsvPreambleScanLines: 20,
+    preambleScanLimit: 20,
     approvedBasenames: [
       "connections.csv",
       "messages.csv",
@@ -459,19 +459,6 @@
       });
   }
 
-  function findCsvHeaderLineIndex(lines) {
-    var scanLimit = Math.min(lines.length, LIMITS.maxCsvPreambleScanLines || 20);
-    for (var i = 0; i < scanLimit; i += 1) {
-      if (!lines[i].trim()) {
-        continue;
-      }
-      if (parseCsvLine(lines[i]).length > 1) {
-        return i;
-      }
-    }
-    return -1;
-  }
-
   function parseCsvBytes(raw, basenameKey) {
     var text = new TextDecoder("utf-8", { fatal: false }).decode(raw);
     if (text.indexOf("\u0000") !== -1) {
@@ -481,11 +468,8 @@
       text = text.slice(1);
     }
     var lines = splitCsvLines(text);
-    if (!lines.length) {
-      throw new Error(basenameKey + ": missing CSV header row");
-    }
-    var headerIndex = findCsvHeaderLineIndex(lines);
-    if (headerIndex < 0) {
+    var headerIndex = findCsvHeaderIndex(lines);
+    if (headerIndex === -1) {
       throw new Error(basenameKey + ": missing CSV header row");
     }
     var headers = parseCsvLine(lines[headerIndex]);
@@ -507,15 +491,13 @@
     });
 
     var rows = [];
-    var dataRowCount = 0;
     for (var i = headerIndex + 1; i < lines.length; i += 1) {
-      if (!lines[i].trim()) {
-        continue;
-      }
-      dataRowCount += 1;
-      if (dataRowCount > LIMITS.maxCsvRows) {
+      if (i > LIMITS.maxCsvRows) {
         warnings.push(basenameKey + ": truncated at " + LIMITS.maxCsvRows.toLocaleString() + " rows");
         break;
+      }
+      if (!lines[i].trim()) {
+        continue;
       }
       var values = parseCsvLine(lines[i]);
       var row = {};
@@ -538,6 +520,19 @@
       }
     }
     return { rows: rows, warnings: warnings };
+  }
+
+  function findCsvHeaderIndex(lines) {
+    var scanLimit = Math.min(lines.length, LIMITS.preambleScanLimit || 20);
+    for (var i = 0; i < scanLimit; i += 1) {
+      if (!lines[i].trim()) {
+        continue;
+      }
+      if (parseCsvLine(lines[i]).length > 1) {
+        return i;
+      }
+    }
+    return -1;
   }
 
   function splitCsvLines(text) {

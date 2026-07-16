@@ -24,7 +24,7 @@ MAX_ZIP_ENTRIES = 500
 MAX_CSV_ROWS = 50_000
 MAX_FIELD_LENGTH = 10_000
 MAX_PATH_LENGTH = 512
-MAX_CSV_PREAMBLE_SCAN_LINES = 20
+PREAMBLE_SCAN_LIMIT = 20
 
 APPROVED_BASENAMES: frozenset[str] = frozenset(
     {
@@ -137,18 +137,22 @@ def _is_nested_archive(path: str) -> bool:
     return any(base.endswith(suffix) for suffix in NESTED_ARCHIVE_SUFFIXES)
 
 
-def _csv_field_count(line: str) -> int:
-    return len(next(csv.reader([line])))
+def _count_csv_fields(line: str) -> int:
+    """Count top-level CSV fields in a single line."""
+    try:
+        return len(next(csv.reader([line])))
+    except (csv.Error, StopIteration):
+        return 0
 
 
-def _find_csv_header_line_index(lines: list[str]) -> int | None:
+def _find_csv_header_index(lines: list[str]) -> int | None:
     """Locate the real header row, skipping LinkedIn disclaimer preambles."""
-    scan_limit = min(len(lines), MAX_CSV_PREAMBLE_SCAN_LINES)
+    scan_limit = min(len(lines), PREAMBLE_SCAN_LIMIT)
     for index in range(scan_limit):
         line = lines[index]
         if not line.strip():
             continue
-        if _csv_field_count(line) > 1:
+        if _count_csv_fields(line) > 1:
             return index
     return None
 
@@ -159,15 +163,13 @@ def _read_csv_rows(raw: bytes, *, basename: str) -> tuple[list[dict[str, str]], 
     if "\x00" in text:
         raise ValueError(f"{basename}: binary content is not valid CSV")
 
-    raw_lines = text.splitlines()
-    if not raw_lines:
-        raise ValueError(f"{basename}: missing CSV header row")
-
-    header_index = _find_csv_header_line_index(raw_lines)
+    lines = text.splitlines()
+    header_index = _find_csv_header_index(lines)
     if header_index is None:
         raise ValueError(f"{basename}: missing CSV header row")
 
-    reader = csv.DictReader(io.StringIO("\n".join(raw_lines[header_index:])))
+    csv_text = "\n".join(lines[header_index:])
+    reader = csv.DictReader(io.StringIO(csv_text))
     if reader.fieldnames is None:
         raise ValueError(f"{basename}: missing CSV header row")
 
@@ -178,7 +180,7 @@ def _read_csv_rows(raw: bytes, *, basename: str) -> tuple[list[dict[str, str]], 
             warnings.append(f"{basename}: unexpected schema (missing '{token}' column)")
 
     rows: list[dict[str, str]] = []
-    for index, row in enumerate(reader, start=header_index + 2):
+    for index, row in enumerate(reader, start=2):
         if index - 1 > MAX_CSV_ROWS:
             warnings.append(f"{basename}: truncated at {MAX_CSV_ROWS:,} rows")
             break
@@ -445,6 +447,6 @@ def export_limits_for_client() -> dict[str, Any]:
         "maxCsvRows": MAX_CSV_ROWS,
         "maxFieldLength": MAX_FIELD_LENGTH,
         "maxPathLength": MAX_PATH_LENGTH,
-        "maxCsvPreambleScanLines": MAX_CSV_PREAMBLE_SCAN_LINES,
+        "preambleScanLimit": PREAMBLE_SCAN_LIMIT,
         "approvedBasenames": sorted(APPROVED_BASENAMES),
     }
