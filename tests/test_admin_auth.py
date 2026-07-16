@@ -54,7 +54,7 @@ TEST_USERNAME = "operator"
 TEST_PASSWORD = "correct-horse-battery-staple"
 TEST_HASH = PasswordHasher().hash(TEST_PASSWORD)
 TEST_SECRET = "test-session-secret-32chars-minimum"
-TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum"
+TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!"
 
 _login_flows: dict[str, dict[str, Any]] = {}
 _session_store: dict[str, dict[str, Any]] = {}
@@ -672,9 +672,10 @@ def test_login_limiter_keys_source_only_for_unknown_username() -> None:
 
 @pytest.mark.unit
 def test_build_rate_limit_key_hashes_username_and_source() -> None:
-    key_a = admin_auth.build_rate_limit_key("Operator", "203.0.113.1")
-    key_b = admin_auth.build_rate_limit_key("operator", "203.0.113.1")
-    key_c = admin_auth.build_rate_limit_key("operator", "203.0.113.2")
+    settings = get_settings()
+    key_a = admin_auth.build_rate_limit_key("Operator", "203.0.113.1", settings)
+    key_b = admin_auth.build_rate_limit_key("operator", "203.0.113.1", settings)
+    key_c = admin_auth.build_rate_limit_key("operator", "203.0.113.2", settings)
     assert key_a == key_b
     assert key_a != key_c
     assert len(key_a) == 64
@@ -1051,9 +1052,8 @@ def test_rate_limit_expires_after_lockout(
         assert _login(password="wrong").status_code == 401
         assert _login(password="wrong").status_code == 429
 
-        settings = get_settings()
-        source_key = admin_auth.build_source_rate_limit_key("testclient", settings)
-        account_key = admin_auth.build_account_rate_limit_key(TEST_USERNAME, settings)
+        source_key = admin_auth.build_source_rate_limit_key("testclient", get_settings())
+        account_key = admin_auth.build_account_rate_limit_key(TEST_USERNAME, get_settings())
         expired_lock = datetime.now(timezone.utc) - timedelta(seconds=1)
         for key in (source_key, account_key):
             rate_limit_store.rows[key]["locked_until"] = expired_lock
@@ -1128,8 +1128,7 @@ def test_rotating_spoofed_forwarded_headers_share_trusted_peer_bucket(
                 assert response.status_code == 429
 
     assert len(rate_limit_store.rows) == 1
-    settings = get_settings()
-    source_key = admin_auth.build_source_rate_limit_key(TEST_RENDER_PEER, settings)
+    source_key = admin_auth.build_source_rate_limit_key(TEST_RENDER_PEER, get_settings())
     assert source_key in rate_limit_store.rows
 
 
@@ -1211,8 +1210,7 @@ def test_username_rotation_stops_password_verification_at_source_threshold(
                     assert response.status_code == 429
 
     assert verify_calls["count"] == 3
-    settings = get_settings()
-    source_key = admin_auth.build_source_rate_limit_key("testclient", settings)
+    source_key = admin_auth.build_source_rate_limit_key("testclient", get_settings())
     assert len(rate_limit_store.rows) == 1
     assert source_key in rate_limit_store.rows
 
@@ -1314,8 +1312,7 @@ def test_concurrent_login_admission_respects_shared_threshold(
     admitted_count = {"value": 0}
     lock = threading.Lock()
     now = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    settings = get_settings()
-    source_key = admin_auth.build_source_rate_limit_key("203.0.113.77", settings)
+    source_key = admin_auth.build_source_rate_limit_key("203.0.113.77", get_settings())
 
     def worker() -> None:
         barrier.wait()

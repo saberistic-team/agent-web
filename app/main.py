@@ -31,8 +31,8 @@ from app.analytics_ingest import (
     ingest_browser_event,
 )
 from app.client_source import admin_proxy_trust_summary, client_source_policy_summary, resolve_client_source
+from app.admin_security import validate_admin_security_config
 from app.config import get_settings
-from app.admin_security import should_validate_admin_security, validate_admin_security_config
 from app.models import BriefCreateRequest, BriefCreateResponse
 from app.seo import (
     PERMANENT_REDIRECTS,
@@ -52,12 +52,10 @@ ASSETS_DIR = SITE_DIR / "assets"
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
+    validate_admin_security_config(settings)
     if settings.database_configured:
         db.init_db(settings.database_url)
         logger.info("database schema ready")
-        if should_validate_admin_security(settings):
-            validate_admin_security_config(settings)
-            logger.info("admin security configuration validated")
     else:
         logger.warning("DATABASE_URL not set — brief persistence disabled")
     yield

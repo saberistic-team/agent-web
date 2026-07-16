@@ -1,80 +1,80 @@
-"""Fail-fast validation for admin authentication secrets."""
+"""Admin security configuration validation (limiter secrets, fail-fast startup)."""
 
 from __future__ import annotations
 
-import hmac
+import re
 
 from app.config import Settings
 
-MIN_ADMIN_SECRET_LENGTH = 32
+MIN_ADMIN_LOGIN_LIMITER_SECRET_LENGTH = 32
 
-_WEAK_SECRET_LITERALS = frozenset(
+_WEAK_SECRET_MARKERS = frozenset(
     {
         "changeme",
         "change-me",
-        "change_me",
-        "placeholder",
-        "secret",
-        "password",
-        "admin",
-        "test",
-        "development",
-        "dev",
         "example",
-        "sample",
-        "dummy",
-        "default",
+        "password",
+        "placeholder",
+        "replace",
+        "secret-here",
+        "test-secret",
+        "your-secret",
     }
 )
 
-
-def _is_weak_secret(value: str) -> bool:
-    stripped = value.strip()
-    if len(stripped) < MIN_ADMIN_SECRET_LENGTH:
-        return True
-    lower = stripped.lower()
-    if lower in _WEAK_SECRET_LITERALS:
-        return True
-    if lower.startswith("changeme") or lower.startswith("change-me"):
-        return True
-    if len(set(stripped)) == 1:
-        return True
-    return False
+_PLACEHOLDER_PATTERN = re.compile(
+    r"(?i)(changeme|change[_-]?me|example|placeholder|replace[_-]?me|"
+    r"secret[_-]?here|your[_-]?secret|xxx+|todo)"
+)
 
 
-def validate_admin_secret(name: str, value: str) -> None:
-    """Reject missing, short, or placeholder admin secret material."""
-    if _is_weak_secret(value):
-        raise ValueError(
-            f"{name} must be at least {MIN_ADMIN_SECRET_LENGTH} characters "
-            "and must not be a placeholder or low-entropy value"
+class AdminSecurityConfigError(ValueError):
+    """Raised when required admin security secrets are missing or too weak."""
+
+
+def _validate_limiter_secret_value(
+    secret: str,
+    *,
+    env_name: str,
+    required: bool,
+) -> None:
+    trimmed = secret.strip()
+    if not trimmed:
+        if required:
+            raise AdminSecurityConfigError(f"{env_name} is required")
+        return
+    if len(trimmed) < MIN_ADMIN_LOGIN_LIMITER_SECRET_LENGTH:
+        raise AdminSecurityConfigError(
+            f"{env_name} must be at least {MIN_ADMIN_LOGIN_LIMITER_SECRET_LENGTH} characters"
         )
+    lowered = trimmed.lower()
+    if lowered in _WEAK_SECRET_MARKERS:
+        raise AdminSecurityConfigError(f"{env_name} must not use a documented placeholder value")
+    if _PLACEHOLDER_PATTERN.search(trimmed):
+        raise AdminSecurityConfigError(f"{env_name} must not use placeholder key material")
 
 
 def should_validate_admin_security(settings: Settings) -> bool:
-    """True when a production admin deployment is configured."""
-    return bool(
-        settings.database_url
-        and settings.admin_username
-        and settings.admin_password_hash
-        and settings.admin_session_secret
-    )
+    """Return whether startup should fail fast on weak admin security secrets."""
+    if not (settings.admin_username and settings.admin_password_hash):
+        return False
+    if settings.admin_preview_enabled:
+        return False
+    return True
 
 
 def validate_admin_security_config(settings: Settings) -> None:
-    """Validate admin secrets before serving authenticated routes."""
+    """Validate admin login limiter secrets before serving authenticated routes."""
     if not should_validate_admin_security(settings):
         return
 
-    validate_admin_secret("ADMIN_SESSION_SECRET", settings.admin_session_secret)
-    validate_admin_secret("ADMIN_LOGIN_LIMITER_SECRET", settings.admin_login_limiter_secret)
-
-    previous = settings.admin_login_limiter_secret_previous
-    if not previous:
-        return
-
-    validate_admin_secret("ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS", previous)
-    if hmac.compare_digest(previous, settings.admin_login_limiter_secret):
-        raise ValueError(
-            "ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS must differ from ADMIN_LOGIN_LIMITER_SECRET"
-        )
+    _validate_limiter_secret_value(
+        settings.admin_login_limiter_secret,
+        env_name="ADMIN_LOGIN_LIMITER_SECRET",
+        required=True,
+    )
+    _validate_limiter_secret_value(
+        settings.admin_login_limiter_previous_secret,
+        env_name="ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET",
+        required=False,
+    )
