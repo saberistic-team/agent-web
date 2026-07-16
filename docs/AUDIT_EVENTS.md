@@ -101,24 +101,45 @@ operator is never left without a valid server-side session. The session cookie i
 set on the redirect response only after the transaction exits successfully; failed
 or rolled-back logins never emit a new session cookie.
 
+### Unauthenticated login-failure identity
+
+`auth.login.failure` events recorded before successful authentication always use
+actor `anonymous`. Submitted username candidates must not appear in `actor`,
+metadata, reason text, logs, or metrics. Reasons are a small server-defined enum
+(`invalid_credentials`, `invalid_csrf`, `rate_limited`).
+
+Post-authentication events (`auth.login.success`, `auth.logout`, CRM mutations)
+retain the authenticated administrator username in `actor`.
+
+#### Historical immutable rows (pre-#242)
+
+Deployments before keyed limiter identifiers and anonymous failure actors may have
+stored attacker-supplied username candidates in `audit_events.actor` for
+`auth.login.failure` rows. Those rows are append-only; the application does not
+rewrite or delete historical audit data. Operators should treat unexpected
+`actor` values on old failure events as unauthenticated candidates, not as proof
+of an authenticated session. The forward fix in #242 prevents new occurrences.
+
+Inventory example (read-only):
+
+```sql
+SELECT created_at, actor, summary_after->>'reason' AS reason
+FROM audit_events
+WHERE action = 'auth.login.failure'
+  AND actor <> 'anonymous'
+ORDER BY created_at DESC
+LIMIT 100;
+```
+
+Remediation of historical rows, if required, is a data-governance decision outside
+normal application code paths.
+
 ## Audited actions
 
 | Action | When recorded |
 |--------|----------------|
 | `auth.login.success` | Valid admin login creates a server-side session |
 | `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting |
-
-Unauthenticated login failures always record `actor = anonymous`. Submitted
-username candidates are never persisted in `actor`, metadata, or reason text.
-
-### Historical login-failure actors (pre-#242)
-
-Before keyed limiter identifiers and anonymous failure actors shipped (#242),
-some `auth.login.failure` rows may contain attacker-supplied strings in the
-immutable `actor` column. Those rows are append-only; application code does not
-rewrite historical audit data. Security reporting should treat unknown `actor`
-values on failure events as unauthenticated attempts, not as confirmed
-administrator identities. The forward fix prevents all new occurrences.
 | `auth.logout` | Authenticated session revocation (live session → revoked) |
 | `import.batch` | Data import batches via `CrmService.commit_linkedin_import` / `import_batch` |
 | `import.batch.rollback` | Rollback of committed import batches via `CrmService.rollback_import_batch` |

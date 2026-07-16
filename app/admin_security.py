@@ -1,91 +1,106 @@
-"""Admin security secret validation (fail-fast at startup)."""
+"""Admin authentication security primitives and configuration validation."""
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import re
 
 from app.config import Settings
 
-MIN_ADMIN_SECRET_LENGTH = 32
+LIMITER_DOMAIN_SOURCE = "src"
+LIMITER_DOMAIN_ACCOUNT = "acct"
 
-_WEAK_SECRET_LITERALS = frozenset(
+_MIN_SECRET_BYTES = 32
+_WEAK_SECRET_VALUES = frozenset(
     {
-        "",
         "changeme",
         "change-me",
         "placeholder",
-        "replace-me",
         "secret",
-        "admin",
         "password",
+        "admin",
         "test",
         "dev",
         "development",
-        "local",
+        "production",
+        "example",
+        "dummy",
+        "default",
     }
 )
-
 _PLACEHOLDER_PATTERN = re.compile(
-    r"(?i)(changeme|placeholder|replace[_-]?me|your[_-]?secret|insert[_-]?secret|todo|fixme|xxx+)"
+    r"(?i)(changeme|placeholder|example|dummy|your[_-]?secret|insert[_-]?here|todo|fixme)"
 )
 
 
 class AdminSecurityConfigError(ValueError):
-    """Raised when required admin security secrets are missing or weak."""
-
-
-def _normalize_secret(value: str) -> str:
-    return value.strip()
-
-
-def validate_admin_secret(
-    value: str,
-    *,
-    field_name: str,
-    min_length: int = MIN_ADMIN_SECRET_LENGTH,
-) -> None:
-    """Reject missing, weak, placeholder, or malformed admin secret material."""
-    normalized = _normalize_secret(value)
-    if not normalized:
-        raise AdminSecurityConfigError(f"{field_name} is required")
-    if len(normalized) < min_length:
-        raise AdminSecurityConfigError(
-            f"{field_name} must be at least {min_length} characters"
-        )
-    lowered = normalized.lower()
-    if lowered in _WEAK_SECRET_LITERALS:
-        raise AdminSecurityConfigError(f"{field_name} uses a disallowed placeholder value")
-    if _PLACEHOLDER_PATTERN.search(normalized):
-        raise AdminSecurityConfigError(f"{field_name} uses a disallowed placeholder value")
-    try:
-        normalized.encode("utf-8")
-    except UnicodeEncodeError as exc:
-        raise AdminSecurityConfigError(f"{field_name} must be valid UTF-8") from exc
-    if len(set(normalized)) < 4:
-        raise AdminSecurityConfigError(f"{field_name} is too weak")
+    """Raised when admin security configuration is invalid."""
 
 
 def validate_admin_security_config(settings: Settings) -> None:
-    """Validate admin security secrets when authentication is enabled."""
+    """Fail fast when admin auth secrets are missing or weak."""
     if not settings.admin_auth_configured:
         return
-
-    validate_admin_secret(settings.admin_session_secret, field_name="ADMIN_SESSION_SECRET")
-
-    if not settings.database_url:
-        return
-
-    validate_admin_secret(
+    errors: list[str] = []
+    session_err = _validate_secret("ADMIN_SESSION_SECRET", settings.admin_session_secret)
+    if session_err:
+        errors.append(session_err)
+    limiter_err = _validate_secret(
+        "ADMIN_LOGIN_LIMITER_SECRET",
         settings.admin_login_limiter_secret,
-        field_name="ADMIN_LOGIN_LIMITER_SECRET",
     )
-    previous = _normalize_secret(settings.admin_login_limiter_secret_previous)
+    if limiter_err:
+        errors.append(limiter_err)
+    previous = settings.admin_login_limiter_previous_secret
     if previous:
-        validate_admin_secret(
+        previous_err = _validate_secret(
+            "ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET",
             previous,
-            field_name="ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS",
         )
-        if previous == _normalize_secret(settings.admin_login_limiter_secret):
-            raise AdminSecurityConfigError(
-                "ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS must differ from ADMIN_LOGIN_LIMITER_SECRET"
+        if previous_err:
+            errors.append(previous_err)
+        if hmac.compare_digest(previous, settings.admin_login_limiter_secret):
+            errors.append(
+                "ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET must differ from "
+                "ADMIN_LOGIN_LIMITER_SECRET"
             )
+    if errors:
+        raise AdminSecurityConfigError("; ".join(errors))
+
+
+def _validate_secret(env_name: str, value: str) -> str | None:
+    if not value:
+        return f"{env_name} is required when admin authentication is configured"
+    if len(value.encode("utf-8")) < _MIN_SECRET_BYTES:
+        return f"{env_name} must be at least {_MIN_SECRET_BYTES} bytes"
+    normalized = value.strip().lower()
+    if normalized in _WEAK_SECRET_VALUES:
+        return f"{env_name} must not be a placeholder or weak value"
+    if _PLACEHOLDER_PATTERN.search(value):
+        return f"{env_name} must not contain placeholder text"
+    return None
+
+
+def limiter_key_payload(domain: str, material: str) -> bytes:
+    """Return domain-separated UTF-8 payload for limiter HMAC input."""
+    return f"{domain}:{material.strip().lower()}".encode("utf-8")
+
+
+def digest_limiter_key(secret: str, domain: str, material: str) -> str:
+    """Keyed HMAC-SHA256 identifier; fixed 64-char hex for TEXT primary keys."""
+    return hmac.new(
+        secret.encode("utf-8"),
+        limiter_key_payload(domain, material),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def plain_sha256_limiter_key(domain: str, material: str) -> str:
+    """Legacy unkeyed digest retained for tests and migration documentation."""
+    return hashlib.sha256(limiter_key_payload(domain, material)).hexdigest()
+
+
+def compare_limiter_keys(left: str, right: str) -> bool:
+    """Constant-time comparison for application-level limiter key checks."""
+    return hmac.compare_digest(left, right)

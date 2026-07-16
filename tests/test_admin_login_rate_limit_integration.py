@@ -104,7 +104,7 @@ def test_username_rotation_shares_source_bucket(pg_conn: psycopg.Connection) -> 
     source_key = admin_auth.build_source_rate_limit_key("203.0.113.10", settings)
 
     for index in range(5):
-        user_key = admin_auth.build_rate_limit_key(f"user-{index}", "203.0.113.10", settings)
+        user_key = admin_auth.build_rate_limit_key(f"user-{index}", "203.0.113.10")
         assert user_key != source_key
         admission = _admit(
             pg_conn,
@@ -168,7 +168,9 @@ def test_account_bucket_limits_configured_admin_across_sources(
     now = datetime(2026, 3, 1, 8, 0, tzinfo=timezone.utc)
 
     for index in range(5):
-        source_key = admin_auth.build_source_rate_limit_key(f"203.0.113.{index + 1}", settings)
+        source_key = admin_auth.build_source_rate_limit_key(
+            f"203.0.113.{index + 1}", settings
+        )
         admission = _admit(
             pg_conn,
             keys=(source_key, account_key),
