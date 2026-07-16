@@ -302,7 +302,7 @@ def test_convert_rejects_selected_contact_not_found_in_storage() -> None:
     repos["companies"].get_by_id.return_value = {"id": COMPANY_ID, "pipeline_stage": "researching"}
     repos["contacts"].get_active_by_id_for_update.return_value = None
 
-    with pytest.raises(BriefConversionValidationError, match="no longer active"):
+    with pytest.raises(BriefConversionValidationError, match="Selected contact was not found"):
         service.convert_project_brief(
             conn,
             brief=_brief(),
@@ -475,11 +475,7 @@ def test_convert_skips_stage_history_when_stage_unchanged() -> None:
         "id": COMPANY_ID,
         "pipeline_stage": "diagnostic_paid",
     }
-    repos["contacts"].get_active_by_id_for_update.return_value = {
-        "id": CONTACT_ID,
-        "email": "ops@acme.example",
-        "company_id": COMPANY_ID,
-    }
+    repos["contacts"].get_active_by_id_for_update.return_value = {"id": CONTACT_ID, "email": "ops@acme.example", "company_id": COMPANY_ID}
     repos["source_records"].create.return_value = {"id": SOURCE_RECORD_ID, "external_id": "42"}
 
     with patch("app.crm_service.audit_service.record_brief_convert"):
@@ -574,11 +570,7 @@ def test_convert_project_brief_links_existing_company_and_contact() -> None:
         "id": COMPANY_ID,
         "pipeline_stage": "diagnostic_paid",
     }
-    repos["contacts"].get_active_by_id_for_update.return_value = {
-        "id": CONTACT_ID,
-        "email": "ops@acme.example",
-        "company_id": COMPANY_ID,
-    }
+    repos["contacts"].get_active_by_id_for_update.return_value = {"id": CONTACT_ID, "email": "ops@acme.example", "company_id": COMPANY_ID}
     repos["source_records"].create.return_value = {"id": SOURCE_RECORD_ID, "external_id": "42"}
 
     with patch("app.crm_service.audit_service.record_brief_convert"):
@@ -794,7 +786,7 @@ def test_convert_rejects_mismatched_company_and_contact() -> None:
 
 
 def test_convert_rejects_new_company_with_contact_assigned_elsewhere() -> None:
-    """New company + existing contact on another company is rejected (#274)."""
+    """New company + existing contact on another company is rejected before writes (#274)."""
     service, conn, repos = _service_with_mocks()
     repos["source_records"].get_by_source.return_value = None
     repos["companies"].find_by_domain.return_value = []
@@ -816,6 +808,56 @@ def test_convert_rejects_new_company_with_contact_assigned_elsewhere() -> None:
         )
 
     repos["companies"].create.assert_not_called()
+    repos["contacts"].update.assert_not_called()
+    conn.commit.assert_not_called()
+
+
+def test_convert_links_existing_contact_after_email_uniqueness_race() -> None:
+    """Concurrent new-contact creates map idx_contacts_email_unique to a safe link (#274)."""
+    service, conn, repos = _service_with_mocks()
+    repos["source_records"].get_by_source.return_value = None
+    repos["companies"].find_by_domain.return_value = []
+    repos["contacts"].get_active_by_email.side_effect = [
+        None,
+        {
+            "id": CONTACT_ID,
+            "email": "ops@acme.example",
+            "company_id": None,
+        },
+    ]
+    repos["companies"].create.return_value = {
+        "id": COMPANY_ID,
+        "name": "Acme",
+        "pipeline_stage": "researching",
+    }
+    repos["pipeline"].update_pipeline_fields.return_value = {
+        "id": COMPANY_ID,
+        "pipeline_stage": "diagnostic_paid",
+    }
+    repos["contacts"].create.side_effect = _unique_violation(
+        "duplicate email",
+        constraint_name="idx_contacts_email_unique",
+        table_name="contacts",
+    )
+    repos["contacts"].update.return_value = {
+        "id": CONTACT_ID,
+        "email": "ops@acme.example",
+        "company_id": COMPANY_ID,
+    }
+    repos["source_records"].create.return_value = {"id": SOURCE_RECORD_ID, "external_id": "42"}
+
+    with patch("app.crm_service.audit_service.record_brief_convert"):
+        result = service.convert_project_brief(
+            conn,
+            brief=_brief(),
+            actor_context=ACTOR,
+            price_cents=20_000,
+            company_choice="new",
+            contact_choice="new",
+        )
+
+    assert result["contact"]["id"] == CONTACT_ID
+    repos["contacts"].update.assert_called_once()
 
 
 def test_convert_rolls_back_when_audit_fails() -> None:

@@ -95,7 +95,7 @@ class ContactRepository(Protocol):
         conn: psycopg.Connection,
         contact_id: UUID,
     ) -> dict[str, Any] | None:
-        """Lock and return one active contact row for brief conversion (#274)."""
+        """Active contact row locked for update inside a conversion transaction."""
         ...
 
     def get_active_by_email(

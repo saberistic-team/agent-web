@@ -146,38 +146,33 @@ Rules:
 - Archived-only match → surfaced as `archived_contact_match` for restore/review;
   never auto-linked.
 
-**Company-association rule (issues #226, #274).** The same rule applies whether
-the operator creates a **new** company or links an **existing** one:
+**Company-association rule.** When a brief supplies a company, linking an existing
+active contact only *fills in* a **missing** company association
+(`contacts.company_id IS NULL` → set to the brief's company). A contact that
+already belongs to a company keeps that association and is **never silently
+reassigned**; any selection that pairs the contact with a **different** company
+— whether the target company is newly created or an existing match — is rejected
+as a validation error before durable conversion writes. Enforced in
+`CrmService._validate_contact_company_association` (preview) and
+`CrmService._assert_contact_eligible_for_conversion` (inside the conversion
+transaction).
 
-| Selected contact state | Target company | Outcome |
-|------------------------|----------------|---------|
-| Unassigned (`company_id IS NULL`) | New or existing | Attach contact to target company atomically inside the conversion transaction |
-| Already on target company | New or existing | Link succeeds; relationships stay consistent |
-| Assigned to a different company | New or existing | Rejected with a safe validation error **before** company/contact/pipeline/source writes |
+**In-transaction contact authority (#274).** After the brief-scoped advisory
+lock is acquired, an existing-contact choice re-reads the selected row with
+`SELECT … FOR UPDATE` (`ContactRepository.get_active_by_id_for_update`),
+revalidates active state, normalized email identity, and company association,
+then applies `_associate_contact_company` only when the contact is unassigned
+or already on the target company. Preview-time validation uses the same
+company-association rule but is not authoritative: archive, reassignment, or an
+active-email claim between preview and confirm is caught on this in-transaction
+re-read.
 
-Linking an existing active contact only *fills in* a missing company association;
-a contact that already belongs to a company is **never silently reassigned**.
-Enforced in `CrmService._validate_contact_company_association` (preview +
-transaction) and `CrmService._associate_contact_company` (attach unassigned rows).
-
-**Transaction-time contact revalidation (#274).** After the brief-scoped advisory
-lock is acquired, an existing-contact choice is re-read with
-`ContactRepository.get_active_by_id_for_update` (`FOR UPDATE OF contacts`).
-Inside that transaction the service revalidates:
-
-- the row is still active (`archived_at IS NULL`);
-- normalized email still matches the brief identity; and
-- company association still satisfies the rule above.
-
-Concurrent archive, reassignment, or active-email claim therefore cannot produce
-a stale or contradictory conversion.
-
-**Concurrent active-email races (#274).** Two different briefs converting the
-same normalized email may race on `idx_contacts_email_unique`. A losing
-`contacts.create` inside conversion catches the partial unique-index violation,
-re-reads the active contact, and either links it when company association is
-valid or returns a safe validation error — never a raw PostgreSQL error or HTTP
-500.
+**Cross-brief email concurrency (#274).** Concurrent confirms on *different*
+briefs that share a normalized email and both choose `contact_choice=new` race on
+`idx_contacts_email_unique`. The loser maps the uniqueness violation to a safe
+domain outcome: link the committed active contact when company association
+allows, otherwise raise `BriefConversionValidationError` and roll back — never
+an HTTP 500 or raw SQL detail.
 
 ### `source_records`
 

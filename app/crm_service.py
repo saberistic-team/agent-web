@@ -25,7 +25,6 @@ from app.brief_conversion import (
     BriefConversionIdempotencyRace,
     BriefConversionValidationError,
     build_conversion_proposal,
-    normalize_brief_email,
     safe_conversion_payload,
 )
 from app.brief_conversion_lock import acquire_brief_conversion_lock
@@ -113,6 +112,13 @@ def _is_contact_email_unique_violation(exc: pg_errors.UniqueViolation) -> bool:
     if diag is None:
         return False
     return (diag.constraint_name or "") == "idx_contacts_email_unique"
+
+
+_CONTACT_COMPANY_MISMATCH_MSG = (
+    "Selected contact belongs to a different company — adjust your selection."
+)
+_CONTACT_STALE_MSG = "Selected contact is no longer active — refresh the preview and try again."
+_CONTACT_EMAIL_MISMATCH_MSG = "Selected contact does not match the brief email."
 
 
 class CrmService:
@@ -319,6 +325,23 @@ class CrmService:
             if race is not None:
                 return self._conversion_result_from_source(conn, race, idempotent=True)
 
+            locked_contact: dict[str, Any] | None = None
+            if contact_choice == "existing":
+                assert selected_contact_id is not None
+                locked_contact = self._repos.contacts.get_active_by_id_for_update(
+                    conn, selected_contact_id
+                )
+                if locked_contact is None:
+                    raise BriefConversionValidationError("Selected contact was not found.")
+                preview_target_company_id = (
+                    selected_company_id if company_choice == "existing" else None
+                )
+                self._assert_contact_eligible_for_conversion(
+                    contact=locked_contact,
+                    email=email,
+                    target_company_id=preview_target_company_id,
+                )
+
             expected_value = proposal.get("expected_value")
             expected_value_cents = (
                 int(round(float(expected_value) * 100))
@@ -344,12 +367,14 @@ class CrmService:
                 )
 
             if contact_choice == "existing":
-                assert selected_contact_id is not None
-                contact = self._resolve_existing_contact_for_conversion(
-                    conn,
-                    selected_contact_id=selected_contact_id,
+                assert locked_contact is not None
+                self._assert_contact_eligible_for_conversion(
+                    contact=locked_contact,
                     email=email,
                     target_company_id=UUID(str(company["id"])),
+                )
+                contact = self._associate_contact_company(
+                    conn, contact=locked_contact, company=company
                 )
             else:
                 contact = self._create_conversion_contact(
@@ -476,74 +501,6 @@ class CrmService:
             "pipeline_stage": pipeline_stage,
         }
 
-    @staticmethod
-    def _validate_contact_company_association(
-        contact: dict[str, Any],
-        target_company_id: UUID,
-    ) -> None:
-        """Reject an existing contact already linked to a different company (#274)."""
-        linked_company = contact.get("company_id")
-        if linked_company is None:
-            return
-        if UUID(str(linked_company)) != target_company_id:
-            raise BriefConversionValidationError(
-                "Selected contact belongs to a different company — adjust your selection."
-            )
-
-    def _resolve_existing_contact_for_conversion(
-        self,
-        conn: psycopg.Connection,
-        *,
-        selected_contact_id: UUID,
-        email: str,
-        target_company_id: UUID,
-    ) -> dict[str, Any]:
-        """Re-read, lock, and revalidate the selected active contact (#274)."""
-        contact = self._repos.contacts.get_active_by_id_for_update(
-            conn, selected_contact_id
-        )
-        if contact is None:
-            raise BriefConversionValidationError("Selected contact is no longer active.")
-        normalized = normalize_brief_email(str(contact.get("email") or ""))
-        if normalized != email:
-            raise BriefConversionValidationError(
-                "Selected contact does not match the brief email."
-            )
-        self._validate_contact_company_association(contact, target_company_id)
-        return self._associate_contact_company(
-            conn,
-            contact=contact,
-            company={"id": target_company_id},
-        )
-
-    def _create_conversion_contact(
-        self,
-        conn: psycopg.Connection,
-        *,
-        email: str,
-        proposal: dict[str, Any],
-        company: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Create a conversion contact, resolving active-email uniqueness races (#274)."""
-        target_company_id = UUID(str(company["id"]))
-        try:
-            return self._repos.contacts.create(
-                conn,
-                email=email,
-                full_name=proposal.get("contact_name") or email.split("@", 1)[0],
-                company_id=target_company_id,
-            )
-        except pg_errors.UniqueViolation as exc:
-            if not _is_contact_email_unique_violation(exc):
-                raise
-            existing = self._repos.contacts.get_active_by_email(conn, email)
-            if existing is None:
-                raise BriefConversionValidationError(
-                    "A contact with this email already exists — link the existing contact."
-                ) from exc
-            self._validate_contact_company_association(existing, target_company_id)
-            return existing
-
     def _associate_contact_company(
         self,
         conn: psycopg.Connection,
@@ -551,14 +508,14 @@ class CrmService:
         contact: dict[str, Any],
         company: dict[str, Any],
     ) -> dict[str, Any]:
-        """Apply the brief-conversion company-association rule (issues #226, #274).
+        """Apply the brief-conversion company-association rule (issue #226).
 
         When a brief supplies a company, linking an existing active contact only
         *fills in* a missing company association (``company_id IS NULL``). A
         contact that already belongs to a company keeps that association and is
-        never silently reassigned; an explicit mismatch is rejected in
-        ``_validate_contact_company_association`` regardless of whether the target
-        company is newly created or existing. See docs/CRM_SCHEMA.md.
+        never silently reassigned; an explicit mismatch is rejected upstream in
+        ``_validate_contact_company_association`` and
+        ``_assert_contact_eligible_for_conversion``. See docs/CRM_SCHEMA.md.
         """
         company_id = company.get("id")
         if company_id is None or contact.get("company_id") is not None:
@@ -569,6 +526,74 @@ class CrmService:
             company_id=UUID(str(company_id)),
         )
         return updated or contact
+
+    def _validate_contact_company_association(
+        self,
+        *,
+        contact: dict[str, Any],
+        target_company_id: UUID | None,
+    ) -> None:
+        """Reject an existing contact already assigned to a different company (#274)."""
+        linked_company = contact.get("company_id")
+        if linked_company is None:
+            return
+        if target_company_id is None:
+            raise BriefConversionValidationError(_CONTACT_COMPANY_MISMATCH_MSG)
+        if UUID(str(linked_company)) != target_company_id:
+            raise BriefConversionValidationError(_CONTACT_COMPANY_MISMATCH_MSG)
+
+    def _assert_contact_eligible_for_conversion(
+        self,
+        *,
+        contact: dict[str, Any],
+        email: str,
+        target_company_id: UUID | None,
+    ) -> None:
+        """Revalidate active identity and company association inside the conversion txn."""
+        if contact.get("archived_at") is not None:
+            raise BriefConversionValidationError(_CONTACT_STALE_MSG)
+        contact_email = str(contact.get("email") or "").strip().lower()
+        if contact_email != email:
+            raise BriefConversionValidationError(_CONTACT_EMAIL_MISMATCH_MSG)
+        self._validate_contact_company_association(
+            contact=contact,
+            target_company_id=target_company_id,
+        )
+
+    def _create_conversion_contact(
+        self,
+        conn: psycopg.Connection,
+        *,
+        email: str,
+        proposal: dict[str, Any],
+        company: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Create a contact for brief conversion; map email uniqueness races safely (#274)."""
+        target_company_id = UUID(str(company["id"]))
+        try:
+            with conn.transaction():
+                return self._repos.contacts.create(
+                    conn,
+                    email=email,
+                    full_name=proposal.get("contact_name") or email.split("@", 1)[0],
+                    company_id=target_company_id,
+                )
+        except pg_errors.UniqueViolation as exc:
+            if not _is_contact_email_unique_violation(exc):
+                raise
+            existing = self._repos.contacts.get_active_by_email(conn, email)
+            if existing is None:
+                raise BriefConversionValidationError(
+                    "A contact with this email already exists — link the existing contact."
+                ) from exc
+            self._assert_contact_eligible_for_conversion(
+                contact=existing,
+                email=email,
+                target_company_id=target_company_id,
+            )
+            return self._associate_contact_company(
+                conn, contact=existing, company=company
+            )
 
     def _validate_conversion_choices(
         self,
@@ -621,13 +646,13 @@ class CrmService:
             contact = contact_match
             if contact is None:
                 raise BriefConversionValidationError("Selected contact was not found.")
-            if company_choice == "new":
-                if contact.get("company_id") is not None:
-                    raise BriefConversionValidationError(
-                        "Selected contact belongs to a different company — adjust your selection."
-                    )
-            elif selected_company_id is not None:
-                self._validate_contact_company_association(contact, selected_company_id)
+            preview_target_company_id = (
+                selected_company_id if company_choice == "existing" else None
+            )
+            self._validate_contact_company_association(
+                contact=contact,
+                target_company_id=preview_target_company_id,
+            )
 
     def get_admin_user_by_email(
         self,

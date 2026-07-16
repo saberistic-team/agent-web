@@ -281,7 +281,7 @@ class PostgresContactRepository:
         conn: psycopg.Connection,
         contact_id: UUID,
     ) -> dict[str, Any] | None:
-        """Lock and return one active contact row for brief-conversion revalidation (#274)."""
+        """Return one active contact row locked for update (brief conversion #274)."""
         with conn.cursor() as cur:
             cur.execute(
                 """
