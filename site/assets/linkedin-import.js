@@ -378,7 +378,12 @@
     }
 
     var localGeneralPurposeFlag = readUint16(data, off + 6);
-    if ((localGeneralPurposeFlag & 0x0001) !== 0) {
+    // Check both local and central-directory flags — a mismatched pair could
+    // otherwise slip an encrypted entry past whichever header is trusted.
+    if (
+      (localGeneralPurposeFlag & 0x0001) !== 0 ||
+      ((entry.generalPurposeFlag || 0) & 0x0001) !== 0
+    ) {
       return Promise.reject(
         new Error("Encrypted archive entries are not supported: " + entry.name)
       );
