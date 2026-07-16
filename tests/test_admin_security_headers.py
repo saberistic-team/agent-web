@@ -154,6 +154,7 @@ def test_admin_redirect_to_login_has_security_headers() -> None:
     assert response.status_code == 303
     policy = _assert_admin_security_headers(response)
     assert response.headers["location"].startswith("/admin/login")
+    assert policy
 
 
 @pytest.mark.integration

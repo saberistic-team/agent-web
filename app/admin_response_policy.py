@@ -7,7 +7,6 @@ Admin cache isolation (``Cache-Control: no-store, private``) is owned by issue
 from __future__ import annotations
 
 import base64
-import re
 import secrets
 from typing import Mapping
 
