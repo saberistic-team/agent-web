@@ -1706,7 +1706,7 @@ def build_preview_linkedin_reconcile(
     rng: random.Random | None = None,
 ) -> dict[str, object]:
     """Mock reconcile preview with insert, update, unchanged, and conflict rows."""
-    rng = rng or _preview_rng()
+    rng = _resolve_rng("fixture.linkedin_reconcile", rng)
     companies = list(COMPANY_NAMES)
     rng.shuffle(companies)
     rows: list[dict[str, object]] = [
