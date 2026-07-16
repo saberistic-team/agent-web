@@ -39,33 +39,44 @@ def record_health(
     sha: str,
     base_url: str,
     health: dict,
+    issue: int | None = None,
+    pr_number: int | None = None,
 ) -> dict[str, str]:
-    """Persist /health JSON after every deploy (file on branch + optional summary)."""
-    short = (sha or "local")[:12] or "local"
-    slim = {k: v for k, v in health.items() if not str(k).startswith("_")}
-    payload = {
-        "sha": sha or short,
-        "base_url": base_url,
-        "health_url": health.get("_health_url") or f"{base_url.rstrip('/')}/health",
-        "health": slim,
-    }
-    out = Path("trace/deploy-health.json")
-    out.parent.mkdir(parents=True, exist_ok=True)
-    text = json.dumps(payload, indent=2) + "\n"
-    out.write_text(text, encoding="utf-8")
+    """Persist post-merge deployment-health evidence (#280)."""
+    from crm_deploy_health import run_verification
 
-    prefix = f".agent/deploy/{short}"
-    urls = upload_to_branch(
-        repo, branch, [out], prefix, message=f"deploy: record health ({short})"
+    result = run_verification(
+        repo=repo,
+        sha=sha or "local",
+        base_url=base_url,
+        branch=branch,
+        issue=issue,
+        pr_number=pr_number,
+        deployment={
+            "api_result": "pass",
+            "service_id": (os.environ.get("RENDER_SERVICE_ID") or "").strip() or None,
+        },
+        persist=True,
+        post_comment=False,
     )
-    raw_url = urls[0] if urls else ""
+    record = result["record"]
+    artifact = result.get("artifact") or {}
+    slim = record.get("application_health") or {
+        k: v for k, v in health.items() if not str(k).startswith("_")
+    }
+    raw_url = artifact.get("url") or ""
 
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a", encoding="utf-8") as fh:
             fh.write("### Deploy health\n\n")
             fh.write(f"- base: `{base_url}`\n")
-            fh.write(f"- sha: `{sha or short}`\n")
+            fh.write(f"- sha: `{record.get('sha')}`\n")
+            fh.write(f"- result: `{record.get('result')}`\n")
+            fh.write(
+                "- post_deploy_functional_health: "
+                f"`{record.get('verification_layers', {}).get('post_deploy_functional_health')}`\n"
+            )
             fh.write(f"- value: `{json.dumps(slim, separators=(',', ':'))}`\n")
             if raw_url:
                 fh.write(f"- recorded: {raw_url}\n")
@@ -73,7 +84,13 @@ def record_health(
     print(f"deploy_health={json.dumps(slim, separators=(',', ':'))}")
     if raw_url:
         print(f"deploy_health_url={raw_url}")
-    return {"path": f"{prefix}/deploy-health.json", "url": raw_url, "json": json.dumps(slim)}
+    return {
+        "path": artifact.get("path") or f".agent/deploy/{(sha or 'local')[:12]}/deploy-health.json",
+        "url": raw_url,
+        "json": json.dumps(slim),
+        "record": record,
+        "ok": bool(result.get("ok")),
+    }
 
 
 def cursor_api_key() -> str | None:
@@ -412,7 +429,24 @@ def main(argv: list[str] | None = None) -> int:
             sha=args.sha,
             base_url=base_url,
             health=health,
+            issue=issue_num or None,
+            pr_number=args.pr or None,
         )
+        if not health_rec.get("ok", True):
+            if issue_num:
+                post_issue_comment(
+                    args.repo,
+                    issue_num,
+                    (
+                        "### deploy_health_check\n"
+                        f"- result: `fail`\n"
+                        f"- sha: `{args.sha}`\n"
+                        "- note: post-deploy CRM smoke checks failed; "
+                        "completion blocked until healthy or rolled back.\n"
+                    ),
+                )
+            print("deploy health checks failed", file=sys.stderr)
+            return 1
 
         out = Path("trace/screenshots-post")
         short = (args.sha or "local")[:12]

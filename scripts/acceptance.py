@@ -721,6 +721,29 @@ def close_issue_if_accepted(
 ) -> None:
     """Close only when acceptance checklist is complete; comment with evidence."""
     latest = require_checklist_complete(repo, issue)
+    if merge_sha:
+        from crm_deploy_health import require_post_merge_deploy_health
+
+        health_gate = require_post_merge_deploy_health(
+            repo,
+            issue,
+            merge_sha,
+            pr_number=pr_number,
+        )
+        if health_gate.get("required"):
+            record = health_gate.get("record") or {}
+            post_issue_comment(
+                repo,
+                issue,
+                (
+                    "### deploy_health_gate\n"
+                    "- result: `pass`\n"
+                    f"- sha: `{merge_sha}`\n"
+                    f"- record: `{health_gate.get('path')}`\n"
+                    f"- post_deploy_functional_health: "
+                    f"`{(record.get('verification_layers') or {}).get('post_deploy_functional_health')}`\n"
+                ),
+            )
     owner, name = split_repo(repo)
     bits = [
         "### acceptance_close",
