@@ -129,6 +129,9 @@ PREVIEW_COMPANY_ARCHIVED_ID = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa02")
 PREVIEW_CONTACT_POPULATED_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
 PREVIEW_CONTACT_ARCHIVED_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbc")
 PREVIEW_COMPANY_VALIDATION_ERROR = "Name must be at least 2 characters."
+PREVIEW_PIPELINE_EXPECTED_VALUE_ERROR = (
+    "Enter a whole number of cents (0 or greater)."
+)
 _SECTION_COLUMNS: dict[str, tuple[str, ...]] = {
     "/admin/companies": ("Company", "Category", "Stage", "Target", "Verified"),
     "/admin/contacts": ("Name", "Roles", "Company", "Email", "Last touch"),
@@ -1328,12 +1331,14 @@ def preview_contact_restore_conflict(
 
 
 AUDIT_ACTIONS = (
-    "admin.login.success",
-    "admin.logout",
+    "auth.login.success",
+    "auth.logout",
     "import.batch",
     "entity.delete",
     "pipeline.update",
     "brief.convert",
+    "research_record.create",
+    "pipeline_activity.create",
 )
 
 
@@ -1352,19 +1357,52 @@ def build_preview_audit_events(
         action = rng.choice(AUDIT_ACTIONS)
         company = rng.choice(COMPANY_NAMES)
         actor = f"{rng.choice(CONTACT_FIRST).lower()}@saberistic.com"
+        entity_type: str | None = None
+        entity_id: str | None = None
+        summary_before: dict[str, object] | None = None
+        summary_after: dict[str, object] | None = None
+        if action == "pipeline.update":
+            entity_type = "pipeline"
+            entity_id = str(rng.randint(10, 99))
+            summary_before = {"name": company}
+            summary_after = {"pipeline_stage": rng.choice(list(PIPELINE_STAGES))}
+        elif action == "research_record.create":
+            entity_type = "research_record"
+            entity_id = str(rng.randint(100, 999))
+            summary_after = {
+                "research_record_id": entity_id,
+                "company_id": str(rng.randint(10, 99)),
+                "record_type": rng.choice(["hypothesis", "verified_fact"]),
+                "has_source_name": True,
+                "has_source_url": True,
+                "has_observed_value": True,
+            }
+        elif action == "pipeline_activity.create":
+            entity_type = "pipeline_activity"
+            entity_id = str(rng.randint(100, 999))
+            summary_after = {
+                "activity_id": entity_id,
+                "company_id": str(rng.randint(10, 99)),
+                "activity_type": "outreach",
+                "created_at": created.isoformat(),
+            }
+        elif "delete" in action:
+            entity_type = "company"
+            entity_id = str(rng.randint(10, 99))
+            summary_after = {"ok": True}
+        else:
+            summary_after = {"ok": True}
         events.append(
             {
                 "id": i + 1,
                 "created_at": created,
                 "actor": actor,
                 "action": action,
-                "entity_type": "company" if "pipeline" in action or "delete" in action else None,
-                "entity_id": str(rng.randint(10, 99)) if "pipeline" in action else None,
+                "entity_type": entity_type,
+                "entity_id": entity_id,
                 "correlation_id": f"corr-preview-{rng.randint(1000, 9999)}",
-                "summary_before": {"name": company} if "update" in action else None,
-                "summary_after": {"pipeline_stage": rng.choice(list(PIPELINE_STAGES))}
-                if "update" in action
-                else {"ok": True},
+                "summary_before": summary_before,
+                "summary_after": summary_after,
             }
         )
     return events
@@ -1418,6 +1456,52 @@ def render_preview_imports_main(
     rng = rng or _preview_rng()
     now = now or datetime.now(timezone.utc)
     data = build_preview_linkedin_import_data(rng=rng)
+    reconcile = build_preview_linkedin_reconcile(rng=rng)
+    summary = reconcile["summary_counts"]
+    assert isinstance(summary, dict)
+    rows = reconcile["rows"]
+    assert isinstance(rows, list)
+    row_html = []
+    for row in rows:
+        assert isinstance(row, dict)
+        identity = row.get("identity") or {}
+        assert isinstance(identity, dict)
+        label = html.escape(str(identity.get("full_name") or "Unknown"))
+        outcome = html.escape(str(row.get("outcome")))
+        tier = html.escape(str(row.get("match_tier") or "—"))
+        row_html.append(
+            f"<tr><td>{label}</td><td>{outcome}</td><td>{tier}</td>"
+            f"<td>{html.escape(str(identity.get('company_name') or '—'))}</td></tr>"
+        )
+    reconcile_section = f"""
+          <div class="linkedin-import-reconcile">
+            <h2 class="admin-section-title" id="reconcile-title">LinkedIn reconcile preview</h2>
+            <p class="admin-lede">
+              Incremental merge preview — inserts, updates, unchanged rows, and conflicts.
+              Connections absent from this export are preserved ({reconcile["absent_preserved"]} existing).
+            </p>
+            <dl class="linkedin-import-summary">
+              <div><dt>Insert</dt><dd>{summary.get("insert", 0)}</dd></div>
+              <div><dt>Update</dt><dd>{summary.get("update", 0)}</dd></div>
+              <div><dt>Unchanged</dt><dd>{summary.get("unchanged", 0)}</dd></div>
+              <div><dt>Conflict</dt><dd>{summary.get("conflict", 0)}</dd></div>
+            </dl>
+            <div class="admin-table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Connection</th>
+                    <th scope="col">Outcome</th>
+                    <th scope="col">Match tier</th>
+                    <th scope="col">Company</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {"".join(row_html)}
+                </tbody>
+              </table>
+            </div>
+          </div>"""
     generated = now.strftime("%Y-%m-%d %H:%M:%S UTC")
     dup_rows = "".join(
         f"<li>{html.escape(url)}</li>" for url in data.duplicate_urls
@@ -1485,6 +1569,7 @@ def render_preview_imports_main(
             <h3 class="admin-section-title">Ignored archive entries</h3>
             <ul class="linkedin-import-ignored">{ignored_rows}</ul>
           </div>
+          {reconcile_section}
         </section>"""
 
 
@@ -1616,3 +1701,101 @@ def render_preview_section_main(
           </div>
         </section>"""
 
+
+def build_preview_linkedin_reconcile(
+    *,
+    rng: random.Random | None = None,
+) -> dict[str, object]:
+    """Mock reconcile preview with insert, update, unchanged, and conflict rows."""
+    rng = rng or _preview_rng()
+    companies = list(COMPANY_NAMES)
+    rng.shuffle(companies)
+    rows: list[dict[str, object]] = [
+        {
+            "row_index": 0,
+            "outcome": "insert",
+            "identity": {
+                "full_name": "Jordan Ellis",
+                "profile_url": "https://linkedin.com/in/jordan-ellis",
+                "company_name": companies[0],
+                "title": "CTO",
+            },
+            "match_tier": "none",
+            "field_changes": [{"field": "full_name", "before": None, "after": "Jordan Ellis"}],
+        },
+        {
+            "row_index": 1,
+            "outcome": "update",
+            "identity": {
+                "full_name": "Alex Nguyen",
+                "profile_url": "https://linkedin.com/in/alex-nguyen",
+                "company_name": companies[1],
+                "title": "VP Engineering",
+            },
+            "match_tier": "profile_url",
+            "contact_id": _preview_uuid(rng),
+            "contact_label": "Alex Nguyen",
+            "field_changes": [
+                {"field": "title", "before": "Director of Engineering", "after": "VP Engineering"},
+                {
+                    "field": "company_id",
+                    "before": None,
+                    "after": str(UUID(int=rng.getrandbits(128), version=4)),
+                },
+            ],
+        },
+        {
+            "row_index": 2,
+            "outcome": "unchanged",
+            "identity": {
+                "full_name": "Sam Patel",
+                "profile_url": "https://linkedin.com/in/sam-patel",
+                "company_name": companies[2],
+                "title": "Founder",
+            },
+            "match_tier": "profile_url",
+            "contact_id": _preview_uuid(rng),
+            "contact_label": "Sam Patel",
+            "field_changes": [],
+        },
+        {
+            "row_index": 3,
+            "outcome": "conflict",
+            "identity": {
+                "full_name": "Riley Park",
+                "profile_url": "https://linkedin.com/in/riley-park",
+                "company_name": companies[3],
+            },
+            "match_tier": "name_company",
+            "conflict_reason": "Multiple contacts match name and company",
+            "conflict_candidates": [
+                {
+                    "contact_id": _preview_uuid(rng),
+                    "full_name": "Riley Park",
+                    "title": "COO",
+                    "company_name": companies[3],
+                    "profile_url": None,
+                    "email": "riley@example.com",
+                },
+                {
+                    "contact_id": _preview_uuid(rng),
+                    "full_name": "Riley Park",
+                    "title": "Advisor",
+                    "company_name": companies[3],
+                    "profile_url": "https://linkedin.com/in/riley-p",
+                    "email": None,
+                },
+            ],
+        },
+    ]
+    return {
+        "rows": rows,
+        "summary_counts": {
+            "insert": 1,
+            "update": 1,
+            "unchanged": 1,
+            "conflict": 1,
+            "skipped": 0,
+        },
+        "absent_preserved": rng.randint(12, 48),
+    }

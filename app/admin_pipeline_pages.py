@@ -106,6 +106,7 @@ def render_pipeline_detail_page(
     csrf_token: str,
     admin_username: str,
     error_message: str | None = None,
+    expected_value_cents_error: str | None = None,
     preview_banner: str | None = None,
 ) -> str:
     banner_html = ""
@@ -140,6 +141,18 @@ def render_pipeline_detail_page(
     raw_due = company.get("next_action_due_at")
     if isinstance(raw_due, datetime):
         due_value = raw_due.strftime("%Y-%m-%dT%H:%M")
+    elif isinstance(raw_due, str):
+        due_value = raw_due
+    expected_value_attrs = ""
+    expected_value_error_html = ""
+    if expected_value_cents_error:
+        expected_value_attrs = (
+            ' aria-invalid="true" aria-describedby="expected_value_cents-error"'
+        )
+        expected_value_error_html = (
+            f'<p class="form-error" id="expected_value_cents-error" role="alert">'
+            f"{_esc(expected_value_cents_error)}</p>"
+        )
     main = f"""<section class="admin-section" aria-labelledby="pipeline-detail-title">
       {banner_html}
       <p class="admin-breadcrumb"><a href="/admin/pipeline">Pipeline</a></p>
@@ -153,7 +166,7 @@ def render_pipeline_detail_page(
           <div class="field"><label for="next_action">Action</label><textarea id="next_action" name="next_action" rows="3" maxlength="2000">{_esc(company.get("next_action"))}</textarea></div>
           <div class="field"><label for="next_action_due_at">Due</label><input id="next_action_due_at" name="next_action_due_at" type="datetime-local" value="{_esc(due_value)}" /></div>
           <div class="field"><label for="pipeline_owner">Owner</label><input id="pipeline_owner" name="pipeline_owner" maxlength="200" value="{_esc(company.get("pipeline_owner"))}" /></div>
-          <div class="field"><label for="expected_value_cents">Expected value (cents)</label><input id="expected_value_cents" name="expected_value_cents" type="number" min="0" value="{_esc(company.get("expected_value_cents"))}" /></div>
+          <div class="field"><label for="expected_value_cents">Expected value (cents)</label><input id="expected_value_cents" name="expected_value_cents" type="number" min="0" value="{_esc(company.get("expected_value_cents"))}"{expected_value_attrs} />{expected_value_error_html}</div>
           <button class="cta admin-submit" type="submit">Save next action</button>
         </form>
       </div>
