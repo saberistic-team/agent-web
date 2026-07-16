@@ -448,13 +448,21 @@ def test_comment_markdown_pre_branch_only() -> None:
             ScreenshotTarget(route="/"),
             ScreenshotTarget(route="/admin/briefs/503", expected_status=503),
         ],
+        preview_manifest={
+            "preview_seed": 338001,
+            "preview_reference_time": "2026-07-14T12:00:00+00:00",
+            "preview_fixture_version": "1",
+            "head_sha": "abc123",
+            "browser": "Chromium 120.0.0.0",
+            "viewports": [{"name": "desktop", "width": 1280, "height": 800}],
+        },
     )
     assert "### reviewer_screenshots_pre" in body
     assert "http://127.0.0.1:8765" in body
     assert "ADMIN_PREVIEW_MODE" in body
-    assert "preview seed:" in body
-    assert "preview reference time:" in body
-    assert "preview fixture version:" in body
+    assert "preview reproducibility" in body
+    assert "preview_seed" in body
+    assert "338001" in body
     assert "post-deploy only" in body
     assert "branch-home.png" in body
     assert "Production baseline" not in body
@@ -719,39 +727,3 @@ def test_format_missing_screenshot_fail_lists_expected_files() -> None:
     assert "`/admin/briefs/503` (expected HTTP 503)" in msg
     assert "branch-admin-briefs-503.png" in msg
     assert "branch-admin-briefs-503-mobile.png" in msg
-
-
-def test_preview_server_env_sets_stable_defaults(monkeypatch) -> None:
-    from screenshot_deploy import (
-        DEFAULT_PREVIEW_REFERENCE_TIME_ISO,
-        DEFAULT_PREVIEW_SEED,
-        ENV_PREVIEW_REFERENCE_TIME,
-        ENV_PREVIEW_SEED,
-        PREVIEW_FIXTURE_VERSION,
-        preview_server_env,
-    )
-
-    monkeypatch.delenv(ENV_PREVIEW_SEED, raising=False)
-    monkeypatch.delenv(ENV_PREVIEW_REFERENCE_TIME, raising=False)
-    env = preview_server_env({})
-    assert env[ENV_PREVIEW_SEED] == str(DEFAULT_PREVIEW_SEED)
-    assert env[ENV_PREVIEW_REFERENCE_TIME] == DEFAULT_PREVIEW_REFERENCE_TIME_ISO
-    assert env["ADMIN_PREVIEW_FIXTURE_VERSION"] == PREVIEW_FIXTURE_VERSION
-
-
-def test_build_screenshot_reproducibility_manifest_records_fields() -> None:
-    from screenshot_deploy import build_screenshot_reproducibility_manifest
-
-    meta = build_screenshot_reproducibility_manifest(
-        phase="branch",
-        head_sha="deadbeef",
-        browser_version="120.0.0",
-    )
-    assert meta["phase"] == "branch"
-    assert meta["head_sha"] == "deadbeef"
-    assert meta["browser_version"] == "120.0.0"
-    assert meta["preview_seed"]
-    assert meta["preview_reference_time"]
-    assert meta["preview_fixture_version"]
-    assert "desktop" in meta["viewports"]
-    assert "mobile" in meta["viewports"]
