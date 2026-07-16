@@ -40,6 +40,7 @@ from app.actor_context import (
     correlation_id_from_request,
 )
 from app.admin_layout import ADMIN_NAV_LINKS, render_admin_shell
+from app.admin_response_policy import csp_nonce_from_request
 from app.admin_preview import (
     PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR,
     PREVIEW_BRIEF_DATABASE_ERROR_ID,
@@ -1995,6 +1996,7 @@ def admin_imports(request: Request) -> HTMLResponse:
         import_pages.render_imports_page(
             admin_username=session.admin_username,
             csrf_token=csrf_token,
+            csp_nonce=csp_nonce_from_request(request),
         )
     )
 

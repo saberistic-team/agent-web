@@ -7,6 +7,8 @@ Parent issue: [#101](https://github.com/saberistic-team/agent-web/issues/101).
 
 ## Overview
 
+- Browser security headers and CSP for `/admin` are documented in
+  [ADMIN_SECURITY_HEADERS.md](ADMIN_SECURITY_HEADERS.md) ([#308](https://github.com/saberistic-team/agent-web/issues/308)).
 - No public registration, signup, or password-reset routes exist.
 - Admin credentials are configured only through Render environment variables.
 - Successful login creates a new server-side session and sets a `Secure`,

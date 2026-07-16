@@ -30,6 +30,13 @@ from app.analytics_ingest import (
     IngestRejectReason,
     ingest_browser_event,
 )
+from app.admin_response_policy import (
+    apply_admin_security_headers,
+    apply_static_asset_headers,
+    csp_nonce_from_request,
+    generate_csp_nonce,
+    is_admin_path,
+)
 from app.admin_security import AdminSecurityConfigError, validate_admin_security_config
 from app.client_source import admin_proxy_trust_summary, client_source_policy_summary, resolve_client_source
 from app.config import get_settings
@@ -285,6 +292,24 @@ async def redirect_www_to_apex(request: Request, call_next):
         target = apex_redirect_url(request.url.path, request.url.query)
         return RedirectResponse(url=target, status_code=301)
     return await call_next(request)
+
+
+@app.middleware("http")
+async def admin_response_security_policy(request: Request, call_next):
+    """Attach admin CSP and supporting headers; nosniff on static assets."""
+    path = request.url.path
+    if is_admin_path(path):
+        request.state.csp_nonce = generate_csp_nonce()
+    response = await call_next(request)
+    if is_admin_path(path):
+        apply_admin_security_headers(
+            response,
+            get_settings(),
+            nonce=csp_nonce_from_request(request),
+        )
+    elif path.startswith("/assets/"):
+        apply_static_asset_headers(response)
+    return response
 
 
 @app.exception_handler(StarletteHTTPException)
