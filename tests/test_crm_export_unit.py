@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
@@ -96,6 +97,68 @@ def test_build_export_rows_neutralizes_and_omits_sensitive() -> None:
     assert "notes" not in row
     assert "body" not in row
     assert "session_id" not in row
+
+
+@pytest.mark.unit
+def test_interim_tier_b_for_watching_qualified() -> None:
+    repo = MagicMock()
+    repo.list_export_candidates.return_value = [
+        {
+            "company_name": "Watching Co",
+            "domain": "watch.io",
+            "pipeline_stage": "ready_for_outreach",
+            "target_status": "watching",
+            "expected_value_cents": 50_000,
+            "next_action": "Reach out",
+            "next_action_due_at": datetime(2026, 7, 16, 12, 0, tzinfo=timezone.utc),
+            "contact_name": "Sam",
+            "contact_title": "CTO",
+            "buying_roles": "founder",
+            "relationship_strength": "warm",
+            "evidence_source_url": None,
+            "evidence_confidence": None,
+            "evidence_type": None,
+            "has_decision_maker": True,
+            "category": "fintech",
+        }
+    ]
+    rows = build_acquisition_export_rows(MagicMock(), repo, limit=10)
+    assert rows[0]["tier"] == "B"
+    assert rows[0]["next_action_due_at"] == "2026-07-16 12:00 UTC"
+    assert rows[0]["expected_value_usd"] == "500.00"
+    assert rows[0]["unresolved_fields"] == ""
+
+
+@pytest.mark.unit
+def test_unresolved_fields_lists_missing_data() -> None:
+    repo = MagicMock()
+    repo.list_export_candidates.return_value = [
+        {
+            "company_name": "Sparse Co",
+            "domain": None,
+            "pipeline_stage": "researching",
+            "target_status": "target",
+            "expected_value_cents": None,
+            "next_action": None,
+            "next_action_due_at": None,
+            "contact_name": None,
+            "contact_title": None,
+            "buying_roles": None,
+            "relationship_strength": None,
+            "evidence_source_url": None,
+            "evidence_confidence": None,
+            "evidence_type": None,
+            "has_decision_maker": False,
+            "category": None,
+        }
+    ]
+    rows = build_acquisition_export_rows(MagicMock(), repo, limit=10)
+    unresolved = rows[0]["unresolved_fields"]
+    assert "next_action" in unresolved
+    assert "next_action_due_at" in unresolved
+    assert "decision_maker_contact" in unresolved
+    assert "domain" in unresolved
+    assert "category" in unresolved
 
 
 @pytest.mark.unit

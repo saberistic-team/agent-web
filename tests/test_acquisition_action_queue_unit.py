@@ -216,3 +216,108 @@ def test_due_today_excludes_overdue_at_same_reference_day() -> None:
     assert len(data.items) == 1
     assert data.items[0].category == QUEUE_CATEGORY_DUE_TODAY
     assert "due today" in data.items[0].reason.lower()
+
+
+@pytest.mark.unit
+def test_load_action_queue_parses_all_categories() -> None:
+    repo = MagicMock()
+    repo.list_overdue_next_actions.return_value = []
+    repo.list_due_today_next_actions.return_value = []
+    repo.list_recently_qualified_tier_a.return_value = [
+        {
+            "id": UUID("44444444-4444-4444-4444-444444444444"),
+            "name": "Tier A Co",
+            "pipeline_stage": "qualified",
+            "pipeline_owner": "alex",
+            "expected_value_cents": 200_000,
+            "qualified_at": (NOW - timedelta(days=2)).isoformat(),
+        }
+    ]
+    repo.list_warm_introduction_opportunities.return_value = [
+        {
+            "company_id": UUID("55555555-5555-5555-5555-555555555555"),
+            "company_name": "Intro Co",
+            "contact_id": CONTACT_ID,
+            "contact_name": "Jordan Lee",
+            "relationship_strength": "champion",
+            "pipeline_stage": "researching",
+            "expected_value_cents": 75_000,
+        }
+    ]
+    repo.list_stale_high_value_evidence.return_value = [
+        {
+            "id": RECORD_ID,
+            "company_id": UUID("66666666-6666-6666-6666-666666666666"),
+            "company_name": "Evidence Co",
+            "confidence": 0.72,
+            "source_url": "https://example.com/evidence",
+            "pipeline_stage": "qualified",
+            "expected_value_cents": 150_000,
+        }
+    ]
+
+    data = load_action_queue(MagicMock(), repo, now=NOW, limit=10)
+    categories = {item.category for item in data.items}
+    assert QUEUE_CATEGORY_TIER_A in categories
+    assert QUEUE_CATEGORY_WARM_INTRO in categories
+    assert QUEUE_CATEGORY_STALE_EVIDENCE in categories
+    tier_a = next(i for i in data.items if i.category == QUEUE_CATEGORY_TIER_A)
+    assert "Tier A Co" in tier_a.reason
+    warm = next(i for i in data.items if i.category == QUEUE_CATEGORY_WARM_INTRO)
+    assert warm.contact_id == str(CONTACT_ID)
+    assert "Jordan Lee" in warm.reason
+    stale = next(i for i in data.items if i.category == QUEUE_CATEGORY_STALE_EVIDENCE)
+    assert stale.evidence_confidence == 0.72
+    assert "72%" in stale.reason
+
+
+@pytest.mark.unit
+def test_prioritize_respects_limit() -> None:
+    items = [
+        ActionQueueItem(
+            item_key=f"overdue:{index}",
+            priority_rank=1,
+            category=QUEUE_CATEGORY_OVERDUE,
+            reason=f"overdue {index}",
+            company_id=str(index),
+            company_name=f"Co {index}",
+            next_action_due_at=NOW - timedelta(days=index),
+        )
+        for index in range(5)
+    ]
+    result = prioritize_queue_items(items, limit=2)
+    assert len(result) == 2
+
+
+@pytest.mark.unit
+def test_prioritize_sorts_tier_a_by_recent_qualification() -> None:
+    older = ActionQueueItem(
+        item_key="tier_a:1",
+        priority_rank=3,
+        category=QUEUE_CATEGORY_TIER_A,
+        reason="older",
+        company_id="1",
+        company_name="Older Co",
+        qualified_at=NOW - timedelta(days=10),
+    )
+    newer = ActionQueueItem(
+        item_key="tier_a:2",
+        priority_rank=3,
+        category=QUEUE_CATEGORY_TIER_A,
+        reason="newer",
+        company_id="2",
+        company_name="Newer Co",
+        qualified_at=NOW - timedelta(days=1),
+    )
+    result = prioritize_queue_items([older, newer], limit=10)
+    assert result[0].company_name == "Newer Co"
+
+
+@pytest.mark.unit
+def test_export_candidates_sql_includes_pipeline_filters() -> None:
+    repo = PostgresActionQueueRepository()
+    conn = _mock_conn([])
+    repo.list_export_candidates(conn, limit=25)
+    sql = str(conn.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    assert "pipeline_stage NOT IN ('lost', 'nurture')" in sql
+    assert "research_records" in sql

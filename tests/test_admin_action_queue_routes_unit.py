@@ -209,3 +209,148 @@ def test_preview_queue_renders_mock_data(monkeypatch: pytest.MonkeyPatch) -> Non
     assert "Daily action queue" in response.text
     assert "Tier A qualified" in response.text
     assert "Warm introduction" in response.text
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_queue_db_error_shows_banner(authenticated_admin: dict[str, Any]) -> None:
+    with patch("app.admin_action_queue_routes.load_action_queue", side_effect=RuntimeError("db down")):
+        response = client.get("/admin/queue", cookies=authenticated_admin["cookies"])
+    assert response.status_code == 200
+    assert "Action queue is temporarily unavailable" in response.text
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_queue_reschedule_calls_service(authenticated_admin: dict[str, Any]) -> None:
+    crm = MagicMock()
+    due = "2026-07-20T15:00:00+00:00"
+    with patch("app.admin_action_queue_routes._crm", crm):
+        response = client.post(
+            "/admin/queue/reschedule",
+            data={
+                "company_id": str(COMPANY_ID),
+                "item_key": "overdue:1",
+                "item_category": "overdue_action",
+                "next_action_due_at": due,
+                "csrf_token": authenticated_admin["csrf_token"],
+            },
+            cookies=authenticated_admin["cookies"],
+        )
+    assert response.status_code == 303
+    assert "Rescheduled" in response.headers["location"]
+    crm.reschedule_queue_item.assert_called_once()
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_queue_reschedule_rejects_invalid_due_date(authenticated_admin: dict[str, Any]) -> None:
+    response = client.post(
+        "/admin/queue/reschedule",
+        data={
+            "company_id": str(COMPANY_ID),
+            "item_key": "overdue:1",
+            "item_category": "overdue_action",
+            "next_action_due_at": "   ",
+            "csrf_token": authenticated_admin["csrf_token"],
+        },
+        cookies=authenticated_admin["cookies"],
+    )
+    assert response.status_code == 400
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_queue_replace_calls_service(authenticated_admin: dict[str, Any]) -> None:
+    crm = MagicMock()
+    with patch("app.admin_action_queue_routes._crm", crm):
+        response = client.post(
+            "/admin/queue/replace",
+            data={
+                "company_id": str(COMPANY_ID),
+                "item_key": "overdue:1",
+                "item_category": "overdue_action",
+                "next_action": "Send intro email",
+                "next_action_due_at": "2026-07-21T10:00:00+00:00",
+                "csrf_token": authenticated_admin["csrf_token"],
+            },
+            cookies=authenticated_admin["cookies"],
+        )
+    assert response.status_code == 303
+    crm.replace_queue_item.assert_called_once()
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_queue_replace_rejects_empty_action(authenticated_admin: dict[str, Any]) -> None:
+    response = client.post(
+        "/admin/queue/replace",
+        data={
+            "company_id": str(COMPANY_ID),
+            "item_key": "overdue:1",
+            "item_category": "overdue_action",
+            "next_action": "",
+            "next_action_due_at": "2026-07-21T10:00:00+00:00",
+            "csrf_token": authenticated_admin["csrf_token"],
+        },
+        cookies=authenticated_admin["cookies"],
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_preview_export_returns_csv(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    raw_token = admin_auth.generate_session_token()
+    csrf_raw = admin_auth.generate_csrf_value()
+    token_hash = admin_auth.hash_session_token(raw_token)
+    csrf_hash = admin_auth.hash_csrf_token(csrf_raw)
+    _session_store[token_hash] = {
+        "id": 1,
+        "token_hash": token_hash,
+        "admin_username": TEST_USERNAME,
+        "created_at": datetime.now(timezone.utc),
+        "expires_at": datetime.now(timezone.utc) + timedelta(hours=1),
+        "revoked_at": None,
+        "csrf_token_hash": csrf_hash,
+    }
+    with patch.object(db, "get_admin_session_by_token_hash", side_effect=lambda _c, th: _session_store.get(th)):
+        response = client.get(
+            "/admin/queue/export.csv",
+            cookies={SESSION_COOKIE_NAME: raw_token},
+        )
+    assert response.status_code == 200
+    assert "company_name" in response.text
+    assert "'=" in response.text or "Acme" in response.text
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_preview_queue_actions_redirect_with_message(
+    authenticated_admin: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    for path, expected in (
+        ("/admin/queue/complete", "Preview%3A%20action%20recorded"),
+        ("/admin/queue/snooze", "Preview%3A%20snoozed"),
+        ("/admin/queue/reschedule", "Preview%3A%20rescheduled"),
+        ("/admin/queue/replace", "Preview%3A%20next%20action%20replaced"),
+    ):
+        data = {
+            "company_id": str(COMPANY_ID),
+            "item_key": "overdue:1",
+            "item_category": "overdue_action",
+            "csrf_token": authenticated_admin["csrf_token"],
+        }
+        if path.endswith("snooze"):
+            data["snooze_days"] = "3"
+        if path.endswith("reschedule") or path.endswith("replace"):
+            data["next_action_due_at"] = "2026-07-21T10:00:00+00:00"
+        if path.endswith("replace"):
+            data["next_action"] = "New task"
+        response = client.post(path, data=data, cookies=authenticated_admin["cookies"])
+        assert response.status_code == 303
+        assert expected in response.headers["location"]

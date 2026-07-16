@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 from uuid import UUID
 
@@ -211,5 +211,137 @@ def test_complete_queue_item_clears_next_action_and_audits() -> None:
         )
     assert result["status"] == "completed"
     activity_repo.create.assert_called_once()
+    audit.assert_called_once()
+    conn.commit.assert_called_once()
+
+
+@pytest.mark.unit
+def test_snooze_queue_item_extends_due_date() -> None:
+    pipeline_repo = MagicMock()
+    activity_repo = MagicMock()
+    due = datetime(2026, 7, 16, tzinfo=timezone.utc)
+    company = {
+        "id": COMPANY_ID,
+        "pipeline_stage": "qualified",
+        "next_action": "Follow up",
+        "next_action_due_at": due,
+    }
+    pipeline_repo.get_company_pipeline.return_value = company
+    pipeline_repo.update_pipeline_fields.return_value = company
+    service = CrmService(
+        repos=CrmRepositories(
+            companies=MagicMock(),
+            contacts=MagicMock(),
+            source_records=MagicMock(),
+            activities=activity_repo,
+            research_records=MagicMock(),
+            admin_users=MagicMock(),
+            pipeline=pipeline_repo,
+            import_batches=MagicMock(),
+        )
+    )
+    conn = MagicMock()
+    result = service.snooze_queue_item(
+        conn,
+        actor_context=ACTOR,
+        company_id=COMPANY_ID,
+        item_key="overdue:1",
+        item_category="overdue_action",
+        snooze_days=7,
+    )
+    assert result["next_action_due_at"] == due + timedelta(days=7)
+    activity_repo.create.assert_called_once()
+
+
+@pytest.mark.unit
+def test_reschedule_queue_item_updates_due_at() -> None:
+    pipeline_repo = MagicMock()
+    activity_repo = MagicMock()
+    pipeline_repo.get_company_pipeline.return_value = {"id": COMPANY_ID}
+    pipeline_repo.update_pipeline_fields.return_value = {"id": COMPANY_ID}
+    service = CrmService(
+        repos=CrmRepositories(
+            companies=MagicMock(),
+            contacts=MagicMock(),
+            source_records=MagicMock(),
+            activities=activity_repo,
+            research_records=MagicMock(),
+            admin_users=MagicMock(),
+            pipeline=pipeline_repo,
+            import_batches=MagicMock(),
+        )
+    )
+    new_due = datetime(2026, 8, 1, tzinfo=timezone.utc)
+    conn = MagicMock()
+    result = service.reschedule_queue_item(
+        conn,
+        actor_context=ACTOR,
+        company_id=COMPANY_ID,
+        item_key="due_today:1",
+        item_category="due_today_action",
+        next_action_due_at=new_due,
+    )
+    assert result["next_action_due_at"] == new_due
+    activity_repo.create.assert_called_once()
+
+
+@pytest.mark.unit
+def test_replace_queue_item_records_activity() -> None:
+    pipeline_repo = MagicMock()
+    activity_repo = MagicMock()
+    pipeline_repo.get_company_pipeline.return_value = {"id": COMPANY_ID}
+    pipeline_repo.update_pipeline_fields.return_value = {"id": COMPANY_ID}
+    service = CrmService(
+        repos=CrmRepositories(
+            companies=MagicMock(),
+            contacts=MagicMock(),
+            source_records=MagicMock(),
+            activities=activity_repo,
+            research_records=MagicMock(),
+            admin_users=MagicMock(),
+            pipeline=pipeline_repo,
+            import_batches=MagicMock(),
+        )
+    )
+    update = PipelineNextActionUpdate(
+        next_action="Send deck",
+        next_action_due_at=datetime(2026, 8, 2, tzinfo=timezone.utc),
+    )
+    conn = MagicMock()
+    result = service.replace_queue_item(
+        conn,
+        actor_context=ACTOR,
+        company_id=COMPANY_ID,
+        item_key="overdue:1",
+        item_category="overdue_action",
+        update=update,
+    )
+    assert result["status"] == "replaced"
+    activity_repo.create.assert_called_once()
+
+
+@pytest.mark.unit
+def test_request_export_records_audit() -> None:
+    service = CrmService(
+        repos=CrmRepositories(
+            companies=MagicMock(),
+            contacts=MagicMock(),
+            source_records=MagicMock(),
+            activities=MagicMock(),
+            research_records=MagicMock(),
+            admin_users=MagicMock(),
+            pipeline=MagicMock(),
+            import_batches=MagicMock(),
+        )
+    )
+    conn = MagicMock()
+    with patch("app.crm_service.audit_service.record_export_request") as audit:
+        result = service.request_export(
+            conn,
+            actor_context=ACTOR,
+            export_type="acquisition_queue_csv",
+            filters={"source": "action_queue"},
+        )
+    assert result["export_type"] == "acquisition_queue_csv"
     audit.assert_called_once()
     conn.commit.assert_called_once()
