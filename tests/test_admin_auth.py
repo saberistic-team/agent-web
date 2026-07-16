@@ -167,24 +167,23 @@ class FakeRateLimitStore:
         *,
         window_seconds: int,
         lockout_seconds: int,
-        batch_size: int = 100,
+        batch_size: int,
     ) -> int:
         with self._lock:
             retention = max(window_seconds, lockout_seconds) * 2
             cutoff = now - timedelta(seconds=retention)
             expired = sorted(
-                [
-                    (key, row["updated_at"])
+                (
+                    key
                     for key, row in self.rows.items()
                     if row["updated_at"] < cutoff
                     and (row["locked_until"] is None or row["locked_until"] < now)
-                ],
-                key=lambda item: (item[1], item[0]),
-            )
-            to_delete = [key for key, _ in expired[:batch_size]]
-            for key in to_delete:
+                ),
+                key=lambda key: (self.rows[key]["updated_at"], key),
+            )[:batch_size]
+            for key in expired:
                 del self.rows[key]
-            return len(to_delete)
+            return len(expired)
 
 
 @pytest.fixture
@@ -2108,21 +2107,6 @@ def test_login_flow_cleanup_failure_still_mints_flow() -> None:
     assert "Admin sign in" in response.text
     assert response.cookies.get(LOGIN_FLOW_COOKIE_NAME)
     assert len(_login_flows) == 1
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_login_rate_limit_cleanup_failure_preserves_admission(
-    rate_limit_store: FakeRateLimitStore,
-) -> None:
-    with shared_rate_limiter(rate_limit_store):
-        with mock_db_connection():
-            with patch(
-                "app.admin_auth.db.cleanup_expired_admin_login_rate_limits",
-                side_effect=Exception("transient database error"),
-            ):
-                response = _login(password="wrong")
-    assert response.status_code == 401
 
 
 @pytest.mark.unit

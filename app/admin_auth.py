@@ -41,8 +41,8 @@ LOGIN_FLOW_EXPIRED_RETENTION_SECONDS = CSRF_MAX_AGE_SECONDS * 2
 # Retention after ``consumed_at`` before deleting one-time-used flows.
 LOGIN_FLOW_CONSUMED_RETENTION_SECONDS = CSRF_MAX_AGE_SECONDS
 LOGIN_FLOW_CLEANUP_BATCH_SIZE = 100
-# Opportunistic expired-row cleanup after each admitted login attempt.
-ADMIN_LOGIN_LIMITER_CLEANUP_BATCH_SIZE = 100
+# Opportunistic deletion batch after each admitted login attempt.
+LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE = 100
 INVALID_CREDENTIALS_MESSAGE = "Invalid username or password."
 INVALID_REQUEST_MESSAGE = "Invalid request."
 LOGIN_THROTTLED_MESSAGE = "Too many login attempts. Try again later."
@@ -470,19 +470,29 @@ def try_admit_login_attempt(
                 lockout_seconds=settings.admin_login_lockout_seconds,
             )
             try:
-                db.cleanup_expired_admin_login_rate_limits(
+                cleanup_started = time.monotonic()
+                deleted = db.cleanup_expired_admin_login_rate_limits(
                     conn,
                     now=now,
                     window_seconds=settings.admin_login_rate_window_seconds,
                     lockout_seconds=settings.admin_login_lockout_seconds,
-                    batch_size=ADMIN_LOGIN_LIMITER_CLEANUP_BATCH_SIZE,
+                    batch_size=LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE,
+                )
+                _logger.info(
+                    "Admin login rate limit cleanup completed",
+                    extra={
+                        "batch_size": LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE,
+                        "deleted_count": deleted,
+                        "duration_ms": int((time.monotonic() - cleanup_started) * 1000),
+                        "backlog_may_remain": deleted >= LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE,
+                    },
                 )
             except Exception:
                 _logger.warning(
-                    "Admin login rate limiter cleanup failed; admission preserved",
+                    "Admin login rate limit cleanup failed; admission unaffected",
                     extra={
-                        "batch_size": ADMIN_LOGIN_LIMITER_CLEANUP_BATCH_SIZE,
-                        "error_category": "database",
+                        "batch_size": LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE,
+                        "error_category": "database_error",
                     },
                     exc_info=True,
                 )
