@@ -17,7 +17,10 @@ post-deploy only.
 ### `ADMIN_PREVIEW_MODE`
 
 Pre-merge starts the PR preview server with `ADMIN_PREVIEW_MODE=1` so
-Playwright can open admin pages **without login**.
+Playwright can open admin pages **without login**. The launcher also sets a
+**stable root seed** and **frozen reference timestamp** so paired
+desktop/mobile captures and reruns of the same revision render identical fixture
+data (issue #338).
 
 - Enabled only for local/`127.0.0.1` preview (CI screenshot job).
 - Hard-disabled when `BASE_URL` contains `saberistic.com` even if the env
@@ -25,22 +28,28 @@ Playwright can open admin pages **without login**.
 - Admin shell pages fill with **mock intake/CRM data with randomization**
   (dashboard stats, section tables, **briefs list/detail**, etc.) so screenshots
   look like a live operator shell — never real production rows and never an
-  empty “no records yet” shell for newly built admin surfaces.
-- **Deterministic preview context (CI):** the screenshot launcher sets
-  `ADMIN_PREVIEW_SEED`, `ADMIN_PREVIEW_REFERENCE_TIME`, and
-  `ADMIN_PREVIEW_FIXTURE_VERSION` on the PR-head preview server. Defaults are
-  checked in at `app/admin_preview.py` (`DEFAULT_PREVIEW_ROOT_SEED`,
-  `DEFAULT_PREVIEW_REFERENCE_TIME`, `PREVIEW_FIXTURE_VERSION`). Each fixture
-  builder derives a namespace-local RNG from the root seed so request/capture
-  order and worker scheduling cannot perturb another route’s data. Override
-  seed/time explicitly for exploratory visual testing; malformed values fail
-  fast. Reproducibility metadata is written to
-  `branch-preview-reproducibility.json` and echoed in Reviewer comments.
-- Bump `PREVIEW_FIXTURE_VERSION` when fixture shape or semantics change; review
-  baseline screenshot updates in the same PR as the version bump.
-- Builder must extend
-  `app/admin_preview.py` whenever it adds a page (see `AGENTS/builder.md`).
+  empty “no records yet” shell for newly built admin surfaces. Each fixture
+  derives its own RNG from the root seed plus a stable namespace (order
+  independent). Builder must extend `app/admin_preview.py` whenever it adds a
+  page (see `AGENTS/builder.md`).
 - See [ADMIN_AUTH.md](ADMIN_AUTH.md).
+
+#### Preview reproducibility (deterministic screenshots)
+
+| Variable | Default (CI) | Purpose |
+|----------|--------------|---------|
+| `ADMIN_PREVIEW_SEED` | `3382026071600` | Root seed for namespace-derived fixture RNGs |
+| `ADMIN_PREVIEW_REFERENCE_TIME` | `2026-07-14T12:00:00+00:00` | Frozen UTC “now” for all time-derived fields |
+| `ADMIN_PREVIEW_FIXTURE_VERSION` | `1` | Bump when fixture shape/namespaces change intentionally |
+
+Override seed/time locally for exploratory visual testing. Malformed values fail
+fast (`PreviewContextError`) — never silent wall-clock fallback.
+
+Screenshot evidence writes `branch-reproducibility.json` with fixture version,
+root seed, reference time, `GITHUB_SHA`, Chromium version, and viewports.
+Regenerate baselines when `ADMIN_PREVIEW_FIXTURE_VERSION` increments: capture
+twice on a clean PR head, compare manifests and image hashes, then commit
+updated PNGs with a note in the PR body.
 
 **Production renderer routes** (preview uses the same page functions as authenticated
 production, with deterministic fixtures from `app/admin_preview.py`):
@@ -182,9 +191,9 @@ until merged.
 | Name | Type | Purpose |
 |------|------|---------|
 | `ADMIN_PREVIEW_MODE` | env | Set `1` on PR preview server only (script sets this) |
-| `ADMIN_PREVIEW_SEED` | env | Root seed for deterministic preview fixtures (launcher sets default) |
-| `ADMIN_PREVIEW_REFERENCE_TIME` | env | Frozen UTC ISO-8601 reference time for preview fixtures |
-| `ADMIN_PREVIEW_FIXTURE_VERSION` | env | Fixture schema version (`PREVIEW_FIXTURE_VERSION` in code) |
+| `ADMIN_PREVIEW_SEED` | env | Root seed for deterministic preview fixtures (script sets default) |
+| `ADMIN_PREVIEW_REFERENCE_TIME` | env | Frozen UTC reference time for preview fixtures (script sets default) |
+| `ADMIN_PREVIEW_FIXTURE_VERSION` | env | Fixture schema version (default `1`) |
 | `DEPLOY_BASE_URL` | variable | default `https://saberistic.com` (post-deploy) |
 | `COVERAGE_ROOT` / `PR_HEAD_ROOT` | env | PR checkout root for branch screenshots |
 | `SCREENSHOTS_REQUIRED` | variable | default true for Reviewer when pages are affected |

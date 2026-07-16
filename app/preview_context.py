@@ -1,4 +1,11 @@
-"""Deterministic preview fixture context for ADMIN_PREVIEW_MODE screenshots."""
+"""Deterministic preview fixture context for ADMIN_PREVIEW_MODE screenshots.
+
+Standard CI screenshot runs set a stable root seed and frozen reference time so
+paired desktop/mobile captures and reruns of the same revision render identical
+fixture data. Developers may override seed/time explicitly for exploratory
+visual testing; malformed overrides fail fast instead of falling back to
+wall-clock randomness.
+"""
 
 from __future__ import annotations
 
@@ -8,142 +15,162 @@ import random
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-# Bump when preview fixture shape or namespace layout changes intentionally.
+# Bump when preview fixture shape or namespace derivation changes intentionally.
+# Document baseline regeneration in docs/SCREENSHOTS.md when incrementing.
 PREVIEW_FIXTURE_VERSION = "1"
 
-# Stable CI / screenshot defaults (never derived from wall-clock time).
-DEFAULT_PREVIEW_SEED = 338
-DEFAULT_PREVIEW_REFERENCE_TIME = datetime(2026, 7, 14, 12, 0, 0, tzinfo=timezone.utc)
+# Stable checked-in defaults for standard screenshot runs (issue #338).
+DEFAULT_PREVIEW_ROOT_SEED = 3_382_026_071_600
 DEFAULT_PREVIEW_REFERENCE_TIME_ISO = "2026-07-14T12:00:00+00:00"
 
 ENV_PREVIEW_SEED = "ADMIN_PREVIEW_SEED"
 ENV_PREVIEW_REFERENCE_TIME = "ADMIN_PREVIEW_REFERENCE_TIME"
+ENV_PREVIEW_FIXTURE_VERSION = "ADMIN_PREVIEW_FIXTURE_VERSION"
 
 
 class PreviewContextError(ValueError):
-    """Raised when preview seed or reference time configuration is invalid."""
+    """Raised when preview reproducibility configuration is invalid."""
 
 
 @dataclass(frozen=True)
 class PreviewContext:
-    """Frozen root seed, reference timestamp, and fixture schema version."""
+    """Validated preview fixture context for deterministic mock data."""
 
     root_seed: int
-    reference_time: datetime
-    fixture_version: str = PREVIEW_FIXTURE_VERSION
-
-    def as_manifest_dict(self) -> dict[str, str | int]:
-        return {
-            "fixture_version": self.fixture_version,
-            "root_seed": self.root_seed,
-            "reference_time": self.reference_time.isoformat(),
-        }
+    reference_now: datetime
+    fixture_version: str
 
 
-_preview_context: PreviewContext | None = None
-
-
-def reset_preview_context() -> None:
-    """Clear cached context (tests only)."""
-    global _preview_context
-    _preview_context = None
-
-
-def parse_preview_seed(raw: str | None) -> int:
-    """Parse ``ADMIN_PREVIEW_SEED``; raise ``PreviewContextError`` when malformed."""
+def parse_root_seed(raw: str) -> int:
+    """Parse a root seed from an environment value."""
     text = (raw or "").strip()
     if not text:
-        raise PreviewContextError("ADMIN_PREVIEW_SEED is empty")
+        raise PreviewContextError("preview root seed is empty")
     try:
         return int(text)
     except ValueError:
-        # Stable string seeds (legacy tests) map to a deterministic int.
-        digest = hashlib.sha256(text.encode()).digest()
-        return int.from_bytes(digest[:8], "big") & 0x7FFFFFFFFFFFFFFF
+        digest = hashlib.sha256(text.encode("utf-8")).digest()
+        return int.from_bytes(digest[:8], "big", signed=False)
 
 
-def parse_preview_reference_time(raw: str | None) -> datetime:
-    """Parse ``ADMIN_PREVIEW_REFERENCE_TIME`` as timezone-aware ISO-8601."""
+def parse_reference_time(raw: str) -> datetime:
+    """Parse a timezone-aware reference timestamp from ISO-8601."""
     text = (raw or "").strip()
     if not text:
-        raise PreviewContextError("ADMIN_PREVIEW_REFERENCE_TIME is empty")
+        raise PreviewContextError("preview reference time is empty")
     normalized = text.replace("Z", "+00:00")
     try:
         parsed = datetime.fromisoformat(normalized)
     except ValueError as exc:
         raise PreviewContextError(
-            f"ADMIN_PREVIEW_REFERENCE_TIME is not valid ISO-8601: {text!r}"
+            f"invalid preview reference time {raw!r}: expected ISO-8601"
         ) from exc
     if parsed.tzinfo is None:
         raise PreviewContextError(
-            "ADMIN_PREVIEW_REFERENCE_TIME must include a timezone offset"
+            f"preview reference time {raw!r} must be timezone-aware"
         )
     return parsed.astimezone(timezone.utc)
 
 
-def load_preview_context(*, use_defaults: bool = True) -> PreviewContext:
-    """Load preview context from env or documented stable defaults."""
-    raw_seed = os.environ.get(ENV_PREVIEW_SEED)
-    raw_time = os.environ.get(ENV_PREVIEW_REFERENCE_TIME)
+def derive_fixture_seed(
+    *,
+    root_seed: int,
+    namespace: str,
+    fixture_version: str,
+) -> int:
+    """Derive an order-independent per-fixture seed.
 
-    if raw_seed is None or not str(raw_seed).strip():
-        if not use_defaults:
-            raise PreviewContextError(
-                f"{ENV_PREVIEW_SEED} is required when defaults are disabled"
-            )
-        seed = DEFAULT_PREVIEW_SEED
-    else:
-        seed = parse_preview_seed(str(raw_seed))
+    Construction (documented for reproducibility reviews):
 
-    if raw_time is None or not str(raw_time).strip():
-        if not use_defaults:
-            raise PreviewContextError(
-                f"{ENV_PREVIEW_REFERENCE_TIME} is required when defaults are disabled"
-            )
-        reference_time = DEFAULT_PREVIEW_REFERENCE_TIME
-    else:
-        reference_time = parse_preview_reference_time(str(raw_time))
-
-    return PreviewContext(root_seed=seed, reference_time=reference_time)
-
-
-def get_preview_context() -> PreviewContext:
-    """Return the process-wide preview context (lazy-loaded from env/defaults)."""
-    global _preview_context
-    if _preview_context is None:
-        _preview_context = load_preview_context()
-    return _preview_context
-
-
-def derive_namespace_seed(root_seed: int, namespace: str) -> int:
-    """Derive a local ``random.Random`` seed from root seed + stable namespace.
-
-    Construction: ``SHA-256(f"{root_seed}\\0{namespace}")`` truncated to 63 bits.
-    Unrelated namespaces do not share RNG state or perturb one another.
+    ``SHA-256(f"{root_seed}:{fixture_version}:{namespace}")`` → first 8 bytes as
+    unsigned big-endian integer, passed to ``random.Random``.
     """
-    payload = f"{root_seed}\0{namespace}".encode()
-    digest = hashlib.sha256(payload).digest()
-    return int.from_bytes(digest[:8], "big") & 0x7FFFFFFFFFFFFFFF
+    if not namespace:
+        raise PreviewContextError("preview fixture namespace is empty")
+    payload = f"{root_seed}:{fixture_version}:{namespace}"
+    digest = hashlib.sha256(payload.encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], "big", signed=False)
 
 
-def preview_rng(namespace: str, *, context: PreviewContext | None = None) -> random.Random:
-    """Order-independent RNG for one fixture namespace."""
-    ctx = context or get_preview_context()
-    return random.Random(derive_namespace_seed(ctx.root_seed, namespace))
+def load_preview_context(
+    *,
+    seed: str | None = None,
+    reference_time: str | None = None,
+    fixture_version: str | None = None,
+    strict: bool = False,
+) -> PreviewContext:
+    """Load preview context from explicit values or environment.
+
+    When ``strict`` is False (default), missing seed/time use documented stable
+    defaults. When ``strict`` is True, missing values raise ``PreviewContextError``.
+    Malformed explicit or environment values always raise.
+    """
+    seed_raw = seed if seed is not None else os.environ.get(ENV_PREVIEW_SEED)
+    time_raw = (
+        reference_time
+        if reference_time is not None
+        else os.environ.get(ENV_PREVIEW_REFERENCE_TIME)
+    )
+    version_raw = (
+        fixture_version
+        if fixture_version is not None
+        else os.environ.get(ENV_PREVIEW_FIXTURE_VERSION)
+    )
+
+    if seed_raw is None or not str(seed_raw).strip():
+        if strict:
+            raise PreviewContextError(f"{ENV_PREVIEW_SEED} is required")
+        seed_raw = str(DEFAULT_PREVIEW_ROOT_SEED)
+    if time_raw is None or not str(time_raw).strip():
+        if strict:
+            raise PreviewContextError(f"{ENV_PREVIEW_REFERENCE_TIME} is required")
+        time_raw = DEFAULT_PREVIEW_REFERENCE_TIME_ISO
+    if version_raw is None or not str(version_raw).strip():
+        version_raw = PREVIEW_FIXTURE_VERSION
+
+    return PreviewContext(
+        root_seed=parse_root_seed(str(seed_raw)),
+        reference_now=parse_reference_time(str(time_raw)),
+        fixture_version=str(version_raw).strip(),
+    )
 
 
-def preview_now(*, context: PreviewContext | None = None) -> datetime:
-    """Frozen reference timestamp for time-dependent preview builders."""
-    ctx = context or get_preview_context()
-    return ctx.reference_time
+def fixture_rng(
+    namespace: str,
+    *,
+    context: PreviewContext | None = None,
+) -> random.Random:
+    """Return a namespace-local RNG derived from the preview context."""
+    ctx = context or load_preview_context()
+    seed = derive_fixture_seed(
+        root_seed=ctx.root_seed,
+        namespace=namespace,
+        fixture_version=ctx.fixture_version,
+    )
+    return random.Random(seed)
 
 
-def preview_reproducibility_env() -> dict[str, str]:
-    """Env vars for deterministic preview server startup (screenshot launcher)."""
+def fixture_now(*, context: PreviewContext | None = None) -> datetime:
+    """Return the frozen reference timestamp for preview fixture builders."""
+    ctx = context or load_preview_context()
+    return ctx.reference_now
+
+
+def preview_reproducibility_metadata(
+    *,
+    head_sha: str | None = None,
+    browser_version: str | None = None,
+    viewports: list[dict[str, object]] | None = None,
+    context: PreviewContext | None = None,
+) -> dict[str, object]:
+    """Non-secret reproducibility fields for screenshot evidence manifests."""
+    ctx = context or load_preview_context()
+    sha = (head_sha or os.environ.get("GITHUB_SHA") or "").strip() or None
     return {
-        ENV_PREVIEW_SEED: os.environ.get(ENV_PREVIEW_SEED) or str(DEFAULT_PREVIEW_SEED),
-        ENV_PREVIEW_REFERENCE_TIME: (
-            os.environ.get(ENV_PREVIEW_REFERENCE_TIME)
-            or DEFAULT_PREVIEW_REFERENCE_TIME_ISO
-        ),
+        "preview_fixture_version": ctx.fixture_version,
+        "preview_root_seed": ctx.root_seed,
+        "preview_reference_time": ctx.reference_now.isoformat(),
+        "head_sha": sha,
+        "browser_version": (browser_version or "").strip() or None,
+        "viewports": viewports or [],
     }
