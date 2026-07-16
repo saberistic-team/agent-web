@@ -63,8 +63,8 @@ def _rule_block(css: str, selector_fragment: str) -> str:
 
 def _preview_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
     monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     return client
 
@@ -398,7 +398,7 @@ def test_contacts_list_renders_themed_archived_checkbox() -> None:
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_preview_convert_existing_company_radio_post(
+def test_preview_convert_existing_company_radio_post_denied(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _preview_client(monkeypatch)
@@ -417,10 +417,10 @@ def test_preview_convert_existing_company_radio_post(
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_preview_convert_keyboard_existing_contact_radio_post(
+def test_preview_convert_keyboard_existing_contact_radio_post_denied(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Preview mode denies POST mutations centrally (#331)."""
+    """Unsafe preview POST is denied centrally before route handlers run."""
     _preview_client(monkeypatch)
     response = client.post(
         "/admin/briefs/4/convert",

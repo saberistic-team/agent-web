@@ -30,9 +30,12 @@ from app.analytics_ingest import (
     IngestRejectReason,
     ingest_browser_event,
 )
-from app.admin_preview_guard import AdminPreviewReadOnlyMiddleware
+from app.admin_preview_guard import (
+    AdminPreviewConfigError,
+    AdminPreviewReadOnlyMiddleware,
+    validate_admin_preview_config,
+)
 from app.admin_security import AdminSecurityConfigError, validate_admin_security_config
-from app.preview_config import PreviewConfigError, validate_preview_config
 from app.client_source import admin_proxy_trust_summary, client_source_policy_summary, resolve_client_source
 from app.config import get_settings
 from app.models import BriefCreateRequest, BriefCreateResponse
@@ -242,13 +245,16 @@ def _send_paid_notifications(
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
-    if settings.admin_preview_mode:
-        try:
-            validate_preview_config(settings)
-        except PreviewConfigError:
-            logger.exception("Admin preview configuration is invalid")
-            raise
-    if settings.database_configured and not settings.admin_preview_mode:
+    try:
+        validate_admin_preview_config(settings)
+    except AdminPreviewConfigError:
+        logger.exception("Admin preview configuration is invalid")
+        raise
+    if settings.admin_preview_enabled:
+        logger.info("admin preview mode active — /admin mutations disabled; database unused")
+        yield
+        return
+    if settings.database_configured:
         try:
             validate_admin_security_config(settings)
         except AdminSecurityConfigError:
@@ -256,7 +262,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             raise
         db.init_db(settings.database_url)
         logger.info("database schema ready")
-    elif not settings.database_configured:
+    else:
         logger.warning("DATABASE_URL not set — brief persistence disabled")
     yield
 
@@ -265,6 +271,7 @@ app = FastAPI(title="agent-web", version="0.3.0", lifespan=lifespan)
 app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
 app.include_router(admin_pipeline_router)
 app.include_router(admin_router)
+app.add_middleware(AdminPreviewReadOnlyMiddleware)
 
 
 @app.exception_handler(AdminLoginRequired)
@@ -293,9 +300,6 @@ async def redirect_www_to_apex(request: Request, call_next):
         target = apex_redirect_url(request.url.path, request.url.query)
         return RedirectResponse(url=target, status_code=301)
     return await call_next(request)
-
-
-app.add_middleware(AdminPreviewReadOnlyMiddleware)
 
 
 @app.exception_handler(StarletteHTTPException)

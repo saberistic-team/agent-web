@@ -4,7 +4,6 @@ from screenshot_deploy import (
     OVERFLOW_SELECTORS,
     VIEWPORTS,
     admin_screenshot_session_cookie,
-    build_preview_server_env,
     discover_screenshot_routes,
     format_overflow_hard_fail,
     is_admin_nav_evidence_route,
@@ -139,19 +138,23 @@ def test_admin_screenshot_session_cookie() -> None:
     assert cookie["value"] == "preview-screenshot-session"
 
 
-def test_build_preview_server_env_never_inherits_database_url() -> None:
+def test_build_preview_child_env_isolated_from_parent_secrets() -> None:
+    from screenshot_deploy import PREVIEW_CLEARED_SECRETS, build_preview_child_env
+
     parent = {
         "PATH": "/usr/bin",
-        "DATABASE_URL": "postgresql://prod:secret@db.example/app",
-        "STRIPE_SECRET_KEY": "sk_live_x",
+        "DATABASE_URL": "postgresql://parent/db",
+        "STRIPE_SECRET_KEY": "sk_parent",
+        "RESEND_API_KEY": "re_parent",
+        "GITHUB_TOKEN": "ghp_parent",
     }
-    env = build_preview_server_env(
-        base_url="http://127.0.0.1:8765",
-        parent_environ=parent,
-    )
-    assert env["DATABASE_URL"] == ""
-    assert "STRIPE_SECRET_KEY" not in env
+    env = build_preview_child_env(port=8765, parent_environ=parent)
+    assert env["BASE_URL"] == "http://127.0.0.1:8765"
     assert env["ADMIN_PREVIEW_MODE"] == "1"
+    for key in PREVIEW_CLEARED_SECRETS:
+        assert env.get(key) == ""
+    assert "GITHUB_TOKEN" not in env
+    assert "ghp_parent" not in env.values()
 
 
 def test_discover_screenshot_routes_public_by_default() -> None:

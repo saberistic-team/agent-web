@@ -22,6 +22,14 @@ Playwright can open admin pages **without login**.
 - Enabled only for local/`127.0.0.1` preview (CI screenshot job).
 - Hard-disabled when `BASE_URL` contains `saberistic.com` even if the env
   flag is set — never open admin without auth in production.
+- **Database-isolated:** the screenshot launcher builds a minimal child-process
+  environment via ``build_preview_child_env()`` — it never inherits ``DATABASE_URL``
+  or production Stripe/email/analytics credentials from the parent shell.
+- **Read-only:** startup rejects ``ADMIN_PREVIEW_MODE`` when any production
+  data-store or provider secret is configured; while preview is active, a central
+  ASGI guard in ``app/admin_preview_guard.py`` allows only ``GET``/``HEAD`` on
+  ``/admin/*`` and returns ``405 Method Not Allowed`` (with ``Allow: GET, HEAD``)
+  for every other method before request bodies are parsed.
 - Admin shell pages fill with **mock intake/CRM data with randomization**
   (dashboard stats, section tables, **briefs list/detail**, etc.) so screenshots
   look like a live operator shell — never real production rows and never an
@@ -29,24 +37,6 @@ Playwright can open admin pages **without login**.
   `ADMIN_PREVIEW_SEED` makes mocks stable in tests. Builder must extend
   `app/admin_preview.py` whenever it adds a page (see `AGENTS/builder.md`).
 - See [ADMIN_AUTH.md](ADMIN_AUTH.md).
-
-### Preview safety (database-isolated, read-only)
-
-The PR preview server is **not** a staging environment. It must never read from or
-mutate a configured database, even though it returns a synthetic administrator
-session for screenshot capture.
-
-| Invariant | Enforcement |
-|-----------|-------------|
-| No inherited secrets | `scripts/screenshot_deploy.py::build_preview_server_env` builds a **minimal** child env (whitelist only). Parent `DATABASE_URL`, Stripe, email, analytics, and similar credentials are **never** copied. |
-| Startup rejection | `app/preview_config.py::validate_preview_config` fails uvicorn startup when `ADMIN_PREVIEW_MODE` is set together with `DATABASE_URL` or production provider secrets. Preview lifespan skips `db.init_db`. |
-| Read-only `/admin` | `app/admin_preview_guard.py::AdminPreviewReadOnlyMiddleware` allows only `GET` and `HEAD` on `/admin` while preview is enabled. Every other method returns **405 Method Not Allowed** with `Allow: GET, HEAD` **before** body parsing or handler side effects. |
-| Route-level preview POST simulations | Existing branches (brief convert, pipeline, rollback) may still render GET fixtures; they are **not** the security boundary. |
-| Production unchanged | When preview is disabled (`admin_preview_enabled` is false), authentication, CSRF, and database mutations behave exactly as before. |
-
-Tests: `tests/test_admin_preview_security.py` enumerates registered `/admin` routes
-and denies every unsafe method under preview, with monkeypatched DB/provider entry
-points to prove zero side effects.
 
 **Production renderer routes** (preview uses the same page functions as authenticated
 production, with deterministic fixtures from `app/admin_preview.py`):
