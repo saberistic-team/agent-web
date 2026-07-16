@@ -71,13 +71,9 @@ PREVIEW_BRIEF_CONVERTED_ID = 3
 # Brief convert preview with explicit domain/email matches for Reviewer shots.
 PREVIEW_BRIEF_CONVERT_MATCHES_ID = 4
 # Brief convert preview with archived-only contact identity match (#276).
-PREVIEW_BRIEF_CONVERT_ARCHIVED_ONLY_ID = 5
+PREVIEW_BRIEF_CONVERT_ARCHIVED_MATCH_ID = 5
 PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR = (
     "Select an existing company match or choose to create a new company."
-)
-PREVIEW_BRIEF_CONVERT_ARCHIVED_ACK_ERROR = (
-    "Confirm you intend to create a new contact despite the archived identity "
-    "with this email."
 )
 # Archived contact id for restore-conflict screenshots in ADMIN_PREVIEW_MODE.
 PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID = UUID(
@@ -1056,6 +1052,14 @@ def build_preview_brief_rows(
             payment_currency = "usd"
             stripe_promotion_code_id = "promo_preview_25off"
             stripe_coupon_id = "coupon_preview_25off"
+        elif brief_id == PREVIEW_BRIEF_CONVERT_ARCHIVED_MATCH_ID:
+            status = "paid"
+            paid_at = created + timedelta(minutes=rng.randint(5, 90))
+            session_id = f"cs_preview_{rng.randint(100000, 999999)}"
+            intent_id = f"pi_preview_{rng.randint(100000, 999999)}"
+            payment_subtotal_cents = 20_000
+            payment_amount_cents = 20_000
+            payment_currency = "usd"
         elif status == "paid":
             paid_at = created + timedelta(minutes=rng.randint(5, 90))
             session_id = f"cs_preview_{rng.randint(100000, 999999)}"
@@ -1167,7 +1171,7 @@ def preview_brief_convert_matches(
     company_matches: list[dict[str, object]] = []
     contact_matches: list[dict[str, object]] = []
     archived_contact_match: dict[str, object] | None = None
-    if brief_id in (1, PREVIEW_BRIEF_CONVERT_MATCHES_ID, PREVIEW_BRIEF_CONVERT_ARCHIVED_ONLY_ID):
+    if brief_id in (1, PREVIEW_BRIEF_CONVERT_MATCHES_ID):
         company_matches.append(
             {
                 "id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
@@ -1183,13 +1187,13 @@ def preview_brief_convert_matches(
                 "company_id": company_matches[0]["id"] if company_matches else None,
             }
         )
-    if brief_id == PREVIEW_BRIEF_CONVERT_ARCHIVED_ONLY_ID:
+    if brief_id == PREVIEW_BRIEF_CONVERT_ARCHIVED_MATCH_ID:
         archived_contact_match = {
-            "id": str(PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID),
-            "full_name": "Jordan Lee (archived)",
+            "id": "eeeeeeee-eeee-eeee-eeee-eeeeeeeeee05",
+            "full_name": "Alex Nguyen (archived)",
             "email": proposal.get("contact_email"),
             "company_name": "Northwind Labs",
-            "archived_at": (datetime.now(timezone.utc) - timedelta(days=30)).isoformat(),
+            "archived_at": "2026-01-15T14:30:00+00:00",
         }
     return {
         "proposal": proposal,
@@ -1206,17 +1210,23 @@ def preview_brief_convert_post(
     contact_mode: str,
     selected_company_id: object,
     selected_contact_id: object,
-    acknowledge_archived_contact: bool = False,
+    acknowledge_archived_identity: bool = False,
 ) -> str | None:
     """Simulate validation errors for preview POST; None means success."""
+    from app.brief_conversion import ARCHIVED_CONTACT_ACK_REQUIRED_MESSAGE
+
     if brief_id == PREVIEW_BRIEF_CONVERT_MATCHES_ID:
         if company_mode == "existing" and selected_company_id is None:
             return "Select an existing company match or choose to create a new company."
         if contact_mode == "existing" and selected_contact_id is None:
             return "Select the existing contact match or choose to create a new contact."
-    if brief_id == PREVIEW_BRIEF_CONVERT_ARCHIVED_ONLY_ID:
-        if contact_mode == "new" and not acknowledge_archived_contact:
-            return PREVIEW_BRIEF_CONVERT_ARCHIVED_ACK_ERROR
+    if brief_id == PREVIEW_BRIEF_CONVERT_ARCHIVED_MATCH_ID:
+        if contact_mode not in {"new", "existing"}:
+            return "Choose whether to create or link a contact."
+        if contact_mode == "new":
+            matches = preview_brief_convert_matches(brief_id, price_cents=20_000)
+            if matches.get("archived_contact_match") and not acknowledge_archived_identity:
+                return ARCHIVED_CONTACT_ACK_REQUIRED_MESSAGE
     if brief_id == PREVIEW_BRIEF_CONVERTED_ID:
         return None
     return None

@@ -21,6 +21,7 @@ from app.acquisition_pipeline import (
 )
 from app.actor_context import ActorContext
 from app.brief_conversion import (
+    ARCHIVED_CONTACT_ACK_REQUIRED_MESSAGE,
     BriefConversionError,
     BriefConversionIdempotencyRace,
     BriefConversionValidationError,
@@ -252,7 +253,7 @@ class CrmService:
         contact_choice: str,
         selected_company_id: UUID | None = None,
         selected_contact_id: UUID | None = None,
-        acknowledge_archived_contact: bool = False,
+        acknowledge_archived_identity: bool = False,
     ) -> dict[str, Any]:
         """Create or link CRM records and pipeline state for one project brief."""
         brief_id = int(brief["id"])
@@ -271,16 +272,18 @@ class CrmService:
             else []
         )
         contact_match = self._repos.contacts.get_active_by_email(conn, email)
-        archived_contact_match = (
-            None if contact_match else self._repos.contacts.get_archived_by_email(conn, email)
+        archived_match = (
+            None
+            if contact_match
+            else self._repos.contacts.get_archived_by_email(conn, email)
         )
         self._validate_conversion_choices(
             company_choice=company_choice,
             contact_choice=contact_choice,
             company_matches=company_matches,
             contact_match=contact_match,
-            archived_contact_match=archived_contact_match,
-            acknowledge_archived_contact=acknowledge_archived_contact,
+            archived_match=archived_match,
+            acknowledge_archived_identity=acknowledge_archived_identity,
             selected_company_id=selected_company_id,
             selected_contact_id=selected_contact_id,
         )
@@ -608,8 +611,8 @@ class CrmService:
         contact_choice: str,
         company_matches: list[dict[str, Any]],
         contact_match: dict[str, Any] | None,
-        archived_contact_match: dict[str, Any] | None = None,
-        acknowledge_archived_contact: bool = False,
+        archived_match: dict[str, Any] | None = None,
+        acknowledge_archived_identity: bool = False,
         selected_company_id: UUID | None,
         selected_contact_id: UUID | None,
     ) -> None:
@@ -617,6 +620,10 @@ class CrmService:
             raise BriefConversionValidationError("Choose whether to create or link a company.")
         if contact_choice not in {"new", "existing"}:
             raise BriefConversionValidationError("Choose whether to create or link a contact.")
+
+        if archived_match is not None and contact_choice == "new":
+            if not acknowledge_archived_identity:
+                raise BriefConversionValidationError(ARCHIVED_CONTACT_ACK_REQUIRED_MESSAGE)
 
         if company_matches and company_choice == "existing":
             if selected_company_id is None:
@@ -643,17 +650,6 @@ class CrmService:
         elif contact_match is not None and contact_choice == "new":
             raise BriefConversionValidationError(
                 "A contact with this email already exists — link the existing contact."
-            )
-
-        if (
-            archived_contact_match is not None
-            and contact_match is None
-            and contact_choice == "new"
-            and not acknowledge_archived_contact
-        ):
-            raise BriefConversionValidationError(
-                "Confirm you intend to create a new contact despite the archived identity "
-                "with this email."
             )
 
         if company_choice == "existing" and selected_company_id is None:

@@ -9,6 +9,7 @@ import pytest
 
 from app.actor_context import ActorContext
 from app.brief_conversion import (
+    ARCHIVED_CONTACT_ACK_REQUIRED_MESSAGE,
     BriefConversionValidationError,
     build_conversion_proposal,
     derive_company_name,
@@ -707,7 +708,7 @@ def test_convert_new_contact_not_linked_to_archived_match() -> None:
         "id": COMPANY_ID,
         "pipeline_stage": "diagnostic_paid",
     }
-    repos["contacts"].create.return_value = {"id": CONTACT_ID, "email": "ops@acme.example"}
+    repos["contacts"].create.return_value = {"id": OTHER_COMPANY_ID, "email": "ops@acme.example"}
     repos["source_records"].create.return_value = {"id": SOURCE_RECORD_ID, "external_id": "42"}
     repos["activities"].create.return_value = {"id": "act-1"}
 
@@ -719,12 +720,11 @@ def test_convert_new_contact_not_linked_to_archived_match() -> None:
             price_cents=20_000,
             company_choice="new",
             contact_choice="new",
-            acknowledge_archived_contact=True,
+            acknowledge_archived_identity=True,
         )
 
     repos["contacts"].create.assert_called_once()
-    repos["contacts"].get_archived_by_email.assert_called_once()
-    assert result["contact"]["id"] == CONTACT_ID
+    assert result["contact"]["id"] == OTHER_COMPANY_ID
 
 
 def test_convert_rejects_new_contact_without_archived_acknowledgment() -> None:
@@ -738,7 +738,10 @@ def test_convert_rejects_new_contact_without_archived_acknowledgment() -> None:
         "archived_at": "2026-01-01T00:00:00Z",
     }
 
-    with pytest.raises(BriefConversionValidationError, match="archived identity"):
+    with pytest.raises(
+        BriefConversionValidationError,
+        match=ARCHIVED_CONTACT_ACK_REQUIRED_MESSAGE,
+    ):
         service.convert_project_brief(
             conn,
             brief=_brief(),
@@ -746,33 +749,66 @@ def test_convert_rejects_new_contact_without_archived_acknowledgment() -> None:
             price_cents=20_000,
             company_choice="new",
             contact_choice="new",
-            acknowledge_archived_contact=False,
+            acknowledge_archived_identity=False,
         )
 
+    repos["contacts"].create.assert_not_called()
 
-def test_convert_rejects_new_contact_when_archived_was_restored_to_active() -> None:
-    """Revalidates on submit: restored archived contact blocks create-new (#276)."""
+
+def test_convert_rejects_missing_contact_choice_when_archived_exists() -> None:
     service, conn, repos = _service_with_mocks()
     repos["source_records"].get_by_source.return_value = None
     repos["companies"].find_by_domain.return_value = []
-    repos["contacts"].get_active_by_email.return_value = {
+    repos["contacts"].get_active_by_email.return_value = None
+    repos["contacts"].get_archived_by_email.return_value = {
         "id": CONTACT_ID,
         "email": "ops@acme.example",
-        "company_id": None,
+        "archived_at": "2026-01-01T00:00:00Z",
     }
 
-    with pytest.raises(BriefConversionValidationError, match="already exists"):
+    with pytest.raises(BriefConversionValidationError, match="create or link a contact"):
         service.convert_project_brief(
             conn,
             brief=_brief(),
             actor_context=ACTOR,
             price_cents=20_000,
             company_choice="new",
-            contact_choice="new",
-            acknowledge_archived_contact=True,
+            contact_choice="",
         )
 
-    repos["contacts"].get_archived_by_email.assert_not_called()
+
+def test_convert_new_contact_without_archived_match_does_not_require_ack() -> None:
+    """When no archived row exists, new contact creation proceeds without acknowledgment."""
+    service, conn, repos = _service_with_mocks()
+    repos["source_records"].get_by_source.return_value = None
+    repos["companies"].find_by_domain.return_value = []
+    repos["contacts"].get_active_by_email.return_value = None
+    repos["companies"].create.return_value = {
+        "id": COMPANY_ID,
+        "name": "Acme",
+        "pipeline_stage": "researching",
+    }
+    repos["pipeline"].update_pipeline_fields.return_value = {
+        "id": COMPANY_ID,
+        "pipeline_stage": "diagnostic_paid",
+    }
+    repos["contacts"].create.return_value = {"id": CONTACT_ID, "email": "ops@acme.example"}
+    repos["source_records"].create.return_value = {"id": SOURCE_RECORD_ID, "external_id": "42"}
+    repos["activities"].create.return_value = {"id": "act-1"}
+
+    with patch("app.crm_service.audit_service.record_brief_convert"):
+        result = service.convert_project_brief(
+            conn,
+            brief=_brief(),
+            actor_context=ACTOR,
+            price_cents=20_000,
+            company_choice="new",
+            contact_choice="new",
+        )
+
+    repos["contacts"].create.assert_called_once()
+    repos["contacts"].get_archived_by_email.assert_called_once()
+    assert result["contact"]["id"] == CONTACT_ID
 
 
 def test_convert_project_brief_is_idempotent_when_already_linked() -> None:

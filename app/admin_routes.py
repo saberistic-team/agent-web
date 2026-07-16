@@ -202,10 +202,14 @@ def _contact_form_payload(**values: object) -> dict[str, object]:
 
 
 def _parse_link_choice(raw: str | None) -> tuple[str, UUID | None]:
-    """Parse ``new`` or ``existing:{uuid}`` form values."""
-    if not raw or raw.strip() == "new":
-        return "new", None
+    """Parse ``new``, ``existing:{uuid}``, or empty (no selection)."""
+    if raw is None:
+        return "", None
     text = raw.strip()
+    if text == "":
+        return "", None
+    if text == "new":
+        return "new", None
     if text.startswith("existing:"):
         try:
             return "existing", UUID(text.split(":", 1)[1])
@@ -1665,8 +1669,8 @@ def admin_brief_convert_confirm(
     brief_id: str,
     csrf_token: str = Form(...),
     company_choice: str = Form(default="new"),
-    contact_choice: str = Form(default="new"),
-    acknowledge_archived_contact: str = Form(default=""),
+    contact_choice: str = Form(default=""),
+    acknowledge_archived_identity: str = Form(default=""),
     page: int = 1,
     q: str | None = Form(default=None),
     status: str | None = Form(default=None),
@@ -1684,6 +1688,7 @@ def admin_brief_convert_confirm(
 
     company_mode, selected_company_id = _parse_link_choice(company_choice)
     contact_mode, selected_contact_id = _parse_link_choice(contact_choice)
+    acknowledge_archived = acknowledge_archived_identity == "1"
     detail_url = f"/admin/briefs/{parsed_brief_id}?converted=1"
 
     if settings.admin_preview_enabled:
@@ -1695,7 +1700,7 @@ def admin_brief_convert_confirm(
             contact_mode=contact_mode,
             selected_company_id=selected_company_id,
             selected_contact_id=selected_contact_id,
-            acknowledge_archived_contact=acknowledge_archived_contact == "1",
+            acknowledge_archived_identity=acknowledge_archived,
         )
         if error:
             return RedirectResponse(
@@ -1725,7 +1730,7 @@ def admin_brief_convert_confirm(
                 contact_choice=contact_mode,
                 selected_company_id=selected_company_id,
                 selected_contact_id=selected_contact_id,
-                acknowledge_archived_contact=acknowledge_archived_contact == "1",
+                acknowledge_archived_identity=acknowledge_archived,
             )
     except BriefConversionValidationError as exc:
         return RedirectResponse(

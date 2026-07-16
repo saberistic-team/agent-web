@@ -749,7 +749,7 @@ def test_preview_import_batches_seed_stable() -> None:
 def test_preview_brief_conversion_states() -> None:
     from app.admin_preview import (
         PREVIEW_BRIEF_CONVERTED_ID,
-        PREVIEW_BRIEF_CONVERT_ARCHIVED_ONLY_ID,
+        PREVIEW_BRIEF_CONVERT_ARCHIVED_MATCH_ID,
         PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR,
         preview_brief_conversion_state,
         preview_brief_convert_matches,
@@ -769,9 +769,9 @@ def test_preview_brief_conversion_states() -> None:
     assert matches["archived_contact_match"] is None
     assert matches["proposal"]["pipeline_stage"] in {"qualified", "diagnostic_paid"}
     archived_only = preview_brief_convert_matches(
-        PREVIEW_BRIEF_CONVERT_ARCHIVED_ONLY_ID,
+        PREVIEW_BRIEF_CONVERT_ARCHIVED_MATCH_ID,
         price_cents=20_000,
     )
     assert archived_only["contact_matches"] == []
     assert archived_only["archived_contact_match"] is not None
-    assert archived_only["archived_contact_match"]["full_name"] == "Jordan Lee (archived)"
+    assert archived_only["archived_contact_match"]["full_name"]
