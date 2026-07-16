@@ -129,6 +129,9 @@ PREVIEW_COMPANY_ARCHIVED_ID = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa02")
 PREVIEW_CONTACT_POPULATED_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
 PREVIEW_CONTACT_ARCHIVED_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbc")
 PREVIEW_COMPANY_VALIDATION_ERROR = "Name must be at least 2 characters."
+PREVIEW_PIPELINE_EXPECTED_VALUE_ERROR = (
+    "Enter a whole number of cents (0 or greater)."
+)
 _SECTION_COLUMNS: dict[str, tuple[str, ...]] = {
     "/admin/companies": ("Company", "Category", "Stage", "Target", "Verified"),
     "/admin/contacts": ("Name", "Roles", "Company", "Email", "Last touch"),

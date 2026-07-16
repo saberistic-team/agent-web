@@ -700,6 +700,14 @@ def test_preview_company_contact_routes_return_expected_status(
     assert "Log activity" in pipeline_detail.text
     assert "Stage history" in pipeline_detail.text
 
+    pipeline_validation = client.get(
+        f"/admin/pipeline/{PREVIEW_PIPELINE_COMPANY_IDS[0]}"
+        "?error=validation&focus=expected_value_cents",
+        cookies={"admin_session": "preview-screenshot-session"},
+    )
+    assert pipeline_validation.status_code == 200
+    assert 'id="expected_value_cents-error"' in pipeline_validation.text
+
 
 @pytest.mark.unit
 def test_preview_fixture_id_sets_cover_screenshot_matrix() -> None:
