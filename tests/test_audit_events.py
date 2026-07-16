@@ -11,6 +11,7 @@ from uuid import UUID
 from unittest.mock import MagicMock, patch
 
 import pytest
+from tests.preview_env import apply_admin_preview_env
 from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 
@@ -686,7 +687,7 @@ def test_render_admin_section_empty_state() -> None:
 def test_render_admin_page_preview_dashboard(monkeypatch: pytest.MonkeyPatch) -> None:
     from app import admin
 
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    apply_admin_preview_env(monkeypatch)
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
     html_out = admin.render_admin_page("/admin", admin_username=TEST_USERNAME)
     assert "Today&apos;s attention" in html_out

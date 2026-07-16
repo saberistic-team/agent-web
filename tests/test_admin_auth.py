@@ -11,6 +11,7 @@ from typing import Any, Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
+from tests.preview_env import apply_admin_preview_env
 from argon2 import PasswordHasher
 from fastapi import Request
 from fastapi.responses import RedirectResponse
@@ -554,8 +555,7 @@ def _request_with_client(host: str) -> Request:
 def test_admin_preview_mode_allows_dashboard_without_login(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    apply_admin_preview_env(monkeypatch, base_url="http://127.0.0.1:8765")
     monkeypatch.delenv("ADMIN_USERNAME", raising=False)
     monkeypatch.delenv("ADMIN_PASSWORD_HASH", raising=False)
     monkeypatch.delenv("ADMIN_SESSION_SECRET", raising=False)
@@ -575,6 +575,7 @@ def test_admin_preview_mode_disabled_on_production_base_url(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("APP_ENV", "production")
     monkeypatch.setenv("BASE_URL", "https://saberistic.com")
     settings = get_settings()
     assert settings.admin_preview_mode is True

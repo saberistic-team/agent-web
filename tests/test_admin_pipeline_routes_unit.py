@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 from uuid import UUID
 
 import pytest
+from tests.preview_env import apply_admin_preview_env
 from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 
@@ -166,8 +167,7 @@ def test_pipeline_stage_change_shows_transition_error(
 @pytest.mark.unit
 @pytest.mark.integration
 def test_pipeline_preview_mode_returns_mock_rows(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    apply_admin_preview_env(monkeypatch, base_url="http://127.0.0.1:8765")
     response = client.get("/admin/pipeline")
     assert response.status_code == 200
     assert "Preview data — not production" in response.text
@@ -230,8 +230,7 @@ def test_pipeline_activity_post_redirects(authenticated_admin: dict[str, Any]) -
 
 @pytest.mark.unit
 def test_pipeline_preview_detail_fixed_id(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    apply_admin_preview_env(monkeypatch, base_url="http://127.0.0.1:8765")
     company_id = PREVIEW_PIPELINE_COMPANY_IDS[0]
     response = client.get(f"/admin/pipeline/{company_id}")
     assert response.status_code == 200

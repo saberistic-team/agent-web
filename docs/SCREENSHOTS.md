@@ -19,9 +19,18 @@ post-deploy only.
 Pre-merge starts the PR preview server with `ADMIN_PREVIEW_MODE=1` so
 Playwright can open admin pages **without login**.
 
-- Enabled only for local/`127.0.0.1` preview (CI screenshot job).
-- Hard-disabled when `BASE_URL` contains `saberistic.com` even if the env
-  flag is set — never open admin without auth in production.
+- Enabled only when **all** invariants pass at startup: `APP_ENV` is
+  `development` or `preview`, `BASE_URL` is a positively validated loopback
+  origin (`http://localhost:<port>`, `http://127.0.0.1:<port>`, another
+  `127.0.0.0/8` literal, or bracketed `http://[::1]:<port>`), and
+  `SERVER_BIND_HOST` is loopback (`127.0.0.1` or `::1`). Lookalike domains,
+  staging/production hosts, credentials in the URL, wildcards, and malformed
+  ports fail closed — hostname substring checks are not used.
+- Startup **hard-fails** when the flag is combined with staging/production,
+  a public bind (`0.0.0.0` / `::`), or a non-loopback origin. Request
+  `Host` / forwarded-host headers cannot enable or disable the bypass.
+- The screenshot launcher binds `127.0.0.1` and sets `APP_ENV=preview` plus
+  `SERVER_BIND_HOST=127.0.0.1` automatically.
 - Admin shell pages fill with **mock intake/CRM data with randomization**
   (dashboard stats, section tables, **briefs list/detail**, etc.) so screenshots
   look like a live operator shell — never real production rows and never an
@@ -169,7 +178,9 @@ until merged.
 
 | Name | Type | Purpose |
 |------|------|---------|
-| `ADMIN_PREVIEW_MODE` | env | Set `1` on PR preview server only (script sets this) |
+| `ADMIN_PREVIEW_MODE` | env | Set `1` on PR preview server only (script sets this); requires loopback `BASE_URL`, `APP_ENV=preview`, and `SERVER_BIND_HOST=127.0.0.1` |
+| `APP_ENV` | env | `preview` on PR screenshot server; `production` on Render |
+| `SERVER_BIND_HOST` | env | Loopback bind required when preview bypass is active |
 | `DEPLOY_BASE_URL` | variable | default `https://saberistic.com` (post-deploy) |
 | `COVERAGE_ROOT` / `PR_HEAD_ROOT` | env | PR checkout root for branch screenshots |
 | `SCREENSHOTS_REQUIRED` | variable | default true for Reviewer when pages are affected |

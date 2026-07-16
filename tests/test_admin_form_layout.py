@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 
 import pytest
+from tests.preview_env import apply_admin_preview_env
 from fastapi.testclient import TestClient
 
 from app import admin_companies, admin_contacts, admin_pages, admin_research_pages
@@ -300,7 +301,7 @@ def test_editor_form_responsive_breakpoints(
 def test_preview_pipeline_detail_renders_editor_forms(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    apply_admin_preview_env(monkeypatch)
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     response = client.get(

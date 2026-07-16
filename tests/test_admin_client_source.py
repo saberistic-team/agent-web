@@ -47,6 +47,10 @@ def _settings(
         admin_username=base.admin_username,
         admin_password_hash=base.admin_password_hash,
         admin_session_secret=base.admin_session_secret,
+        app_environment=base.app_environment,
+        server_bind_host=base.server_bind_host,
+        admin_preview_mode=base.admin_preview_mode,
+        admin_preview_enabled=base.admin_preview_enabled,
         admin_trusted_proxy_cidrs=proxy_cidrs,
         admin_trusted_edge_cidrs=edge_cidrs,
     )

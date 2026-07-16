@@ -729,9 +729,14 @@ def local_preview_server(
             "(set COVERAGE_ROOT / PR_HEAD_ROOT to the checked-out PR head)"
         )
     base = f"http://127.0.0.1:{port}"
+    from app.admin_preview_security import validate_preview_server_bind
+
+    validate_preview_server_bind("127.0.0.1")
     env = {
         **os.environ,
         "BASE_URL": base,
+        "APP_ENV": "preview",
+        "SERVER_BIND_HOST": "127.0.0.1",
         # HTML pages must render without requiring production secrets.
         "DATABASE_URL": os.environ.get("DATABASE_URL") or "",
         # Open /admin without login for branch screenshot evidence only.

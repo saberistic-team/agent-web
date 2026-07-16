@@ -31,6 +31,11 @@ from app.analytics_ingest import (
     ingest_browser_event,
 )
 from app.admin_security import AdminSecurityConfigError, validate_admin_security_config
+from app.admin_preview_security import (
+    AdminPreviewConfigError,
+    log_admin_preview_posture,
+    validate_admin_preview_config,
+)
 from app.client_source import admin_proxy_trust_summary, client_source_policy_summary, resolve_client_source
 from app.config import get_settings
 from app.models import BriefCreateRequest, BriefCreateResponse
@@ -240,6 +245,12 @@ def _send_paid_notifications(
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
+    try:
+        validate_admin_preview_config(settings)
+    except AdminPreviewConfigError:
+        logger.exception("Admin preview configuration is invalid")
+        raise
+    log_admin_preview_posture(settings)
     if settings.database_configured:
         try:
             validate_admin_security_config(settings)

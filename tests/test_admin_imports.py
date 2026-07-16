@@ -7,6 +7,7 @@ from typing import Any, Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
+from tests.preview_env import apply_admin_preview_env
 from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 
@@ -98,7 +99,7 @@ def test_imports_preview_mode_shows_mock_preview(
     authenticated_admin: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    apply_admin_preview_env(monkeypatch)
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
     monkeypatch.setenv("BASE_URL", "http://localhost:8000")
 

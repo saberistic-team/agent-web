@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 
 import pytest
+from tests.preview_env import apply_admin_preview_env
 from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 
@@ -62,7 +63,7 @@ def _rule_block(css: str, selector_fragment: str) -> str:
 
 
 def _preview_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    apply_admin_preview_env(monkeypatch)
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     return client

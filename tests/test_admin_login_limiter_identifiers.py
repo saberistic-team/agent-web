@@ -64,6 +64,10 @@ def _settings(**overrides: Any) -> Settings:
         "admin_session_secret": TEST_SESSION_SECRET,
         "admin_login_limiter_secret": TEST_LIMITER_SECRET,
         "admin_login_limiter_previous_secret": "",
+        "app_environment": base.app_environment,
+        "server_bind_host": base.server_bind_host,
+        "admin_preview_mode": base.admin_preview_mode,
+        "admin_preview_enabled": base.admin_preview_enabled,
     }
     values.update(overrides)
     return Settings(**values)

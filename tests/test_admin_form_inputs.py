@@ -12,6 +12,7 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
+from tests.preview_env import apply_admin_preview_env
 from fastapi.testclient import TestClient
 
 from app import admin_companies, admin_contacts, admin_pages, admin_research_pages
@@ -376,7 +377,7 @@ def test_research_forms_render_source_url_and_confidence_inputs() -> None:
 def test_preview_pipeline_detail_includes_themed_text_like_inputs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    apply_admin_preview_env(monkeypatch)
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     response = client.get(
@@ -479,7 +480,7 @@ def test_brief_convert_page_renders_themed_selection_markup() -> None:
 def test_preview_brief_convert_includes_native_selection_controls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    apply_admin_preview_env(monkeypatch)
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     response = client.get(

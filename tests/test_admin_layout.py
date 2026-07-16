@@ -9,6 +9,7 @@ from typing import Any, Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
+from tests.preview_env import apply_admin_preview_env
 from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 
@@ -599,7 +600,7 @@ def test_public_home_unchanged() -> None:
 def test_admin_preview_mode_accepts_preview_session(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    apply_admin_preview_env(monkeypatch)
     monkeypatch.delenv("DATABASE_URL", raising=False)
     response = client.get(
         "/admin",
@@ -614,7 +615,7 @@ def test_admin_preview_mode_accepts_preview_session(
 def test_admin_preview_mode_renders_section_mock_data(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    apply_admin_preview_env(monkeypatch)
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     response = client.get("/admin/companies")

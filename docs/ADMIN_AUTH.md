@@ -174,7 +174,9 @@ access logs or metrics for operational visibility if needed.
 | `ADMIN_TRUSTED_PROXY_CIDRS` | Production | Comma-separated trusted proxy CIDRs/IPs for the immediate peer and in-chain hops (Render load balancer / private networks on Render; empty locally) |
 | `ADMIN_TRUSTED_EDGE_CIDRS` | Production | Comma-separated public edge CIDRs (Cloudflare) stripped from the right of `X-Forwarded-For` before selecting the client |
 | `ADMIN_TRUST_PROXY_HEADERS` | **Deprecated** | Legacy boolean; ignored for source resolution unless paired with explicit CIDR settings above. Remove after migration. |
-| `ADMIN_PREVIEW_MODE` | Optional | **CI / local only.** When `1`/`true`, protected `/admin` GET pages render without login and admin pages fill with **randomized mock data** for Playwright screenshots. Hard-disabled if `BASE_URL` contains `saberistic.com`. Never set on production Render. |
+| `ADMIN_PREVIEW_MODE` | Optional | **CI / local only.** When `1`/`true`, protected `/admin` GET pages render without login and admin pages fill with **randomized mock data** for Playwright screenshots. Requires `APP_ENV=development` or `APP_ENV=preview`, a positively validated loopback `BASE_URL` (`localhost`, `127.0.0.0/8`, or `::1` only — no hostname substring checks), and `SERVER_BIND_HOST` bound to loopback (`127.0.0.1` or `::1`). Startup fails when the flag is set with staging/production, a public bind address, or a non-loopback origin. Never set on production Render. |
+| `APP_ENV` | Recommended | Explicit deployment mode: `development`, `preview`, `staging`, or `production`. Admin preview bypass is allowed only in `development`/`preview`. Production should set `production`. |
+| `SERVER_BIND_HOST` | Preview | Loopback bind address (`127.0.0.1` or `::1`) required when `ADMIN_PREVIEW_MODE` is enabled. The screenshot launcher sets this automatically; public binds (`0.0.0.0`, `::`) fail startup. |
 | `ADMIN_PREVIEW_SEED` | Optional | Seed for mock admin randomization (stable screenshots/tests). |
 | `BASE_URL` | Yes | Public site URL; `https://…` enables `Secure` session cookies |
 

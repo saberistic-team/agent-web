@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 from uuid import UUID
 
 import pytest
+from tests.preview_env import apply_admin_preview_env
 from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 
@@ -336,7 +337,7 @@ def test_convert_get_renders_matches_for_unconverted_brief() -> None:
 @pytest.mark.unit
 @pytest.mark.integration
 def test_preview_mode_convert_pages_use_mock_data(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    apply_admin_preview_env(monkeypatch)
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
         with patch("app.admin_routes._session_csrf_for_forms", return_value=CSRF_TOKEN):
             detail = client.get("/admin/briefs/1")
@@ -418,7 +419,7 @@ def test_convert_preview_radio_labels_wrap_inputs_for_keyboard() -> None:
 @pytest.mark.unit
 @pytest.mark.integration
 def test_preview_convert_validation_error_renders_alert(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    apply_admin_preview_env(monkeypatch)
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
         with patch("app.admin_routes._session_csrf_for_forms", return_value=CSRF_TOKEN):
             response = client.get("/admin/briefs/4/convert?error=validation")

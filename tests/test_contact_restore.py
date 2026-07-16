@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 from uuid import UUID
 
 import pytest
+from tests.preview_env import apply_admin_preview_env
 from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 from psycopg.errors import UniqueViolation
@@ -346,7 +347,7 @@ def test_preview_contact_restore_conflict_stable_with_seed() -> None:
 
 
 def test_preview_restore_conflict_route_renders_mock_data(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    apply_admin_preview_env(monkeypatch)
     from app.admin_preview import PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID
 
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
