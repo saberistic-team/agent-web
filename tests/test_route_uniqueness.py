@@ -1,153 +1,188 @@
-"""Route-table and OpenAPI uniqueness guard (issue #310)."""
+"""Route-table and OpenAPI uniqueness guard tests (issue #310)."""
 
 from __future__ import annotations
 
+import warnings
 
 import pytest
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.routing import APIRouter
+from fastapi.testclient import TestClient
+from starlette.routing import Mount
 
-from app import admin_routes
-from app.admin_response_policy import (
-    ADMIN_BROWSER_SECURITY_HEADERS,
-    ADMIN_NO_STORE_HEADERS,
-)
 from app.main import app
 from app.route_uniqueness import (
-    OPENAPI_GET_HEAD_SAME_PATH_REASON,
     RouteUniquenessError,
-    collect_openapi_operation_ids,
-    find_method_path_duplicates,
-    find_openapi_operation_id_duplicates,
-    find_route_name_collisions,
-    format_method_path_duplicate_error,
-    iter_route_registrations,
-    validate_app_routes,
-    validate_method_path_uniqueness,
+    assert_openapi_operation_ids_deterministic,
+    collect_route_registrations,
+    validate_application_routes,
 )
 
 
 @pytest.mark.unit
-def test_production_app_has_no_duplicate_method_path_pairs() -> None:
-    validate_app_routes(app)
+def test_production_route_tree_has_no_duplicate_method_path_pairs() -> None:
+    validate_application_routes(app)
 
 
 @pytest.mark.unit
-def test_synthetic_duplicate_method_path_reports_actionable_diagnostics() -> None:
-    fixture = FastAPI()
+def test_synthetic_duplicate_method_path_fails_with_actionable_diagnostics() -> None:
+    probe = FastAPI()
 
-    @fixture.get("/dup")
-    def first_dup() -> dict[str, str]:
+    @probe.get("/probe", name="probe_first")
+    def probe_first() -> dict[str, str]:
         return {"handler": "first"}
 
-    @fixture.get("/dup")
-    def second_dup() -> dict[str, str]:
+    @probe.get("/probe", name="probe_second")
+    def probe_second() -> dict[str, str]:
         return {"handler": "second"}
 
-    registrations = iter_route_registrations(fixture)
-    duplicates = find_method_path_duplicates(registrations)
-    assert ("GET", "/dup") in duplicates
-    message = format_method_path_duplicate_error(duplicates)
-    assert "GET '/dup'" in message or 'GET "/dup"' in message or "GET /dup" in message
-    assert "first_dup" in message
-    assert "second_dup" in message
+    with pytest.raises(RouteUniquenessError) as exc_info:
+        validate_application_routes(probe)
+
+    message = str(exc_info.value)
+    assert "Duplicate HTTP registration: GET /probe" in message
+    assert "probe_first" in message
+    assert "probe_second" in message
     assert "position=" in message
-    with pytest.raises(RouteUniquenessError, match="Duplicate HTTP method/path"):
-        validate_method_path_uniqueness(fixture)
 
 
 @pytest.mark.unit
-def test_same_path_disjoint_methods_is_allowed() -> None:
-    fixture = FastAPI()
+def test_same_path_with_disjoint_methods_is_allowed() -> None:
+    probe = FastAPI()
 
-    @fixture.get("/resource")
+    @probe.get("/resource")
     def read_resource() -> dict[str, str]:
-        return {"method": "get"}
+        return {"method": "GET"}
 
-    @fixture.post("/resource")
+    @probe.post("/resource")
     def write_resource() -> dict[str, str]:
-        return {"method": "post"}
+        return {"method": "POST"}
 
-    validate_method_path_uniqueness(fixture)
+    validate_application_routes(probe)
 
 
 @pytest.mark.unit
-def test_head_on_get_route_does_not_create_false_positive() -> None:
-    fixture = FastAPI()
+def test_automatic_head_registration_does_not_produce_false_positives() -> None:
+    probe = FastAPI()
 
-    @fixture.api_route("/head-safe", methods=["GET", "HEAD"])
+    @probe.api_route("/head-safe", methods=["GET", "HEAD"])
     def head_safe() -> dict[str, str]:
-        return {"ok": "1"}
+        return {"ok": True}
 
-    registrations = iter_route_registrations(fixture)
-    duplicates = find_method_path_duplicates(registrations)
-    assert duplicates == {}
-    validate_method_path_uniqueness(fixture)
+    validate_application_routes(probe)
+
+    entries = collect_route_registrations(probe.routes)
+    head_safe = [entry for entry in entries if entry.path == "/head-safe"]
+    assert len(head_safe) == 1
+    assert head_safe[0].methods == frozenset({"GET", "HEAD"})
 
 
 @pytest.mark.unit
-def test_mounted_router_duplicate_is_detected() -> None:
+def test_mounted_router_duplicate_and_duplicate_route_name_are_detected() -> None:
     child = APIRouter()
 
-    @child.get("/child")
-    def child_once() -> dict[str, str]:
-        return {"n": "1"}
+    @child.get("/child", name="shared_child_name")
+    def child_get() -> dict[str, str]:
+        return {"child": "get"}
 
-    @child.get("/child")
-    def child_twice() -> dict[str, str]:
-        return {"n": "2"}
+    duplicate_mount = FastAPI()
+    duplicate_mount.mount("/shared", child)
+    duplicate_mount.mount("/shared", child)
 
-    fixture = FastAPI()
-    fixture.include_router(child, prefix="/mounted")
-    with pytest.raises(RouteUniquenessError, match="/mounted/child"):
-        validate_method_path_uniqueness(fixture)
+    with pytest.raises(RouteUniquenessError) as mount_exc:
+        validate_application_routes(duplicate_mount)
+    mount_message = str(mount_exc.value)
+    assert "Duplicate mount path: /shared" in mount_message
 
+    name_probe = FastAPI()
 
-@pytest.mark.unit
-def test_duplicate_route_name_collision_is_detected() -> None:
-    fixture = FastAPI()
+    @name_probe.get("/alpha", name="shared_name")
+    def alpha() -> dict[str, str]:
+        return {"route": "alpha"}
 
-    @fixture.get("/alpha", name="shared_name")
-    def alpha_handler() -> dict[str, str]:
-        return {"where": "alpha"}
+    @name_probe.get("/beta", name="shared_name")
+    def beta() -> dict[str, str]:
+        return {"route": "beta"}
 
-    @fixture.get("/beta", name="shared_name")
-    def beta_handler() -> dict[str, str]:
-        return {"where": "beta"}
-
-    registrations = iter_route_registrations(fixture)
-    collisions = find_route_name_collisions(registrations)
-    assert "shared_name" in collisions
-    assert len(collisions["shared_name"]) == 2
+    with pytest.raises(RouteUniquenessError) as name_exc:
+        validate_application_routes(name_probe)
+    name_message = str(name_exc.value)
+    assert "Duplicate route name used by different endpoints: 'shared_name'" in name_message
+    assert "/alpha" in name_message
+    assert "/beta" in name_message
 
 
 @pytest.mark.unit
 def test_openapi_operation_ids_are_unique_and_deterministic() -> None:
-    first = collect_openapi_operation_ids(app)
-    second = collect_openapi_operation_ids(app)
-    assert first == second
-    assert first
-    assert find_openapi_operation_id_duplicates(app) == {}
-    validate_app_routes(app)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        validate_application_routes(app)
+        assert_openapi_operation_ids_deterministic(app)
 
 
 @pytest.mark.unit
-def test_openapi_get_head_same_path_framework_pair_is_documented() -> None:
-    assert "GET and HEAD" in OPENAPI_GET_HEAD_SAME_PATH_REASON
-    assert find_openapi_operation_id_duplicates(app) == {}
+def test_mutation_adding_second_audit_route_fails_guard() -> None:
+    mutant = FastAPI()
+    mutant_router = APIRouter(prefix="/admin", tags=["admin"])
+
+    @mutant_router.get("/audit", response_class=HTMLResponse, name="audit_a")
+    def audit_a() -> HTMLResponse:
+        return HTMLResponse("a")
+
+    @mutant_router.get("/audit", response_class=HTMLResponse, name="audit_b")
+    def audit_b() -> HTMLResponse:
+        return HTMLResponse("b")
+
+    mutant.include_router(mutant_router)
+
+    with pytest.raises(RouteUniquenessError) as exc_info:
+        validate_application_routes(mutant)
+
+    message = str(exc_info.value)
+    assert "Duplicate HTTP registration: GET /admin/audit" in message
+    assert "audit_a" in message
+    assert "audit_b" in message
 
 
 @pytest.mark.unit
-def test_second_audit_route_mutation_fails_guard() -> None:
-    duplicate_router = APIRouter(prefix="/admin")
-
-    @duplicate_router.get("/audit", response_class=HTMLResponse)
-    def duplicate_admin_audit_list() -> HTMLResponse:
-        return HTMLResponse("duplicate")
-
+def test_collect_route_registrations_includes_mounts_and_skips_websocket_false_positives() -> None:
     probe = FastAPI()
-    probe.include_router(admin_routes.router)
-    probe.include_router(duplicate_router)
-    with pytest.raises(RouteUniquenessError, match="/admin/audit"):
-        validate_method_path_uniqueness(probe)
+    static = FastAPI()
+
+    @static.get("/file")
+    def static_file() -> dict[str, str]:
+        return {"file": True}
+
+    probe.mount("/static", static)
+
+    @probe.websocket("/ws")
+    async def ws_endpoint(websocket) -> None:  # type: ignore[no-untyped-def]
+        await websocket.accept()
+
+    registrations = collect_route_registrations(probe.routes)
+    kinds = {entry.kind for entry in registrations}
+    assert "mount" in kinds
+    assert "websocket" in kinds
+    assert "http" in kinds
+
+    validate_application_routes(probe)
+
+
+@pytest.mark.unit
+def test_included_router_duplicate_is_detected() -> None:
+    probe = FastAPI()
+    router = APIRouter()
+
+    @router.get("/dup")
+    def first() -> dict[str, str]:
+        return {"n": 1}
+
+    @router.get("/dup")
+    def second() -> dict[str, str]:
+        return {"n": 2}
+
+    probe.include_router(router)
+
+    with pytest.raises(RouteUniquenessError):
+        validate_application_routes(probe)

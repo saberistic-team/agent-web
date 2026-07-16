@@ -40,7 +40,7 @@ from app.actor_context import (
     correlation_id_from_request,
 )
 from app.admin_layout import ADMIN_NAV_LINKS, render_admin_shell
-from app.admin_response_policy import apply_admin_sensitive_response_headers
+from app.admin_response import admin_html_response
 from app.admin_preview import (
     PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR,
     PREVIEW_BRIEF_DATABASE_ERROR_ID,
@@ -1748,8 +1748,8 @@ def admin_audit_list(request: Request, page: int = 1) -> HTMLResponse:
     session = require_admin_session(request)
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
-    per_page = settings.audit_page_size
     safe_page = max(page, 1)
+    per_page = settings.audit_page_size
     db_error = False
     if settings.admin_preview_enabled:
         from app.admin_preview import build_preview_audit_events
@@ -1772,17 +1772,15 @@ def admin_audit_list(request: Request, page: int = 1) -> HTMLResponse:
             logger.exception("Failed to load audit events")
             events, total = [], 0
             db_error = True
-    return apply_admin_sensitive_response_headers(
-        HTMLResponse(
-            admin_pages.render_admin_audit_page(
-                admin_username=session.admin_username,
-                events=events,
-                page=safe_page,
-                per_page=per_page,
-                total=total,
-                csrf_token=csrf_token,
-                db_error=db_error,
-            )
+    return admin_html_response(
+        admin_pages.render_admin_audit_page(
+            admin_username=session.admin_username,
+            events=events,
+            page=safe_page,
+            per_page=per_page,
+            total=total,
+            csrf_token=csrf_token,
+            db_error=db_error,
         )
     )
 

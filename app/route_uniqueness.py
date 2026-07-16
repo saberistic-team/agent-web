@@ -1,7 +1,17 @@
-"""Validate registered HTTP routes and OpenAPI operation IDs for uniqueness.
+"""Validate runtime route and OpenAPI registrations for uniqueness.
 
-Enforcement runs in CI via ``tests/test_route_uniqueness.py``. Production startup
-may call ``validate_app_routes`` when deterministic duplicate detection is needed.
+Enforcement point: required unit tests (``tests/test_route_uniqueness.py``). Production
+startup may call ``validate_application_routes`` later; tests are the deterministic gate.
+
+Exclusions (not duplicate false positives):
+- ``HEAD`` on a route that also declares ``GET`` (Starlette/FastAPI auto-registration).
+- ``OPTIONS`` (framework/CORS handlers).
+- ``WebSocketRoute`` entries are collected for diagnostics only; HTTP method/path
+  uniqueness does not apply.
+- ``Mount`` subapplications are checked for duplicate mount paths, not HTTP methods.
+
+Allowlist: ``ROUTE_UNIQUENESS_ALLOWLIST`` names exact method/path or operation-id
+collisions with a documented reason. No wildcard suppression.
 """
 
 from __future__ import annotations
@@ -14,272 +24,263 @@ from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from starlette.routing import BaseRoute, Mount, Route, WebSocketRoute
 
-# FastAPI may assign one operationId to both GET and HEAD on a single api_route
-# registration. That pairing is excluded in ``find_openapi_operation_id_duplicates``.
-OPENAPI_GET_HEAD_SAME_PATH_REASON = (
-    "GET and HEAD on the same path share one api_route registration; "
-    "FastAPI may emit the same operationId for both methods."
-)
+# Exact duplicates only — empty unless a demonstrated framework exception cannot be
+# handled in code. Each entry must name method(s), path, and reason.
+ROUTE_UNIQUENESS_ALLOWLIST: tuple[dict[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
 class RouteRegistration:
-    method: str
-    path: str
-    route_name: str | None
-    endpoint: str
-    position: int
-    route_key: int
+    """One HTTP, mount, or websocket registration in the runtime route tree."""
 
-    def describe(self) -> str:
-        name = self.route_name or "<unnamed>"
-        return (
-            f"position={self.position} method={self.method} path={self.path!r} "
-            f"name={name!r} endpoint={self.endpoint}"
-        )
+    kind: str
+    methods: frozenset[str]
+    path: str
+    name: str | None
+    endpoint: str
+    position: tuple[int, ...]
 
 
 class RouteUniquenessError(ValueError):
     """Raised when duplicate routes or OpenAPI operation IDs are detected."""
 
-
-def _normalize_path(prefix: str, path: str) -> str:
-    combined = f"{prefix.rstrip('/')}/{path.lstrip('/')}".replace("//", "/")
-    if combined == "":
-        return "/"
-    return combined
+    def __init__(self, messages: list[str]) -> None:
+        self.messages = messages
+        super().__init__("\n".join(messages))
 
 
 def _endpoint_label(endpoint: Any) -> str:
-    module = getattr(endpoint, "__module__", "?")
+    module = getattr(endpoint, "__module__", "") or "unknown"
     qualname = getattr(endpoint, "__qualname__", repr(endpoint))
     return f"{module}.{qualname}"
 
 
-def _iter_routes(app: FastAPI) -> Iterable[tuple[BaseRoute, str, int]]:
-    position = 0
-    for route in app.routes:
-        yield route, "", position
-        position += 1
+def _normalize_path(prefix: str, path: str) -> str:
+    combined = f"{prefix}{path}"
+    if not combined.startswith("/"):
+        combined = f"/{combined}"
+    return combined.replace("//", "/")
 
 
-def _included_router_prefix(route: BaseRoute) -> str | None:
-    include_context = getattr(route, "include_context", None)
-    if include_context is None:
-        return None
-    return include_context.prefix or ""
+def _methods_for_duplicate_check(methods: Iterable[str] | None) -> frozenset[str]:
+    if not methods:
+        return frozenset()
+    ignored = {"HEAD", "OPTIONS"}
+    return frozenset(m for m in methods if m not in ignored)
 
 
-def _included_router_routes(route: BaseRoute) -> list[BaseRoute] | None:
-    original_router = getattr(route, "original_router", None)
-    if original_router is None:
-        return None
-    return list(original_router.routes)
+def _is_allowlisted(method: str, path: str) -> bool:
+    for entry in ROUTE_UNIQUENESS_ALLOWLIST:
+        if entry.get("method") == method and entry.get("path") == path:
+            return True
+    return False
 
 
-def iter_route_registrations(app: FastAPI) -> list[RouteRegistration]:
-    """Collect HTTP route registrations from the runtime app tree.
-
-    Exclusions (documented):
-    - ``Mount`` subapplications (e.g. ``/assets`` StaticFiles) are not expanded;
-      their internal catch-all routes are framework-owned and do not participate in
-      application handler duplicate detection.
-    - ``WebSocketRoute`` entries are skipped; this app does not register websockets.
-    """
+def collect_route_registrations(routes: list[BaseRoute], *, prefix: str = "") -> list[RouteRegistration]:
+    """Walk the fully registered runtime route tree."""
     registrations: list[RouteRegistration] = []
-    position = 0
 
-    def add_route(
-        route: BaseRoute,
-        *,
-        prefix: str,
-        source_position: int,
-        child_index: int | None = None,
-    ) -> None:
-        nonlocal position
-        if isinstance(route, WebSocketRoute):
-            return
+    for index, route in enumerate(routes):
+        position = (index,)
+        if type(route).__name__ == "_IncludedRouter":
+            registrations.extend(
+                collect_route_registrations(route.original_router.routes, prefix=prefix)
+            )
+            continue
 
         if isinstance(route, Mount):
-            return
-
-        included_prefix = _included_router_prefix(route)
-        included_routes = _included_router_routes(route)
-        if included_prefix is not None and included_routes is not None:
-            for child_idx, child in enumerate(included_routes):
-                add_route(
-                    child,
-                    prefix=included_prefix,
-                    source_position=source_position,
-                    child_index=child_idx,
-                )
-            return
-
-        methods: set[str]
-        path: str
-        route_name: str | None
-        endpoint: Any
-        route_key: int
-
-        if isinstance(route, APIRoute):
-            methods = set(route.methods)
-            path = _normalize_path(prefix, route.path)
-            route_name = route.name
-            endpoint = route.endpoint
-            route_key = id(route)
-        elif isinstance(route, Route):
-            methods = set(route.methods)
-            path = _normalize_path(prefix, route.path)
-            route_name = route.name
-            endpoint = route.endpoint
-            route_key = id(route)
-        else:
-            return
-
-        reg_position = position
-        position += 1
-        endpoint_label = _endpoint_label(endpoint)
-        for method in sorted(methods):
+            mount_path = _normalize_path(prefix, route.path)
             registrations.append(
                 RouteRegistration(
-                    method=method,
-                    path=path,
-                    route_name=route_name,
-                    endpoint=endpoint_label,
-                    position=reg_position,
-                    route_key=route_key,
+                    kind="mount",
+                    methods=frozenset(),
+                    path=mount_path,
+                    name=route.name,
+                    endpoint=_endpoint_label(route.app),
+                    position=position,
                 )
             )
+            child_prefix = mount_path if mount_path.endswith("/") else f"{mount_path}/"
+            registrations.extend(
+                collect_route_registrations(route.routes, prefix=child_prefix)
+            )
+            continue
 
-    for route, _prefix, source_position in _iter_routes(app):
-        add_route(route, prefix="", source_position=source_position)
+        if isinstance(route, WebSocketRoute):
+            registrations.append(
+                RouteRegistration(
+                    kind="websocket",
+                    methods=frozenset({"WEBSOCKET"}),
+                    path=_normalize_path(prefix, route.path),
+                    name=route.name,
+                    endpoint=_endpoint_label(route.endpoint),
+                    position=position,
+                )
+            )
+            continue
+
+        if isinstance(route, (APIRoute, Route)) or (
+            hasattr(route, "path") and hasattr(route, "methods")
+        ):
+            registrations.append(
+                RouteRegistration(
+                    kind="http",
+                    methods=frozenset(route.methods or []),
+                    path=_normalize_path(prefix, route.path),
+                    name=route.name,
+                    endpoint=_endpoint_label(route.endpoint),
+                    position=position,
+                )
+            )
+            continue
+
+        if hasattr(route, "routes"):
+            registrations.extend(collect_route_registrations(route.routes, prefix=prefix))
 
     return registrations
 
 
-def _authoritative_methods(methods: Iterable[str]) -> set[str]:
-    """Drop framework-companion methods that should not create false duplicates."""
-    normalized = set(methods)
-    if "GET" in normalized:
-        normalized.discard("HEAD")
-    return normalized
-
-
-def find_method_path_duplicates(
+def _duplicate_method_path_errors(
     registrations: list[RouteRegistration],
-) -> dict[tuple[str, str], list[RouteRegistration]]:
-    grouped: dict[tuple[str, str], list[RouteRegistration]] = defaultdict(list)
-    for registration in registrations:
-        for method in _authoritative_methods({registration.method}):
-            grouped[(method, registration.path)].append(registration)
+) -> list[str]:
+    by_pair: dict[tuple[str, str], list[RouteRegistration]] = defaultdict(list)
+    for reg in registrations:
+        if reg.kind != "http":
+            continue
+        for method in _methods_for_duplicate_check(reg.methods):
+            if _is_allowlisted(method, reg.path):
+                continue
+            by_pair[(method, reg.path)].append(reg)
 
-    return {key: entries for key, entries in grouped.items() if len(entries) > 1}
+    messages: list[str] = []
+    for (method, path), entries in sorted(by_pair.items()):
+        if len(entries) < 2:
+            continue
+        lines = [
+            f"Duplicate HTTP registration: {method} {path}",
+        ]
+        for entry in entries:
+            lines.append(
+                "  - "
+                f"name={entry.name!r} "
+                f"endpoint={entry.endpoint} "
+                f"position={entry.position} "
+                f"methods={sorted(entry.methods)}"
+            )
+        messages.append("\n".join(lines))
+    return messages
 
 
-def find_route_name_collisions(
-    registrations: list[RouteRegistration],
-) -> dict[str, list[RouteRegistration]]:
-    """Return route names mapped to registrations with differing endpoint objects."""
+def _duplicate_mount_path_errors(registrations: list[RouteRegistration]) -> list[str]:
+    by_path: dict[str, list[RouteRegistration]] = defaultdict(list)
+    for reg in registrations:
+        if reg.kind != "mount":
+            continue
+        by_path[reg.path].append(reg)
+
+    messages: list[str] = []
+    for path, entries in sorted(by_path.items()):
+        if len(entries) < 2:
+            continue
+        lines = [f"Duplicate mount path: {path}"]
+        for entry in entries:
+            lines.append(
+                "  - "
+                f"name={entry.name!r} "
+                f"endpoint={entry.endpoint} "
+                f"position={entry.position}"
+            )
+        messages.append("\n".join(lines))
+    return messages
+
+
+def _duplicate_route_name_errors(registrations: list[RouteRegistration]) -> list[str]:
     by_name: dict[str, list[RouteRegistration]] = defaultdict(list)
-    for registration in registrations:
-        if registration.route_name:
-            by_name[registration.route_name].append(registration)
+    for reg in registrations:
+        if reg.kind != "http" or not reg.name:
+            continue
+        by_name[reg.name].append(reg)
 
-    collisions: dict[str, list[RouteRegistration]] = {}
-    for name, entries in by_name.items():
-        endpoint_ids = {entry.route_key for entry in entries}
-        if len(endpoint_ids) > 1:
-            collisions[name] = entries
-    return collisions
-
-
-def format_method_path_duplicate_error(
-    duplicates: dict[tuple[str, str], list[RouteRegistration]],
-) -> str:
-    lines = ["Duplicate HTTP method/path route registrations detected:"]
-    for (method, path), entries in sorted(duplicates.items()):
-        lines.append(f"- {method} {path}")
+    messages: list[str] = []
+    for name, entries in sorted(by_name.items()):
+        endpoints = {entry.endpoint for entry in entries}
+        if len(endpoints) < 2:
+            continue
+        lines = [f"Duplicate route name used by different endpoints: {name!r}"]
         for entry in entries:
-            lines.append(f"  - {entry.describe()}")
-    return "\n".join(lines)
+            lines.append(
+                "  - "
+                f"{entry.methods} {entry.path} "
+                f"endpoint={entry.endpoint} "
+                f"position={entry.position}"
+            )
+        messages.append("\n".join(lines))
+    return messages
 
 
-def format_route_name_collision_error(
-    collisions: dict[str, list[RouteRegistration]],
-) -> str:
-    lines = ["Duplicate route names bound to different endpoints:"]
-    for name, entries in sorted(collisions.items()):
-        lines.append(f"- name={name!r}")
-        for entry in entries:
-            lines.append(f"  - {entry.describe()}")
-    return "\n".join(lines)
-
-
-def validate_method_path_uniqueness(app: FastAPI) -> None:
-    registrations = iter_route_registrations(app)
-    duplicates = find_method_path_duplicates(registrations)
-    if duplicates:
-        raise RouteUniquenessError(format_method_path_duplicate_error(duplicates))
-
-
-def collect_openapi_operation_ids(app: FastAPI) -> list[tuple[str, str, str]]:
+def _openapi_operation_entries(app: FastAPI) -> list[tuple[str, str, str]]:
     schema = app.openapi()
-    collected: list[tuple[str, str, str]] = []
+    entries: list[tuple[str, str, str]] = []
     for path, path_item in schema.get("paths", {}).items():
         for method, operation in path_item.items():
-            if method not in {"get", "post", "put", "patch", "delete", "head", "options"}:
+            upper = method.upper()
+            if upper not in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}:
                 continue
             operation_id = operation.get("operationId")
             if operation_id:
-                collected.append((operation_id, method.upper(), path))
-    return collected
+                entries.append((operation_id, upper, path))
+    return entries
 
 
-def _is_framework_get_head_operation_duplicate(
-    entries: list[tuple[str, str, str]],
-) -> bool:
-    if len(entries) != 2:
-        return False
-    methods = {method for _oid, method, _path in entries}
-    paths = {path for _oid, _method, path in entries}
-    return methods.issubset({"GET", "HEAD"}) and len(paths) == 1
+def _duplicate_operation_id_errors(app: FastAPI) -> list[str]:
+    entries = _openapi_operation_entries(app)
+    by_id: dict[str, list[tuple[str, str, str]]] = defaultdict(list)
+    for operation_id, method, path in entries:
+        by_id[operation_id].append((method, path))
 
-
-def find_openapi_operation_id_duplicates(
-    app: FastAPI,
-) -> dict[str, list[tuple[str, str, str]]]:
-    grouped: dict[str, list[tuple[str, str, str]]] = defaultdict(list)
-    for operation_id, method, path in collect_openapi_operation_ids(app):
-        grouped[operation_id].append((operation_id, method, path))
-
-    duplicates: dict[str, list[tuple[str, str, str]]] = {}
-    for operation_id, entries in grouped.items():
-        if len(entries) <= 1:
+    messages: list[str] = []
+    for operation_id, collisions in sorted(by_id.items()):
+        if len(collisions) < 2:
             continue
-        if _is_framework_get_head_operation_duplicate(entries):
+        methods = {method for method, _ in collisions}
+        paths = {path for _, path in collisions}
+        # Framework exception: GET + HEAD on the same path is one logical operation.
+        if methods <= {"GET", "HEAD"} and len(paths) == 1:
             continue
-        duplicates[operation_id] = entries
-    return duplicates
-
-
-def format_openapi_duplicate_error(
-    duplicates: dict[str, list[tuple[str, str, str]]],
-) -> str:
-    lines = ["Duplicate OpenAPI operationId values detected:"]
-    for operation_id, entries in sorted(duplicates.items()):
-        lines.append(f"- operationId={operation_id!r}")
-        for _oid, method, path in entries:
+        lines = [f"Duplicate OpenAPI operationId: {operation_id!r}"]
+        for method, path in sorted(collisions):
             lines.append(f"  - {method} {path}")
-    return "\n".join(lines)
+        messages.append("\n".join(lines))
+    return messages
 
 
-def validate_openapi_operation_ids(app: FastAPI) -> None:
-    duplicates = find_openapi_operation_id_duplicates(app)
-    if duplicates:
-        raise RouteUniquenessError(format_openapi_duplicate_error(duplicates))
+def validate_application_routes(app: FastAPI) -> None:
+    """Raise ``RouteUniquenessError`` when duplicate registrations are detected."""
+    registrations = collect_route_registrations(app.routes)
+    messages = [
+        *_duplicate_method_path_errors(registrations),
+        *_duplicate_mount_path_errors(registrations),
+        *_duplicate_route_name_errors(registrations),
+        *_duplicate_operation_id_errors(app),
+    ]
+    if messages:
+        raise RouteUniquenessError(messages)
 
 
-def validate_app_routes(app: FastAPI) -> None:
-    """Validate runtime route method/path pairs and OpenAPI operation IDs."""
-    validate_method_path_uniqueness(app)
-    validate_openapi_operation_ids(app)
+def assert_openapi_operation_ids_deterministic(app: FastAPI) -> None:
+    """Require repeated OpenAPI generation to yield identical operation IDs."""
+    first = app.openapi()
+    second = app.openapi()
+    assert first is second, "FastAPI should cache OpenAPI schema across calls"
+
+    def _ids(schema: dict[str, Any]) -> list[str]:
+        ids: list[str] = []
+        for path_item in schema.get("paths", {}).values():
+            for method, operation in path_item.items():
+                if method.lower() in {"get", "post", "put", "patch", "delete", "head", "options"}:
+                    operation_id = operation.get("operationId")
+                    if operation_id:
+                        ids.append(operation_id)
+        return ids
+
+    assert _ids(first) == _ids(second)
