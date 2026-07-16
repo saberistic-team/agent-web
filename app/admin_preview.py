@@ -6,7 +6,6 @@ Never used in production — only when ``Settings.admin_preview_enabled`` is tru
 from __future__ import annotations
 
 import html
-import os
 import random
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -19,8 +18,9 @@ from app.acquisition_dashboard import (
     EvidenceRow,
     NextActionRow,
 )
-from app.pipeline_stages import PIPELINE_STAGES
 from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES, TARGET_STATUSES
+from app.pipeline_stages import PIPELINE_STAGES
+from app.preview_context import preview_now, preview_rng
 
 
 COMPANY_NAMES = (
@@ -166,15 +166,21 @@ class PreviewDashboardData:
     generated_at: str
 
 
-def _preview_rng() -> random.Random:
-    """Randomize per process; optional ``ADMIN_PREVIEW_SEED`` for stable tests."""
-    raw = (os.environ.get("ADMIN_PREVIEW_SEED") or "").strip()
-    if raw:
-        try:
-            return random.Random(int(raw))
-        except ValueError:
-            return random.Random(raw)
-    return random.Random()
+# Fixture namespaces — each derives an independent RNG from the preview root seed.
+_PREVIEW_NS_ACQUISITION_DASHBOARD = "fixture:acquisition_dashboard"
+_PREVIEW_NS_DASHBOARD = "fixture:dashboard"
+_PREVIEW_NS_SECTION_ROWS = "fixture:section_rows"
+_PREVIEW_NS_PIPELINE_COMPANIES = "fixture:pipeline_companies"
+_PREVIEW_NS_COMPANIES = "fixture:companies"
+_PREVIEW_NS_CONTACTS = "fixture:contacts"
+_PREVIEW_NS_COMPANY_DETAIL = "fixture:company_detail"
+_PREVIEW_NS_CONTACT_DETAIL = "fixture:contact_detail"
+_PREVIEW_NS_CONTACT_RESTORE_CONFLICT = "fixture:contact_restore_conflict"
+_PREVIEW_NS_BRIEF_ROWS = "fixture:brief_rows"
+_PREVIEW_NS_AUDIT_EVENTS = "fixture:audit_events"
+_PREVIEW_NS_LINKEDIN_IMPORT = "fixture:linkedin_import"
+_PREVIEW_NS_IMPORT_BATCHES = "fixture:import_batches"
+_PREVIEW_NS_IMPORT_BATCH_DETAIL = "fixture:import_batch_detail"
 
 
 def _slug_email(first: str, last: str, company: str, rng: random.Random) -> str:
@@ -194,8 +200,8 @@ def build_preview_acquisition_dashboard_data(
     now: datetime | None = None,
 ) -> AcquisitionDashboardData:
     """Randomized acquisition dashboard for ADMIN_PREVIEW_MODE screenshots."""
-    rng = rng or _preview_rng()
-    now = now or datetime.now(timezone.utc)
+    rng = rng or preview_rng(_PREVIEW_NS_ACQUISITION_DASHBOARD)
+    now = now or preview_now()
     companies = list(COMPANY_NAMES)
     rng.shuffle(companies)
 
@@ -304,8 +310,8 @@ def build_preview_dashboard_data(
     now: datetime | None = None,
 ) -> PreviewDashboardData:
     """Build a randomized but plausible admin dashboard payload."""
-    rng = rng or _preview_rng()
-    now = now or datetime.now(timezone.utc)
+    rng = rng or preview_rng(_PREVIEW_NS_DASHBOARD)
+    now = now or preview_now()
 
     briefs_this_week = rng.randint(4, 28)
     paid_this_week = rng.randint(1, max(1, briefs_this_week // 2))
@@ -431,8 +437,8 @@ def build_preview_section_rows(
     now: datetime | None = None,
 ) -> tuple[tuple[str, ...], ...]:
     """Build randomized table rows for an admin section preview page."""
-    rng = rng or _preview_rng()
-    now = now or datetime.now(timezone.utc)
+    rng = rng or preview_rng(f"{_PREVIEW_NS_SECTION_ROWS}:{active_path}")
+    now = now or preview_now()
     companies = list(COMPANY_NAMES)
     rng.shuffle(companies)
     count = rng.randint(4, 8)
@@ -553,8 +559,8 @@ def build_preview_pipeline_companies(
     now: datetime | None = None,
 ) -> list[dict[str, object]]:
     """Randomized pipeline companies for ADMIN_PREVIEW_MODE."""
-    rng = rng or _preview_rng()
-    now = now or datetime.now(timezone.utc)
+    rng = rng or preview_rng(_PREVIEW_NS_PIPELINE_COMPANIES)
+    now = now or preview_now()
     stage_keys = list(PIPELINE_STAGES)
     companies: list[dict[str, object]] = []
     for index, company_id in enumerate(PREVIEW_PIPELINE_COMPANY_IDS):
@@ -595,8 +601,8 @@ def build_preview_companies(
     now: datetime | None = None,
 ) -> list[dict[str, object]]:
     """Randomized company rows for ADMIN_PREVIEW_MODE list screenshots."""
-    rng = rng or _preview_rng()
-    now = now or datetime.now(timezone.utc)
+    rng = rng or preview_rng(_PREVIEW_NS_COMPANIES)
+    now = now or preview_now()
     category_keys = list(COMPANY_CATEGORIES)
     stage_keys = list(COMPANY_STAGES)
     target_keys = list(TARGET_STATUSES)
@@ -656,9 +662,14 @@ def build_preview_contacts(
     """Randomized contact rows and company options for ADMIN_PREVIEW_MODE."""
     from app.contacts import BUYING_ROLES
 
-    rng = rng or _preview_rng()
-    now = now or datetime.now(timezone.utc)
-    companies = build_preview_companies(rng=rng, now=now, include_archived=True)
+    explicit_rng = rng
+    rng = explicit_rng or preview_rng(_PREVIEW_NS_CONTACTS)
+    now = now or preview_now()
+    companies = build_preview_companies(
+        now=now,
+        include_archived=True,
+        rng=explicit_rng,
+    )
     company_by_id = {row["id"]: row for row in companies}
     role_keys = list(BUYING_ROLES)
     contacts: list[dict[str, object]] = []
@@ -714,9 +725,9 @@ def build_preview_pipeline_detail(
     now: datetime | None = None,
 ) -> tuple[dict[str, object], list[dict[str, object]], list[dict[str, object]]] | None:
     """Preview pipeline detail for a fixed company id."""
-    rng = rng or _preview_rng()
-    now = now or datetime.now(timezone.utc)
-    companies = build_preview_pipeline_companies(rng=rng, now=now)
+    explicit_rng = rng
+    now = now or preview_now()
+    companies = build_preview_pipeline_companies(rng=explicit_rng, now=now)
     company = next((row for row in companies if row["id"] == company_id), None)
     if company is None:
         return None
@@ -765,8 +776,9 @@ def build_preview_company(
     now: datetime | None = None,
 ) -> dict[str, object] | None:
     """Return one preview company row for detail/editor screenshots."""
-    rng = rng or _preview_rng()
-    now = now or datetime.now(timezone.utc)
+    explicit_rng = rng
+    rng = explicit_rng or preview_rng(_PREVIEW_NS_COMPANIES)
+    now = now or preview_now()
     if company_id == PREVIEW_COMPANY_POPULATED_ID:
         return {
             "id": company_id,
@@ -803,7 +815,7 @@ def build_preview_company(
             "notes": None,
             "archived_at": (now - timedelta(days=21)).isoformat(),
         }
-    pipeline = build_preview_pipeline_companies(rng=rng, now=now)
+    pipeline = build_preview_pipeline_companies(rng=explicit_rng, now=now)
     match = next((row for row in pipeline if row["id"] == company_id), None)
     if match is not None:
         return {
@@ -860,8 +872,7 @@ def build_preview_company_research(
     """Research records with public-evidence controls for screenshot fixtures."""
     if company_id != PREVIEW_COMPANY_POPULATED_ID:
         return []
-    rng = rng or _preview_rng()
-    now = now or datetime.now(timezone.utc)
+    now = now or preview_now()
     return [
         {
             "record_type": "verified_fact",
@@ -906,12 +917,17 @@ def build_preview_contact(
     now: datetime | None = None,
 ) -> dict[str, object] | None:
     """Return one preview contact row for detail/editor screenshots."""
-    rng = rng or _preview_rng()
-    now = now or datetime.now(timezone.utc)
+    explicit_rng = rng
+    rng = explicit_rng or preview_rng(_PREVIEW_NS_CONTACTS)
+    now = now or preview_now()
     if contact_id == PREVIEW_CONTACT_POPULATED_ID:
         first = rng.choice(CONTACT_FIRST)
         last = rng.choice(CONTACT_LAST)
-        company = build_preview_company(PREVIEW_COMPANY_POPULATED_ID, rng=rng, now=now)
+        company = build_preview_company(
+            PREVIEW_COMPANY_POPULATED_ID,
+            rng=explicit_rng,
+            now=now,
+        )
         company_name = str(company["name"]) if company else "Northwind Labs"
         return {
             "id": contact_id,
@@ -956,7 +972,7 @@ def build_preview_contact_research(
     """Research records for contact detail screenshots."""
     if contact_id != PREVIEW_CONTACT_POPULATED_ID:
         return []
-    now = now or datetime.now(timezone.utc)
+    now = now or preview_now()
     return [
         {
             "record_type": "relationship_context",
@@ -1010,8 +1026,8 @@ def build_preview_brief_rows(
     now: datetime | None = None,
 ) -> list[dict[str, object]]:
     """Randomized project-brief list rows for ADMIN_PREVIEW_MODE screenshots."""
-    rng = rng or _preview_rng()
-    now = now or datetime.now(timezone.utc)
+    rng = rng or preview_rng(_PREVIEW_NS_BRIEF_ROWS)
+    now = now or preview_now()
     companies = list(COMPANY_NAMES)
     rng.shuffle(companies)
     count = rng.randint(5, 9)
@@ -1111,7 +1127,7 @@ def build_preview_brief_detail(
     if brief_id < 1:
         return None
     # Fresh rng from the same seed so list and detail stay consistent.
-    list_rng = rng if rng is not None else _preview_rng()
+    list_rng = rng if rng is not None else preview_rng(_PREVIEW_NS_BRIEF_ROWS)
     rows = build_preview_brief_rows(rng=list_rng, now=now)
     for row in rows:
         if int(row["id"]) == brief_id:  # type: ignore[arg-type]
@@ -1204,8 +1220,8 @@ def build_preview_company_detail(
     now: datetime | None = None,
 ) -> tuple[dict[str, object], list[dict[str, object]], list[dict[str, object]]]:
     """Mock company detail data for Archive/Restore screenshot states."""
-    rng = rng or _preview_rng()
-    now = now or datetime.now(timezone.utc)
+    rng = rng or preview_rng(_PREVIEW_NS_COMPANY_DETAIL)
+    now = now or preview_now()
     archived = company_id == PREVIEW_COMPANY_DETAIL_RESTORE_ID
     company_name = rng.choice(COMPANY_NAMES)
     company: dict[str, object] = {
@@ -1255,8 +1271,8 @@ def build_preview_contact_detail(
     now: datetime | None = None,
 ) -> tuple[dict[str, object], dict[str, object] | None, list[dict[str, object]]]:
     """Mock contact detail/edit data for Archive/Restore screenshot states."""
-    rng = rng or _preview_rng()
-    now = now or datetime.now(timezone.utc)
+    rng = rng or preview_rng(_PREVIEW_NS_CONTACT_DETAIL)
+    now = now or preview_now()
     archived = contact_id == PREVIEW_CONTACT_DETAIL_RESTORE_ID
     first = rng.choice(CONTACT_FIRST)
     last = rng.choice(CONTACT_LAST)
@@ -1301,7 +1317,8 @@ def preview_contact_restore_conflict(
     rng: random.Random | None = None,
 ) -> dict[str, object]:
     """Mock archived/active pair for contact restore-conflict screenshots."""
-    rng = rng or _preview_rng()
+    rng = rng or preview_rng(_PREVIEW_NS_CONTACT_RESTORE_CONFLICT)
+    now = preview_now()
     first = rng.choice(CONTACT_FIRST)
     last = rng.choice(CONTACT_LAST)
     company = rng.choice(COMPANY_NAMES)
@@ -1314,7 +1331,7 @@ def preview_contact_restore_conflict(
             "email": email,
             "company_name": company,
             "archived_at": (
-                datetime(2026, 7, 1, tzinfo=timezone.utc) + timedelta(days=rng.randint(1, 30))
+                now - timedelta(days=rng.randint(1, 30))
             ).isoformat(),
         },
         "conflicting_contact": {
@@ -1343,8 +1360,8 @@ def build_preview_audit_events(
     now: datetime | None = None,
 ) -> list[dict[str, object]]:
     """Randomized audit rows for ADMIN_PREVIEW_MODE screenshots."""
-    rng = rng or _preview_rng()
-    now = now or datetime.now(timezone.utc)
+    rng = rng or preview_rng(_PREVIEW_NS_AUDIT_EVENTS)
+    now = now or preview_now()
     count = rng.randint(4, 8)
     events: list[dict[str, object]] = []
     for i in range(count):
@@ -1386,7 +1403,7 @@ def build_preview_linkedin_import_data(
     rng: random.Random | None = None,
 ) -> PreviewLinkedInImportData:
     """Randomized LinkedIn import preview stats for ADMIN_PREVIEW_MODE."""
-    rng = rng or _preview_rng()
+    rng = rng or preview_rng(_PREVIEW_NS_LINKEDIN_IMPORT)
     return PreviewLinkedInImportData(
         connection_count=rng.randint(120, 840),
         message_thread_count=rng.randint(8, 64),
@@ -1415,8 +1432,7 @@ def render_preview_imports_main(
     now: datetime | None = None,
 ) -> str:
     """HTML main fragment for /admin/imports in preview mode (populated preview)."""
-    rng = rng or _preview_rng()
-    now = now or datetime.now(timezone.utc)
+    now = now or preview_now()
     data = build_preview_linkedin_import_data(rng=rng)
     generated = now.strftime("%Y-%m-%d %H:%M:%S UTC")
     dup_rows = "".join(
@@ -1500,8 +1516,8 @@ def build_preview_import_batches(
     now: datetime | None = None,
 ) -> tuple[list[dict[str, object]], int]:
     """Mock committed import batches for ADMIN_PREVIEW_MODE."""
-    rng = rng or _preview_rng()
-    now = now or datetime.now(timezone.utc)
+    rng = rng or preview_rng(_PREVIEW_NS_IMPORT_BATCHES)
+    now = now or preview_now()
     batches: list[dict[str, object]] = []
     for index, batch_id in enumerate(PREVIEW_IMPORT_BATCH_IDS):
         created = now - timedelta(days=index + 1, hours=rng.randint(1, 8))
@@ -1536,8 +1552,9 @@ def build_preview_import_batch_detail(
     now: datetime | None = None,
 ) -> dict[str, object] | None:
     """Mock batch detail with representative row outcomes."""
-    rng = rng or _preview_rng()
-    batches, _ = build_preview_import_batches(rng=rng, now=now)
+    explicit_rng = rng
+    rng = explicit_rng or preview_rng(_PREVIEW_NS_IMPORT_BATCH_DETAIL)
+    batches, _ = build_preview_import_batches(rng=explicit_rng, now=now)
     batch = next((item for item in batches if str(item["id"]) == batch_id), None)
     if batch is None:
         return None
@@ -1579,8 +1596,7 @@ def render_preview_section_main(
     now: datetime | None = None,
 ) -> str:
     """HTML main fragment for an admin section page in preview mode."""
-    rng = rng or _preview_rng()
-    now = now or datetime.now(timezone.utc)
+    now = now or preview_now()
     columns = _SECTION_COLUMNS.get(
         active_path, ("Item", "Detail", "Owner", "Status", "Updated")
     )

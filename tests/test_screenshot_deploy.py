@@ -438,6 +438,29 @@ def test_wait_healthy_builds_absolute_url(monkeypatch) -> None:
     assert data.get("status") == "ok"
 
 
+def test_preview_server_env_sets_seed_and_reference_time(monkeypatch) -> None:
+    from screenshot_deploy import _preview_context_helpers
+
+    _, preview_env_for_screenshot_run, env_seed, env_ref = _preview_context_helpers()
+    env = preview_env_for_screenshot_run(head_sha="deadbeef")
+    assert env[env_seed]
+    assert env[env_ref]
+    assert env["PREVIEW_HEAD_SHA"] == "deadbeef"
+
+
+def test_write_preview_manifest_writes_json(tmp_path) -> None:
+    import json
+
+    from screenshot_deploy import build_preview_manifest, write_preview_manifest
+
+    manifest = build_preview_manifest(head_sha="abc", browser_version="1.2.3")
+    path = write_preview_manifest(tmp_path, "branch", manifest)
+    assert path.is_file()
+    loaded = json.loads(path.read_text(encoding="utf-8"))
+    assert loaded["fixture_version"] == manifest["fixture_version"]
+    assert loaded["root_seed"] == manifest["root_seed"]
+
+
 def test_comment_markdown_pre_branch_only() -> None:
     from screenshot_deploy import ScreenshotTarget, comment_markdown_pre_dual
 
@@ -448,10 +471,21 @@ def test_comment_markdown_pre_branch_only() -> None:
             ScreenshotTarget(route="/"),
             ScreenshotTarget(route="/admin/briefs/503", expected_status=503),
         ],
+        preview_manifest={
+            "fixture_version": 1,
+            "root_seed": 33820260715,
+            "reference_time": "2026-07-15T12:00:00+00:00",
+            "head_sha": "abc123",
+            "browser_version": "120.0",
+            "viewports": [{"name": "desktop", "width": 1280, "height": 800}],
+        },
     )
     assert "### reviewer_screenshots_pre" in body
     assert "http://127.0.0.1:8765" in body
     assert "ADMIN_PREVIEW_MODE" in body
+    assert "ADMIN_PREVIEW_SEED" in body
+    assert "ADMIN_PREVIEW_REFERENCE_TIME" in body
+    assert "fixture_version" in body
     assert "post-deploy only" in body
     assert "branch-home.png" in body
     assert "Production baseline" not in body

@@ -25,9 +25,19 @@ Playwright can open admin pages **without login**.
 - Admin shell pages fill with **mock intake/CRM data with randomization**
   (dashboard stats, section tables, **briefs list/detail**, etc.) so screenshots
   look like a live operator shell — never real production rows and never an
-  empty “no records yet” shell for newly built admin surfaces. Optional
-  `ADMIN_PREVIEW_SEED` makes mocks stable in tests. Builder must extend
-  `app/admin_preview.py` whenever it adds a page (see `AGENTS/builder.md`).
+  empty “no records yet” shell for newly built admin surfaces.
+- **Deterministic preview context** (issue #338): pre-merge screenshot runs set
+  `ADMIN_PREVIEW_SEED` and `ADMIN_PREVIEW_REFERENCE_TIME` to checked-in CI
+  defaults. Each fixture namespace derives its own RNG from the root seed so
+  request order and worker scheduling cannot perturb data. Bump
+  `PREVIEW_FIXTURE_VERSION` in `app/preview_context.py` when fixture shape or
+  derivation rules change intentionally; regenerate and review screenshot
+  baselines when that version changes.
+- Optional `ADMIN_PREVIEW_SEED` / `ADMIN_PREVIEW_REFERENCE_TIME` overrides
+  remain deterministic for exploratory visual testing. Malformed values fail
+  fast — never unseeded wall-clock randomness.
+- Builder must extend `app/admin_preview.py` whenever it adds a page (see
+  `AGENTS/builder.md`).
 - See [ADMIN_AUTH.md](ADMIN_AUTH.md).
 
 **Production renderer routes** (preview uses the same page functions as authenticated
@@ -132,6 +142,8 @@ until merged.
 
 1. Resolves **PR-affected routes** (public + admin when relevant)
 2. Starts **local uvicorn** with `ADMIN_PREVIEW_MODE=1` on the PR head
+   (plus `ADMIN_PREVIEW_SEED` and `ADMIN_PREVIEW_REFERENCE_TIME` for deterministic
+   fixtures)
 3. Captures desktop (1280×800) + mobile (390×844) → `branch-*.png` only
 4. When admin files change, also captures **admin nav evidence** on
    `/admin`, `/admin/audit`, and `/admin/briefs`: tablet (768×1024),
@@ -170,6 +182,9 @@ until merged.
 | Name | Type | Purpose |
 |------|------|---------|
 | `ADMIN_PREVIEW_MODE` | env | Set `1` on PR preview server only (script sets this) |
+| `ADMIN_PREVIEW_SEED` | env | Root seed for preview fixtures (script sets checked-in CI default) |
+| `ADMIN_PREVIEW_REFERENCE_TIME` | env | Frozen ISO-8601 reference timestamp (script sets CI default) |
+| `PREVIEW_FIXTURE_VERSION` | code | Bump in `app/preview_context.py` when fixtures change intentionally |
 | `DEPLOY_BASE_URL` | variable | default `https://saberistic.com` (post-deploy) |
 | `COVERAGE_ROOT` / `PR_HEAD_ROOT` | env | PR checkout root for branch screenshots |
 | `SCREENSHOTS_REQUIRED` | variable | default true for Reviewer when pages are affected |
