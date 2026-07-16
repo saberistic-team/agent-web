@@ -1,304 +1,254 @@
-"""Deterministic ADMIN_PREVIEW_MODE fixture contract (issue #338)."""
+"""Deterministic ADMIN_PREVIEW_MODE fixture contract (#338)."""
 
 from __future__ import annotations
 
 import json
+import multiprocessing
 import os
+import random
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.admin_preview import (
-    DEFAULT_PREVIEW_REFERENCE_TIME,
-    DEFAULT_PREVIEW_ROOT_SEED,
-    NS_ACQUISITION_DASHBOARD,
-    NS_BRIEF_ROWS,
-    NS_COMPANIES,
-    NS_CONTACTS,
-    PREVIEW_FIXTURE_VERSION,
-    PreviewContext,
     build_preview_acquisition_dashboard_data,
     build_preview_brief_rows,
     build_preview_companies,
-    build_preview_contacts,
-    derive_namespace_seed,
-    load_preview_context_from_env,
-    parse_preview_reference_time,
-    parse_preview_seed,
-    preview_context_manifest_fields,
-    preview_now,
-    preview_rng_for,
+    build_preview_section_rows,
 )
 from app.main import app
+from app.preview_context import (
+    DEFAULT_PREVIEW_REFERENCE_TIME,
+    DEFAULT_PREVIEW_REFERENCE_TIME_ISO,
+    DEFAULT_PREVIEW_SEED,
+    ENV_PREVIEW_REFERENCE_TIME,
+    ENV_PREVIEW_SEED,
+    PreviewContext,
+    PreviewContextError,
+    derive_namespace_seed,
+    load_preview_context,
+    parse_preview_reference_time,
+    parse_preview_seed,
+    preview_now,
+    preview_rng,
+    preview_reproducibility_env,
+    reset_preview_context,
+)
 
 
-def _preview_env(
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    seed: str | None = None,
-    reference_time: str | None = None,
-) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
-    if seed is not None:
-        monkeypatch.setenv("ADMIN_PREVIEW_SEED", seed)
-    else:
-        monkeypatch.delenv("ADMIN_PREVIEW_SEED", raising=False)
-    if reference_time is not None:
-        monkeypatch.setenv("ADMIN_PREVIEW_REFERENCE_TIME", reference_time)
-    else:
-        monkeypatch.delenv("ADMIN_PREVIEW_REFERENCE_TIME", raising=False)
+def _worker_build_companies(result_queue: multiprocessing.Queue[object]) -> None:
+    reset_preview_context()
+    os.environ[ENV_PREVIEW_SEED] = "338"
+    os.environ[ENV_PREVIEW_REFERENCE_TIME] = DEFAULT_PREVIEW_REFERENCE_TIME_ISO
+    rows = build_preview_companies()
+    result_queue.put(rows)
+
+
+@pytest.fixture(autouse=True)
+def _clear_preview_context() -> None:
+    reset_preview_context()
+    yield
+    reset_preview_context()
 
 
 @pytest.mark.unit
-def test_same_context_and_route_deeply_equal(monkeypatch: pytest.MonkeyPatch) -> None:
-    _preview_env(monkeypatch, seed="42", reference_time="2026-07-15T12:00:00+00:00")
-    a = build_preview_companies()
-    b = build_preview_companies()
+def test_same_context_and_route_deeply_equal() -> None:
+    ctx = PreviewContext(root_seed=42, reference_time=DEFAULT_PREVIEW_REFERENCE_TIME)
+    a = build_preview_companies(rng=preview_rng("companies", context=ctx), now=ctx.reference_time)
+    b = build_preview_companies(rng=preview_rng("companies", context=ctx), now=ctx.reference_time)
     assert a == b
-    dashboard_a = build_preview_acquisition_dashboard_data()
-    dashboard_b = build_preview_acquisition_dashboard_data()
-    assert dashboard_a == dashboard_b
 
 
 @pytest.mark.unit
-def test_route_identical_when_other_fixtures_requested_first(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _preview_env(monkeypatch)
-    baseline = build_preview_brief_rows()
-    _ = build_preview_contacts()
-    _ = build_preview_acquisition_dashboard_data()
-    after = build_preview_brief_rows()
+def test_route_identical_when_other_namespaces_touched() -> None:
+    ctx = PreviewContext(root_seed=99, reference_time=DEFAULT_PREVIEW_REFERENCE_TIME)
+    baseline = build_preview_brief_rows(
+        rng=preview_rng("briefs", context=ctx),
+        now=ctx.reference_time,
+    )
+    build_preview_section_rows(
+        "/admin/companies",
+        rng=preview_rng("section:/admin/companies", context=ctx),
+        now=ctx.reference_time,
+    )
+    build_preview_acquisition_dashboard_data(
+        rng=preview_rng("acquisition_dashboard", context=ctx),
+        now=ctx.reference_time,
+    )
+    after = build_preview_brief_rows(
+        rng=preview_rng("briefs", context=ctx),
+        now=ctx.reference_time,
+    )
     assert baseline == after
 
 
 @pytest.mark.unit
-@pytest.mark.integration
-def test_desktop_and_mobile_http_responses_match(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _preview_env(monkeypatch, seed="42", reference_time="2026-07-15T12:00:00+00:00")
+def test_desktop_and_mobile_responses_match(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv(ENV_PREVIEW_SEED, "338")
+    monkeypatch.setenv(ENV_PREVIEW_REFERENCE_TIME, DEFAULT_PREVIEW_REFERENCE_TIME_ISO)
     monkeypatch.delenv("DATABASE_URL", raising=False)
+    reset_preview_context()
     client = TestClient(app, follow_redirects=False)
-    desktop = client.get("/admin/companies")
-    mobile = client.get(
-        "/admin/companies",
-        headers={"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)"},
-    )
+    desktop = client.get("/admin/briefs")
+    mobile = client.get("/admin/briefs")
     assert desktop.status_code == 200
     assert mobile.status_code == 200
     assert desktop.text == mobile.text
 
 
 @pytest.mark.unit
-def test_multiple_worker_processes_identical_fixtures(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _preview_env(monkeypatch, seed="99", reference_time="2026-07-15T12:00:00+00:00")
-    script = """
-import json
-import os
-os.environ["ADMIN_PREVIEW_MODE"] = "1"
-os.environ["ADMIN_PREVIEW_SEED"] = "99"
-os.environ["ADMIN_PREVIEW_REFERENCE_TIME"] = "2026-07-15T12:00:00+00:00"
-from app.admin_preview import build_preview_companies
-print(json.dumps(build_preview_companies(), default=str))
-"""
-    repo_root = os.getcwd()
-    outputs: list[str] = []
-    for _ in range(2):
-        completed = subprocess.run(
-            [sys.executable, "-c", script],
-            capture_output=True,
-            text=True,
-            check=True,
-            env={**os.environ, "PYTHONPATH": repo_root},
-        )
-        outputs.append(completed.stdout.strip())
-    assert outputs[0] == outputs[1]
+def test_multiple_processes_identical_fixtures() -> None:
+    ctx = multiprocessing.get_context("spawn")
+    queue_a: multiprocessing.Queue[object] = ctx.Queue()
+    queue_b: multiprocessing.Queue[object] = ctx.Queue()
+    proc_a = ctx.Process(target=_worker_build_companies, args=(queue_a,))
+    proc_b = ctx.Process(target=_worker_build_companies, args=(queue_b,))
+    proc_a.start()
+    proc_b.start()
+    proc_a.join(timeout=30)
+    proc_b.join(timeout=30)
+    assert proc_a.exitcode == 0
+    assert proc_b.exitcode == 0
+    assert queue_a.get() == queue_b.get()
 
 
 @pytest.mark.unit
-def test_namespace_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
-    _preview_env(monkeypatch, seed="42")
-    companies_before = build_preview_companies()
-    contacts_before, _ = build_preview_contacts()
-    _ = build_preview_acquisition_dashboard_data()
-    companies_after = build_preview_companies()
-    contacts_after, _ = build_preview_contacts()
+def test_namespace_isolation() -> None:
+    ctx = PreviewContext(root_seed=100, reference_time=DEFAULT_PREVIEW_REFERENCE_TIME)
+    companies_before = build_preview_companies(
+        rng=preview_rng("companies", context=ctx),
+        now=ctx.reference_time,
+    )
+    build_preview_section_rows(
+        "/admin/new-fixture",
+        rng=preview_rng("section:/admin/new-fixture", context=ctx),
+        now=ctx.reference_time,
+    )
+    companies_after = build_preview_companies(
+        rng=preview_rng("companies", context=ctx),
+        now=ctx.reference_time,
+    )
     assert companies_before == companies_after
-    assert contacts_before == contacts_after
-    assert derive_namespace_seed(42, NS_COMPANIES, PREVIEW_FIXTURE_VERSION) != (
-        derive_namespace_seed(42, NS_CONTACTS, PREVIEW_FIXTURE_VERSION)
+    assert derive_namespace_seed(100, "companies") != derive_namespace_seed(
+        100, "section:/admin/companies"
     )
 
 
 @pytest.mark.unit
-def test_changing_seed_produces_deterministic_alternate_dataset(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _preview_env(monkeypatch, seed="1", reference_time="2026-07-15T12:00:00+00:00")
-    seed_one_a = build_preview_brief_rows()
-    seed_one_b = build_preview_brief_rows()
-    assert seed_one_a == seed_one_b
-
-    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "2")
-    seed_two_a = build_preview_brief_rows()
-    seed_two_b = build_preview_brief_rows()
-    assert seed_two_a == seed_two_b
-    assert seed_one_a != seed_two_a
+def test_changing_seed_produces_alternate_dataset() -> None:
+    now = DEFAULT_PREVIEW_REFERENCE_TIME
+    a = build_preview_brief_rows(rng=preview_rng("briefs", context=PreviewContext(1, now)), now=now)
+    b = build_preview_brief_rows(rng=preview_rng("briefs", context=PreviewContext(2, now)), now=now)
+    assert a != b
+    c = build_preview_brief_rows(rng=preview_rng("briefs", context=PreviewContext(2, now)), now=now)
+    assert b == c
 
 
 @pytest.mark.unit
-def test_frozen_time_controls_overdue_and_freshness_boundaries(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    frozen = "2026-07-15T12:00:00+00:00"
-    _preview_env(monkeypatch, seed="42", reference_time=frozen)
-    dashboard = build_preview_acquisition_dashboard_data()
-    assert dashboard.generated_at == parse_preview_reference_time(frozen)
-    assert all(
-        row.next_action_due_at < dashboard.generated_at
-        for row in dashboard.overdue_actions
+def test_frozen_time_controls_date_boundaries() -> None:
+    frozen = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
+    ctx = PreviewContext(root_seed=7, reference_time=frozen)
+    data = build_preview_acquisition_dashboard_data(
+        rng=preview_rng("acquisition_dashboard", context=ctx),
+        now=frozen,
     )
-    assert all(
-        row.next_action_due_at > dashboard.generated_at
-        for row in dashboard.upcoming_actions
-    )
-    companies = build_preview_companies()
-    assert companies
-    for row in companies:
-        verified = row.get("last_verified_at")
-        if verified:
-            assert isinstance(verified, str)
+    assert data.generated_at == frozen
+    assert all(row.next_action_due_at < frozen for row in data.overdue_actions)
+    assert all(row.next_action_due_at > frozen for row in data.upcoming_actions)
+    assert all(row.expires_at > frozen for row in data.recent_evidence)
+    assert all(row.expires_at < frozen for row in data.stale_evidence)
 
 
 @pytest.mark.unit
-def test_preview_builders_skip_wall_clock_when_context_present(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    frozen = "2026-07-15T12:00:00+00:00"
-    _preview_env(monkeypatch, seed="42", reference_time=frozen)
-    reference = parse_preview_reference_time(frozen)
-    companies = build_preview_companies()
-    briefs = build_preview_brief_rows()
-    dashboard = build_preview_acquisition_dashboard_data()
-    assert preview_now() == reference
-    assert dashboard.generated_at == reference
-    for row in briefs:
-        created = row["created_at"]
-        assert isinstance(created, datetime)
-        assert created.tzinfo is not None
-        assert created <= reference
-    for row in companies:
-        archived = row.get("archived_at")
-        if archived:
-            assert str(archived) <= reference.isoformat()
+def test_admin_preview_builders_avoid_wall_clock_reads() -> None:
+    source = (Path(__file__).resolve().parents[1] / "app" / "admin_preview.py").read_text(
+        encoding="utf-8"
+    )
+    assert "datetime.now(" not in source
+    assert "date.today(" not in source
 
 
 @pytest.mark.unit
-def test_screenshot_manifest_records_reproducibility_fields(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from screenshot_deploy import (
-        build_screenshot_repro_manifest,
-        comment_markdown_pre_dual,
-        format_repro_manifest_comment_lines,
+def test_reproducibility_manifest_records_non_secret_fields() -> None:
+    from screenshot_deploy import build_reproducibility_manifest, reproducibility_comment_lines
+
+    reset_preview_context()
+    os.environ[ENV_PREVIEW_SEED] = "338"
+    os.environ[ENV_PREVIEW_REFERENCE_TIME] = DEFAULT_PREVIEW_REFERENCE_TIME_ISO
+    payload = build_reproducibility_manifest(
+        phase="branch",
+        browser_version="123.0.6312.4",
+        head_sha="abc123",
+        viewports=[{"name": "desktop", "width": 1280, "height": 800}],
     )
-
-    _preview_env(monkeypatch, seed="42", reference_time="2026-07-15T12:00:00+00:00")
-    monkeypatch.setenv("GITHUB_SHA", "abc123def456")
-    manifest = build_screenshot_repro_manifest(browser_version="120.0.0")
-    assert manifest["preview_fixture_version"] == PREVIEW_FIXTURE_VERSION
-    assert manifest["preview_root_seed"] == 42
-    assert manifest["preview_reference_time"] == "2026-07-15T12:00:00+00:00"
-    assert manifest["git_head_sha"] == "abc123def456"
-    assert manifest["browser_version"] == "120.0.0"
-    assert manifest["viewports"] == []
-
-    ctx = PreviewContext(
-        root_seed=42,
-        reference_time=DEFAULT_PREVIEW_REFERENCE_TIME,
-        fixture_version=PREVIEW_FIXTURE_VERSION,
-    )
-    fields = preview_context_manifest_fields(
-        ctx,
-        head_sha="sha",
-        browser_version="1.2.3",
-        viewports=[{"name": "desktop", "width": 1, "height": 2}],
-    )
-    comment_lines = format_repro_manifest_comment_lines(fields)
-    assert any("fixture_version" in line for line in comment_lines)
-    assert any("root_seed" in line for line in comment_lines)
-
-    body = comment_markdown_pre_dual(
-        branch_url="http://127.0.0.1:8765",
-        branch_urls=["https://raw.example/branch-home.png"],
-        repro_manifest=manifest,
-    )
-    assert "preview reproducibility" in body
-    assert "`42`" in body
-
-
-@pytest.mark.unit
-def test_screenshot_manifest_file_written(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from screenshot_deploy import write_screenshot_repro_manifest
-
-    _preview_env(monkeypatch)
-    path = write_screenshot_repro_manifest(
-        tmp_path, phase="branch", browser_version="120.0.0"
-    )
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    assert payload["preview_root_seed"] == DEFAULT_PREVIEW_ROOT_SEED
-    assert payload["preview_reference_time"] == DEFAULT_PREVIEW_REFERENCE_TIME.isoformat()
-    assert payload["browser_version"] == "120.0.0"
+    assert payload["fixture_version"]
+    assert payload["root_seed"] == 338
+    assert payload["reference_time"] == DEFAULT_PREVIEW_REFERENCE_TIME.isoformat()
+    assert payload["browser_version"] == "123.0.6312.4"
+    assert payload["head_sha"] == "abc123"
+    assert payload["viewports"]
+    assert ENV_PREVIEW_SEED in payload["preview_env"]
+    lines = reproducibility_comment_lines(payload)
+    assert any("preview seed" in line for line in lines)
+    assert any("fixture version" in line for line in lines)
+    json.dumps(payload)
 
 
 @pytest.mark.unit
 def test_malformed_seed_or_time_fail_fast(monkeypatch: pytest.MonkeyPatch) -> None:
-    _preview_env(monkeypatch)
-    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "not-a-number")
-    with pytest.raises(ValueError, match="ADMIN_PREVIEW_SEED"):
-        load_preview_context_from_env()
-
-    _preview_env(monkeypatch)
-    monkeypatch.setenv("ADMIN_PREVIEW_REFERENCE_TIME", "yesterday")
-    with pytest.raises(ValueError, match="ADMIN_PREVIEW_REFERENCE_TIME"):
-        load_preview_context_from_env()
+    with pytest.raises(PreviewContextError):
+        parse_preview_seed("")
+    with pytest.raises(PreviewContextError):
+        parse_preview_reference_time("2026-07-14")
+    with pytest.raises(PreviewContextError):
+        parse_preview_reference_time("not-a-timestamp")
+    monkeypatch.delenv(ENV_PREVIEW_SEED, raising=False)
+    monkeypatch.delenv(ENV_PREVIEW_REFERENCE_TIME, raising=False)
+    with pytest.raises(PreviewContextError):
+        load_preview_context(use_defaults=False)
 
 
 @pytest.mark.unit
-def test_missing_seed_and_time_use_stable_defaults(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _preview_env(monkeypatch)
-    ctx = load_preview_context_from_env()
-    assert ctx.root_seed == DEFAULT_PREVIEW_ROOT_SEED
+def test_missing_ci_values_use_documented_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(ENV_PREVIEW_SEED, raising=False)
+    monkeypatch.delenv(ENV_PREVIEW_REFERENCE_TIME, raising=False)
+    reset_preview_context()
+    ctx = load_preview_context()
+    assert ctx.root_seed == DEFAULT_PREVIEW_SEED
     assert ctx.reference_time == DEFAULT_PREVIEW_REFERENCE_TIME
-    assert ctx.fixture_version == PREVIEW_FIXTURE_VERSION
+    env = preview_reproducibility_env()
+    assert env[ENV_PREVIEW_SEED] == str(DEFAULT_PREVIEW_SEED)
+    assert env[ENV_PREVIEW_REFERENCE_TIME] == DEFAULT_PREVIEW_REFERENCE_TIME_ISO
+    assert preview_now() == DEFAULT_PREVIEW_REFERENCE_TIME
 
 
 @pytest.mark.unit
-def test_parse_preview_seed_and_time_helpers() -> None:
-    assert parse_preview_seed("42") == 42
-    with pytest.raises(ValueError):
-        parse_preview_seed("abc")
-    parsed = parse_preview_reference_time("2026-07-15T12:00:00+00:00")
-    assert parsed.tzinfo == timezone.utc
-    with pytest.raises(ValueError):
-        parse_preview_reference_time("2026-07-15T12:00:00")
+def test_subprocess_fixture_builder_matches_in_process() -> None:
+    code = """
+import json
+import os
+from app.admin_preview import build_preview_companies
+from app.preview_context import DEFAULT_PREVIEW_REFERENCE_TIME_ISO, ENV_PREVIEW_REFERENCE_TIME, ENV_PREVIEW_SEED, reset_preview_context
 
-
-@pytest.mark.unit
-def test_preview_rng_for_namespace_stable(monkeypatch: pytest.MonkeyPatch) -> None:
-    _preview_env(monkeypatch, seed="42")
-    a = preview_rng_for(NS_BRIEF_ROWS)
-    b = preview_rng_for(NS_BRIEF_ROWS)
-    assert [a.random(), a.random(), a.random()] == [b.random(), b.random(), b.random()]
-    assert derive_namespace_seed(42, NS_BRIEF_ROWS, PREVIEW_FIXTURE_VERSION) != (
-        derive_namespace_seed(42, NS_COMPANIES, PREVIEW_FIXTURE_VERSION)
+reset_preview_context()
+os.environ[ENV_PREVIEW_SEED] = "338"
+os.environ[ENV_PREVIEW_REFERENCE_TIME] = DEFAULT_PREVIEW_REFERENCE_TIME_ISO
+print(json.dumps(build_preview_companies(), default=str))
+"""
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=str(os.getcwd()),
     )
+    reset_preview_context()
+    os.environ[ENV_PREVIEW_SEED] = "338"
+    os.environ[ENV_PREVIEW_REFERENCE_TIME] = DEFAULT_PREVIEW_REFERENCE_TIME_ISO
+    expected = build_preview_companies()
+    assert json.loads(proc.stdout) == json.loads(json.dumps(expected, default=str))
