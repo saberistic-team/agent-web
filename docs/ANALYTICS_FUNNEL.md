@@ -221,7 +221,7 @@ WHERE status = 'pending_payment'
 | Form starts | `analytics_events` `Brief Form Started` | |
 | Leads persisted | Postgres `created_at` count | |
 | Checkouts opened | Postgres rows with `stripe_session_id` | |
-| Payments completed | Postgres `status = paid'` | |
+| Payments completed | Postgres `status = 'paid'` | |
 | Lead → payment % | Postgres query | |
 | Top `utm_source` | Postgres group-by | |
 | LinkedIn contacts | `analytics_events` `Contact Initiated` | |
@@ -231,7 +231,8 @@ WHERE status = 'pending_payment'
 | Component | Path |
 |-----------|------|
 | Event schema contract (v1) | `app/analytics_event_schema.py`, [ANALYTICS_EVENT_SCHEMA.md](ANALYTICS_EVENT_SCHEMA.md) |
-| Server events + sanitization | `app/analytics_service.py` |
+| Property sanitization | `app/analytics_service.py` |
+| Server events (authoritative) | `app/server_analytics.py` |
 | Browser ingest + abuse controls | `app/analytics_ingest.py`, [ANALYTICS_INGEST.md](ANALYTICS_INGEST.md) |
 | Page injection (meta + script) | `app/page_service.py` |
 | Client funnel + UTM capture | `site/assets/first_party_analytics.js` |

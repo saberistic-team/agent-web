@@ -5,7 +5,7 @@ Parent issue: [#114](https://github.com/saberistic-team/agent-web/issues/114).
 Browser events POST to `POST /api/events` using the contract in
 [ANALYTICS_EVENT_SCHEMA.md](ANALYTICS_EVENT_SCHEMA.md). Server-authoritative
 conversion events (`Lead Persisted`, `Checkout Opened`, `Payment Completed`) persist
-via `app/analytics_service.py` into `analytics_events`.
+via `app/server_analytics.py` into `analytics_events`.
 
 ## Enable
 

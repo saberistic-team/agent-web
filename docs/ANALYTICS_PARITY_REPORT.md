@@ -58,7 +58,7 @@ within 0 rows (same hooks, idempotent server keys per `brief_id`).
 
 | Defect | Resolution |
 |--------|------------|
-| Server events still posted to Plausible API only | `app/analytics_service.py` now persists to `analytics_events` with schema v1 |
+| Server events still posted to Plausible API only | `app/server_analytics.py` persists to `analytics_events` with schema v1 and session linkage |
 | Dual client scripts (Plausible + first-party) | Removed `site/assets/analytics.js` and Plausible meta injection |
 | Split enable flags (`ANALYTICS_ENABLED` + `PLAUSIBLE_*`) | Unified on `FIRST_PARTY_ANALYTICS_ENABLED` (legacy `ANALYTICS_ENABLED` still honored) |
 

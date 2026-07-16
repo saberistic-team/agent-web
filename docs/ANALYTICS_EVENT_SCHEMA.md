@@ -6,8 +6,8 @@ preserving funnel definitions from [ANALYTICS_FUNNEL.md](ANALYTICS_FUNNEL.md).
 Parent issue: [#113](https://github.com/saberistic-team/agent-web/issues/113).
 
 Implementation: `app/analytics_event_schema.py` (contract) and transport in
-`app/analytics_service.py` (server persistence) / `app/analytics_ingest.py`
-(browser ingest).
+`app/server_analytics.py` (server persistence) / `app/analytics_ingest.py`
+(browser ingest). Property sanitization lives in `app/analytics_service.py`.
 
 ## Schema version
 

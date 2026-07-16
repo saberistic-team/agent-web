@@ -139,54 +139,6 @@ def test_analytics_enabled_legacy_alias(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 @pytest.mark.unit
-def test_track_event_noop_when_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    settings = get_settings()
-    with patch("app.analytics_service.persist_analytics_event") as persist:
-        analytics_service.track_event(settings, event_name="Lead Persisted", props={"brief_id": 1})
-    persist.assert_not_called()
-
-
-@pytest.mark.unit
-def test_track_event_persists_sanitized_payload(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("FIRST_PARTY_ANALYTICS_ENABLED", "true")
-    monkeypatch.setenv("ANALYTICS_ENV", "production")
-    settings = get_settings()
-
-    conn = MagicMock()
-    with patch("app.analytics_service.db.db_connection") as db_conn:
-        db_conn.return_value.__enter__.return_value = conn
-        db_conn.return_value.__exit__.return_value = None
-        with patch("app.analytics_service.persist_analytics_event", return_value=True) as persist:
-            analytics_service.track_lead_persisted(
-                settings,
-                brief_id=9,
-                utm={"utm_source": "linkedin", "utm_medium": None},
-            )
-
-    persist.assert_called_once()
-    call_kwargs = persist.call_args.kwargs
-    event = call_kwargs["event"]
-    assert event.event_name == analytics_service.EVENT_LEAD_PERSISTED
-    assert event.properties["brief_id"] == 9
-    assert event.properties["funnel_step"] == 5
-    assert event.properties["environment"] == "production"
-    assert event.properties["linkage_source"] == "server_brief_persist"
-    assert event.attribution["utm_source"] == "linkedin"
-    assert "email" not in event.properties
-    assert "website" not in event.properties
-
-
-@pytest.mark.unit
-def test_track_event_failure_is_non_blocking(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("FIRST_PARTY_ANALYTICS_ENABLED", "true")
-    settings = get_settings()
-
-    with patch("app.analytics_service.db.db_connection") as db_conn:
-        db_conn.side_effect = RuntimeError("database down")
-        analytics_service.track_event(settings, event_name="Lead Persisted", props={"brief_id": 1})
-
-
-@pytest.mark.unit
 @pytest.mark.integration
 def test_create_brief_emits_server_funnel_events(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("FIRST_PARTY_ANALYTICS_ENABLED", "true")
@@ -202,9 +154,9 @@ def test_create_brief_emits_server_funnel_events(monkeypatch: pytest.MonkeyPatch
                     "app.main.stripe_service.create_checkout_session",
                     return_value=fake_session,
                 ):
-                    with patch("app.main.analytics_service.track_lead_persisted") as track_lead:
+                    with patch("app.main.server_analytics.record_lead_persisted") as track_lead:
                         with patch(
-                            "app.main.analytics_service.track_checkout_opened"
+                            "app.main.server_analytics.record_checkout_opened"
                         ) as track_checkout:
                             response = client.post(
                                 "/api/briefs",
@@ -240,7 +192,7 @@ def test_analytics_failure_does_not_block_brief_create(monkeypatch: pytest.Monke
                     return_value=fake_session,
                 ):
                     with patch(
-                        "app.analytics_service.persist_analytics_event",
+                        "app.main.server_analytics.record_lead_persisted",
                         side_effect=RuntimeError("analytics down"),
                     ):
                         response = client.post("/api/briefs", json=SAMPLE_BRIEF)
@@ -276,7 +228,7 @@ def test_stripe_webhook_emits_payment_completed(monkeypatch: pytest.MonkeyPatch)
         ):
             with patch("app.main.db.mark_brief_paid", return_value=FAKE_PAID_BRIEF):
                 with patch(
-                    "app.main.analytics_service.track_payment_completed"
+                    "app.main.server_analytics.record_payment_completed"
                 ) as track_payment:
                     response = client.post(
                         "/webhooks/stripe",

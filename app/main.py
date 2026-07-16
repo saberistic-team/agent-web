@@ -19,7 +19,7 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app import analytics_service, case_studies, db, email_service, insights, page_service, server_analytics, stripe_service
+from app import case_studies, db, email_service, insights, page_service, server_analytics, stripe_service
 from app.admin_auth import AdminLoginRequired, login_redirect_url
 from app.admin_pipeline_routes import router as admin_pipeline_router
 from app.admin_routes import router as admin_router
@@ -30,6 +30,7 @@ from app.analytics_ingest import (
     IngestRejectReason,
     ingest_browser_event,
 )
+from app.admin_security import AdminSecurityConfigError, validate_admin_security_config
 from app.client_source import admin_proxy_trust_summary, client_source_policy_summary, resolve_client_source
 from app.config import get_settings
 from app.models import BriefCreateRequest, BriefCreateResponse
@@ -240,6 +241,11 @@ def _send_paid_notifications(
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     if settings.database_configured:
+        try:
+            validate_admin_security_config(settings)
+        except AdminSecurityConfigError:
+            logger.exception("Admin security configuration is invalid")
+            raise
         db.init_db(settings.database_url)
         logger.info("database schema ready")
     else:
@@ -490,15 +496,6 @@ def create_brief(payload: BriefCreateRequest) -> BriefCreateResponse:
         )
 
         try:
-            analytics_service.track_lead_persisted(
-                settings,
-                brief_id=brief_id,
-                utm=utm,
-            )
-        except Exception:
-            logger.exception("Analytics lead_persisted failed for brief %s", brief_id)
-
-        try:
             server_analytics.record_lead_persisted(
                 settings,
                 conn,
@@ -548,16 +545,6 @@ def create_brief(payload: BriefCreateRequest) -> BriefCreateResponse:
             )
         except Exception:
             logger.exception("First-party checkout_opened failed for brief %s", brief_id)
-
-    try:
-        analytics_service.track_checkout_opened(
-            settings,
-            brief_id=brief_id,
-            price_cents=settings.brief_price_cents,
-            utm=utm,
-        )
-    except Exception:
-        logger.exception("Analytics checkout_opened failed for brief %s", brief_id)
 
     if not session.url:
         raise HTTPException(status_code=502, detail="Payment session missing checkout URL")
@@ -652,16 +639,6 @@ async def stripe_webhook(request: Request) -> JSONResponse:
         paid_amount_cents = settings.brief_price_cents
 
     utm = _brief_utm_from_row(paid_brief)
-
-    try:
-        analytics_service.track_payment_completed(
-            settings,
-            brief_id=brief_id,
-            price_cents=int(paid_amount_cents),
-            utm=utm,
-        )
-    except Exception:
-        logger.exception("Analytics payment_completed failed for brief %s", brief_id)
 
     with db.db_connection(settings.database_url) as conn:
         try:
