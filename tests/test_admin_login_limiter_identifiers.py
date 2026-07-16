@@ -241,10 +241,10 @@ def test_rotation_previous_key_lockout_blocks_without_incrementing_new_key(
         admin_login_limiter_previous_secret=PREVIOUS_LIMITER_SECRET,
     )
     now = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
-    previous_source = admin_auth._digest_limiter_key(
-        PREVIOUS_LIMITER_SECRET,
-        admin_auth.LIMITER_DOMAIN_SOURCE,
-        "203.0.113.10",
+    previous_source = digest_limiter_key(
+        domain=LIMITER_DOMAIN_SOURCE,
+        material="203.0.113.10",
+        secret=PREVIOUS_LIMITER_SECRET,
     )
     current_source = admin_auth.build_source_rate_limit_key("203.0.113.10", settings=settings)
     with pg_conn.cursor() as cur:
@@ -264,13 +264,13 @@ def test_rotation_previous_key_lockout_blocks_without_incrementing_new_key(
         )
     pg_conn.commit()
 
-    guard = admin_auth.login_limiter_guard_keys(
+    guard = admin_auth.login_limiter_rotation_keys(
         settings=settings,
         submitted_username="ghost",
         client_source="203.0.113.10",
         configured_admin_username=TEST_USERNAME,
     )
-    write = admin_auth.login_limiter_write_keys(
+    write = admin_auth.login_limiter_keys(
         settings=settings,
         submitted_username="ghost",
         client_source="203.0.113.10",
@@ -278,8 +278,8 @@ def test_rotation_previous_key_lockout_blocks_without_incrementing_new_key(
     )
     blocked = db.try_admit_admin_login(
         pg_conn,
-        limiter_keys=guard,
-        increment_keys=write,
+        limiter_keys=write,
+        guard_keys=guard,
         now=now,
         rate_limit=5,
         window_seconds=900,
