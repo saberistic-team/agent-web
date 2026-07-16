@@ -362,6 +362,36 @@ curl -sS https://saberistic.com/health | jq '.admin_proxy_trust'
 # scripts/smoke_deploy.py checks this block on every production/Render deploy.
 ```
 
+### Cache isolation (#337)
+
+Every `/admin` response — login, authenticated HTML/JSON, redirects, validation
+failures, throttling, and temporary errors — carries a single
+`Cache-Control: no-store, private` header enforced by centralized middleware
+(``app/admin_cache_policy.py``). Handlers cannot weaken this policy with a
+conflicting downstream directive.
+
+| Scope | Policy |
+|-------|--------|
+| `/admin` and `/admin/*` | `no-store, private` (always, regardless of auth state) |
+| Public pages (`/`, `/about`, …) | Unchanged by #337 |
+| Fingerprinted static assets (`/assets/*`) | Unchanged — not forced no-store by admin cookies or referrer |
+
+**What no-store guarantees:** compliant browsers and shared HTTP caches should
+not store or reuse the response representation for back/forward navigation or
+offline reuse.
+
+**What no-store does not guarantee:** secure erasure from browser UI memory,
+screenshots, swap, malicious intermediaries, or caches that ignore standards.
+Operators should still sign out on shared devices and treat cached-looking UI as
+untrusted until re-authenticated.
+
+Production header smoke (headers only — no cookies or response bodies logged):
+
+```bash
+python scripts/smoke_deploy.py --base-url https://saberistic.com
+# PASS admin cache → Cache-Control: no-store, private on GET /admin/login
+```
+
 #### Rollback / recovery
 
 If proxy CIDRs are misconfigured and every request shares one limiter source

@@ -9,6 +9,8 @@ import sys
 import urllib.error
 import urllib.request
 
+from app.admin_cache_policy import ADMIN_CACHE_CONTROL
+
 
 def get_json(url: str) -> dict:
     with urllib.request.urlopen(url, timeout=30) as resp:
@@ -28,6 +30,20 @@ def verify_admin_login_source_trust(health_payload: dict, base_url: str) -> bool
     if not isinstance(trust, dict):
         return False
     return bool(trust.get("enabled")) and int(trust.get("trusted_proxy_entry_count", 0)) > 0
+
+
+def verify_admin_login_cache_policy(base_url: str) -> tuple[bool, str]:
+    """Return (ok, detail) after a headers-only GET to /admin/login."""
+    url = f"{base_url.rstrip('/')}/admin/login"
+    req = urllib.request.Request(url, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            cache_control = resp.headers.get("Cache-Control", "")
+    except (urllib.error.URLError, TimeoutError) as exc:
+        return False, f"{url}: {exc}"
+    if cache_control != ADMIN_CACHE_CONTROL:
+        return False, f"{url}: Cache-Control={cache_control!r}, expected {ADMIN_CACHE_CONTROL!r}"
+    return True, f"{url} → Cache-Control: {cache_control}"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -71,6 +87,12 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     if base.endswith("saberistic.com") or "onrender.com" in base:
         print(f"PASS {health_url} → admin_proxy_trust boundary active")
+
+    cache_ok, cache_detail = verify_admin_login_cache_policy(base)
+    if not cache_ok:
+        print(f"FAIL {cache_detail}", file=sys.stderr)
+        return 1
+    print(f"PASS admin cache → {cache_detail}")
     return 0
 
 

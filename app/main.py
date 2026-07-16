@@ -21,6 +21,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import analytics_service, case_studies, db, email_service, insights, page_service, server_analytics, stripe_service
 from app.admin_auth import AdminLoginRequired, login_redirect_url
+from app.admin_cache_policy import admin_no_store_cache_policy
 from app.admin_pipeline_routes import router as admin_pipeline_router
 from app.admin_routes import router as admin_router
 from app.actor_context import CORRELATION_HEADER
@@ -285,6 +286,11 @@ async def redirect_www_to_apex(request: Request, call_next):
         target = apex_redirect_url(request.url.path, request.url.query)
         return RedirectResponse(url=target, status_code=301)
     return await call_next(request)
+
+
+@app.middleware("http")
+async def enforce_admin_no_store_cache(request: Request, call_next):
+    return await admin_no_store_cache_policy(request, call_next)
 
 
 @app.exception_handler(StarletteHTTPException)
