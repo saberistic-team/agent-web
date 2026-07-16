@@ -226,6 +226,7 @@ def test_pipeline_activity_post_redirects(authenticated_admin: dict[str, Any]) -
         )
     assert response.status_code == 303
     crm.record_pipeline_activity.assert_called_once()
+    assert crm.record_pipeline_activity.call_args.kwargs["actor_context"].actor == "operator"
 
 
 @pytest.mark.unit
