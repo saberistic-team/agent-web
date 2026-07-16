@@ -1418,6 +1418,52 @@ def render_preview_imports_main(
     rng = rng or _preview_rng()
     now = now or datetime.now(timezone.utc)
     data = build_preview_linkedin_import_data(rng=rng)
+    reconcile = build_preview_linkedin_reconcile(rng=rng)
+    summary = reconcile["summary_counts"]
+    assert isinstance(summary, dict)
+    rows = reconcile["rows"]
+    assert isinstance(rows, list)
+    row_html = []
+    for row in rows:
+        assert isinstance(row, dict)
+        identity = row.get("identity") or {}
+        assert isinstance(identity, dict)
+        label = html.escape(str(identity.get("full_name") or "Unknown"))
+        outcome = html.escape(str(row.get("outcome")))
+        tier = html.escape(str(row.get("match_tier") or "—"))
+        row_html.append(
+            f"<tr><td>{label}</td><td>{outcome}</td><td>{tier}</td>"
+            f"<td>{html.escape(str(identity.get('company_name') or '—'))}</td></tr>"
+        )
+    reconcile_section = f"""
+          <div class="linkedin-import-reconcile">
+            <h2 class="admin-section-title" id="reconcile-title">LinkedIn reconcile preview</h2>
+            <p class="admin-lede">
+              Incremental merge preview — inserts, updates, unchanged rows, and conflicts.
+              Connections absent from this export are preserved ({reconcile["absent_preserved"]} existing).
+            </p>
+            <dl class="linkedin-import-summary">
+              <div><dt>Insert</dt><dd>{summary.get("insert", 0)}</dd></div>
+              <div><dt>Update</dt><dd>{summary.get("update", 0)}</dd></div>
+              <div><dt>Unchanged</dt><dd>{summary.get("unchanged", 0)}</dd></div>
+              <div><dt>Conflict</dt><dd>{summary.get("conflict", 0)}</dd></div>
+            </dl>
+            <div class="admin-table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Connection</th>
+                    <th scope="col">Outcome</th>
+                    <th scope="col">Match tier</th>
+                    <th scope="col">Company</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {"".join(row_html)}
+                </tbody>
+              </table>
+            </div>
+          </div>"""
     generated = now.strftime("%Y-%m-%d %H:%M:%S UTC")
     dup_rows = "".join(
         f"<li>{html.escape(url)}</li>" for url in data.duplicate_urls
@@ -1485,6 +1531,7 @@ def render_preview_imports_main(
             <h3 class="admin-section-title">Ignored archive entries</h3>
             <ul class="linkedin-import-ignored">{ignored_rows}</ul>
           </div>
+          {reconcile_section}
         </section>"""
 
 
@@ -1616,3 +1663,101 @@ def render_preview_section_main(
           </div>
         </section>"""
 
+
+def build_preview_linkedin_reconcile(
+    *,
+    rng: random.Random | None = None,
+) -> dict[str, object]:
+    """Mock reconcile preview with insert, update, unchanged, and conflict rows."""
+    rng = rng or _preview_rng()
+    companies = list(COMPANY_NAMES)
+    rng.shuffle(companies)
+    rows: list[dict[str, object]] = [
+        {
+            "row_index": 0,
+            "outcome": "insert",
+            "identity": {
+                "full_name": "Jordan Ellis",
+                "profile_url": "https://linkedin.com/in/jordan-ellis",
+                "company_name": companies[0],
+                "title": "CTO",
+            },
+            "match_tier": "none",
+            "field_changes": [{"field": "full_name", "before": None, "after": "Jordan Ellis"}],
+        },
+        {
+            "row_index": 1,
+            "outcome": "update",
+            "identity": {
+                "full_name": "Alex Nguyen",
+                "profile_url": "https://linkedin.com/in/alex-nguyen",
+                "company_name": companies[1],
+                "title": "VP Engineering",
+            },
+            "match_tier": "profile_url",
+            "contact_id": _preview_uuid(rng),
+            "contact_label": "Alex Nguyen",
+            "field_changes": [
+                {"field": "title", "before": "Director of Engineering", "after": "VP Engineering"},
+                {
+                    "field": "company_id",
+                    "before": None,
+                    "after": str(UUID(int=rng.getrandbits(128), version=4)),
+                },
+            ],
+        },
+        {
+            "row_index": 2,
+            "outcome": "unchanged",
+            "identity": {
+                "full_name": "Sam Patel",
+                "profile_url": "https://linkedin.com/in/sam-patel",
+                "company_name": companies[2],
+                "title": "Founder",
+            },
+            "match_tier": "profile_url",
+            "contact_id": _preview_uuid(rng),
+            "contact_label": "Sam Patel",
+            "field_changes": [],
+        },
+        {
+            "row_index": 3,
+            "outcome": "conflict",
+            "identity": {
+                "full_name": "Riley Park",
+                "profile_url": "https://linkedin.com/in/riley-park",
+                "company_name": companies[3],
+            },
+            "match_tier": "name_company",
+            "conflict_reason": "Multiple contacts match name and company",
+            "conflict_candidates": [
+                {
+                    "contact_id": _preview_uuid(rng),
+                    "full_name": "Riley Park",
+                    "title": "COO",
+                    "company_name": companies[3],
+                    "profile_url": None,
+                    "email": "riley@example.com",
+                },
+                {
+                    "contact_id": _preview_uuid(rng),
+                    "full_name": "Riley Park",
+                    "title": "Advisor",
+                    "company_name": companies[3],
+                    "profile_url": "https://linkedin.com/in/riley-p",
+                    "email": None,
+                },
+            ],
+        },
+    ]
+    return {
+        "rows": rows,
+        "summary_counts": {
+            "insert": 1,
+            "update": 1,
+            "unchanged": 1,
+            "conflict": 1,
+            "skipped": 0,
+        },
+        "absent_preserved": rng.randint(12, 48),
+    }
