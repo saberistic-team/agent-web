@@ -172,3 +172,44 @@ def test_record_pipeline_activity_commits() -> None:
     )
     assert row["summary"] == "Called CEO"
     conn.commit.assert_called_once()
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_complete_queue_item_clears_next_action_and_audits() -> None:
+    pipeline_repo = MagicMock()
+    activity_repo = MagicMock()
+    company = {
+        "id": COMPANY_ID,
+        "pipeline_stage": "qualified",
+        "next_action": "Follow up",
+        "next_action_due_at": datetime(2026, 7, 16, tzinfo=timezone.utc),
+    }
+    updated = {**company, "next_action": None, "next_action_due_at": None}
+    pipeline_repo.get_company_pipeline.return_value = company
+    pipeline_repo.update_pipeline_fields.return_value = updated
+    service = CrmService(
+        repos=CrmRepositories(
+            companies=MagicMock(),
+            contacts=MagicMock(),
+            source_records=MagicMock(),
+            activities=activity_repo,
+            research_records=MagicMock(),
+            admin_users=MagicMock(),
+            pipeline=pipeline_repo,
+            import_batches=MagicMock(),
+        )
+    )
+    conn = MagicMock()
+    with patch("app.crm_service.audit_service.record_pipeline_update") as audit:
+        result = service.complete_queue_item(
+            conn,
+            actor_context=ACTOR,
+            company_id=COMPANY_ID,
+            item_key="overdue:1",
+            item_category="overdue_action",
+        )
+    assert result["status"] == "completed"
+    activity_repo.create.assert_called_once()
+    audit.assert_called_once()
+    conn.commit.assert_called_once()

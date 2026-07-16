@@ -20,6 +20,7 @@ from app.admin_preview import (
     PREVIEW_CONTACT_DETAIL_RESTORE_ID,
     PREVIEW_CONTACT_POPULATED_ID,
     PREVIEW_PIPELINE_COMPANY_IDS,
+    build_preview_action_queue_data,
     build_preview_company_detail,
     build_preview_contact_detail,
     build_preview_acquisition_dashboard_data,
@@ -29,6 +30,7 @@ from app.admin_preview import (
     build_preview_contact,
     build_preview_contacts,
     build_preview_dashboard_data,
+    build_preview_export_csv,
     build_preview_pipeline_companies,
     build_preview_pipeline_detail,
     build_preview_section_rows,
@@ -39,6 +41,7 @@ from app.admin_preview import (
 )
 from app.admin_auth import SESSION_COOKIE_NAME
 from app.admin_dashboard_pages import render_acquisition_dashboard_page
+from app.admin_action_queue_pages import render_action_queue_page
 from app.main import app
 
 
@@ -68,6 +71,44 @@ def test_preview_acquisition_dashboard_html_includes_sections() -> None:
     assert "Missing decision-maker" in html
     assert "qualifying" in html.lower()
     assert data.without_decision_maker[0].company_name in html
+
+
+@pytest.mark.unit
+def test_preview_action_queue_seed_stable() -> None:
+    now = datetime(2026, 7, 16, 12, 0, tzinfo=timezone.utc)
+    a = build_preview_action_queue_data(rng=random.Random(42), now=now)
+    b = build_preview_action_queue_data(rng=random.Random(42), now=now)
+    assert a == b
+    assert len(a.items) == 5
+
+
+@pytest.mark.unit
+def test_preview_action_queue_html_includes_all_categories() -> None:
+    data = build_preview_action_queue_data(rng=random.Random(99))
+    html = render_action_queue_page(
+        data=data,
+        admin_username="preview",
+        csrf_token="preview-csrf",
+        preview_banner="Preview data — not production",
+    )
+    assert "Preview data — not production" in html
+    assert "Daily action queue" in html
+    assert "Overdue action" in html
+    assert "Due today" in html
+    assert "Tier A qualified" in html
+    assert "Warm introduction" in html
+    assert "Stale evidence" in html
+    assert data.items[0].company_name in html
+    assert "/admin/pipeline/" in html
+    assert "Export spreadsheet" in html
+
+
+@pytest.mark.unit
+def test_preview_export_csv_neutralizes_formulas() -> None:
+    csv_text = build_preview_export_csv()
+    assert "company_name" in csv_text
+    assert "'=HYPERLINK" in csv_text
+    assert "'+cmd" in csv_text
 
 
 @pytest.mark.unit

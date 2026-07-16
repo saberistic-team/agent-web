@@ -12,6 +12,12 @@ ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
         "summary": "Acquisition pipeline and daily attention queues",
     },
     {
+        "label": "Queue",
+        "href": "/admin/queue",
+        "milestone": "Qualification workspace",
+        "summary": "Daily action queue and spreadsheet export",
+    },
+    {
         "label": "Audit",
         "href": "/admin/audit",
         "milestone": "Audit trail",
@@ -114,6 +120,8 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbc/edit",
     # Pipeline detail (Next action, Change stage, Log activity, timeline).
     "/admin/pipeline/11111111-1111-1111-1111-111111111111",
+    # Daily action queue (prioritized work list + export).
+    "/admin/queue",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).

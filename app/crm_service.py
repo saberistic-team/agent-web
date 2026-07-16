@@ -1727,3 +1727,131 @@ class CrmService:
             )
         return {"export_type": export_type, "filters": filters or {}}
 
+    def complete_queue_item(
+        self,
+        conn: psycopg.Connection,
+        *,
+        actor_context: ActorContext,
+        company_id: UUID,
+        item_key: str,
+        item_category: str,
+    ) -> dict[str, Any]:
+        company = self._repos.pipeline.get_company_pipeline(conn, company_id)
+        if company is None:
+            raise ValueError("Company not found.")
+        summary = company.get("next_action") or item_category
+        with crm_transaction(conn):
+            self._repos.activities.create(
+                conn,
+                activity_type="task_completion",
+                summary=f"Queue complete ({item_category}): {summary}",
+                company_id=company_id,
+                metadata={"item_key": item_key, "item_category": item_category},
+            )
+            if company.get("next_action"):
+                summary_before = pipeline_summary(company)
+                updated = self._repos.pipeline.update_pipeline_fields(
+                    conn,
+                    company_id,
+                    next_action=None,
+                    next_action_due_at=None,
+                )
+                if updated is not None:
+                    audit_service.record_pipeline_update(
+                        conn,
+                        actor_context=actor_context,
+                        entity_id=str(company_id),
+                        summary_before=summary_before,
+                        summary_after=pipeline_summary(updated),
+                    )
+        return {"item_key": item_key, "status": "completed"}
+
+    def snooze_queue_item(
+        self,
+        conn: psycopg.Connection,
+        *,
+        actor_context: ActorContext,
+        company_id: UUID,
+        item_key: str,
+        item_category: str,
+        snooze_days: int,
+    ) -> dict[str, Any]:
+        company = self._repos.pipeline.get_company_pipeline(conn, company_id)
+        if company is None:
+            raise ValueError("Company not found.")
+        reference = company.get("next_action_due_at") or datetime.now(timezone.utc)
+        if isinstance(reference, str):
+            reference = datetime.fromisoformat(reference.replace("Z", "+00:00"))
+        if reference.tzinfo is None:
+            reference = reference.replace(tzinfo=timezone.utc)
+        new_due = reference + timedelta(days=snooze_days)
+        update = PipelineNextActionUpdate(next_action_due_at=new_due)
+        self.update_pipeline_next_action(
+            conn,
+            actor_context=actor_context,
+            company_id=company_id,
+            update=update,
+        )
+        with crm_transaction(conn):
+            self._repos.activities.create(
+                conn,
+                activity_type="task_completion",
+                summary=f"Queue snooze ({item_category}): +{snooze_days}d",
+                company_id=company_id,
+                metadata={"item_key": item_key, "snooze_days": snooze_days},
+            )
+        return {"item_key": item_key, "next_action_due_at": new_due}
+
+    def reschedule_queue_item(
+        self,
+        conn: psycopg.Connection,
+        *,
+        actor_context: ActorContext,
+        company_id: UUID,
+        item_key: str,
+        item_category: str,
+        next_action_due_at: datetime,
+    ) -> dict[str, Any]:
+        update = PipelineNextActionUpdate(next_action_due_at=next_action_due_at)
+        self.update_pipeline_next_action(
+            conn,
+            actor_context=actor_context,
+            company_id=company_id,
+            update=update,
+        )
+        with crm_transaction(conn):
+            self._repos.activities.create(
+                conn,
+                activity_type="task_completion",
+                summary=f"Queue reschedule ({item_category})",
+                company_id=company_id,
+                metadata={"item_key": item_key, "due_at": next_action_due_at.isoformat()},
+            )
+        return {"item_key": item_key, "next_action_due_at": next_action_due_at}
+
+    def replace_queue_item(
+        self,
+        conn: psycopg.Connection,
+        *,
+        actor_context: ActorContext,
+        company_id: UUID,
+        item_key: str,
+        item_category: str,
+        update: PipelineNextActionUpdate,
+    ) -> dict[str, Any]:
+        self.update_pipeline_next_action(
+            conn,
+            actor_context=actor_context,
+            company_id=company_id,
+            update=update,
+        )
+        with crm_transaction(conn):
+            self._repos.activities.create(
+                conn,
+                activity_type="task_completion",
+                summary=f"Queue replace ({item_category})",
+                company_id=company_id,
+                metadata={"item_key": item_key},
+            )
+        return {"item_key": item_key, "status": "replaced"}
+
