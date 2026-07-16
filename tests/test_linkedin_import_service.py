@@ -72,6 +72,8 @@ def _service(
         "admin_users": MagicMock(),
         "pipeline": MagicMock(),
         "import_batches": import_batches or MagicMock(),
+        "icp_scoring": MagicMock(),
+        "qualification": MagicMock(),
     }
     return CrmService(repos=CrmRepositories(**repos)), MagicMock()
 
