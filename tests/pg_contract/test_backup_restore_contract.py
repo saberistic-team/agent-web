@@ -26,7 +26,7 @@ def test_export_manifest_structure_on_migrated_database(
 
     snapshot = build_snapshot(pg_conn)
     assert validate_snapshot_structure(snapshot) == []
-    assert snapshot["schema_version"] == "018"
+    assert snapshot["schema_version"] == "019"
     assert set(snapshot["table_counts"]) == set(CRM_BACKUP_TABLES)
     assert snapshot["table_counts"]["schema_migrations"] == len(MIGRATIONS)
     for table in CRM_BACKUP_TABLES:
