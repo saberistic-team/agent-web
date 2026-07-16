@@ -31,12 +31,8 @@ services:
         sync: false
       - key: RESEND_API_KEY
         sync: false
-      - key: ANALYTICS_ENABLED
+      - key: FIRST_PARTY_ANALYTICS_ENABLED
         value: "true"
-      - key: PLAUSIBLE_DOMAIN
-        value: saberistic.com
-      - key: PLAUSIBLE_API_KEY
-        sync: false
       - key: ANALYTICS_ENV
         value: production
       - key: ADMIN_USERNAME
