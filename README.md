@@ -20,6 +20,7 @@ the loop.
 - [Screenshots](docs/SCREENSHOTS.md) — pre-merge + post-deploy visual evidence
 - [Acceptance](docs/ACCEPTANCE.md) — checklist + evidence before close
 - [Testing / coverage](docs/TESTING.md) — unit ≥90% / integration ≥70% on `app/`
+- [Backup / restore](docs/BACKUP_RESTORE.md) — Render Postgres recovery, CRM export, restore runbook (#128)
 
 Milestone: [Website marketing ready](https://github.com/saberistic-team/agent-web/milestone/1) · Board: [agent-web Kanban](https://github.com/orgs/saberistic-team/projects/8/views/2)
 
