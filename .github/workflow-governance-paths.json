@@ -1,9 +1,49 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "protected_paths": [
     {
       "path": ".github/workflows/**",
       "category": "GitHub Actions workflows"
+    },
+    {
+      "path": "scripts/github_api.py",
+      "category": "control-plane orchestration",
+      "privilege": "Shared GitHub REST and Git Data API helpers for every agent workflow."
+    },
+    {
+      "path": "scripts/dispatch_queue.py",
+      "category": "control-plane orchestration",
+      "privilege": "Dispatches queued issues, mutates priority and agent labels."
+    },
+    {
+      "path": "scripts/copilot_agent.py",
+      "category": "control-plane orchestration",
+      "privilege": "Copilot agent assignment and review adapters (dormant but privileged)."
+    },
+    {
+      "path": "scripts/require_planner_plan.py",
+      "category": "control-plane orchestration",
+      "privilege": "Fail-closed Planner gate before queue release."
+    },
+    {
+      "path": "scripts/priority.py",
+      "category": "control-plane orchestration",
+      "privilege": "Priority label resolution and inference for dispatch."
+    },
+    {
+      "path": "scripts/project_sync.py",
+      "category": "control-plane orchestration",
+      "privilege": "GraphQL project board sync from orchestration labels."
+    },
+    {
+      "path": "scripts/milestones.py",
+      "category": "control-plane orchestration",
+      "privilege": "Milestone assignment and eligibility via GitHub API."
+    },
+    {
+      "path": "scripts/cursor_model.py",
+      "category": "control-plane orchestration",
+      "privilege": "Model selection for review, codegen, and post-deploy visual."
     },
     {
       "path": "scripts/review_*.py",
@@ -46,6 +86,26 @@
       "category": "Builder configuration"
     },
     {
+      "path": "scripts/screenshot_deploy.py",
+      "category": "reviewer automation",
+      "privilege": "Captures screenshots and commits via Git Data API."
+    },
+    {
+      "path": "scripts/render_deploy.py",
+      "category": "deploy and production gates",
+      "privilege": "Triggers production Render deploy."
+    },
+    {
+      "path": "scripts/freeze_shipped_migrations.py",
+      "category": "deploy and production gates",
+      "privilege": "Commits migration freeze digests to main after deploy."
+    },
+    {
+      "path": "scripts/post_deploy_visual.py",
+      "category": "deploy and production gates",
+      "privilege": "Post-deploy visual checks and GitHub comments."
+    },
+    {
       "path": "AGENTS/**",
       "category": "Builder prompts and repository policy"
     },
@@ -85,5 +145,20 @@
       "path": "tests/test_workflow_governance.py",
       "category": "repository policy"
     }
-  ]
+  ],
+  "workflow_entrypoint_exemptions": [
+    {
+      "path": "scripts/check_coverage.py",
+      "reason": "Read-only pytest coverage gate; no GitHub, dispatch, or deploy mutations."
+    },
+    {
+      "path": "scripts/digest_trace.py",
+      "reason": "Read-only trace summarization; GitHub posting is handled by gh in the workflow."
+    }
+  ],
+  "dynamic_script_imports": {
+    "scripts/run_agent.py": [
+      "scripts/screenshot_deploy.py"
+    ]
+  }
 }

@@ -4,6 +4,10 @@ The workflows that build, review, and merge changes are privileged code. A
 change to them must not be accepted solely by the author or by an automation
 identity controlled by that same change.
 
+This policy completes the governance boundary introduced in
+[#229](https://github.com/saberistic-team/agent-web/issues/229) and extended by
+[#275](https://github.com/saberistic-team/agent-web/issues/275).
+
 ## Protected paths
 
 The machine-readable inventory is
@@ -11,19 +15,50 @@ The machine-readable inventory is
 It explicitly protects:
 
 - all GitHub Actions workflows (`.github/workflows/**`);
+- control-plane orchestration (`scripts/github_api.py`,
+  `scripts/dispatch_queue.py`, `scripts/copilot_agent.py`,
+  `scripts/require_planner_plan.py`, `scripts/priority.py`,
+  `scripts/project_sync.py`, `scripts/milestones.py`, and
+  `scripts/cursor_model.py`);
 - reviewer and Gate automation (`scripts/review_*.py`,
   `scripts/review_decision.py`, `scripts/acceptance.py`,
   `scripts/check_permission.py`, `scripts/pr_labels.py`,
-  `scripts/run_agent.py`, and `scripts/write_trace.py`);
+  `scripts/run_agent.py`, `scripts/write_trace.py`, and
+  `scripts/screenshot_deploy.py`);
+- deploy and production gates (`scripts/render_deploy.py`,
+  `scripts/freeze_shipped_migrations.py`, and
+  `scripts/post_deploy_visual.py`);
 - Builder prompts and configuration (`AGENTS/**`,
   `.github/copilot-instructions.md`, `scripts/codegen_*.py`,
   `scripts/builder_conflicts.py`, and `scripts/cursor_sdk_patch.py`);
 - the ownership, ruleset, documentation, and validation policy itself.
 
-When adding a new workflow-support path, add it to that inventory and
-`.github/CODEOWNERS` in the same pull request. CI runs
-`python scripts/validate_workflow_governance.py` and fails if any existing
-protected file has no owner or has a bot owner.
+Read-only workflow helpers (`scripts/check_coverage.py`,
+`scripts/digest_trace.py`) are listed in
+`workflow_entrypoint_exemptions` with rationale. Any other workflow-invoked
+script must be added to the protected inventory or documented there in the
+same pull request.
+
+## Discovery and fail-closed validation
+
+CI runs `python scripts/validate_workflow_governance.py`, which:
+
+1. Parses every `.github/workflows/*.{yml,yaml}` file for `scripts/*.py`
+   invocations and requires each entrypoint to match the manifest (or an
+   explicit exemption).
+2. Computes the transitive local import closure from those entrypoints (plus
+   documented dynamic imports such as `run_agent.py` →
+   `screenshot_deploy.py`) and requires every reachable helper to match the
+   manifest.
+3. Validates human-only CODEOWNERS for every protected file.
+4. Fails when manifest patterns and CODEOWNERS patterns drift in either
+   direction.
+5. In GitHub Actions, fetches the live repository ruleset and compares it to
+   [`.github/rulesets/independent-workflow-review.json`](../.github/rulesets/independent-workflow-review.json).
+
+Adding a new workflow-invoked script without governance coverage fails CI.
+Moving privileged logic into an unprotected helper under `scripts/` also fails
+CI because the import closure expands from workflow entrypoints.
 
 ## Who may approve
 
@@ -35,8 +70,9 @@ collaborators with admin access are CODEOWNERS:
 - `@Amirsharifico`
 
 GitHub Apps and gate/reviewer/builder bots are deliberately not CODEOWNERS.
-Once a human maintainer team exists, replace these individual entries with
-that team and update this document.
+Agent App slugs (`saberistic-agent-web-*`) and logins containing `bot` never
+count as independent humans. Once a human maintainer team exists, replace
+these individual entries with that team and update this document.
 
 For a PR touching a protected path, one of those humans who is **not the PR
 author** must submit an approving review. The author’s review does not satisfy
@@ -44,6 +80,9 @@ GitHub’s required approval. The required CODEOWNER review cannot be satisfied
 by a workflow-controlled bot because no bot is a CODEOWNER. A Reviewer bot
 review may still help with the normal feature checklist, but it is not the
 independent authorization to merge this class of PR.
+
+Stale approvals do not satisfy the rule: the live ruleset requires
+`dismiss_stale_reviews_on_push` and `require_last_push_approval`.
 
 ## Ruleset enforcement
 
@@ -80,8 +119,47 @@ four requirements above. Do not add bypass actors. Record the resulting
 ruleset URL and the setup/validation command output in the linked issue or PR.
 
 Rulesets enforce the approval mechanics; CODEOWNERS narrows the extra owner
-approval to the protected files. CI validates the repository-side inventory
-and ownership mapping, but it cannot replace GitHub’s review authorization.
+approval to the protected files. CI validates the repository-side inventory,
+ownership mapping, workflow/import closure, and (in Actions) the live ruleset
+configuration. Checked-in JSON alone is not proof that live settings are
+active.
+
+## Bootstrap authorization (PR #252)
+
+PR
+[#252](https://github.com/saberistic-team/agent-web/pull/252)
+(`Require independent review for workflow governance (#229)`) merged on
+2026-07-15 to introduce CODEOWNERS, the governance manifest, CI validation,
+ruleset source, and this document. That PR modified the governance controls
+themselves, so it could not be reviewed under the rules it was creating.
+
+**Authorized bootstrap:** repository administrators `@saberistic` and
+`@mehdidehdar` approved a one-time chicken-and-egg exception out of band before
+merge. The PR body explicitly requested independent human approval; the
+recorded GitHub review was from `saberistic-agent-web-reviewer` (checklist
+evidence only). Merge was performed by `@saberistic` as author/admin to land
+the scaffolding.
+
+**Follow-up required:** re-apply the ruleset from
+`.github/rulesets/independent-workflow-review.json` so live GitHub enforcement
+matches the checked-in source, then validate with the commands above. Issue
+[#275](https://github.com/saberistic-team/agent-web/issues/275) extends the
+manifest to every privileged workflow entrypoint and transitive helper and
+adds fail-closed discovery tests. After merge, a non-bootstrap proof PR
+touching a protected path must demonstrate bot-only approval is blocked and an
+independent human CODEOWNER approval can proceed.
+
+Future governance changes follow the normal protected-path process: update the
+manifest, CODEOWNERS, validator, tests, and documentation together; obtain
+independent human CODEOWNER approval; verify the live ruleset remains active.
+
+## Issue #229 label reconciliation
+
+Issue [#229](https://github.com/saberistic-team/agent-web/issues/229) is
+**closed** and its acceptance criteria are complete via PR #252. Remove stale
+orchestration label `status:needs-review` from #229. If the project board
+still needs a terminal status label, use `status:done` per
+[docs/LABELS.md](LABELS.md).
 
 ## Recovery and break-glass
 
@@ -111,3 +189,19 @@ running the workflow from Actions or by opening a harmless test PR. Existing
 feature review and Builder retry continue to use their current labels and
 automation; this policy adds a human CODEOWNER requirement only when protected
 files are changed.
+
+## Owners, exceptions, and incident recovery
+
+| Concern | Owner / mechanism |
+|---------|-------------------|
+| Protected inventory | `.github/workflow-governance-paths.json` |
+| Review routing | `.github/CODEOWNERS` (humans only) |
+| CI fail-closed checks | `scripts/validate_workflow_governance.py` |
+| Live merge gate | ruleset `#18975712` |
+| Read-only workflow exemptions | `workflow_entrypoint_exemptions` in manifest |
+| Break-glass | two human admins + public incident issue (above) |
+| Bootstrap | documented one-time exception for PR #252 |
+
+When in doubt, treat a script as privileged if it dispatches agents, submits
+reviewer verdicts, alters gates, mutates GitHub state, selects priorities,
+synchronizes project state, or deploys.
