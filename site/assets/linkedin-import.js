@@ -35,6 +35,7 @@
     "invitations.csv": ["from", "sent"],
     "company follows.csv": ["organization", "followed"],
   };
+  var PREAMBLE_SCAN_MAX_LINES = 20;
 
   var form = document.getElementById("linkedin-import-form");
   var input = document.getElementById("linkedin-export-zip");
@@ -470,7 +471,21 @@
     if (!lines.length) {
       throw new Error(basenameKey + ": missing CSV header row");
     }
-    var headers = parseCsvLine(lines[0]);
+    var headerIndex = -1;
+    var scanned = 0;
+    for (var li = 0; li < lines.length && scanned < PREAMBLE_SCAN_MAX_LINES; li += 1) {
+      if (!lines[li].trim()) {
+        continue;
+      }
+      scanned += 1;
+      var candidateFields = parseCsvLine(lines[li]);
+      if (candidateFields.length === 1) {
+        continue;
+      }
+      headerIndex = li;
+      break;
+    }
+    var headers = headerIndex >= 0 ? parseCsvLine(lines[headerIndex]) : [];
     if (!headers.length) {
       throw new Error(basenameKey + ": missing CSV header row");
     }
@@ -489,13 +504,15 @@
     });
 
     var rows = [];
-    for (var i = 1; i < lines.length; i += 1) {
-      if (i > LIMITS.maxCsvRows) {
-        warnings.push(basenameKey + ": truncated at " + LIMITS.maxCsvRows.toLocaleString() + " rows");
-        break;
-      }
+    var dataRowNum = 0;
+    for (var i = headerIndex + 1; i < lines.length; i += 1) {
       if (!lines[i].trim()) {
         continue;
+      }
+      dataRowNum += 1;
+      if (dataRowNum > LIMITS.maxCsvRows) {
+        warnings.push(basenameKey + ": truncated at " + LIMITS.maxCsvRows.toLocaleString() + " rows");
+        break;
       }
       var values = parseCsvLine(lines[i]);
       var row = {};
