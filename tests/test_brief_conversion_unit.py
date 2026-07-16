@@ -300,9 +300,9 @@ def test_convert_rejects_selected_contact_not_found_in_storage() -> None:
         "company_id": COMPANY_ID,
     }
     repos["companies"].get_by_id.return_value = {"id": COMPANY_ID, "pipeline_stage": "researching"}
-    repos["contacts"].get_by_id.return_value = None
+    repos["contacts"].get_active_by_id_for_update.return_value = None
 
-    with pytest.raises(BriefConversionValidationError, match="Selected contact was not found"):
+    with pytest.raises(BriefConversionValidationError, match="no longer active"):
         service.convert_project_brief(
             conn,
             brief=_brief(),
@@ -475,7 +475,11 @@ def test_convert_skips_stage_history_when_stage_unchanged() -> None:
         "id": COMPANY_ID,
         "pipeline_stage": "diagnostic_paid",
     }
-    repos["contacts"].get_by_id.return_value = {"id": CONTACT_ID, "email": "ops@acme.example", "company_id": COMPANY_ID}
+    repos["contacts"].get_active_by_id_for_update.return_value = {
+        "id": CONTACT_ID,
+        "email": "ops@acme.example",
+        "company_id": COMPANY_ID,
+    }
     repos["source_records"].create.return_value = {"id": SOURCE_RECORD_ID, "external_id": "42"}
 
     with patch("app.crm_service.audit_service.record_brief_convert"):
@@ -570,7 +574,11 @@ def test_convert_project_brief_links_existing_company_and_contact() -> None:
         "id": COMPANY_ID,
         "pipeline_stage": "diagnostic_paid",
     }
-    repos["contacts"].get_by_id.return_value = {"id": CONTACT_ID, "email": "ops@acme.example", "company_id": COMPANY_ID}
+    repos["contacts"].get_active_by_id_for_update.return_value = {
+        "id": CONTACT_ID,
+        "email": "ops@acme.example",
+        "company_id": COMPANY_ID,
+    }
     repos["source_records"].create.return_value = {"id": SOURCE_RECORD_ID, "external_id": "42"}
 
     with patch("app.crm_service.audit_service.record_brief_convert"):
@@ -609,7 +617,7 @@ def test_convert_links_existing_contact_fills_missing_company() -> None:
         "name": "Acme",
         "pipeline_stage": "researching",
     }
-    repos["contacts"].get_by_id.return_value = {
+    repos["contacts"].get_active_by_id_for_update.return_value = {
         "id": CONTACT_ID,
         "email": "ops@acme.example",
         "company_id": None,
@@ -659,7 +667,7 @@ def test_convert_links_existing_contact_preserves_existing_company() -> None:
         "name": "Acme",
         "pipeline_stage": "researching",
     }
-    repos["contacts"].get_by_id.return_value = {
+    repos["contacts"].get_active_by_id_for_update.return_value = {
         "id": CONTACT_ID,
         "email": "ops@acme.example",
         "company_id": COMPANY_ID,
@@ -783,6 +791,31 @@ def test_convert_rejects_mismatched_company_and_contact() -> None:
             selected_company_id=COMPANY_ID,
             selected_contact_id=CONTACT_ID,
         )
+
+
+def test_convert_rejects_new_company_with_contact_assigned_elsewhere() -> None:
+    """New company + existing contact on another company is rejected (#274)."""
+    service, conn, repos = _service_with_mocks()
+    repos["source_records"].get_by_source.return_value = None
+    repos["companies"].find_by_domain.return_value = []
+    repos["contacts"].get_active_by_email.return_value = {
+        "id": CONTACT_ID,
+        "email": "ops@acme.example",
+        "company_id": OTHER_COMPANY_ID,
+    }
+
+    with pytest.raises(BriefConversionValidationError, match="different company"):
+        service.convert_project_brief(
+            conn,
+            brief=_brief(),
+            actor_context=ACTOR,
+            price_cents=20_000,
+            company_choice="new",
+            contact_choice="existing",
+            selected_contact_id=CONTACT_ID,
+        )
+
+    repos["companies"].create.assert_not_called()
 
 
 def test_convert_rolls_back_when_audit_fails() -> None:
