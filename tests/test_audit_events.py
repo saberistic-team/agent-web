@@ -740,3 +740,107 @@ def test_audit_migration_triggers_reject_mutations_at_runtime() -> None:
     assert "BEFORE UPDATE ON audit_events" in sql
     assert "BEFORE DELETE ON audit_events" in sql
     assert "RAISE EXCEPTION 'audit_events records are append-only'" in sql
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_admin_audit_anonymous_redirect_skips_repository() -> None:
+    with patch("app.admin_routes.audit_service.list_events") as list_events:
+        response = client.get("/admin/audit")
+    assert response.status_code == 303
+    assert "/admin/login" in response.headers["location"]
+    list_events.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_admin_audit_negative_page_clamped_to_first_page() -> None:
+    token_hash = admin_auth.hash_session_token("audit-page-session")
+    row = _session_row(token_hash=token_hash)
+    with mock_db_connection() as conn:
+        with patch("app.admin_routes.db.get_admin_session_by_token_hash", return_value=row):
+            with patch(
+                "app.admin_routes.audit_service.list_events",
+                return_value=([], 0),
+            ) as list_events:
+                response = client.get(
+                    "/admin/audit?page=-3",
+                    cookies={SESSION_COOKIE_NAME: "audit-page-session"},
+                )
+    assert response.status_code == 200
+    list_events.assert_called_once_with(conn, page=1, per_page=get_settings().audit_page_size)
+    assert "Page 1 of" in response.text
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_admin_audit_repository_error_renders_safe_message() -> None:
+    token_hash = admin_auth.hash_session_token("audit-db-error")
+    row = _session_row(token_hash=token_hash)
+    with mock_db_connection():
+        with patch("app.admin_routes.db.get_admin_session_by_token_hash", return_value=row):
+            with patch(
+                "app.admin_routes.audit_service.list_events",
+                side_effect=RuntimeError("db down"),
+            ):
+                response = client.get(
+                    "/admin/audit",
+                    cookies={SESSION_COOKIE_NAME: "audit-db-error"},
+                )
+    assert response.status_code == 200
+    assert "Audit events are temporarily unavailable" in response.text
+    assert "db down" not in response.text
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_admin_audit_response_includes_no_store_and_security_headers() -> None:
+    from app.admin_response_policy import (
+        ADMIN_BROWSER_SECURITY_HEADERS,
+        ADMIN_NO_STORE_HEADERS,
+    )
+
+    token_hash = admin_auth.hash_session_token("audit-headers")
+    row = _session_row(token_hash=token_hash)
+    with mock_db_connection():
+        with patch("app.admin_routes.db.get_admin_session_by_token_hash", return_value=row):
+            with patch(
+                "app.admin_routes.audit_service.list_events",
+                return_value=([], 0),
+            ):
+                response = client.get(
+                    "/admin/audit",
+                    cookies={SESSION_COOKIE_NAME: "audit-headers"},
+                )
+    assert response.status_code == 200
+    for key, value in ADMIN_NO_STORE_HEADERS.items():
+        assert response.headers.get(key) == value
+    for key, value in ADMIN_BROWSER_SECURITY_HEADERS.items():
+        assert response.headers.get(key) == value
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_admin_audit_repository_error_keeps_response_headers() -> None:
+    from app.admin_response_policy import (
+        ADMIN_BROWSER_SECURITY_HEADERS,
+        ADMIN_NO_STORE_HEADERS,
+    )
+
+    token_hash = admin_auth.hash_session_token("audit-error-headers")
+    row = _session_row(token_hash=token_hash)
+    with mock_db_connection():
+        with patch("app.admin_routes.db.get_admin_session_by_token_hash", return_value=row):
+            with patch(
+                "app.admin_routes.audit_service.list_events",
+                side_effect=RuntimeError("db down"),
+            ):
+                response = client.get(
+                    "/admin/audit",
+                    cookies={SESSION_COOKIE_NAME: "audit-error-headers"},
+                )
+    assert response.status_code == 200
+    for key, value in ADMIN_NO_STORE_HEADERS.items():
+        assert response.headers.get(key) == value
+    for key, value in ADMIN_BROWSER_SECURITY_HEADERS.items():
+        assert response.headers.get(key) == value
