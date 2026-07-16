@@ -19,6 +19,17 @@ CODEOWNERS = Path(".github/CODEOWNERS")
 RULESET = Path(".github/rulesets/independent-workflow-review.json")
 WORKFLOWS = Path(".github/workflows")
 RULESET_NAME = "Require independent review for workflow governance"
+RULESET_ID = 18975712
+RULESET_REMEDIATION = (
+    "Re-enable live ruleset #18975712 as a repository administrator:\n"
+    "  gh api --method PUT "
+    "repos/saberistic-team/agent-web/rulesets/18975712 "
+    "--input .github/rulesets/independent-workflow-review.json\n"
+    "Then validate:\n"
+    "  gh api repos/saberistic-team/agent-web/rulesets/18975712 "
+    '--jq \'{enforcement, rules: [.rules[] | select(.type == "pull_request") | .parameters]}\'\n'
+    "  python scripts/validate_workflow_governance.py"
+)
 
 WORKFLOW_SCRIPT_RE = re.compile(
     r"(?:^|[\s\"'])(?:python3?\s+)?scripts/([\w][\w_]*\.py)",
@@ -492,6 +503,8 @@ def main() -> int:
     if errors:
         for error in errors:
             print(f"FAIL: {error}", file=sys.stderr)
+        if check_live and any("ruleset" in error.lower() for error in errors):
+            print(f"REMEDIATION:\n{RULESET_REMEDIATION}", file=sys.stderr)
         return 1
     print("PASS: workflow governance boundary is complete and human-owned")
     return 0

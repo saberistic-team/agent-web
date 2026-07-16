@@ -113,10 +113,24 @@ gh api repos/saberistic-team/agent-web/rulesets \
 The active repository ruleset is
 [`#18975712`](https://github.com/saberistic-team/agent-web/rules/18975712).
 
+To update the existing ruleset in place (preferred when the ruleset already
+exists but is disabled or drifted):
+
+```bash
+gh api --method PUT \
+  repos/saberistic-team/agent-web/rulesets/18975712 \
+  --input .github/rulesets/independent-workflow-review.json
+```
+
 If GitHub rejects the API request, use **Settings → Rules → Rulesets → New
 ruleset → New branch ruleset**, select the default branch, and configure the
 four requirements above. Do not add bypass actors. Record the resulting
 ruleset URL and the setup/validation command output in the linked issue or PR.
+
+**Before merging PR #275:** a repository administrator must re-apply the ruleset
+so CI’s live check passes (`enforcement: active`, CODEOWNER review on,
+`required_approving_review_count: 1`). The validator prints remediation
+commands when the live ruleset is inactive.
 
 Rulesets enforce the approval mechanics; CODEOWNERS narrows the extra owner
 approval to the protected files. CI validates the repository-side inventory,
@@ -156,10 +170,33 @@ independent human CODEOWNER approval; verify the live ruleset remains active.
 ## Issue #229 label reconciliation
 
 Issue [#229](https://github.com/saberistic-team/agent-web/issues/229) is
-**closed** and its acceptance criteria are complete via PR #252. Remove stale
-orchestration label `status:needs-review` from #229. If the project board
-still needs a terminal status label, use `status:done` per
-[docs/LABELS.md](LABELS.md).
+**closed** and its acceptance criteria are complete via PR #252. During #275,
+stale orchestration label `status:needs-review` was removed and terminal label
+`status:done` was applied:
+
+```bash
+gh issue edit 229 \
+  --remove-label "status:needs-review" \
+  --add-label "status:done"
+```
+
+## Proof PR (non-bootstrap enforcement)
+
+After #275 merges and the live ruleset is active, demonstrate merge-gate
+enforcement with a harmless protected-path change (evidence item #7):
+
+1. Open a PR that touches one protected file (for example add a comment to
+   `scripts/dispatch_queue.py` or `.github/workflows/dispatch.yml`).
+2. Let the Reviewer bot leave its checklist review only — do **not** merge.
+3. Confirm GitHub blocks merge (ruleset requires CODEOWNER review; bot is not a
+   CODEOWNER).
+4. Have an independent human CODEOWNER (not the PR author) approve.
+5. Confirm merge is allowed when other gates pass.
+6. Record the PR URL, screenshots or ruleset audit output, and revert/close the
+   proof PR in the #275 issue thread.
+
+This is separate from the PR #252 bootstrap: that merge used a documented
+one-time admin exception before the rules existed.
 
 ## Recovery and break-glass
 

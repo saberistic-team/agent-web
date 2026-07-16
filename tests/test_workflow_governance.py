@@ -340,6 +340,45 @@ def test_fetch_live_ruleset_uses_github_api(monkeypatch: pytest.MonkeyPatch) -> 
     ]
 
 
+def test_live_ruleset_disabled_prints_remediation(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "saberistic-team/agent-web")
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+
+    def fake_fetch(_repo: str, _token: str) -> dict[str, object]:
+        return {
+            "name": "Require independent review for workflow governance",
+            "enforcement": "disabled",
+            "bypass_actors": [],
+            "rules": [
+                {
+                    "type": "pull_request",
+                    "parameters": {
+                        "dismiss_stale_reviews_on_push": True,
+                        "require_code_owner_review": False,
+                        "require_last_push_approval": True,
+                        "required_approving_review_count": 0,
+                        "required_review_thread_resolution": True,
+                    },
+                }
+            ],
+        }
+
+    monkeypatch.setattr(
+        "validate_workflow_governance.fetch_live_ruleset", fake_fetch
+    )
+
+    from validate_workflow_governance import main
+
+    assert main() == 1
+    captured = capsys.readouterr()
+    assert "ruleset enforcement must be active" in captured.err
+    assert "REMEDIATION:" in captured.err
+    assert "rulesets/18975712" in captured.err
+
+
 def test_real_repo_covers_required_privileged_scripts() -> None:
     manifest = json.loads(
         (
