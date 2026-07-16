@@ -4,6 +4,7 @@ from screenshot_deploy import (
     OVERFLOW_SELECTORS,
     VIEWPORTS,
     admin_screenshot_session_cookie,
+    build_preview_child_env,
     discover_screenshot_routes,
     format_overflow_hard_fail,
     is_admin_nav_evidence_route,
@@ -136,6 +137,31 @@ def test_admin_screenshot_session_cookie() -> None:
     cookie = admin_screenshot_session_cookie()
     assert cookie["name"] == "admin_session"
     assert cookie["value"] == "preview-screenshot-session"
+
+
+def test_build_preview_child_env_does_not_inherit_parent_secrets() -> None:
+    parent = {
+        "PATH": "/usr/bin",
+        "HOME": "/home/ci",
+        "DATABASE_URL": "postgresql://prod/real",
+        "STRIPE_SECRET_KEY": "sk_live_parent",
+        "STRIPE_WEBHOOK_SECRET": "whsec_parent",
+        "RESEND_API_KEY": "re_parent",
+        "PLAUSIBLE_API_KEY": "pl_parent",
+        "ADMIN_PREVIEW_SEED": "99",
+        "SECRET_PARENT_ONLY": "must-not-leak",
+    }
+    env = build_preview_child_env("http://127.0.0.1:9876", parent_environ=parent)
+    assert env["BASE_URL"] == "http://127.0.0.1:9876"
+    assert env["ADMIN_PREVIEW_MODE"] == "1"
+    assert env["DATABASE_URL"] == ""
+    assert env["ADMIN_PREVIEW_SEED"] == "99"
+    assert env["PATH"] == "/usr/bin"
+    assert "STRIPE_SECRET_KEY" not in env
+    assert "STRIPE_WEBHOOK_SECRET" not in env
+    assert "RESEND_API_KEY" not in env
+    assert "PLAUSIBLE_API_KEY" not in env
+    assert "SECRET_PARENT_ONLY" not in env
 
 
 def test_discover_screenshot_routes_public_by_default() -> None:

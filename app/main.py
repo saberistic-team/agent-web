@@ -30,7 +30,13 @@ from app.analytics_ingest import (
     IngestRejectReason,
     ingest_browser_event,
 )
-from app.admin_security import AdminSecurityConfigError, validate_admin_security_config
+from app.admin_preview_guard import AdminPreviewReadOnlyMiddleware
+from app.admin_security import (
+    AdminPreviewConfigError,
+    AdminSecurityConfigError,
+    validate_admin_preview_config,
+    validate_admin_security_config,
+)
 from app.client_source import admin_proxy_trust_summary, client_source_policy_summary, resolve_client_source
 from app.config import get_settings
 from app.models import BriefCreateRequest, BriefCreateResponse
@@ -240,6 +246,11 @@ def _send_paid_notifications(
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
+    try:
+        validate_admin_preview_config(settings)
+    except AdminPreviewConfigError:
+        logger.exception("Admin preview configuration is invalid")
+        raise
     if settings.database_configured:
         try:
             validate_admin_security_config(settings)
@@ -285,6 +296,9 @@ async def redirect_www_to_apex(request: Request, call_next):
         target = apex_redirect_url(request.url.path, request.url.query)
         return RedirectResponse(url=target, status_code=301)
     return await call_next(request)
+
+
+app.add_middleware(AdminPreviewReadOnlyMiddleware)
 
 
 @app.exception_handler(StarletteHTTPException)

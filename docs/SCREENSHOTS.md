@@ -22,6 +22,15 @@ Playwright can open admin pages **without login**.
 - Enabled only for local/`127.0.0.1` preview (CI screenshot job).
 - Hard-disabled when `BASE_URL` contains `saberistic.com` even if the env
   flag is set — never open admin without auth in production.
+- **Database-isolated:** `scripts/screenshot_deploy.py::build_preview_child_env`
+  builds a minimal child-process environment — it never inherits `DATABASE_URL`
+  or production provider credentials (`STRIPE_*`, `RESEND_API_KEY`,
+  `PLAUSIBLE_API_KEY`, etc.) from the parent shell. Startup rejects
+  `ADMIN_PREVIEW_MODE` when any of those values are non-empty.
+- **Read-only:** `app/admin_preview_guard.py` denies every unsafe `/admin`
+  method (`POST`, `PUT`, `PATCH`, `DELETE`, …) with `405 Method Not Allowed`
+  and `Allow: GET, HEAD` before body parsing or database access. Screenshot
+  capture uses fixture-backed `GET`/`HEAD` only.
 - Admin shell pages fill with **mock intake/CRM data with randomization**
   (dashboard stats, section tables, **briefs list/detail**, etc.) so screenshots
   look like a live operator shell — never real production rows and never an

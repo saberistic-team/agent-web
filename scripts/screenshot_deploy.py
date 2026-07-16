@@ -15,10 +15,12 @@ import urllib.request
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator, NamedTuple
+from typing import Any, Iterator, Mapping, NamedTuple
 from urllib.parse import parse_qs, urljoin, urlparse
 
 from github_api import GitHubError, api, post_issue_comment, put_files, split_repo
+
+from app.admin_security import PREVIEW_BLOCKED_PROVIDER_ENV_VARS
 
 DEFAULT_BASE = "https://saberistic.com"
 # Minimum HTML set if app discovery fails (kept for tests / emergency fallback).
@@ -54,6 +56,28 @@ PREVIEW_ADMIN_SESSION_SECRET = "preview-session-secret-32chars-minimum"
 PREVIEW_ADMIN_LOGIN_LIMITER_SECRET = "preview-limiter-secret-32chars-minimum"
 PREVIEW_SESSION_TOKEN = "preview-screenshot-session"
 ADMIN_SESSION_COOKIE = "admin_session"
+
+# Minimal child-process env for PR preview screenshots (#331).
+# Never inherit DATABASE_URL or production provider secrets from the parent shell.
+_PREVIEW_SYSTEM_ENV_KEYS: frozenset[str] = frozenset(
+    {
+        "PATH",
+        "HOME",
+        "USER",
+        "LANG",
+        "LC_ALL",
+        "LC_CTYPE",
+        "TMPDIR",
+        "TEMP",
+        "TMP",
+        "PWD",
+        "PYTHONPATH",
+        "VIRTUAL_ENV",
+        "PYTHONHOME",
+        "PYTHONUNBUFFERED",
+        "PYTHONDONTWRITEBYTECODE",
+    }
+)
 
 # Static HTML files under site/ → public page routes.
 SITE_HTML_TO_ROUTE: dict[str, str] = {
@@ -715,6 +739,45 @@ def _wait_http_ok(url: str, *, attempts: int = 30) -> None:
     raise GitHubError(f"local preview not ready at {url}: {last}")
 
 
+def build_preview_child_env(
+    base_url: str,
+    *,
+    parent_environ: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    """Build a minimal uvicorn environment for ADMIN_PREVIEW_MODE screenshots.
+
+    Copies only variables required to start the local preview process. Production
+    ``DATABASE_URL`` and provider write credentials are never inherited.
+    """
+    parent = dict(parent_environ if parent_environ is not None else os.environ)
+    env: dict[str, str] = {
+        key: parent[key]
+        for key in _PREVIEW_SYSTEM_ENV_KEYS
+        if key in parent and parent[key]
+    }
+    env.update(
+        {
+            "BASE_URL": base_url,
+            "DATABASE_URL": "",
+            "ADMIN_PREVIEW_MODE": "1",
+            "ADMIN_USERNAME": parent.get("ADMIN_USERNAME") or PREVIEW_ADMIN_USERNAME,
+            "ADMIN_PASSWORD_HASH": parent.get("ADMIN_PASSWORD_HASH")
+            or PREVIEW_ADMIN_PASSWORD_HASH,
+            "ADMIN_SESSION_SECRET": parent.get("ADMIN_SESSION_SECRET")
+            or PREVIEW_ADMIN_SESSION_SECRET,
+            "ADMIN_LOGIN_LIMITER_SECRET": parent.get("ADMIN_LOGIN_LIMITER_SECRET")
+            or PREVIEW_ADMIN_LOGIN_LIMITER_SECRET,
+        }
+    )
+    preview_seed = parent.get("ADMIN_PREVIEW_SEED", "").strip()
+    if preview_seed:
+        env["ADMIN_PREVIEW_SEED"] = preview_seed
+    for blocked in PREVIEW_BLOCKED_PROVIDER_ENV_VARS:
+        env.pop(blocked, None)
+    env["DATABASE_URL"] = ""
+    return env
+
+
 @contextmanager
 def local_preview_server(
     app_root: Path | None = None,
@@ -729,21 +792,7 @@ def local_preview_server(
             "(set COVERAGE_ROOT / PR_HEAD_ROOT to the checked-out PR head)"
         )
     base = f"http://127.0.0.1:{port}"
-    env = {
-        **os.environ,
-        "BASE_URL": base,
-        # HTML pages must render without requiring production secrets.
-        "DATABASE_URL": os.environ.get("DATABASE_URL") or "",
-        # Open /admin without login for branch screenshot evidence only.
-        "ADMIN_PREVIEW_MODE": "1",
-        "ADMIN_USERNAME": os.environ.get("ADMIN_USERNAME") or PREVIEW_ADMIN_USERNAME,
-        "ADMIN_PASSWORD_HASH": os.environ.get("ADMIN_PASSWORD_HASH")
-        or PREVIEW_ADMIN_PASSWORD_HASH,
-        "ADMIN_SESSION_SECRET": os.environ.get("ADMIN_SESSION_SECRET")
-        or PREVIEW_ADMIN_SESSION_SECRET,
-        "ADMIN_LOGIN_LIMITER_SECRET": os.environ.get("ADMIN_LOGIN_LIMITER_SECRET")
-        or PREVIEW_ADMIN_LOGIN_LIMITER_SECRET,
-    }
+    env = build_preview_child_env(base)
     proc = subprocess.Popen(
         [
             sys.executable,

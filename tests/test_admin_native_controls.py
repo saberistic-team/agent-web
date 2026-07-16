@@ -410,8 +410,8 @@ def test_preview_convert_existing_company_radio_post(
         },
         cookies={SESSION_COOKIE_NAME: PREVIEW_SESSION_TOKEN},
     )
-    assert response.status_code == 303
-    assert response.headers["location"] == "/admin/briefs/4?converted=1"
+    assert response.status_code == 405
+    assert response.headers.get("allow") == "GET, HEAD"
 
 
 @pytest.mark.unit
@@ -419,7 +419,7 @@ def test_preview_convert_existing_company_radio_post(
 def test_preview_convert_keyboard_existing_contact_radio_post(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Simulate keyboard radio selection by posting the native value string."""
+    """Preview POST mutations are denied centrally (#331)."""
     _preview_client(monkeypatch)
     response = client.post(
         "/admin/briefs/4/convert",
@@ -430,5 +430,5 @@ def test_preview_convert_keyboard_existing_contact_radio_post(
         },
         cookies={SESSION_COOKIE_NAME: PREVIEW_SESSION_TOKEN},
     )
-    assert response.status_code == 303
-    assert response.headers["location"] == "/admin/briefs/4?converted=1"
+    assert response.status_code == 405
+    assert response.headers.get("allow") == "GET, HEAD"
