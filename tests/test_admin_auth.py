@@ -50,12 +50,11 @@ class _PeerOverrideMiddleware:
 
 client = TestClient(_PeerOverrideMiddleware(app), follow_redirects=False)
 
-from tests.conftest import TEST_LIMITER_SECRET
-
 TEST_USERNAME = "operator"
 TEST_PASSWORD = "correct-horse-battery-staple"
 TEST_HASH = PasswordHasher().hash(TEST_PASSWORD)
 TEST_SECRET = "test-session-secret-32chars-minimum"
+TEST_LIMITER_SECRET = "test-login-limiter-secret-32chars-min!!"
 
 _login_flows: dict[str, dict[str, Any]] = {}
 _session_store: dict[str, dict[str, Any]] = {}
@@ -203,9 +202,11 @@ def shared_rate_limiter(store: FakeRateLimitStore) -> Generator[None, None, None
         rate_limit: int,
         window_seconds: int,
         lockout_seconds: int,
+        increment_limiter_keys: tuple[str, ...] | None = None,
     ) -> db.AdminLoginAdmission:
+        keys = increment_limiter_keys if increment_limiter_keys is not None else limiter_keys
         return store.try_admit(
-            limiter_keys,
+            keys,
             now,
             rate_limit=rate_limit,
             window_seconds=window_seconds,
@@ -673,9 +674,10 @@ def test_login_limiter_keys_source_only_for_unknown_username() -> None:
 
 @pytest.mark.unit
 def test_build_rate_limit_key_hashes_username_and_source() -> None:
-    key_a = admin_auth.build_rate_limit_key("Operator", "203.0.113.1")
-    key_b = admin_auth.build_rate_limit_key("operator", "203.0.113.1")
-    key_c = admin_auth.build_rate_limit_key("operator", "203.0.113.2")
+    settings = get_settings()
+    key_a = admin_auth.build_rate_limit_key("Operator", "203.0.113.1", settings)
+    key_b = admin_auth.build_rate_limit_key("operator", "203.0.113.1", settings)
+    key_c = admin_auth.build_rate_limit_key("operator", "203.0.113.2", settings)
     assert key_a == key_b
     assert key_a != key_c
     assert len(key_a) == 64

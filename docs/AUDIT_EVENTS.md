@@ -101,21 +101,24 @@ operator is never left without a valid server-side session. The session cookie i
 set on the redirect response only after the transaction exits successfully; failed
 or rolled-back logins never emit a new session cookie.
 
-**Unauthenticated login failures** (`auth.login.failure`) always use actor
-`anonymous`. Submitted username candidates must not appear in `actor`, metadata,
-reason text, correlation identifiers, logs, or metrics. Prior to this policy,
-some rows may contain attacker-supplied strings in `actor` from failed login
-attempts; those rows are **immutable** (append-only triggers). Remediation of
-historical exposure requires an explicit data-governance decision — do not weaken
-append-only guarantees for convenience. New events after deployment follow the
-anonymous-actor rule regardless of historical data.
-
 ## Audited actions
 
 | Action | When recorded |
 |--------|----------------|
 | `auth.login.success` | Valid admin login creates a server-side session |
 | `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting |
+
+Unauthenticated login failures always record `actor = anonymous`. Submitted
+username candidates are never persisted in `actor`, metadata, or reason text.
+
+### Historical login-failure actors (pre-#242)
+
+Before keyed limiter identifiers and anonymous failure actors shipped (#242),
+some `auth.login.failure` rows may contain attacker-supplied strings in the
+immutable `actor` column. Those rows are append-only; application code does not
+rewrite historical audit data. Security reporting should treat unknown `actor`
+values on failure events as unauthenticated attempts, not as confirmed
+administrator identities. The forward fix prevents all new occurrences.
 | `auth.logout` | Authenticated session revocation (live session → revoked) |
 | `import.batch` | Data import batches via `CrmService.commit_linkedin_import` / `import_batch` |
 | `import.batch.rollback` | Rollback of committed import batches via `CrmService.rollback_import_batch` |
