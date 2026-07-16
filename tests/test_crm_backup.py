@@ -113,7 +113,7 @@ def test_validate_snapshot_structure_rejects_missing_tables() -> None:
     snapshot = {
         "manifest_version": MANIFEST_VERSION,
         "exported_at": "2026-07-16T00:00:00+00:00",
-        "schema_version": "018",
+        "schema_version": "019",
         "table_counts": {"companies": 1},
         "configuration": build_configuration_block(),
     }
