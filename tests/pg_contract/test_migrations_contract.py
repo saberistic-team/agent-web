@@ -42,6 +42,9 @@ CORE_TABLES = (
     "pipeline_stage_history",
     "import_batches",
     "import_batch_rows",
+    "analytics_events",
+    "analytics_sessions",
+    "analytics_event_rate_limits",
 )
 
 
