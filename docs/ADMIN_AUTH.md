@@ -174,7 +174,7 @@ access logs or metrics for operational visibility if needed.
 | `ADMIN_TRUSTED_PROXY_CIDRS` | Production | Comma-separated trusted proxy CIDRs/IPs for the immediate peer and in-chain hops (Render load balancer / private networks on Render; empty locally) |
 | `ADMIN_TRUSTED_EDGE_CIDRS` | Production | Comma-separated public edge CIDRs (Cloudflare) stripped from the right of `X-Forwarded-For` before selecting the client |
 | `ADMIN_TRUST_PROXY_HEADERS` | **Deprecated** | Legacy boolean; ignored for source resolution unless paired with explicit CIDR settings above. Remove after migration. |
-| `ADMIN_PREVIEW_MODE` | Optional | **CI / local only.** When `1`/`true`, protected `/admin` GET pages render without login and admin pages fill with **randomized mock data** for Playwright screenshots. Hard-disabled if `BASE_URL` contains `saberistic.com`. Never set on production Render. Cannot be combined with `DATABASE_URL` or production provider write credentials — startup fails fast. Unsafe `/admin` methods are denied centrally with `405` (see `app/admin_preview_guard.py`). |
+| `ADMIN_PREVIEW_MODE` | Optional | **CI / local only.** When `1`/`true`, protected `/admin` GET pages render without login and admin pages fill with **randomized mock data** for Playwright screenshots. Hard-disabled if `BASE_URL` contains `saberistic.com`. Never set on production Render. Startup rejects preview when `DATABASE_URL` or provider secrets are configured; unsafe `/admin` methods return 405 (see `app/admin_preview_guard.py`). |
 | `ADMIN_PREVIEW_SEED` | Optional | Seed for mock admin randomization (stable screenshots/tests). |
 | `BASE_URL` | Yes | Public site URL; `https://…` enables `Secure` session cookies |
 
