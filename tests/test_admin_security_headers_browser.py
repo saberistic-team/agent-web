@@ -42,7 +42,17 @@ class LiveAdminServer:
 
 
 @pytest.fixture
-def live_admin_server(monkeypatch: pytest.MonkeyPatch) -> Generator[LiveAdminServer, None, None]:
+def live_admin_preview_server(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Generator[LiveAdminServer, None, None]:
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
+    yield from _start_live_admin_server(monkeypatch)
+
+
+def _start_live_admin_server(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Generator[LiveAdminServer, None, None]:
     from argon2 import PasswordHasher
 
     password_hash = PasswordHasher().hash(TEST_PASSWORD)
@@ -51,7 +61,6 @@ def live_admin_server(monkeypatch: pytest.MonkeyPatch) -> Generator[LiveAdminSer
     monkeypatch.setenv("ADMIN_SESSION_SECRET", TEST_SECRET)
     monkeypatch.setenv("DATABASE_URL", "postgresql://test/db")
     monkeypatch.setenv("BASE_URL", "http://127.0.0.1")
-    monkeypatch.delenv("ADMIN_PREVIEW_MODE", raising=False)
 
     raw_token = admin_auth.generate_session_token()
     csrf_raw = admin_auth.generate_csrf_value()
@@ -106,6 +115,12 @@ def live_admin_server(monkeypatch: pytest.MonkeyPatch) -> Generator[LiveAdminSer
         finally:
             server.should_exit = True
             thread.join(timeout=10)
+
+
+@pytest.fixture
+def live_admin_server(monkeypatch: pytest.MonkeyPatch) -> Generator[LiveAdminServer, None, None]:
+    monkeypatch.delenv("ADMIN_PREVIEW_MODE", raising=False)
+    yield from _start_live_admin_server(monkeypatch)
 
 
 @pytest.fixture(scope="module")
@@ -209,6 +224,43 @@ def test_imports_flow_has_no_csp_console_violations(
         page.wait_for_selector("#linkedin-import-form")
         assert page.locator('script[src="/assets/linkedin-import.js"]').count() == 1
         assert violations == []
+    finally:
+        context.close()
+
+
+@pytest.mark.parametrize(
+    "path,selector",
+    [
+        ("/admin/login", "form.admin-form--compact"),
+        ("/admin", ".admin-main"),
+        ("/admin/briefs", ".admin-main"),
+        ("/admin/companies", ".admin-main"),
+        ("/admin/contacts", ".admin-main"),
+        ("/admin/pipeline", ".admin-main"),
+        ("/admin/imports", ".admin-main"),
+        ("/admin/audit", ".admin-main"),
+    ],
+)
+def test_critical_admin_pages_have_no_csp_console_violations(
+    live_admin_preview_server: LiveAdminServer,
+    browser: Any,
+    path: str,
+    selector: str,
+) -> None:
+    context = browser.new_context()
+    violations: list[str] = []
+
+    def _on_console(msg: Any) -> None:
+        text = msg.text
+        if "Content Security Policy" in text or "Refused to" in text:
+            violations.append(text)
+
+    page = context.new_page()
+    page.on("console", _on_console)
+    try:
+        page.goto(f"{live_admin_preview_server.base_url}{path}")
+        page.wait_for_selector(selector)
+        assert violations == [], f"{path} triggered CSP violations: {violations}"
     finally:
         context.close()
 
