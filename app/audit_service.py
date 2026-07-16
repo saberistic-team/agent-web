@@ -46,7 +46,6 @@ SENSITIVE_FIELD_NAMES = frozenset(
         "admin_password_hash",
         "admin_session_secret",
         "resend_api_key",
-        "plausible_api_key",
     }
 )
 

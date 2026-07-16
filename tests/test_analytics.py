@@ -1,12 +1,12 @@
-"""Tests for conversion funnel analytics (#66)."""
+"""Tests for conversion funnel analytics (#66, #117 cutover)."""
 
 from __future__ import annotations
 
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Generator
 from unittest.mock import MagicMock, patch
 
-import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -15,6 +15,8 @@ from app.config import get_settings
 from app.main import app
 
 client = TestClient(app)
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 SAMPLE_BRIEF = {
     "website": "https://example.com",
@@ -47,8 +49,8 @@ def analytics_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_test_fake")
     monkeypatch.setenv("RESEND_API_KEY", "re_test_fake")
     monkeypatch.setenv("BASE_URL", "http://testserver")
+    monkeypatch.delenv("FIRST_PARTY_ANALYTICS_ENABLED", raising=False)
     monkeypatch.delenv("ANALYTICS_ENABLED", raising=False)
-    monkeypatch.delenv("PLAUSIBLE_DOMAIN", raising=False)
 
 
 @contextmanager
@@ -116,83 +118,78 @@ def test_sanitize_properties_allowlist_only() -> None:
 
 @pytest.mark.unit
 def test_analytics_disabled_without_explicit_flag(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("PLAUSIBLE_DOMAIN", "saberistic.com")
     settings = get_settings()
-    assert not settings.analytics_enabled
+    assert not settings.first_party_analytics_enabled
 
 
 @pytest.mark.unit
 def test_analytics_enabled_when_configured(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ANALYTICS_ENABLED", "true")
-    monkeypatch.setenv("PLAUSIBLE_DOMAIN", "saberistic.com")
-    monkeypatch.setenv("PLAUSIBLE_API_KEY", "plausible_test_key")
+    monkeypatch.setenv("FIRST_PARTY_ANALYTICS_ENABLED", "true")
     monkeypatch.setenv("ANALYTICS_ENV", "production")
     settings = get_settings()
-    assert settings.analytics_enabled
+    assert settings.first_party_analytics_enabled
     assert settings.analytics_environment == "production"
+
+
+@pytest.mark.unit
+def test_analytics_enabled_legacy_alias(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ANALYTICS_ENABLED", "true")
+    settings = get_settings()
+    assert settings.first_party_analytics_enabled
 
 
 @pytest.mark.unit
 def test_track_event_noop_when_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = get_settings()
-    with patch("httpx.Client.post") as post:
+    with patch("app.analytics_service.persist_analytics_event") as persist:
         analytics_service.track_event(settings, event_name="Lead Persisted", props={"brief_id": 1})
-    post.assert_not_called()
+    persist.assert_not_called()
 
 
 @pytest.mark.unit
-def test_track_event_posts_sanitized_payload(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ANALYTICS_ENABLED", "true")
-    monkeypatch.setenv("PLAUSIBLE_DOMAIN", "saberistic.com")
-    monkeypatch.setenv("PLAUSIBLE_API_KEY", "plausible_test_key")
+def test_track_event_persists_sanitized_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("FIRST_PARTY_ANALYTICS_ENABLED", "true")
     monkeypatch.setenv("ANALYTICS_ENV", "production")
     settings = get_settings()
 
-    mock_response = MagicMock()
-    mock_response.raise_for_status = MagicMock()
+    conn = MagicMock()
+    with patch("app.analytics_service.db.db_connection") as db_conn:
+        db_conn.return_value.__enter__.return_value = conn
+        db_conn.return_value.__exit__.return_value = None
+        with patch("app.analytics_service.persist_analytics_event", return_value=True) as persist:
+            analytics_service.track_lead_persisted(
+                settings,
+                brief_id=9,
+                utm={"utm_source": "linkedin", "utm_medium": None},
+            )
 
-    with patch("httpx.Client") as client_cls:
-        client_instance = MagicMock()
-        client_cls.return_value.__enter__.return_value = client_instance
-        client_instance.post.return_value = mock_response
-
-        analytics_service.track_lead_persisted(
-            settings,
-            brief_id=9,
-            utm={"utm_source": "linkedin", "utm_medium": None},
-        )
-
-    client_instance.post.assert_called_once()
-    call_kwargs = client_instance.post.call_args
-    payload = call_kwargs.kwargs["json"]
-    assert payload["name"] == analytics_service.EVENT_LEAD_PERSISTED
-    assert payload["domain"] == "saberistic.com"
-    assert payload["props"]["brief_id"] == 9
-    assert payload["props"]["utm_source"] == "linkedin"
-    assert "email" not in payload["props"]
-    assert "website" not in payload["props"]
-    headers = call_kwargs.kwargs["headers"]
-    assert headers["Authorization"] == "Bearer plausible_test_key"
+    persist.assert_called_once()
+    call_kwargs = persist.call_args.kwargs
+    event = call_kwargs["event"]
+    assert event.event_name == analytics_service.EVENT_LEAD_PERSISTED
+    assert event.properties["brief_id"] == 9
+    assert event.properties["funnel_step"] == 5
+    assert event.properties["environment"] == "production"
+    assert event.properties["linkage_source"] == "server_brief_persist"
+    assert event.attribution["utm_source"] == "linkedin"
+    assert "email" not in event.properties
+    assert "website" not in event.properties
 
 
 @pytest.mark.unit
 def test_track_event_failure_is_non_blocking(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ANALYTICS_ENABLED", "true")
-    monkeypatch.setenv("PLAUSIBLE_DOMAIN", "saberistic.com")
+    monkeypatch.setenv("FIRST_PARTY_ANALYTICS_ENABLED", "true")
     settings = get_settings()
 
-    with patch("httpx.Client") as client_cls:
-        client_instance = MagicMock()
-        client_cls.return_value.__enter__.return_value = client_instance
-        client_instance.post.side_effect = httpx.ConnectError("network down")
+    with patch("app.analytics_service.db.db_connection") as db_conn:
+        db_conn.side_effect = RuntimeError("database down")
         analytics_service.track_event(settings, event_name="Lead Persisted", props={"brief_id": 1})
 
 
 @pytest.mark.unit
 @pytest.mark.integration
 def test_create_brief_emits_server_funnel_events(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ANALYTICS_ENABLED", "true")
-    monkeypatch.setenv("PLAUSIBLE_DOMAIN", "saberistic.com")
+    monkeypatch.setenv("FIRST_PARTY_ANALYTICS_ENABLED", "true")
 
     fake_session = MagicMock()
     fake_session.id = "cs_test_abc"
@@ -229,8 +226,7 @@ def test_create_brief_emits_server_funnel_events(monkeypatch: pytest.MonkeyPatch
 @pytest.mark.unit
 @pytest.mark.integration
 def test_analytics_failure_does_not_block_brief_create(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ANALYTICS_ENABLED", "true")
-    monkeypatch.setenv("PLAUSIBLE_DOMAIN", "saberistic.com")
+    monkeypatch.setenv("FIRST_PARTY_ANALYTICS_ENABLED", "true")
 
     fake_session = MagicMock()
     fake_session.id = "cs_test_abc"
@@ -243,10 +239,10 @@ def test_analytics_failure_does_not_block_brief_create(monkeypatch: pytest.Monke
                     "app.main.stripe_service.create_checkout_session",
                     return_value=fake_session,
                 ):
-                    with patch("httpx.Client") as client_cls:
-                        client_instance = MagicMock()
-                        client_cls.return_value.__enter__.return_value = client_instance
-                        client_instance.post.side_effect = httpx.ConnectError("analytics down")
+                    with patch(
+                        "app.analytics_service.persist_analytics_event",
+                        side_effect=RuntimeError("analytics down"),
+                    ):
                         response = client.post("/api/briefs", json=SAMPLE_BRIEF)
 
     assert response.status_code == 200
@@ -256,8 +252,7 @@ def test_analytics_failure_does_not_block_brief_create(monkeypatch: pytest.Monke
 @pytest.mark.unit
 @pytest.mark.integration
 def test_stripe_webhook_emits_payment_completed(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ANALYTICS_ENABLED", "true")
-    monkeypatch.setenv("PLAUSIBLE_DOMAIN", "saberistic.com")
+    monkeypatch.setenv("FIRST_PARTY_ANALYTICS_ENABLED", "true")
 
     fake_event = {
         "type": "checkout.session.completed",
@@ -297,9 +292,10 @@ def test_stripe_webhook_emits_payment_completed(monkeypatch: pytest.MonkeyPatch)
 
 
 @pytest.mark.unit
-def test_pages_inject_analytics_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ANALYTICS_ENABLED", "true")
-    monkeypatch.setenv("PLAUSIBLE_DOMAIN", "saberistic.com")
+def test_pages_inject_first_party_analytics_when_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FIRST_PARTY_ANALYTICS_ENABLED", "true")
 
     static_paths = (
         "/",
@@ -313,68 +309,67 @@ def test_pages_inject_analytics_when_enabled(monkeypatch: pytest.MonkeyPatch) ->
     for path in static_paths:
         response = client.get(path)
         assert response.status_code == 200
-        assert 'name="saberistic-analytics-domain"' in response.text
-        assert 'content="saberistic.com"' in response.text
-        assert 'src="/assets/analytics.js"' in response.text
-        assert 'name="saberistic-analytics-page-event"' not in response.text
+        assert 'name="saberistic-first-party-analytics"' in response.text
+        assert 'src="/assets/first_party_analytics.js"' in response.text
+        assert 'name="saberistic-first-party-page-event"' not in response.text
+        assert "plausible.io" not in response.text
+        assert "saberistic-analytics-domain" not in response.text
 
 
 @pytest.mark.unit
 def test_case_study_page_injects_server_page_event(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ANALYTICS_ENABLED", "true")
-    monkeypatch.setenv("PLAUSIBLE_DOMAIN", "saberistic.com")
+    monkeypatch.setenv("FIRST_PARTY_ANALYTICS_ENABLED", "true")
 
     response = client.get("/work/brave")
     assert response.status_code == 200
-    assert 'name="saberistic-analytics-page-event" content="Case Study Viewed"' in (
+    assert 'name="saberistic-first-party-page-event" content="Case Study Viewed"' in (
         response.text
     )
-    assert 'name="saberistic-analytics-case-study-slug" content="brave"' in response.text
-    assert "saberistic-analytics-article-slug" not in response.text
+    assert 'name="saberistic-first-party-case-study-slug" content="brave"' in response.text
+    assert "saberistic-first-party-article-slug" not in response.text
 
 
 @pytest.mark.unit
 def test_insight_article_injects_server_page_event(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ANALYTICS_ENABLED", "true")
-    monkeypatch.setenv("PLAUSIBLE_DOMAIN", "saberistic.com")
+    monkeypatch.setenv("FIRST_PARTY_ANALYTICS_ENABLED", "true")
 
     response = client.get("/insights/mvp-competing-sources-of-truth")
     assert response.status_code == 200
-    assert 'name="saberistic-analytics-page-event" content="Insight Viewed"' in (
+    assert 'name="saberistic-first-party-page-event" content="Insight Viewed"' in (
         response.text
     )
     assert (
-        'name="saberistic-analytics-article-slug" '
+        'name="saberistic-first-party-article-slug" '
         'content="mvp-competing-sources-of-truth"'
     ) in response.text
-    assert "saberistic-analytics-case-study-slug" not in response.text
+    assert "saberistic-first-party-case-study-slug" not in response.text
 
 
 @pytest.mark.unit
 def test_redirect_route_omits_page_event_meta(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ANALYTICS_ENABLED", "true")
-    monkeypatch.setenv("PLAUSIBLE_DOMAIN", "saberistic.com")
+    monkeypatch.setenv("FIRST_PARTY_ANALYTICS_ENABLED", "true")
 
     response = client.get("/diagnostic", follow_redirects=False)
     assert response.status_code == 301
-    assert "saberistic-analytics-domain" not in response.text
+    assert "saberistic-first-party-analytics" not in response.text
 
 
 @pytest.mark.unit
 def test_pages_omit_analytics_when_disabled() -> None:
     response = client.get("/brief")
     assert response.status_code == 200
-    assert "saberistic-analytics-domain" not in response.text
-    assert 'src="/assets/analytics.js"' not in response.text
+    assert "saberistic-first-party-analytics" not in response.text
+    assert 'src="/assets/first_party_analytics.js"' not in response.text
+    assert "plausible.io" not in response.text
 
 
 @pytest.mark.unit
-def test_analytics_js_exists_and_documents_funnel() -> None:
-    response = client.get("/assets/analytics.js")
+def test_first_party_analytics_js_exists_and_documents_funnel() -> None:
+    response = client.get("/assets/first_party_analytics.js")
     assert response.status_code == 200
     body = response.text
     assert "Brief Form Started" in body
@@ -386,40 +381,43 @@ def test_analytics_js_exists_and_documents_funnel() -> None:
     assert "Services Viewed" in body
     assert "Case Studies Viewed" in body
     assert "saberistic_utm" in body
-    assert "Never sends brief text" in body
     assert "About Viewed" in body
-    assert "Services Viewed" in body
-    assert "Case Studies Viewed" in body
-    assert "saberistic-analytics-page-event" in body
-    assert "saberistic-analytics-case-study-slug" in body
-    assert "saberistic-analytics-article-slug" in body
+    assert "saberistic-first-party-page-event" in body
+    assert "saberistic-first-party-case-study-slug" in body
+    assert "saberistic-first-party-article-slug" in body
     assert "Service Viewed" not in body
-    assert '"/about": { event: "About Viewed" }' in body
-    assert '"/services": { event: "Services Viewed" }' in body
-    assert "replace(/\\/$/, \"\")" in body
+    assert '"/about": { event: "About Viewed"' in body
+    assert '"/services": { event: "Services Viewed"' in body
+    assert "plausible.io" not in body
+    assert "window.plausible" not in body
 
 
 @pytest.mark.unit
-def test_analytics_js_content_pages_omit_funnel_step() -> None:
-    body = client.get("/assets/analytics.js").text
-    assert '"/about": { event: "About Viewed" }' in body
-    assert '"/services": { event: "Services Viewed" }' in body
-    assert '"/insights": { event: "Insights Viewed" }' in body
-    assert '"/brief": { event: "Brief Viewed", step: 3 }' in body
+def test_legacy_plausible_analytics_js_removed() -> None:
+    response = client.get("/assets/analytics.js")
+    assert response.status_code == 404
+
+
+@pytest.mark.unit
+def test_first_party_analytics_js_content_pages_omit_funnel_step() -> None:
+    body = client.get("/assets/first_party_analytics.js").text
+    assert '"/about": { event: "About Viewed"' in body
+    assert '"/services": { event: "Services Viewed"' in body
+    assert '"/insights": { event: "Insights Viewed"' in body
+    assert '"/brief": { event: "Brief Viewed", step: 3' in body
 
 
 @pytest.mark.unit
 def test_trailing_slash_pages_still_inject_analytics(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ANALYTICS_ENABLED", "true")
-    monkeypatch.setenv("PLAUSIBLE_DOMAIN", "saberistic.com")
+    monkeypatch.setenv("FIRST_PARTY_ANALYTICS_ENABLED", "true")
 
     for path in ("/about/", "/services/", "/work/brave/"):
         response = client.get(path)
         assert response.status_code == 200
-        assert 'name="saberistic-analytics-domain"' in response.text
-        assert 'src="/assets/analytics.js"' in response.text
+        assert 'name="saberistic-first-party-analytics"' in response.text
+        assert 'src="/assets/first_party_analytics.js"' in response.text
 
 
 @pytest.mark.unit
@@ -427,3 +425,39 @@ def test_brief_page_includes_utm_in_submit_script() -> None:
     response = client.get("/brief")
     assert "utm_source" in response.text
     assert "saberistic_utm" in response.text
+
+
+@pytest.mark.unit
+def test_no_plausible_references_in_app_or_site() -> None:
+    """Post-cutover guard: no Plausible script, API, or env wiring remains."""
+    forbidden = (
+        "plausible.io",
+        "PLAUSIBLE_DOMAIN",
+        "PLAUSIBLE_API_KEY",
+        "window.plausible",
+        "saberistic-analytics-domain",
+        'src="/assets/analytics.js"',
+    )
+    scan_roots = (
+        REPO_ROOT / "app",
+        REPO_ROOT / "site",
+        REPO_ROOT / "render.yaml",
+    )
+    hits: list[str] = []
+    for root in scan_roots:
+        if root.is_file():
+            text = root.read_text(encoding="utf-8")
+            for needle in forbidden:
+                if needle in text:
+                    hits.append(f"{root}: {needle}")
+            continue
+        for path in root.rglob("*"):
+            if not path.is_file():
+                continue
+            if path.suffix not in {".py", ".js", ".html", ".yaml", ".md"}:
+                continue
+            text = path.read_text(encoding="utf-8", errors="replace")
+            for needle in forbidden:
+                if needle in text:
+                    hits.append(f"{path.relative_to(REPO_ROOT)}: {needle}")
+    assert hits == []

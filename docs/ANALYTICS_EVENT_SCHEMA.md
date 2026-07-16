@@ -5,8 +5,9 @@ preserving funnel definitions from [ANALYTICS_FUNNEL.md](ANALYTICS_FUNNEL.md).
 
 Parent issue: [#113](https://github.com/saberistic-team/agent-web/issues/113).
 
-Implementation: `app/analytics_event_schema.py` (contract) before transport in
-`app/analytics_service.py` (Plausible adapter).
+Implementation: `app/analytics_event_schema.py` (contract) and transport in
+`app/analytics_service.py` (server persistence) / `app/analytics_ingest.py`
+(browser ingest).
 
 ## Schema version
 
@@ -26,7 +27,7 @@ Rules:
 
 - Unknown `event_name` values are **rejected**.
 - Unknown property keys are **rejected** (strict validation) or **dropped** (lenient
-  Plausible transport via `filter_properties`).
+  server transport via `filter_properties` in `analytics_service.py`).
 - Extra top-level fields on `AnalyticsEventPayload` are rejected by Pydantic.
 - `schema_version` must match the parser version exactly for strict ingest.
 
@@ -232,7 +233,7 @@ event = build_event_payload(
 payload = parse_event_payload({...})  # raises AnalyticsEventValidationError
 ```
 
-Lenient Plausible transport uses `filter_properties` via `app/analytics_service.py`
+Lenient server transport uses `filter_properties` via `app/analytics_service.py`
 so legacy callers keep non-blocking behavior.
 
 ## Tests
@@ -243,6 +244,7 @@ pytest tests/test_analytics_event_schema.py tests/test_analytics.py -q
 
 ## Related docs
 
-- [ANALYTICS_FUNNEL.md](ANALYTICS_FUNNEL.md) — live Plausible funnel map and KPI scorecard
+- [ANALYTICS_FUNNEL.md](ANALYTICS_FUNNEL.md) — live funnel map and KPI scorecard
 - [ANALYTICS_INGEST.md](ANALYTICS_INGEST.md) — browser ingestion endpoint and abuse controls
+- [ANALYTICS_PARITY_REPORT.md](ANALYTICS_PARITY_REPORT.md) — Plausible cutover parity and rollback
 - [AUDIT_EVENTS.md](AUDIT_EVENTS.md) — admin audit trail (separate from product analytics)

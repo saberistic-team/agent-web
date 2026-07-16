@@ -13,7 +13,7 @@ the loop.
 - [Trace](docs/TRACE.md) — `agent-trace.jsonl` schema and jq queries
 - [Hello API](docs/HELLO_API.md) — JSON API surface, local run, Render deploy
 - [Landing](docs/LANDING.md) — saberistic.com routes, SEO, DNS
-- [Analytics funnel](docs/ANALYTICS_FUNNEL.md) — Plausible events + UTM
+- [Analytics funnel](docs/ANALYTICS_FUNNEL.md) — first-party events + UTM
 - [Articles / insights](docs/ARTICLES.md) — editorial content under `/insights`
 - [Models / codegen](docs/MODELS.md) — Cursor SDK primary + OpenAI/Models backup
 - [Design AI](docs/DESIGN.md) — UI coding via Cursor / OpenAI
