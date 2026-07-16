@@ -12,7 +12,6 @@
     maxCsvRows: 50000,
     maxFieldLength: 10000,
     maxPathLength: 512,
-    preambleScanLimit: 20,
     approvedBasenames: [
       "connections.csv",
       "messages.csv",
@@ -36,6 +35,7 @@
     "invitations.csv": ["from", "sent"],
     "company follows.csv": ["organization", "followed"],
   };
+  var PREAMBLE_SCAN_MAX_LINES = 20;
 
   var form = document.getElementById("linkedin-import-form");
   var input = document.getElementById("linkedin-export-zip");
@@ -459,20 +459,6 @@
       });
   }
 
-  function findCsvHeaderLineIndex(lines) {
-    var limit = Math.min(lines.length, LIMITS.preambleScanLimit || 20);
-    for (var i = 0; i < limit; i += 1) {
-      if (!lines[i].trim()) {
-        continue;
-      }
-      var fields = parseCsvLine(lines[i]);
-      if (fields.length > 1) {
-        return i;
-      }
-    }
-    return -1;
-  }
-
   function parseCsvBytes(raw, basenameKey) {
     var text = new TextDecoder("utf-8", { fatal: false }).decode(raw);
     if (text.indexOf("\u0000") !== -1) {
@@ -482,11 +468,24 @@
       text = text.slice(1);
     }
     var lines = splitCsvLines(text);
-    var headerIndex = findCsvHeaderLineIndex(lines);
-    if (headerIndex < 0) {
+    if (!lines.length) {
       throw new Error(basenameKey + ": missing CSV header row");
     }
-    var headers = parseCsvLine(lines[headerIndex]);
+    var headerIndex = -1;
+    var scanned = 0;
+    for (var li = 0; li < lines.length && scanned < PREAMBLE_SCAN_MAX_LINES; li += 1) {
+      if (!lines[li].trim()) {
+        continue;
+      }
+      scanned += 1;
+      var candidateFields = parseCsvLine(lines[li]);
+      if (candidateFields.length === 1) {
+        continue;
+      }
+      headerIndex = li;
+      break;
+    }
+    var headers = headerIndex >= 0 ? parseCsvLine(lines[headerIndex]) : [];
     if (!headers.length) {
       throw new Error(basenameKey + ": missing CSV header row");
     }
@@ -505,16 +504,16 @@
     });
 
     var rows = [];
-    var dataRowCount = 0;
+    var dataRowNum = 0;
     for (var i = headerIndex + 1; i < lines.length; i += 1) {
-      if (dataRowCount >= LIMITS.maxCsvRows) {
-        warnings.push(basenameKey + ": truncated at " + LIMITS.maxCsvRows.toLocaleString() + " rows");
-        break;
-      }
       if (!lines[i].trim()) {
         continue;
       }
-      dataRowCount += 1;
+      dataRowNum += 1;
+      if (dataRowNum > LIMITS.maxCsvRows) {
+        warnings.push(basenameKey + ": truncated at " + LIMITS.maxCsvRows.toLocaleString() + " rows");
+        break;
+      }
       var values = parseCsvLine(lines[i]);
       var row = {};
       var nonEmpty = false;

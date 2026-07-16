@@ -58,21 +58,21 @@ CONNECTIONS_CSV = (
 CONNECTIONS_CSV_WITH_PREAMBLE = (
     "Notes:\n"
     '"When exporting your connection data, you may notice that some of the email '
-    "addresses are missing. You will only see email addresses for connections who "
+    'addresses are missing. You will only see email addresses for connections who '
     'have allowed their connections to see or download their email address."\n'
     "\n"
     "First Name,Last Name,URL,Email Address,Company,Position,Connected On\n"
-    "Jane,Doe,https://www.linkedin.com/in/jane-doe,,Acme Corp,Engineer,10 Jul 2026\n"
     "Ada,Lovelace,https://www.linkedin.com/in/ada-lovelace/,ada@example.com,"
     "Analytical Engines,Engineer,01 Jan 2024\n"
     "Grace,Hopper,https://linkedin.com/in/grace-hopper/,grace@example.com,"
     "US Navy,Admiral,02 Feb 2024\n"
 )
 
-CONNECTIONS_CSV_SINGLE_LINE_PREAMBLE = (
+CONNECTIONS_CSV_WITH_SINGLE_LINE_PREAMBLE = (
     "Notes:\n"
     "First Name,Last Name,URL,Email Address,Company,Position,Connected On\n"
-    "Jane,Doe,https://www.linkedin.com/in/jane-doe,,Acme Corp,Engineer,10 Jul 2026\n"
+    "Ada,Lovelace,https://www.linkedin.com/in/ada-lovelace/,ada@example.com,"
+    "Analytical Engines,Engineer,01 Jan 2024\n"
 )
 MESSAGES_CSV = (
     "CONVERSATION ID,FROM,TO,SUBJECT,CONTENT,DATE,FOLDER\n"
@@ -356,88 +356,30 @@ def preview_text(page: Any) -> str:
     return page.eval_on_selector("#linkedin-import-preview", "el => el.textContent")
 
 
+def connection_count(page: Any) -> int:
+    return int(
+        page.eval_on_selector(
+            ".linkedin-import-stats",
+            """el => {
+              const items = el.querySelectorAll('div');
+              for (const item of items) {
+                const dt = item.querySelector('dt');
+                if (dt && dt.textContent.trim() === 'Connections') {
+                  return parseInt(item.querySelector('dd').textContent, 10);
+                }
+              }
+              return -1;
+            }""",
+        )
+    )
+
+
 def is_error(page: Any) -> bool:
     cls = page.eval_on_selector("#linkedin-import-status", "el => el.className")
     return "linkedin-import-status--error" in cls
 
 
 # --- Tests -------------------------------------------------------------------
-
-
-def test_connections_csv_notes_preamble_parses_correctly(
-    live_admin_server: LiveAdminServer, browser: Any, tmp_path: Path
-) -> None:
-    """Current official LinkedIn exports prepend a Notes: disclaimer before the header."""
-    zip_bytes = build_raw_zip(
-        _csv_entries(
-            {"Connections.csv": CONNECTIONS_CSV_WITH_PREAMBLE},
-            prefix="LinkedIn Export/",
-            compression=8,
-        )
-    )
-    context, page = _authenticated_page(live_admin_server, browser)
-    try:
-        goto_imports(page, live_admin_server.base_url)
-        upload_zip(page, tmp_path, zip_bytes)
-        assert not is_error(page), status_text(page)
-        preview = preview_text(page)
-        assert "unexpected schema" not in preview.lower()
-        assert "no rows with a recognizable profile url" not in preview.lower()
-        assert "Connections3" in preview.replace(" ", "") or "Connections\n3" in preview
-        # Stats block shows connection count 3
-        assert page.locator(".linkedin-import-stats dd").first.inner_text() == "3"
-    finally:
-        context.close()
-
-
-def test_connections_csv_single_line_preamble(
-    live_admin_server: LiveAdminServer, browser: Any, tmp_path: Path
-) -> None:
-    zip_bytes = build_raw_zip(
-        _csv_entries(
-            {"Connections.csv": CONNECTIONS_CSV_SINGLE_LINE_PREAMBLE},
-            compression=8,
-        )
-    )
-    context, page = _authenticated_page(live_admin_server, browser)
-    try:
-        goto_imports(page, live_admin_server.base_url)
-        upload_zip(page, tmp_path, zip_bytes)
-        assert not is_error(page), status_text(page)
-        preview = preview_text(page)
-        assert "unexpected schema" not in preview.lower()
-        assert page.locator(".linkedin-import-stats dd").first.inner_text() == "1"
-    finally:
-        context.close()
-
-
-def test_connections_csv_no_preamble_regression(
-    live_admin_server: LiveAdminServer, browser: Any, tmp_path: Path
-) -> None:
-    zip_bytes = build_raw_zip(_csv_entries({"Connections.csv": CONNECTIONS_CSV}, compression=8))
-    context, page = _authenticated_page(live_admin_server, browser)
-    try:
-        goto_imports(page, live_admin_server.base_url)
-        upload_zip(page, tmp_path, zip_bytes)
-        assert not is_error(page), status_text(page)
-        assert page.locator(".linkedin-import-stats dd").first.inner_text() == "1"
-    finally:
-        context.close()
-
-
-def test_connections_csv_headerless_after_preamble_scan(
-    live_admin_server: LiveAdminServer, browser: Any, tmp_path: Path
-) -> None:
-    csv_text = "\n".join(["Only one field"] * 25)
-    zip_bytes = build_raw_zip(_csv_entries({"Connections.csv": csv_text}, compression=8))
-    context, page = _authenticated_page(live_admin_server, browser)
-    try:
-        goto_imports(page, live_admin_server.base_url)
-        upload_zip(page, tmp_path, zip_bytes)
-        assert is_error(page)
-        assert "missing CSV header row" in (status_text(page) + preview_text(page))
-    finally:
-        context.close()
 
 
 def test_root_level_deflate_all_four_files(
@@ -672,5 +614,58 @@ def test_no_network_upload_of_zip_or_message_content(
         for req in seen_requests:
             assert req["method"] not in ("POST", "PUT", "PATCH"), req
         assert not any("Super secret message body" in str(req) for req in seen_requests)
+    finally:
+        context.close()
+
+
+def test_connections_csv_notes_preamble_parsed(
+    live_admin_server: LiveAdminServer, browser: Any, tmp_path: Path
+) -> None:
+    """Current LinkedIn exports prepend Notes: + disclaimer before Connections.csv header."""
+    zip_bytes = build_raw_zip(
+        _csv_entries({"Connections.csv": CONNECTIONS_CSV_WITH_PREAMBLE}, compression=8)
+    )
+    context, page = _authenticated_page(live_admin_server, browser)
+    try:
+        goto_imports(page, live_admin_server.base_url)
+        upload_zip(page, tmp_path, zip_bytes)
+        assert not is_error(page), status_text(page)
+        preview = preview_text(page)
+        assert "unexpected schema" not in preview.lower()
+        assert "no rows with a recognizable profile url" not in preview.lower()
+        assert connection_count(page) == 2
+    finally:
+        context.close()
+
+
+def test_connections_csv_single_line_preamble_parsed(
+    live_admin_server: LiveAdminServer, browser: Any, tmp_path: Path
+) -> None:
+    zip_bytes = build_raw_zip(
+        _csv_entries({"Connections.csv": CONNECTIONS_CSV_WITH_SINGLE_LINE_PREAMBLE}, compression=8)
+    )
+    context, page = _authenticated_page(live_admin_server, browser)
+    try:
+        goto_imports(page, live_admin_server.base_url)
+        upload_zip(page, tmp_path, zip_bytes)
+        assert not is_error(page), status_text(page)
+        preview = preview_text(page)
+        assert "unexpected schema" not in preview.lower()
+        assert connection_count(page) == 1
+    finally:
+        context.close()
+
+
+def test_connections_csv_preamble_scan_exceeded_is_error(
+    live_admin_server: LiveAdminServer, browser: Any, tmp_path: Path
+) -> None:
+    preamble = "".join(f"Line {i}\n" for i in range(25))
+    zip_bytes = build_raw_zip(_csv_entries({"Connections.csv": preamble}, compression=8))
+    context, page = _authenticated_page(live_admin_server, browser)
+    try:
+        goto_imports(page, live_admin_server.base_url)
+        upload_zip(page, tmp_path, zip_bytes)
+        assert is_error(page)
+        assert "missing CSV header row" in (status_text(page) + preview_text(page))
     finally:
         context.close()

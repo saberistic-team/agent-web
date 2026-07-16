@@ -24,7 +24,7 @@ MAX_ZIP_ENTRIES = 500
 MAX_CSV_ROWS = 50_000
 MAX_FIELD_LENGTH = 10_000
 MAX_PATH_LENGTH = 512
-PREAMBLE_SCAN_LIMIT = 20
+PREAMBLE_SCAN_MAX_LINES = 20
 
 APPROVED_BASENAMES: frozenset[str] = frozenset(
     {
@@ -137,64 +137,56 @@ def _is_nested_archive(path: str) -> bool:
     return any(base.endswith(suffix) for suffix in NESTED_ARCHIVE_SUFFIXES)
 
 
-def _find_csv_header_line_index(text: str) -> int | None:
-    """Return the 0-based line index of the first multi-column CSV header row.
-
-    LinkedIn prepends a single-column disclaimer block (e.g. ``Notes:`` plus a
-    quoted paragraph) before the real header on ``Connections.csv``. Skip
-    leading blank lines and single-field preamble lines (structural heuristic,
-    not hardcoded disclaimer text), bounded so headerless files fail fast.
-    """
-    lines = text.splitlines()
-    for index, line in enumerate(lines[:PREAMBLE_SCAN_LIMIT]):
-        if not line.strip():
-            continue
-        try:
-            fields = next(csv.reader([line]))
-        except csv.Error:
-            continue
-        if len(fields) > 1:
-            return index
-    return None
-
-
 def _read_csv_rows(raw: bytes, *, basename: str) -> tuple[list[dict[str, str]], tuple[str, ...]]:
     warnings: list[str] = []
     text = raw.decode("utf-8-sig", errors="replace")
     if "\x00" in text:
         raise ValueError(f"{basename}: binary content is not valid CSV")
 
-    header_index = _find_csv_header_line_index(text)
-    if header_index is None:
+    reader = csv.reader(io.StringIO(text))
+    fieldnames: list[str] | None = None
+    header_line_num = 0
+    scanned = 0
+    for row in reader:
+        scanned += 1
+        if scanned > PREAMBLE_SCAN_MAX_LINES:
+            break
+        if not row or not any(str(cell).strip() for cell in row):
+            continue
+        if len(row) == 1:
+            continue
+        fieldnames = [str(name).strip() for name in row]
+        header_line_num = scanned
+        break
+
+    if not fieldnames:
         raise ValueError(f"{basename}: missing CSV header row")
 
-    csv_text = "\n".join(text.splitlines()[header_index:])
-    reader = csv.DictReader(io.StringIO(csv_text))
-    if reader.fieldnames is None:
-        raise ValueError(f"{basename}: missing CSV header row")
-
-    header_lower = {name.strip().lower(): name for name in reader.fieldnames if name}
+    header_lower = {name.strip().lower(): name for name in fieldnames if name}
     required = _REQUIRED_HEADER_TOKENS.get(basename, ())
     for token in required:
         if not any(token in key for key in header_lower):
             warnings.append(f"{basename}: unexpected schema (missing '{token}' column)")
 
     rows: list[dict[str, str]] = []
-    for index, row in enumerate(reader, start=header_index + 2):
-        if index - 1 > MAX_CSV_ROWS:
+    data_row_count = 0
+    for index, row in enumerate(reader, start=header_line_num + 1):
+        data_row_count += 1
+        if data_row_count > MAX_CSV_ROWS:
             warnings.append(f"{basename}: truncated at {MAX_CSV_ROWS:,} rows")
             break
         cleaned: dict[str, str] = {}
-        for key, value in row.items():
-            if key is None:
+        for key_idx, key in enumerate(fieldnames):
+            if not key:
                 continue
+            value = row[key_idx] if key_idx < len(row) else ""
             cell = "" if value is None else str(value)
             if len(cell) > MAX_FIELD_LENGTH:
                 warnings.append(
                     f"{basename}: row {index} field '{key}' exceeds max length; truncated"
                 )
                 cell = cell[:MAX_FIELD_LENGTH]
-            cleaned[key.strip()] = cell
+            cleaned[key] = cell
         if any(cleaned.values()):
             rows.append(cleaned)
     return rows, tuple(warnings)
@@ -447,6 +439,5 @@ def export_limits_for_client() -> dict[str, Any]:
         "maxCsvRows": MAX_CSV_ROWS,
         "maxFieldLength": MAX_FIELD_LENGTH,
         "maxPathLength": MAX_PATH_LENGTH,
-        "preambleScanLimit": PREAMBLE_SCAN_LIMIT,
         "approvedBasenames": sorted(APPROVED_BASENAMES),
     }
