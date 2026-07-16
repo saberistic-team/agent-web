@@ -296,25 +296,29 @@ limits apply consistently across web processes, instances, and deployments.
 
 ### Limiter key strategy
 
-Each attempt consults one or two privacy-preserving HMAC-SHA256 buckets (only the
+Each attempt consults two privacy-preserving HMAC-SHA256 buckets (only the
 digest is stored as ``limiter_key``):
 
 | Bucket | Domain prefix | Key material | Purpose |
 |--------|---------------|--------------|---------|
 | **Source-wide** | ``src`` | normalized client source | Stops username rotation from one client source |
-| **Account-wide** | ``acct`` | normalized configured admin username | Limits distributed attempts against the configured admin account |
+| **Candidate-wide** | ``cand`` | normalized submitted username | Limits distributed attempts against any candidate equally |
 
 Digests use ``ADMIN_LOGIN_LIMITER_SECRET`` (or the optional previous secret during
 rotation). A database reader without the secret cannot verify guessed IP addresses
-or usernames by hashing them directly. Plain SHA-256 of ``src:…`` or ``acct:…``
+or usernames by hashing them directly. Plain SHA-256 of ``src:…`` or ``cand:…``
 material is never stored.
 
-The submitted username is normalized (lowercased/stripped) only to decide whether the
-account bucket applies. Unknown usernames still share the source bucket for their
-client source; responses remain generic.
+Every validly normalized submitted username receives the same source plus
+candidate bucket pair regardless of whether it matches the configured
+administrator. Unknown and configured candidates therefore participate in the
+same number and type of limiter decisions, closing cross-source username
+enumeration side channels.
 
-Raw usernames, passwords, IP addresses, forwarding headers, CSRF tokens, and session
-secrets are never written to limiter rows or limiter observability logs.
+Candidate buckets are bounded: usernames longer than 256 characters are rejected
+before key generation, each row expires after ``2 × max(window, lockout)`` via
+opportunistic cleanup, and no raw username is stored in limiter, log, metric, or
+audit state.
 
 ### Client source resolution
 
@@ -381,10 +385,11 @@ verification. The helper executes one PostgreSQL transaction that:
 With limit ``N``, at most ``N`` requests per bucket set can reach password verification
 during a synchronized burst across connections and instances.
 
-Successful login clears the account-wide bucket and releases the current source-wide
-admission reservation (decrements the source failure counter by one without clearing
-unrelated source history). Source-wide counters otherwise decay via the rolling window
-and lockout expiry.
+Successful login clears the submitted candidate bucket and releases the current
+source-wide admission reservation (decrements the source failure counter by one
+without clearing unrelated source history). Other candidate buckets and other
+source-wide counters remain intact and decay via the rolling window and lockout
+expiry.
 
 ### Attempt / window / lockout semantics
 
