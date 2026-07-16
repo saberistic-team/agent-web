@@ -22,7 +22,7 @@ class Settings:
     admin_username: str
     admin_password_hash: str
     admin_session_secret: str
-    admin_login_limiter_secret: str
+    admin_login_limiter_secret: str = ""
     admin_login_limiter_previous_secret: str = ""
     brief_price_cents: int = 20_000
     admin_session_ttl_seconds: int = 86_400
@@ -113,7 +113,9 @@ def get_settings() -> Settings:
         admin_username=os.environ.get("ADMIN_USERNAME", "").strip(),
         admin_password_hash=os.environ.get("ADMIN_PASSWORD_HASH", "").strip(),
         admin_session_secret=os.environ.get("ADMIN_SESSION_SECRET", "").strip(),
-        admin_login_limiter_secret=os.environ.get("ADMIN_LOGIN_LIMITER_SECRET", "").strip(),
+        admin_login_limiter_secret=os.environ.get(
+            "ADMIN_LOGIN_LIMITER_SECRET", ""
+        ).strip(),
         admin_login_limiter_previous_secret=os.environ.get(
             "ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET", ""
         ).strip(),

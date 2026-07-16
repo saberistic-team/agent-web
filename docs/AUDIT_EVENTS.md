@@ -51,7 +51,7 @@ both commit or roll back together.
 | Brief-to-CRM linkage | `CrmService.link_project_brief_source` | Transactional write; audit ships with future routes |
 | Login success | `admin_routes._issue_session` | Prior-session revocation (if any) + new session + required audit atomically |
 | Logout (authenticated) | `admin_routes.admin_logout` | Revocation + required audit atomically when the session row transitions to revoked |
-| Login failure | `admin_routes` | Best-effort audit (`required=False`); actor is always `anonymous` before authentication |
+| Login failure | `admin_routes` | Best-effort audit (`required=False`) |
 
 `record_event(..., required=True)` propagates persistence errors. Security-sensitive
 mutations must not return success when a required audit event could not be stored.
@@ -101,39 +101,36 @@ operator is never left without a valid server-side session. The session cookie i
 set on the redirect response only after the transaction exits successfully; failed
 or rolled-back logins never emit a new session cookie.
 
-Unauthenticated login failures (`auth.login.failure`) always record
-``actor = anonymous``. Submitted username candidates, client sources, and limiter
-digest inputs are never stored in ``actor``, ``metadata``, ``summary_after``, or
-reason text. Failure reasons are limited to server-defined values such as
-``invalid_credentials``, ``invalid_csrf``, and ``rate_limited``.
-
-#### Historical login-failure actors (pre-#242)
-
-Deployments before keyed limiter identifiers and anonymous failure actors
-([#242](https://github.com/saberistic-team/agent-web/issues/242)) may have appended
-``auth.login.failure`` rows whose ``actor`` column contains attacker-supplied username
-candidates. Those rows remain immutable under the append-only policy. Forward fixes
-prevent new occurrences; remediating historical ``actor`` values requires an explicit
-data-governance decision outside normal application code (no silent ``UPDATE``/``DELETE``
-on ``audit_events``).
-
-Inventory example:
-
-```sql
-SELECT created_at, actor, summary_after->>'reason' AS reason
-FROM audit_events
-WHERE action = 'auth.login.failure'
-  AND actor <> 'anonymous'
-ORDER BY created_at DESC
-LIMIT 100;
-```
-
 ## Audited actions
 
 | Action | When recorded |
 |--------|----------------|
 | `auth.login.success` | Valid admin login creates a server-side session |
-| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting (actor always `anonymous`) |
+| `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting |
+
+### Unauthenticated login-failure actor policy
+
+Every `auth.login.failure` event recorded **before** successful authentication uses
+the canonical actor `anonymous`. Submitted username candidates, email addresses,
+control characters, or other attacker-chosen identifiers must not appear in:
+
+- the `actor` column
+- `summary_after` / `metadata` JSON
+- server-defined `reason` enums (`invalid_credentials`, `invalid_csrf`, `rate_limited`, …)
+- structured logs, metrics, or exception strings tied to the failure path
+
+Authenticated `auth.login.success`, `auth.logout`, and post-login CRM mutations
+continue to record the live administrator username in `actor`.
+
+#### Historical immutable rows (pre-#242)
+
+Deployments that accepted admin logins before keyed limiter identifiers and the
+anonymous-actor policy shipped may contain legacy `auth.login.failure` rows whose
+`actor` column holds a submitted username candidate. Those rows are append-only;
+application code does not rewrite or delete them. Security reporting should treat
+such values as unauthenticated guesses, not authenticated identities. The forward
+fix in #242 prevents all new occurrences regardless of any archival decision on
+legacy rows.
 | `auth.logout` | Authenticated session revocation (live session → revoked) |
 | `import.batch` | Data import batches via `CrmService.commit_linkedin_import` / `import_batch` |
 | `import.batch.rollback` | Rollback of committed import batches via `CrmService.rollback_import_batch` |

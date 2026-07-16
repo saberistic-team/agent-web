@@ -26,7 +26,7 @@ from app.admin_security import (
     digest_limiter_key,
 )
 from app.client_source import resolve_client_source
-from app.config import Settings, get_settings
+from app.config import Settings
 
 SESSION_COOKIE_NAME = "admin_session"
 LOGIN_FLOW_COOKIE_NAME = "admin_login_flow"
@@ -259,11 +259,23 @@ def client_ip(request: Request, settings: Settings) -> str:
     return resolve_admin_login_client_source(request, settings)
 
 
-def _digest_limiter_key(settings: Settings, domain: str, material: str) -> str:
+def build_source_rate_limit_key(client_source: str, settings: Settings) -> str:
+    """Source-wide bucket keyed by resolved client source (privacy-preserving)."""
+    normalized_source = client_source.strip().lower()
     return digest_limiter_key(
+        domain=LIMITER_DOMAIN_SOURCE,
+        material=normalized_source,
         secret=settings.admin_login_limiter_secret,
-        domain=domain,
-        material=material,
+    )
+
+
+def build_account_rate_limit_key(admin_username: str, settings: Settings) -> str:
+    """Account-wide bucket for the configured admin username."""
+    normalized_username = admin_username.strip().lower()
+    return digest_limiter_key(
+        domain=LIMITER_DOMAIN_ACCOUNT,
+        material=normalized_username,
+        secret=settings.admin_login_limiter_secret,
     )
 
 
@@ -274,12 +286,11 @@ def _limiter_keys_for_secret(
     configured_admin_username: str,
     secret: str,
 ) -> tuple[str, ...]:
-    normalized_source = client_source.strip().lower()
     keys = [
         digest_limiter_key(
-            secret=secret,
             domain=LIMITER_DOMAIN_SOURCE,
-            material=normalized_source,
+            material=client_source.strip().lower(),
+            secret=secret,
         )
     ]
     normalized_submitted = submitted_username.strip().lower()
@@ -287,24 +298,12 @@ def _limiter_keys_for_secret(
     if normalized_configured and normalized_submitted == normalized_configured:
         keys.append(
             digest_limiter_key(
-                secret=secret,
                 domain=LIMITER_DOMAIN_ACCOUNT,
                 material=normalized_configured,
+                secret=secret,
             )
         )
     return tuple(keys)
-
-
-def build_source_rate_limit_key(client_source: str, *, settings: Settings) -> str:
-    """Source-wide bucket keyed by resolved client source (privacy-preserving)."""
-    normalized_source = client_source.strip().lower()
-    return _digest_limiter_key(settings, LIMITER_DOMAIN_SOURCE, normalized_source)
-
-
-def build_account_rate_limit_key(admin_username: str, *, settings: Settings) -> str:
-    """Account-wide bucket for the configured admin username."""
-    normalized_username = admin_username.strip().lower()
-    return _digest_limiter_key(settings, LIMITER_DOMAIN_ACCOUNT, normalized_username)
 
 
 def build_rate_limit_key(username: str, client_source: str) -> str:
@@ -321,7 +320,7 @@ def login_limiter_keys(
     configured_admin_username: str,
     settings: Settings,
 ) -> tuple[str, ...]:
-    """Return the shared limiter buckets updated for one login attempt."""
+    """Return current-secret limiter buckets consulted for one login attempt."""
     return _limiter_keys_for_secret(
         submitted_username=submitted_username,
         client_source=client_source,
@@ -330,14 +329,14 @@ def login_limiter_keys(
     )
 
 
-def login_limiter_guard_keys(
+def login_limiter_rotation_keys(
     *,
     submitted_username: str,
     client_source: str,
     configured_admin_username: str,
     settings: Settings,
 ) -> tuple[str, ...]:
-    """Return legacy limiter buckets checked (not incremented) during key rotation."""
+    """Return previous-secret aliases still honored during a rotation window."""
     previous = settings.admin_login_limiter_previous_secret.strip()
     if not previous:
         return ()
@@ -438,7 +437,7 @@ def try_admit_login_attempt(
         configured_admin_username=settings.admin_username,
         settings=settings,
     )
-    guard_keys = login_limiter_guard_keys(
+    rotation_keys = login_limiter_rotation_keys(
         submitted_username=username,
         client_source=source,
         configured_admin_username=settings.admin_username,
@@ -447,10 +446,17 @@ def try_admit_login_attempt(
     now = datetime.now(timezone.utc)
     try:
         with db.db_connection(settings.database_url) as conn:
+            for rotation_key in rotation_keys:
+                if db.is_admin_login_throttled(conn, limiter_key=rotation_key, now=now):
+                    return LoginAdmissionResult(
+                        admitted=False,
+                        throttled=True,
+                        already_locked=True,
+                        lockout_transition=False,
+                    )
             admission = db.try_admit_admin_login(
                 conn,
                 limiter_keys=limiter_keys,
-                guard_keys=guard_keys,
                 now=now,
                 rate_limit=settings.admin_login_rate_limit,
                 window_seconds=settings.admin_login_rate_window_seconds,
@@ -518,7 +524,7 @@ def is_login_throttled(request: Request, settings: Settings, *, username: str = 
         configured_admin_username=settings.admin_username,
         settings=settings,
     )
-    guard_keys = login_limiter_guard_keys(
+    rotation_keys = login_limiter_rotation_keys(
         submitted_username=username,
         client_source=source,
         configured_admin_username=settings.admin_username,
@@ -529,7 +535,7 @@ def is_login_throttled(request: Request, settings: Settings, *, username: str = 
         with db.db_connection(settings.database_url) as conn:
             return any(
                 db.is_admin_login_throttled(conn, limiter_key=key, now=now)
-                for key in (*limiter_keys, *guard_keys)
+                for key in (*limiter_keys, *rotation_keys)
             )
     except Exception:
         _logger.warning(
@@ -548,9 +554,9 @@ def finalize_successful_login(request: Request, settings: Settings, *, username:
     """Clear account bucket state and release the current source admission reservation."""
     _ = username
     source = client_ip(request, settings)
-    source_key = build_source_rate_limit_key(source, settings=settings)
+    source_key = build_source_rate_limit_key(source, settings)
     account_keys = (
-        (build_account_rate_limit_key(settings.admin_username, settings=settings),)
+        (build_account_rate_limit_key(settings.admin_username, settings),)
         if settings.admin_username.strip()
         else ()
     )
