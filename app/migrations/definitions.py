@@ -684,6 +684,13 @@ ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS analytics_session_id UUID;
     ),
     Migration(
         version="019",
+        name="contact_field_sources",
+        up_sql="""
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS field_sources JSONB NOT NULL DEFAULT '{}'::jsonb;
+""",
+    ),
+    Migration(
+        version="020",
         name="icp_scoring",
         up_sql="""
 CREATE TABLE IF NOT EXISTS icp_scoring_versions (
@@ -780,7 +787,7 @@ ON CONFLICT (version_id, id) DO NOTHING;
 """,
     ),
     Migration(
-        version="020",
+        version="021",
         name="qualification_targets",
         up_sql="""
 CREATE TABLE IF NOT EXISTS qualification_tier_history (
