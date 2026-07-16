@@ -72,6 +72,10 @@ PREVIEW_BRIEF_CONVERTED_ID = 3
 PREVIEW_BRIEF_CONVERT_MATCHES_ID = 4
 # Brief convert preview with archived-only contact identity match (#276).
 PREVIEW_BRIEF_CONVERT_ARCHIVED_MATCH_ID = 5
+# Brief convert preview with no website/email data to match against at all (#276).
+PREVIEW_BRIEF_CONVERT_EMPTY_ID = 6
+# Brief convert preview with a website but no contact email on file (#276).
+PREVIEW_BRIEF_CONVERT_NO_EMAIL_ID = 7
 PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR = (
     "Select an existing company match or choose to create a new company."
 )
@@ -1016,7 +1020,9 @@ def build_preview_brief_rows(
     now = now or datetime.now(timezone.utc)
     companies = list(COMPANY_NAMES)
     rng.shuffle(companies)
-    count = rng.randint(5, 9)
+    # Floor raised to 7 so ids 1-7 (including the #276 empty/no-email convert
+    # preview fixtures below) are always present, regardless of the random draw.
+    count = rng.randint(7, 9)
     rows: list[dict[str, object]] = []
     for i in range(count):
         company = companies[i % len(companies)]
@@ -1060,6 +1066,14 @@ def build_preview_brief_rows(
             payment_subtotal_cents = 20_000
             payment_amount_cents = 20_000
             payment_currency = "usd"
+        elif brief_id in (PREVIEW_BRIEF_CONVERT_EMPTY_ID, PREVIEW_BRIEF_CONVERT_NO_EMAIL_ID):
+            status = "paid"
+            paid_at = created + timedelta(minutes=rng.randint(5, 90))
+            session_id = f"cs_preview_{rng.randint(100000, 999999)}"
+            intent_id = f"pi_preview_{rng.randint(100000, 999999)}"
+            payment_subtotal_cents = 20_000
+            payment_amount_cents = 20_000
+            payment_currency = "usd"
         elif status == "paid":
             paid_at = created + timedelta(minutes=rng.randint(5, 90))
             session_id = f"cs_preview_{rng.randint(100000, 999999)}"
@@ -1075,6 +1089,8 @@ def build_preview_brief_rows(
         website = (
             "https://very-long-subdomain-name.example.co.uk/path/to/resource?query=value"
             if brief_id == 2
+            else ""
+            if brief_id == PREVIEW_BRIEF_CONVERT_EMPTY_ID
             else _brief_website(company, rng)
         )
         brief_text = (
@@ -1083,13 +1099,18 @@ def build_preview_brief_rows(
             if brief_id == 2
             else rng.choice(BRIEF_TEXTS)
         )
+        contact_value = (
+            ""
+            if brief_id in (PREVIEW_BRIEF_CONVERT_EMPTY_ID, PREVIEW_BRIEF_CONVERT_NO_EMAIL_ID)
+            else _brief_email(company, rng)
+        )
         rows.append(
             {
                 "id": brief_id,
                 "created_at": created,
                 "website": website,
                 "contact_method": "email",
-                "contact_value": _brief_email(company, rng),
+                "contact_value": contact_value,
                 "brief": brief_text,
                 "status": status,
                 "stripe_session_id": session_id,

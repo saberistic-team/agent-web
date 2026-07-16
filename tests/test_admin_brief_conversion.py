@@ -646,3 +646,71 @@ def test_preview_archived_convert_page_renders_mock_panel(
     assert "Alex Nguyen (archived)" in response.text
     assert 'href="/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeee05/edit"' in response.text
     assert 'class="brief-convert-archived"' in response.text
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_preview_empty_convert_page_renders_placeholders(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Brief with no website/email at all (#276): proposal fields legibly show '—'."""
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        with patch("app.admin_routes._session_csrf_for_forms", return_value=CSRF_TOKEN):
+            response = client.get("/admin/briefs/6/convert")
+    assert response.status_code == 200
+    body = response.text
+    assert "Proposed records" in body
+    assert "Unknown company" in body
+    assert 'class="brief-convert-archived"' not in body
+    assert 'class="brief-convert-match"' not in body
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_preview_no_email_convert_page_renders_company_but_no_email(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Brief with a website but no contact email on file (#276) is legible."""
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        with patch("app.admin_routes._session_csrf_for_forms", return_value=CSRF_TOKEN):
+            response = client.get("/admin/briefs/7/convert")
+    assert response.status_code == 200
+    body = response.text
+    assert "Proposed records" in body
+    assert "Unknown company" not in body
+    assert 'class="brief-convert-archived"' not in body
+    assert 'class="brief-convert-match"' not in body
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_preview_empty_and_no_email_convert_post_succeeds_with_new_records(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Neither edge state has matches to select, so 'new' company/contact always succeeds."""
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        with patch("app.admin_routes._verify_session_csrf"):
+            with patch("app.admin_routes._session_csrf_for_forms", return_value=CSRF_TOKEN):
+                empty_response = client.post(
+                    "/admin/briefs/6/convert",
+                    data={
+                        "csrf_token": CSRF_TOKEN,
+                        "company_choice": "new",
+                        "contact_choice": "new",
+                    },
+                )
+                no_email_response = client.post(
+                    "/admin/briefs/7/convert",
+                    data={
+                        "csrf_token": CSRF_TOKEN,
+                        "company_choice": "new",
+                        "contact_choice": "new",
+                    },
+                )
+    assert empty_response.status_code == 303
+    assert empty_response.headers["location"] == "/admin/briefs/6?converted=1"
+    assert no_email_response.status_code == 303
+    assert no_email_response.headers["location"] == "/admin/briefs/7?converted=1"

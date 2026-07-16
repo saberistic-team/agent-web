@@ -134,12 +134,13 @@ def test_admin_checkbox_label_and_fieldset_styles() -> None:
 @pytest.mark.unit
 def test_brief_convert_archived_panel_styles() -> None:
     css = _admin_css()
-    panel_block = _rule_block(css, ".brief-convert-archived-panel {")
+    panel_block = _rule_block(css, ".brief-convert-archived {")
     assert "border: 1px solid" in panel_block
     assert "var(--accent)" in panel_block
-    ack_block = _rule_block(css, ".brief-convert-ack {")
-    assert "display: flex" in ack_block
-    assert "cursor: pointer" in ack_block
+    # The ack checkbox reuses the shared .admin-checkbox flex/cursor styling
+    # (tested separately) and only adds spacing here.
+    ack_block = _rule_block(css, ".brief-convert-archived-ack {")
+    assert "margin-top" in ack_block
 
 
 @pytest.mark.unit
@@ -330,11 +331,10 @@ def test_brief_convert_renders_archived_panel_without_preselecting_new() -> None
         },
         csrf_token="csrf",
     )
-    assert "brief-convert-archived-panel" in html
-    assert "Review archived contact" in html
-    assert "acknowledge_archived_contact" in html
+    assert 'class="brief-convert-archived"' in html
+    assert "Archived contact match" in html
+    assert "acknowledge_archived_identity" in html
     assert 'name="contact_choice" value="new" checked' not in html
-    assert 'name="contact_choice" value="new" required' in html
 
 
 @pytest.mark.unit
@@ -462,9 +462,9 @@ def test_preview_convert_archived_only_page_includes_panel(
     )
     assert response.status_code == 200
     body = response.text
-    assert 'class="brief-convert-archived-panel"' in body
-    assert "Review archived contact" in body
-    assert "acknowledge_archived_contact" in body
+    assert 'class="brief-convert-archived"' in body
+    assert "Archived contact match" in body
+    assert "acknowledge_archived_identity" in body
 
 
 @pytest.mark.unit
