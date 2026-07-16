@@ -23,6 +23,24 @@ IMPORT_ERROR = (
     "'validate_admin_security_config' from 'app.admin_security'"
 )
 
+# Real shape observed on #242: a leading caret-underline traceback marker,
+# then a *different* missing symbol each cycle from the *same* dead module,
+# with a random per-run temp directory baked into the file path.
+REAL_WORLD_ERROR_CYCLE_1 = (
+    "pytest collect failed: ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"
+    "tests/test_admin_security_unit.py:13: in <module>\n"
+    "    from app.admin_security import (\n"
+    "E   ImportError: cannot import name 'LIMITER_DOMAIN_ACCOUNT' from "
+    "'app.admin_security' (/tmp/builder-conflict-poyn1287/repo/app/admin_security.py)\n"
+)
+REAL_WORLD_ERROR_CYCLE_2 = (
+    "pytest collect failed: ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"
+    "tests/test_admin_login_limiter_secrets.py:24: in <module>\n"
+    "    from app.admin_security import validate_admin_security_config\n"
+    "E   ImportError: cannot import name 'validate_admin_security_config' from "
+    "'app.admin_security' (/tmp/builder-conflict-ahbbo6fx/repo/app/admin_security.py)\n"
+)
+
 
 def _conflict_result_comment(status: str, smoke_error: str | None = None) -> dict:
     lines = [
@@ -54,8 +72,21 @@ def test_identical_smoke_error_repeated_returns_signature() -> None:
         comments.append(_generic_followup("broken_after_resolve"))
     with patch("run_agent.list_issue_comments", return_value=comments):
         signature = repeated_conflict_smoke_signature("o/r", 242)
-    assert signature is not None
-    assert "validate_admin_security_config" in signature
+    assert signature == "import-error:app.admin_security"
+
+
+@pytest.mark.unit
+def test_real_world_cycles_with_different_symbol_and_temp_path_still_match() -> None:
+    """Regression: the naive first-line signature never matched real #242
+    data because each cycle's caret marker / temp path / missing symbol
+    differed even though every failure was the same dead-module import."""
+    comments = []
+    for error in (REAL_WORLD_ERROR_CYCLE_1, REAL_WORLD_ERROR_CYCLE_2, REAL_WORLD_ERROR_CYCLE_1):
+        comments.append(_conflict_result_comment("broken_after_resolve", error))
+        comments.append(_generic_followup("broken_after_resolve"))
+    with patch("run_agent.list_issue_comments", return_value=comments):
+        signature = repeated_conflict_smoke_signature("o/r", 242)
+    assert signature == "import-error:app.admin_security"
 
 
 @pytest.mark.unit

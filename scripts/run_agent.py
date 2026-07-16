@@ -148,6 +148,37 @@ def escalate(repo: str, issue: int, reason: str, assignee_hint: str | None = Non
 # consecutive identical failures). Escalate once the same signature repeats.
 REPEATED_CONFLICT_FAILURE_LIMIT = 3
 
+_IMPORT_ERROR_MODULE_RE = re.compile(
+    r"cannot import name '[^']*' from '([^']+)'|No module named '([^']+)'"
+)
+_CARET_LINE_RE = re.compile(r"^\^+$")
+
+
+def _smoke_error_signature(smoke_error: str) -> str:
+    """Normalize one ``smoke_error`` blob to a stable cross-cycle signature.
+
+    Import failures embed a random per-run temp directory in the file path
+    (``/tmp/builder-conflict-XXXXXXXX/repo/...``), and — as on #242 — codegen
+    often rewrites the same broken module's public API differently each
+    cycle, so the *specific* missing symbol also changes cycle to cycle even
+    though the same module is at fault. Key on the module path so "the same
+    orphan module still doesn't export what tests expect" is recognized
+    across cycles despite the symbol/temp-path noise. Also skip leading bare
+    ``^^^^`` caret-underline traceback markers, which pytest sometimes prints
+    before the real message and would otherwise become a useless "first
+    line" signature that never matches (this hid the #242 loop from the
+    naive first-line version of this check).
+    """
+    match = _IMPORT_ERROR_MODULE_RE.search(smoke_error)
+    if match:
+        module = match.group(1) or match.group(2)
+        return f"import-error:{module}"
+    for line in smoke_error.strip().splitlines():
+        stripped = line.strip()
+        if stripped and not _CARET_LINE_RE.match(stripped):
+            return stripped[:200]
+    return smoke_error.strip()[:200]
+
 
 def repeated_conflict_smoke_signature(
     repo: str, issue: int, *, threshold: int = REPEATED_CONFLICT_FAILURE_LIMIT
@@ -178,8 +209,7 @@ def repeated_conflict_smoke_signature(
             # without breaking the streak (it belongs to the same cycle as
             # the detailed comment already counted, or preceded it).
             continue
-        signature = error_match.group(1).strip().splitlines()[0][:200]
-        signatures.append(signature)
+        signatures.append(_smoke_error_signature(error_match.group(1)))
         if len(signatures) >= threshold:
             break
     if len(signatures) < threshold:
