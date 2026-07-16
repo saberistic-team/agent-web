@@ -132,9 +132,8 @@ def test_imports_reconcile_preview_in_preview_mode(
     authenticated_admin: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch, base_url="http://localhost:8000")
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
-    monkeypatch.setenv("BASE_URL", "http://localhost:8000")
 
     response = client.post(
         "/admin/imports/reconcile-preview",

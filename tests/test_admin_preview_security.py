@@ -190,8 +190,6 @@ def test_settings_constructed_explicitly_without_ambient_env(
         from_email="noreply@saberistic.com",
         notify_email="inbox@saberistic.com",
         base_url="https://saberistic.com",
-        plausible_domain="",
-        plausible_api_key="",
         analytics_environment="production",
         app_environment=AppEnvironment.PRODUCTION,
         admin_username="",
