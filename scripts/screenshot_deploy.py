@@ -161,6 +161,18 @@ PRE_BRANCH_PHASE = "branch"
 DEFAULT_PREVIEW_PORT = 8765
 DEFAULT_EXPECTED_STATUS = 200
 
+# Stable preview reproducibility defaults (see app/preview_context.py).
+try:
+    from app.preview_context import (
+        DEFAULT_PREVIEW_REFERENCE_ISO,
+        DEFAULT_PREVIEW_ROOT_SEED,
+        PREVIEW_FIXTURE_VERSION,
+    )
+except ImportError:  # script-only checkout without app on path
+    PREVIEW_FIXTURE_VERSION = "1"
+    DEFAULT_PREVIEW_ROOT_SEED = 338001
+    DEFAULT_PREVIEW_REFERENCE_ISO = "2026-07-15T14:30:00+00:00"
+
 
 @dataclass(frozen=True)
 class ScreenshotTarget:
@@ -187,6 +199,7 @@ class CaptureResult(NamedTuple):
     overflows: list[dict[str, Any]]
     empty_pages: list[dict[str, Any]] = []
     nav_failures: list[dict[str, Any]] = []
+    reproducibility: dict[str, Any] = {}
 
 
 class PreCaptureResult(NamedTuple):
@@ -200,6 +213,7 @@ class PreCaptureResult(NamedTuple):
     prod_url: str
     branch_empty_pages: list[dict[str, Any]] = []
     branch_nav_failures: list[dict[str, Any]] = []
+    reproducibility: dict[str, Any] = {}
 
     @property
     def paths(self) -> list[Path]:
@@ -715,38 +729,32 @@ def _wait_http_ok(url: str, *, attempts: int = 30) -> None:
     raise GitHubError(f"local preview not ready at {url}: {last}")
 
 
-def _resolve_head_sha(preview_root: Path | None = None) -> str:
-    env_sha = (os.environ.get("GITHUB_SHA") or "").strip()
-    if env_sha:
-        return env_sha
-    root = resolve_preview_root(preview_root)
-    try:
-        proc = subprocess.run(
-            ["git", "-C", str(root), "rev-parse", "HEAD"],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        return proc.stdout.strip()
-    except (OSError, subprocess.CalledProcessError):
-        return ""
+def preview_reproducibility_env() -> dict[str, str]:
+    """Env vars for deterministic ADMIN_PREVIEW_MODE screenshot fixtures."""
+    return {
+        "ADMIN_PREVIEW_SEED": os.environ.get("ADMIN_PREVIEW_SEED")
+        or str(DEFAULT_PREVIEW_ROOT_SEED),
+        "ADMIN_PREVIEW_REFERENCE_TIME": os.environ.get("ADMIN_PREVIEW_REFERENCE_TIME")
+        or DEFAULT_PREVIEW_REFERENCE_ISO,
+        "ADMIN_PREVIEW_FIXTURE_VERSION": os.environ.get("ADMIN_PREVIEW_FIXTURE_VERSION")
+        or PREVIEW_FIXTURE_VERSION,
+    }
 
 
-def build_screenshot_reproducibility_manifest(
+def build_preview_reproducibility_manifest(
     *,
-    preview_root: Path | None = None,
+    head_sha: str = "",
     browser_version: str = "",
-    viewports: list[dict[str, object]] | None = None,
-) -> dict[str, object]:
-    """Non-secret fields recorded with screenshot evidence for reruns."""
-    from app.preview_context import load_preview_context_from_env
-
-    ctx = load_preview_context_from_env()
-    manifest: dict[str, object] = {
-        **ctx.to_manifest_dict(),
-        "head_sha": _resolve_head_sha(preview_root),
-        "browser": "chromium",
-        "browser_version": browser_version,
+    viewports: list[dict[str, int | str]] | None = None,
+) -> dict[str, Any]:
+    """Non-secret metadata recorded with pre-merge screenshot evidence."""
+    env = preview_reproducibility_env()
+    manifest: dict[str, Any] = {
+        "preview_fixture_version": env["ADMIN_PREVIEW_FIXTURE_VERSION"],
+        "preview_root_seed": int(env["ADMIN_PREVIEW_SEED"]),
+        "preview_reference_time": env["ADMIN_PREVIEW_REFERENCE_TIME"],
+        "head_sha": (head_sha or os.environ.get("GITHUB_SHA") or "").strip(),
+        "browser_version": browser_version.strip(),
         "viewports": viewports
         or [
             {"name": name, "width": width, "height": height}
@@ -756,11 +764,31 @@ def build_screenshot_reproducibility_manifest(
     return manifest
 
 
-def preview_server_env_overrides() -> dict[str, str]:
-    """Stable ADMIN_PREVIEW seed/time for branch screenshot capture."""
-    from app.preview_context import preview_server_env_defaults
-
-    return preview_server_env_defaults()
+def format_preview_reproducibility_lines(manifest: dict[str, Any]) -> list[str]:
+    """Markdown bullets for reviewer screenshot comments."""
+    if not manifest:
+        return []
+    lines = ["- preview reproducibility:"]
+    for key in (
+        "preview_fixture_version",
+        "preview_root_seed",
+        "preview_reference_time",
+        "head_sha",
+        "browser_version",
+    ):
+        value = manifest.get(key)
+        if value:
+            lines.append(f"  - {key}: `{value}`")
+    viewports = manifest.get("viewports")
+    if viewports:
+        formatted = ", ".join(
+            f"{item.get('name')} {item.get('width')}×{item.get('height')}"
+            for item in viewports
+            if isinstance(item, dict)
+        )
+        if formatted:
+            lines.append(f"  - viewports: `{formatted}`")
+    return lines
 
 
 @contextmanager
@@ -784,7 +812,7 @@ def local_preview_server(
         "DATABASE_URL": os.environ.get("DATABASE_URL") or "",
         # Open /admin without login for branch screenshot evidence only.
         "ADMIN_PREVIEW_MODE": "1",
-        **preview_server_env_overrides(),
+        **preview_reproducibility_env(),
         "ADMIN_USERNAME": os.environ.get("ADMIN_USERNAME") or PREVIEW_ADMIN_USERNAME,
         "ADMIN_PASSWORD_HASH": os.environ.get("ADMIN_PASSWORD_HASH")
         or PREVIEW_ADMIN_PASSWORD_HASH,
@@ -869,6 +897,7 @@ def capture_pre_dual(
         prod_url="",
         branch_empty_pages=list(branch.empty_pages),
         branch_nav_failures=list(branch.nav_failures),
+        reproducibility=dict(branch.reproducibility),
     )
 
 
@@ -1266,7 +1295,6 @@ def capture(
     overflows: list[dict[str, Any]] = []
     empty_pages: list[dict[str, Any]] = []
     nav_failures: list[dict[str, Any]] = []
-    browser_version = ""
     base = resolve_base_url(base_url)
     strict_probe = phase == PRE_BRANCH_PHASE
     if routes is None:
@@ -1300,6 +1328,8 @@ def capture(
         html_targets = routes_to_targets(list(HTML_PATHS), app_root=preview_root)
 
     captured_routes: set[str] = set()
+    browser_version = ""
+    reproducibility: dict[str, Any] = {}
 
     def _load_target_page(
         page: Any, target: ScreenshotTarget, *, viewport_name: str
@@ -1343,7 +1373,7 @@ def capture(
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        browser_version = browser.version
+        browser_version = str(browser.version)
         for viewport_name, width, height in VIEWPORTS:
             page = browser.new_page(viewport={"width": width, "height": height})
             if allow_admin:
@@ -1452,23 +1482,20 @@ def capture(
     empty_report.write_text(json.dumps(empty_pages, indent=2) + "\n", encoding="utf-8")
     nav_report = out_dir / f"{phase}-nav-failures.json"
     nav_report.write_text(json.dumps(nav_failures, indent=2) + "\n", encoding="utf-8")
-    repro_report = out_dir / f"{phase}-reproducibility.json"
-    repro_report.write_text(
-        json.dumps(
-            build_screenshot_reproducibility_manifest(
-                preview_root=preview_root,
-                browser_version=browser_version,
-            ),
-            indent=2,
+    if allow_admin:
+        reproducibility = build_preview_reproducibility_manifest(
+            browser_version=browser_version,
         )
-        + "\n",
-        encoding="utf-8",
-    )
+        repro_report = out_dir / f"{phase}-preview-reproducibility.json"
+        repro_report.write_text(
+            json.dumps(reproducibility, indent=2) + "\n", encoding="utf-8"
+        )
     return CaptureResult(
         paths=paths,
         overflows=overflows,
         empty_pages=empty_pages,
         nav_failures=nav_failures,
+        reproducibility=reproducibility,
     )
 
 
@@ -1532,7 +1559,7 @@ def comment_markdown_pre_dual(
     extra: list[str] | None = None,
     routes: list[str | ScreenshotTarget] | None = None,
     targets: list[ScreenshotTarget] | None = None,
-    reproducibility: dict[str, object] | None = None,
+    reproducibility: dict[str, Any] | None = None,
 ) -> str:
     """PR review comment: branch preview shots only (no saberistic.com pre)."""
     del prod_url, prod_urls  # production screenshots are post-deploy only
@@ -1547,25 +1574,6 @@ def comment_markdown_pre_dual(
         f"- branch (PR head local, ADMIN_PREVIEW_MODE): `{branch_url}`",
         "- production: skipped pre-merge (saberistic.com shots are post-deploy only)",
     ]
-    if reproducibility:
-        lines.append(
-            "- reproducibility: "
-            f"seed={reproducibility.get('preview_seed')} "
-            f"reference_time={reproducibility.get('preview_reference_time')} "
-            f"fixture_version={reproducibility.get('preview_fixture_version')} "
-            f"head_sha={reproducibility.get('head_sha') or 'unknown'} "
-            f"browser={reproducibility.get('browser')} "
-            f"browser_version={reproducibility.get('browser_version') or 'unknown'}"
-        )
-        viewports = reproducibility.get("viewports")
-        if isinstance(viewports, list) and viewports:
-            viewport_bits = ", ".join(
-                f"{item.get('name')}:{item.get('width')}x{item.get('height')}"
-                for item in viewports
-                if isinstance(item, dict)
-            )
-            if viewport_bits:
-                lines.append(f"- viewports: {viewport_bits}")
     if resolved_targets is not None:
         lines.append(
             f"- routes (PR-affected): {format_screenshot_targets(resolved_targets)}"
@@ -1592,6 +1600,9 @@ def comment_markdown_pre_dual(
     )
     if extra:
         lines.extend(extra)
+    repro_lines = format_preview_reproducibility_lines(reproducibility or {})
+    if repro_lines:
+        lines.extend(repro_lines)
     return "\n".join(lines) + "\n"
 
 
@@ -1676,15 +1687,11 @@ def main(argv: list[str] | None = None) -> int:
                 branch_urls = upload_to_branch(
                     args.repo, branch, dual.branch_paths, prefix
                 )
-                repro_path = args.out_dir / f"{PRE_BRANCH_PHASE}-reproducibility.json"
-                reproducibility = None
-                if repro_path.is_file():
-                    reproducibility = json.loads(repro_path.read_text(encoding="utf-8"))
                 body = comment_markdown_pre_dual(
                     branch_url=dual.branch_url,
                     branch_urls=branch_urls,
                     targets=routes,
-                    reproducibility=reproducibility,
+                    reproducibility=dual.reproducibility,
                 )
                 urls = branch_urls
         else:

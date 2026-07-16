@@ -132,6 +132,67 @@ def test_route_requires_admin_auth() -> None:
     assert not route_requires_admin_auth("/")
 
 
+def test_preview_reproducibility_env_defaults() -> None:
+    from screenshot_deploy import preview_reproducibility_env
+
+    env = preview_reproducibility_env()
+    assert env["ADMIN_PREVIEW_SEED"] == "338001"
+    assert env["ADMIN_PREVIEW_REFERENCE_TIME"] == "2026-07-15T14:30:00+00:00"
+    assert env["ADMIN_PREVIEW_FIXTURE_VERSION"] == "1"
+
+
+def test_build_preview_reproducibility_manifest_records_fields(monkeypatch) -> None:
+    from screenshot_deploy import build_preview_reproducibility_manifest
+
+    monkeypatch.setenv("GITHUB_SHA", "abc123deadbeef")
+    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
+    monkeypatch.setenv("ADMIN_PREVIEW_REFERENCE_TIME", "2026-07-14T12:00:00+00:00")
+    manifest = build_preview_reproducibility_manifest(browser_version="Chromium 120.0")
+    assert manifest["preview_root_seed"] == 42
+    assert manifest["preview_reference_time"] == "2026-07-14T12:00:00+00:00"
+    assert manifest["preview_fixture_version"] == "1"
+    assert manifest["head_sha"] == "abc123deadbeef"
+    assert manifest["browser_version"] == "Chromium 120.0"
+    assert manifest["viewports"]
+
+
+def test_format_preview_reproducibility_lines() -> None:
+    from screenshot_deploy import format_preview_reproducibility_lines
+
+    lines = format_preview_reproducibility_lines(
+        {
+            "preview_fixture_version": "1",
+            "preview_root_seed": 338001,
+            "preview_reference_time": "2026-07-15T14:30:00+00:00",
+            "head_sha": "sha",
+            "browser_version": "Chromium",
+            "viewports": [{"name": "desktop", "width": 1280, "height": 800}],
+        }
+    )
+    assert lines[0] == "- preview reproducibility:"
+    assert any("preview_root_seed: `338001`" in line for line in lines)
+    assert any("viewports:" in line for line in lines)
+
+
+def test_comment_markdown_pre_dual_includes_reproducibility() -> None:
+    from screenshot_deploy import ScreenshotTarget, comment_markdown_pre_dual
+
+    body = comment_markdown_pre_dual(
+        branch_url="http://127.0.0.1:8765",
+        branch_urls=["https://raw.example/branch-home.png"],
+        targets=[ScreenshotTarget(route="/")],
+        reproducibility={
+            "preview_fixture_version": "1",
+            "preview_root_seed": 338001,
+            "preview_reference_time": "2026-07-15T14:30:00+00:00",
+            "head_sha": "abc",
+            "browser_version": "Chromium",
+        },
+    )
+    assert "preview reproducibility:" in body
+    assert "preview_root_seed: `338001`" in body
+
+
 def test_admin_screenshot_session_cookie() -> None:
     cookie = admin_screenshot_session_cookie()
     assert cookie["name"] == "admin_session"
@@ -448,22 +509,10 @@ def test_comment_markdown_pre_branch_only() -> None:
             ScreenshotTarget(route="/"),
             ScreenshotTarget(route="/admin/briefs/503", expected_status=503),
         ],
-        reproducibility={
-            "preview_seed": 338,
-            "preview_reference_time": "2026-07-14T12:00:00+00:00",
-            "preview_fixture_version": "1",
-            "head_sha": "abc123",
-            "browser": "chromium",
-            "browser_version": "120.0.0",
-            "viewports": [{"name": "desktop", "width": 1280, "height": 800}],
-        },
     )
     assert "### reviewer_screenshots_pre" in body
     assert "http://127.0.0.1:8765" in body
     assert "ADMIN_PREVIEW_MODE" in body
-    assert "seed=338" in body
-    assert "fixture_version=1" in body
-    assert "desktop:1280x800" in body
     assert "post-deploy only" in body
     assert "branch-home.png" in body
     assert "Production baseline" not in body
