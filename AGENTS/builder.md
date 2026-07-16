@@ -318,6 +318,41 @@ the error, put every definition and every import in **one** canonical module,
 delete the orphan module and every stale test file still importing the old
 one, and only then resume normal Builder work on the same PR head.
 
+## Pre-handoff smoke loop (anti-loop)
+
+`handoff_builder_when_mergeable`'s **direct** smoke check (mergeable/clean
+heads — no conflict to resolve) had no repeat counter at all: a `smoke_failed`
+result always re-entered `status:queued` unconditionally, forever. On #115 /
+PR #265 this looped 3+ dispatches on the identical `tests/test_codegen_provider.py`
+failure (`assert "sonnet" in "composer-2.5"`) even though the PR's diff never
+touched codegen-provider selection and the same commit's real GitHub Actions
+`test` job passed. Root cause: `builder_conflicts._smoke_env()` used to inherit
+Builder's **own** runtime env — `CURSOR_MODEL` / `CODEGEN_PROVIDER` /
+`OPENAI_MODEL` / `GITHUB_MODELS_MODEL`, set from repo `vars.*` in
+`builder.yml` so Builder itself knows which provider/model to codegen
+with — into the cloned-PR-head pytest subprocess. `ci.yml`'s `test` job never
+sets those, so any non-default repo var (e.g. `CURSOR_MODEL=composer-2.5`)
+made Builder's smoke gate fail a test that only asserts *default*
+model-selection behavior, on every issue, regardless of the diff. Re-running
+codegen can never fix an environment mismatch.
+
+Two independent fixes now cover this:
+
+1. `_smoke_env()` strips those codegen-selection vars before running the
+   cloned-head pytest, so the smoke gate matches what `ci.yml` actually runs.
+2. `run_agent.repeated_smoke_result_signature()` (mirrors
+   `repeated_conflict_smoke_signature` from #242) scans the last
+   `REPEATED_CONFLICT_FAILURE_LIMIT` (3) `builder_smoke_result` comments; if
+   they share an identical `smoke_error` signature, escalate
+   (`@human-review` + `status:blocked`) instead of requeuing again.
+
+If you land on an issue already carrying that escalation comment: check
+whether the failing test only reproduces locally (never in the PR's own CI
+check) — that is an environment/harness bug, not something another codegen
+pass will fix. Fix the harness (or skip/ignore the unrelated pre-existing
+failure per **Definition of done**) rather than re-running codegen on the
+same diff again.
+
 ## Dependent milestone issues (anti-loop)
 
 When stacked issues share admin/CRM surfaces (LinkedIn import #109→#110→#111),

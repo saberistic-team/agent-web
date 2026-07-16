@@ -338,6 +338,34 @@ def test_smoke_env_keeps_preview_only_for_import(tmp_path, monkeypatch) -> None:
     assert "ADMIN_PREVIEW_MODE" not in pytest_env
 
 
+def test_smoke_env_strips_builders_own_codegen_selection_vars(
+    tmp_path, monkeypatch
+) -> None:
+    """Regression for #115 / PR #265: Builder's own `CURSOR_MODEL` (etc.,
+    set from repo `vars.*` in builder.yml so Builder knows which
+    provider/model *it* should codegen with) must not leak into the cloned
+    PR-head pytest subprocess. `ci.yml`'s `test` job never sets these, so a
+    non-default override (e.g. `CURSOR_MODEL=composer-2.5`) made
+    `tests/test_codegen_provider.py`'s default-model assertions fail only in
+    Builder's smoke gate — never in the PR's own CI — looping Builder forever
+    on a failure no amount of re-running codegen could fix.
+    """
+    from builder_conflicts import _smoke_env
+
+    monkeypatch.setenv("CURSOR_MODEL", "composer-2.5")
+    monkeypatch.setenv("CURSOR_MAX_MODE", "false")
+    monkeypatch.setenv("CODEGEN_PROVIDER", "cursor")
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-test")
+    monkeypatch.setenv("GITHUB_MODELS_MODEL", "models-test")
+
+    for env in (_smoke_env(tmp_path, for_import=True), _smoke_env(tmp_path)):
+        assert "CURSOR_MODEL" not in env
+        assert "CURSOR_MAX_MODE" not in env
+        assert "CODEGEN_PROVIDER" not in env
+        assert "OPENAI_MODEL" not in env
+        assert "GITHUB_MODELS_MODEL" not in env
+
+
 def test_truncate_pytest_detail_keeps_tail_summary() -> None:
     from builder_conflicts import _truncate_pytest_detail
 

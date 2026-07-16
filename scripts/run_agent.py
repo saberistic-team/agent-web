@@ -226,6 +226,45 @@ def repeated_conflict_smoke_signature(
     return signatures[0] if len(set(signatures)) == 1 else None
 
 
+def repeated_smoke_result_signature(
+    repo: str, issue: int, *, threshold: int = REPEATED_CONFLICT_FAILURE_LIMIT
+) -> str | None:
+    """Return the shared smoke-error signature when the last ``threshold``
+    ``builder_smoke_result`` comments all failed with the same error.
+
+    Mirrors ``repeated_conflict_smoke_signature`` for the *other* smoke gate:
+    ``handoff_builder_when_mergeable``'s direct pre-handoff ``smoke_pr_head``
+    call, which runs even on a mergeable/clean PR (no conflict to resolve).
+    That path had no repeat counter at all — a `smoke_failed` result just
+    requeued unconditionally forever. On #115 / PR #265, three consecutive
+    Builder dispatches reproduced the identical `test_codegen_provider`
+    failure (an environment leak into the smoke subprocess, fixed separately
+    in ``builder_conflicts._smoke_env``) with nothing counting the repeats,
+    the same failure mode that #242 already taught us to catch on the
+    conflict-resolution smoke path. Escalate here too instead of looping.
+    """
+    comments = list_issue_comments(repo, issue)
+    signatures: list[str] = []
+    for comment in reversed(comments):
+        body = comment.get("body") or ""
+        if "### builder_smoke_result" not in body:
+            continue
+        status_match = re.search(r"- status: `([a-z_]+)`", body)
+        if not status_match:
+            continue
+        if status_match.group(1) != "smoke_failed":
+            break
+        error_match = re.search(r"- smoke_error: `(.+)", body, re.S)
+        if not error_match:
+            break
+        signatures.append(_smoke_error_signature(error_match.group(1)))
+        if len(signatures) >= threshold:
+            break
+    if len(signatures) < threshold:
+        return None
+    return signatures[0] if len(set(signatures)) == 1 else None
+
+
 def is_retryable_codegen_failure(exc: BaseException) -> bool:
     """True when Builder should re-enter ``status:queued`` instead of blocking.
 
@@ -486,6 +525,24 @@ def handoff_builder_when_mergeable(repo: str, issue: int) -> None:
                     "`pytest --collect-only`, and full `pytest -q` succeed.\n"
                 ),
             )
+            signature = repeated_smoke_result_signature(repo, issue)
+            if signature:
+                escalate(
+                    repo,
+                    issue,
+                    (
+                        f"Pre-handoff smoke on PR #{smoke.get('pr')} has failed "
+                        f"`{REPEATED_CONFLICT_FAILURE_LIMIT}` consecutive times with the "
+                        "identical error below. Re-running codegen cannot fix this — it "
+                        "isn't caused by this PR's diff (likely a Builder-runtime "
+                        "environment leak into the smoke subprocess, or another "
+                        "pre-existing/unrelated failure). Stopping automatic retries; "
+                        "see AGENTS/builder.md 'Pre-handoff smoke loop' for the fix.\n\n"
+                        f"```\n{signature}\n```"
+                    ),
+                )
+                write_builder_handoff("blocked")
+                return
             write_builder_handoff("waiting")
             return
         if smoke_status == "smoke_repaired":
