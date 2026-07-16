@@ -56,15 +56,17 @@ def create_brief(
     utm_campaign: str | None = None,
     utm_content: str | None = None,
     utm_term: str | None = None,
+    analytics_session_id: str | None = None,
 ) -> int:
     with conn.cursor() as cur:
         cur.execute(
             """
             INSERT INTO project_briefs (
                 website, contact_method, contact_value, brief, status,
-                utm_source, utm_medium, utm_campaign, utm_content, utm_term
+                utm_source, utm_medium, utm_campaign, utm_content, utm_term,
+                analytics_session_id
             )
-            VALUES (%s, %s, %s, %s, 'pending_payment', %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, 'pending_payment', %s, %s, %s, %s, %s, %s::uuid)
             RETURNING id
             """,
             (
@@ -77,6 +79,7 @@ def create_brief(
                 utm_campaign,
                 utm_content,
                 utm_term,
+                analytics_session_id,
             ),
         )
         row = cur.fetchone()
