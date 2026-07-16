@@ -1,70 +1,72 @@
-"""Fail-fast validation for admin security secrets."""
+"""Admin authentication secret validation (fail-fast at startup)."""
 
 from __future__ import annotations
 
 import re
 
-from app.config import Settings
+MIN_ADMIN_SECRET_LENGTH = 32
 
-MIN_ADMIN_LOGIN_LIMITER_SECRET_BYTES = 32
-
-_PLACEHOLDER_LIMITER_SECRETS = frozenset(
+_WEAK_SECRET_VALUES = frozenset(
     {
-        "",
         "changeme",
         "change-me",
+        "change_me",
         "placeholder",
+        "replace-me",
+        "replace_me",
         "secret",
-        "test",
-        "admin",
         "password",
-        "admin-login-limiter-secret",
-        "admin_login_limiter_secret",
+        "test",
+        "testing",
+        "dev",
+        "development",
+        "local",
+        "admin",
     }
 )
 
-_WEAK_SECRET_PATTERN = re.compile(r"^(.)\1{7,}$")
+_PLACEHOLDER_PATTERN = re.compile(
+    r"(?i)(changeme|change-me|replace-?me|placeholder|example|your-?secret|insert-?here|todo|fixme)"
+)
+
+
+class AdminSecretValidationError(ValueError):
+    """Raised when required admin secret material is missing or too weak."""
+
+
+def validate_admin_secret(name: str, value: str, *, required: bool = True) -> None:
+    """Validate one admin secret env var; never log or echo ``value``."""
+    normalized = value.strip()
+    if not normalized:
+        if required:
+            raise AdminSecretValidationError(f"{name} is required")
+        return
+    if len(normalized) < MIN_ADMIN_SECRET_LENGTH:
+        raise AdminSecretValidationError(
+            f"{name} must be at least {MIN_ADMIN_SECRET_LENGTH} characters"
+        )
+    lowered = normalized.lower()
+    if lowered in _WEAK_SECRET_VALUES:
+        raise AdminSecretValidationError(f"{name} must not be a placeholder value")
+    if _PLACEHOLDER_PATTERN.search(normalized):
+        raise AdminSecretValidationError(f"{name} must not contain placeholder text")
 
 
 def validate_admin_login_limiter_secret(
-    secret: str,
+    current: str,
     *,
-    env_name: str = "ADMIN_LOGIN_LIMITER_SECRET",
+    previous: str | None = None,
 ) -> None:
-    """Reject missing, weak, or placeholder limiter key material."""
-    normalized = secret.strip()
-    if not normalized:
-        raise ValueError(f"{env_name} is required when admin authentication is configured")
-    if len(normalized.encode("utf-8")) < MIN_ADMIN_LOGIN_LIMITER_SECRET_BYTES:
-        raise ValueError(
-            f"{env_name} must be at least {MIN_ADMIN_LOGIN_LIMITER_SECRET_BYTES} bytes"
-        )
-    lowered = normalized.lower()
-    if lowered in _PLACEHOLDER_LIMITER_SECRETS:
-        raise ValueError(f"{env_name} must not use placeholder key material")
-    if _WEAK_SECRET_PATTERN.match(normalized):
-        raise ValueError(f"{env_name} must not use repeated-character key material")
-
-
-def validate_admin_security_secrets(settings: Settings) -> None:
-    """Validate admin security secrets when operator authentication is configured."""
-    if not (
-        settings.admin_username
-        and settings.admin_password_hash
-        and settings.admin_session_secret
-    ):
-        return
-    if settings.admin_preview_mode and not settings.database_url:
-        return
-    validate_admin_login_limiter_secret(settings.admin_login_limiter_secret)
-    previous = settings.admin_login_limiter_secret_previous.strip()
-    if previous:
-        validate_admin_login_limiter_secret(
+    """Validate current (and optional previous) login limiter key material."""
+    validate_admin_secret("ADMIN_LOGIN_LIMITER_SECRET", current, required=True)
+    if previous is not None and previous.strip():
+        validate_admin_secret(
+            "ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS",
             previous,
-            env_name="ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS",
+            required=True,
         )
-        if previous == settings.admin_login_limiter_secret.strip():
-            raise ValueError(
+        if previous.strip() == current.strip():
+            raise AdminSecretValidationError(
                 "ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS must differ from "
-                "ADMIN_LOGIN_LIMITER_SECRET during rotation"
+                "ADMIN_LOGIN_LIMITER_SECRET"
             )

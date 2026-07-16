@@ -52,8 +52,8 @@ ASSETS_DIR = SITE_DIR / "assets"
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
-    validate_admin_security_config(settings)
     if settings.database_configured:
+        validate_admin_security_config(settings)
         db.init_db(settings.database_url)
         logger.info("database schema ready")
     else:

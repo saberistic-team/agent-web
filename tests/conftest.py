@@ -1,4 +1,4 @@
-"""Shared pytest fixtures for admin security env defaults."""
+"""Shared pytest fixtures for the test suite."""
 
 from __future__ import annotations
 
@@ -11,5 +11,6 @@ TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!"
 
 @pytest.fixture(autouse=True)
 def _default_admin_login_limiter_secret(monkeypatch: pytest.MonkeyPatch) -> None:
-    if not os.environ.get("ADMIN_LOGIN_LIMITER_SECRET"):
+    """Ensure startup limiter validation passes unless a test overrides the env."""
+    if not os.environ.get("ADMIN_LOGIN_LIMITER_SECRET", "").strip():
         monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)

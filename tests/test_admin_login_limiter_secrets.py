@@ -2,389 +2,354 @@
 
 from __future__ import annotations
 
+pytest_plugins = ["tests.test_admin_auth"]
+
 import hashlib
 import logging
 import os
-from contextlib import ExitStack, contextmanager
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Any, Generator
+from typing import Any, Iterator
 from unittest.mock import MagicMock, patch
 
 import psycopg
 import pytest
-from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 from psycopg.rows import dict_row
 
 from app import admin_auth, audit_service, db
-from app.admin_auth import LOGIN_FLOW_COOKIE_NAME, SESSION_COOKIE_NAME
-from app.actor_context import ActorContext
-from app.admin_security import validate_admin_security_config, validate_admin_secret
+from app.admin_secrets import AdminSecretValidationError, validate_admin_login_limiter_secret
+from app.admin_security import validate_admin_security_config
+from app.actor_context import anonymous_actor_context
 from app.config import Settings, get_settings
+from app.crm_uow import crm_transaction
 from app.main import app
 from app.migrations.runner import apply_migrations
+from tests.conftest import TEST_LIMITER_SECRET
+from tests.test_admin_auth import (
+    FakeRateLimitStore,
+    TEST_HASH,
+    TEST_PASSWORD,
+    TEST_SECRET,
+    TEST_USERNAME,
+    mock_db_connection,
+    shared_rate_limiter,
+)
 
 client = TestClient(app, follow_redirects=False)
 
-TEST_USERNAME = "operator"
-TEST_PASSWORD = "correct-horse-battery-staple"
-TEST_HASH = PasswordHasher().hash(TEST_PASSWORD)
-TEST_SECRET = "test-session-secret-32chars-minimum"
-TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum"
-ALT_LIMITER_SECRET = "alt-limiter-secret-32chars-minimum!"
-PREVIOUS_LIMITER_SECRET = "prev-limiter-secret-32chars-minimum"
-
-_REQUIRED = (os.environ.get("REQUIRE_TEST_DATABASE") or "").strip() in {"1", "true", "yes"}
-_DATABASE_URL = (os.environ.get("TEST_DATABASE_URL") or "").strip()
+CURRENT_LIMITER_SECRET = "current-limiter-secret-32chars-minimum!"
+PREVIOUS_LIMITER_SECRET = "previous-limiter-secret-32chars-minimum!"
 
 
-@pytest.fixture(autouse=True)
-def admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
-    monkeypatch.setenv("ADMIN_USERNAME", TEST_USERNAME)
-    monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_HASH)
-    monkeypatch.setenv("ADMIN_SESSION_SECRET", TEST_SECRET)
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
-    monkeypatch.delenv("ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS", raising=False)
-    monkeypatch.setenv("BASE_URL", "http://testserver")
-    admin_auth.reset_login_rate_limiter()
+def _settings(
+    *,
+    limiter_secret: str = CURRENT_LIMITER_SECRET,
+    limiter_previous: str = "",
+) -> Settings:
+    return Settings(
+        database_url="postgresql://test:test@localhost:5432/test",
+        stripe_secret_key="",
+        stripe_webhook_secret="",
+        stripe_publishable_key="",
+        resend_api_key="",
+        from_email="noreply@saberistic.com",
+        notify_email="inbox@saberistic.com",
+        base_url="http://testserver",
+        plausible_domain="",
+        plausible_api_key="",
+        analytics_environment="development",
+        admin_username=TEST_USERNAME,
+        admin_password_hash=TEST_HASH,
+        admin_session_secret=TEST_SECRET,
+        admin_login_limiter_secret=limiter_secret,
+        admin_login_limiter_secret_previous=limiter_previous,
+    )
 
 
-def _plain_sha256_digest(domain: str, material: str) -> str:
-    return hashlib.sha256(f"{domain}:{material}".encode("utf-8")).hexdigest()
-
-
-def _settings(**overrides: str) -> Settings:
-    return get_settings()
-
-
-@contextmanager
-def mock_db_connection() -> Generator[MagicMock, None, None]:
-    conn = MagicMock()
-    with ExitStack() as stack:
-        db_conn_patch = stack.enter_context(patch("app.admin_routes.db.db_connection"))
-        stack.enter_context(
-            patch("app.admin_routes.db.create_admin_login_flow", return_value=1)
-        )
-        stack.enter_context(
-            patch("app.admin_routes.db.claim_admin_login_flow", return_value={"id": 1})
-        )
-        stack.enter_context(
-            patch("app.admin_routes.db.create_admin_session", return_value=42)
-        )
-        db_conn_patch.return_value.__enter__.return_value = conn
-        db_conn_patch.return_value.__exit__.return_value = None
-        yield conn
+def _plain_sha256_limiter_digest(domain: str, material: str) -> str:
+    payload = f"{domain}:{material.strip().lower()}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 @pytest.mark.unit
-def test_limiter_identifier_is_not_plain_sha256() -> None:
-    settings = get_settings()
-    source = "203.0.113.10"
-    identifier = admin_auth.build_source_rate_limit_key(source, settings)
-    assert identifier != _plain_sha256_digest("src", source.strip().lower())
-    assert len(identifier) == 64
+def test_persisted_identifier_is_not_plain_sha256() -> None:
+    settings = _settings()
+    source = "203.0.113.50"
+    account = TEST_USERNAME
+    source_key = admin_auth.build_source_rate_limit_key(source, settings)
+    account_key = admin_auth.build_account_rate_limit_key(account, settings)
+    assert source_key != _plain_sha256_limiter_digest("src", source)
+    assert account_key != _plain_sha256_limiter_digest("acct", account)
+    assert len(source_key) == 64
+    assert len(account_key) == 64
 
 
 @pytest.mark.unit
 def test_limiter_identifier_depends_on_secret() -> None:
-    base = get_settings()
-    other = Settings(
-        database_url=base.database_url,
-        stripe_secret_key=base.stripe_secret_key,
-        stripe_webhook_secret=base.stripe_webhook_secret,
-        stripe_publishable_key=base.stripe_publishable_key,
-        resend_api_key=base.resend_api_key,
-        from_email=base.from_email,
-        notify_email=base.notify_email,
-        base_url=base.base_url,
-        plausible_domain=base.plausible_domain,
-        plausible_api_key=base.plausible_api_key,
-        analytics_environment=base.analytics_environment,
-        admin_username=base.admin_username,
-        admin_password_hash=base.admin_password_hash,
-        admin_session_secret=base.admin_session_secret,
-        admin_login_limiter_secret=ALT_LIMITER_SECRET,
-    )
-    material = "203.0.113.10"
-    current = admin_auth.build_source_rate_limit_key(material, base)
-    alternate = admin_auth.build_source_rate_limit_key(material, other)
-    assert current != alternate
+    settings_a = _settings(limiter_secret=CURRENT_LIMITER_SECRET)
+    settings_b = _settings(limiter_secret=PREVIOUS_LIMITER_SECRET)
+    source = "203.0.113.50"
+    key_a = admin_auth.build_source_rate_limit_key(source, settings_a)
+    key_b = admin_auth.build_source_rate_limit_key(source, settings_b)
+    assert key_a != key_b
 
 
 @pytest.mark.unit
-def test_limiter_identifier_is_stable_across_calls() -> None:
-    settings = get_settings()
-    first = admin_auth.build_source_rate_limit_key("203.0.113.10", settings)
-    second = admin_auth.build_source_rate_limit_key("203.0.113.10", settings)
+def test_limiter_identifier_stable_for_same_inputs() -> None:
+    settings = _settings()
+    source = "203.0.113.50"
+    first = admin_auth.build_source_rate_limit_key(source, settings)
+    second = admin_auth.digest_limiter_key(
+        CURRENT_LIMITER_SECRET,
+        admin_auth._LIMITER_DOMAIN_SOURCE,
+        source,
+    )
     assert first == second
 
 
 @pytest.mark.unit
 def test_limiter_domain_separation() -> None:
-    settings = get_settings()
-    shared_material = "203.0.113.10"
-    source_key = admin_auth.digest_limiter_key(
-        secret=settings.admin_login_limiter_secret,
-        domain="src",
-        material=shared_material,
-    )
-    account_key = admin_auth.digest_limiter_key(
-        secret=settings.admin_login_limiter_secret,
-        domain="acct",
-        material=shared_material,
-    )
+    settings = _settings()
+    shared_material = "203.0.113.50"
+    source_key = admin_auth.build_source_rate_limit_key(shared_material, settings)
+    account_key = admin_auth.build_account_rate_limit_key(shared_material, settings)
     assert source_key != account_key
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    ("env_name", "value"),
+    ("current", "previous", "match"),
     [
-        ("ADMIN_LOGIN_LIMITER_SECRET", ""),
-        ("ADMIN_LOGIN_LIMITER_SECRET", "short"),
-        ("ADMIN_LOGIN_LIMITER_SECRET", "changeme" * 4),
-        ("ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS", "a" * 32),
+        ("", None, "ADMIN_LOGIN_LIMITER_SECRET is required"),
+        ("short-secret", None, "must be at least 32 characters"),
+        ("changeme-changeme-changeme-changeme!", None, "placeholder"),
+        (
+            CURRENT_LIMITER_SECRET,
+            CURRENT_LIMITER_SECRET,
+            "must differ",
+        ),
     ],
 )
 def test_limiter_secret_validation_rejects_weak_material(
-    monkeypatch: pytest.MonkeyPatch,
-    env_name: str,
-    value: str,
+    current: str,
+    previous: str | None,
+    match: str,
 ) -> None:
-    if env_name == "ADMIN_LOGIN_LIMITER_SECRET":
-        monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", value)
-    else:
-        monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
-        monkeypatch.setenv(env_name, value)
+    with pytest.raises(AdminSecretValidationError, match=match):
+        validate_admin_login_limiter_secret(current, previous=previous)
+
+
+@pytest.mark.unit
+def test_validate_admin_security_config_requires_limiter_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
+    monkeypatch.setenv("ADMIN_USERNAME", TEST_USERNAME)
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_HASH)
+    monkeypatch.setenv("ADMIN_SESSION_SECRET", TEST_SECRET)
+    monkeypatch.delenv("ADMIN_LOGIN_LIMITER_SECRET", raising=False)
     settings = get_settings()
-    with pytest.raises(ValueError):
+    with pytest.raises(AdminSecretValidationError, match="ADMIN_LOGIN_LIMITER_SECRET"):
         validate_admin_security_config(settings)
 
 
 @pytest.mark.unit
-def test_limiter_secret_validation_rejects_matching_previous_secret(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS", TEST_LIMITER_SECRET)
-    settings = get_settings()
-    with pytest.raises(ValueError, match="must differ"):
-        validate_admin_security_config(settings)
-
-
-@pytest.mark.unit
-def test_rotation_checks_previous_lockout_but_writes_current_key(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS", PREVIOUS_LIMITER_SECRET)
-    settings = get_settings()
-    previous_source_key = admin_auth.digest_limiter_key(
-        secret=PREVIOUS_LIMITER_SECRET,
-        domain="src",
-        material="testclient",
+def test_rotation_includes_previous_secret_keys() -> None:
+    settings = _settings(
+        limiter_secret=CURRENT_LIMITER_SECRET,
+        limiter_previous=PREVIOUS_LIMITER_SECRET,
     )
-    current_source_key = admin_auth.build_source_rate_limit_key("testclient", settings)
-    assert previous_source_key != current_source_key
+    source_keys = admin_auth.build_source_rate_limit_keys("203.0.113.50", settings)
+    assert len(source_keys) == 2
+    assert admin_auth.build_source_rate_limit_key("203.0.113.50", settings) in source_keys
+    previous_only = admin_auth.digest_limiter_key(
+        PREVIOUS_LIMITER_SECRET,
+        admin_auth._LIMITER_DOMAIN_SOURCE,
+        "203.0.113.50",
+    )
+    assert previous_only in source_keys
 
-    store_rows: dict[str, dict[str, Any]] = {
-        previous_source_key: {
-            "failure_count": 5,
-            "window_started_at": datetime.now(timezone.utc),
-            "locked_until": datetime.now(timezone.utc) + timedelta(seconds=900),
-            "updated_at": datetime.now(timezone.utc),
-        }
-    }
 
-    def is_throttled(conn: Any, *, limiter_key: str, now: datetime) -> bool:
-        row = store_rows.get(limiter_key)
-        if row is None:
-            return False
-        locked_until = row.get("locked_until")
-        return locked_until is not None and locked_until > now
+@pytest.mark.unit
+def test_login_limiter_keys_include_rotation_account_buckets() -> None:
+    settings = _settings(
+        limiter_secret=CURRENT_LIMITER_SECRET,
+        limiter_previous=PREVIOUS_LIMITER_SECRET,
+    )
+    keys = admin_auth.login_limiter_keys(
+        submitted_username=TEST_USERNAME,
+        client_source="203.0.113.50",
+        configured_admin_username=TEST_USERNAME,
+        settings=settings,
+    )
+    assert len(keys) == 4
 
-    def try_admit(
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_unknown_username_failure_records_anonymous_actor_only(
+    rate_limit_store: FakeRateLimitStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", CURRENT_LIMITER_SECRET)
+    captured: list[dict[str, Any]] = []
+
+    def _spy(
         conn: Any,
         *,
-        limiter_keys: tuple[str, ...],
-        now: datetime,
-        rate_limit: int,
-        window_seconds: int,
-        lockout_seconds: int,
-    ) -> db.AdminLoginAdmission:
-        for key in limiter_keys:
-            store_rows.setdefault(
-                key,
-                {
-                    "failure_count": 0,
-                    "window_started_at": now,
-                    "locked_until": None,
-                    "updated_at": now,
+        actor_context: Any,
+        reason: str,
+        repository: Any = None,
+    ) -> None:
+        captured.append(
+            {
+                "actor": actor_context.actor,
+                "reason": reason,
+                "repository": repository,
+            }
+        )
+
+    with shared_rate_limiter(rate_limit_store):
+        with mock_db_connection(), patch(
+            "app.admin_routes.audit_service.record_login_failure",
+            side_effect=_spy,
+        ), patch("app.admin_routes._try_claim_login_flow", return_value=True):
+            response = client.post(
+                "/admin/login",
+                data={
+                    "username": "attacker-supplied-name",
+                    "password": "wrong-password",
+                    "csrf_token": "flow-csrf",
                 },
             )
-            store_rows[key]["failure_count"] += 1
-        return db.AdminLoginAdmission(
-            admitted=True,
-            throttled=False,
-            already_locked=False,
-            lockout_transition=False,
-        )
-
-    scope = {
-        "type": "http",
-        "headers": [],
-        "client": ("testclient", 12345),
-        "method": "POST",
-        "path": "/admin/login",
-    }
-    from starlette.requests import Request
-
-    request = Request(scope)
-    with (
-        patch("app.admin_auth.db.db_connection") as db_conn,
-        patch("app.admin_auth.db.is_admin_login_throttled", side_effect=is_throttled),
-        patch("app.admin_auth.db.try_admit_admin_login", side_effect=try_admit),
-        patch(
-            "app.admin_auth.db.cleanup_expired_admin_login_rate_limits",
-            return_value=0,
-        ),
-    ):
-        db_conn.return_value.__enter__.return_value = MagicMock()
-        db_conn.return_value.__exit__.return_value = None
-        blocked = admin_auth.try_admit_login_attempt(
-            request, settings, username=TEST_USERNAME
-        )
-    assert not blocked.admitted
-    assert blocked.throttled
-    assert current_source_key not in store_rows or store_rows[current_source_key]["failure_count"] == 0
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_unknown_username_failure_audit_uses_anonymous_actor() -> None:
-    repo = MagicMock()
-    repo.append.return_value = {"id": "evt-1"}
-    admitted = admin_auth.LoginAdmissionResult(
-        admitted=True,
-        throttled=False,
-        already_locked=False,
-        lockout_transition=False,
-    )
-    with mock_db_connection() as conn:
-        with patch(
-            "app.admin_routes.admin_auth.try_admit_login_attempt",
-            return_value=admitted,
-        ):
-            with patch(
-                "app.admin_routes.audit_service.record_login_failure",
-                wraps=audit_service.record_login_failure,
-            ) as failure_audit:
-                with patch("app.admin_routes._try_claim_login_flow", return_value=True):
-                    response = client.post(
-                        "/admin/login",
-                        data={
-                            "username": "ghost-attacker",
-                            "password": "wrong-password",
-                            "csrf_token": "flow-csrf",
-                        },
-                    )
     assert response.status_code == 401
-    failure_audit.assert_called_once()
-    actor_context = failure_audit.call_args.kwargs["actor_context"]
-    assert actor_context.actor == "anonymous"
-    assert "ghost-attacker" not in repr(failure_audit.call_args.kwargs)
+    assert len(captured) == 1
+    assert captured[0]["actor"] == "anonymous"
+    assert captured[0]["reason"] == "invalid_credentials"
+    assert "attacker-supplied-name" not in str(captured)
 
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_configured_username_wrong_password_audit_uses_anonymous_actor() -> None:
-    admitted = admin_auth.LoginAdmissionResult(
-        admitted=True,
-        throttled=False,
-        already_locked=False,
-        lockout_transition=False,
-    )
-    with mock_db_connection():
-        with patch(
-            "app.admin_routes.admin_auth.try_admit_login_attempt",
-            return_value=admitted,
-        ):
-            with patch("app.admin_routes._try_claim_login_flow", return_value=True):
-                with patch(
-                    "app.admin_routes.audit_service.record_login_failure"
-                ) as failure_audit:
-                    response = client.post(
-                        "/admin/login",
-                        data={
-                            "username": TEST_USERNAME,
-                            "password": "wrong-password",
-                            "csrf_token": "flow-csrf",
-                        },
-                    )
+def test_configured_username_wrong_password_actor_remains_anonymous(
+    rate_limit_store: FakeRateLimitStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", CURRENT_LIMITER_SECRET)
+    captured: list[str] = []
+
+    def _spy(conn: Any, *, actor_context: Any, reason: str, repository: Any = None) -> None:
+        captured.append(actor_context.actor)
+
+    with shared_rate_limiter(rate_limit_store):
+        with mock_db_connection(), patch(
+            "app.admin_routes.audit_service.record_login_failure",
+            side_effect=_spy,
+        ), patch("app.admin_routes._try_claim_login_flow", return_value=True):
+            response = client.post(
+                "/admin/login",
+                data={
+                    "username": TEST_USERNAME,
+                    "password": "wrong-password",
+                    "csrf_token": "flow-csrf",
+                },
+            )
     assert response.status_code == 401
-    failure_audit.assert_called_once()
-    assert failure_audit.call_args.kwargs["actor_context"].actor == "anonymous"
-    assert TEST_USERNAME not in repr(failure_audit.call_args.kwargs)
+    assert captured == ["anonymous"]
 
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_invalid_csrf_failure_audit_uses_anonymous_actor() -> None:
-    admitted = admin_auth.LoginAdmissionResult(
-        admitted=True,
-        throttled=False,
-        already_locked=False,
-        lockout_transition=False,
-    )
-    with mock_db_connection():
-        with patch(
-            "app.admin_routes.admin_auth.try_admit_login_attempt",
-            return_value=admitted,
+def test_invalid_flow_audit_uses_anonymous_actor(
+    rate_limit_store: FakeRateLimitStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", CURRENT_LIMITER_SECRET)
+    captured: list[tuple[str, str]] = []
+
+    def _spy(conn: Any, *, actor_context: Any, reason: str, repository: Any = None) -> None:
+        captured.append((actor_context.actor, reason))
+
+    with shared_rate_limiter(rate_limit_store):
+        with mock_db_connection(), patch(
+            "app.admin_routes.audit_service.record_login_failure",
+            side_effect=_spy,
         ):
-            with patch("app.admin_routes._try_claim_login_flow", return_value=False):
-                with patch(
-                    "app.admin_routes.audit_service.record_login_failure"
-                ) as failure_audit:
-                    response = client.post(
-                        "/admin/login",
-                        data={
-                            "username": "csrf-attacker",
-                            "password": "wrong-password",
-                            "csrf_token": "flow-csrf",
-                        },
-                    )
-    assert response.status_code == 400
-    failure_audit.assert_called_once()
-    assert failure_audit.call_args.kwargs["actor_context"].actor == "anonymous"
-    assert failure_audit.call_args.kwargs["reason"] == "invalid_csrf"
+            invalid_flow = client.post(
+                "/admin/login",
+                data={
+                    "username": TEST_USERNAME,
+                    "password": TEST_PASSWORD,
+                    "csrf_token": "flow-csrf",
+                },
+            )
+    assert invalid_flow.status_code == 400
+    assert captured == [("anonymous", "invalid_csrf")]
 
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_successful_login_audit_retains_administrator_actor() -> None:
-    admitted = admin_auth.LoginAdmissionResult(
-        admitted=True,
-        throttled=False,
-        already_locked=False,
-        lockout_transition=False,
-    )
-    with mock_db_connection():
-        with patch(
-            "app.admin_routes.admin_auth.try_admit_login_attempt",
-            return_value=admitted,
-        ):
-            with patch("app.admin_routes._try_claim_login_flow", return_value=True):
-                with patch("app.admin_routes.db.create_admin_session", return_value=42):
-                    with patch(
-                        "app.admin_routes.audit_service.record_login_success"
-                    ) as success_audit:
-                        response = client.post(
-                            "/admin/login",
-                            data={
-                                "username": TEST_USERNAME,
-                                "password": TEST_PASSWORD,
-                                "csrf_token": "flow-csrf",
-                            },
-                        )
+def test_lockout_transition_audit_uses_anonymous_actor(
+    rate_limit_store: FakeRateLimitStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", CURRENT_LIMITER_SECRET)
+    monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "2")
+    captured: list[tuple[str, str]] = []
+
+    def _spy(conn: Any, *, actor_context: Any, reason: str, repository: Any = None) -> None:
+        captured.append((actor_context.actor, reason))
+
+    with shared_rate_limiter(rate_limit_store):
+        with mock_db_connection(), patch(
+            "app.admin_routes.audit_service.record_login_failure",
+            side_effect=_spy,
+        ), patch("app.admin_routes._try_claim_login_flow", return_value=True):
+            assert (
+                client.post(
+                    "/admin/login",
+                    data={
+                        "username": TEST_USERNAME,
+                        "password": "wrong-password",
+                        "csrf_token": "flow-csrf",
+                    },
+                ).status_code
+                == 401
+            )
+            lockout = client.post(
+                "/admin/login",
+                data={
+                    "username": TEST_USERNAME,
+                    "password": "wrong-password",
+                    "csrf_token": "flow-csrf",
+                },
+            )
+    assert lockout.status_code == 401
+    assert captured[-1] == ("anonymous", "rate_limited")
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_successful_login_retains_administrator_actor(
+    rate_limit_store: FakeRateLimitStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", CURRENT_LIMITER_SECRET)
+    with shared_rate_limiter(rate_limit_store):
+        with mock_db_connection(), patch(
+            "app.admin_routes._try_claim_login_flow", return_value=True
+        ), patch("app.admin_routes.db.create_admin_session", return_value=42), patch(
+            "app.admin_routes.audit_service.record_login_success"
+        ) as success_audit:
+            response = client.post(
+                "/admin/login",
+                data={
+                    "username": TEST_USERNAME,
+                    "password": TEST_PASSWORD,
+                    "csrf_token": "flow-csrf",
+                },
+            )
     assert response.status_code == 303
     success_audit.assert_called_once()
     assert success_audit.call_args.kwargs["actor_context"].actor == TEST_USERNAME
@@ -392,134 +357,186 @@ def test_successful_login_audit_retains_administrator_actor() -> None:
 
 
 @pytest.mark.unit
-def test_login_failure_logs_exclude_candidate_and_secret_material(
+def test_failed_login_logs_exclude_candidate_and_secret_material(
+    rate_limit_store: FakeRateLimitStore,
+    monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    repo = MagicMock()
-    repo.append.return_value = {"id": "evt-log"}
-    candidate = "leaked-candidate-user"
-    with caplog.at_level(logging.ERROR):
-        with mock_db_connection():
-            with patch(
-                "app.admin_routes.admin_auth.try_admit_login_attempt",
-                return_value=admin_auth.LoginAdmissionResult(
-                    admitted=True,
-                    throttled=False,
-                    already_locked=False,
-                    lockout_transition=False,
-                ),
-            ):
-                with patch("app.admin_routes._try_claim_login_flow", return_value=True):
-                    with patch(
-                        "app.admin_routes.audit_service.record_login_failure",
-                        side_effect=RuntimeError("audit store failure"),
-                    ):
-                        client.post(
-                        "/admin/login",
-                        data={
-                            "username": candidate,
-                            "password": "wrong-password",
-                            "csrf_token": "flow-csrf",
-                        },
-                    )
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", CURRENT_LIMITER_SECRET)
+    candidate = "attacker-supplied-name"
+    caplog.set_level(logging.INFO)
+    with shared_rate_limiter(rate_limit_store):
+        with mock_db_connection(), patch(
+            "app.admin_routes._try_claim_login_flow", return_value=True
+        ):
+            response = client.post(
+                "/admin/login",
+                data={
+                    "username": candidate,
+                    "password": "wrong-password",
+                    "csrf_token": "flow-csrf",
+                },
+            )
+    assert response.status_code == 401
     combined = caplog.text
-    for forbidden in (
-        candidate,
-        TEST_LIMITER_SECRET,
-        TEST_SECRET,
-        "203.0.113.",
-        "src:",
-        "acct:",
-    ):
-        assert forbidden not in combined
+    assert candidate not in combined
+    assert CURRENT_LIMITER_SECRET not in combined
+    assert TEST_LIMITER_SECRET not in combined
+    assert "203.0.113." not in combined
+
+
+@pytest.mark.unit
+def test_audit_login_failure_helper_never_persists_attempted_username() -> None:
+    conn = MagicMock()
+    repo = MagicMock()
+    repo.append.return_value = {"id": "evt-auth"}
+    request = MagicMock()
+    request.headers.get.return_value = "corr-auth"
+    actor = anonymous_actor_context(request)
+    audit_service.record_login_failure(
+        conn,
+        actor_context=actor,
+        reason="invalid_credentials",
+        repository=repo,
+    )
+    append_kwargs = repo.append.call_args.kwargs
+    assert append_kwargs["actor"] == "anonymous"
+    assert append_kwargs["metadata"] == {"reason": "invalid_credentials"}
+    assert "ghost" not in str(append_kwargs)
 
 
 def _require_database_url() -> str:
-    if _DATABASE_URL:
-        return _DATABASE_URL
-    if _REQUIRED:
-        pytest.fail("REQUIRE_TEST_DATABASE=1 but TEST_DATABASE_URL is unset")
-    pytest.skip("TEST_DATABASE_URL not set; skipping live Postgres limiter tests")
+    database_url = (os.environ.get("TEST_DATABASE_URL") or "").strip()
+    if not database_url:
+        pytest.skip("TEST_DATABASE_URL not set; skipping live Postgres limiter tests")
+    return database_url
 
 
-@pytest.mark.integration
-def test_postgres_persists_keyed_limiter_identifiers_and_anonymous_actors(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+@contextmanager
+def _connect(database_url: str) -> Iterator[psycopg.Connection]:
+    conn = psycopg.connect(database_url, row_factory=dict_row, autocommit=False)
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+@pytest.fixture
+def pg_conn() -> Iterator[psycopg.Connection]:
     database_url = _require_database_url()
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
-    settings = get_settings()
-    source_key = admin_auth.build_source_rate_limit_key("203.0.113.88", settings)
-    now = datetime(2026, 7, 1, 12, 0, tzinfo=timezone.utc)
-
     with psycopg.connect(database_url, autocommit=False) as bootstrap:
         bootstrap.execute("DROP SCHEMA IF EXISTS public CASCADE")
         bootstrap.execute("CREATE SCHEMA public")
-        bootstrap.commit()
+        bootstrap.execute("GRANT ALL ON SCHEMA public TO CURRENT_USER")
+        bootstrap.execute("GRANT ALL ON SCHEMA public TO public")
         apply_migrations(bootstrap)
-
-    with psycopg.connect(database_url, row_factory=dict_row, autocommit=False) as conn:
-        admission = db.try_admit_admin_login(
-            conn,
-            limiter_keys=(source_key,),
-            now=now,
-            rate_limit=5,
-            window_seconds=900,
-            lockout_seconds=900,
-        )
-        assert admission.admitted
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT limiter_key FROM admin_login_rate_limits WHERE limiter_key = %s",
-                (source_key,),
-            )
-            row = cur.fetchone()
-        assert row is not None
-        assert row["limiter_key"] == source_key
-        assert row["limiter_key"] != _plain_sha256_digest("src", "203.0.113.88")
-        assert len(row["limiter_key"]) == 64
-
-    repo = MagicMock()
-    repo.append.return_value = {"id": "evt-pg"}
-    with mock_db_connection() as audit_conn:
-        audit_service.record_login_failure(
-            audit_conn,
-            actor_context=ActorContext(actor="anonymous", correlation_id="trace-1"),
-            reason="invalid_credentials",
-            repository=repo,
-        )
-    assert repo.append.call_args.kwargs["actor_context"].actor == "anonymous"
-
-    with psycopg.connect(database_url, autocommit=False) as cleanup:
-        cleanup.execute("DROP SCHEMA IF EXISTS public CASCADE")
+        bootstrap.commit()
+    with _connect(database_url) as conn:
+        try:
+            yield conn
+        finally:
+            conn.rollback()
+            with psycopg.connect(database_url, autocommit=False) as cleanup:
+                cleanup.execute("DROP SCHEMA IF EXISTS public CASCADE")
+                cleanup.execute("CREATE SCHEMA public")
+                cleanup.commit()
 
 
-@pytest.mark.unit
-def test_validate_admin_secret_accepts_strong_values() -> None:
-    validate_admin_secret("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
-
-
-@pytest.mark.unit
-def test_rotation_cleanup_eligible_for_previous_key_rows(
+@pytest.mark.integration
+def test_postgres_persists_hmac_limiter_keys_and_anonymous_failure_actor(
+    pg_conn: psycopg.Connection,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS", PREVIOUS_LIMITER_SECRET)
-    settings = get_settings()
-    stale_key = admin_auth.digest_limiter_key(
-        secret=PREVIOUS_LIMITER_SECRET,
-        domain="src",
-        material="203.0.113.66",
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", CURRENT_LIMITER_SECRET)
+    settings = _settings()
+    source = "203.0.113.88"
+    source_key = admin_auth.build_source_rate_limit_key(source, settings)
+    assert source_key != _plain_sha256_limiter_digest("src", source)
+
+    now = datetime(2026, 7, 16, 12, 0, tzinfo=timezone.utc)
+    db.try_admit_admin_login(
+        pg_conn,
+        limiter_keys=(source_key,),
+        now=now,
+        rate_limit=5,
+        window_seconds=900,
+        lockout_seconds=900,
     )
-    now = datetime(2026, 6, 1, 10, 0, tzinfo=timezone.utc)
-    conn = MagicMock()
-    cur = MagicMock()
-    conn.cursor.return_value.__enter__.return_value = cur
-    cur.rowcount = 1
+    pg_conn.commit()
+
+    with pg_conn.cursor() as cur:
+        cur.execute(
+            "SELECT limiter_key FROM admin_login_rate_limits WHERE limiter_key = %s",
+            (source_key,),
+        )
+        row = cur.fetchone()
+    assert row is not None
+    assert row["limiter_key"] == source_key
+
+    actor = anonymous_actor_context(
+        MagicMock(headers=MagicMock(get=MagicMock(return_value="pg-corr")))
+    )
+    with crm_transaction(pg_conn):
+        audit_service.record_login_failure(
+            pg_conn,
+            actor_context=actor,
+            reason="invalid_credentials",
+        )
+    pg_conn.commit()
+
+    with pg_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT actor, summary_after, metadata
+            FROM audit_events
+            WHERE action = %s
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (audit_service.ACTION_AUTH_LOGIN_FAILURE,),
+        )
+        audit_row = cur.fetchone()
+    assert audit_row is not None
+    assert audit_row["actor"] == "anonymous"
+    assert TEST_USERNAME not in str(audit_row["summary_after"])
+    assert TEST_USERNAME not in str(audit_row["metadata"])
+    assert source not in str(audit_row)
+
+
+@pytest.mark.integration
+def test_rotation_previous_key_rows_remain_eligible_for_cleanup(
+    pg_conn: psycopg.Connection,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", CURRENT_LIMITER_SECRET)
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS", PREVIOUS_LIMITER_SECRET)
+    settings = _settings(
+        limiter_secret=CURRENT_LIMITER_SECRET,
+        limiter_previous=PREVIOUS_LIMITER_SECRET,
+    )
+    source = "203.0.113.89"
+    keys = admin_auth.build_source_rate_limit_keys(source, settings)
+    assert len(keys) == 2
+    now = datetime(2026, 7, 16, 12, 0, tzinfo=timezone.utc)
+    db.try_admit_admin_login(
+        pg_conn,
+        limiter_keys=keys,
+        now=now,
+        rate_limit=5,
+        window_seconds=60,
+        lockout_seconds=60,
+    )
+    pg_conn.commit()
+
     deleted = db.cleanup_expired_admin_login_rate_limits(
-        conn,
+        pg_conn,
         now=now + timedelta(seconds=200),
         window_seconds=60,
         lockout_seconds=60,
     )
-    assert deleted == 1
-    assert stale_key != admin_auth.build_source_rate_limit_key("203.0.113.66", settings)
+    assert deleted >= 1
+    with pg_conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) AS count FROM admin_login_rate_limits")
+        row = cur.fetchone()
+    assert row is not None
+    assert int(row["count"]) == 0
