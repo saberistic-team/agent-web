@@ -1,0 +1,20 @@
+{
+  "hits": [
+    {
+      "id": 12348,
+      "company_name": "ChainVault",
+      "slug": "chainvault",
+      "website": "https://chainvault.example.com",
+      "location": "Austin, TX, USA",
+      "tagline": "Institutional custody for digital assets",
+      "batch": "Summer 2022",
+      "categories": ["Crypto", "Blockchain", "Security"],
+      "url": "https://www.ycombinator.com/companies/chainvault",
+      "objectID": "12348"
+    }
+  ],
+  "nbHits": 4,
+  "page": 1,
+  "nbPages": 2,
+  "hitsPerPage": 100
+}
