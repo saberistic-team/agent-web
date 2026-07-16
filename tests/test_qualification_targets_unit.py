@@ -8,7 +8,13 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
-from app.icp_scoring import IcpScoreResult, RuleContribution, calculate_icp_score, default_icp_rules
+from app.icp_scoring import (
+    IcpScoreResult,
+    RuleContribution,
+    RULE_STATUS_SCORED,
+    calculate_icp_score,
+    default_icp_rules,
+)
 from app.qualification_targets import (
     MAX_WORKING_LIST_ITEMS,
     QualificationTargetFilters,
@@ -271,3 +277,133 @@ def test_icp_score_is_deterministic_for_same_inputs() -> None:
     )
     assert first.total_score == second.total_score
     assert tier_for_score(first.total_score) in {"A", "B", "C"}
+
+
+@pytest.mark.unit
+def test_filter_validators_reject_unknown_values() -> None:
+    with pytest.raises(ValidationError):
+        QualificationTargetFilters(tier="Z")
+    with pytest.raises(ValidationError):
+        QualificationTargetFilters(category="unknown_category")
+    with pytest.raises(ValidationError):
+        QualificationTargetFilters(stage="unknown_stage")
+    with pytest.raises(ValidationError):
+        QualificationTargetFilters(pipeline_stage="unknown_pipeline")
+    with pytest.raises(ValidationError):
+        QualificationTargetFilters(freshness="bad")
+    with pytest.raises(ValidationError):
+        QualificationTargetFilters(warm_path="maybe")
+
+
+@pytest.mark.unit
+def test_company_freshness_state_handles_dates_and_unknown() -> None:
+    from app.qualification_targets import company_freshness_state
+
+    reference = date(2026, 7, 16)
+    assert company_freshness_state({}, reference=reference) == "unknown"
+    assert (
+        company_freshness_state(
+            {"last_verified_at": datetime(2026, 7, 10, tzinfo=timezone.utc)},
+            reference=reference,
+        )
+        == "fresh"
+    )
+    assert (
+        company_freshness_state(
+            {"last_verified_at": date(2026, 3, 1)},
+            reference=reference,
+        )
+        == "stale"
+    )
+    assert (
+        company_freshness_state(
+            {"last_verified_at": date(2026, 5, 1)},
+            reference=reference,
+        )
+        == "mixed"
+    )
+    assert company_freshness_state({"last_verified_at": "invalid"}, reference=reference) == "unknown"
+
+
+@pytest.mark.unit
+def test_build_target_row_warm_path_and_stale_freshness_adjustments() -> None:
+    company = {
+        "id": COMPANY_ID,
+        "name": "Warm Co",
+        "category": "fintech",
+        "stage": "seed",
+        "last_verified_at": None,
+    }
+    result = IcpScoreResult(
+        version_number=1,
+        total_score=8.0,
+        computed_score=8.0,
+        breakdown=[
+            RuleContribution(
+                rule_id="warm_path",
+                dimension="warm_path",
+                label="Warm path",
+                weight=1.0,
+                points_awarded=1.0,
+                status=RULE_STATUS_SCORED,
+                missing_inputs=[],
+                evidence=[{"kind": "contact", "full_name": "Sam", "buying_roles": ["introducer"]}],
+            ),
+            RuleContribution(
+                rule_id="funding_recency",
+                dimension="funding_recency",
+                label="Recent funding",
+                weight=1.0,
+                points_awarded=0.0,
+                status="expired_only",
+                missing_inputs=[],
+            ),
+        ],
+        missing_inputs=[],
+        calculated_at=datetime(2026, 7, 16, tzinfo=timezone.utc),
+    )
+    row = build_target_row(company=company, score_result=result)
+    assert row is not None
+    assert row.has_warm_path is True
+    assert "Sam" in (row.warm_path or "")
+    assert row.evidence_freshness == "stale"
+    assert row.stale_evidence is True
+
+
+@pytest.mark.unit
+def test_filter_target_rows_freshness_unknown_and_owner_matching() -> None:
+    rows = [
+        QualificationTargetRow(
+            company_id="1",
+            name="Unknown Fresh",
+            score=6.0,
+            tier="B",
+            stage="seed",
+            vertical="fintech",
+            strongest_signals=(),
+            warm_path=None,
+            has_warm_path=False,
+            next_action=None,
+            evidence_freshness="unknown",
+            missing_fields=(),
+            pipeline_stage="qualified",
+            pipeline_owner="Alex",
+            score_calculated_at=datetime(2026, 7, 16, tzinfo=timezone.utc),
+            tie_breaker_name="Unknown Fresh",
+            stale_evidence=False,
+        )
+    ]
+    assert len(filter_target_rows(rows, QualificationTargetFilters(freshness="unknown"))) == 1
+    assert len(filter_target_rows(rows, QualificationTargetFilters(owner="alex"))) == 1
+    assert len(filter_target_rows(rows, QualificationTargetFilters(owner="sam"))) == 0
+
+
+@pytest.mark.unit
+def test_tier_change_metadata_includes_score_and_tiers() -> None:
+    from app.qualification_targets import tier_change_metadata
+
+    meta = tier_change_metadata(previous_tier="B", new_tier="A", score=8.5)
+    assert meta["previous_tier"] == "B"
+    assert meta["new_tier"] == "A"
+    assert meta["score"] == 8.5
+    assert "recorded_at" in meta

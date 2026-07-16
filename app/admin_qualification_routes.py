@@ -189,14 +189,13 @@ def admin_save_working_list(
     company_ids: list[str] = Form(default=[]),
 ) -> RedirectResponse:
     from app.admin_routes import (
-        _session_csrf_for_forms,
         _verify_session_csrf,
         require_admin_session,
     )
 
     session = require_admin_session(request)
     settings = get_settings()
-    _verify_session_csrf(request, settings, csrf_token, _session_csrf_for_forms(request, settings))
+    _verify_session_csrf(request, session, csrf_token)
 
     if settings.admin_preview_enabled:
         return RedirectResponse(url="/admin/targets?saved=1", status_code=303)

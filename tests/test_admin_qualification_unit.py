@@ -88,3 +88,33 @@ def test_render_target_detail_page_shows_tier_history() -> None:
     assert "Tier changes" in html
     assert "Northwind Labs" in html
     assert "distinct from pipeline stage" in html
+
+
+@pytest.mark.unit
+def test_render_targets_list_page_empty_and_error_states() -> None:
+    html = render_targets_list_page(
+        targets=[],
+        filters={key: None for key in ("tier", "category", "stage", "pipeline_stage", "owner", "freshness", "warm_path")},
+        working_lists=[],
+        csrf_token="csrf",
+        admin_username="admin",
+        save_error="Name required",
+    )
+    assert "No active targets match these filters" in html
+    assert "No saved working lists yet" in html
+    assert "Name required" in html
+
+
+@pytest.mark.unit
+def test_render_target_detail_page_below_threshold_and_preview_banner() -> None:
+    html = render_target_detail_page(
+        company={"id": COMPANY_ID, "name": "Low Score Co"},
+        target=None,
+        tier_history=[],
+        csrf_token="csrf",
+        admin_username="admin",
+        preview_banner="Preview data — not production",
+    )
+    assert "below active target threshold" in html
+    assert "Preview data — not production" in html
+    assert "No tier changes recorded yet" in html
