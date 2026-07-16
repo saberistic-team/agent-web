@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 1,
   "protected_paths": [
     {
       "path": ".github/workflows/**",
@@ -7,43 +7,31 @@
     },
     {
       "path": "scripts/github_api.py",
-      "category": "control-plane orchestration",
-      "privilege": "Shared GitHub REST and Git Data API helpers for every agent workflow."
-    },
-    {
-      "path": "scripts/dispatch_queue.py",
-      "category": "control-plane orchestration",
-      "privilege": "Dispatches queued issues, mutates priority and agent labels."
+      "category": "GitHub control-plane API helpers"
     },
     {
       "path": "scripts/copilot_agent.py",
-      "category": "control-plane orchestration",
-      "privilege": "Copilot agent assignment and review adapters (dormant but privileged)."
+      "category": "Copilot agent adapters (privileged when enabled)"
+    },
+    {
+      "path": "scripts/dispatch_queue.py",
+      "category": "agent dispatch and queue orchestration"
     },
     {
       "path": "scripts/require_planner_plan.py",
-      "category": "control-plane orchestration",
-      "privilege": "Fail-closed Planner gate before queue release."
+      "category": "planner gate enforcement"
     },
     {
       "path": "scripts/priority.py",
-      "category": "control-plane orchestration",
-      "privilege": "Priority label resolution and inference for dispatch."
-    },
-    {
-      "path": "scripts/project_sync.py",
-      "category": "control-plane orchestration",
-      "privilege": "GraphQL project board sync from orchestration labels."
+      "category": "priority label selection"
     },
     {
       "path": "scripts/milestones.py",
-      "category": "control-plane orchestration",
-      "privilege": "Milestone assignment and eligibility via GitHub API."
+      "category": "milestone orchestration"
     },
     {
-      "path": "scripts/cursor_model.py",
-      "category": "control-plane orchestration",
-      "privilege": "Model selection for review, codegen, and post-deploy visual."
+      "path": "scripts/project_sync.py",
+      "category": "GitHub Project board synchronization"
     },
     {
       "path": "scripts/review_*.py",
@@ -86,24 +74,36 @@
       "category": "Builder configuration"
     },
     {
+      "path": "scripts/cursor_model.py",
+      "category": "Cursor model selection for agents"
+    },
+    {
       "path": "scripts/screenshot_deploy.py",
-      "category": "reviewer automation",
-      "privilege": "Captures screenshots and commits via Git Data API."
+      "category": "screenshot capture and GitHub upload"
     },
     {
       "path": "scripts/render_deploy.py",
-      "category": "deploy and production gates",
-      "privilege": "Triggers production Render deploy."
+      "category": "Render production deploy"
     },
     {
       "path": "scripts/freeze_shipped_migrations.py",
-      "category": "deploy and production gates",
-      "privilege": "Commits migration freeze digests to main after deploy."
+      "category": "production migration freeze commits"
     },
     {
       "path": "scripts/post_deploy_visual.py",
-      "category": "deploy and production gates",
-      "privilege": "Post-deploy visual checks and GitHub comments."
+      "category": "post-deploy visual verification"
+    },
+    {
+      "path": "scripts/smoke_deploy.py",
+      "category": "deploy smoke verification"
+    },
+    {
+      "path": "scripts/digest_trace.py",
+      "category": "weekly trace digest"
+    },
+    {
+      "path": "scripts/check_coverage.py",
+      "category": "CI coverage gate"
     },
     {
       "path": "AGENTS/**",
@@ -145,20 +145,5 @@
       "path": "tests/test_workflow_governance.py",
       "category": "repository policy"
     }
-  ],
-  "workflow_entrypoint_exemptions": [
-    {
-      "path": "scripts/check_coverage.py",
-      "reason": "Read-only pytest coverage gate; no GitHub, dispatch, or deploy mutations."
-    },
-    {
-      "path": "scripts/digest_trace.py",
-      "reason": "Read-only trace summarization; GitHub posting is handled by gh in the workflow."
-    }
-  ],
-  "dynamic_script_imports": {
-    "scripts/run_agent.py": [
-      "scripts/screenshot_deploy.py"
-    ]
-  }
+  ]
 }
