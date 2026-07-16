@@ -35,6 +35,7 @@
     "invitations.csv": ["from", "sent"],
     "company follows.csv": ["organization", "followed"],
   };
+  var PREAMBLE_SCAN_MAX_LINES = 20;
 
   var form = document.getElementById("linkedin-import-form");
   var input = document.getElementById("linkedin-export-zip");
@@ -151,10 +152,16 @@
 
     for (var i = 0; i < entries.length; i += 1) {
       var scanEntry = entries[i];
-      if (!isSafePath(scanEntry.name)) {
+      var normalizedName = String(scanEntry.name).replace(/\\/g, "/");
+      var isDirEntry = normalizedName.charAt(normalizedName.length - 1) === "/";
+      // Validate the path without its trailing separator so a safe explicit
+      // directory entry (e.g. "LinkedIn Export/") is not rejected because
+      // isSafePath() sees a trailing empty path segment.
+      var pathToValidate = isDirEntry ? normalizedName.slice(0, -1) : normalizedName;
+      if (!isSafePath(pathToValidate)) {
         return Promise.reject(new Error("Unsafe archive path rejected: " + scanEntry.name));
       }
-      if (scanEntry.name.endsWith("/")) {
+      if (isDirEntry) {
         continue;
       }
       if (isNestedArchive(scanEntry.name)) {
@@ -166,6 +173,18 @@
       }
       var scanBase = basename(scanEntry.name);
       if (approvedSet[scanBase]) {
+        if (approvedPaths[scanBase]) {
+          return Promise.reject(
+            new Error(
+              "Duplicate approved file '" +
+                scanBase +
+                "' found at multiple paths: " +
+                approvedPaths[scanBase].name +
+                " and " +
+                scanEntry.name
+            )
+          );
+        }
         approvedPaths[scanBase] = scanEntry;
       } else {
         ignored.push(scanEntry.name);
@@ -293,11 +312,17 @@
     var centralOffset = readUint32(data, eocd + 16);
     var entries = [];
     var offset = centralOffset;
+    var centralHeaderLength = 46;
 
     for (var i = 0; i < entryCount; i += 1) {
-      if (readUint32(data, offset) !== 0x02014b50) {
+      if (
+        offset < 0 ||
+        offset + centralHeaderLength > data.length ||
+        readUint32(data, offset) !== 0x02014b50
+      ) {
         throw new Error("Malformed ZIP central directory.");
       }
+      var generalPurposeFlag = readUint16(data, offset + 8);
       var compression = readUint16(data, offset + 10);
       var compressedSize = readUint32(data, offset + 20);
       var uncompressedSize = readUint32(data, offset + 24);
@@ -309,7 +334,11 @@
       var name = new TextDecoder("utf-8").decode(nameBytes);
       entries.push({
         name: name,
+        generalPurposeFlag: generalPurposeFlag,
         compression: compression,
+        // Authoritative sizes from the central directory. The local file
+        // header may report 0 (general-purpose flag bit 3 / data
+        // descriptor) — never trust it over this value.
         compressedSize: compressedSize,
         uncompressedSize: uncompressedSize,
         localHeaderOffset: localHeaderOffset,
@@ -332,43 +361,101 @@
     return null;
   }
 
+  var LOCAL_HEADER_FIXED_LENGTH = 30;
+
   function inflateEntry(data, entry) {
     var off = entry.localHeaderOffset;
-    if (readUint32(data, off) !== 0x04034b50) {
-      return Promise.reject(new Error("Malformed local file header."));
+    if (
+      typeof off !== "number" ||
+      off < 0 ||
+      off + LOCAL_HEADER_FIXED_LENGTH > data.length
+    ) {
+      return Promise.reject(
+        new Error("Invalid local file header offset for entry: " + entry.name)
+      );
     }
-    var compression = readUint16(data, off + 8);
-    var compressedSize = readUint32(data, off + 18);
+    if (readUint32(data, off) !== 0x04034b50) {
+      return Promise.reject(new Error("Malformed local file header for entry: " + entry.name));
+    }
+
+    var localGeneralPurposeFlag = readUint16(data, off + 6);
+    // Check both local and central-directory flags — a mismatched pair could
+    // otherwise slip an encrypted entry past whichever header is trusted.
+    if (
+      (localGeneralPurposeFlag & 0x0001) !== 0 ||
+      ((entry.generalPurposeFlag || 0) & 0x0001) !== 0
+    ) {
+      return Promise.reject(
+        new Error("Encrypted archive entries are not supported: " + entry.name)
+      );
+    }
+
+    var localCompression = readUint16(data, off + 8);
+    if (localCompression !== entry.compression) {
+      return Promise.reject(
+        new Error(
+          "Compression method mismatch between local and central directory for entry: " +
+            entry.name
+        )
+      );
+    }
+
     var nameLen = readUint16(data, off + 26);
     var extraLen = readUint16(data, off + 28);
-    var start = off + 30 + nameLen + extraLen;
-    var compressed = data.subarray(start, start + compressedSize);
+    var start = off + LOCAL_HEADER_FIXED_LENGTH + nameLen + extraLen;
+    // Authoritative size from the central directory — never the local
+    // header's placeholder (often 0 when general-purpose flag bit 3 / a
+    // trailing data descriptor is used).
+    var compressedSize = entry.compressedSize;
+    var end = start + compressedSize;
 
-    if (compression === 0) {
+    if (
+      typeof compressedSize !== "number" ||
+      compressedSize < 0 ||
+      start < off + LOCAL_HEADER_FIXED_LENGTH ||
+      start > data.length ||
+      end < start ||
+      end > data.length
+    ) {
+      return Promise.reject(
+        new Error("Truncated or out-of-bounds compressed data for entry: " + entry.name)
+      );
+    }
+
+    var compressed = data.subarray(start, end);
+
+    if (localCompression === 0) {
       return Promise.resolve(compressed);
     }
-    if (compression === 8) {
-      return inflateDeflateRaw(compressed, entry.uncompressedSize);
+    if (localCompression === 8) {
+      return inflateDeflateRaw(compressed);
     }
-    return Promise.reject(new Error("Unsupported compression method: " + compression));
+    return Promise.reject(
+      new Error("Unsupported compression method for entry " + entry.name + ": " + localCompression)
+    );
   }
 
-  function inflateDeflateRaw(compressed, expectedSize) {
+  function inflateDeflateRaw(compressed) {
     if (typeof DecompressionStream === "undefined") {
       return Promise.reject(
         new Error("Browser cannot decompress this export (missing DecompressionStream).")
       );
     }
-    var stream = new Blob([compressed])
-      .stream()
-      .pipeThrough(new DecompressionStream("deflate-raw"));
-    return new Response(stream)
-      .arrayBuffer()
+    return Promise.resolve()
+      .then(function () {
+        var stream = new Blob([compressed])
+          .stream()
+          .pipeThrough(new DecompressionStream("deflate-raw"));
+        return new Response(stream).arrayBuffer();
+      })
       .then(function (buf) {
-        if (expectedSize && buf.byteLength !== expectedSize) {
-          /* tolerate minor mismatch; central directory is authoritative */
-        }
         return new Uint8Array(buf);
+      })
+      .catch(function (err) {
+        throw new Error(
+          "Failed to decompress archive entry (deflate error): " +
+            (err && err.message ? err.message : String(err))
+        );
       });
   }
 
@@ -384,7 +471,21 @@
     if (!lines.length) {
       throw new Error(basenameKey + ": missing CSV header row");
     }
-    var headers = parseCsvLine(lines[0]);
+    var headerIndex = -1;
+    var scanned = 0;
+    for (var li = 0; li < lines.length && scanned < PREAMBLE_SCAN_MAX_LINES; li += 1) {
+      if (!lines[li].trim()) {
+        continue;
+      }
+      scanned += 1;
+      var candidateFields = parseCsvLine(lines[li]);
+      if (candidateFields.length === 1) {
+        continue;
+      }
+      headerIndex = li;
+      break;
+    }
+    var headers = headerIndex >= 0 ? parseCsvLine(lines[headerIndex]) : [];
     if (!headers.length) {
       throw new Error(basenameKey + ": missing CSV header row");
     }
@@ -403,13 +504,15 @@
     });
 
     var rows = [];
-    for (var i = 1; i < lines.length; i += 1) {
-      if (i > LIMITS.maxCsvRows) {
-        warnings.push(basenameKey + ": truncated at " + LIMITS.maxCsvRows.toLocaleString() + " rows");
-        break;
-      }
+    var dataRowNum = 0;
+    for (var i = headerIndex + 1; i < lines.length; i += 1) {
       if (!lines[i].trim()) {
         continue;
+      }
+      dataRowNum += 1;
+      if (dataRowNum > LIMITS.maxCsvRows) {
+        warnings.push(basenameKey + ": truncated at " + LIMITS.maxCsvRows.toLocaleString() + " rows");
+        break;
       }
       var values = parseCsvLine(lines[i]);
       var row = {};

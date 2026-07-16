@@ -21,6 +21,7 @@ TEST_USERNAME = "operator"
 TEST_PASSWORD = "correct-horse-battery-staple"
 TEST_HASH = PasswordHasher().hash(TEST_PASSWORD)
 TEST_SECRET = "test-session-secret-32chars-minimum"
+TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!!"
 
 COMPANY_ID = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 CONTACT_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
@@ -64,6 +65,7 @@ def _admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_USERNAME", TEST_USERNAME)
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_HASH)
     monkeypatch.setenv("ADMIN_SESSION_SECRET", TEST_SECRET)
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
     monkeypatch.setenv("BASE_URL", "http://testserver")
     admin_auth.reset_login_rate_limiter()
 
@@ -406,3 +408,58 @@ def test_contact_new_edit_restore_and_invalid_fields_are_handled() -> None:
             )
             assert restored.status_code == 303
             crm.restore_contact.assert_called_once()
+
+
+@pytest.mark.unit
+def test_company_detail_archive_button_uses_destructive_action_class() -> None:
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        with patch("app.admin_routes._crm") as crm:
+            crm.get_company.return_value = _company
+            crm.list_contacts_for_company.return_value = []
+            crm.list_research_for_company.return_value = []
+            response = client.get(f"/admin/companies/{COMPANY_ID}")
+    assert response.status_code == 200
+    assert "Archive company" in response.text
+    assert 'class="admin-action admin-action--destructive"' in response.text
+    assert 'class="admin-exit" type="submit">Archive company' not in response.text
+
+
+@pytest.mark.unit
+def test_company_detail_restore_button_uses_secondary_action_class() -> None:
+    archived = {**_company, "archived_at": datetime.now(timezone.utc).isoformat()}
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        with patch("app.admin_routes._crm") as crm:
+            crm.get_company.return_value = archived
+            crm.list_contacts_for_company.return_value = []
+            crm.list_research_for_company.return_value = []
+            response = client.get(f"/admin/companies/{COMPANY_ID}")
+    assert response.status_code == 200
+    assert "Restore company" in response.text
+    assert 'class="admin-action admin-action--secondary"' in response.text
+
+
+@pytest.mark.unit
+def test_contact_detail_archive_button_uses_destructive_action_class() -> None:
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        with patch("app.admin_routes._crm") as crm:
+            crm.get_contact.return_value = _contact
+            crm.get_company.return_value = _company
+            crm.list_research_for_contact.return_value = []
+            response = client.get(f"/admin/contacts/{CONTACT_ID}")
+    assert response.status_code == 200
+    assert "Archive contact" in response.text
+    assert 'class="admin-action admin-action--destructive"' in response.text
+
+
+@pytest.mark.unit
+def test_contact_detail_restore_button_uses_secondary_action_class() -> None:
+    archived = {**_contact, "archived_at": datetime.now(timezone.utc).isoformat()}
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        with patch("app.admin_routes._crm") as crm:
+            crm.get_contact.return_value = archived
+            crm.get_company.return_value = _company
+            crm.list_research_for_contact.return_value = []
+            response = client.get(f"/admin/contacts/{CONTACT_ID}")
+    assert response.status_code == 200
+    assert "Restore contact" in response.text
+    assert 'class="admin-action admin-action--secondary"' in response.text

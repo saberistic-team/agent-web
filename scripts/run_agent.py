@@ -25,6 +25,8 @@ from github_api import (
     add_labels,
     api,
     delete_label,
+    list_issue_comments,
+    list_pr_files,
     post_issue_comment,
     split_repo,
 )
@@ -135,6 +137,134 @@ def escalate(repo: str, issue: int, reason: str, assignee_hint: str | None = Non
     replace_status(repo, issue, "status:blocked")
 
 
+# Merge-conflict resolution is expected to need a few passes (a dirty PR is
+# unfinished Builder work, not a failure) — see AGENTS/builder.md "Merge
+# conflicts". But retrying is only useful when each pass makes progress.
+# Requeuing forever on an *identical* smoke failure means Builder's own
+# codegen is reproducing a bug across cycles, not converging (learned from
+# #242: a module split between `app/admin_security.py` / `app/admin_secrets.py`
+# left five test files importing a symbol from the wrong module; the same
+# `ImportError` repeated 54+ times over 7+ hours because nothing counted
+# consecutive identical failures). Escalate once the same signature repeats.
+REPEATED_CONFLICT_FAILURE_LIMIT = 3
+
+_IMPORT_ERROR_MODULE_RE = re.compile(
+    r"cannot import name '[^']*' from '([^']+)'|No module named '([^']+)'"
+)
+# ``post_issue_comment`` bodies get truncated to the last N characters
+# (``_truncate_pytest_detail`` keeps the *tail*), which frequently slices off
+# the "cannot import name ... from '<module>'" prefix while leaving the
+# trailing "(/tmp/.../repo/app/<module>.py)" file-path fragment intact — that
+# fragment survives truncation far more reliably, so try it first.
+_IMPORT_ERROR_FILEPATH_RE = re.compile(r"/(app/[a-zA-Z_][a-zA-Z0-9_/]*)\.py\)")
+_CARET_LINE_RE = re.compile(r"^\^+$")
+
+
+def _smoke_error_signature(smoke_error: str) -> str:
+    """Normalize one ``smoke_error`` blob to a stable cross-cycle signature.
+
+    Import failures embed a random per-run temp directory in the file path
+    (``/tmp/builder-conflict-XXXXXXXX/repo/...``), and — as on #242 — codegen
+    often rewrites the same broken module's public API differently each
+    cycle, so the *specific* missing symbol also changes cycle to cycle even
+    though the same module is at fault. Key on the module path so "the same
+    orphan module still doesn't export what tests expect" is recognized
+    across cycles despite the symbol/temp-path noise. Also skip leading bare
+    ``^^^^`` caret-underline traceback markers, which pytest sometimes prints
+    before the real message and would otherwise become a useless "first
+    line" signature that never matches (this hid the #242 loop from the
+    naive first-line version of this check).
+    """
+    path_match = _IMPORT_ERROR_FILEPATH_RE.search(smoke_error)
+    if path_match:
+        return f"import-error:{path_match.group(1).replace('/', '.')}"
+    match = _IMPORT_ERROR_MODULE_RE.search(smoke_error)
+    if match:
+        module = match.group(1) or match.group(2)
+        return f"import-error:{module}"
+    for line in smoke_error.strip().splitlines():
+        stripped = line.strip()
+        if stripped and not _CARET_LINE_RE.match(stripped):
+            return stripped[:200]
+    return smoke_error.strip()[:200]
+
+
+def repeated_conflict_smoke_signature(
+    repo: str, issue: int, *, threshold: int = REPEATED_CONFLICT_FAILURE_LIMIT
+) -> str | None:
+    """Return the shared smoke-error signature when the last ``threshold``
+    ``builder_conflict_result`` comments all failed with the same error.
+
+    Only the detailed comment posted by ``maybe_resolve_pr_conflicts`` (with a
+    ``smoke_error`` field) counts; the generic duplicate posted right after by
+    ``handoff_builder_when_mergeable`` is skipped so it cannot dilute the
+    signature. Any non-``broken_after_resolve`` status (progress, or a
+    different failure mode) resets the streak.
+    """
+    comments = list_issue_comments(repo, issue)
+    signatures: list[str] = []
+    for comment in reversed(comments):
+        body = comment.get("body") or ""
+        if "### builder_conflict_result" not in body:
+            continue
+        status_match = re.search(r"- status: `([a-z_]+)`", body)
+        if not status_match:
+            continue
+        if status_match.group(1) != "broken_after_resolve":
+            break
+        error_match = re.search(r"- smoke_error: `(.+)", body, re.S)
+        if not error_match:
+            # Generic follow-up comment with no smoke_error field; skip it
+            # without breaking the streak (it belongs to the same cycle as
+            # the detailed comment already counted, or preceded it).
+            continue
+        signatures.append(_smoke_error_signature(error_match.group(1)))
+        if len(signatures) >= threshold:
+            break
+    if len(signatures) < threshold:
+        return None
+    return signatures[0] if len(set(signatures)) == 1 else None
+
+
+def repeated_smoke_result_signature(
+    repo: str, issue: int, *, threshold: int = REPEATED_CONFLICT_FAILURE_LIMIT
+) -> str | None:
+    """Return the shared smoke-error signature when the last ``threshold``
+    ``builder_smoke_result`` comments all failed with the same error.
+
+    Mirrors ``repeated_conflict_smoke_signature`` for the *other* smoke gate:
+    ``handoff_builder_when_mergeable``'s direct pre-handoff ``smoke_pr_head``
+    call, which runs even on a mergeable/clean PR (no conflict to resolve).
+    That path had no repeat counter at all — a `smoke_failed` result just
+    requeued unconditionally forever. On #115 / PR #265, three consecutive
+    Builder dispatches reproduced the identical `test_codegen_provider`
+    failure (an environment leak into the smoke subprocess, fixed separately
+    in ``builder_conflicts._smoke_env``) with nothing counting the repeats,
+    the same failure mode that #242 already taught us to catch on the
+    conflict-resolution smoke path. Escalate here too instead of looping.
+    """
+    comments = list_issue_comments(repo, issue)
+    signatures: list[str] = []
+    for comment in reversed(comments):
+        body = comment.get("body") or ""
+        if "### builder_smoke_result" not in body:
+            continue
+        status_match = re.search(r"- status: `([a-z_]+)`", body)
+        if not status_match:
+            continue
+        if status_match.group(1) != "smoke_failed":
+            break
+        error_match = re.search(r"- smoke_error: `(.+)", body, re.S)
+        if not error_match:
+            break
+        signatures.append(_smoke_error_signature(error_match.group(1)))
+        if len(signatures) >= threshold:
+            break
+    if len(signatures) < threshold:
+        return None
+    return signatures[0] if len(set(signatures)) == 1 else None
+
+
 def is_retryable_codegen_failure(exc: BaseException) -> bool:
     """True when Builder should re-enter ``status:queued`` instead of blocking.
 
@@ -168,6 +298,84 @@ def is_retryable_codegen_failure(exc: BaseException) -> bool:
         "model proposed too many files",
     )
     return any(marker in text for marker in markers)
+
+
+def is_github_app_write_permission_failure(exc: BaseException) -> bool:
+    """True when the Builder App cannot write git contents (common 403).
+
+    Often means the App lacks ``contents: write``, or a concurrent human/local
+    push already owns the branch. With an open linked PR this must not become
+    ``status:blocked`` (#210 / PR #218).
+    """
+    text = str(exc).lower()
+    if "resource not accessible by integration" in text:
+        return True
+    if "403" in text and (
+        "git/trees" in text
+        or "git/refs" in text
+        or "/contents/" in text
+        or "create a tree" in text
+    ):
+        return True
+    return False
+
+
+def recover_builder_after_codegen_failure(
+    repo: str,
+    issue: int,
+    exc: BaseException,
+    *,
+    detail: str,
+) -> str:
+    """Classify a codegen failure into handoff mode: waiting | reviewer | blocked.
+
+    Returns the handoff mode written (caller should return immediately).
+    """
+    if is_retryable_codegen_failure(exc):
+        post_issue_comment(
+            repo,
+            issue,
+            (
+                "### builder_codegen_retry\n"
+                "- result: `waiting`\n"
+                "- reason: transient / soft codegen failure (do not `status:blocked`)\n\n"
+                f"{detail}\n"
+            ),
+        )
+        write_builder_handoff("waiting")
+        return "waiting"
+
+    existing = linked_open_prs(repo, issue)
+    if existing:
+        pr_number = int(existing[0]["number"])
+        permission_note = ""
+        if is_github_app_write_permission_failure(exc):
+            permission_note = (
+                "- note: GitHub App write denied, but an intentional linked PR "
+                "already exists — handing that head to Reviewer instead of "
+                "`status:blocked` (learned from #210).\n"
+            )
+        else:
+            permission_note = (
+                "- note: codegen failed, but an intentional linked PR already "
+                "exists — consolidate on that head instead of `status:blocked`.\n"
+            )
+        post_issue_comment(
+            repo,
+            issue,
+            (
+                "### builder_codegen_existing_pr\n"
+                f"- pr: #{pr_number}\n"
+                f"{permission_note}\n"
+                f"{detail}\n"
+            ),
+        )
+        handoff_builder_when_mergeable(repo, issue)
+        return "reviewer"
+
+    escalate(repo, issue, detail)
+    write_builder_handoff("blocked")
+    return "blocked"
 
 
 def write_builder_handoff(mode: str) -> None:
@@ -224,6 +432,24 @@ def handoff_builder_when_mergeable(repo: str, issue: int) -> None:
                     "re-entering `status:queued` (not handing off to Reviewer).\n"
                 ),
             )
+            if conflict_status == "broken_after_resolve":
+                signature = repeated_conflict_smoke_signature(repo, issue)
+                if signature:
+                    escalate(
+                        repo,
+                        issue,
+                        (
+                            f"Merge-conflict resolution on PR #{conflict.get('pr')} has "
+                            f"failed `{REPEATED_CONFLICT_FAILURE_LIMIT}` consecutive times "
+                            "with the identical smoke error below — Builder's own codegen "
+                            "is reproducing the same bug each cycle instead of converging. "
+                            "Stopping automatic retries; see AGENTS/builder.md "
+                            "'Contaminated PR heads (anti-loop)' for the reset playbook.\n\n"
+                            f"```\n{signature}\n```"
+                        ),
+                    )
+                    write_builder_handoff("blocked")
+                    return
             write_builder_handoff("waiting")
             return
     except Exception as conflict_exc:
@@ -299,6 +525,24 @@ def handoff_builder_when_mergeable(repo: str, issue: int) -> None:
                     "`pytest --collect-only`, and full `pytest -q` succeed.\n"
                 ),
             )
+            signature = repeated_smoke_result_signature(repo, issue)
+            if signature:
+                escalate(
+                    repo,
+                    issue,
+                    (
+                        f"Pre-handoff smoke on PR #{smoke.get('pr')} has failed "
+                        f"`{REPEATED_CONFLICT_FAILURE_LIMIT}` consecutive times with the "
+                        "identical error below. Re-running codegen cannot fix this — it "
+                        "isn't caused by this PR's diff (likely a Builder-runtime "
+                        "environment leak into the smoke subprocess, or another "
+                        "pre-existing/unrelated failure). Stopping automatic retries; "
+                        "see AGENTS/builder.md 'Pre-handoff smoke loop' for the fix.\n\n"
+                        f"```\n{signature}\n```"
+                    ),
+                )
+                write_builder_handoff("blocked")
+                return
             write_builder_handoff("waiting")
             return
         if smoke_status == "smoke_repaired":
@@ -780,21 +1024,7 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
             "If `git/refs` returns 403 for the Builder App, grant the App "
             "`contents: write` on this repository."
         )
-        if is_retryable_codegen_failure(exc):
-            post_issue_comment(
-                repo,
-                issue,
-                (
-                    "### builder_codegen_retry\n"
-                    "- result: `waiting`\n"
-                    "- reason: transient / soft codegen failure (do not `status:blocked`)\n\n"
-                    f"{detail}\n"
-                ),
-            )
-            write_builder_handoff("waiting")
-            return
-        escalate(repo, issue, detail)
-        write_builder_handoff("blocked")
+        recover_builder_after_codegen_failure(repo, issue, exc, detail=detail)
 
 
 def role_docs(repo: str, issue: int, brief: Path) -> None:
@@ -1037,7 +1267,10 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
             hard_fail_reasons.append(f"security check failed: {run.get('name')}")
 
     # Missing tests / stub-only / scaffold-sync heuristics
-    files = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}/files") or []
+    # Use the paginated helper (not raw `api()`): the default PR-files page
+    # is only 30 items, which silently dropped tests/ on PRs with >30 changed
+    # files and caused a false "no test file updates" hard-fail loop (#206).
+    files = list_pr_files(repo, pr_number)
     filenames = [f["filename"] for f in files]
     only_worklog = filenames and all(
         name.startswith(".agent/worklogs/") or name.endswith(".md")

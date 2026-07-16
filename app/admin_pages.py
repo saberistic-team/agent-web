@@ -65,7 +65,7 @@ def render_admin_login_page(
       <section class="block admin-page" aria-labelledby="admin-login-title">
         <h1 class="page-title" id="admin-login-title">Admin sign in</h1>
         <p class="admin-lede">Operator access only. No public registration.</p>
-        <form class="admin-form" method="post" action="/admin/login">
+        <form class="admin-form admin-form--compact" method="post" action="/admin/login">
           <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}" />
           {next_field}
           <div class="field">
@@ -193,6 +193,50 @@ def _format_amount(cents: int) -> str:
     return f"${cents / 100:.0f}"
 
 
+def _format_currency_upper(currency: str | None) -> str:
+    return (currency or "usd").upper()
+
+
+def _brief_paid_amount_cents(brief: dict[str, Any], *, list_price_cents: int) -> int:
+    paid_amount = brief.get("payment_amount_cents")
+    if paid_amount is not None:
+        return int(paid_amount)
+    return list_price_cents
+
+
+def _brief_payment_summary_lines(
+    brief: dict[str, Any],
+    *,
+    list_price_cents: int,
+    detailed: bool = False,
+) -> list[str]:
+    """Render paid brief amounts; legacy rows without payment columns use list price."""
+    subtotal = brief.get("payment_subtotal_cents")
+    discount = brief.get("payment_discount_cents")
+    amount = brief.get("payment_amount_cents")
+    currency = _format_currency_upper(brief.get("payment_currency"))
+
+    if amount is None and subtotal is None:
+        return [_format_amount(list_price_cents)]
+
+    final_cents = int(amount) if amount is not None else list_price_cents
+    if not detailed:
+        if discount and subtotal is not None:
+            return [
+                f"{_format_amount(int(subtotal))} − {_format_amount(int(discount))} "
+                f"= {_format_amount(final_cents)} {currency}"
+            ]
+        return [_format_amount(final_cents)]
+
+    lines: list[str] = []
+    if subtotal is not None:
+        lines.append(f"Subtotal: {_format_amount(int(subtotal))} {currency}")
+    if discount:
+        lines.append(f"Discount: −{_format_amount(int(discount))} {currency}")
+    lines.append(f"Total: {_format_amount(final_cents)} {currency}")
+    return lines
+
+
 def _format_utm(source: str | None, campaign: str | None) -> str:
     parts: list[str] = []
     if source:
@@ -250,7 +294,10 @@ def render_admin_briefs_page(
         payment_cell = f'<span class="admin-status admin-status-{status_class}">{html.escape(status_label)}</span>'
         paid_at = brief.get("paid_at")
         if status == "paid":
-            paid_parts = [_format_amount(price_cents)]
+            paid_parts = _brief_payment_summary_lines(
+                brief,
+                list_price_cents=price_cents,
+            )
             if paid_at:
                 paid_parts.append(_format_timestamp(paid_at))
             payment_cell = "<br>".join(paid_parts)
@@ -412,24 +459,32 @@ def _format_stripe_reference(value: str | None) -> str:
     return f'<code class="brief-stripe-ref">{html.escape(str(value))}</code>'
 
 
-def _brief_stripe_references(brief: dict[str, Any]) -> tuple[str, str] | None:
+def _brief_stripe_references(brief: dict[str, Any]) -> tuple[str, str, str, str] | None:
     """Return Stripe reference rows when they help operators reconcile payment state."""
     status = str(brief.get("status", ""))
     session_id = brief.get("stripe_session_id")
     intent_id = brief.get("stripe_payment_intent_id")
-    if status == "paid" and (session_id or intent_id):
+    promotion_code_id = brief.get("stripe_promotion_code_id")
+    coupon_id = brief.get("stripe_coupon_id")
+    if status == "paid" and (session_id or intent_id or promotion_code_id or coupon_id):
         return (
             _format_stripe_reference(session_id),
             _format_stripe_reference(intent_id),
+            _format_stripe_reference(promotion_code_id),
+            _format_stripe_reference(coupon_id),
         )
     if status == "pending_payment" and session_id:
         return (
             _format_stripe_reference(session_id),
             '<span class="audit-muted">—</span>',
+            '<span class="audit-muted">—</span>',
+            '<span class="audit-muted">—</span>',
         )
     if status == "abandoned" and session_id:
         return (
             _format_stripe_reference(session_id),
+            '<span class="audit-muted">—</span>',
+            '<span class="audit-muted">—</span>',
             '<span class="audit-muted">—</span>',
         )
     return None
@@ -527,7 +582,14 @@ def render_admin_brief_detail_page(
     )
     payment_lines = [status_html]
     if status == "paid":
-        payment_lines.append(html.escape(_format_amount(price_cents)))
+        payment_lines.extend(
+            html.escape(line)
+            for line in _brief_payment_summary_lines(
+                brief,
+                list_price_cents=price_cents,
+                detailed=True,
+            )
+        )
         paid_at = brief.get("paid_at")
         if paid_at:
             payment_lines.append(_format_timestamp(paid_at))
@@ -536,7 +598,7 @@ def render_admin_brief_detail_page(
     stripe_refs = _brief_stripe_references(brief)
     stripe_section = ""
     if stripe_refs is not None:
-        session_cell, intent_cell = stripe_refs
+        session_cell, intent_cell, promotion_cell, coupon_cell = stripe_refs
         stripe_section = f"""
           <section class="brief-detail-section" aria-labelledby="brief-stripe-title">
             <h2 class="brief-detail-heading" id="brief-stripe-title">Stripe references</h2>
@@ -549,6 +611,14 @@ def render_admin_brief_detail_page(
               <div class="brief-detail-row">
                 <dt>Payment intent</dt>
                 <dd>{intent_cell}</dd>
+              </div>
+              <div class="brief-detail-row">
+                <dt>Promotion code</dt>
+                <dd>{promotion_cell}</dd>
+              </div>
+              <div class="brief-detail-row">
+                <dt>Coupon</dt>
+                <dd>{coupon_cell}</dd>
               </div>
             </dl>
           </section>"""
@@ -797,7 +867,7 @@ def render_admin_brief_convert_page(
               </div>
             </dl>
           </section>
-          <form class="admin-form brief-convert-form" method="post" action="/admin/briefs/{html.escape(str(brief_id), quote=True)}/convert">
+          <form class="admin-form admin-form--editor brief-convert-form" method="post" action="/admin/briefs/{html.escape(str(brief_id), quote=True)}/convert">
             <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}" />
             <fieldset class="brief-convert-fieldset">
               <legend>Company</legend>

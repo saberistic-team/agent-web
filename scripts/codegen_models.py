@@ -70,11 +70,21 @@ def is_agent_infra_issue(title: str, body: str) -> bool:
         title_l,
     ):
         return False
+    # NOTE: a bare `playwright` (or `headless`) mention is *not* sufficient
+    # signal on its own — most ordinary product/bug-fix issues now require a
+    # Playwright test in their "Required tests" section. Misclassifying those
+    # as infra sends them down the no-op docs-sync path forever, which the
+    # Reviewer correctly rejects every time (Builder<->Reviewer loop; see
+    # issue #237). Only treat the issue as Reviewer/screenshot *infra* work
+    # when it is actually about the capture/reviewer pipeline itself.
     return bool(
         re.search(
-            r"\breviewer:\s*(headless|screenshot)|\bheadless\b.*\bscreenshot\b|"
-            r"\bplaywright\b|\bscreenshot.*(workflow|infra|pipeline|before approve)\b|"
-            r"visual (check|evidence|proof).*before approve|after deploy.*screenshot",
+            r"\breviewer:\s*(headless|screenshot)|"
+            r"\breviewer\b.{0,40}\bscreenshot(s)?\b|\bscreenshot(s)?\b.{0,40}\breviewer\b|"
+            r"\bheadless\b.{0,40}\bscreenshot\b|\bscreenshot\b.{0,40}\bheadless\b|"
+            r"\bscreenshot.{0,20}(workflow|infra|pipeline|before approve|capture)\b|"
+            r"\bpreview screenshot\b|\bscreenshot.{0,20}preview mode\b|"
+            r"visual (check|evidence|proof).{0,40}before approve|after deploy.{0,20}screenshot",
             text,
         )
     )
@@ -462,9 +472,11 @@ def select_provider(title: str, body: str) -> tuple[str, str]:
     - Else GitHub Models last-resort backup
     """
     del title, body
+    from cursor_model import cursor_model_id
+
     force = (os.environ.get("CODEGEN_PROVIDER") or "").strip().lower()
     if force in {"cursor", "cursor-sdk", "composer"}:
-        return "cursor", os.environ.get("CURSOR_MODEL") or "composer-2.5"
+        return "cursor", cursor_model_id()
     if force in {"openai", "chatgpt"}:
         return "openai", os.environ.get("OPENAI_MODEL") or DEFAULT_OPENAI_MODEL
     if force in {"github-models", "models"}:
@@ -475,7 +487,7 @@ def select_provider(title: str, body: str) -> tuple[str, str]:
         )
 
     if cursor_api_key():
-        return "cursor", os.environ.get("CURSOR_MODEL") or "composer-2.5"
+        return "cursor", cursor_model_id()
     if openai_api_key():
         return "openai", os.environ.get("OPENAI_MODEL") or DEFAULT_OPENAI_MODEL
     return "github-models", os.environ.get("GITHUB_MODELS_MODEL") or DEFAULT_MODEL
@@ -483,19 +495,20 @@ def select_provider(title: str, body: str) -> tuple[str, str]:
 
 def _other_provider(provider: str) -> tuple[str, str]:
     """Backup chain: cursor → openai → github-models (and reverse)."""
+    from cursor_model import cursor_model_id
+
     openai_model = os.environ.get("OPENAI_MODEL") or DEFAULT_OPENAI_MODEL
     models_model = os.environ.get("GITHUB_MODELS_MODEL") or DEFAULT_MODEL
-    cursor_model = os.environ.get("CURSOR_MODEL") or "composer-2.5"
     if provider == "cursor":
         if openai_api_key():
             return "openai", openai_model
         return "github-models", models_model
     if provider == "openai":
         if cursor_api_key():
-            return "cursor", cursor_model
+            return "cursor", cursor_model_id()
         return "github-models", models_model
     if cursor_api_key():
-        return "cursor", cursor_model
+        return "cursor", cursor_model_id()
     return "openai", openai_model
 
 

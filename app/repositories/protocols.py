@@ -8,6 +8,8 @@ from uuid import UUID
 
 import psycopg
 
+from app.patch import UNSET, MaybeUnset
+
 
 class CompanyRepository(Protocol):
     def create(
@@ -59,17 +61,17 @@ class CompanyRepository(Protocol):
         conn: psycopg.Connection,
         company_id: UUID,
         *,
-        name: str | None = None,
-        website: str | None = None,
-        status: str | None = None,
-        domain: str | None = None,
-        category: str | None = None,
-        stage: str | None = None,
-        headcount_estimate: int | None = None,
-        funding_summary: str | None = None,
-        target_status: str | None = None,
-        last_verified_at: date | None = None,
-        notes: str | None = None,
+        name: MaybeUnset[str] = UNSET,
+        website: MaybeUnset[str] = UNSET,
+        status: MaybeUnset[str] = UNSET,
+        domain: MaybeUnset[str] = UNSET,
+        category: MaybeUnset[str] = UNSET,
+        stage: MaybeUnset[str] = UNSET,
+        headcount_estimate: MaybeUnset[int] = UNSET,
+        funding_summary: MaybeUnset[str] = UNSET,
+        target_status: MaybeUnset[str] = UNSET,
+        last_verified_at: MaybeUnset[date] = UNSET,
+        notes: MaybeUnset[str] = UNSET,
     ) -> dict[str, Any] | None: ...
 
     def archive(self, conn: psycopg.Connection, company_id: UUID) -> dict[str, Any] | None: ...
@@ -97,15 +99,23 @@ class ContactRepository(Protocol):
 
     def get_by_id(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None: ...
 
-    def get_by_email(self, conn: psycopg.Connection, email: str) -> dict[str, Any] | None: ...
-
     def get_active_by_email(
         self,
         conn: psycopg.Connection,
         email: str,
         *,
         exclude_contact_id: UUID | None = None,
-    ) -> dict[str, Any] | None: ...
+    ) -> dict[str, Any] | None:
+        """Active-contact identity lookup — excludes archived rows (#226)."""
+        ...
+
+    def get_archived_by_email(
+        self,
+        conn: psycopg.Connection,
+        email: str,
+    ) -> dict[str, Any] | None:
+        """Archived-contact lookup — separate op for restore/review only (#226)."""
+        ...
 
     def find_by_profile_url(
         self,
@@ -149,17 +159,17 @@ class ContactRepository(Protocol):
         conn: psycopg.Connection,
         contact_id: UUID,
         *,
-        full_name: str | None = None,
-        email: str | None = None,
-        title: str | None = None,
-        profile_url: str | None = None,
-        email_permission: str | None = None,
-        company_id: UUID | None = None,
-        last_interaction_at: date | None = None,
-        relationship_strength: str | None = None,
-        notes: str | None = None,
-        buying_roles: list[str] | None = None,
-        field_sources: dict[str, Any] | None = None,
+        full_name: MaybeUnset[str] = UNSET,
+        email: MaybeUnset[str] = UNSET,
+        title: MaybeUnset[str] = UNSET,
+        profile_url: MaybeUnset[str] = UNSET,
+        email_permission: MaybeUnset[str] = UNSET,
+        company_id: MaybeUnset[UUID] = UNSET,
+        last_interaction_at: MaybeUnset[date] = UNSET,
+        relationship_strength: MaybeUnset[str] = UNSET,
+        notes: MaybeUnset[str] = UNSET,
+        buying_roles: MaybeUnset[list[str]] = UNSET,
+        field_sources: MaybeUnset[dict[str, Any]] = UNSET,
     ) -> dict[str, Any] | None: ...
 
     def count_active(self, conn: psycopg.Connection) -> int: ...
@@ -282,13 +292,13 @@ class PipelineRepository(Protocol):
         conn: psycopg.Connection,
         company_id: UUID,
         *,
-        pipeline_stage: str | None = None,
-        next_action: str | None = None,
-        next_action_due_at: datetime | None = None,
-        pipeline_owner: str | None = None,
-        expected_value_cents: int | None = None,
-        pipeline_loss_reason: str | None = None,
-        pipeline_nurture_reason: str | None = None,
+        pipeline_stage: MaybeUnset[str] = UNSET,
+        next_action: MaybeUnset[str] = UNSET,
+        next_action_due_at: MaybeUnset[datetime] = UNSET,
+        pipeline_owner: MaybeUnset[str] = UNSET,
+        expected_value_cents: MaybeUnset[int] = UNSET,
+        pipeline_loss_reason: MaybeUnset[str] = UNSET,
+        pipeline_nurture_reason: MaybeUnset[str] = UNSET,
         clear_loss_reason: bool = False,
         clear_nurture_reason: bool = False,
     ) -> dict[str, Any] | None: ...

@@ -146,6 +146,11 @@ a dirty PR as unfinished Builder work.
    failed → re-enter `status:queued` (`waiting` handoff in
    `trace/builder-handoff.txt`) so you run again; **never** send a conflicted or
    unresolved PR to Reviewer.
+   **Circuit breaker:** `handoff_builder_when_mergeable` escalates
+   (`@human-review` + `status:blocked`) instead of requeuing once the same
+   `smoke_error` repeats across `REPEATED_CONFLICT_FAILURE_LIMIT` (3)
+   consecutive `broken_after_resolve` results — see **Contaminated PR heads**
+   below (#242). Requeuing is only for genuinely converging retries.
 
 If Reviewer returns the issue with merge-conflict hard fails (e.g. another
 branch merged after your handoff), resolve on the **same** PR head and
@@ -274,6 +279,80 @@ PR head identical to `main` (0 commits ahead):
 Empty PR heads (`ahead_by: 0`) are **not** “done” — they need implementation
 commits. Do not hand off `waiting` forever without new commits.
 
+**Identical repeated smoke failure (learned from
+[#242](https://github.com/saberistic-team/agent-web/issues/242)):** codegen
+had split one concern across two modules — `app/admin_secrets.py` defined
+`validate_admin_security_config`, while five test files imported that name
+from `app.admin_security` — a `ModuleNotFoundError`/`ImportError` that
+`builder_conflicts.py` cannot fix (it only resolves textual merge conflicts,
+not naming bugs inside Builder's own change). Every dispatch re-ran codegen,
+which reproduced the same split instead of converging, so `builder_conflicts`
+returned `broken_after_resolve` with the **same underlying** `smoke_error`
+**54 times over 7+ hours** with nothing counting the repeats. Do not rely on
+noticing this yourself — `scripts/run_agent.py:repeated_conflict_smoke_signature`
+now scans the last `REPEATED_CONFLICT_FAILURE_LIMIT` (3) `builder_conflict_result`
+comments and escalates (`@human-review` + `status:blocked`) instead of
+requeuing once they share a signature.
+**Normalize before comparing:** on #242 the *specific* missing symbol changed
+almost every cycle (`validate_admin_security_config`, then
+`LIMITER_DOMAIN_ACCOUNT`, then others) because codegen kept rewriting the same
+dead module's API differently each time, and the error text also embeds a
+random per-run temp directory (`/tmp/builder-conflict-XXXXXXXX/repo/...`) — so
+a naive byte-for-byte / first-line comparison never matched and the loop ran
+undetected even after the breaker landed. `_smoke_error_signature()` keys on
+the **module path** from `cannot import name '...' from '<module>'` /
+`No module named '<module>'` (ignoring the symbol and temp path) so repeats of
+"the same orphan module still doesn't export what tests expect" are caught
+regardless of which symbol is missing this cycle. It also skips leading bare
+`^^^^` caret-underline pytest traceback markers when falling back to a
+first-line signature for non-import failures.
+`post_issue_comment` bodies get truncated to the **tail** of long pytest
+output, which regularly slices off the `cannot import name ... from` prefix
+while leaving the trailing `(/tmp/.../repo/app/<module>.py)` fragment intact
+— check that fragment **first** since it survives truncation far more
+reliably than the full phrase (this is what finally let the breaker actually
+fire on #242's live loop, two fix PRs after the first attempt).
+If you land on an issue already carrying that escalation comment: do **not**
+just re-run codegen again — grep the whole `app/` tree for the symbol name in
+the error, put every definition and every import in **one** canonical module,
+delete the orphan module and every stale test file still importing the old
+one, and only then resume normal Builder work on the same PR head.
+
+## Pre-handoff smoke loop (anti-loop)
+
+`handoff_builder_when_mergeable`'s **direct** smoke check (mergeable/clean
+heads — no conflict to resolve) had no repeat counter at all: a `smoke_failed`
+result always re-entered `status:queued` unconditionally, forever. On #115 /
+PR #265 this looped 3+ dispatches on the identical `tests/test_codegen_provider.py`
+failure (`assert "sonnet" in "composer-2.5"`) even though the PR's diff never
+touched codegen-provider selection and the same commit's real GitHub Actions
+`test` job passed. Root cause: `builder_conflicts._smoke_env()` used to inherit
+Builder's **own** runtime env — `CURSOR_MODEL` / `CODEGEN_PROVIDER` /
+`OPENAI_MODEL` / `GITHUB_MODELS_MODEL`, set from repo `vars.*` in
+`builder.yml` so Builder itself knows which provider/model to codegen
+with — into the cloned-PR-head pytest subprocess. `ci.yml`'s `test` job never
+sets those, so any non-default repo var (e.g. `CURSOR_MODEL=composer-2.5`)
+made Builder's smoke gate fail a test that only asserts *default*
+model-selection behavior, on every issue, regardless of the diff. Re-running
+codegen can never fix an environment mismatch.
+
+Two independent fixes now cover this:
+
+1. `_smoke_env()` strips those codegen-selection vars before running the
+   cloned-head pytest, so the smoke gate matches what `ci.yml` actually runs.
+2. `run_agent.repeated_smoke_result_signature()` (mirrors
+   `repeated_conflict_smoke_signature` from #242) scans the last
+   `REPEATED_CONFLICT_FAILURE_LIMIT` (3) `builder_smoke_result` comments; if
+   they share an identical `smoke_error` signature, escalate
+   (`@human-review` + `status:blocked`) instead of requeuing again.
+
+If you land on an issue already carrying that escalation comment: check
+whether the failing test only reproduces locally (never in the PR's own CI
+check) — that is an environment/harness bug, not something another codegen
+pass will fix. Fix the harness (or skip/ignore the unrelated pre-existing
+failure per **Definition of done**) rather than re-running codegen on the
+same diff again.
+
 ## Dependent milestone issues (anti-loop)
 
 When stacked issues share admin/CRM surfaces (LinkedIn import #109→#110→#111),
@@ -315,12 +394,19 @@ Do **not** escalate / `status:blocked` for:
 - Soft “too many files” budgets after a raise of `CURSOR_MAX_FILES` (requeue;
   learned from [#105](https://github.com/saberistic-team/agent-web/issues/105))
 - Single transient Contents API `500` / timeout
+- Codegen write failures (`git/trees` / Contents `403` “Resource not accessible
+  by integration”) when an **intentional open PR already links the issue** —
+  hand that head to Reviewer (or `waiting` if dirty) instead of
+  `@human-review` / `status:blocked` (learned from [#210](https://github.com/saberistic-team/agent-web/issues/210)
+  / #218). Grant the Builder App `contents: write` separately.
 - Service coverage below threshold, missing tests, failing CI assertions, visual
   readability / mobile overflow, or merge conflicts with `main` — fix those
   (same PR head) and re-run
 
 `scripts/run_agent.py` classifies retryable codegen errors with
 `is_retryable_codegen_failure()` → `waiting` handoff, not `@human-review`.
+Existing linked PRs use `recover_builder_after_codegen_failure()` so a second
+Builder run cannot strand Reviewer with a false `status:blocked`.
 
 ## Special case: landing / UI design
 

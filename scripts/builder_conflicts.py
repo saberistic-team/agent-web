@@ -121,11 +121,49 @@ def try_repair_main_after_smoke(
     return True, f"added imports for: {', '.join(added)}"
 
 
-def _smoke_env(cwd: Path) -> dict[str, str]:
+# Builder's *own* codegen provider/model selection (how Builder itself talks
+# to Cursor/OpenAI/GitHub Models) is configured via these repo vars/secrets in
+# builder.yml. None of them are set in ci.yml's `test` job, so real CI always
+# exercises tests/test_codegen_provider.py's *default* resolution behavior.
+# `_smoke_env` used to inherit the full parent environment, which leaked
+# Builder's own `CURSOR_MODEL` (e.g. a non-default `composer-2.5` override)
+# into the cloned-PR-head pytest subprocess — failing
+# `test_select_provider_prefers_cursor_when_key_set` /
+# `test_select_provider_force_cursor` (which assert the *default* model
+# contains "sonnet") every single smoke run, on every issue, regardless of
+# the PR's diff. Re-running codegen can never fix an environment mismatch, so
+# this looped Builder forever (#115 / PR #265). Strip them so the smoke gate
+# matches what `pytest -q -m "not contract"` actually sees in ci.yml.
+_CODEGEN_SELECTION_ENV_VARS = (
+    "CURSOR_MODEL",
+    "CURSOR_MAX_MODE",
+    "CODEGEN_PROVIDER",
+    "OPENAI_MODEL",
+    "GITHUB_MODELS_MODEL",
+)
+
+
+def _smoke_env(cwd: Path, *, for_import: bool = False) -> dict[str, str]:
     env = {**os.environ, "PYTHONPATH": str(cwd)}
-    # Preview/auth settings are optional for import; avoid requiring secrets.
-    env.setdefault("ADMIN_PREVIEW_MODE", "1")
+    for var in _CODEGEN_SELECTION_ENV_VARS:
+        env.pop(var, None)
+    if for_import:
+        # Import-only: preview unlocks admin wiring without requiring secrets.
+        env.setdefault("ADMIN_PREVIEW_MODE", "1")
+    else:
+        # Full pytest must match CI. Preview mode short-circuits auth and breaks
+        # login redirects / authenticated fixtures across the admin suite.
+        env.pop("ADMIN_PREVIEW_MODE", None)
     return env
+
+
+def _truncate_pytest_detail(detail: str, *, limit: int) -> str:
+    """Keep the failure summary when truncating long pytest output."""
+    detail = detail.strip()
+    if len(detail) <= limit:
+        return detail
+    # Progress dots are at the start; FAILURES / short summary are at the end.
+    return detail[-limit:]
 
 
 def smoke_import_app(cwd: Path) -> tuple[bool, str]:
@@ -136,7 +174,7 @@ def smoke_import_app(cwd: Path) -> tuple[bool, str]:
             cwd=cwd,
             capture_output=True,
             text=True,
-            env=_smoke_env(cwd),
+            env=_smoke_env(cwd, for_import=True),
             timeout=SMOKE_TIMEOUT_SEC,
             check=False,
         )
@@ -168,7 +206,7 @@ def smoke_pytest_collect(cwd: Path) -> tuple[bool, str]:
         )
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout or "").strip() or f"exit {proc.returncode}"
-        return False, detail[:1200]
+        return False, _truncate_pytest_detail(detail, limit=1200)
     return True, "ok"
 
 
@@ -196,7 +234,7 @@ def smoke_pytest_run(cwd: Path) -> tuple[bool, str]:
         )
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout or "").strip() or f"exit {proc.returncode}"
-        return False, detail[:1600]
+        return False, _truncate_pytest_detail(detail, limit=1600)
     return True, "ok"
 
 

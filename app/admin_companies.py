@@ -29,7 +29,7 @@ def _company_form(
     company: dict[str, Any] | None = None,
 ) -> str:
     company = company or {}
-    return f"""<form class="admin-form" method="post" action="{_esc(action)}">
+    return f"""<form class="admin-form admin-form--editor" method="post" action="{_esc(action)}">
       <input type="hidden" name="csrf_token" value="{_esc(csrf_token)}" />
       <div class="field"><label for="name">Name</label><input id="name" name="name" required maxlength="500" value="{_esc(company.get("name"))}" /></div>
       <div class="field"><label for="domain">Domain</label><input id="domain" name="domain" maxlength="253" placeholder="example.com" value="{_esc(company.get("domain"))}" /></div>
@@ -51,7 +51,13 @@ def render_companies_list_page(
     filters: dict[str, str | None],
     csrf_token: str,
     admin_username: str,
+    preview_banner: str | None = None,
 ) -> str:
+    banner_html = ""
+    if preview_banner:
+        banner_html = (
+            f'<p class="admin-preview-banner" role="status">{_esc(preview_banner)}</p>'
+        )
     rows = "".join(
         f"""<tr>
           <td><a href="/admin/companies/{_esc(row["id"])}">{_esc(row.get("name"))}</a></td>
@@ -63,8 +69,9 @@ def render_companies_list_page(
         for row in companies
     ) or '<tr><td colspan="5">No companies match these filters.</td></tr>'
     main = f"""<section class="admin-section" aria-labelledby="companies-title">
+      {banner_html}
       <div class="admin-section-head"><div><p class="admin-eyebrow">CRM</p><h1 class="admin-title" id="companies-title">Companies</h1></div><a class="cta" href="/admin/companies/new">Add company</a></div>
-      <form class="admin-form" method="get" action="/admin/companies">
+      <form class="admin-form admin-form--compact" method="get" action="/admin/companies">
         <div class="field"><label for="q">Search</label><input id="q" name="q" value="{_esc(filters.get("q"))}" placeholder="Name or domain" /></div>
         <div class="field"><label for="category-filter">Category</label><select id="category-filter" name="category">{_options(COMPANY_CATEGORIES, filters.get("category"))}</select></div>
         <div class="field"><label for="stage-filter">Stage</label><select id="stage-filter" name="stage">{_options(COMPANY_STAGES, filters.get("stage"))}</select></div>

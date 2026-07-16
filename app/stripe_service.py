@@ -18,6 +18,7 @@ def create_checkout_session(
     stripe.api_key = secret_key
     return stripe.checkout.Session.create(
         mode="payment",
+        allow_promotion_codes=True,
         line_items=[
             {
                 "price_data": {
@@ -52,3 +53,47 @@ def extract_brief_id_from_session(session: dict[str, Any]) -> int | None:
     if raw_id is None:
         return None
     return int(raw_id)
+
+
+def _stripe_object_id(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    if isinstance(value, dict):
+        raw_id = value.get("id")
+        if isinstance(raw_id, str) and raw_id.strip():
+            return raw_id.strip()
+    return None
+
+
+def extract_payment_details_from_session(
+    session: dict[str, Any],
+) -> dict[str, int | str | None]:
+    """Read completed Checkout Session payment totals for CRM and analytics."""
+    total_details = session.get("total_details") or {}
+    discount_cents = total_details.get("amount_discount")
+    if discount_cents == 0:
+        discount_cents = None
+
+    promotion_code_id: str | None = None
+    coupon_id: str | None = None
+    for discount in session.get("discounts") or []:
+        if not isinstance(discount, dict):
+            continue
+        promotion_code_id = promotion_code_id or _stripe_object_id(
+            discount.get("promotion_code")
+        )
+        coupon_id = coupon_id or _stripe_object_id(discount.get("coupon"))
+
+    subtotal = session.get("amount_subtotal")
+    total = session.get("amount_total")
+    currency = session.get("currency")
+    return {
+        "payment_subtotal_cents": int(subtotal) if subtotal is not None else None,
+        "payment_discount_cents": int(discount_cents) if discount_cents is not None else None,
+        "payment_amount_cents": int(total) if total is not None else None,
+        "payment_currency": str(currency).lower() if currency else None,
+        "stripe_promotion_code_id": promotion_code_id,
+        "stripe_coupon_id": coupon_id,
+    }

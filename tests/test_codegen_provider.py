@@ -102,7 +102,7 @@ def test_select_provider_prefers_cursor_when_key_set(monkeypatch) -> None:
     monkeypatch.delenv("CODEGEN_PROVIDER", raising=False)
     provider, model = select_provider("About page", "landing CTA")
     assert provider == "cursor"
-    assert "composer" in model
+    assert "sonnet" in model
 
 
 def test_select_provider_prefers_openai_without_cursor(monkeypatch) -> None:
@@ -127,7 +127,7 @@ def test_select_provider_force_cursor(monkeypatch) -> None:
     monkeypatch.setenv("CODEGEN_PROVIDER", "cursor")
     provider, model = select_provider("any", "any")
     assert provider == "cursor"
-    assert "composer" in model
+    assert "sonnet" in model
 
 
 def test_select_provider_gemini_force_raises(monkeypatch) -> None:

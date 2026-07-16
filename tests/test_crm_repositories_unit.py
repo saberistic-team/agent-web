@@ -88,13 +88,34 @@ def test_contact_repository_create_and_lookup() -> None:
     assert created["email"] == "lead@example.com"
     conn.commit.assert_not_called()
 
-    conn2 = _mock_conn(row)
-    assert repo.get_by_email(conn2, "lead@example.com")["id"] == CONTACT_ID
-
     conn3 = _mock_conn(row)
     assert repo.get_active_by_email(conn3, "lead@example.com")["id"] == CONTACT_ID
     active_sql = str(conn3.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
-    assert "archived_at IS NULL" in active_sql
+    assert "c.archived_at IS NULL" in active_sql
+    assert "LOWER(c.email)" in active_sql
+    assert "ORDER BY c.id ASC" in active_sql
+    assert "LIMIT 1" in active_sql
+
+    conn3b = _mock_conn(row)
+    assert (
+        repo.get_active_by_email(conn3b, "lead@example.com", exclude_contact_id=CONTACT_ID)["id"]
+        == CONTACT_ID
+    )
+    active_excl_sql = str(conn3b.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    assert "id <> %s" in active_excl_sql
+
+    # Archived lookup is a separate, explicit operation (#226).
+    # The real-Postgres proofs #226 requires — that the partial unique index
+    # `idx_contacts_email_unique` permits an active row to coexist with an
+    # archived row sharing the same email while blocking two active rows, and
+    # that get_active_by_email / get_archived_by_email return the right rows
+    # against real data — live in tests/test_contact_email_identity_pg.py. The
+    # broader migration/concurrency contract suite is tracked in #228.
+    conn3c = _mock_conn(row)
+    assert repo.get_archived_by_email(conn3c, "lead@example.com")["id"] == CONTACT_ID
+    archived_sql = str(conn3c.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    assert "archived_at IS NOT NULL" in archived_sql
+    assert "LIMIT 1" in archived_sql
 
     conn4 = _mock_conn([row])
     contacts = repo.list_for_company(conn4, COMPANY_ID, limit=10)

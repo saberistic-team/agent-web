@@ -31,6 +31,7 @@ from app.brief_conversion_lock import acquire_brief_conversion_lock
 from app.companies import CompanyCreate, CompanyUpdate, find_domain_duplicate_warnings, normalize_domain
 from app.contacts import (
     ContactCreate,
+    ContactEmailConflictError,
     ContactUpdate,
     find_email_duplicate_warnings,
     find_name_company_duplicate_warnings,
@@ -41,6 +42,7 @@ from app.contacts import (
     normalize_email,
 )
 from app.crm_uow import crm_transaction
+from app.patch import UNSET
 from app.linkedin_import import (
     LINKEDIN_IMPORT_SCHEMA_VERSION,
     SOURCE_KIND_CONNECTION,
@@ -224,12 +226,18 @@ class CrmService:
             if domain
             else []
         )
-        contact = self._repos.contacts.get_by_email(conn, email)
-        contacts = [contact] if contact else []
+        # Active identity only drives linking. An archived-only match is surfaced
+        # separately as a restore/review option and is never auto-linked (#226).
+        active_contact = self._repos.contacts.get_active_by_email(conn, email)
+        contacts = [active_contact] if active_contact else []
+        archived_contact = (
+            None if active_contact else self._repos.contacts.get_archived_by_email(conn, email)
+        )
         return {
             "proposal": proposal,
             "company_matches": companies,
             "contact_matches": contacts,
+            "archived_contact_match": archived_contact,
         }
 
     def convert_project_brief(
@@ -260,7 +268,7 @@ class CrmService:
             if domain
             else []
         )
-        contact_match = self._repos.contacts.get_by_email(conn, email)
+        contact_match = self._repos.contacts.get_active_by_email(conn, email)
         self._validate_conversion_choices(
             company_choice=company_choice,
             contact_choice=contact_choice,
@@ -345,6 +353,7 @@ class CrmService:
                 contact = self._repos.contacts.get_by_id(conn, selected_contact_id)
                 if contact is None:
                     raise BriefConversionValidationError("Selected contact was not found.")
+                contact = self._associate_contact_company(conn, contact=contact, company=company)
             else:
                 contact = self._repos.contacts.create(
                     conn,
@@ -357,7 +366,11 @@ class CrmService:
                 conn,
                 UUID(str(company["id"])),
                 pipeline_stage=pipeline_stage,
-                expected_value_cents=expected_value_cents,
+                # Omit rather than clear when the brief carries no expected value,
+                # so linking to an existing company preserves its stored amount.
+                expected_value_cents=(
+                    expected_value_cents if expected_value_cents is not None else UNSET
+                ),
             )
             if updated is not None:
                 company = updated
@@ -465,6 +478,31 @@ class CrmService:
             "source_record": source_record,
             "pipeline_stage": pipeline_stage,
         }
+
+    def _associate_contact_company(
+        self,
+        conn: psycopg.Connection,
+        *,
+        contact: dict[str, Any],
+        company: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Apply the brief-conversion company-association rule (issue #226).
+
+        When a brief supplies a company, linking an existing active contact only
+        *fills in* a missing company association (``company_id IS NULL``). A
+        contact that already belongs to a company keeps that association and is
+        never silently reassigned; an explicit mismatch is rejected upstream in
+        ``_validate_conversion_choices``. See docs/CRM_SCHEMA.md.
+        """
+        company_id = company.get("id")
+        if company_id is None or contact.get("company_id") is not None:
+            return contact
+        updated = self._repos.contacts.update(
+            conn,
+            UUID(str(contact["id"])),
+            company_id=UUID(str(company_id)),
+        )
+        return updated or contact
 
     def _validate_conversion_choices(
         self,
@@ -597,7 +635,7 @@ class CrmService:
                 else []
             )
             updated = self._repos.companies.update(
-                conn, company_id, **company.model_dump(exclude_none=True)
+                conn, company_id, **company.model_dump(exclude_unset=True)
             )
         if updated is None:
             return None
@@ -672,7 +710,8 @@ class CrmService:
             )
             email_matches = (
                 [existing]
-                if contact.email and (existing := self._repos.contacts.get_by_email(conn, contact.email))
+                if contact.email
+                and (existing := self._repos.contacts.get_active_by_email(conn, contact.email))
                 else []
             )
             name_company_matches = (
@@ -684,7 +723,12 @@ class CrmService:
                 if contact.company_id
                 else []
             )
-            created = self._repos.contacts.create(conn, **contact.model_dump())
+            try:
+                created = self._repos.contacts.create(conn, **contact.model_dump())
+            except pg_errors.UniqueViolation as exc:
+                if not _is_contact_email_unique_violation(exc):
+                    raise
+                raise ContactEmailConflictError(contact.email) from exc
         duplicate_warnings = [
             *find_profile_url_duplicate_warnings(profile_matches, profile_url=contact.profile_url),
             *find_email_duplicate_warnings(email_matches, email=contact.email),
@@ -713,8 +757,10 @@ class CrmService:
             )
             email_matches: list[dict[str, Any]] = []
             if contact.email:
-                existing = self._repos.contacts.get_by_email(conn, contact.email)
-                if existing is not None and str(existing.get("id")) != str(contact_id):
+                existing = self._repos.contacts.get_active_by_email(
+                    conn, contact.email, exclude_contact_id=contact_id
+                )
+                if existing is not None:
                     email_matches.append(existing)
             name_company_matches = (
                 self._repos.contacts.find_by_name_company(
@@ -726,9 +772,14 @@ class CrmService:
                 if contact.company_id
                 else []
             )
-            updated = self._repos.contacts.update(
-                conn, contact_id, **contact.model_dump()
-            )
+            try:
+                updated = self._repos.contacts.update(
+                    conn, contact_id, **contact.model_dump(exclude_unset=True)
+                )
+            except pg_errors.UniqueViolation as exc:
+                if not _is_contact_email_unique_violation(exc):
+                    raise
+                raise ContactEmailConflictError(contact.email) from exc
         if updated is None:
             return None
         duplicate_warnings = [
@@ -1563,8 +1614,15 @@ class CrmService:
             nurture_reason=change.nurture_reason,
         )
         summary_before = pipeline_summary(company)
-        loss_reason = change.loss_reason if change.to_stage == "lost" else None
-        nurture_reason = change.nurture_reason if change.to_stage == "nurture" else None
+        to_lost = change.to_stage == "lost"
+        to_nurture = change.to_stage == "nurture"
+        # Set the reason only when a real value is supplied; otherwise omit it and
+        # let the clear_* flags reset the reason that no longer applies. Passing a
+        # value and the matching clear flag together would double-assign the column.
+        loss_reason = change.loss_reason if (to_lost and change.loss_reason) else UNSET
+        nurture_reason = (
+            change.nurture_reason if (to_nurture and change.nurture_reason) else UNSET
+        )
         with crm_transaction(conn):
             updated = self._repos.pipeline.update_pipeline_fields(
                 conn,
@@ -1572,8 +1630,8 @@ class CrmService:
                 pipeline_stage=change.to_stage,
                 pipeline_loss_reason=loss_reason,
                 pipeline_nurture_reason=nurture_reason,
-                clear_loss_reason=change.to_stage != "lost",
-                clear_nurture_reason=change.to_stage != "nurture",
+                clear_loss_reason=not to_lost,
+                clear_nurture_reason=not to_nurture,
             )
             if updated is None:
                 raise ValueError("Company not found.")
@@ -1624,14 +1682,15 @@ class CrmService:
         if company is None:
             raise ValueError("Company not found.")
         summary_before = pipeline_summary(company)
+        # Only fields the caller actually supplied are patched; a supplied blank
+        # (mapped to None by the model) clears the column, while omitted fields
+        # keep their stored value.
+        patch = update.model_dump(exclude_unset=True)
         with crm_transaction(conn):
             updated = self._repos.pipeline.update_pipeline_fields(
                 conn,
                 company_id,
-                next_action=update.next_action,
-                next_action_due_at=update.next_action_due_at,
-                pipeline_owner=update.pipeline_owner,
-                expected_value_cents=update.expected_value_cents,
+                **patch,
             )
             if updated is None:
                 raise ValueError("Company not found.")

@@ -19,11 +19,19 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app import analytics_service, case_studies, db, email_service, insights, page_service, stripe_service
+from app import analytics_service, case_studies, db, email_service, insights, page_service, server_analytics, stripe_service
 from app.admin_auth import AdminLoginRequired, login_redirect_url
 from app.admin_pipeline_routes import router as admin_pipeline_router
 from app.admin_routes import router as admin_router
 from app.actor_context import CORRELATION_HEADER
+from app.analytics_ingest import (
+    ANALYTICS_SESSION_COOKIE,
+    ANALYTICS_SESSION_HEADER,
+    IngestRejectReason,
+    ingest_browser_event,
+)
+from app.admin_security import AdminSecurityConfigError, validate_admin_security_config
+from app.client_source import admin_proxy_trust_summary, client_source_policy_summary, resolve_client_source
 from app.config import get_settings
 from app.models import BriefCreateRequest, BriefCreateResponse
 from app.seo import (
@@ -41,10 +49,203 @@ SITE_DIR = Path(__file__).resolve().parent.parent / "site"
 ASSETS_DIR = SITE_DIR / "assets"
 
 
+def _brief_utm_from_row(row: dict[str, object] | None) -> dict[str, str | None]:
+    if row is None:
+        return {}
+    return {
+        "utm_source": row.get("utm_source"),  # type: ignore[arg-type]
+        "utm_medium": row.get("utm_medium"),  # type: ignore[arg-type]
+        "utm_campaign": row.get("utm_campaign"),  # type: ignore[arg-type]
+        "utm_content": row.get("utm_content"),  # type: ignore[arg-type]
+        "utm_term": row.get("utm_term"),  # type: ignore[arg-type]
+    }
+
+
+def _send_lead_notifications(
+    settings,
+    conn,
+    *,
+    brief_id: int,
+    payload: BriefCreateRequest,
+    utm: dict[str, str | None],
+    analytics_session_id: str | None,
+) -> None:
+    if not settings.email_configured:
+        server_analytics.record_notification_outcome(
+            settings,
+            conn,
+            brief_id=brief_id,
+            notification_kind="lead_team",
+            notification_outcome="skipped",
+            utm=utm,
+            analytics_session_id=analytics_session_id,
+        )
+        server_analytics.record_notification_outcome(
+            settings,
+            conn,
+            brief_id=brief_id,
+            notification_kind="lead_customer",
+            notification_outcome="skipped",
+            utm=utm,
+            analytics_session_id=analytics_session_id,
+        )
+        return
+
+    try:
+        email_service.notify_team_of_new_brief(
+            api_key=settings.resend_api_key,
+            from_email=settings.from_email,
+            notify_email=settings.notify_email,
+            brief_id=brief_id,
+            website=payload.website,
+            email=payload.email,
+            brief=payload.brief,
+        )
+        server_analytics.record_notification_outcome(
+            settings,
+            conn,
+            brief_id=brief_id,
+            notification_kind="lead_team",
+            notification_outcome="sent",
+            utm=utm,
+            analytics_session_id=analytics_session_id,
+        )
+    except Exception:
+        logger.exception("Failed to send team lead email for %s", brief_id)
+        server_analytics.record_notification_outcome(
+            settings,
+            conn,
+            brief_id=brief_id,
+            notification_kind="lead_team",
+            notification_outcome="failed",
+            utm=utm,
+            analytics_session_id=analytics_session_id,
+        )
+
+    try:
+        email_service.notify_customer_of_brief_received(
+            api_key=settings.resend_api_key,
+            from_email=settings.from_email,
+            to_email=payload.email,
+            website=payload.website,
+        )
+        server_analytics.record_notification_outcome(
+            settings,
+            conn,
+            brief_id=brief_id,
+            notification_kind="lead_customer",
+            notification_outcome="sent",
+            utm=utm,
+            analytics_session_id=analytics_session_id,
+        )
+    except Exception:
+        logger.exception("Failed to send customer lead email for %s", brief_id)
+        server_analytics.record_notification_outcome(
+            settings,
+            conn,
+            brief_id=brief_id,
+            notification_kind="lead_customer",
+            notification_outcome="failed",
+            utm=utm,
+            analytics_session_id=analytics_session_id,
+        )
+
+
+def _send_paid_notifications(
+    settings,
+    conn,
+    *,
+    brief_id: int,
+    paid_brief: dict[str, object],
+    utm: dict[str, str | None],
+    analytics_session_id: str | None,
+) -> None:
+    if not settings.email_configured:
+        server_analytics.record_notification_outcome(
+            settings,
+            conn,
+            brief_id=brief_id,
+            notification_kind="paid_team",
+            notification_outcome="skipped",
+            utm=utm,
+            analytics_session_id=analytics_session_id,
+        )
+        server_analytics.record_notification_outcome(
+            settings,
+            conn,
+            brief_id=brief_id,
+            notification_kind="paid_customer",
+            notification_outcome="skipped",
+            utm=utm,
+            analytics_session_id=analytics_session_id,
+        )
+        return
+
+    try:
+        email_service.notify_team_of_paid_brief(
+            api_key=settings.resend_api_key,
+            from_email=settings.from_email,
+            notify_email=settings.notify_email,
+            brief=paid_brief,
+        )
+        server_analytics.record_notification_outcome(
+            settings,
+            conn,
+            brief_id=brief_id,
+            notification_kind="paid_team",
+            notification_outcome="sent",
+            utm=utm,
+            analytics_session_id=analytics_session_id,
+        )
+    except Exception:
+        logger.exception("Failed to send team paid email for %s", brief_id)
+        server_analytics.record_notification_outcome(
+            settings,
+            conn,
+            brief_id=brief_id,
+            notification_kind="paid_team",
+            notification_outcome="failed",
+            utm=utm,
+            analytics_session_id=analytics_session_id,
+        )
+
+    try:
+        email_service.notify_customer_of_paid_brief(
+            api_key=settings.resend_api_key,
+            from_email=settings.from_email,
+            brief=paid_brief,
+        )
+        server_analytics.record_notification_outcome(
+            settings,
+            conn,
+            brief_id=brief_id,
+            notification_kind="paid_customer",
+            notification_outcome="sent",
+            utm=utm,
+            analytics_session_id=analytics_session_id,
+        )
+    except Exception:
+        logger.exception("Failed to send customer paid email for %s", brief_id)
+        server_analytics.record_notification_outcome(
+            settings,
+            conn,
+            brief_id=brief_id,
+            notification_kind="paid_customer",
+            notification_outcome="failed",
+            utm=utm,
+            analytics_session_id=analytics_session_id,
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     if settings.database_configured:
+        try:
+            validate_admin_security_config(settings)
+        except AdminSecurityConfigError:
+            logger.exception("Admin security configuration is invalid")
+            raise
         db.init_db(settings.database_url)
         logger.info("database schema ready")
     else:
@@ -108,8 +309,29 @@ def sitemap() -> Response:
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health() -> dict:
+    """Process liveness. Optionally reports ``schema_version`` when the DB is readable.
+
+    Migrations run at startup (``db.init_db``). If they fail, uvicorn never serves
+    this path and Render marks the deploy ``update_failed``. ``schema_version`` is
+    best-effort for post-deploy verification — connection errors must not turn
+    liveness into 503 (that breaks readiness probes and unit tests that set a
+    unused DATABASE_URL).
+    """
+    payload: dict = {"status": "ok"}
+    settings = get_settings()
+    payload["admin_client_source_policy"] = client_source_policy_summary(settings)
+    payload["admin_proxy_trust"] = admin_proxy_trust_summary(settings)
+    if not settings.database_configured:
+        return payload
+    try:
+        version = db.latest_schema_version(settings.database_url)
+    except Exception:
+        logger.exception("health: failed to read schema_migrations")
+        return payload
+    if version is not None:
+        payload["schema_version"] = version
+    return payload
 
 
 @app.get("/hello")
@@ -194,6 +416,60 @@ for redirect_path, target in PERMANENT_REDIRECTS.items():
     )
 
 
+@app.post("/api/events")
+async def ingest_analytics_event(request: Request) -> JSONResponse:
+    settings = get_settings()
+    raw_body = await request.body()
+    if not settings.first_party_analytics_enabled:
+        return JSONResponse({"detail": IngestRejectReason.DISABLED.value}, status_code=404)
+
+    source = resolve_client_source(request, settings).source
+    if settings.database_configured:
+        with db.db_connection(settings.database_url) as conn:
+            result = ingest_browser_event(
+                settings,
+                raw_body=raw_body,
+                origin=request.headers.get("origin"),
+                referer=request.headers.get("referer"),
+                dnt_header=request.headers.get("dnt"),
+                user_agent=request.headers.get("user-agent"),
+                source_key=source,
+                conn=conn,
+            )
+    else:
+        result = ingest_browser_event(
+            settings,
+            raw_body=raw_body,
+            origin=request.headers.get("origin"),
+            referer=request.headers.get("referer"),
+            dnt_header=request.headers.get("dnt"),
+            user_agent=request.headers.get("user-agent"),
+            source_key=source,
+            conn=None,
+        )
+
+    if not result.accepted:
+        status = 429 if result.reason == IngestRejectReason.RATE_LIMIT else 400
+        if result.reason == IngestRejectReason.DISABLED:
+            status = 404
+        return JSONResponse({"detail": result.reason.value}, status_code=status)
+
+    response = JSONResponse({"accepted": True, "duplicate": result.duplicate})
+    if result.session_id:
+        response.set_cookie(
+            key=ANALYTICS_SESSION_COOKIE,
+            value=result.session_id,
+            httponly=True,
+            secure=settings.base_url.startswith("https"),
+            samesite="lax",
+            path="/",
+            max_age=86_400,
+        )
+    if result.rotate_session:
+        response.headers[ANALYTICS_SESSION_HEADER] = "1"
+    return response
+
+
 @app.post("/api/briefs", response_model=BriefCreateResponse)
 def create_brief(payload: BriefCreateRequest) -> BriefCreateResponse:
     settings = get_settings()
@@ -204,6 +480,7 @@ def create_brief(payload: BriefCreateRequest) -> BriefCreateResponse:
 
     with db.db_connection(settings.database_url) as conn:
         utm = payload.utm_attribution()
+        analytics_session_id = payload.approved_analytics_session_id()
         brief_id = db.create_brief(
             conn,
             website=payload.website,
@@ -215,6 +492,7 @@ def create_brief(payload: BriefCreateRequest) -> BriefCreateResponse:
             utm_campaign=utm["utm_campaign"],
             utm_content=utm["utm_content"],
             utm_term=utm["utm_term"],
+            analytics_session_id=analytics_session_id,
         )
 
         try:
@@ -226,26 +504,26 @@ def create_brief(payload: BriefCreateRequest) -> BriefCreateResponse:
         except Exception:
             logger.exception("Analytics lead_persisted failed for brief %s", brief_id)
 
+        try:
+            server_analytics.record_lead_persisted(
+                settings,
+                conn,
+                brief_id=brief_id,
+                utm=utm,
+                analytics_session_id=analytics_session_id,
+            )
+        except Exception:
+            logger.exception("First-party lead_persisted failed for brief %s", brief_id)
+
         # Lead emails before Stripe so a checkout failure still notifies inbox.
-        if settings.email_configured:
-            try:
-                email_service.notify_team_of_new_brief(
-                    api_key=settings.resend_api_key,
-                    from_email=settings.from_email,
-                    notify_email=settings.notify_email,
-                    brief_id=brief_id,
-                    website=payload.website,
-                    email=payload.email,
-                    brief=payload.brief,
-                )
-                email_service.notify_customer_of_brief_received(
-                    api_key=settings.resend_api_key,
-                    from_email=settings.from_email,
-                    to_email=payload.email,
-                    website=payload.website,
-                )
-            except Exception:
-                logger.exception("Failed to send brief lead emails for %s", brief_id)
+        _send_lead_notifications(
+            settings,
+            conn,
+            brief_id=brief_id,
+            payload=payload,
+            utm=utm,
+            analytics_session_id=analytics_session_id,
+        )
 
         try:
             session = stripe_service.create_checkout_session(
@@ -264,6 +542,18 @@ def create_brief(payload: BriefCreateRequest) -> BriefCreateResponse:
             brief_id=brief_id,
             stripe_session_id=session.id,
         )
+
+        try:
+            server_analytics.record_checkout_opened(
+                settings,
+                conn,
+                brief_id=brief_id,
+                price_cents=settings.brief_price_cents,
+                utm=utm,
+                analytics_session_id=analytics_session_id,
+            )
+        except Exception:
+            logger.exception("First-party checkout_opened failed for brief %s", brief_id)
 
     try:
         analytics_service.track_checkout_opened(
@@ -302,6 +592,39 @@ async def stripe_webhook(request: Request) -> JSONResponse:
         logger.warning("Stripe webhook signature verification failed: %s", exc)
         raise HTTPException(status_code=400, detail="Invalid webhook signature") from exc
 
+    if event["type"] == "checkout.session.expired":
+        session = event["data"]["object"]
+        brief_id = stripe_service.extract_brief_id_from_session(session)
+        if brief_id is None:
+            logger.error("checkout.session.expired missing brief_id metadata")
+            return JSONResponse({"received": True})
+
+        with db.db_connection(settings.database_url) as conn:
+            brief_row = db.get_brief_by_id(conn, brief_id)
+            if brief_row is None or brief_row.get("status") != "pending_payment":
+                return JSONResponse({"received": True})
+
+            utm = _brief_utm_from_row(brief_row)
+            analytics_session_id = brief_row.get("analytics_session_id")
+            if analytics_session_id is not None:
+                analytics_session_id = str(analytics_session_id)
+
+            try:
+                server_analytics.record_checkout_cancelled(
+                    settings,
+                    conn,
+                    brief_id=brief_id,
+                    utm=utm,
+                    analytics_session_id=analytics_session_id,
+                    stripe_event_id=event.get("id"),
+                )
+            except Exception:
+                logger.exception(
+                    "First-party checkout_cancelled failed for brief %s", brief_id
+                )
+
+        return JSONResponse({"received": True})
+
     if event["type"] != "checkout.session.completed":
         return JSONResponse({"received": True})
 
@@ -312,46 +635,61 @@ async def stripe_webhook(request: Request) -> JSONResponse:
         return JSONResponse({"received": True})
 
     with db.db_connection(settings.database_url) as conn:
+        payment_details = stripe_service.extract_payment_details_from_session(session)
         paid_brief = db.mark_brief_paid(
             conn,
             brief_id=brief_id,
             stripe_session_id=session.get("id"),
             stripe_payment_intent_id=session.get("payment_intent"),
+            **payment_details,
         )
 
     if paid_brief is None:
         return JSONResponse({"received": True})
 
+    analytics_session_id = paid_brief.get("analytics_session_id")
+    if analytics_session_id is not None:
+        analytics_session_id = str(analytics_session_id)
+
+    paid_amount_cents = paid_brief.get("payment_amount_cents")
+    if paid_amount_cents is None:
+        paid_amount_cents = payment_details.get("payment_amount_cents")
+    if paid_amount_cents is None:
+        paid_amount_cents = settings.brief_price_cents
+
+    utm = _brief_utm_from_row(paid_brief)
+
     try:
         analytics_service.track_payment_completed(
             settings,
             brief_id=brief_id,
-            price_cents=settings.brief_price_cents,
-            utm={
-                "utm_source": paid_brief.get("utm_source"),
-                "utm_medium": paid_brief.get("utm_medium"),
-                "utm_campaign": paid_brief.get("utm_campaign"),
-                "utm_content": paid_brief.get("utm_content"),
-                "utm_term": paid_brief.get("utm_term"),
-            },
+            price_cents=int(paid_amount_cents),
+            utm=utm,
         )
     except Exception:
         logger.exception("Analytics payment_completed failed for brief %s", brief_id)
 
-    if settings.email_configured:
+    with db.db_connection(settings.database_url) as conn:
         try:
-            email_service.notify_team_of_paid_brief(
-                api_key=settings.resend_api_key,
-                from_email=settings.from_email,
-                notify_email=settings.notify_email,
-                brief=paid_brief,
-            )
-            email_service.notify_customer_of_paid_brief(
-                api_key=settings.resend_api_key,
-                from_email=settings.from_email,
-                brief=paid_brief,
+            server_analytics.record_payment_completed(
+                settings,
+                conn,
+                brief_id=brief_id,
+                price_cents=int(paid_amount_cents),
+                utm=utm,
+                analytics_session_id=analytics_session_id,
+                stripe_event_id=event.get("id"),
             )
         except Exception:
-            logger.exception("Failed to send brief notification emails for %s", brief_id)
+            logger.exception("First-party payment_completed failed for brief %s", brief_id)
+
+        _send_paid_notifications(
+            settings,
+            conn,
+            brief_id=brief_id,
+            paid_brief=paid_brief,
+            utm=utm,
+            analytics_session_id=analytics_session_id,
+        )
 
     return JSONResponse({"received": True})

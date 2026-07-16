@@ -1,0 +1,7 @@
+{
+  "display_name": "Relay Nexus",
+  "summary": "Cross-runtime agent gateway with public scout metadata and SDK hooks.",
+  "url": "https://relay-nexus.example.dev/",
+  "runtime_types": ["a2a-agent", "npm-sdk"],
+  "capabilities": ["agent-gateway", "sdk"]
+}

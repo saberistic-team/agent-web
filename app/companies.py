@@ -123,7 +123,18 @@ class CompanyCreate(BaseModel):
 
 
 class CompanyUpdate(CompanyCreate):
-    pass
+    """Partial company patch.
+
+    Unlike :class:`CompanyCreate`, domain is only derived from the website when
+    the ``domain`` field was omitted entirely. When an edit form submits a blank
+    ``domain`` it is an explicit clear and must not be silently re-derived.
+    """
+
+    @model_validator(mode="after")
+    def derive_domain_from_website(self) -> "CompanyUpdate":
+        if "domain" not in self.model_fields_set and self.website:
+            self.domain = normalize_domain(self.website)
+        return self
 
 
 @dataclass(frozen=True)

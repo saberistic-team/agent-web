@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.analytics_event_schema import is_valid_anonymous_session_id
+
 
 class BriefCreateRequest(BaseModel):
     website: str = Field(..., min_length=1, max_length=500)
@@ -14,6 +16,7 @@ class BriefCreateRequest(BaseModel):
     utm_campaign: str | None = Field(default=None, max_length=200)
     utm_content: str | None = Field(default=None, max_length=200)
     utm_term: str | None = Field(default=None, max_length=200)
+    analytics_session_id: str | None = Field(default=None, max_length=36)
 
     @field_validator("website", "email", "brief")
     @classmethod
@@ -29,6 +32,22 @@ class BriefCreateRequest(BaseModel):
         if "@" not in value:
             raise ValueError("invalid email address")
         return value
+
+    @field_validator("analytics_session_id")
+    @classmethod
+    def validate_analytics_session_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            return None
+        if not is_valid_anonymous_session_id(stripped):
+            raise ValueError("analytics_session_id must be an opaque UUID")
+        return stripped
+
+    def approved_analytics_session_id(self) -> str | None:
+        """Return session token only when explicitly supplied and valid."""
+        return self.analytics_session_id
 
     def utm_attribution(self) -> dict[str, str | None]:
         return {

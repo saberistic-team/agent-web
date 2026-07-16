@@ -23,16 +23,40 @@ from app.companies import (
 )
 from app.brief_conversion import (
     BriefConversionValidationError,
+    effective_brief_price_cents,
     pipeline_capabilities_available,
 )
-from app.contacts import BUYING_ROLES, ContactCreate, ContactSafeSummary, ContactUpdate
+from app.contacts import (
+    BUYING_ROLES,
+    ContactCreate,
+    ContactEmailConflictError,
+    ContactSafeSummary,
+    ContactUpdate,
+)
 from app.crm_uow import crm_transaction
-from app.actor_context import actor_context_from_request, anonymous_actor_context, correlation_id_from_request
+from app.actor_context import (
+    actor_context_from_request,
+    anonymous_actor_context,
+    correlation_id_from_request,
+)
 from app.admin_layout import ADMIN_NAV_LINKS, render_admin_shell
 from app.admin_preview import (
     PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR,
     PREVIEW_BRIEF_DATABASE_ERROR_ID,
+    PREVIEW_COMPANY_DETAIL_ARCHIVE_ID,
+    PREVIEW_COMPANY_DETAIL_RESTORE_ID,
+    PREVIEW_COMPANY_VALIDATION_ERROR,
+    PREVIEW_CONTACT_DETAIL_ARCHIVE_ID,
+    PREVIEW_CONTACT_DETAIL_RESTORE_ID,
     PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID,
+    build_preview_companies_for_select,
+    build_preview_company,
+    build_preview_company_contacts,
+    build_preview_company_detail,
+    build_preview_company_research,
+    build_preview_contact,
+    build_preview_contact_detail,
+    build_preview_contact_research,
     preview_contact_restore_conflict,
 )
 from app.config import Settings, get_settings
@@ -257,13 +281,11 @@ def _record_login_failure(
     request: Request,
     *,
     reason: str,
-    attempted_username: str | None = None,
 ) -> None:
     settings = get_settings()
     if not settings.database_url:
         return
-    actor = attempted_username.strip() if attempted_username else "anonymous"
-    actor_context = actor_context_from_request(request, actor=actor)
+    actor_context = anonymous_actor_context(request)
     try:
         with db.db_connection(settings.database_url) as conn:
             with crm_transaction(conn):
@@ -271,7 +293,6 @@ def _record_login_failure(
                     conn,
                     actor_context=actor_context,
                     reason=reason,
-                    attempted_username=attempted_username,
                 )
     except Exception:
         logger.exception("Failed to record login failure audit event")
@@ -322,35 +343,54 @@ def _issue_login_flow_response(
     return response
 
 
-def _verify_login_flow_csrf(
+def _try_claim_login_flow(
     request: Request,
     settings: Settings,
     csrf_token: str,
 ) -> bool:
-    """Validate a login CSRF token against the initiating browser flow."""
+    """Atomically claim a pre-auth login flow before credential verification.
+
+    Consumption happens here (before password check) so exactly one concurrent
+    submission can proceed; losers receive the same generic failure path as
+    other invalid flows without running password verification.
+    """
+    raw_flow_token = admin_auth.read_login_flow_token(request)
+    if raw_flow_token is None or not csrf_token:
+        return False
+    flow_hash = admin_auth.hash_session_token(raw_flow_token)
+    csrf_hash = admin_auth.hash_csrf_token(csrf_token)
+    now = datetime.now(timezone.utc)
+    with db.db_connection(settings.database_url) as conn:
+        row = db.claim_admin_login_flow(
+            conn,
+            flow_token_hash=flow_hash,
+            csrf_token_hash=csrf_hash,
+            now=now,
+        )
+    return row is not None
+
+
+def _try_burn_login_flow_cookie(request: Request, settings: Settings) -> bool:
+    """Consume an unconsumed flow by cookie only (throttle or wrong CSRF)."""
     raw_flow_token = admin_auth.read_login_flow_token(request)
     if raw_flow_token is None:
         return False
     flow_hash = admin_auth.hash_session_token(raw_flow_token)
+    now = datetime.now(timezone.utc)
     with db.db_connection(settings.database_url) as conn:
-        row = db.get_admin_login_flow_by_token_hash(conn, flow_hash)
-    if row is None or row.get("consumed_at") is not None:
-        return False
-    expires_at = row["expires_at"]
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if expires_at <= datetime.now(timezone.utc):
-        return False
-    return admin_auth.verify_csrf_value(csrf_token, row.get("csrf_token_hash"))
+        return db.consume_admin_login_flow(
+            conn,
+            flow_token_hash=flow_hash,
+            now=now,
+        )
 
 
-def _consume_login_flow(request: Request, settings: Settings) -> None:
-    raw_flow_token = admin_auth.read_login_flow_token(request)
-    if raw_flow_token is None:
-        return
-    flow_hash = admin_auth.hash_session_token(raw_flow_token)
-    with db.db_connection(settings.database_url) as conn:
-        db.consume_admin_login_flow(conn, flow_token_hash=flow_hash)
+def _redirect_to_login_form(*, next_path: str | None) -> RedirectResponse:
+    """Send the operator back to GET /admin/login when flow persistence fails."""
+    login_url = "/admin/login"
+    if next_path:
+        login_url = f"{login_url}?next={quote(next_path, safe='')}"
+    return RedirectResponse(url=login_url, status_code=303)
 
 
 def _issue_session(
@@ -424,38 +464,70 @@ def admin_login_submit(
 
     Login-flow cookie lifecycle (``admin_login_flow``):
 
-    * **Invalid CSRF** — consume the submitted flow (single-use), render a fresh
-      form with a new CSRF token, and retain the replacement flow cookie.
-    * **Invalid credentials** — same as invalid CSRF: consumed flow is not
-      replayable; the replacement flow binds the returned CSRF token.
-    * **Rate limited** — consume the submitted flow and retain a replacement so
-      the operator can retry after lockout without refreshing.
+    * **Claim** — every POST first atomically claims the flow (cookie + CSRF +
+      unconsumed + unexpired). Exactly one concurrent submission can claim;
+      consumption happens at claim time before password verification.
+    * **Invalid / lost claim** — failed claims burn the remaining unconsumed
+      flow when CSRF differs and return a generic failure without verifying
+      the password or minting a session.
+    * **Invalid credentials** — successful claim with bad password issues a
+      replacement flow cookie (``#153``); the consumed flow is not replayable.
+    * **Rate limited** — keep the existing pre-auth flow (``#215``) and return
+      the throttled message without claiming.
     * **Success** — clear the pre-auth flow cookie and issue the session cookie.
     """
     settings = get_settings()
     _require_admin_auth_configured(settings)
     normalized_username = username.strip()
 
-    if admin_auth.is_login_throttled(request, settings, username=normalized_username):
-        _record_login_failure(
-            request, reason="rate_limited", attempted_username=normalized_username
+    if not admin_auth.login_form_inputs_valid(
+        username=username,
+        password=password,
+        csrf_token=csrf_token,
+        login_flow_token=admin_auth.read_login_flow_token(request),
+        next_path=next,
+    ):
+        return HTMLResponse(
+            admin_pages.render_admin_login_page(
+                csrf_token=csrf_token,
+                error_message=admin_auth.INVALID_CREDENTIALS_MESSAGE,
+                next_path=next,
+            ),
+            status_code=400,
         )
-        _consume_login_flow(request, settings)
-        return _issue_login_flow_response(
-            settings=settings,
-            error_message=admin_auth.LOGIN_THROTTLED_MESSAGE,
-            next_path=next,
+
+    admission = admin_auth.try_admit_login_attempt(
+        request, settings, username=normalized_username
+    )
+    if not admission.admitted:
+        return HTMLResponse(
+            admin_pages.render_admin_login_page(
+                csrf_token=csrf_token,
+                error_message=admin_auth.LOGIN_THROTTLED_MESSAGE,
+                next_path=next,
+            ),
             status_code=429,
         )
 
-    csrf_valid = _verify_login_flow_csrf(request, settings, csrf_token)
-    _consume_login_flow(request, settings)
+    try:
+        claimed = _try_claim_login_flow(request, settings, csrf_token)
+    except Exception:
+        logger.exception("Failed to claim login flow")
+        return _redirect_to_login_form(next_path=next)
 
-    if not csrf_valid:
-        admin_auth.record_failed_login(request, settings, username=normalized_username)
-        _record_login_failure(
-            request, reason="invalid_csrf", attempted_username=normalized_username
-        )
+    if not claimed:
+        try:
+            _try_burn_login_flow_cookie(request, settings)
+        except Exception:
+            logger.exception("Failed to burn login flow after failed claim")
+            return _redirect_to_login_form(next_path=next)
+        if admission.lockout_transition:
+            _record_login_failure(
+                request,
+                reason="rate_limited",
+            )
+        else:
+            _record_login_failure(request, reason="invalid_csrf")
         return _issue_login_flow_response(
             settings=settings,
             error_message=admin_auth.INVALID_CREDENTIALS_MESSAGE,
@@ -464,10 +536,16 @@ def admin_login_submit(
         )
 
     if not admin_auth.verify_admin_credentials(normalized_username, password, settings):
-        admin_auth.record_failed_login(request, settings, username=normalized_username)
-        _record_login_failure(
-            request, reason="invalid_credentials", attempted_username=normalized_username
-        )
+        if admission.lockout_transition:
+            _record_login_failure(
+                request,
+                reason="rate_limited",
+            )
+        else:
+            _record_login_failure(
+                request,
+                reason="invalid_credentials",
+            )
         return _issue_login_flow_response(
             settings=settings,
             error_message=admin_auth.INVALID_CREDENTIALS_MESSAGE,
@@ -492,39 +570,34 @@ def admin_login_submit(
 @router.post("/logout")
 def admin_logout(
     request: Request,
-    csrf_token: str = Form(..., alias="csrf_token"),
+    csrf_token: str | None = Form(default=None, alias="csrf_token"),
 ) -> Response:
     settings = get_settings()
     _require_admin_auth_configured(settings)
     session = _load_valid_session(request, settings)
     if session is not None:
-        if not admin_auth.verify_session_csrf_request(request, csrf_token, settings):
+        if not csrf_token or not admin_auth.verify_session_csrf_request(
+            request, csrf_token, settings
+        ):
             raise HTTPException(status_code=400, detail=admin_auth.INVALID_REQUEST_MESSAGE)
         raw_token = admin_auth.read_session_token(request)
         if raw_token is not None:
             token_hash = admin_auth.hash_session_token(raw_token)
             with db.db_connection(settings.database_url) as conn:
                 with crm_transaction(conn):
-                    db.revoke_admin_session(conn, token_hash=token_hash)
-                    audit_service.record_logout(
-                        conn,
-                        actor_context=actor_context_from_request(
-                            request, actor=session.admin_username
-                        ),
-                        session_id=session.id,
-                    )
-    else:
-        if settings.database_url:
-            try:
-                with db.db_connection(settings.database_url) as conn:
-                    with crm_transaction(conn):
+                    revoked = db.revoke_admin_session(conn, token_hash=token_hash)
+                    if revoked:
                         audit_service.record_logout(
                             conn,
-                            actor_context=anonymous_actor_context(request),
-                            session_id=None,
+                            actor_context=actor_context_from_request(
+                                request, actor=session.admin_username
+                            ),
+                            session_id=session.id,
                         )
-            except Exception:
-                logger.exception("Failed to record anonymous logout audit event")
+        response = RedirectResponse(url="/admin/login", status_code=303)
+        admin_auth.clear_session_cookie(response, settings)
+        return response
+
     response = RedirectResponse(url="/admin/login", status_code=303)
     admin_auth.clear_session_cookie(response, settings)
     return response
@@ -544,20 +617,30 @@ def admin_companies(
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
-        from app.admin_preview import render_preview_section_main
+        from app.admin_preview import build_preview_companies
 
-        link = next(item for item in ADMIN_NAV_LINKS if item["href"] == "/admin/companies")
+        filters = {
+            "q": q,
+            "category": category if category in COMPANY_CATEGORIES else None,
+            "stage": stage if stage in COMPANY_STAGES else None,
+            "target_status": target_status if target_status in TARGET_STATUSES else None,
+            "freshness": freshness if freshness in FRESHNESS_FILTERS else None,
+            "archived": "1" if archived else None,
+        }
         return HTMLResponse(
-            render_admin_shell(
-                title=link["label"],
-                main=render_preview_section_main(
-                    label=link["label"],
-                    summary=link["summary"],
-                    active_path="/admin/companies",
+            company_pages.render_companies_list_page(
+                companies=build_preview_companies(
+                    query=filters["q"],
+                    category=filters["category"],
+                    stage=filters["stage"],
+                    target_status=filters["target_status"],
+                    freshness=filters["freshness"],
+                    include_archived=archived,
                 ),
-                active_path="/admin/companies",
-                admin_username=session.admin_username,
+                filters=filters,
                 csrf_token=csrf_token,
+                admin_username=session.admin_username,
+                preview_banner="Preview data — not production",
             )
         )
     filters = {
@@ -639,6 +722,28 @@ def admin_company_research(
     session = require_admin_session(request)
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
+    if settings.admin_preview_enabled:
+        if company_id in (
+            PREVIEW_COMPANY_DETAIL_ARCHIVE_ID,
+            PREVIEW_COMPANY_DETAIL_RESTORE_ID,
+        ):
+            company, contacts, records = build_preview_company_detail(company_id)
+        else:
+            company = build_preview_company(company_id)
+            if company is None:
+                raise HTTPException(status_code=404, detail="Company not found")
+            contacts = build_preview_company_contacts(company_id)
+            records = build_preview_company_research(company_id)
+        return HTMLResponse(
+            admin_research_pages.render_admin_company_research_page(
+                company=company,
+                contacts=contacts,
+                records=records,
+                csrf_token=csrf_token,
+                admin_username=session.admin_username,
+                error_message=error,
+            )
+        )
     with db.db_connection(settings.database_url) as conn:
         company = _crm.get_company(conn, company_id)
         if company is None:
@@ -662,7 +767,23 @@ def admin_company_edit(
     request: Request, company_id: UUID, error: str | None = None, warning: str | None = None
 ) -> HTMLResponse:
     session = require_admin_session(request)
-    csrf_token = _session_csrf_for_forms(request, get_settings())
+    settings = get_settings()
+    csrf_token = _session_csrf_for_forms(request, settings)
+    if settings.admin_preview_enabled:
+        company = build_preview_company(company_id)
+        if company is None:
+            raise HTTPException(status_code=404, detail="Company not found")
+        error_message = error or warning
+        if request.query_params.get("error") == "validation":
+            error_message = PREVIEW_COMPANY_VALIDATION_ERROR
+        return HTMLResponse(
+            company_pages.render_company_form_page(
+                csrf_token=csrf_token,
+                admin_username=session.admin_username,
+                company=company,
+                error_message=error_message,
+            )
+        )
     with db.db_connection(get_settings().database_url) as conn:
         company = _crm.get_company(conn, company_id)
     if company is None:
@@ -810,20 +931,34 @@ def admin_contacts(
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
-        from app.admin_preview import render_preview_section_main
+        from app.admin_preview import build_preview_contacts
 
-        link = next(item for item in ADMIN_NAV_LINKS if item["href"] == "/admin/contacts")
+        parsed_company_id: UUID | None = None
+        if company_id:
+            try:
+                parsed_company_id = UUID(company_id)
+            except ValueError:
+                parsed_company_id = None
+        filters = {
+            "q": q,
+            "company_id": company_id if parsed_company_id else None,
+            "buying_role": buying_role if buying_role in BUYING_ROLES else None,
+            "archived": "1" if archived else None,
+        }
+        contacts, companies = build_preview_contacts(
+            query=filters["q"],
+            company_id=parsed_company_id,
+            buying_role=filters["buying_role"],
+            include_archived=archived,
+        )
         return HTMLResponse(
-            render_admin_shell(
-                title=link["label"],
-                main=render_preview_section_main(
-                    label=link["label"],
-                    summary=link["summary"],
-                    active_path="/admin/contacts",
-                ),
-                active_path="/admin/contacts",
-                admin_username=session.admin_username,
+            contact_pages.render_contacts_list_page(
+                contacts=contacts,
+                companies=companies,
+                filters=filters,
                 csrf_token=csrf_token,
+                admin_username=session.admin_username,
+                preview_banner="Preview data — not production",
             )
         )
     parsed_company_id: UUID | None = None
@@ -861,8 +996,17 @@ def admin_contacts(
 @router.get("/contacts/new", response_class=HTMLResponse)
 def admin_contact_new(request: Request) -> HTMLResponse:
     session = require_admin_session(request)
-    csrf_token = _session_csrf_for_forms(request, get_settings())
-    with db.db_connection(get_settings().database_url) as conn:
+    settings = get_settings()
+    csrf_token = _session_csrf_for_forms(request, settings)
+    if settings.admin_preview_enabled:
+        return HTMLResponse(
+            contact_pages.render_contact_form_page(
+                csrf_token=csrf_token,
+                admin_username=session.admin_username,
+                companies=build_preview_companies_for_select(),
+            )
+        )
+    with db.db_connection(settings.database_url) as conn:
         companies = _crm.list_companies(conn, limit=500)
     return HTMLResponse(
         contact_pages.render_contact_form_page(
@@ -894,8 +1038,11 @@ def admin_contact_create(
         contact = ContactCreate(**_contact_form_payload(**locals()))
     except (ValueError, TypeError, ValidationError) as exc:
         return RedirectResponse(url=f"/admin/contacts/new?error={quote(str(exc))}", status_code=303)
-    with db.db_connection(get_settings().database_url) as conn:
-        result = _crm.create_contact(conn, contact=contact)
+    try:
+        with db.db_connection(get_settings().database_url) as conn:
+            result = _crm.create_contact(conn, contact=contact)
+    except ContactEmailConflictError as exc:
+        return RedirectResponse(url=f"/admin/contacts/new?error={quote(str(exc))}", status_code=303)
     warnings = result["duplicate_warnings"]
     warning = f"{len(warnings)} possible duplicate(s)" if warnings else ""
     return RedirectResponse(
@@ -909,8 +1056,30 @@ def admin_contact_edit(
     request: Request, contact_id: UUID, error: str | None = None, warning: str | None = None
 ) -> HTMLResponse:
     session = require_admin_session(request)
-    csrf_token = _session_csrf_for_forms(request, get_settings())
-    with db.db_connection(get_settings().database_url) as conn:
+    settings = get_settings()
+    csrf_token = _session_csrf_for_forms(request, settings)
+    if settings.admin_preview_enabled:
+        if contact_id in (
+            PREVIEW_CONTACT_DETAIL_ARCHIVE_ID,
+            PREVIEW_CONTACT_DETAIL_RESTORE_ID,
+        ):
+            contact, company, _records = build_preview_contact_detail(contact_id)
+            companies = [company] if company is not None else []
+        else:
+            contact = build_preview_contact(contact_id)
+            if contact is None:
+                raise HTTPException(status_code=404, detail="Contact not found")
+            companies = build_preview_companies_for_select()
+        return HTMLResponse(
+            contact_pages.render_contact_form_page(
+                csrf_token=csrf_token,
+                admin_username=session.admin_username,
+                companies=companies,
+                contact=contact,
+                error_message=error or warning,
+            )
+        )
+    with db.db_connection(settings.database_url) as conn:
         contact = _crm.get_contact(conn, contact_id)
         companies = _crm.list_companies(conn, limit=500)
     if contact is None:
@@ -950,8 +1119,13 @@ def admin_contact_update(
         return RedirectResponse(
             url=f"/admin/contacts/{contact_id}/edit?error={quote(str(exc))}", status_code=303
         )
-    with db.db_connection(get_settings().database_url) as conn:
-        result = _crm.update_contact(conn, contact_id, contact=contact)
+    try:
+        with db.db_connection(get_settings().database_url) as conn:
+            result = _crm.update_contact(conn, contact_id, contact=contact)
+    except ContactEmailConflictError as exc:
+        return RedirectResponse(
+            url=f"/admin/contacts/{contact_id}/edit?error={quote(str(exc))}", status_code=303
+        )
     if result is None:
         raise HTTPException(status_code=404, detail="Contact not found")
     warnings = result["duplicate_warnings"]
@@ -1053,6 +1227,31 @@ def admin_contact_research(
     session = require_admin_session(request)
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
+    if settings.admin_preview_enabled:
+        if contact_id in (
+            PREVIEW_CONTACT_DETAIL_ARCHIVE_ID,
+            PREVIEW_CONTACT_DETAIL_RESTORE_ID,
+        ):
+            contact, company, records = build_preview_contact_detail(contact_id)
+        else:
+            contact = build_preview_contact(contact_id)
+            if contact is None:
+                raise HTTPException(status_code=404, detail="Contact not found")
+            company = None
+            company_id = contact.get("company_id")
+            if company_id is not None:
+                company = build_preview_company(UUID(str(company_id)))
+            records = build_preview_contact_research(contact_id)
+        return HTMLResponse(
+            admin_research_pages.render_admin_contact_research_page(
+                contact=contact,
+                company=company,
+                records=records,
+                csrf_token=csrf_token,
+                admin_username=session.admin_username,
+                error_message=error,
+            )
+        )
     with db.db_connection(settings.database_url) as conn:
         contact = _crm.get_contact(conn, contact_id)
         if contact is None:
@@ -1401,7 +1600,10 @@ def admin_brief_convert_preview(
             )
         preview = preview_brief_convert_matches(
             parsed_brief_id,
-            price_cents=settings.brief_price_cents,
+            price_cents=effective_brief_price_cents(
+                brief,
+                list_price_cents=settings.brief_price_cents,
+            ),
         )
         error_message = request.query_params.get("error")
         if error_message == "validation":
@@ -1440,7 +1642,10 @@ def admin_brief_convert_preview(
         preview = _crm.find_brief_conversion_matches(
             conn,
             brief,
-            price_cents=settings.brief_price_cents,
+            price_cents=effective_brief_price_cents(
+                brief,
+                list_price_cents=settings.brief_price_cents,
+            ),
         )
     return HTMLResponse(
         admin_pages.render_admin_brief_convert_page(
@@ -1510,7 +1715,10 @@ def admin_brief_convert_confirm(
                 conn,
                 brief=brief,
                 actor_context=actor_context,
-                price_cents=settings.brief_price_cents,
+                price_cents=effective_brief_price_cents(
+                    brief,
+                    list_price_cents=settings.brief_price_cents,
+                ),
                 company_choice=company_mode,
                 contact_choice=contact_mode,
                 selected_company_id=selected_company_id,

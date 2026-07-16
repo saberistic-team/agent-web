@@ -45,6 +45,8 @@ SENSITIVE_FIELD_NAMES = frozenset(
         "admin_session",
         "admin_password_hash",
         "admin_session_secret",
+        "admin_login_limiter_secret",
+        "admin_login_limiter_previous_secret",
         "resend_api_key",
         "plausible_api_key",
     }
@@ -183,12 +185,9 @@ def record_login_failure(
     *,
     actor_context: ActorContext,
     reason: str,
-    attempted_username: str | None = None,
     repository: AuditEventRepository | None = None,
 ) -> dict[str, Any] | None:
     metadata: dict[str, Any] = {"reason": reason}
-    if attempted_username:
-        metadata["attempted_username"] = attempted_username
     return record_event(
         conn,
         actor_context=actor_context,

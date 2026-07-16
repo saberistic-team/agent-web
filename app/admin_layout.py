@@ -92,7 +92,28 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4/convert",
     "/admin/briefs/4/convert?error=validation",
     "/admin/briefs/503",
+    "/admin/companies/dddddddd-dddd-dddd-dddd-dddddddddd01",
+    "/admin/companies/dddddddd-dddd-dddd-dddd-dddddddddd02",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd03",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd04",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd03/edit",
+    "/admin/contacts/dddddddd-dddd-dddd-dddd-dddddddddd04/edit",
+    "/admin/companies?archived=1",
+    "/admin/contacts?archived=1",
     "/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/restore-conflict",
+    # Company detail/editor fixtures (see docs/SCREENSHOTS.md).
+    "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    "/admin/companies/new",
+    "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/edit",
+    "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa02",
+    "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/edit?error=validation&focus=name",
+    # Contact detail/editor fixtures.
+    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    "/admin/contacts/new",
+    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/edit",
+    "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbc/edit",
+    # Pipeline detail (Next action, Change stage, Log activity, timeline).
+    "/admin/pipeline/11111111-1111-1111-1111-111111111111",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).
@@ -101,6 +122,15 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
 ADMIN_SCREENSHOT_EXPECTED_STATUS: dict[str, int] = {
     "/admin/briefs/503": 503,
 }
+
+
+def render_admin_archive_action_button(*, label: str, archived: bool) -> str:
+    """Return a themed Archive/Restore submit button for admin detail/edit forms."""
+    modifier = "admin-action--secondary" if archived else "admin-action--destructive"
+    return (
+        f'<button class="admin-action {modifier}" type="submit">'
+        f"{html.escape(label)}</button>"
+    )
 
 
 def _active_nav_label(active_path: str) -> str:
@@ -161,9 +191,13 @@ def render_admin_shell(
     nav = render_admin_nav(active_path)
     user_chip = ""
     if admin_username:
+        # title= exposes the untruncated value to hover/AT when the wrap
+        # strategy below still leaves the identity visually tight.
+        safe_username_attr = html.escape(admin_username, quote=True)
+        safe_username = html.escape(admin_username)
         user_chip = (
             f'<span class="admin-user">Signed in as '
-            f"<strong>{html.escape(admin_username)}</strong></span>"
+            f'<strong title="{safe_username_attr}">{safe_username}</strong></span>'
         )
     csrf_input = ""
     if csrf_token:
@@ -202,11 +236,13 @@ def render_admin_shell(
       </a>
       <div class="admin-top-actions">
         {user_chip}
-        <a class="admin-exit" href="/">Public site</a>
-        <form method="post" action="/admin/logout">
-          {csrf_input}
-          <button class="admin-exit admin-signout" type="submit">Sign out</button>
-        </form>
+        <div class="admin-exit-group">
+          <a class="admin-exit" href="/">Public site</a>
+          <form class="admin-signout-form" method="post" action="/admin/logout">
+            {csrf_input}
+            <button class="admin-exit admin-signout" type="submit">Sign out</button>
+          </form>
+        </div>
       </div>
     </header>
     <div class="admin-layout">

@@ -477,11 +477,27 @@ main {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  max-width: 36ch;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
+/* Semantic width variants — compact for login/filters; editor widths live in admin.css. */
+.admin-form--compact {
+  max-width: min(100%, 36ch);
+}
+
+/* Shared dark theme for admin text fields, selects, and textareas. */
+.admin-form textarea,
+.admin-form select,
+.admin-form input:not([type]),
+.admin-form input[type="text"],
 .admin-form input[type="password"],
-.admin-form input[type="text"] {
+.admin-form input[type="url"],
+.admin-form input[type="email"],
+.admin-form input[type="number"],
+.admin-form input[type="date"],
+.admin-form input[type="datetime-local"] {
   width: 100%;
   padding: 0.85rem 1rem;
   background: var(--surface);
@@ -493,9 +509,102 @@ main {
   transition: border-color 0.2s ease;
 }
 
-.admin-form input:focus-visible {
+.admin-form textarea:focus-visible,
+.admin-form select:focus-visible,
+.admin-form input:not([type]):focus-visible,
+.admin-form input[type="text"]:focus-visible,
+.admin-form input[type="password"]:focus-visible,
+.admin-form input[type="url"]:focus-visible,
+.admin-form input[type="email"]:focus-visible,
+.admin-form input[type="number"]:focus-visible,
+.admin-form input[type="date"]:focus-visible,
+.admin-form input[type="datetime-local"]:focus-visible {
   outline: none;
   border-color: var(--accent);
+}
+
+.admin-form textarea::placeholder,
+.admin-form input:not([type])::placeholder,
+.admin-form input[type="text"]::placeholder,
+.admin-form input[type="password"]::placeholder,
+.admin-form input[type="url"]::placeholder,
+.admin-form input[type="email"]::placeholder,
+.admin-form input[type="number"]::placeholder,
+.admin-form input[type="date"]::placeholder,
+.admin-form input[type="datetime-local"]::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+.admin-form textarea:disabled,
+.admin-form select:disabled,
+.admin-form input:not([type]):disabled,
+.admin-form input[type="text"]:disabled,
+.admin-form input[type="password"]:disabled,
+.admin-form input[type="url"]:disabled,
+.admin-form input[type="email"]:disabled,
+.admin-form input[type="number"]:disabled,
+.admin-form input[type="date"]:disabled,
+.admin-form input[type="datetime-local"]:disabled,
+.admin-form textarea[readonly],
+.admin-form input:not([type])[readonly],
+.admin-form input[type="text"][readonly],
+.admin-form input[type="password"][readonly],
+.admin-form input[type="url"][readonly],
+.admin-form input[type="email"][readonly],
+.admin-form input[type="number"][readonly],
+.admin-form input[type="date"][readonly],
+.admin-form input[type="datetime-local"][readonly] {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.admin-form input:not([type]):user-invalid,
+.admin-form input[type="text"]:user-invalid,
+.admin-form input[type="password"]:user-invalid,
+.admin-form input[type="url"]:user-invalid,
+.admin-form input[type="email"]:user-invalid,
+.admin-form input[type="number"]:user-invalid,
+.admin-form input[type="date"]:user-invalid,
+.admin-form input[type="datetime-local"]:user-invalid,
+.admin-form input:not([type]):invalid:not(:focus):not(:placeholder-shown),
+.admin-form input[type="text"]:invalid:not(:focus):not(:placeholder-shown),
+.admin-form input[type="password"]:invalid:not(:focus):not(:placeholder-shown),
+.admin-form input[type="url"]:invalid:not(:focus):not(:placeholder-shown),
+.admin-form input[type="email"]:invalid:not(:focus):not(:placeholder-shown),
+.admin-form input[type="number"]:invalid:not(:focus):not(:placeholder-shown),
+.admin-form input[type="date"]:invalid:not(:focus):not(:placeholder-shown),
+.admin-form input[type="datetime-local"]:invalid:not(:focus):not(:placeholder-shown) {
+  border-color: #e88a6a;
+}
+
+.admin-form input:not([type]):-webkit-autofill,
+.admin-form input[type="text"]:-webkit-autofill,
+.admin-form input[type="password"]:-webkit-autofill,
+.admin-form input[type="url"]:-webkit-autofill,
+.admin-form input[type="email"]:-webkit-autofill,
+.admin-form input[type="number"]:-webkit-autofill,
+.admin-form input[type="date"]:-webkit-autofill,
+.admin-form input[type="datetime-local"]:-webkit-autofill,
+.admin-form input:not([type]):-webkit-autofill:hover,
+.admin-form input[type="text"]:-webkit-autofill:hover,
+.admin-form input[type="password"]:-webkit-autofill:hover,
+.admin-form input[type="url"]:-webkit-autofill:hover,
+.admin-form input[type="email"]:-webkit-autofill:hover,
+.admin-form input[type="number"]:-webkit-autofill:hover,
+.admin-form input[type="date"]:-webkit-autofill:hover,
+.admin-form input[type="datetime-local"]:-webkit-autofill:hover,
+.admin-form input:not([type]):-webkit-autofill:focus,
+.admin-form input[type="text"]:-webkit-autofill:focus,
+.admin-form input[type="password"]:-webkit-autofill:focus,
+.admin-form input[type="url"]:-webkit-autofill:focus,
+.admin-form input[type="email"]:-webkit-autofill:focus,
+.admin-form input[type="number"]:-webkit-autofill:focus,
+.admin-form input[type="date"]:-webkit-autofill:focus,
+.admin-form input[type="datetime-local"]:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--ink);
+  -webkit-box-shadow: 0 0 0 1000px var(--surface) inset;
+  caret-color: var(--ink);
 }
 
 .admin-submit {
@@ -562,26 +671,7 @@ main {
   color: var(--accent);
 }
 
-.admin-form textarea,
-.admin-form select {
-  width: 100%;
-  padding: 0.85rem 1rem;
-  background: var(--surface);
-  color: var(--ink);
-  border: 1px solid var(--line);
-  font-family: var(--mono);
-  font-size: 0.95rem;
-  line-height: 1.5;
-}
-
-.admin-form textarea:focus-visible,
-.admin-form select:focus-visible {
-  outline: none;
-  border-color: var(--accent);
-}
-
 .research-form {
-  max-width: 48ch;
   margin-bottom: 2.5rem;
 }
 
@@ -603,7 +693,6 @@ main {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  max-width: 56ch;
 }
 
 .research-record {
