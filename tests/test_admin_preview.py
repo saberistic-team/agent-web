@@ -32,6 +32,7 @@ from app.admin_preview import (
     build_preview_pipeline_companies,
     build_preview_pipeline_detail,
     build_preview_section_rows,
+    clear_preview_context_cache,
     preview_company_fixture_ids,
     preview_contact_fixture_ids,
     render_preview_dashboard_main,
@@ -279,19 +280,15 @@ def test_admin_preview_briefs_list_and_detail_have_mock_data(
 
 @pytest.mark.unit
 def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytest.MonkeyPatch) -> None:
-    import random
-
     from argon2 import PasswordHasher
 
     from app.admin_preview import (
         PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID,
         preview_contact_restore_conflict,
     )
-    from app.preview_context import clear_preview_context_cache, load_preview_context
 
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "7")
-    monkeypatch.setenv("ADMIN_PREVIEW_REFERENCE_TIME", "2026-07-14T12:00:00+00:00")
     monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
     monkeypatch.setenv(
         "ADMIN_PASSWORD_HASH",
@@ -320,11 +317,9 @@ def test_preview_company_detail_archive_and_restore_actions(
     from argon2 import PasswordHasher
 
     from app.admin_auth import SESSION_COOKIE_NAME
-    from app.preview_context import clear_preview_context_cache
 
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "11")
-    monkeypatch.setenv("ADMIN_PREVIEW_REFERENCE_TIME", "2026-07-14T12:00:00+00:00")
     monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
     monkeypatch.setenv(
         "ADMIN_PASSWORD_HASH",
@@ -372,11 +367,9 @@ def test_preview_contact_detail_and_edit_archive_restore_actions(
     from argon2 import PasswordHasher
 
     from app.admin_auth import SESSION_COOKIE_NAME
-    from app.preview_context import clear_preview_context_cache
 
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "12")
-    monkeypatch.setenv("ADMIN_PREVIEW_REFERENCE_TIME", "2026-07-14T12:00:00+00:00")
     monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
     monkeypatch.setenv(
         "ADMIN_PASSWORD_HASH",

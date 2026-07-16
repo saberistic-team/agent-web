@@ -175,9 +175,9 @@ access logs or metrics for operational visibility if needed.
 | `ADMIN_TRUSTED_EDGE_CIDRS` | Production | Comma-separated public edge CIDRs (Cloudflare) stripped from the right of `X-Forwarded-For` before selecting the client |
 | `ADMIN_TRUST_PROXY_HEADERS` | **Deprecated** | Legacy boolean; ignored for source resolution unless paired with explicit CIDR settings above. Remove after migration. |
 | `ADMIN_PREVIEW_MODE` | Optional | **CI / local only.** When `1`/`true`, protected `/admin` GET pages render without login and admin pages fill with **randomized mock data** for Playwright screenshots. Hard-disabled if `BASE_URL` contains `saberistic.com`. Never set on production Render. |
-| `ADMIN_PREVIEW_SEED` | Optional | Root seed for mock admin randomization (CI/screenshot default `338001`). |
-| `ADMIN_PREVIEW_REFERENCE_TIME` | Optional | Frozen timezone-aware ISO timestamp for preview date fields (default `2026-07-15T14:30:00+00:00`). |
-| `ADMIN_PREVIEW_FIXTURE_VERSION` | Optional | Fixture schema version; bump to intentionally regenerate screenshot baselines. |
+| `ADMIN_PREVIEW_SEED` | Optional | Root seed for namespace-derived preview RNG (default `338`; screenshot launcher sets explicitly). |
+| `ADMIN_PREVIEW_REFERENCE_TIME` | Optional | Frozen UTC ISO timestamp for all time-derived preview fields (default `2026-07-14T12:00:00+00:00`). |
+| `ADMIN_PREVIEW_FIXTURE_VERSION` | Optional | Fixture schema version; bump when mock row shapes change. |
 | `BASE_URL` | Yes | Public site URL; `https://…` enables `Secure` session cookies |
 
 Set secrets in the Render dashboard (or locally via `.env` — never commit).

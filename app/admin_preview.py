@@ -5,19 +5,14 @@ Never used in production — only when ``Settings.admin_preview_enabled`` is tru
 
 from __future__ import annotations
 
+import hashlib
 import html
+import os
 import random
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from app.preview_context import (
-    DEFAULT_PREVIEW_REFERENCE_ISO,
-    DEFAULT_PREVIEW_ROOT_SEED,
-    PREVIEW_FIXTURE_VERSION,
-    fixture_rng,
-    preview_reference_now,
-)
 from app.acquisition_dashboard import (
     AcquisitionDashboardData,
     CompanyAttentionRow,
@@ -27,6 +22,143 @@ from app.acquisition_dashboard import (
 )
 from app.pipeline_stages import PIPELINE_STAGES
 from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES, TARGET_STATUSES
+
+# Checked-in defaults for CI screenshot runs (issue #338). Bump fixture version
+# when preview row shapes change and regenerate reviewer baselines intentionally.
+PREVIEW_FIXTURE_VERSION = "1"
+DEFAULT_PREVIEW_SEED = 338
+DEFAULT_PREVIEW_REFERENCE_TIME = datetime(2026, 7, 14, 12, 0, 0, tzinfo=timezone.utc)
+
+
+class PreviewContextError(ValueError):
+    """Invalid ADMIN_PREVIEW_* configuration."""
+
+
+@dataclass(frozen=True)
+class PreviewContext:
+    """Stable root seed, frozen reference time, and fixture schema version."""
+
+    root_seed: int
+    reference_time: datetime
+    fixture_version: str = PREVIEW_FIXTURE_VERSION
+
+    def __post_init__(self) -> None:
+        if self.reference_time.tzinfo is None:
+            object.__setattr__(
+                self,
+                "reference_time",
+                self.reference_time.replace(tzinfo=timezone.utc),
+            )
+        else:
+            object.__setattr__(
+                self,
+                "reference_time",
+                self.reference_time.astimezone(timezone.utc),
+            )
+
+    def reproducibility_fields(self) -> dict[str, str]:
+        return {
+            "admin_preview_seed": str(self.root_seed),
+            "admin_preview_reference_time": self.reference_time.isoformat(),
+            "preview_fixture_version": self.fixture_version,
+        }
+
+
+_CACHED_CONTEXT: PreviewContext | None = None
+
+
+def _parse_root_seed(raw: str) -> int:
+    text = (raw or "").strip()
+    if not text:
+        return DEFAULT_PREVIEW_SEED
+    try:
+        return int(text)
+    except ValueError as exc:
+        raise PreviewContextError(f"invalid ADMIN_PREVIEW_SEED: {raw!r}") from exc
+
+
+def _parse_reference_time(raw: str) -> datetime:
+    text = (raw or "").strip()
+    if not text:
+        return DEFAULT_PREVIEW_REFERENCE_TIME
+    try:
+        normalized = text[:-1] + "+00:00" if text.endswith("Z") else text
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise PreviewContextError(
+            f"invalid ADMIN_PREVIEW_REFERENCE_TIME: {raw!r}"
+        ) from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def load_preview_context_from_env(*, require_explicit: bool = False) -> PreviewContext:
+    """Load preview context from env; missing values use documented CI defaults."""
+    seed_raw = os.environ.get("ADMIN_PREVIEW_SEED", "")
+    time_raw = os.environ.get("ADMIN_PREVIEW_REFERENCE_TIME", "")
+    version_raw = (os.environ.get("ADMIN_PREVIEW_FIXTURE_VERSION") or "").strip()
+    if require_explicit:
+        if not seed_raw.strip():
+            raise PreviewContextError("ADMIN_PREVIEW_SEED is required")
+        if not time_raw.strip():
+            raise PreviewContextError("ADMIN_PREVIEW_REFERENCE_TIME is required")
+    return PreviewContext(
+        root_seed=_parse_root_seed(seed_raw),
+        reference_time=_parse_reference_time(time_raw),
+        fixture_version=version_raw or PREVIEW_FIXTURE_VERSION,
+    )
+
+
+def get_preview_context() -> PreviewContext:
+    global _CACHED_CONTEXT
+    if _CACHED_CONTEXT is None:
+        _CACHED_CONTEXT = load_preview_context_from_env()
+    return _CACHED_CONTEXT
+
+
+def clear_preview_context_cache() -> None:
+    """Reset cached context (tests)."""
+    global _CACHED_CONTEXT
+    _CACHED_CONTEXT = None
+
+
+def derive_namespace_seed(root_seed: int, namespace: str) -> int:
+    """Order-independent seed: root + stable namespace (documented construction)."""
+    digest = hashlib.sha256(f"{root_seed}:{namespace}".encode()).digest()
+    return int.from_bytes(digest[:8], "big")
+
+
+def preview_rng_for(namespace: str, ctx: PreviewContext | None = None) -> random.Random:
+    context = ctx or get_preview_context()
+    return random.Random(derive_namespace_seed(context.root_seed, namespace))
+
+
+def preview_context_env(ctx: PreviewContext | None = None) -> dict[str, str]:
+    """Env vars for screenshot launcher / local preview server."""
+    context = ctx or load_preview_context_from_env()
+    return {
+        "ADMIN_PREVIEW_SEED": str(context.root_seed),
+        "ADMIN_PREVIEW_REFERENCE_TIME": context.reference_time.isoformat(),
+        "ADMIN_PREVIEW_FIXTURE_VERSION": context.fixture_version,
+    }
+
+
+def _resolve_rng(rng: random.Random | None, namespace: str) -> random.Random:
+    if rng is not None:
+        return rng
+    return preview_rng_for(namespace)
+
+
+def _resolve_now(now: datetime | None) -> datetime:
+    if now is not None:
+        return now
+    return get_preview_context().reference_time
+
+
+def _child_rng(parent_rng: random.Random | None) -> random.Random | None:
+    """Pass explicit parent rng to children; else let each child use its namespace."""
+    return parent_rng if parent_rng is not None else None
 
 
 COMPANY_NAMES = (
@@ -172,38 +304,6 @@ class PreviewDashboardData:
     generated_at: str
 
 
-def _preview_rng(namespace: str) -> random.Random:
-    """Order-independent RNG for one preview fixture namespace."""
-    return fixture_rng(namespace)
-
-
-def _resolve_rng(
-    rng: random.Random | None,
-    namespace: str,
-) -> random.Random:
-    if rng is not None:
-        return rng
-    return _preview_rng(namespace)
-
-
-def _resolve_now(now: datetime | None) -> datetime:
-    if now is not None:
-        return now
-    return preview_reference_now()
-
-
-def _companies_rng(rng: random.Random | None) -> random.Random:
-    return rng if rng is not None else _preview_rng("companies")
-
-
-def _pipeline_companies_rng(rng: random.Random | None) -> random.Random:
-    return rng if rng is not None else _preview_rng("pipeline_companies")
-
-
-def _briefs_rng(rng: random.Random | None) -> random.Random:
-    return rng if rng is not None else _preview_rng("briefs")
-
-
 def _slug_email(first: str, last: str, company: str, rng: random.Random) -> str:
     domain = company.lower().replace(" ", "") + rng.choice(
         (".io", ".com", ".co", ".dev")
@@ -221,36 +321,32 @@ def build_preview_acquisition_dashboard_data(
     now: datetime | None = None,
 ) -> AcquisitionDashboardData:
     """Randomized acquisition dashboard for ADMIN_PREVIEW_MODE screenshots."""
-    resolved_rng = _resolve_rng(rng, "acquisition_dashboard")
-    resolved_now = _resolve_now(now)
+    rng = _resolve_rng(rng, "acquisition_dashboard")
+    now = _resolve_now(now)
     companies = list(COMPANY_NAMES)
-    resolved_rng.shuffle(companies)
+    rng.shuffle(companies)
 
     def _buckets(registry: dict[str, str]) -> tuple[CountBucket, ...]:
-        chosen = resolved_rng.sample(list(registry.keys()), k=min(len(registry), resolved_rng.randint(3, 5)))
+        chosen = rng.sample(list(registry.keys()), k=min(len(registry), rng.randint(3, 5)))
         return tuple(
-            CountBucket(key=key, label=registry[key], count=resolved_rng.randint(1, 18))
+            CountBucket(key=key, label=registry[key], count=rng.randint(1, 18))
             for key in chosen
         )
 
     def _next_actions(*, overdue: bool) -> tuple[NextActionRow, ...]:
         stage_keys = list(PIPELINE_STAGES.keys())
         rows: list[NextActionRow] = []
-        for i in range(resolved_rng.randint(3, 6)):
+        for i in range(rng.randint(3, 6)):
             company = companies[i % len(companies)]
-            delta_days = resolved_rng.randint(1, 10)
-            due_at = (
-                resolved_now - timedelta(days=delta_days)
-                if overdue
-                else resolved_now + timedelta(days=delta_days)
-            )
+            delta_days = rng.randint(1, 10)
+            due_at = now - timedelta(days=delta_days) if overdue else now + timedelta(days=delta_days)
             rows.append(
                 NextActionRow(
-                    company_id=_preview_uuid(resolved_rng),
+                    company_id=_preview_uuid(rng),
                     company_name=company,
                     pipeline_stage=stage_keys[i % len(stage_keys)],
-                    pipeline_owner=resolved_rng.choice(("alex", "sam", "preview")),
-                    next_action=resolved_rng.choice(BRIEF_TEXTS)[:140],
+                    pipeline_owner=rng.choice(("alex", "sam", "preview")),
+                    next_action=rng.choice(BRIEF_TEXTS)[:140],
                     next_action_due_at=due_at,
                 )
             )
@@ -258,21 +354,17 @@ def build_preview_acquisition_dashboard_data(
 
     def _evidence(*, stale: bool) -> tuple[EvidenceRow, ...]:
         rows: list[EvidenceRow] = []
-        for i in range(resolved_rng.randint(3, 5)):
+        for i in range(rng.randint(3, 5)):
             company = companies[(i + 2) % len(companies)]
-            created = resolved_now - timedelta(days=resolved_rng.randint(1, 20))
-            expires = (
-                resolved_now - timedelta(days=resolved_rng.randint(1, 5))
-                if stale
-                else resolved_now + timedelta(days=30)
-            )
+            created = now - timedelta(days=rng.randint(1, 20))
+            expires = now - timedelta(days=rng.randint(1, 5)) if stale else now + timedelta(days=30)
             rows.append(
                 EvidenceRow(
-                    record_id=_preview_uuid(resolved_rng),
-                    company_id=_preview_uuid(resolved_rng),
+                    record_id=_preview_uuid(rng),
+                    company_id=_preview_uuid(rng),
                     company_name=company,
-                    record_type=resolved_rng.choice(("verified_fact", "public_signal")),
-                    body=resolved_rng.choice(BRIEF_TEXTS)[:120],
+                    record_type=rng.choice(("verified_fact", "public_signal")),
+                    body=rng.choice(BRIEF_TEXTS)[:120],
                     created_at=created,
                     expires_at=expires,
                 )
@@ -288,7 +380,7 @@ def build_preview_acquisition_dashboard_data(
         for i, company in enumerate(uncovered_names):
             rows.append(
                 CompanyAttentionRow(
-                    company_id=_preview_uuid(resolved_rng),
+                    company_id=_preview_uuid(rng),
                     company_name=company,
                     target_status="target" if i == 0 else "watching",
                     category=category_keys[i % len(category_keys)],
@@ -302,18 +394,18 @@ def build_preview_acquisition_dashboard_data(
         category_keys = tuple(COMPANY_CATEGORIES.keys())
         pipeline_keys = tuple(PIPELINE_STAGES.keys())
         rows: list[CompanyAttentionRow] = []
-        for i in range(resolved_rng.randint(2, 4)):
+        for i in range(rng.randint(2, 4)):
             company = companies[(i + 4) % len(companies)]
-            stage = resolved_rng.choice(stage_keys)
-            category = resolved_rng.choice(category_keys)
+            stage = rng.choice(stage_keys)
+            category = rng.choice(category_keys)
             rows.append(
                 CompanyAttentionRow(
-                    company_id=_preview_uuid(resolved_rng),
+                    company_id=_preview_uuid(rng),
                     company_name=company,
-                    target_status=resolved_rng.choice(("target", "watching")),
+                    target_status=rng.choice(("target", "watching")),
                     category=category,
                     stage=stage,
-                    pipeline_stage=resolved_rng.choice(pipeline_keys) if pipeline_only else None,
+                    pipeline_stage=rng.choice(pipeline_keys) if pipeline_only else None,
                 )
             )
         return tuple(rows)
@@ -329,7 +421,7 @@ def build_preview_acquisition_dashboard_data(
         stale_evidence=_evidence(stale=True),
         without_decision_maker=_without_decision_maker(),
         without_next_action=_attention(pipeline_only=True),
-        generated_at=resolved_now,
+        generated_at=now,
     )
 
 
@@ -339,35 +431,33 @@ def build_preview_dashboard_data(
     now: datetime | None = None,
 ) -> PreviewDashboardData:
     """Build a randomized but plausible admin dashboard payload."""
-    resolved_rng = _resolve_rng(rng, "legacy_dashboard")
-    resolved_now = _resolve_now(now)
+    rng = _resolve_rng(rng, "dashboard")
+    now = _resolve_now(now)
 
-    briefs_this_week = resolved_rng.randint(4, 28)
-    paid_this_week = resolved_rng.randint(1, max(1, briefs_this_week // 2))
-    open_prospects = resolved_rng.randint(6, 40)
-    sessions_active = resolved_rng.randint(1, 4)
+    briefs_this_week = rng.randint(4, 28)
+    paid_this_week = rng.randint(1, max(1, briefs_this_week // 2))
+    open_prospects = rng.randint(6, 40)
+    sessions_active = rng.randint(1, 4)
 
-    row_count = resolved_rng.randint(4, 8)
+    row_count = rng.randint(4, 8)
     companies = list(COMPANY_NAMES)
-    resolved_rng.shuffle(companies)
+    rng.shuffle(companies)
     rows: list[PreviewBriefRow] = []
     for i in range(row_count):
         company = companies[i % len(companies)]
-        first = resolved_rng.choice(CONTACT_FIRST)
-        last = resolved_rng.choice(CONTACT_LAST)
-        hours_ago = resolved_rng.randint(1, 96)
-        submitted = resolved_now - timedelta(
-            hours=hours_ago, minutes=resolved_rng.randint(0, 50)
-        )
+        first = rng.choice(CONTACT_FIRST)
+        last = rng.choice(CONTACT_LAST)
+        hours_ago = rng.randint(1, 96)
+        submitted = now - timedelta(hours=hours_ago, minutes=rng.randint(0, 50))
         rows.append(
             PreviewBriefRow(
                 company=company,
                 contact=f"{first} {last}",
-                email=_slug_email(first, last, company, resolved_rng),
-                status=resolved_rng.choice(STATUSES),
-                source=resolved_rng.choice(SOURCES),
+                email=_slug_email(first, last, company, rng),
+                status=rng.choice(STATUSES),
+                source=rng.choice(SOURCES),
                 submitted_at=submitted.strftime("%Y-%m-%d %H:%M UTC"),
-                amount_cents=resolved_rng.choice((20_000, 20_000, 35_000, 50_000)),
+                amount_cents=rng.choice((20_000, 20_000, 35_000, 50_000)),
             )
         )
 
@@ -378,7 +468,7 @@ def build_preview_dashboard_data(
         sessions_active=sessions_active,
         recent_briefs=tuple(rows),
         preview_banner="Preview data — not production",
-        generated_at=resolved_now.strftime("%Y-%m-%d %H:%M:%S UTC"),
+        generated_at=now.strftime("%Y-%m-%d %H:%M:%S UTC"),
     )
 
 
@@ -468,70 +558,70 @@ def build_preview_section_rows(
     now: datetime | None = None,
 ) -> tuple[tuple[str, ...], ...]:
     """Build randomized table rows for an admin section preview page."""
-    resolved_rng = _resolve_rng(rng, f"section_rows:{active_path}")
-    resolved_now = _resolve_now(now)
+    rng = _resolve_rng(rng, f"section:{active_path}")
+    now = _resolve_now(now)
     companies = list(COMPANY_NAMES)
-    resolved_rng.shuffle(companies)
-    count = resolved_rng.randint(4, 8)
+    rng.shuffle(companies)
+    count = rng.randint(4, 8)
     rows: list[tuple[str, ...]] = []
 
     for i in range(count):
         company = companies[i % len(companies)]
-        person = _person(resolved_rng)
+        person = _person(rng)
         first, last = person.split(" ", 1)
-        stamp = _relative_stamp(resolved_rng, resolved_now)
+        stamp = _relative_stamp(rng, now)
         if active_path == "/admin/companies":
             rows.append(
                 (
                     company,
-                    resolved_rng.choice(("Fintech", "AI infrastructure", "Digital assets", "Investor", "Other")),
-                    resolved_rng.choice(("Pre-seed", "Seed", "Series A", "Series B+")),
-                    resolved_rng.choice(("Target", "Watching", "Not a fit")),
+                    rng.choice(("Fintech", "AI infrastructure", "Digital assets", "Investor", "Other")),
+                    rng.choice(("Pre-seed", "Seed", "Series A", "Series B+")),
+                    rng.choice(("Target", "Watching", "Not a fit")),
                     stamp,
                 )
             )
         elif active_path == "/admin/contacts":
             from app.contacts import BUYING_ROLES
 
-            role_count = resolved_rng.randint(1, 3)
-            roles = resolved_rng.sample(list(BUYING_ROLES.values()), k=min(role_count, len(BUYING_ROLES)))
+            role_count = rng.randint(1, 3)
+            roles = rng.sample(list(BUYING_ROLES.values()), k=min(role_count, len(BUYING_ROLES)))
             rows.append(
                 (
                     person,
                     ", ".join(roles),
                     company,
-                    _slug_email(first, last, company, resolved_rng),
+                    _slug_email(first, last, company, rng),
                     stamp,
                 )
             )
         elif active_path == "/admin/signals":
             rows.append(
                 (
-                    resolved_rng.choice(SIGNAL_TYPES),
+                    rng.choice(SIGNAL_TYPES),
                     company,
-                    str(resolved_rng.randint(42, 98)),
-                    resolved_rng.choice(SOURCES),
+                    str(rng.randint(42, 98)),
+                    rng.choice(SOURCES),
                     stamp,
                 )
             )
         elif active_path == "/admin/pipeline":
-            stage_key = resolved_rng.choice(list(PIPELINE_STAGES))
+            stage_key = rng.choice(list(PIPELINE_STAGES))
             rows.append(
                 (
                     f"{company.split()[0]} pilot",
                     company,
                     PIPELINE_STAGES[stage_key],
-                    _format_amount(resolved_rng.choice((20_000, 35_000, 50_000, 75_000))),
+                    _format_amount(rng.choice((20_000, 35_000, 50_000, 75_000))),
                     stamp,
                 )
             )
         elif active_path == "/admin/imports":
             rows.append(
                 (
-                    f"import-{resolved_rng.randint(100, 999)}",
-                    str(resolved_rng.randint(40, 2400)),
-                    resolved_rng.choice(IMPORT_STATUSES),
-                    resolved_rng.choice(("csv", "enrichment", "crm sync")),
+                    f"import-{rng.randint(100, 999)}",
+                    str(rng.randint(40, 2400)),
+                    rng.choice(IMPORT_STATUSES),
+                    rng.choice(("csv", "enrichment", "crm sync")),
                     stamp,
                 )
             )
@@ -539,8 +629,8 @@ def build_preview_section_rows(
             rows.append(
                 (
                     f"{company.split()[0]} ICP",
-                    str(resolved_rng.randint(18, 220)),
-                    resolved_rng.choice(("geo+size", "tech stack", "hiring")),
+                    str(rng.randint(18, 220)),
+                    rng.choice(("geo+size", "tech stack", "hiring")),
                     person,
                     stamp,
                 )
@@ -548,19 +638,19 @@ def build_preview_section_rows(
         elif active_path == "/admin/analytics":
             rows.append(
                 (
-                    resolved_rng.choice(("Conversion", "Paid rate", "Time-to-reply", "Pipeline $")),
-                    resolved_rng.choice(("7d", "30d", "90d")),
-                    str(resolved_rng.randint(8, 96)),
-                    f"{resolved_rng.choice(('+', '-'))}{resolved_rng.randint(1, 18)}%",
-                    resolved_rng.choice(("all", "inbound", "partner")),
+                    rng.choice(("Conversion", "Paid rate", "Time-to-reply", "Pipeline $")),
+                    rng.choice(("7d", "30d", "90d")),
+                    str(rng.randint(8, 96)),
+                    f"{rng.choice(('+', '-'))}{rng.randint(1, 18)}%",
+                    rng.choice(("all", "inbound", "partner")),
                 )
             )
         elif active_path == "/admin/content":
             rows.append(
                 (
                     f"{company} note",
-                    resolved_rng.choice(CONTENT_KINDS),
-                    resolved_rng.choice(("draft", "review", "published")),
+                    rng.choice(CONTENT_KINDS),
+                    rng.choice(("draft", "review", "published")),
                     person,
                     stamp,
                 )
@@ -568,17 +658,17 @@ def build_preview_section_rows(
         elif active_path == "/admin/settings":
             rows.append(
                 (
-                    resolved_rng.choice(
+                    rng.choice(
                         ("session TTL", "MFA required", "webhook URL", "timezone")
                     ),
-                    resolved_rng.choice(("14d", "on", "https://hooks.example/…", "UTC")),
-                    resolved_rng.choice(("security", "integrations", "team")),
+                    rng.choice(("14d", "on", "https://hooks.example/…", "UTC")),
+                    rng.choice(("security", "integrations", "team")),
                     person,
                     stamp,
                 )
             )
         else:
-            rows.append((company, person, stamp, resolved_rng.choice(STATUSES), "preview"))
+            rows.append((company, person, stamp, rng.choice(STATUSES), "preview"))
 
     return tuple(rows)
 
@@ -590,22 +680,22 @@ def build_preview_pipeline_companies(
     now: datetime | None = None,
 ) -> list[dict[str, object]]:
     """Randomized pipeline companies for ADMIN_PREVIEW_MODE."""
-    resolved_rng = _pipeline_companies_rng(rng)
-    resolved_now = _resolve_now(now)
+    rng = _resolve_rng(rng, "pipeline")
+    now = _resolve_now(now)
     stage_keys = list(PIPELINE_STAGES)
     companies: list[dict[str, object]] = []
     for index, company_id in enumerate(PREVIEW_PIPELINE_COMPANY_IDS):
         stage_key = stage_keys[index % len(stage_keys)]
         if stage_filter and stage_key != stage_filter:
             continue
-        due_offset = resolved_rng.randint(-5, 12)
+        due_offset = rng.randint(-5, 12)
         companies.append(
             {
                 "id": company_id,
                 "name": COMPANY_NAMES[index % len(COMPANY_NAMES)],
                 "pipeline_stage": stage_key,
-                "expected_value_cents": resolved_rng.choice((25_000, 50_000, 75_000, 120_000)),
-                "next_action": resolved_rng.choice(
+                "expected_value_cents": rng.choice((25_000, 50_000, 75_000, 120_000)),
+                "next_action": rng.choice(
                     (
                         "Send diagnostic proposal",
                         "Schedule discovery call",
@@ -613,8 +703,8 @@ def build_preview_pipeline_companies(
                         None,
                     )
                 ),
-                "next_action_due_at": resolved_now + timedelta(days=due_offset),
-                "pipeline_owner": resolved_rng.choice(("alex", "sam", "preview")),
+                "next_action_due_at": now + timedelta(days=due_offset),
+                "pipeline_owner": rng.choice(("alex", "sam", "preview")),
             }
         )
     return companies
@@ -632,19 +722,19 @@ def build_preview_companies(
     now: datetime | None = None,
 ) -> list[dict[str, object]]:
     """Randomized company rows for ADMIN_PREVIEW_MODE list screenshots."""
-    resolved_rng = _companies_rng(rng)
-    resolved_now = _resolve_now(now)
+    rng = _resolve_rng(rng, "companies")
+    now = _resolve_now(now)
     category_keys = list(COMPANY_CATEGORIES)
     stage_keys = list(COMPANY_STAGES)
     target_keys = list(TARGET_STATUSES)
     companies: list[dict[str, object]] = []
     for index, company_id in enumerate(PREVIEW_COMPANY_IDS):
         name = COMPANY_NAMES[index % len(COMPANY_NAMES)]
-        verified_days = resolved_rng.randint(-120, 45)
-        verified_at = (resolved_now + timedelta(days=verified_days)).date().isoformat()
+        verified_days = rng.randint(-120, 45)
+        verified_at = (now + timedelta(days=verified_days)).date().isoformat()
         archived_at = None
         if index == len(PREVIEW_COMPANY_IDS) - 1:
-            archived_at = (resolved_now - timedelta(days=resolved_rng.randint(3, 30))).isoformat()
+            archived_at = (now - timedelta(days=rng.randint(3, 30))).isoformat()
         companies.append(
             {
                 "id": company_id,
@@ -693,13 +783,13 @@ def build_preview_contacts(
     """Randomized contact rows and company options for ADMIN_PREVIEW_MODE."""
     from app.contacts import BUYING_ROLES
 
-    if rng is not None:
-        contact_rng = company_rng = rng
-    else:
-        contact_rng = _preview_rng("contacts")
-        company_rng = _companies_rng(None)
-    resolved_now = _resolve_now(now)
-    companies = build_preview_companies(rng=company_rng, now=resolved_now, include_archived=True)
+    rng = _resolve_rng(rng, "contacts")
+    now = _resolve_now(now)
+    companies = build_preview_companies(
+        rng=_child_rng(rng),
+        now=now,
+        include_archived=True,
+    )
     company_by_id = {row["id"]: row for row in companies}
     role_keys = list(BUYING_ROLES)
     contacts: list[dict[str, object]] = []
@@ -708,27 +798,21 @@ def build_preview_contacts(
         first = CONTACT_FIRST[index % len(CONTACT_FIRST)]
         last = CONTACT_LAST[index % len(CONTACT_LAST)]
         company_name = str(company["name"])
-        role_count = contact_rng.randint(1, 2)
-        buying_roles = contact_rng.sample(role_keys, k=min(role_count, len(role_keys)))
+        role_count = rng.randint(1, 2)
+        buying_roles = rng.sample(role_keys, k=min(role_count, len(role_keys)))
         archived_at = None
         if index == len(PREVIEW_CONTACT_IDS) - 1:
-            archived_at = (
-                resolved_now - timedelta(days=contact_rng.randint(3, 30))
-            ).isoformat()
+            archived_at = (now - timedelta(days=rng.randint(3, 30))).isoformat()
         contacts.append(
             {
                 "id": contact_id,
                 "full_name": f"{first} {last}",
-                "title": contact_rng.choice(
-                    ("CTO", "VP Engineering", "Founder", "Head of Product")
-                ),
+                "title": rng.choice(("CTO", "VP Engineering", "Founder", "Head of Product")),
                 "buying_roles": buying_roles,
                 "company_id": company["id"],
                 "company_name": company_name,
-                "email": _slug_email(first, last, company_name, contact_rng),
-                "last_interaction_at": (
-                    resolved_now - timedelta(days=contact_rng.randint(1, 90))
-                ).date().isoformat(),
+                "email": _slug_email(first, last, company_name, rng),
+                "last_interaction_at": (now - timedelta(days=rng.randint(1, 90))).date().isoformat(),
                 "archived_at": archived_at,
             }
         )
@@ -761,22 +845,25 @@ def build_preview_pipeline_detail(
     now: datetime | None = None,
 ) -> tuple[dict[str, object], list[dict[str, object]], list[dict[str, object]]] | None:
     """Preview pipeline detail for a fixed company id."""
-    resolved_now = _resolve_now(now)
-    pipeline_rng = _pipeline_companies_rng(rng)
-    companies = build_preview_pipeline_companies(rng=pipeline_rng, now=resolved_now)
+    rng = _resolve_rng(rng, "pipeline_detail")
+    now = _resolve_now(now)
+    companies = build_preview_pipeline_companies(
+        rng=_child_rng(rng),
+        now=now,
+    )
     company = next((row for row in companies if row["id"] == company_id), None)
     if company is None:
         return None
     stage = str(company["pipeline_stage"])
     history = [
         {
-            "changed_at": resolved_now - timedelta(days=14),
+            "changed_at": now - timedelta(days=14),
             "from_stage": "researching",
             "to_stage": "qualified",
             "changed_by": "preview",
         },
         {
-            "changed_at": resolved_now - timedelta(days=7),
+            "changed_at": now - timedelta(days=7),
             "from_stage": "qualified",
             "to_stage": stage,
             "changed_by": "preview",
@@ -784,12 +871,12 @@ def build_preview_pipeline_detail(
     ]
     activities = [
         {
-            "created_at": resolved_now - timedelta(days=3),
+            "created_at": now - timedelta(days=3),
             "activity_type": "outreach",
             "summary": "Sent intro email with diagnostic overview.",
         },
         {
-            "created_at": resolved_now - timedelta(days=1),
+            "created_at": now - timedelta(days=1),
             "activity_type": "reply",
             "summary": "Prospect asked for pricing and timeline.",
         },
@@ -812,8 +899,8 @@ def build_preview_company(
     now: datetime | None = None,
 ) -> dict[str, object] | None:
     """Return one preview company row for detail/editor screenshots."""
-    resolved_rng = _resolve_rng(rng, f"company:{company_id}")
-    resolved_now = _resolve_now(now)
+    rng = _resolve_rng(rng, "company")
+    now = _resolve_now(now)
     if company_id == PREVIEW_COMPANY_POPULATED_ID:
         return {
             "id": company_id,
@@ -828,7 +915,7 @@ def build_preview_company(
             "headcount_estimate": 240,
             "funding_summary": "Series B · $48M · 2025",
             "target_status": "target",
-            "last_verified_at": (resolved_now - timedelta(days=12)).date().isoformat(),
+            "last_verified_at": (now - timedelta(days=12)).date().isoformat(),
             "notes": (
                 "Primary diagnostic prospect. Long notes field for screenshot "
                 "overflow checks across desktop and mobile viewports."
@@ -848,9 +935,12 @@ def build_preview_company(
             "target_status": "not_a_fit",
             "last_verified_at": None,
             "notes": None,
-            "archived_at": (resolved_now - timedelta(days=21)).isoformat(),
+            "archived_at": (now - timedelta(days=21)).isoformat(),
         }
-    pipeline = build_preview_pipeline_companies(rng=_pipeline_companies_rng(rng), now=resolved_now)
+    pipeline = build_preview_pipeline_companies(
+        rng=_child_rng(rng),
+        now=now,
+    )
     match = next((row for row in pipeline if row["id"] == company_id), None)
     if match is not None:
         return {
@@ -876,11 +966,19 @@ def build_preview_companies_for_select(
     now: datetime | None = None,
 ) -> list[dict[str, object]]:
     """Companies for contact form company pickers in preview mode."""
-    populated = build_preview_company(PREVIEW_COMPANY_POPULATED_ID, rng=rng, now=now)
+    populated = build_preview_company(
+        PREVIEW_COMPANY_POPULATED_ID,
+        rng=_child_rng(rng),
+        now=now,
+    )
     assert populated is not None
     rows = [populated]
     for company_id in PREVIEW_PIPELINE_COMPANY_IDS[:2]:
-        row = build_preview_company(company_id, rng=rng, now=now)
+        row = build_preview_company(
+            company_id,
+            rng=_child_rng(rng),
+            now=now,
+        )
         if row is not None:
             rows.append(row)
     return rows
@@ -893,7 +991,10 @@ def build_preview_company_contacts(
 ) -> list[dict[str, object]]:
     """Contacts linked to a preview company detail page."""
     if company_id == PREVIEW_COMPANY_POPULATED_ID:
-        contact = build_preview_contact(PREVIEW_CONTACT_POPULATED_ID, rng=rng)
+        contact = build_preview_contact(
+            PREVIEW_CONTACT_POPULATED_ID,
+            rng=_child_rng(rng),
+        )
         return [contact] if contact is not None else []
     return []
 
@@ -907,8 +1008,8 @@ def build_preview_company_research(
     """Research records with public-evidence controls for screenshot fixtures."""
     if company_id != PREVIEW_COMPANY_POPULATED_ID:
         return []
-    rng = _resolve_rng(rng, f"company_research:{company_id}")
-    resolved_now = _resolve_now(now)
+    rng = _resolve_rng(rng, "company_research")
+    now = _resolve_now(now)
     return [
         {
             "record_type": "verified_fact",
@@ -916,10 +1017,10 @@ def build_preview_company_research(
             "source_name": "TechCrunch",
             "source_url": "https://techcrunch.com/example/northwind-series-b",
             "observed_value": "48000000",
-            "observed_at": (resolved_now - timedelta(days=30)).isoformat(),
+            "observed_at": (now - timedelta(days=30)).isoformat(),
             "confidence": 0.92,
-            "review_at": (resolved_now + timedelta(days=30)).isoformat(),
-            "expires_at": (resolved_now + timedelta(days=120)).isoformat(),
+            "review_at": (now + timedelta(days=30)).isoformat(),
+            "expires_at": (now + timedelta(days=120)).isoformat(),
         },
         {
             "record_type": "public_signal",
@@ -927,10 +1028,10 @@ def build_preview_company_research(
             "source_name": "LinkedIn Jobs",
             "source_url": "https://www.linkedin.com/jobs/view/1234567890",
             "observed_value": "12 open roles",
-            "observed_at": (resolved_now - timedelta(days=4)).isoformat(),
+            "observed_at": (now - timedelta(days=4)).isoformat(),
             "confidence": 0.78,
-            "review_at": (resolved_now + timedelta(days=14)).isoformat(),
-            "expires_at": (resolved_now + timedelta(days=60)).isoformat(),
+            "review_at": (now + timedelta(days=14)).isoformat(),
+            "expires_at": (now + timedelta(days=60)).isoformat(),
         },
         {
             "record_type": "hypothesis",
@@ -953,13 +1054,15 @@ def build_preview_contact(
     now: datetime | None = None,
 ) -> dict[str, object] | None:
     """Return one preview contact row for detail/editor screenshots."""
-    resolved_rng = _resolve_rng(rng, f"contact:{contact_id}")
-    resolved_now = _resolve_now(now)
+    rng = _resolve_rng(rng, "contact")
+    now = _resolve_now(now)
     if contact_id == PREVIEW_CONTACT_POPULATED_ID:
-        first = resolved_rng.choice(CONTACT_FIRST)
-        last = resolved_rng.choice(CONTACT_LAST)
+        first = rng.choice(CONTACT_FIRST)
+        last = rng.choice(CONTACT_LAST)
         company = build_preview_company(
-            PREVIEW_COMPANY_POPULATED_ID, rng=rng, now=resolved_now
+            PREVIEW_COMPANY_POPULATED_ID,
+            rng=_child_rng(rng),
+            now=now,
         )
         company_name = str(company["name"]) if company else "Northwind Labs"
         return {
@@ -967,13 +1070,13 @@ def build_preview_contact(
             "full_name": f"{first} {last}",
             "title": "VP Engineering",
             "profile_url": f"https://linkedin.com/in/{first.lower()}-{last.lower()}",
-            "email": _slug_email(first, last, company_name.split("—")[0].strip(), resolved_rng),
+            "email": _slug_email(first, last, company_name.split("—")[0].strip(), rng),
             "email_permission": "permitted",
             "company_id": PREVIEW_COMPANY_POPULATED_ID,
             "company_name": company_name,
             "buying_roles": ["technical_buyer", "executive_buyer"],
             "relationship_strength": "warm",
-            "last_interaction_at": (resolved_now - timedelta(days=6)).date().isoformat(),
+            "last_interaction_at": (now - timedelta(days=6)).date().isoformat(),
             "notes": "Primary technical buyer; prefers async email before calls.",
             "archived_at": None,
         }
@@ -991,7 +1094,7 @@ def build_preview_contact(
             "relationship_strength": "cold",
             "last_interaction_at": None,
             "notes": None,
-            "archived_at": (resolved_now - timedelta(days=45)).isoformat(),
+            "archived_at": (now - timedelta(days=45)).isoformat(),
         }
     return None
 
@@ -1005,7 +1108,7 @@ def build_preview_contact_research(
     """Research records for contact detail screenshots."""
     if contact_id != PREVIEW_CONTACT_POPULATED_ID:
         return []
-    resolved_now = _resolve_now(now)
+    now = _resolve_now(now)
     return [
         {
             "record_type": "relationship_context",
@@ -1024,7 +1127,7 @@ def build_preview_contact_research(
             "source_name": "CRM",
             "source_url": None,
             "observed_value": None,
-            "observed_at": (resolved_now - timedelta(days=1)).isoformat(),
+            "observed_at": (now - timedelta(days=1)).isoformat(),
             "confidence": None,
             "review_at": None,
             "expires_at": None,
@@ -1059,23 +1162,17 @@ def build_preview_brief_rows(
     now: datetime | None = None,
 ) -> list[dict[str, object]]:
     """Randomized project-brief list rows for ADMIN_PREVIEW_MODE screenshots."""
-    resolved_rng = _briefs_rng(rng)
-    resolved_now = _resolve_now(now)
+    rng = _resolve_rng(rng, "briefs")
+    now = _resolve_now(now)
     companies = list(COMPANY_NAMES)
-    resolved_rng.shuffle(companies)
-    count = resolved_rng.randint(5, 9)
+    rng.shuffle(companies)
+    count = rng.randint(5, 9)
     rows: list[dict[str, object]] = []
     for i in range(count):
         company = companies[i % len(companies)]
         brief_id = i + 1
-        status = (
-            BRIEF_PAYMENT_STATUSES[0]
-            if brief_id == 2
-            else resolved_rng.choice(BRIEF_PAYMENT_STATUSES)
-        )
-        created = resolved_now - timedelta(
-            hours=resolved_rng.randint(2, 120), minutes=resolved_rng.randint(0, 50)
-        )
+        status = BRIEF_PAYMENT_STATUSES[0] if brief_id == 2 else rng.choice(BRIEF_PAYMENT_STATUSES)
+        created = now - timedelta(hours=rng.randint(2, 120), minutes=rng.randint(0, 50))
         paid_at: datetime | None = None
         session_id: str | None = None
         intent_id: str | None = None
@@ -1088,17 +1185,17 @@ def build_preview_brief_rows(
         # Keep id=1 full-price paid, id=2 unpaid+nullable, id=4 discounted paid.
         if brief_id == 1:
             status = "paid"
-            paid_at = created + timedelta(minutes=resolved_rng.randint(5, 90))
-            session_id = f"cs_preview_{resolved_rng.randint(100000, 999999)}"
-            intent_id = f"pi_preview_{resolved_rng.randint(100000, 999999)}"
+            paid_at = created + timedelta(minutes=rng.randint(5, 90))
+            session_id = f"cs_preview_{rng.randint(100000, 999999)}"
+            intent_id = f"pi_preview_{rng.randint(100000, 999999)}"
             payment_subtotal_cents = 20_000
             payment_amount_cents = 20_000
             payment_currency = "usd"
         elif brief_id == PREVIEW_BRIEF_CONVERT_MATCHES_ID:
             status = "paid"
-            paid_at = created + timedelta(minutes=resolved_rng.randint(5, 90))
-            session_id = f"cs_preview_{resolved_rng.randint(100000, 999999)}"
-            intent_id = f"pi_preview_{resolved_rng.randint(100000, 999999)}"
+            paid_at = created + timedelta(minutes=rng.randint(5, 90))
+            session_id = f"cs_preview_{rng.randint(100000, 999999)}"
+            intent_id = f"pi_preview_{rng.randint(100000, 999999)}"
             payment_subtotal_cents = 20_000
             payment_discount_cents = 5_000
             payment_amount_cents = 15_000
@@ -1106,27 +1203,27 @@ def build_preview_brief_rows(
             stripe_promotion_code_id = "promo_preview_25off"
             stripe_coupon_id = "coupon_preview_25off"
         elif status == "paid":
-            paid_at = created + timedelta(minutes=resolved_rng.randint(5, 90))
-            session_id = f"cs_preview_{resolved_rng.randint(100000, 999999)}"
-            intent_id = f"pi_preview_{resolved_rng.randint(100000, 999999)}"
+            paid_at = created + timedelta(minutes=rng.randint(5, 90))
+            session_id = f"cs_preview_{rng.randint(100000, 999999)}"
+            intent_id = f"pi_preview_{rng.randint(100000, 999999)}"
             payment_subtotal_cents = 20_000
             payment_amount_cents = 20_000
             payment_currency = "usd"
-        utm_source = None if brief_id == 2 else resolved_rng.choice(UTM_SOURCES)
-        utm_medium = None if brief_id == 2 else resolved_rng.choice(UTM_MEDIUMS)
-        utm_campaign = None if brief_id == 2 else resolved_rng.choice(UTM_CAMPAIGNS)
-        utm_content = None if brief_id == 2 else resolved_rng.choice(("cta-primary", "hero", None))
-        utm_term = None if brief_id == 2 else resolved_rng.choice(("architecture", "cto", None))
+        utm_source = None if brief_id == 2 else rng.choice(UTM_SOURCES)
+        utm_medium = None if brief_id == 2 else rng.choice(UTM_MEDIUMS)
+        utm_campaign = None if brief_id == 2 else rng.choice(UTM_CAMPAIGNS)
+        utm_content = None if brief_id == 2 else rng.choice(("cta-primary", "hero", None))
+        utm_term = None if brief_id == 2 else rng.choice(("architecture", "cto", None))
         website = (
             "https://very-long-subdomain-name.example.co.uk/path/to/resource?query=value"
             if brief_id == 2
-            else _brief_website(company, resolved_rng)
+            else _brief_website(company, rng)
         )
         brief_text = (
             ("A" * 220)
             + "\n\nSecond paragraph with <script>alert(1)</script> for escape checks."
             if brief_id == 2
-            else resolved_rng.choice(BRIEF_TEXTS)
+            else rng.choice(BRIEF_TEXTS)
         )
         rows.append(
             {
@@ -1134,7 +1231,7 @@ def build_preview_brief_rows(
                 "created_at": created,
                 "website": website,
                 "contact_method": "email",
-                "contact_value": _brief_email(company, resolved_rng),
+                "contact_value": _brief_email(company, rng),
                 "brief": brief_text,
                 "status": status,
                 "stripe_session_id": session_id,
@@ -1165,9 +1262,10 @@ def build_preview_brief_detail(
     """Return one preview brief by id (from the seeded list), or None if unknown."""
     if brief_id < 1:
         return None
-    # Fresh rng from the same seed so list and detail stay consistent.
-    list_rng = _briefs_rng(rng)
-    rows = build_preview_brief_rows(rng=list_rng, now=now)
+    # Same namespace as list rows so detail stays consistent.
+    list_rng = rng if rng is not None else _resolve_rng(None, "briefs")
+    resolved_now = _resolve_now(now)
+    rows = build_preview_brief_rows(rng=list_rng, now=resolved_now)
     for row in rows:
         if int(row["id"]) == brief_id:  # type: ignore[arg-type]
             return row
@@ -1259,35 +1357,31 @@ def build_preview_company_detail(
     now: datetime | None = None,
 ) -> tuple[dict[str, object], list[dict[str, object]], list[dict[str, object]]]:
     """Mock company detail data for Archive/Restore screenshot states."""
-    resolved_rng = _resolve_rng(rng, f"company_detail:{company_id}")
-    resolved_now = _resolve_now(now)
+    rng = _resolve_rng(rng, "company_detail_archive")
+    now = _resolve_now(now)
     archived = company_id == PREVIEW_COMPANY_DETAIL_RESTORE_ID
-    company_name = resolved_rng.choice(COMPANY_NAMES)
+    company_name = rng.choice(COMPANY_NAMES)
     company: dict[str, object] = {
         "id": str(company_id),
         "name": company_name,
         "domain": f"{company_name.lower().replace(' ', '')}.io",
-        "category": resolved_rng.choice(tuple(COMPANY_CATEGORIES.keys())),
-        "stage": resolved_rng.choice(tuple(COMPANY_STAGES.keys())),
+        "category": rng.choice(tuple(COMPANY_CATEGORIES.keys())),
+        "stage": rng.choice(tuple(COMPANY_STAGES.keys())),
         "target_status": "target",
-        "headcount_estimate": resolved_rng.randint(12, 240),
-        "funding_summary": f"Seed — ${resolved_rng.randint(2, 18)}M",
-        "last_verified_at": (
-            resolved_now - timedelta(days=resolved_rng.randint(3, 45))
-        ).date().isoformat(),
+        "headcount_estimate": rng.randint(12, 240),
+        "funding_summary": f"Seed — ${rng.randint(2, 18)}M",
+        "last_verified_at": (now - timedelta(days=rng.randint(3, 45))).date().isoformat(),
     }
     if archived:
-        company["archived_at"] = (
-            resolved_now - timedelta(days=resolved_rng.randint(7, 90))
-        ).isoformat()
-    first = resolved_rng.choice(CONTACT_FIRST)
-    last = resolved_rng.choice(CONTACT_LAST)
+        company["archived_at"] = (now - timedelta(days=rng.randint(7, 90))).isoformat()
+    first = rng.choice(CONTACT_FIRST)
+    last = rng.choice(CONTACT_LAST)
     contacts = [
         {
             "id": str(PREVIEW_CONTACT_DETAIL_ARCHIVE_ID),
             "full_name": f"{first} {last}",
             "title": "VP Engineering",
-            "email": _slug_email(first, last, company_name, resolved_rng),
+            "email": _slug_email(first, last, company_name, rng),
             "buying_roles": ["technical_buyer"],
         }
     ]
@@ -1298,10 +1392,10 @@ def build_preview_company_detail(
             "source_name": "Press release",
             "source_url": f"https://{company['domain']}/news/seed",
             "observed_value": "Seed announced",
-            "observed_at": resolved_now - timedelta(days=resolved_rng.randint(1, 20)),
+            "observed_at": now - timedelta(days=rng.randint(1, 20)),
             "confidence": 0.9,
-            "review_at": resolved_now + timedelta(days=30),
-            "expires_at": resolved_now + timedelta(days=120),
+            "review_at": now + timedelta(days=30),
+            "expires_at": now + timedelta(days=120),
         }
     ]
     return company, contacts, records
@@ -1314,31 +1408,27 @@ def build_preview_contact_detail(
     now: datetime | None = None,
 ) -> tuple[dict[str, object], dict[str, object] | None, list[dict[str, object]]]:
     """Mock contact detail/edit data for Archive/Restore screenshot states."""
-    resolved_rng = _resolve_rng(rng, f"contact_detail:{contact_id}")
-    resolved_now = _resolve_now(now)
+    rng = _resolve_rng(rng, "contact_detail_archive")
+    now = _resolve_now(now)
     archived = contact_id == PREVIEW_CONTACT_DETAIL_RESTORE_ID
-    first = resolved_rng.choice(CONTACT_FIRST)
-    last = resolved_rng.choice(CONTACT_LAST)
-    company_name = resolved_rng.choice(COMPANY_NAMES)
+    first = rng.choice(CONTACT_FIRST)
+    last = rng.choice(CONTACT_LAST)
+    company_name = rng.choice(COMPANY_NAMES)
     contact: dict[str, object] = {
         "id": str(contact_id),
         "full_name": f"{first} {last}",
         "title": "VP Engineering",
         "profile_url": f"https://linkedin.com/in/{first.lower()}-{last.lower()}",
-        "email": _slug_email(first, last, company_name, resolved_rng),
+        "email": _slug_email(first, last, company_name, rng),
         "email_permission": "explicit_opt_in",
         "buying_roles": ["technical_buyer", "founder"],
         "relationship_strength": "warm",
-        "last_interaction_at": (
-            resolved_now - timedelta(days=resolved_rng.randint(2, 30))
-        ).date().isoformat(),
+        "last_interaction_at": (now - timedelta(days=rng.randint(2, 30))).date().isoformat(),
         "notes": "Met at fintech infra meetup; interested in architecture review.",
         "company_id": str(PREVIEW_COMPANY_DETAIL_ARCHIVE_ID),
     }
     if archived:
-        contact["archived_at"] = (
-            resolved_now - timedelta(days=resolved_rng.randint(7, 60))
-        ).isoformat()
+        contact["archived_at"] = (now - timedelta(days=rng.randint(7, 60))).isoformat()
     company = {
         "id": str(PREVIEW_COMPANY_DETAIL_ARCHIVE_ID),
         "name": company_name,
@@ -1350,10 +1440,10 @@ def build_preview_contact_detail(
             "source_name": "LinkedIn",
             "source_url": str(contact["profile_url"]),
             "observed_value": "Hiring signal",
-            "observed_at": resolved_now - timedelta(days=resolved_rng.randint(1, 14)),
+            "observed_at": now - timedelta(days=rng.randint(1, 14)),
             "confidence": 0.75,
-            "review_at": resolved_now + timedelta(days=21),
-            "expires_at": resolved_now + timedelta(days=90),
+            "review_at": now + timedelta(days=21),
+            "expires_at": now + timedelta(days=90),
         }
     ]
     return contact, company, records
@@ -1362,15 +1452,14 @@ def build_preview_contact_detail(
 def preview_contact_restore_conflict(
     *,
     rng: random.Random | None = None,
-    now: datetime | None = None,
 ) -> dict[str, object]:
     """Mock archived/active pair for contact restore-conflict screenshots."""
-    resolved_rng = _resolve_rng(rng, "contact_restore_conflict")
-    resolved_now = _resolve_now(now)
-    first = resolved_rng.choice(CONTACT_FIRST)
-    last = resolved_rng.choice(CONTACT_LAST)
-    company = resolved_rng.choice(COMPANY_NAMES)
-    email = _slug_email(first, last, company, resolved_rng)
+    rng = _resolve_rng(rng, "contact_restore_conflict")
+    now = _resolve_now(None)
+    first = rng.choice(CONTACT_FIRST)
+    last = rng.choice(CONTACT_LAST)
+    company = rng.choice(COMPANY_NAMES)
+    email = _slug_email(first, last, company, rng)
     return {
         "archived_contact": {
             "id": str(PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID),
@@ -1379,7 +1468,7 @@ def preview_contact_restore_conflict(
             "email": email,
             "company_name": company,
             "archived_at": (
-                resolved_now - timedelta(days=resolved_rng.randint(7, 30))
+                now - timedelta(days=rng.randint(1, 30))
             ).isoformat(),
         },
         "conflicting_contact": {
@@ -1408,17 +1497,15 @@ def build_preview_audit_events(
     now: datetime | None = None,
 ) -> list[dict[str, object]]:
     """Randomized audit rows for ADMIN_PREVIEW_MODE screenshots."""
-    resolved_rng = _resolve_rng(rng, "audit_events")
-    resolved_now = _resolve_now(now)
-    count = resolved_rng.randint(4, 8)
+    rng = _resolve_rng(rng, "audit_events")
+    now = _resolve_now(now)
+    count = rng.randint(4, 8)
     events: list[dict[str, object]] = []
     for i in range(count):
-        created = resolved_now - timedelta(
-            hours=resolved_rng.randint(1, 72), minutes=resolved_rng.randint(0, 50)
-        )
-        action = resolved_rng.choice(AUDIT_ACTIONS)
-        company = resolved_rng.choice(COMPANY_NAMES)
-        actor = f"{resolved_rng.choice(CONTACT_FIRST).lower()}@saberistic.com"
+        created = now - timedelta(hours=rng.randint(1, 72), minutes=rng.randint(0, 50))
+        action = rng.choice(AUDIT_ACTIONS)
+        company = rng.choice(COMPANY_NAMES)
+        actor = f"{rng.choice(CONTACT_FIRST).lower()}@saberistic.com"
         events.append(
             {
                 "id": i + 1,
@@ -1426,10 +1513,10 @@ def build_preview_audit_events(
                 "actor": actor,
                 "action": action,
                 "entity_type": "company" if "pipeline" in action or "delete" in action else None,
-                "entity_id": str(resolved_rng.randint(10, 99)) if "pipeline" in action else None,
-                "correlation_id": f"corr-preview-{resolved_rng.randint(1000, 9999)}",
+                "entity_id": str(rng.randint(10, 99)) if "pipeline" in action else None,
+                "correlation_id": f"corr-preview-{rng.randint(1000, 9999)}",
                 "summary_before": {"name": company} if "update" in action else None,
-                "summary_after": {"pipeline_stage": resolved_rng.choice(list(PIPELINE_STAGES))}
+                "summary_after": {"pipeline_stage": rng.choice(list(PIPELINE_STAGES))}
                 if "update" in action
                 else {"ok": True},
             }
@@ -1453,15 +1540,15 @@ def build_preview_linkedin_import_data(
     rng: random.Random | None = None,
 ) -> PreviewLinkedInImportData:
     """Randomized LinkedIn import preview stats for ADMIN_PREVIEW_MODE."""
-    resolved_rng = _resolve_rng(rng, "linkedin_import")
+    rng = _resolve_rng(rng, "linkedin_import")
     return PreviewLinkedInImportData(
-        connection_count=resolved_rng.randint(120, 840),
-        message_thread_count=resolved_rng.randint(8, 64),
-        invitation_count=resolved_rng.randint(3, 40),
-        company_follow_count=resolved_rng.randint(5, 55),
+        connection_count=rng.randint(120, 840),
+        message_thread_count=rng.randint(8, 64),
+        invitation_count=rng.randint(3, 40),
+        company_follow_count=rng.randint(5, 55),
         duplicate_urls=tuple(
-            f"https://linkedin.com/in/{resolved_rng.choice(CONTACT_FIRST).lower()}-{resolved_rng.choice(CONTACT_LAST).lower()}"
-            for _ in range(resolved_rng.randint(1, 3))
+            f"https://linkedin.com/in/{rng.choice(CONTACT_FIRST).lower()}-{rng.choice(CONTACT_LAST).lower()}"
+            for _ in range(rng.randint(1, 3))
         ),
         ignored_samples=(
             "Logins.csv",
@@ -1482,10 +1569,10 @@ def render_preview_imports_main(
     now: datetime | None = None,
 ) -> str:
     """HTML main fragment for /admin/imports in preview mode (populated preview)."""
-    resolved_rng = _resolve_rng(rng, "linkedin_import")
-    resolved_now = _resolve_now(now)
-    data = build_preview_linkedin_import_data(rng=resolved_rng)
-    generated = resolved_now.strftime("%Y-%m-%d %H:%M:%S UTC")
+    rng = _resolve_rng(rng, "linkedin_import")
+    now = _resolve_now(now)
+    data = build_preview_linkedin_import_data(rng=rng)
+    generated = now.strftime("%Y-%m-%d %H:%M:%S UTC")
     dup_rows = "".join(
         f"<li>{html.escape(url)}</li>" for url in data.duplicate_urls
     )
@@ -1567,11 +1654,11 @@ def build_preview_import_batches(
     now: datetime | None = None,
 ) -> tuple[list[dict[str, object]], int]:
     """Mock committed import batches for ADMIN_PREVIEW_MODE."""
-    resolved_rng = _resolve_rng(rng, "import_batches")
-    resolved_now = _resolve_now(now)
+    rng = _resolve_rng(rng, "import_batches")
+    now = _resolve_now(now)
     batches: list[dict[str, object]] = []
     for index, batch_id in enumerate(PREVIEW_IMPORT_BATCH_IDS):
-        created = resolved_now - timedelta(days=index + 1, hours=resolved_rng.randint(1, 8))
+        created = now - timedelta(days=index + 1, hours=rng.randint(1, 8))
         batches.append(
             {
                 "id": str(batch_id),
@@ -1584,10 +1671,10 @@ def build_preview_import_batches(
                 "actor": "preview-operator",
                 "status": "committed" if index == 0 else "rolled_back",
                 "summary_counts": {
-                    "inserted": resolved_rng.randint(8, 24),
-                    "updated": resolved_rng.randint(2, 9),
-                    "unchanged": resolved_rng.randint(30, 90),
-                    "skipped": resolved_rng.randint(0, 3),
+                    "inserted": rng.randint(8, 24),
+                    "updated": rng.randint(2, 9),
+                    "unchanged": rng.randint(30, 90),
+                    "skipped": rng.randint(0, 3),
                     "conflicted": 1 if index == 1 else 0,
                 },
                 "correlation_id": f"corr-preview-import-{index + 1}",
@@ -1603,18 +1690,21 @@ def build_preview_import_batch_detail(
     now: datetime | None = None,
 ) -> dict[str, object] | None:
     """Mock batch detail with representative row outcomes."""
-    list_rng = rng if rng is not None else _preview_rng("import_batches")
-    row_rng = _resolve_rng(rng, f"import_batch_detail:{batch_id}")
-    batches, _ = build_preview_import_batches(rng=list_rng, now=now)
+    rng = _resolve_rng(rng, "import_batch_detail")
+    now = _resolve_now(now)
+    batches, _ = build_preview_import_batches(
+        rng=_child_rng(rng),
+        now=now,
+    )
     batch = next((item for item in batches if str(item["id"]) == batch_id), None)
     if batch is None:
         return None
     rows: list[dict[str, object]] = []
     outcomes = ("inserted", "updated", "unchanged", "skipped", "conflicted")
     for index, outcome in enumerate(outcomes):
-        company = row_rng.choice(COMPANY_NAMES)
-        first = row_rng.choice(CONTACT_FIRST)
-        last = row_rng.choice(CONTACT_LAST)
+        company = rng.choice(COMPANY_NAMES)
+        first = rng.choice(CONTACT_FIRST)
+        last = rng.choice(CONTACT_LAST)
         rows.append(
             {
                 "row_index": index,
@@ -1623,11 +1713,11 @@ def build_preview_import_batch_detail(
                     "profile_url": f"https://linkedin.com/in/{first.lower()}-{last.lower()}",
                     "full_name": f"{first} {last}",
                     "company_name": company,
-                    "title": row_rng.choice(("CTO", "VP Engineering", "Founder")),
+                    "title": rng.choice(("CTO", "VP Engineering", "Founder")),
                 },
                 "outcome": outcome,
                 "entity_type": "contact" if outcome != "skipped" else None,
-                "entity_id": str(UUID(int=row_rng.getrandbits(128), version=4))
+                "entity_id": str(UUID(int=rng.getrandbits(128), version=4))
                 if outcome not in {"skipped", "conflicted"}
                 else None,
                 "detail": "Multiple contacts share this profile URL"
@@ -1647,12 +1737,12 @@ def render_preview_section_main(
     now: datetime | None = None,
 ) -> str:
     """HTML main fragment for an admin section page in preview mode."""
-    resolved_rng = _resolve_rng(rng, f"section_rows:{active_path}")
-    resolved_now = _resolve_now(now)
+    rng = _resolve_rng(rng, f"section:{active_path}")
+    now = _resolve_now(now)
     columns = _SECTION_COLUMNS.get(
         active_path, ("Item", "Detail", "Owner", "Status", "Updated")
     )
-    data_rows = build_preview_section_rows(active_path, rng=resolved_rng, now=resolved_now)
+    data_rows = build_preview_section_rows(active_path, rng=rng, now=now)
     head = "".join(f"<th scope=\"col\">{html.escape(col)}</th>" for col in columns)
     body = "\n".join(
         "<tr>"
@@ -1660,7 +1750,7 @@ def render_preview_section_main(
         + "</tr>"
         for row in data_rows
     )
-    generated = resolved_now.strftime("%Y-%m-%d %H:%M:%S UTC")
+    generated = now.strftime("%Y-%m-%d %H:%M:%S UTC")
     safe_label = html.escape(label)
     return f"""        <section class="admin-empty" aria-labelledby="admin-section-title">
           <p class="admin-preview-banner" role="status">Preview data — not production</p>
