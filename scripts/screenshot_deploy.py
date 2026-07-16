@@ -74,6 +74,7 @@ ADMIN_SCREENSHOT_ROUTES: tuple[str, ...] = (
     "/admin/companies",
     "/admin/contacts",
     "/admin/signals",
+    "/admin/targets",
     "/admin/pipeline",
     "/admin/imports",
     "/admin/discovery",
@@ -107,6 +108,8 @@ ADMIN_SCREENSHOT_ROUTES: tuple[str, ...] = (
     "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/edit",
     "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbc/edit",
     "/admin/pipeline/11111111-1111-1111-1111-111111111111",
+    "/admin/targets",
+    "/admin/targets/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa01",
 )
 
 # Fallback when app.admin_layout import fails (keep in sync).

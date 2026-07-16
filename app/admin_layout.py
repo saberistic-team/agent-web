@@ -42,6 +42,12 @@ ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
         "summary": "Inbound triggers and intent scoring",
     },
     {
+        "label": "Targets",
+        "href": "/admin/targets",
+        "milestone": "Qualification workspace",
+        "summary": "Tier A/B/C lists with evidence gaps and freshness",
+    },
+    {
         "label": "Pipeline",
         "href": "/admin/pipeline",
         "milestone": "Pipeline operations",
@@ -114,6 +120,8 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbc/edit",
     # Pipeline detail (Next action, Change stage, Log activity, timeline).
     "/admin/pipeline/11111111-1111-1111-1111-111111111111",
+    "/admin/targets",
+    "/admin/targets/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa01",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).

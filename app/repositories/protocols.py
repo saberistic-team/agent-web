@@ -427,6 +427,93 @@ class ProjectBriefRepository(Protocol):
     ) -> dict[str, Any] | None: ...
 
 
+class IcpScoringRepository(Protocol):
+    def get_active_version(self, conn: psycopg.Connection) -> dict[str, Any] | None: ...
+
+    def list_rules_for_version(
+        self, conn: psycopg.Connection, version_id: UUID
+    ) -> list[dict[str, Any]]: ...
+
+    def insert_snapshot(
+        self,
+        conn: psycopg.Connection,
+        *,
+        company_id: UUID,
+        version_id: UUID,
+        version_number: int,
+        total_score: float,
+        computed_score: float,
+        breakdown: list[dict[str, Any]],
+        missing_inputs: list[str],
+        calculated_at: datetime,
+        is_override: bool = False,
+        override_reason: str | None = None,
+        override_by: str | None = None,
+    ) -> dict[str, Any]: ...
+
+    def get_latest_snapshot_for_company(
+        self, conn: psycopg.Connection, company_id: UUID
+    ) -> dict[str, Any] | None: ...
+
+
+class QualificationRepository(Protocol):
+    def list_active_companies(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]: ...
+
+    def get_latest_tier_for_company(
+        self, conn: psycopg.Connection, company_id: UUID
+    ) -> str | None: ...
+
+    def record_tier_change(
+        self,
+        conn: psycopg.Connection,
+        *,
+        company_id: UUID,
+        from_tier: str | None,
+        to_tier: str,
+        score: float,
+        changed_by: str,
+        snapshot_id: UUID | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]: ...
+
+    def list_tier_history(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]: ...
+
+    def create_working_list(
+        self,
+        conn: psycopg.Connection,
+        *,
+        name: str,
+        owner: str,
+        company_ids: list[UUID],
+        max_items: int,
+    ) -> dict[str, Any]: ...
+
+    def list_working_lists_for_owner(
+        self,
+        conn: psycopg.Connection,
+        *,
+        owner: str,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]: ...
+
+    def get_working_list_items(
+        self,
+        conn: psycopg.Connection,
+        list_id: UUID,
+    ) -> list[dict[str, Any]]: ...
+
+
 class AuditEventRepository(Protocol):
     def append(
         self,
