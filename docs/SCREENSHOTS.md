@@ -25,13 +25,15 @@ Playwright can open admin pages **without login**.
 - Admin shell pages fill with **mock intake/CRM data with randomization**
   (dashboard stats, section tables, **briefs list/detail**, etc.) so screenshots
   look like a live operator shell — never real production rows and never an
-  empty “no records yet” shell for newly built admin surfaces. Standard
-  screenshot runs freeze a **root seed** and **reference timestamp** (checked-in
-  CI defaults in `app/preview_context.py`) so desktop/mobile pairs and reruns
-  render identical fixture data. Optional `ADMIN_PREVIEW_SEED` /
-  `ADMIN_PREVIEW_REFERENCE_TIME` override those defaults for exploratory
-  visual testing. Builder must extend `app/admin_preview.py` whenever it adds
-  a page (see `AGENTS/builder.md`).
+  empty “no records yet” shell for newly built admin surfaces.
+- **Deterministic preview context:** `scripts/screenshot_deploy.py` sets stable
+  `ADMIN_PREVIEW_SEED` and `ADMIN_PREVIEW_REFERENCE_TIME` on the PR preview
+  server (checked-in defaults; overridable for exploratory runs). Each fixture
+  namespace derives its own RNG from the root seed so request/capture order
+  cannot perturb another route. See `app/admin_preview.py` (`PreviewContext`,
+  `PREVIEW_FIXTURE_VERSION`).
+- Builder must extend `app/admin_preview.py` whenever it adds a page (see
+  `AGENTS/builder.md`).
 - See [ADMIN_AUTH.md](ADMIN_AUTH.md).
 
 **Production renderer routes** (preview uses the same page functions as authenticated
@@ -47,24 +49,6 @@ production, with deterministic fixtures from `app/admin_preview.py`):
 
 Other admin nav pages still use generic `render_preview_section_main` tables until
 they gain production-backed list renderers.
-
-### Fixture versioning and baseline updates
-
-Preview fixtures are versioned via `PREVIEW_FIXTURE_VERSION` in
-`app/preview_context.py` (mirrored as `ADMIN_PREVIEW_FIXTURE_VERSION` in CI).
-Each fixture namespace derives its own RNG from the root seed so unrelated
-route additions do not perturb existing screenshot data.
-
-When fixture shape or namespace derivation changes:
-
-1. Bump `PREVIEW_FIXTURE_VERSION` in `app/preview_context.py`.
-2. Re-run the full Reviewer screenshot suite on a clean PR head.
-3. Compare `branch-reproducibility.json` metadata and PNG hashes; intentional
-   visual diffs should cite the version bump in the PR body.
-
-Standard screenshot runs record seed, reference time, fixture version, head SHA,
-browser version, and viewports in `branch-reproducibility.json` and the
-`reviewer_screenshots_pre` comment.
 
 ### Expected-status visual fixtures
 
@@ -161,17 +145,26 @@ until merged.
    (`branch-*-mobile-open.png`)
 5. Uploads under `.agent/screenshots/pr-<n>/` and comments
    `### reviewer_screenshots_pre` on the **PR and issue** (titles above images)
-6. Does **not** hit saberistic.com
-7. **Empty-shell gate:** Playwright inspects admin HTML for empty data tables /
+6. Writes `branch-repro-manifest.json` with fixture version, root seed, frozen
+   reference time, git head SHA, browser version, and viewport list (no secrets)
+7. Does **not** hit saberistic.com
+8. **Empty-shell gate:** Playwright inspects admin HTML for empty data tables /
    “no … yet” / placeholder milestone copy and Reviewer **hard-fails** so
    Builder must extend `app/admin_preview.py` (see
    `format_empty_data_hard_fail`)
-8. **Desktop admin-nav gate:** on desktop and narrow-desktop viewports, admin
+9. **Desktop admin-nav gate:** on desktop and narrow-desktop viewports, admin
    shells must show at least one visible `.admin-nav-link`. This catches nav
    trapped inside closed `<details>` (prefer a separate `.admin-nav-desktop`
    list outside details). Hard-fail via `format_admin_nav_hard_fail` /
    `desktop_nav_invisible`
-9. AI review + approve gates as usual
+10. AI review + approve gates as usual
+
+### Regenerating preview baselines
+
+Bump `PREVIEW_FIXTURE_VERSION` in `app/admin_preview.py` when fixture shape or
+namespace derivation changes. Re-run the full Reviewer screenshot suite twice
+in clean processes; compare `branch-repro-manifest.json` and PNG hashes. Intentional
+baseline updates should note the new fixture version and seed/time in the PR.
 
 ## Post-deploy (after merge to `main`)
 
@@ -192,9 +185,9 @@ until merged.
 | Name | Type | Purpose |
 |------|------|---------|
 | `ADMIN_PREVIEW_MODE` | env | Set `1` on PR preview server only (script sets this) |
-| `ADMIN_PREVIEW_SEED` | env | Root seed for deterministic preview fixtures (script sets stable default) |
-| `ADMIN_PREVIEW_REFERENCE_TIME` | env | Frozen timezone-aware ISO timestamp for preview fixtures |
-| `ADMIN_PREVIEW_FIXTURE_VERSION` | env | Fixture schema version; bump when baseline regeneration is intentional |
+| `ADMIN_PREVIEW_SEED` | env | Root seed for mock admin randomization (screenshot script sets stable default) |
+| `ADMIN_PREVIEW_REFERENCE_TIME` | env | Frozen timezone-aware ISO timestamp for preview fixtures (screenshot script sets stable default) |
+| `ADMIN_PREVIEW_FIXTURE_VERSION` | env | Optional override of `PREVIEW_FIXTURE_VERSION` in `app/admin_preview.py` |
 | `DEPLOY_BASE_URL` | variable | default `https://saberistic.com` (post-deploy) |
 | `COVERAGE_ROOT` / `PR_HEAD_ROOT` | env | PR checkout root for branch screenshots |
 | `SCREENSHOTS_REQUIRED` | variable | default true for Reviewer when pages are affected |

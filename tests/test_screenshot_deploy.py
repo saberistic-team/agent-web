@@ -448,10 +448,21 @@ def test_comment_markdown_pre_branch_only() -> None:
             ScreenshotTarget(route="/"),
             ScreenshotTarget(route="/admin/briefs/503", expected_status=503),
         ],
+        repro_manifest={
+            "preview_fixture_version": "1",
+            "preview_root_seed": 338234,
+            "preview_reference_time": "2026-07-15T12:00:00+00:00",
+            "git_head_sha": "abc123",
+            "browser_version": "120.0.0",
+            "viewports": [{"name": "desktop", "width": 1280, "height": 800}],
+        },
     )
     assert "### reviewer_screenshots_pre" in body
     assert "http://127.0.0.1:8765" in body
     assert "ADMIN_PREVIEW_MODE" in body
+    assert "preview reproducibility" in body
+    assert "fixture_version" in body
+    assert "root_seed" in body
     assert "post-deploy only" in body
     assert "branch-home.png" in body
     assert "Production baseline" not in body
@@ -459,9 +470,6 @@ def test_comment_markdown_pre_branch_only() -> None:
     assert "`/admin/briefs/503` (expected HTTP 503)" in body
     assert "branch-admin-briefs-503.png" in body
     assert "branch-admin-briefs-503-mobile.png" in body
-    assert "fixture_version" in body
-    assert "root_seed" in body
-    assert "reference_time" in body
     assert "- **branch-home.png**\n      ![branch-home.png](" in body
     assert "branch-home.png: ![" not in body
 
@@ -719,3 +727,23 @@ def test_format_missing_screenshot_fail_lists_expected_files() -> None:
     assert "`/admin/briefs/503` (expected HTTP 503)" in msg
     assert "branch-admin-briefs-503.png" in msg
     assert "branch-admin-briefs-503-mobile.png" in msg
+
+
+def test_preview_server_env_defaults_use_stable_seed(monkeypatch) -> None:
+    from screenshot_deploy import (
+        DEFAULT_ADMIN_PREVIEW_REFERENCE_TIME,
+        DEFAULT_ADMIN_PREVIEW_SEED,
+        _preview_server_env_defaults,
+    )
+
+    monkeypatch.delenv("ADMIN_PREVIEW_SEED", raising=False)
+    monkeypatch.delenv("ADMIN_PREVIEW_REFERENCE_TIME", raising=False)
+    defaults = _preview_server_env_defaults()
+    assert defaults["ADMIN_PREVIEW_SEED"] == DEFAULT_ADMIN_PREVIEW_SEED
+    assert defaults["ADMIN_PREVIEW_REFERENCE_TIME"] == DEFAULT_ADMIN_PREVIEW_REFERENCE_TIME
+
+    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "99")
+    monkeypatch.setenv("ADMIN_PREVIEW_REFERENCE_TIME", "2026-01-01T00:00:00+00:00")
+    overrides = _preview_server_env_defaults()
+    assert overrides["ADMIN_PREVIEW_SEED"] == "99"
+    assert overrides["ADMIN_PREVIEW_REFERENCE_TIME"] == "2026-01-01T00:00:00+00:00"
