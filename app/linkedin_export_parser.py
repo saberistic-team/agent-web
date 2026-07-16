@@ -137,22 +137,52 @@ def _is_nested_archive(path: str) -> bool:
     return any(base.endswith(suffix) for suffix in NESTED_ARCHIVE_SUFFIXES)
 
 
-def _is_blank_csv_row(row: list[str]) -> bool:
-    return not row or not any(str(cell).strip() for cell in row)
+def _split_csv_lines(text: str) -> list[str]:
+    """Split text into logical CSV lines, respecting quoted fields."""
+    lines: list[str] = []
+    current: list[str] = []
+    in_quotes = False
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if ch == '"':
+            if in_quotes and i + 1 < len(text) and text[i + 1] == '"':
+                current.append('""')
+                i += 2
+                continue
+            in_quotes = not in_quotes
+            current.append(ch)
+        elif ch in ("\n", "\r") and not in_quotes:
+            if ch == "\r" and i + 1 < len(text) and text[i + 1] == "\n":
+                i += 1
+            lines.append("".join(current))
+            current = []
+        else:
+            current.append(ch)
+        i += 1
+    if current:
+        lines.append("".join(current))
+    return lines
 
 
-def _locate_csv_header(reader: csv.reader, *, basename: str) -> list[str]:
-    """Skip leading blank lines and single-field preamble rows before the header."""
-    scanned = 0
-    for row in reader:
-        if _is_blank_csv_row(row):
+def _parse_csv_line(line: str) -> list[str]:
+    reader = csv.reader([line])
+    try:
+        return next(reader)
+    except StopIteration:
+        return []
+
+
+def _find_csv_header_line_index(lines: list[str]) -> int | None:
+    """Locate the real header row, skipping blank and single-field preamble lines."""
+    limit = min(len(lines), MAX_PREAMBLE_SCAN_LINES)
+    for index in range(limit):
+        line = lines[index]
+        if not line.strip():
             continue
-        if scanned >= MAX_PREAMBLE_SCAN_LINES:
-            break
-        scanned += 1
-        if len(row) > 1:
-            return row
-    raise ValueError(f"{basename}: missing CSV header row")
+        if len(_parse_csv_line(line)) > 1:
+            return index
+    return None
 
 
 def _read_csv_rows(raw: bytes, *, basename: str) -> tuple[list[dict[str, str]], tuple[str, ...]]:
@@ -161,31 +191,34 @@ def _read_csv_rows(raw: bytes, *, basename: str) -> tuple[list[dict[str, str]], 
     if "\x00" in text:
         raise ValueError(f"{basename}: binary content is not valid CSV")
 
-    reader = csv.reader(io.StringIO(text))
-    fieldnames = _locate_csv_header(reader, basename=basename)
+    lines = _split_csv_lines(text)
+    header_index = _find_csv_header_line_index(lines)
+    if header_index is None:
+        raise ValueError(f"{basename}: missing CSV header row")
 
-    header_lower = {name.strip().lower(): name for name in fieldnames if name}
+    reader = csv.DictReader(io.StringIO("\n".join(lines[header_index:])))
+    if reader.fieldnames is None:
+        raise ValueError(f"{basename}: missing CSV header row")
+
+    header_lower = {name.strip().lower(): name for name in reader.fieldnames if name}
     required = _REQUIRED_HEADER_TOKENS.get(basename, ())
     for token in required:
         if not any(token in key for key in header_lower):
             warnings.append(f"{basename}: unexpected schema (missing '{token}' column)")
 
     rows: list[dict[str, str]] = []
-    for index, row in enumerate(reader, start=1):
-        if index > MAX_CSV_ROWS:
+    for index, row in enumerate(reader, start=header_index + 2):
+        if index - 1 > MAX_CSV_ROWS:
             warnings.append(f"{basename}: truncated at {MAX_CSV_ROWS:,} rows")
             break
-        if _is_blank_csv_row(row):
-            continue
         cleaned: dict[str, str] = {}
-        for key_idx, key in enumerate(fieldnames):
-            if not key:
+        for key, value in row.items():
+            if key is None:
                 continue
-            value = row[key_idx] if key_idx < len(row) else ""
             cell = "" if value is None else str(value)
             if len(cell) > MAX_FIELD_LENGTH:
                 warnings.append(
-                    f"{basename}: row {index + 1} field '{key}' exceeds max length; truncated"
+                    f"{basename}: row {index} field '{key}' exceeds max length; truncated"
                 )
                 cell = cell[:MAX_FIELD_LENGTH]
             cleaned[key.strip()] = cell

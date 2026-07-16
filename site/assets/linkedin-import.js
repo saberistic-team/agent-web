@@ -459,6 +459,19 @@
       });
   }
 
+  function findCsvHeaderLineIndex(lines) {
+    var limit = Math.min(lines.length, LIMITS.maxPreambleScanLines || 20);
+    for (var i = 0; i < limit; i += 1) {
+      if (!lines[i].trim()) {
+        continue;
+      }
+      if (parseCsvLine(lines[i]).length > 1) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
   function parseCsvBytes(raw, basenameKey) {
     var text = new TextDecoder("utf-8", { fatal: false }).decode(raw);
     if (text.indexOf("\u0000") !== -1) {
@@ -471,26 +484,12 @@
     if (!lines.length) {
       throw new Error(basenameKey + ": missing CSV header row");
     }
-    var headerLineIndex = -1;
-    var headers = [];
-    var scanned = 0;
-    var maxPreambleScanLines = LIMITS.maxPreambleScanLines || 20;
-    for (var li = 0; li < lines.length; li += 1) {
-      if (!lines[li].trim()) {
-        continue;
-      }
-      if (scanned >= maxPreambleScanLines) {
-        break;
-      }
-      scanned += 1;
-      var candidateFields = parseCsvLine(lines[li]);
-      if (candidateFields.length > 1) {
-        headerLineIndex = li;
-        headers = candidateFields;
-        break;
-      }
+    var headerIndex = findCsvHeaderLineIndex(lines);
+    if (headerIndex < 0) {
+      throw new Error(basenameKey + ": missing CSV header row");
     }
-    if (headerLineIndex < 0 || !headers.length) {
+    var headers = parseCsvLine(lines[headerIndex]);
+    if (!headers.length) {
       throw new Error(basenameKey + ": missing CSV header row");
     }
     var warnings = [];
@@ -508,7 +507,7 @@
     });
 
     var rows = [];
-    for (var i = headerLineIndex + 1; i < lines.length; i += 1) {
+    for (var i = headerIndex + 1; i < lines.length; i += 1) {
       if (i > LIMITS.maxCsvRows) {
         warnings.push(basenameKey + ": truncated at " + LIMITS.maxCsvRows.toLocaleString() + " rows");
         break;
