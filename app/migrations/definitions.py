@@ -682,4 +682,11 @@ CREATE TABLE IF NOT EXISTS analytics_event_rate_limits (
 ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS analytics_session_id UUID;
 """,
     ),
+    Migration(
+        version="019",
+        name="contact_field_sources",
+        up_sql="""
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS field_sources JSONB NOT NULL DEFAULT '{}'::jsonb;
+""",
+    ),
 )

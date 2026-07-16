@@ -30,32 +30,8 @@ def inject_analytics(
     case_study_slug: str | None = None,
     article_slug: str | None = None,
 ) -> str:
-    """Inject analytics tags when Plausible or first-party ingestion is enabled."""
+    """Inject first-party analytics tags when ingestion is enabled."""
     injection = ""
-    if settings.analytics_enabled and settings.plausible_domain:
-        domain = html.escape(settings.plausible_domain, quote=True)
-        injection += (
-            f'    <meta name="saberistic-analytics-domain" content="{domain}">\n'
-        )
-        if page_event:
-            event_esc = html.escape(page_event, quote=True)
-            injection += (
-                f'    <meta name="saberistic-analytics-page-event" content="{event_esc}">\n'
-            )
-        if case_study_slug:
-            slug_esc = html.escape(case_study_slug, quote=True)
-            injection += (
-                '    <meta name="saberistic-analytics-case-study-slug" '
-                f'content="{slug_esc}">\n'
-            )
-        if article_slug:
-            slug_esc = html.escape(article_slug, quote=True)
-            injection += (
-                f'    <meta name="saberistic-analytics-article-slug" content="{slug_esc}">\n'
-            )
-        if 'src="/assets/analytics.js"' not in page_html:
-            injection += '    <script src="/assets/analytics.js" defer></script>\n'
-
     if settings.first_party_analytics_enabled:
         injection += '    <meta name="saberistic-first-party-analytics" content="1">\n'
         if page_event:

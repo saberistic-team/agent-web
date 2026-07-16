@@ -40,6 +40,27 @@ def cursor_api_key() -> str | None:
     return value.strip() if value and value.strip() else None
 
 
+def reviewer_agent_cwd() -> str:
+    """Filesystem root for the reviewer's Cursor agent tool calls.
+
+    Reviewer Actions checkout ``main`` at ``os.getcwd()`` and the actual PR
+    under review as a sibling git worktree at ``COVERAGE_ROOT`` (``pr-head/``,
+    see reviewer.yml). Rooting the agent's local tools at ``os.getcwd()``
+    (main) left ``./`` (main) and ``./pr-head`` (the PR) both reachable side
+    by side, so the model could — instead of trusting the correct
+    merge-base ``files``/``patch`` payload already in its prompt — diff those
+    two trees directly. Any file added to main *after* a stale branch forked
+    then looks exactly like something "the PR deletes", producing false
+    changes-requested hard-fails and a Builder<->Reviewer loop for any PR that
+    is merely behind main (#342). Root the agent at the PR tree itself so
+    there is no mismatched sibling tree to conflate with the diff.
+    """
+    cov_root = (os.environ.get("COVERAGE_ROOT") or "").strip()
+    if cov_root and os.path.isdir(cov_root):
+        return cov_root
+    return os.getcwd()
+
+
 def chat_cursor(system: str, user: str, model: str | None = None) -> tuple[str, str]:
     """Ask-only Cursor agent turn; must not modify the workspace."""
     key = cursor_api_key()
@@ -56,9 +77,18 @@ def chat_cursor(system: str, user: str, model: str | None = None) -> tuple[str, 
             "cursor-sdk is not installed; pip install -r requirements-agents.txt"
         ) from exc
 
+    agent_cwd = reviewer_agent_cwd()
     prompt = (
         "READ-ONLY REVIEW TASK. Do not create, edit, delete, or move any files. "
         "Do not run mutating shell/git commands. Do not open PRs.\n"
+        "The working directory is the PR branch under review, checked out at "
+        "its own commit — it is NOT `main` and has no sibling copy of `main` "
+        "to compare against. Do not attempt to diff this working directory "
+        "against `main` or any other branch/tree; you cannot see `main` from "
+        "here. Base every claim about added/changed/deleted/reverted files "
+        "strictly on the `files` list in the Context below (already the "
+        "correct PR-vs-base diff) — never infer a deletion or revert from "
+        "your own filesystem exploration.\n"
         "Respond with JSON only (no prose outside JSON).\n\n"
         f"## Instructions\n{system}\n\n"
         f"## Context\n{user}\n"
@@ -71,7 +101,7 @@ def chat_cursor(system: str, user: str, model: str | None = None) -> tuple[str, 
                 api_key=key,
                 name="reviewer-ai",
                 mode="plan",
-                local=LocalAgentOptions(cwd=os.getcwd()),
+                local=LocalAgentOptions(cwd=agent_cwd),
             ),
         )
     except TypeError:
@@ -84,7 +114,7 @@ def chat_cursor(system: str, user: str, model: str | None = None) -> tuple[str, 
                     "apiKey": key,
                     "name": "reviewer-ai",
                     "mode": "plan",
-                    "local": {"cwd": os.getcwd()},
+                    "local": {"cwd": agent_cwd},
                 },
             )
         except Exception as exc:
@@ -376,6 +406,12 @@ def ai_review(repo: str, issue: int, pr_number: int) -> dict[str, Any]:
         "- wording/style nits when acceptance criteria are met\n"
         "If acceptance criteria are met, set decision=approved and meets_acceptance=true.\n"
         "Be concrete in reasons.\n"
+        "Never claim this PR 'deletes', 'removes', or 'reverts' a file or "
+        "function unless that exact path appears in `files` below with "
+        "status=\"removed\" (or a patch showing the specific lines removed). "
+        "A file that simply doesn't appear in `files` was not touched by this "
+        "PR — it is not evidence of a deletion, even if that file exists on "
+        "main (main may have added it after this branch was created).\n"
     )
     user = json.dumps(ctx, indent=2)
     raw, model = chat(system, user, model=model)
