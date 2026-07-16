@@ -124,6 +124,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -136,6 +137,10 @@ jobs:
           app-id: ${{ secrets.BUILDER_APP_ID }}
           private-key: ${{ secrets.BUILDER_PRIVATE_KEY }}
       - name: Freeze digests after live deploy
+        # Commits onto a deploy/freeze-* branch and opens a PR with
+        # auto-merge enabled instead of pushing straight to main — a direct
+        # push is rejected by the workflow-governance ruleset's independent-
+        # review requirement (zero bypass actors, issue #359/#362).
         env:
           GITHUB_TOKEN: ${{ steps.builder.outputs.token }}
           DEPLOY_BASE_URL: ${{ vars.DEPLOY_BASE_URL }}
