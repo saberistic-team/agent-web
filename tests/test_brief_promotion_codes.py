@@ -198,7 +198,7 @@ def test_stripe_webhook_discounted_persists_payment_totals() -> None:
                 return_value=discounted_brief,
             ) as mark_paid:
                 with patch(
-                    "app.main.analytics_service.track_payment_completed"
+                    "app.main.server_analytics.record_payment_completed"
                 ) as track_payment:
                     response = client.post(
                         "/webhooks/stripe",
@@ -292,7 +292,7 @@ def test_stripe_webhook_duplicate_event_is_idempotent() -> None:
         ):
             with patch("app.main.db.mark_brief_paid", return_value=None):
                 with patch(
-                    "app.main.analytics_service.track_payment_completed"
+                    "app.main.server_analytics.record_payment_completed"
                 ) as track_payment:
                     with patch(
                         "app.main.email_service.notify_team_of_paid_brief"
