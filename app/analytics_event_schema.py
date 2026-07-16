@@ -50,6 +50,10 @@ EVENT_PAYMENT_COMPLETED = "Payment Completed"
 EVENT_CONTACT_INITIATED = "Contact Initiated"
 EVENT_CHECKOUT_CANCELLED = "Checkout Cancelled"
 EVENT_BRIEF_SUCCESS_VIEWED = "Brief Success Viewed"
+EVENT_NOTIFICATION_OUTCOME = "Notification Outcome"
+
+# Sentinel session for server events without an approved browser session token.
+SERVER_UNLINKED_SESSION_ID = "00000000-0000-4000-8000-000000000001"
 
 ENGAGEMENT_EVENT_NAMES = frozenset(
     {
@@ -77,6 +81,7 @@ CONVERSION_EVENT_NAMES = frozenset(
         EVENT_CONTACT_INITIATED,
         EVENT_CHECKOUT_CANCELLED,
         EVENT_BRIEF_SUCCESS_VIEWED,
+        EVENT_NOTIFICATION_OUTCOME,
     }
 )
 
@@ -142,6 +147,8 @@ ALLOWED_PROPERTY_NAMES = frozenset(
         "article_slug",
         "nav_destination",
         "linkage_source",
+        "notification_kind",
+        "notification_outcome",
     }
 )
 
@@ -165,6 +172,10 @@ _EVENT_REQUIRED_PROPERTIES: dict[str, frozenset[str]] = {
     EVENT_CASE_STUDY_VIEWED: frozenset({"case_study_slug"}),
     EVENT_INSIGHT_VIEWED: frozenset({"article_slug"}),
     EVENT_CONTACT_INITIATED: frozenset({"contact_channel", "funnel_step"}),
+    EVENT_CHECKOUT_CANCELLED: frozenset({"brief_id", "funnel_step"}),
+    EVENT_NOTIFICATION_OUTCOME: frozenset(
+        {"brief_id", "notification_kind", "notification_outcome"}
+    ),
 }
 
 _EVENT_FORBIDDEN_PROPERTIES: dict[str, frozenset[str]] = {
@@ -536,6 +547,8 @@ class AnalyticsEventPayload(BaseModel):
                 "server_brief_persist",
                 "server_checkout_open",
                 "server_payment_complete",
+                "server_checkout_cancelled",
+                "server_notification",
             ):
                 raise ValueError("Invalid linkage_source for crm_brief_linked")
         return self

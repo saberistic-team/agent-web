@@ -674,4 +674,11 @@ CREATE TABLE IF NOT EXISTS analytics_event_rate_limits (
 );
 """,
     ),
+    Migration(
+        version="018",
+        name="project_brief_analytics_session",
+        up_sql="""
+ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS analytics_session_id UUID;
+""",
+    ),
 )

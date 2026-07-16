@@ -44,6 +44,7 @@ def test_all_documented_events_are_allowlisted() -> None:
         "Contact Initiated",
         "Checkout Cancelled",
         "Brief Success Viewed",
+        "Notification Outcome",
     }
     assert expected == schema.ALLOWED_EVENT_NAMES
 
