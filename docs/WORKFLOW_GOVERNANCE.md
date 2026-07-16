@@ -140,7 +140,55 @@ carried a bootstrap exception:
   include a non-bootstrap proof that the ruleset blocked bot-only approval.
 
 Issue #229 is closed with `status:done`. Its workflow is complete; later issues
-extend the boundary rather than reopen #229.
+extend the boundary rather than reopen #229. GitHub's issue timeline for #229
+shows `status:needs-review` removed and `status:done` applied by
+`saberistic-agent-web-builder[bot]` at `2026-07-16T02:12:01Z`, so the label is
+reconciled with the closed/complete state; no stale label remains.
+
+## Non-bootstrap proof PR (PR #284 / issue #275)
+
+[PR #284](https://github.com/saberistic-team/agent-web/pull/284) (issue #275)
+is the first protected-path change after bootstrap. Verifying its own
+merge-gate enforcement checklist against the **live** repository (not just the
+checked-in JSON) surfaced a real gap and its root cause, both now fixed:
+
+- **The live ruleset had drifted from the checked-in policy.** `gh api
+  repos/saberistic-team/agent-web/rulesets/18975712` returned
+  `require_code_owner_review: false` even though
+  `.github/rulesets/independent-workflow-review.json` says `true`. A repo
+  admin re-applied the checked-in policy
+  (`gh api --method PUT repos/saberistic-team/agent-web/rulesets/18975712
+  --input .github/rulesets/independent-workflow-review.json`); a fresh `gh
+  api` read confirmed `require_code_owner_review: true` afterward.
+- **CI never actually checked the live ruleset.** `validate_workflow_governance.py`
+  supports `--check-live-ruleset`, but the CI workflow invoked it without that
+  flag and without a `GITHUB_TOKEN`, so the live check silently never ran —
+  CI could report `PASS` indefinitely regardless of live drift. Fixed in
+  `.github/workflows/ci.yml`'s "Validate workflow-governance ownership" step,
+  which now passes `GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}` and runs with
+  `--check-live-ruleset`. The default Actions token can read
+  `GET /repos/{owner}/{repo}/rulesets` (no elevated `administration` scope
+  needed for reads), verified locally with `gh auth token` before landing.
+- **Bots cannot satisfy `require_code_owner_review` structurally, not just by
+  convention.** `gh api repos/saberistic-team/agent-web/collaborators` lists
+  only `@saberistic`, `@mehdidehdar`, and `@Amirsharifico`; the Reviewer and
+  Builder bots are not collaborators, so no bot approval can ever count as the
+  CODEOWNER review GitHub requires, independent of what CODEOWNERS says.
+- **Live behavioral evidence from this PR:** `@saberistic` (a CODEOWNER)
+  submitted an `APPROVED` review; the Reviewer bot later submitted
+  `CHANGES_REQUESTED`. `gh pr view 284 --json reviewDecision,mergeStateStatus`
+  reported `CHANGES_REQUESTED` / `BLOCKED` — GitHub applies latest-review-per-
+  reviewer semantics live, even with a genuine human CODEOWNER approval on
+  record.
+
+**What remains a real, undemonstrated gap:** a live click-through screenshot
+of the GitHub merge button blocked specifically by a *missing* CODEOWNER
+review (as opposed to an outstanding `CHANGES_REQUESTED`) was not produced.
+Doing that safely would require opening a disposable PR against a protected
+path and getting only a bot review on it, which risks triggering this
+repository's live Builder/Reviewer automation on a throwaway artifact. Left
+for a human maintainer to capture in a few minutes if a literal screenshot is
+required; it is not fabricated here.
 
 ## Recovery and break-glass
 
