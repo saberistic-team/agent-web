@@ -7,8 +7,9 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 import pytest
-from tests.preview_env import apply_admin_preview_env
 from fastapi.testclient import TestClient
+
+from tests.conftest import enable_admin_preview_env
 
 from app.admin_preview import (
     COMPANY_NAMES,
@@ -241,7 +242,7 @@ def test_admin_preview_briefs_list_and_detail_have_mock_data(
 
     from app.main import app
 
-    apply_admin_preview_env(monkeypatch)
+    enable_admin_preview_env(monkeypatch)
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
     monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
     monkeypatch.setenv(
@@ -250,7 +251,6 @@ def test_admin_preview_briefs_list_and_detail_have_mock_data(
     )
     monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
     monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "preview-limiter-secret-32chars-minimum!!")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     client = TestClient(app, follow_redirects=False)
     listing = client.get("/admin/briefs")
@@ -289,7 +289,7 @@ def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytes
         preview_contact_restore_conflict,
     )
 
-    apply_admin_preview_env(monkeypatch)
+    enable_admin_preview_env(monkeypatch)
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "7")
     monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
     monkeypatch.setenv(
@@ -298,7 +298,6 @@ def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytes
     )
     monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
     monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "preview-limiter-secret-32chars-minimum!!")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     preview = preview_contact_restore_conflict(rng=random.Random(7))
     client = TestClient(app, follow_redirects=False)
@@ -319,7 +318,7 @@ def test_preview_company_detail_archive_and_restore_actions(
 
     from app.admin_auth import SESSION_COOKIE_NAME
 
-    apply_admin_preview_env(monkeypatch)
+    enable_admin_preview_env(monkeypatch)
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "11")
     monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
     monkeypatch.setenv(
@@ -328,7 +327,6 @@ def test_preview_company_detail_archive_and_restore_actions(
     )
     monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
     monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "preview-limiter-secret-32chars-minimum!!")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     company, _contacts, _records = build_preview_company_detail(
         PREVIEW_COMPANY_DETAIL_ARCHIVE_ID,
@@ -370,7 +368,7 @@ def test_preview_contact_detail_and_edit_archive_restore_actions(
 
     from app.admin_auth import SESSION_COOKIE_NAME
 
-    apply_admin_preview_env(monkeypatch)
+    enable_admin_preview_env(monkeypatch)
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "12")
     monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
     monkeypatch.setenv(
@@ -379,7 +377,6 @@ def test_preview_contact_detail_and_edit_archive_restore_actions(
     )
     monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
     monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "preview-limiter-secret-32chars-minimum!!")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     contact, _company, _records = build_preview_contact_detail(
         PREVIEW_CONTACT_DETAIL_ARCHIVE_ID,
@@ -489,7 +486,7 @@ def test_preview_contacts_seed_stable() -> None:
 def test_preview_companies_uses_production_renderer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    apply_admin_preview_env(monkeypatch)
+    enable_admin_preview_env(monkeypatch)
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     client = TestClient(app, follow_redirects=False)
@@ -517,7 +514,7 @@ def test_preview_companies_uses_production_renderer(
 def test_preview_contacts_uses_production_renderer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    apply_admin_preview_env(monkeypatch)
+    enable_admin_preview_env(monkeypatch)
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     client = TestClient(app, follow_redirects=False)
@@ -635,7 +632,7 @@ def test_preview_company_contact_routes_return_expected_status(
 ) -> None:
     from argon2 import PasswordHasher
 
-    apply_admin_preview_env(monkeypatch)
+    enable_admin_preview_env(monkeypatch)
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
     monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
     monkeypatch.setenv(
@@ -644,7 +641,6 @@ def test_preview_company_contact_routes_return_expected_status(
     )
     monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
     monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "preview-limiter-secret-32chars-minimum!!")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     client = TestClient(app, follow_redirects=False)
 

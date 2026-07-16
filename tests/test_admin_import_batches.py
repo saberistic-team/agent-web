@@ -8,7 +8,6 @@ from typing import Any, Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
-from tests.preview_env import apply_admin_preview_env
 from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 
@@ -16,6 +15,7 @@ from app import admin_auth, db
 from app.admin_auth import SESSION_COOKIE_NAME
 from app.admin_preview import PREVIEW_IMPORT_BATCH_IDS, build_preview_import_batch_detail
 from app.main import app
+from tests.conftest import enable_admin_preview_env
 
 client = TestClient(app, follow_redirects=False)
 
@@ -87,7 +87,7 @@ def test_import_batches_preview_lists_mock_batches(
     authenticated_admin: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    apply_admin_preview_env(monkeypatch)
+    enable_admin_preview_env(monkeypatch)
     response = client.get("/admin/imports/batches", cookies=authenticated_admin)
     assert response.status_code == 200
     body = response.text
@@ -103,7 +103,7 @@ def test_import_batch_detail_preview_shows_outcomes(
     authenticated_admin: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    apply_admin_preview_env(monkeypatch)
+    enable_admin_preview_env(monkeypatch)
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "110")
     batch_id = PREVIEW_IMPORT_BATCH_IDS[0]
     response = client.get(f"/admin/imports/batches/{batch_id}", cookies=authenticated_admin)

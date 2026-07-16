@@ -59,15 +59,15 @@ def _settings(**overrides: Any) -> Settings:
         "plausible_domain": base.plausible_domain,
         "plausible_api_key": base.plausible_api_key,
         "analytics_environment": base.analytics_environment,
+        "app_environment": base.app_environment,
+        "admin_preview_mode": base.admin_preview_mode,
+        "admin_preview_enabled": base.admin_preview_enabled,
+        "server_bind_host": base.server_bind_host,
         "admin_username": TEST_USERNAME,
         "admin_password_hash": TEST_HASH,
         "admin_session_secret": TEST_SESSION_SECRET,
         "admin_login_limiter_secret": TEST_LIMITER_SECRET,
         "admin_login_limiter_previous_secret": "",
-        "app_environment": base.app_environment,
-        "server_bind_host": base.server_bind_host,
-        "admin_preview_mode": base.admin_preview_mode,
-        "admin_preview_enabled": base.admin_preview_enabled,
     }
     values.update(overrides)
     return Settings(**values)

@@ -5,12 +5,12 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from app.admin_preview_security import compute_admin_preview_enabled
 from app.app_environment import AppEnvironment, parse_app_environment
+from app.admin_preview_security import resolve_admin_preview_enabled
 
 
-def _truthy_env(name: str) -> bool:
-    return os.environ.get(name, "").lower() in ("1", "true", "yes")
+def _parse_admin_preview_mode(raw: str) -> bool:
+    return raw.lower() in ("1", "true", "yes")
 
 
 @dataclass(frozen=True)
@@ -26,15 +26,15 @@ class Settings:
     plausible_domain: str
     plausible_api_key: str
     analytics_environment: str
+    app_environment: AppEnvironment
     admin_username: str
     admin_password_hash: str
     admin_session_secret: str
-    app_environment: AppEnvironment
-    server_bind_host: str
-    admin_preview_mode: bool
-    admin_preview_enabled: bool
     admin_login_limiter_secret: str = ""
     admin_login_limiter_previous_secret: str = ""
+    admin_preview_mode: bool = False
+    admin_preview_enabled: bool = False
+    server_bind_host: str = ""
     brief_price_cents: int = 20_000
     admin_session_ttl_seconds: int = 86_400
     admin_login_rate_limit: int = 5
@@ -89,15 +89,24 @@ class Settings:
 
 
 def get_settings() -> Settings:
-    app_environment = parse_app_environment(os.environ.get("APP_ENV", ""))
-    admin_preview_mode = _truthy_env("ADMIN_PREVIEW_MODE")
+    app_environment_raw = (
+        os.environ.get("APP_ENV") or os.environ.get("ANALYTICS_ENV", "development")
+    ).strip() or "development"
+    app_environment = parse_app_environment(app_environment_raw)
+    admin_preview_mode = _parse_admin_preview_mode(
+        os.environ.get("ADMIN_PREVIEW_MODE", "")
+    )
     base_url = os.environ.get("BASE_URL", "http://localhost:8000").rstrip("/")
     server_bind_host = os.environ.get("SERVER_BIND_HOST", "").strip()
-    admin_preview_enabled = compute_admin_preview_enabled(
+    admin_trusted_proxy_cidrs = os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "").strip()
+    admin_trusted_edge_cidrs = os.environ.get("ADMIN_TRUSTED_EDGE_CIDRS", "").strip()
+    admin_preview_enabled = resolve_admin_preview_enabled(
         admin_preview_mode=admin_preview_mode,
         app_environment=app_environment,
         base_url=base_url,
         server_bind_host=server_bind_host,
+        admin_trusted_proxy_cidrs=admin_trusted_proxy_cidrs,
+        admin_trusted_edge_cidrs=admin_trusted_edge_cidrs,
     )
     return Settings(
         database_url=os.environ.get("DATABASE_URL", ""),
@@ -110,15 +119,14 @@ def get_settings() -> Settings:
         base_url=base_url,
         plausible_domain=os.environ.get("PLAUSIBLE_DOMAIN", "").strip(),
         plausible_api_key=os.environ.get("PLAUSIBLE_API_KEY", "").strip(),
-        analytics_environment=os.environ.get("ANALYTICS_ENV", "development").strip()
-        or "development",
+        analytics_environment=app_environment_raw,
+        app_environment=app_environment,
+        admin_preview_mode=admin_preview_mode,
+        admin_preview_enabled=admin_preview_enabled,
+        server_bind_host=server_bind_host,
         admin_username=os.environ.get("ADMIN_USERNAME", "").strip(),
         admin_password_hash=os.environ.get("ADMIN_PASSWORD_HASH", "").strip(),
         admin_session_secret=os.environ.get("ADMIN_SESSION_SECRET", "").strip(),
-        app_environment=app_environment,
-        server_bind_host=server_bind_host,
-        admin_preview_mode=admin_preview_mode,
-        admin_preview_enabled=admin_preview_enabled,
         admin_login_limiter_secret=os.environ.get(
             "ADMIN_LOGIN_LIMITER_SECRET", ""
         ).strip(),
@@ -142,7 +150,10 @@ def get_settings() -> Settings:
         analytics_ingest_lockout_seconds=int(
             os.environ.get("ANALYTICS_INGEST_LOCKOUT_SECONDS", "300")
         ),
-        admin_trust_proxy_headers=_truthy_env("ADMIN_TRUST_PROXY_HEADERS"),
-        admin_trusted_proxy_cidrs=os.environ.get("ADMIN_TRUSTED_PROXY_CIDRS", "").strip(),
-        admin_trusted_edge_cidrs=os.environ.get("ADMIN_TRUSTED_EDGE_CIDRS", "").strip(),
+        admin_trust_proxy_headers=os.environ.get(
+            "ADMIN_TRUST_PROXY_HEADERS", ""
+        ).lower()
+        in ("1", "true", "yes"),
+        admin_trusted_proxy_cidrs=admin_trusted_proxy_cidrs,
+        admin_trusted_edge_cidrs=admin_trusted_edge_cidrs,
     )
