@@ -457,7 +457,12 @@ def test_large_cardinality_cleanup_uses_updated_at_index(
         rows = cur.fetchall()
     plan_lines = [next(iter(row.values())) for row in rows]
     plan_text = "\n".join(plan_lines).lower()
-    assert "admin_login_rate_limits_updated_at_idx" in plan_text
+    # The composite `(updated_at, limiter_key)` index added for ordered batch
+    # selection is preferred by the planner over the older single-column
+    # index, but either satisfies "not a sequential scan".
+    assert "admin_login_rate_limits_cleanup_idx" in plan_text or (
+        "admin_login_rate_limits_updated_at_idx" in plan_text
+    )
     assert "seq scan on admin_login_rate_limits" not in plan_text
 
     started = time.perf_counter()

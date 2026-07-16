@@ -506,10 +506,11 @@ Retention: ``2 × max(ADMIN_LOGIN_RATE_WINDOW_SECONDS, ADMIN_LOGIN_LOCKOUT_SECON
 
 After each **admitted** login attempt (reservation before Argon2), the app deletes
 up to **100** eligible rows per request
-(``LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE``). Deletion uses the
-``admin_login_rate_limits_updated_at_idx`` index; the ``SELECT … FOR UPDATE SKIP
-LOCKED`` subquery lets multiple instances claim disjoint batches without an
-application mutex or long table locks.
+(``LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE``). Deletion uses the composite
+``admin_login_rate_limits_cleanup_idx`` index on ``(updated_at, limiter_key)``
+for ordered batch selection; the ``SELECT … FOR UPDATE SKIP LOCKED`` subquery
+lets multiple instances claim disjoint batches without an application mutex
+or long table locks.
 
 | Constant | Value | Meaning |
 |----------|-------|---------|

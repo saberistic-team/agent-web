@@ -203,7 +203,13 @@ def test_bounded_cleanup_selects_oldest_eligible_first(pg_conn: psycopg.Connecti
         for key in _list_limiter_keys(pg_conn)
         if key.startswith("expired-")
     ]
-    expected_remaining = fixture["expired_keys"][_TEST_BATCH_SIZE:]
+    # `_seed_cleanup_fixture` assigns higher indices an older `updated_at`
+    # (`RETENTION_SECONDS + index + 1` seconds back), so the oldest-first
+    # batch removes the *highest*-indexed keys first. `previous_secret` is
+    # seeded 2 hours back, older than every `expired-*` row, so it claims one
+    # of the batch's slots before any `expired-*` row is removed.
+    expired_slots = _TEST_BATCH_SIZE - 1
+    expected_remaining = fixture["expired_keys"][:-expired_slots]
     assert remaining_expired == expected_remaining
 
 
@@ -269,9 +275,14 @@ def test_retention_and_locked_until_boundaries_are_exact(pg_conn: psycopg.Connec
     )
 
     deleted = _cleanup(pg_conn, now=now, batch_size=_TEST_BATCH_SIZE)
-    assert deleted == 2
+    # Only `outside_retention` is eligible: `at_retention` sits exactly on the
+    # retention cutoff (strict `<` excludes it), and `lock_now`'s
+    # `locked_until == now` is not yet "in the past" (strict `<` on
+    # `locked_until` too), matching the `locked_until > now` "still locked"
+    # check used elsewhere (e.g. admission checks).
+    assert deleted == 1
     remaining = set(_list_limiter_keys(pg_conn))
-    assert remaining == {inside_retention, at_retention, lock_future}
+    assert remaining == {inside_retention, at_retention, lock_now, lock_future}
 
 
 @pytest.mark.integration
@@ -431,7 +442,7 @@ def test_cleanup_query_plan_uses_index_within_budget(pg_conn: psycopg.Connection
             f"EXPLAIN (FORMAT TEXT) {_CLEANUP_SELECT_SQL}",
             (now, _RETENTION_SECONDS, now, _TEST_BATCH_SIZE),
         )
-        plan_lines = [str(row[0]) for row in cur.fetchall()]
+        plan_lines = [str(next(iter(row.values()))) for row in cur.fetchall()]
     plan_text = "\n".join(plan_lines).lower()
     assert "index scan" in plan_text or "index only scan" in plan_text
     assert "admin_login_rate_limits_cleanup_idx" in plan_text or (
