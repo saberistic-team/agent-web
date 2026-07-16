@@ -287,17 +287,30 @@ from `app.admin_security` — a `ModuleNotFoundError`/`ImportError` that
 `builder_conflicts.py` cannot fix (it only resolves textual merge conflicts,
 not naming bugs inside Builder's own change). Every dispatch re-ran codegen,
 which reproduced the same split instead of converging, so `builder_conflicts`
-returned `broken_after_resolve` with the **identical** `smoke_error` **54
-times over 7+ hours** with nothing counting the repeats. Do not rely on
+returned `broken_after_resolve` with the **same underlying** `smoke_error`
+**54 times over 7+ hours** with nothing counting the repeats. Do not rely on
 noticing this yourself — `scripts/run_agent.py:repeated_conflict_smoke_signature`
 now scans the last `REPEATED_CONFLICT_FAILURE_LIMIT` (3) `builder_conflict_result`
 comments and escalates (`@human-review` + `status:blocked`) instead of
-requeuing when the smoke error is byte-for-byte identical across all of them.
+requeuing once they share a signature.
+**Normalize before comparing:** on #242 the *specific* missing symbol changed
+almost every cycle (`validate_admin_security_config`, then
+`LIMITER_DOMAIN_ACCOUNT`, then others) because codegen kept rewriting the same
+dead module's API differently each time, and the error text also embeds a
+random per-run temp directory (`/tmp/builder-conflict-XXXXXXXX/repo/...`) — so
+a naive byte-for-byte / first-line comparison never matched and the loop ran
+undetected even after the breaker landed. `_smoke_error_signature()` keys on
+the **module path** from `cannot import name '...' from '<module>'` /
+`No module named '<module>'` (ignoring the symbol and temp path) so repeats of
+"the same orphan module still doesn't export what tests expect" are caught
+regardless of which symbol is missing this cycle. It also skips leading bare
+`^^^^` caret-underline pytest traceback markers when falling back to a
+first-line signature for non-import failures.
 If you land on an issue already carrying that escalation comment: do **not**
 just re-run codegen again — grep the whole `app/` tree for the symbol name in
 the error, put every definition and every import in **one** canonical module,
-delete the orphan module, and only then resume normal Builder work on the
-same PR head.
+delete the orphan module and every stale test file still importing the old
+one, and only then resume normal Builder work on the same PR head.
 
 ## Dependent milestone issues (anti-loop)
 
