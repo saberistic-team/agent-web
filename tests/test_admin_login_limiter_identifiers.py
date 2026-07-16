@@ -160,8 +160,8 @@ def test_domain_separation_for_identical_payload_material() -> None:
     settings = _settings()
     material = "operator"
     source_key = admin_auth.build_source_rate_limit_key(material, settings=settings)
-    account_key = admin_auth.build_account_rate_limit_key(material, settings=settings)
-    assert source_key != account_key
+    candidate_key = admin_auth.build_candidate_rate_limit_key(material, settings=settings)
+    assert source_key != candidate_key
 
 
 @pytest.mark.unit

@@ -823,7 +823,12 @@ def admin_company_update(
             url=f"/admin/companies/{company_id}/edit?error={quote(str(exc))}", status_code=303
         )
     with db.db_connection(get_settings().database_url) as conn:
-        result = _crm.update_company(conn, company_id, company=company)
+        result = _crm.update_company(
+            conn,
+            company_id,
+            company=company,
+            actor_context=actor_context_from_request(request, actor=session.admin_username),
+        )
     if result is None:
         raise HTTPException(status_code=404, detail="Company not found")
     warnings = result["duplicate_warnings"]
@@ -1121,7 +1126,12 @@ def admin_contact_update(
         )
     try:
         with db.db_connection(get_settings().database_url) as conn:
-            result = _crm.update_contact(conn, contact_id, contact=contact)
+            result = _crm.update_contact(
+                conn,
+                contact_id,
+                contact=contact,
+                actor_context=actor_context_from_request(request, actor=session.admin_username),
+            )
     except ContactEmailConflictError as exc:
         return RedirectResponse(
             url=f"/admin/contacts/{contact_id}/edit?error={quote(str(exc))}", status_code=303

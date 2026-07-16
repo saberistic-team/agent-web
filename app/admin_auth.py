@@ -21,7 +21,7 @@ from fastapi.responses import Response
 
 from app import db
 from app.admin_security import (
-    LIMITER_DOMAIN_ACCOUNT,
+    LIMITER_DOMAIN_CANDIDATE,
     LIMITER_DOMAIN_SOURCE,
     digest_limiter_key,
 )
@@ -269,14 +269,19 @@ def build_source_rate_limit_key(client_source: str, settings: Settings) -> str:
     )
 
 
-def build_account_rate_limit_key(admin_username: str, settings: Settings) -> str:
-    """Account-wide bucket for the configured admin username."""
-    normalized_username = admin_username.strip().lower()
+def build_candidate_rate_limit_key(submitted_username: str, settings: Settings) -> str:
+    """Candidate-wide bucket for one normalized submitted username."""
+    normalized_username = submitted_username.strip().lower()
     return digest_limiter_key(
-        domain=LIMITER_DOMAIN_ACCOUNT,
+        domain=LIMITER_DOMAIN_CANDIDATE,
         material=normalized_username,
         secret=settings.admin_login_limiter_secret,
     )
+
+
+def build_account_rate_limit_key(admin_username: str, settings: Settings) -> str:
+    """Deprecated alias for :func:`build_candidate_rate_limit_key`."""
+    return build_candidate_rate_limit_key(admin_username, settings)
 
 
 def _limiter_keys_for_secret(
@@ -286,6 +291,7 @@ def _limiter_keys_for_secret(
     configured_admin_username: str,
     secret: str,
 ) -> tuple[str, ...]:
+    _ = configured_admin_username
     keys = [
         digest_limiter_key(
             domain=LIMITER_DOMAIN_SOURCE,
@@ -294,12 +300,11 @@ def _limiter_keys_for_secret(
         )
     ]
     normalized_submitted = submitted_username.strip().lower()
-    normalized_configured = configured_admin_username.strip().lower()
-    if normalized_configured and normalized_submitted == normalized_configured:
+    if normalized_submitted:
         keys.append(
             digest_limiter_key(
-                domain=LIMITER_DOMAIN_ACCOUNT,
-                material=normalized_configured,
+                domain=LIMITER_DOMAIN_CANDIDATE,
+                material=normalized_submitted,
                 secret=secret,
             )
         )
@@ -551,22 +556,22 @@ def record_failed_login(request: Request, settings: Settings, *, username: str =
 
 
 def finalize_successful_login(request: Request, settings: Settings, *, username: str = "") -> None:
-    """Clear account bucket state and release the current source admission reservation."""
-    _ = username
+    """Clear submitted candidate bucket state and release the current source admission."""
     source = client_ip(request, settings)
     source_key = build_source_rate_limit_key(source, settings)
-    account_keys = (
-        (build_account_rate_limit_key(settings.admin_username, settings),)
-        if settings.admin_username.strip()
+    normalized_username = username.strip().lower()
+    candidate_keys = (
+        (build_candidate_rate_limit_key(normalized_username, settings),)
+        if normalized_username
         else ()
     )
-    _clear_fallback_failures(account_keys)
+    _clear_fallback_failures(candidate_keys)
     _release_fallback_admission(source_key)
     now = datetime.now(timezone.utc)
     try:
         with db.db_connection(settings.database_url) as conn:
-            if account_keys:
-                db.clear_admin_login_rate_limits(conn, limiter_keys=account_keys)
+            if candidate_keys:
+                db.clear_admin_login_rate_limits(conn, limiter_keys=candidate_keys)
             db.release_admin_login_admission(
                 conn,
                 limiter_key=source_key,

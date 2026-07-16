@@ -99,6 +99,14 @@ class ContactRepository(Protocol):
 
     def get_by_id(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None: ...
 
+    def get_active_by_id_for_update(
+        self,
+        conn: psycopg.Connection,
+        contact_id: UUID,
+    ) -> dict[str, Any] | None:
+        """Active contact row locked for update inside a conversion transaction."""
+        ...
+
     def get_active_by_email(
         self,
         conn: psycopg.Connection,
