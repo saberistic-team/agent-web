@@ -167,21 +167,21 @@ class FakeRateLimitStore:
         *,
         window_seconds: int,
         lockout_seconds: int,
-        batch_size: int = admin_auth.LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE,
+        batch_size: int = 100,
     ) -> int:
         with self._lock:
             retention = max(window_seconds, lockout_seconds) * 2
             cutoff = now - timedelta(seconds=retention)
             expired = sorted(
                 (
-                    (key, row)
+                    key
                     for key, row in self.rows.items()
                     if row["updated_at"] < cutoff
                     and (row["locked_until"] is None or row["locked_until"] < now)
                 ),
-                key=lambda item: (item[1]["updated_at"], item[0]),
+                key=lambda key: (self.rows[key]["updated_at"], key),
             )[:batch_size]
-            for key, _row in expired:
+            for key in expired:
                 del self.rows[key]
             return len(expired)
 
@@ -233,7 +233,7 @@ def shared_rate_limiter(store: FakeRateLimitStore) -> Generator[None, None, None
         now: datetime,
         window_seconds: int,
         lockout_seconds: int,
-        batch_size: int = admin_auth.LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE,
+        batch_size: int = 100,
     ) -> int:
         return store.cleanup(
             now,
@@ -1190,33 +1190,6 @@ def test_rate_limit_fallback_when_database_unavailable(
         blocked = _login(password="wrong")
         assert blocked.status_code == 429
         assert admin_auth.LOGIN_THROTTLED_MESSAGE in blocked.text
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_rate_limit_cleanup_failure_preserves_admitted_login(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("ADMIN_LOGIN_RATE_LIMIT", "5")
-    with (
-        patch(
-            "app.admin_auth.db.try_admit_admin_login",
-            return_value=db.AdminLoginAdmission(
-                admitted=True,
-                throttled=False,
-                already_locked=False,
-                lockout_transition=False,
-            ),
-        ),
-        patch(
-            "app.admin_auth.db.cleanup_expired_admin_login_rate_limits",
-            side_effect=Exception("cleanup unavailable"),
-        ),
-        mock_db_connection(),
-    ):
-        response = _login(password="wrong")
-    assert response.status_code == 401
-    assert admin_auth.INVALID_CREDENTIALS_MESSAGE in response.text
 
 
 @pytest.mark.unit

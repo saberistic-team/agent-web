@@ -436,53 +436,53 @@ resets automatically. Restore database connectivity to resume shared enforcement
 
 ### Manual cleanup
 
-To prune stale limiter rows manually (same eligibility rule as automatic cleanup):
+To prune stale limiter rows manually, repeat bounded batches (same predicate as
+automatic cleanup) until no rows are returned:
 
 ```sql
-DELETE FROM admin_login_rate_limits
-WHERE limiter_key IN (
+WITH selected AS (
     SELECT limiter_key
     FROM admin_login_rate_limits
-    WHERE updated_at < NOW() - INTERVAL '30 minutes'
+    WHERE updated_at < NOW() - make_interval(secs => 1800)
       AND (locked_until IS NULL OR locked_until < NOW())
-    ORDER BY updated_at, limiter_key
+    ORDER BY updated_at ASC, limiter_key ASC
     LIMIT 100
     FOR UPDATE SKIP LOCKED
-);
+)
+DELETE FROM admin_login_rate_limits AS target
+USING selected
+WHERE target.limiter_key = selected.limiter_key;
 ```
 
-Repeat until no rows are deleted. Prefer the bounded form above over an unbounded
-``DELETE`` so manual maintenance matches production semantics.
+### Automatic bounded cleanup
 
-### Opportunistic bounded cleanup
+After each login admission decision (when Postgres is reachable), the app deletes
+at most **100** expired rows per request
+(``LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE``). Retention is
+``2 × max(window, lockout)`` — e.g. 30 minutes with default 900s window and
+lockout.
 
-After each **admitted** login attempt, the app deletes at most
-``LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE`` (**100**) eligible rows in one
-transaction. Retention is ``2 × max(window, lockout)`` (default 30 minutes with
-900-second window and lockout). Selection order is ``updated_at`` ascending,
-then ``limiter_key`` for deterministic tie-breaking.
+| Property | Value |
+|----------|-------|
+| **Batch size** | 100 rows per cleanup call |
+| **Retention** | ``2 × max(ADMIN_LOGIN_RATE_WINDOW_SECONDS, ADMIN_LOGIN_LOCKOUT_SECONDS)`` |
+| **Selection order** | Oldest ``updated_at`` first, ``limiter_key`` tie-breaker |
+| **Concurrency** | ``FOR UPDATE SKIP LOCKED`` — instances claim disjoint batches without waiting |
+| **Index** | ``admin_login_rate_limits_updated_at_idx`` on ``updated_at`` |
+| **Statement budget** | One bounded ``DELETE`` per admission path; latency does not scale with total expired-row count |
 
-| Constant | Value | Meaning |
-|----------|-------|---------|
-| ``LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE`` | 100 | Maximum rows deleted per cleanup call |
-| Retention | ``2 × max(window, lockout)`` | Minimum age before a row is eligible |
-| Index | ``admin_login_rate_limits_updated_at_idx`` | Supports oldest-first batch selection |
+Eligible rows include current- and previous-secret HMAC digests; cleanup does not
+need secret material. Active rows (recent ``updated_at``), rows inside the
+retention window, and rows with ``locked_until >= now`` are never selected.
 
-Concurrency: ``FOR UPDATE SKIP LOCKED`` lets multiple app instances each claim a
-disjoint batch without waiting on peers. One admitted login performs **at most one**
-cleanup batch — login latency does not scale with total expired-row cardinality.
+If cleanup fails (database error), the failure is logged with aggregate fields
+only (``batch_size``, ``deleted_count``, ``duration_ms``, ``error_category``,
+``backlog_remaining`` when a full batch was deleted). **Admission and limiter
+state are unchanged** — cleanup errors never trigger the conservative in-memory
+fallback. Restore database connectivity or run manual bounded batches above.
 
-Failure behavior: cleanup errors are logged with aggregate fields only
-(``batch_size``, ``deleted_count``, ``duration_ms``, ``error_category``). Cleanup
-failure does **not** roll back admission or trigger the conservative in-memory
-fallback; limiter protection remains intact. Restore database connectivity and
-retry via normal login traffic or the manual SQL above.
-
-No custom ``statement_timeout`` is set for cleanup; the bounded ``LIMIT`` keeps
-each delete transaction small and predictable under default PostgreSQL settings.
-
-Current- and previous-secret HMAC rows share the same retention rule; cleanup does
-not inspect secret material.
+Repeated admitted logins (or manual batches) eventually drain the backlog; a
+single login never deletes more than one batch.
 
 ## Login flow retention
 

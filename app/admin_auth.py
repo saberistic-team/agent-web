@@ -41,7 +41,7 @@ LOGIN_FLOW_EXPIRED_RETENTION_SECONDS = CSRF_MAX_AGE_SECONDS * 2
 # Retention after ``consumed_at`` before deleting one-time-used flows.
 LOGIN_FLOW_CONSUMED_RETENTION_SECONDS = CSRF_MAX_AGE_SECONDS
 LOGIN_FLOW_CLEANUP_BATCH_SIZE = 100
-# Bounded opportunistic deletion of stale admin_login_rate_limits rows per admitted login.
+# Bounded batch for opportunistic expired limiter-row cleanup after login admission.
 LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE = 100
 INVALID_CREDENTIALS_MESSAGE = "Invalid username or password."
 INVALID_REQUEST_MESSAGE = "Invalid request."
@@ -451,6 +451,7 @@ def try_admit_login_attempt(
         settings=settings,
     )
     now = datetime.now(timezone.utc)
+    admission: db.AdminLoginAdmission | None = None
     try:
         with db.db_connection(settings.database_url) as conn:
             for rotation_key in rotation_keys:
@@ -469,33 +470,6 @@ def try_admit_login_attempt(
                 window_seconds=settings.admin_login_rate_window_seconds,
                 lockout_seconds=settings.admin_login_lockout_seconds,
             )
-            cleanup_started = time.monotonic()
-            try:
-                deleted = db.cleanup_expired_admin_login_rate_limits(
-                    conn,
-                    now=now,
-                    window_seconds=settings.admin_login_rate_window_seconds,
-                    lockout_seconds=settings.admin_login_lockout_seconds,
-                    batch_size=LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE,
-                )
-            except Exception as cleanup_exc:
-                _logger.warning(
-                    "Admin login rate limit cleanup failed",
-                    extra={
-                        "batch_size": LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE,
-                        "error_category": type(cleanup_exc).__name__,
-                    },
-                    exc_info=True,
-                )
-            else:
-                _logger.info(
-                    "Admin login rate limit cleanup completed",
-                    extra={
-                        "batch_size": LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE,
-                        "deleted_count": deleted,
-                        "duration_ms": int((time.monotonic() - cleanup_started) * 1000),
-                    },
-                )
     except Exception:
         _logger.warning(
             "Admin login rate limiter unavailable; using conservative fallback",
@@ -518,6 +492,46 @@ def try_admit_login_attempt(
             lockout_transition=fallback.lockout_transition,
             store_unavailable=True,
         )
+
+    if admission is not None:
+        cleanup_started = time.monotonic()
+        try:
+            with db.db_connection(settings.database_url) as conn:
+                deleted = db.cleanup_expired_admin_login_rate_limits(
+                    conn,
+                    now=now,
+                    window_seconds=settings.admin_login_rate_window_seconds,
+                    lockout_seconds=settings.admin_login_lockout_seconds,
+                    batch_size=LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE,
+                )
+                backlog_remaining = False
+                if deleted >= LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE:
+                    backlog_remaining = db.has_expired_admin_login_rate_limits(
+                        conn,
+                        now=now,
+                        window_seconds=settings.admin_login_rate_window_seconds,
+                        lockout_seconds=settings.admin_login_lockout_seconds,
+                    )
+        except Exception:
+            _logger.warning(
+                "Admin login rate limiter cleanup failed; admission unchanged",
+                extra={
+                    "batch_size": LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE,
+                    "duration_ms": int((time.monotonic() - cleanup_started) * 1000),
+                    "error_category": "database",
+                },
+                exc_info=True,
+            )
+        else:
+            _logger.info(
+                "Admin login rate limiter cleanup completed",
+                extra={
+                    "batch_size": LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE,
+                    "deleted_count": deleted,
+                    "duration_ms": int((time.monotonic() - cleanup_started) * 1000),
+                    "backlog_remaining": backlog_remaining,
+                },
+            )
 
     if admission.admitted:
         _logger.info(

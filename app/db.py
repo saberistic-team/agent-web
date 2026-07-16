@@ -621,6 +621,42 @@ def clear_admin_login_rate_limits(
         conn.commit()
 
 
+def _admin_login_rate_limit_retention_seconds(
+    *,
+    window_seconds: int,
+    lockout_seconds: int,
+) -> int:
+    return max(window_seconds, lockout_seconds) * 2
+
+
+def has_expired_admin_login_rate_limits(
+    conn: psycopg.Connection,
+    *,
+    now: datetime,
+    window_seconds: int,
+    lockout_seconds: int,
+) -> bool:
+    """Return whether any rows remain eligible for bounded cleanup."""
+    retention_seconds = _admin_login_rate_limit_retention_seconds(
+        window_seconds=window_seconds,
+        lockout_seconds=lockout_seconds,
+    )
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM admin_login_rate_limits
+                WHERE updated_at < %s - make_interval(secs => %s)
+                  AND (locked_until IS NULL OR locked_until < %s)
+            ) AS has_backlog
+            """,
+            (now, retention_seconds, now),
+        )
+        row = cur.fetchone()
+    return bool(row and row["has_backlog"])
+
+
 def cleanup_expired_admin_login_rate_limits(
     conn: psycopg.Connection,
     *,
@@ -629,29 +665,32 @@ def cleanup_expired_admin_login_rate_limits(
     lockout_seconds: int,
     batch_size: int,
 ) -> int:
-    """Delete stale limiter rows in a bounded batch.
+    """Delete expired limiter rows in a bounded, concurrent-safe batch.
 
-    Eligible rows are older than ``2 × max(window, lockout)`` and not actively
-    locked. Selection is oldest-first by ``updated_at`` with ``limiter_key`` as
-    a stable tie-breaker. ``FOR UPDATE SKIP LOCKED`` lets concurrent instances
-    claim disjoint batches without blocking.
+    Eligible rows are older than ``2 × max(window, lockout)`` with no active
+    lockout. Selection is oldest-first by ``updated_at`` then ``limiter_key``.
     """
-    if batch_size < 1:
-        raise ValueError("batch_size must be a positive integer")
-    retention_seconds = max(window_seconds, lockout_seconds) * 2
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+    retention_seconds = _admin_login_rate_limit_retention_seconds(
+        window_seconds=window_seconds,
+        lockout_seconds=lockout_seconds,
+    )
     with conn.cursor() as cur:
         cur.execute(
             """
-            DELETE FROM admin_login_rate_limits
-            WHERE limiter_key IN (
+            WITH selected AS (
                 SELECT limiter_key
                 FROM admin_login_rate_limits
                 WHERE updated_at < %s - make_interval(secs => %s)
                   AND (locked_until IS NULL OR locked_until < %s)
-                ORDER BY updated_at, limiter_key
+                ORDER BY updated_at ASC, limiter_key ASC
                 LIMIT %s
                 FOR UPDATE SKIP LOCKED
             )
+            DELETE FROM admin_login_rate_limits AS target
+            USING selected
+            WHERE target.limiter_key = selected.limiter_key
             """,
             (now, retention_seconds, now, batch_size),
         )
