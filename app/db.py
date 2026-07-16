@@ -629,16 +629,15 @@ def cleanup_expired_admin_login_rate_limits(
     lockout_seconds: int,
     batch_size: int,
 ) -> int:
-    """Delete stale limiter rows in a bounded, concurrent-safe batch.
+    """Delete stale limiter rows in a bounded batch.
 
     Eligible rows are older than ``2 × max(window, lockout)`` and not actively
-    locked. Selection uses ``updated_at`` with ``limiter_key`` as a stable
-    tie-breaker. ``FOR UPDATE SKIP LOCKED`` lets multiple app instances claim
-    disjoint batches without blocking one another.
+    locked. Selection is oldest-first by ``updated_at`` with ``limiter_key`` as
+    a stable tie-breaker. ``FOR UPDATE SKIP LOCKED`` lets concurrent instances
+    claim disjoint batches without blocking.
     """
-    if batch_size <= 0:
-        raise ValueError("batch_size must be positive")
-
+    if batch_size < 1:
+        raise ValueError("batch_size must be a positive integer")
     retention_seconds = max(window_seconds, lockout_seconds) * 2
     with conn.cursor() as cur:
         cur.execute(
