@@ -84,6 +84,11 @@ ADMIN_MUTATION_ROUTE_CLASSIFICATIONS: dict[tuple[str, str], tuple[MutationClassi
         "required_immutable_business_audit",
         "LinkedIn import commit emits import.batch with bounded batch metadata.",
     ),
+    ("POST", "/admin/imports/reconcile-preview"): (
+        "intentionally_unaudited",
+        "Read-only reconciliation preview computes and returns a JSON diff without "
+        "persisting anything; the eventual commit is covered by import.batch above.",
+    ),
     ("POST", "/admin/pipeline/{company_id}/stage"): (
         "required_immutable_business_audit",
         "Pipeline stage transition emits pipeline.update with bounded summaries.",
