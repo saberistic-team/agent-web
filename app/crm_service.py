@@ -114,6 +114,13 @@ def _is_contact_email_unique_violation(exc: pg_errors.UniqueViolation) -> bool:
     return (diag.constraint_name or "") == "idx_contacts_email_unique"
 
 
+_CONTACT_COMPANY_MISMATCH_MSG = (
+    "Selected contact belongs to a different company — adjust your selection."
+)
+_CONTACT_STALE_MSG = "Selected contact is no longer active — refresh the preview and try again."
+_CONTACT_EMAIL_MISMATCH_MSG = "Selected contact does not match the brief email."
+
+
 class CrmService:
     """Thin service layer for admin/import/discovery callers."""
 
@@ -220,13 +227,10 @@ class CrmService:
             if domain
             else []
         )
-        # Active identity only drives linking. An archived-only match is surfaced
-        # separately as a restore/review option and is never auto-linked (#226).
+        # Active identity drives linking; archived history is surfaced separately (#226, #276).
         active_contact = self._repos.contacts.get_active_by_email(conn, email)
         contacts = [active_contact] if active_contact else []
-        archived_contact = (
-            None if active_contact else self._repos.contacts.get_archived_by_email(conn, email)
-        )
+        archived_contact = self._repos.contacts.get_archived_by_email(conn, email)
         return {
             "proposal": proposal,
             "company_matches": companies,
@@ -245,6 +249,7 @@ class CrmService:
         contact_choice: str,
         selected_company_id: UUID | None = None,
         selected_contact_id: UUID | None = None,
+        acknowledge_archived_contact: bool = False,
     ) -> dict[str, Any]:
         """Create or link CRM records and pipeline state for one project brief."""
         brief_id = int(brief["id"])
@@ -263,19 +268,14 @@ class CrmService:
             else []
         )
         contact_match = self._repos.contacts.get_active_by_email(conn, email)
-        archived_contact = (
-            None if contact_match else self._repos.contacts.get_archived_by_email(conn, email)
-        )
-        contact_choice = self._normalize_contact_choice_for_conversion(
-            contact_choice=contact_choice,
-            archived_contact=archived_contact,
-        )
+        archived_match = self._repos.contacts.get_archived_by_email(conn, email)
         self._validate_conversion_choices(
             company_choice=company_choice,
             contact_choice=contact_choice,
             company_matches=company_matches,
             contact_match=contact_match,
-            archived_contact=archived_contact,
+            archived_match=archived_match,
+            acknowledge_archived_contact=acknowledge_archived_contact,
             selected_company_id=selected_company_id,
             selected_contact_id=selected_contact_id,
         )
@@ -326,6 +326,23 @@ class CrmService:
             if race is not None:
                 return self._conversion_result_from_source(conn, race, idempotent=True)
 
+            locked_contact: dict[str, Any] | None = None
+            if contact_choice == "existing":
+                assert selected_contact_id is not None
+                locked_contact = self._repos.contacts.get_active_by_id_for_update(
+                    conn, selected_contact_id
+                )
+                if locked_contact is None:
+                    raise BriefConversionValidationError("Selected contact was not found.")
+                preview_target_company_id = (
+                    selected_company_id if company_choice == "existing" else None
+                )
+                self._assert_contact_eligible_for_conversion(
+                    contact=locked_contact,
+                    email=email,
+                    target_company_id=preview_target_company_id,
+                )
+
             expected_value = proposal.get("expected_value")
             expected_value_cents = (
                 int(round(float(expected_value) * 100))
@@ -351,17 +368,21 @@ class CrmService:
                 )
 
             if contact_choice == "existing":
-                assert selected_contact_id is not None
-                contact = self._repos.contacts.get_by_id(conn, selected_contact_id)
-                if contact is None:
-                    raise BriefConversionValidationError("Selected contact was not found.")
-                contact = self._associate_contact_company(conn, contact=contact, company=company)
+                assert locked_contact is not None
+                self._assert_contact_eligible_for_conversion(
+                    contact=locked_contact,
+                    email=email,
+                    target_company_id=UUID(str(company["id"])),
+                )
+                contact = self._associate_contact_company(
+                    conn, contact=locked_contact, company=company
+                )
             else:
-                contact = self._repos.contacts.create(
+                contact = self._create_conversion_contact(
                     conn,
                     email=email,
-                    full_name=proposal.get("contact_name") or email.split("@", 1)[0],
-                    company_id=UUID(str(company["id"])),
+                    proposal=proposal,
+                    company=company,
                 )
 
             updated = self._repos.pipeline.update_pipeline_fields(
@@ -494,7 +515,8 @@ class CrmService:
         *fills in* a missing company association (``company_id IS NULL``). A
         contact that already belongs to a company keeps that association and is
         never silently reassigned; an explicit mismatch is rejected upstream in
-        ``_validate_conversion_choices``. See docs/CRM_SCHEMA.md.
+        ``_validate_contact_company_association`` and
+        ``_assert_contact_eligible_for_conversion``. See docs/CRM_SCHEMA.md.
         """
         company_id = company.get("id")
         if company_id is None or contact.get("company_id") is not None:
@@ -506,20 +528,73 @@ class CrmService:
         )
         return updated or contact
 
-    @staticmethod
-    def _normalize_contact_choice_for_conversion(
+    def _validate_contact_company_association(
+        self,
         *,
-        contact_choice: str,
-        archived_contact: dict[str, Any] | None,
-    ) -> str:
-        """Require an explicit contact outcome when archived history exists (#276)."""
-        if contact_choice == "":
-            if archived_contact is not None:
-                raise BriefConversionValidationError(
-                    "Choose whether to create a new contact or review the archived match first."
+        contact: dict[str, Any],
+        target_company_id: UUID | None,
+    ) -> None:
+        """Reject an existing contact already assigned to a different company (#274)."""
+        linked_company = contact.get("company_id")
+        if linked_company is None:
+            return
+        if target_company_id is None:
+            raise BriefConversionValidationError(_CONTACT_COMPANY_MISMATCH_MSG)
+        if UUID(str(linked_company)) != target_company_id:
+            raise BriefConversionValidationError(_CONTACT_COMPANY_MISMATCH_MSG)
+
+    def _assert_contact_eligible_for_conversion(
+        self,
+        *,
+        contact: dict[str, Any],
+        email: str,
+        target_company_id: UUID | None,
+    ) -> None:
+        """Revalidate active identity and company association inside the conversion txn."""
+        if contact.get("archived_at") is not None:
+            raise BriefConversionValidationError(_CONTACT_STALE_MSG)
+        contact_email = str(contact.get("email") or "").strip().lower()
+        if contact_email != email:
+            raise BriefConversionValidationError(_CONTACT_EMAIL_MISMATCH_MSG)
+        self._validate_contact_company_association(
+            contact=contact,
+            target_company_id=target_company_id,
+        )
+
+    def _create_conversion_contact(
+        self,
+        conn: psycopg.Connection,
+        *,
+        email: str,
+        proposal: dict[str, Any],
+        company: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Create a contact for brief conversion; map email uniqueness races safely (#274)."""
+        target_company_id = UUID(str(company["id"]))
+        try:
+            with conn.transaction():
+                return self._repos.contacts.create(
+                    conn,
+                    email=email,
+                    full_name=proposal.get("contact_name") or email.split("@", 1)[0],
+                    company_id=target_company_id,
                 )
-            return "new"
-        return contact_choice
+        except pg_errors.UniqueViolation as exc:
+            if not _is_contact_email_unique_violation(exc):
+                raise
+            existing = self._repos.contacts.get_active_by_email(conn, email)
+            if existing is None:
+                raise BriefConversionValidationError(
+                    "A contact with this email already exists — link the existing contact."
+                ) from exc
+            self._assert_contact_eligible_for_conversion(
+                contact=existing,
+                email=email,
+                target_company_id=target_company_id,
+            )
+            return self._associate_contact_company(
+                conn, contact=existing, company=company
+            )
 
     def _validate_conversion_choices(
         self,
@@ -528,7 +603,8 @@ class CrmService:
         contact_choice: str,
         company_matches: list[dict[str, Any]],
         contact_match: dict[str, Any] | None,
-        archived_contact: dict[str, Any] | None = None,
+        archived_match: dict[str, Any] | None,
+        acknowledge_archived_contact: bool,
         selected_company_id: UUID | None,
         selected_contact_id: UUID | None,
     ) -> None:
@@ -552,10 +628,14 @@ class CrmService:
         if contact_match is None and contact_choice == "existing":
             raise BriefConversionValidationError("No existing contact matches this email.")
 
-        if archived_contact is not None and contact_choice == "existing":
+        if (
+            contact_choice == "new"
+            and contact_match is None
+            and archived_match is not None
+            and not acknowledge_archived_contact
+        ):
             raise BriefConversionValidationError(
-                "Archived contacts cannot be linked automatically — restore the archived "
-                "contact first, or explicitly choose to create a new contact."
+                "Acknowledge the archived contact identity before creating a new active contact."
             )
 
         if contact_match is not None and contact_choice == "existing":
@@ -575,20 +655,17 @@ class CrmService:
         if contact_choice == "existing" and selected_contact_id is None:
             raise BriefConversionValidationError("A contact selection is required.")
 
-        if (
-            company_choice == "existing"
-            and contact_choice == "existing"
-            and selected_company_id is not None
-            and selected_contact_id is not None
-        ):
+        if contact_choice == "existing" and selected_contact_id is not None:
             contact = contact_match
             if contact is None:
                 raise BriefConversionValidationError("Selected contact was not found.")
-            linked_company = contact.get("company_id")
-            if linked_company is not None and UUID(str(linked_company)) != selected_company_id:
-                raise BriefConversionValidationError(
-                    "Selected contact belongs to a different company — adjust your selection."
-                )
+            preview_target_company_id = (
+                selected_company_id if company_choice == "existing" else None
+            )
+            self._validate_contact_company_association(
+                contact=contact,
+                target_company_id=preview_target_company_id,
+            )
 
     def get_admin_user_by_email(
         self,

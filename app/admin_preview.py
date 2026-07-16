@@ -70,15 +70,15 @@ PREVIEW_BRIEF_DATABASE_ERROR_ID = 503
 PREVIEW_BRIEF_CONVERTED_ID = 3
 # Brief convert preview with explicit domain/email matches for Reviewer shots.
 PREVIEW_BRIEF_CONVERT_MATCHES_ID = 4
-# Brief convert preview with archived-only contact identity match (#276).
+# Archived-only contact match for brief convert screenshots (#276).
 PREVIEW_BRIEF_CONVERT_ARCHIVED_ONLY_ID = 5
-# Brief convert preview with active contact match only (no archived panel).
-PREVIEW_BRIEF_CONVERT_ACTIVE_ONLY_ID = 6
-PREVIEW_BRIEF_CONVERT_ARCHIVED_CONTACT_ID = UUID(
-    "eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01"
-)
+# Active plus archived contact history for brief convert screenshots (#276).
+PREVIEW_BRIEF_CONVERT_ACTIVE_ARCHIVED_ID = 6
 PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR = (
     "Select an existing company match or choose to create a new company."
+)
+PREVIEW_BRIEF_CONVERT_ARCHIVED_ACK_ERROR = (
+    "Acknowledge the archived contact identity before creating a new active contact."
 )
 # Archived contact id for restore-conflict screenshots in ADMIN_PREVIEW_MODE.
 PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID = UUID(
@@ -1021,7 +1021,7 @@ def build_preview_brief_rows(
     now = now or datetime.now(timezone.utc)
     companies = list(COMPANY_NAMES)
     rng.shuffle(companies)
-    count = max(rng.randint(5, 9), PREVIEW_BRIEF_CONVERT_ACTIVE_ONLY_ID)
+    count = max(rng.randint(5, 9), PREVIEW_BRIEF_CONVERT_ACTIVE_ARCHIVED_ID)
     rows: list[dict[str, object]] = []
     for i in range(count):
         company = companies[i % len(companies)]
@@ -1065,7 +1065,7 @@ def build_preview_brief_rows(
             payment_subtotal_cents = 20_000
             payment_amount_cents = 20_000
             payment_currency = "usd"
-        elif brief_id == PREVIEW_BRIEF_CONVERT_ACTIVE_ONLY_ID:
+        elif brief_id == PREVIEW_BRIEF_CONVERT_ACTIVE_ARCHIVED_ID:
             status = "paid"
             paid_at = created + timedelta(minutes=rng.randint(5, 90))
             session_id = f"cs_preview_{rng.randint(100000, 999999)}"
@@ -1090,6 +1090,11 @@ def build_preview_brief_rows(
             if brief_id == 2
             else _brief_website(company, rng)
         )
+        contact_value = _brief_email(company, rng)
+        if brief_id == PREVIEW_BRIEF_CONVERT_ARCHIVED_ONLY_ID:
+            contact_value = "archived.preview@northwindlabs.io"
+        elif brief_id == PREVIEW_BRIEF_CONVERT_ACTIVE_ARCHIVED_ID:
+            contact_value = "shared.preview@northwindlabs.io"
         brief_text = (
             ("A" * 220)
             + "\n\nSecond paragraph with <script>alert(1)</script> for escape checks."
@@ -1102,7 +1107,7 @@ def build_preview_brief_rows(
                 "created_at": created,
                 "website": website,
                 "contact_method": "email",
-                "contact_value": _brief_email(company, rng),
+                "contact_value": contact_value,
                 "brief": brief_text,
                 "status": status,
                 "stripe_session_id": session_id,
@@ -1200,15 +1205,15 @@ def preview_brief_convert_matches(
                 "company_id": company_matches[0]["id"] if company_matches else None,
             }
         )
-    if brief_id == PREVIEW_BRIEF_CONVERT_ACTIVE_ONLY_ID:
-        contact_matches.append(
-            {
-                "id": "dddddddd-dddd-dddd-dddd-dddddddddddd",
-                "email": proposal.get("contact_email"),
-                "full_name": "Alex Nguyen",
-            }
-        )
     if brief_id == PREVIEW_BRIEF_CONVERT_ARCHIVED_ONLY_ID:
+        archived_contact_match = {
+            "id": "eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01",
+            "full_name": "Jordan Lee (archived)",
+            "email": proposal.get("contact_email"),
+            "company_name": "Northwind Labs",
+            "archived_at": "2026-02-15T14:30:00+00:00",
+        }
+    if brief_id == PREVIEW_BRIEF_CONVERT_ACTIVE_ARCHIVED_ID:
         company_matches.append(
             {
                 "id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
@@ -1216,12 +1221,20 @@ def preview_brief_convert_matches(
                 "domain": proposal.get("domain"),
             }
         )
+        contact_matches.append(
+            {
+                "id": "ffffffff-ffff-ffff-ffff-fffffffffff1",
+                "full_name": "Jordan Lee",
+                "email": proposal.get("contact_email"),
+                "company_id": company_matches[0]["id"],
+            }
+        )
         archived_contact_match = {
-            "id": str(PREVIEW_BRIEF_CONVERT_ARCHIVED_CONTACT_ID),
+            "id": "eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01",
             "full_name": "Jordan Lee (archived)",
             "email": proposal.get("contact_email"),
-            "company_name": "Northwind Labs (existing)",
-            "archived_at": "2026-01-15T12:00:00+00:00",
+            "company_name": "Northwind Labs",
+            "archived_at": "2026-01-10T09:15:00+00:00",
         }
     return {
         "proposal": proposal,
@@ -1238,6 +1251,7 @@ def preview_brief_convert_post(
     contact_mode: str,
     selected_company_id: object,
     selected_contact_id: object,
+    acknowledge_archived_contact: bool = False,
 ) -> str | None:
     """Simulate validation errors for preview POST; None means success."""
     if brief_id == PREVIEW_BRIEF_CONVERT_MATCHES_ID:
@@ -1246,10 +1260,8 @@ def preview_brief_convert_post(
         if contact_mode == "existing" and selected_contact_id is None:
             return "Select the existing contact match or choose to create a new contact."
     if brief_id == PREVIEW_BRIEF_CONVERT_ARCHIVED_ONLY_ID:
-        if contact_mode == "":
-            return (
-                "Choose whether to create a new contact or review the archived match first."
-            )
+        if contact_mode == "new" and not acknowledge_archived_contact:
+            return PREVIEW_BRIEF_CONVERT_ARCHIVED_ACK_ERROR
     if brief_id == PREVIEW_BRIEF_CONVERTED_ID:
         return None
     return None

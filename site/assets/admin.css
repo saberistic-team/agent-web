@@ -758,16 +758,40 @@ body.admin-app {
 }
 
 .brief-convert-archived-panel {
+  margin: 0 0 1rem;
+  padding: 1rem 1.1rem;
   border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
-  padding: 1rem 1.25rem;
   background: color-mix(in srgb, var(--surface) 70%, transparent);
 }
 
-.brief-convert-archived-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  margin: 0.75rem 0 0;
+.brief-convert-archived-heading {
+  margin: 0 0 0.5rem;
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.brief-convert-archived-note {
+  margin: 0 0 0.85rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.brief-convert-archived-dl {
+  margin: 0 0 0.75rem;
+}
+
+.brief-convert-archived-review {
+  font-size: 0.9rem;
+}
+
+.brief-convert-archived-ack {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
 }
 
 .research-evidence-fields {
