@@ -87,6 +87,9 @@ ADMIN_SCREENSHOT_ROUTES: tuple[str, ...] = (
     "/admin/briefs/4",
     "/admin/briefs/4/convert",
     "/admin/briefs/4/convert?error=validation",
+    "/admin/briefs/5/convert",
+    "/admin/briefs/6/convert",
+    "/admin/briefs/7/convert",
     "/admin/briefs/503",
     "/admin/companies/dddddddd-dddd-dddd-dddd-dddddddddd01",
     "/admin/companies/dddddddd-dddd-dddd-dddd-dddddddddd02",
@@ -730,9 +733,15 @@ def local_preview_server(
             "(set COVERAGE_ROOT / PR_HEAD_ROOT to the checked-out PR head)"
         )
     base = f"http://127.0.0.1:{port}"
+    bind_host = "127.0.0.1"
+    from app.admin_preview_security import validate_preview_bind_host  # type: ignore
+
+    validate_preview_bind_host(bind_host)
     env = {
         **os.environ,
         "BASE_URL": base,
+        "APP_ENV": "development",
+        "SERVER_BIND_HOST": bind_host,
         # HTML pages must render without requiring production secrets.
         "DATABASE_URL": os.environ.get("DATABASE_URL") or "",
         # Open /admin without login for branch screenshot evidence only.
@@ -752,7 +761,7 @@ def local_preview_server(
             "uvicorn",
             "app.main:app",
             "--host",
-            "127.0.0.1",
+            bind_host,
             "--port",
             str(port),
         ],

@@ -21,9 +21,11 @@ from app import admin_auth
 from app import db
 from app.admin_auth import LOGIN_FLOW_COOKIE_NAME, SESSION_COOKIE_NAME
 from app.admin_routes import _issue_session
+from app.admin_preview_security import AdminPreviewConfigError
 from app.config import get_settings
 from app.crm_uow import crm_transaction
 from app.main import app
+from tests.conftest import enable_admin_preview_env
 
 TEST_TRUSTED_PROXY_CIDRS = "10.0.0.0/8"
 TEST_TRUSTED_EDGE_CIDRS = "172.68.0.0/16"
@@ -575,8 +577,7 @@ def _request_with_client(host: str) -> Request:
 def test_admin_preview_mode_allows_dashboard_without_login(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    enable_admin_preview_env(monkeypatch)
     monkeypatch.delenv("ADMIN_USERNAME", raising=False)
     monkeypatch.delenv("ADMIN_PASSWORD_HASH", raising=False)
     monkeypatch.delenv("ADMIN_SESSION_SECRET", raising=False)
@@ -592,14 +593,39 @@ def test_admin_preview_mode_allows_dashboard_without_login(
 
 
 @pytest.mark.unit
-def test_admin_preview_mode_disabled_on_production_base_url(
+def test_admin_preview_mode_rejected_on_production_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("SERVER_BIND_HOST", "127.0.0.1")
     monkeypatch.setenv("BASE_URL", "https://saberistic.com")
+
+    with pytest.raises(AdminPreviewConfigError):
+        get_settings()
+
+
+@pytest.mark.unit
+def test_admin_preview_host_header_spoofing_cannot_enable_bypass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("BASE_URL", "https://saberistic.com")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
+    monkeypatch.setenv("ADMIN_USERNAME", TEST_USERNAME)
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_HASH)
+    monkeypatch.setenv("ADMIN_SESSION_SECRET", TEST_SECRET)
+    monkeypatch.delenv("ADMIN_PREVIEW_MODE", raising=False)
+    monkeypatch.delenv("SERVER_BIND_HOST", raising=False)
     settings = get_settings()
-    assert settings.admin_preview_mode is True
     assert settings.admin_preview_enabled is False
+
+    response = client.get(
+        "/admin",
+        headers={"Host": "127.0.0.1:8765"},
+    )
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/admin/login")
 
 
 @pytest.mark.unit
