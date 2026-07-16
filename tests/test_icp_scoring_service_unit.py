@@ -179,3 +179,57 @@ def test_historical_snapshots_are_not_rewritten_on_rule_publish() -> None:
     assert detail is not None
     assert detail["snapshot"]["version_number"] == 1
     assert detail["active_version"]["version_number"] == 2
+
+
+@pytest.mark.unit
+def test_list_active_icp_rules_returns_empty_without_version() -> None:
+    conn = MagicMock()
+    service = _service()
+    service._repos.icp_scoring.get_active_version.return_value = None
+    assert service.list_active_icp_rules(conn) == []
+
+
+@pytest.mark.unit
+def test_calculate_company_icp_score_raises_when_company_missing() -> None:
+    conn = MagicMock()
+    service = _service()
+    service._repos.companies.get_by_id.return_value = None
+    with pytest.raises(ValueError, match="Company not found"):
+        service.calculate_company_icp_score(
+            conn,
+            actor_context=_actor(),
+            company_id=COMPANY_ID,
+        )
+
+
+@pytest.mark.unit
+def test_override_rejects_out_of_range_score() -> None:
+    conn = MagicMock()
+    service = _service()
+    service._repos.companies.get_by_id.return_value = {"id": str(COMPANY_ID), "name": "Acme"}
+    with pytest.raises(ValueError, match="between 0 and 10"):
+        service.override_company_icp_score(
+            conn,
+            actor_context=_actor(),
+            company_id=COMPANY_ID,
+            override_score=11.0,
+            reason="Too high",
+        )
+
+
+@pytest.mark.unit
+def test_get_company_icp_score_detail_returns_none_for_missing_company() -> None:
+    conn = MagicMock()
+    service = _service()
+    service._repos.companies.get_by_id.return_value = None
+    assert service.get_company_icp_score_detail(conn, COMPANY_ID) is None
+
+
+@pytest.mark.unit
+def test_list_company_icp_scores_delegates_to_repository() -> None:
+    conn = MagicMock()
+    service = _service()
+    service._repos.icp_scoring.list_latest_snapshots.return_value = [{"company_name": "Acme"}]
+    rows = service.list_company_icp_scores(conn, limit=5)
+    assert rows[0]["company_name"] == "Acme"
+    service._repos.icp_scoring.list_latest_snapshots.assert_called_once_with(conn, limit=5)

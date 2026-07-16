@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 from app import admin_auth, db
 from app.admin_auth import SESSION_COOKIE_NAME
 from app.admin_preview import PREVIEW_PIPELINE_COMPANY_IDS
+from app.icp_scoring import default_icp_rules
 from app.main import app
 
 client = TestClient(app, follow_redirects=False)
@@ -205,6 +206,95 @@ def test_icp_override_requires_reason(
                 "override_score": "8.0",
                 "reason": "   ",
             },
+        )
+    assert response.status_code == 303
+    assert "error=" in response.headers["location"]
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_icp_scores_preview_mode_renders_mock_rows(
+    authenticated_admin: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    response = client.get("/admin/signals", cookies=authenticated_admin["cookies"])
+    assert response.status_code == 200
+    assert "Preview data" in response.text
+    assert "ICP scores" in response.text
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_icp_rules_preview_mode_renders_defaults(
+    authenticated_admin: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    response = client.get("/admin/signals/rules", cookies=authenticated_admin["cookies"])
+    assert response.status_code == 200
+    assert "vertical_fit" in response.text
+    assert "Preview data" in response.text
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_icp_detail_preview_mode_renders_override(
+    authenticated_admin: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.admin_preview import PREVIEW_PIPELINE_COMPANY_IDS
+
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    response = client.get(
+        f"/admin/signals/{PREVIEW_PIPELINE_COMPANY_IDS[1]}",
+        cookies=authenticated_admin["cookies"],
+    )
+    assert response.status_code == 200
+    assert "Manual override" in response.text
+    assert "Preview data" in response.text
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_icp_rules_save_publishes_new_version(
+    authenticated_admin: dict[str, Any],
+) -> None:
+    crm = MagicMock()
+    existing = [rule.model_dump() for rule in default_icp_rules()]
+    crm.list_active_icp_rules.return_value = existing
+    crm.publish_icp_rule_version.return_value = {"version": {"version_number": 2}}
+    form_data = {
+        "csrf_token": authenticated_admin["csrf_token"],
+    }
+    for rule in default_icp_rules():
+        form_data[f"dimension__{rule.id}"] = rule.dimension
+        form_data[f"label__{rule.id}"] = rule.label
+        form_data[f"weight__{rule.id}"] = str(rule.weight)
+        form_data[f"enabled__{rule.id}"] = "on"
+    with patch("app.admin_icp_routes._crm", crm):
+        response = client.post(
+            "/admin/signals/rules",
+            cookies=authenticated_admin["cookies"],
+            data=form_data,
+        )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/admin/signals/rules"
+    crm.publish_icp_rule_version.assert_called_once()
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_icp_recalculate_value_error_redirects_with_error(
+    authenticated_admin: dict[str, Any],
+) -> None:
+    crm = MagicMock()
+    crm.calculate_company_icp_score.side_effect = ValueError("Company not found.")
+    with patch("app.admin_icp_routes._crm", crm):
+        response = client.post(
+            f"/admin/signals/{COMPANY_ID}/recalculate",
+            cookies=authenticated_admin["cookies"],
+            data={"csrf_token": authenticated_admin["csrf_token"]},
         )
     assert response.status_code == 303
     assert "error=" in response.headers["location"]

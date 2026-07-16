@@ -8,6 +8,7 @@ from uuid import uuid4
 import pytest
 
 from app.icp_scoring import (
+    RULE_STATUS_DISABLED,
     RULE_STATUS_EXPIRED,
     RULE_STATUS_HYPOTHESIS,
     RULE_STATUS_MISSING,
@@ -16,6 +17,10 @@ from app.icp_scoring import (
     IcpScoringRule,
     calculate_icp_score,
     default_icp_rules,
+    rule_from_row,
+    snapshot_from_result,
+    validate_record_types,
+    validate_rule_ids,
 )
 
 REFERENCE = datetime(2026, 7, 15, 12, 0, tzinfo=timezone.utc)
@@ -255,3 +260,220 @@ def test_boundary_headcount_and_stage_thresholds() -> None:
     )
     assert inside.total_score == 2.0
     assert outside.total_score == 0.0
+
+
+@pytest.mark.unit
+def test_disabled_rule_reports_disabled_status() -> None:
+    rules = [
+        IcpScoringRule(
+            id="vertical_fit",
+            dimension="vertical",
+            label="Vertical",
+            weight=1.0,
+            threshold=IcpRuleThreshold(categories=["fintech"]),
+            enabled=False,
+            sort_order=1,
+        )
+    ]
+    result = calculate_icp_score(
+        company=_company(category="fintech"),
+        contacts=[],
+        research_records=[],
+        rules=rules,
+        version_number=1,
+        calculated_at=REFERENCE,
+    )
+    assert result.breakdown[0].status == RULE_STATUS_DISABLED
+    assert result.total_score == 0.0
+
+
+@pytest.mark.unit
+def test_warm_path_scores_introducer_contact() -> None:
+    contacts = [
+        {
+            "id": str(uuid4()),
+            "full_name": "Jordan Intro",
+            "buying_roles": ["introducer"],
+        }
+    ]
+    result = calculate_icp_score(
+        company=_company(),
+        contacts=contacts,
+        research_records=[],
+        rules=[rule for rule in default_icp_rules() if rule.id == "warm_path"],
+        version_number=1,
+        calculated_at=REFERENCE,
+    )
+    warm = result.breakdown[0]
+    assert warm.points_awarded == 1.0
+    assert warm.status == RULE_STATUS_SCORED
+
+
+@pytest.mark.unit
+def test_funding_recency_uses_company_summary_when_recent() -> None:
+    result = calculate_icp_score(
+        company=_company(
+            funding_summary="Raised seed in 2026",
+            last_verified_at=REFERENCE.date(),
+        ),
+        contacts=[],
+        research_records=[],
+        rules=[rule for rule in default_icp_rules() if rule.id == "funding_recency"],
+        version_number=1,
+        calculated_at=REFERENCE,
+    )
+    funding = result.breakdown[0]
+    assert funding.points_awarded == 1.0
+    assert funding.status == RULE_STATUS_SCORED
+
+
+@pytest.mark.unit
+def test_technical_trigger_matches_keyword_evidence() -> None:
+    record = _record(observed_value="Migrating payments API infrastructure")
+    result = calculate_icp_score(
+        company=_company(),
+        contacts=[],
+        research_records=[record],
+        rules=[rule for rule in default_icp_rules() if rule.id == "technical_trigger"],
+        version_number=1,
+        calculated_at=REFERENCE,
+    )
+    technical = result.breakdown[0]
+    assert technical.points_awarded == 1.0
+    assert technical.status == RULE_STATUS_SCORED
+
+
+@pytest.mark.unit
+def test_expired_and_hypothesis_together_report_expired_status() -> None:
+    expired = _record(
+        observed_value="Hiring platform engineers",
+        observed_at=REFERENCE - timedelta(days=200),
+        expires_at=REFERENCE - timedelta(days=1),
+    )
+    hypothesis = {
+        "id": str(uuid4()),
+        "record_type": "hypothesis",
+        "body": "Hiring hypothesis",
+        "observed_value": "Hiring hypothesis",
+    }
+    result = calculate_icp_score(
+        company=_company(headcount_estimate=None),
+        contacts=[],
+        research_records=[expired, hypothesis],
+        rules=[rule for rule in default_icp_rules() if rule.id == "hiring_growth"],
+        version_number=1,
+        calculated_at=REFERENCE,
+    )
+    hiring = result.breakdown[0]
+    assert hiring.points_awarded == 0.0
+    assert hiring.status == RULE_STATUS_EXPIRED
+
+
+@pytest.mark.unit
+def test_rule_from_row_and_snapshot_helpers() -> None:
+    row = {
+        "id": "vertical_fit",
+        "dimension": "vertical",
+        "label": "Target vertical",
+        "weight": 1.0,
+        "threshold": {"categories": ["fintech"]},
+        "enabled": True,
+        "accept_hypothesis": False,
+        "sort_order": 1,
+    }
+    rule = rule_from_row(row)
+    assert rule.id == "vertical_fit"
+
+    result = calculate_icp_score(
+        company=_company(category="fintech"),
+        contacts=[],
+        research_records=[],
+        rules=[rule],
+        version_number=1,
+        calculated_at=REFERENCE,
+    )
+    snapshot = snapshot_from_result(
+        company_id=str(uuid4()),
+        version_id=str(uuid4()),
+        result=result,
+    )
+    assert snapshot["total_score"] == 1.0
+    assert snapshot["version_number"] == 1
+
+
+@pytest.mark.unit
+def test_validate_rule_and_record_type_helpers() -> None:
+    validate_rule_ids([rule.id for rule in default_icp_rules()])
+    with pytest.raises(ValueError, match="canonical ten"):
+        validate_rule_ids(["vertical_fit"])
+    validate_record_types(["verified_fact", "hypothesis"])
+    with pytest.raises(ValueError, match="unknown record_type"):
+        validate_record_types(["not_a_type"])
+
+
+@pytest.mark.unit
+def test_threshold_validator_rejects_negative_values() -> None:
+    with pytest.raises(ValueError, match="non-negative"):
+        IcpRuleThreshold(max_days=-1)
+
+
+@pytest.mark.unit
+def test_invalid_dimension_is_rejected() -> None:
+    with pytest.raises(ValueError, match="dimension must be one of"):
+        IcpScoringRule(
+            id="bad_rule",
+            dimension="not_a_dimension",
+            label="Bad",
+            weight=1.0,
+        )
+
+
+@pytest.mark.unit
+def test_warm_path_scores_relationship_context_record() -> None:
+    record = {
+        "id": str(uuid4()),
+        "record_type": "relationship_context",
+        "body": "Warm intro via portfolio founder",
+        "observed_value": "Warm intro via portfolio founder",
+    }
+    result = calculate_icp_score(
+        company=_company(),
+        contacts=[],
+        research_records=[record],
+        rules=[rule for rule in default_icp_rules() if rule.id == "warm_path"],
+        version_number=1,
+        calculated_at=REFERENCE,
+    )
+    warm = result.breakdown[0]
+    assert warm.points_awarded == 1.0
+    assert warm.status == RULE_STATUS_SCORED
+
+
+@pytest.mark.unit
+def test_hiring_growth_matches_research_record_keywords() -> None:
+    record = _record(observed_value="Actively hiring platform engineers")
+    result = calculate_icp_score(
+        company=_company(headcount_estimate=None),
+        contacts=[],
+        research_records=[record],
+        rules=[rule for rule in default_icp_rules() if rule.id == "hiring_growth"],
+        version_number=1,
+        calculated_at=REFERENCE,
+    )
+    hiring = result.breakdown[0]
+    assert hiring.points_awarded == 1.0
+    assert hiring.status == RULE_STATUS_SCORED
+
+
+@pytest.mark.unit
+def test_rule_from_row_accepts_non_dict_threshold() -> None:
+    rule = rule_from_row(
+        {
+            "id": "vertical_fit",
+            "dimension": "vertical",
+            "label": "Target vertical",
+            "weight": 1.0,
+            "threshold": "invalid",
+        }
+    )
+    assert rule.threshold.categories == []
