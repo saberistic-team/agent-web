@@ -25,6 +25,14 @@ Playwright can open admin pages **without login**.
   `SERVER_BIND_HOST` is a loopback interface. Startup fails on staging/production,
   lookalike/malformed origins, or a public bind — never inferred from hostname
   denylists or request `Host` headers.
+- **Database-isolated:** the screenshot launcher builds a minimal child-process
+  environment via ``build_preview_child_env()`` — it never inherits ``DATABASE_URL``
+  or production Stripe/email/analytics credentials from the parent shell.
+- **Read-only:** startup rejects ``ADMIN_PREVIEW_MODE`` when any production
+  data-store or provider secret is configured; while preview is active, a central
+  ASGI guard in ``app/admin_preview_guard.py`` allows only ``GET``/``HEAD`` on
+  ``/admin/*`` and returns ``405 Method Not Allowed`` (with ``Allow: GET, HEAD``)
+  for every other method before request bodies are parsed.
 - Admin shell pages fill with **mock intake/CRM data with randomization**
   (dashboard stats, section tables, **briefs list/detail**, etc.) so screenshots
   look like a live operator shell — never real production rows and never an

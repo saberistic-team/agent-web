@@ -596,26 +596,18 @@ def test_convert_post_passes_archived_acknowledgment_to_service() -> None:
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_preview_archived_convert_requires_explicit_create_choice(
+def test_preview_archived_convert_post_denied(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Superseded by the central AdminPreviewReadOnlyMiddleware (#331): preview
+    mode now rejects every unsafe method under /admin with 405 before the
+    route handler runs, instead of exercising the create-choice validation.
+    """
     enable_admin_preview_env(monkeypatch)
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
         with patch("app.admin_routes._verify_session_csrf"):
             with patch("app.admin_routes._session_csrf_for_forms", return_value=CSRF_TOKEN):
-                missing_choice = client.post(
-                    "/admin/briefs/5/convert",
-                    data={"csrf_token": CSRF_TOKEN, "company_choice": "new"},
-                )
-                missing_ack = client.post(
-                    "/admin/briefs/5/convert",
-                    data={
-                        "csrf_token": CSRF_TOKEN,
-                        "company_choice": "new",
-                        "contact_choice": "new",
-                    },
-                )
-                success = client.post(
+                response = client.post(
                     "/admin/briefs/5/convert",
                     data={
                         "csrf_token": CSRF_TOKEN,
@@ -624,12 +616,8 @@ def test_preview_archived_convert_requires_explicit_create_choice(
                         "acknowledge_archived_identity": "1",
                     },
                 )
-    assert missing_choice.status_code == 303
-    assert "create%20or%20link%20a%20contact" in missing_choice.headers["location"]
-    assert missing_ack.status_code == 303
-    assert "archived%20identity%20exists" in missing_ack.headers["location"]
-    assert success.status_code == 303
-    assert success.headers["location"] == "/admin/briefs/5?converted=1"
+    assert response.status_code == 405
+    assert response.headers.get("allow") == "GET, HEAD"
 
 
 @pytest.mark.unit
@@ -687,10 +675,13 @@ def test_preview_no_email_convert_page_renders_company_but_no_email(
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_preview_empty_and_no_email_convert_post_succeeds_with_new_records(
+def test_preview_empty_and_no_email_convert_post_denied(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Neither edge state has matches to select, so 'new' company/contact always succeeds."""
+    """Superseded by the central AdminPreviewReadOnlyMiddleware (#331): preview
+    mode now rejects every unsafe method under /admin with 405 before the
+    route handler runs, instead of exercising the new-record conversion.
+    """
     enable_admin_preview_env(monkeypatch)
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
         with patch("app.admin_routes._verify_session_csrf"):
@@ -711,7 +702,7 @@ def test_preview_empty_and_no_email_convert_post_succeeds_with_new_records(
                         "contact_choice": "new",
                     },
                 )
-    assert empty_response.status_code == 303
-    assert empty_response.headers["location"] == "/admin/briefs/6?converted=1"
-    assert no_email_response.status_code == 303
-    assert no_email_response.headers["location"] == "/admin/briefs/7?converted=1"
+    assert empty_response.status_code == 405
+    assert empty_response.headers.get("allow") == "GET, HEAD"
+    assert no_email_response.status_code == 405
+    assert no_email_response.headers.get("allow") == "GET, HEAD"
