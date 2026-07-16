@@ -101,6 +101,21 @@ ADMIN_MUTATION_ROUTE_CLASSIFICATIONS: dict[tuple[str, str], tuple[MutationClassi
         "required_immutable_business_audit",
         "Pipeline activity creation emits pipeline_activity.create with bounded metadata.",
     ),
+    ("POST", "/admin/signals/rules"): (
+        "required_immutable_business_audit",
+        "Publishing an ICP rule version emits scoring_rule.update per changed rule with "
+        "bounded before/after summaries.",
+    ),
+    ("POST", "/admin/signals/{company_id}/recalculate"): (
+        "intentionally_unaudited",
+        "Recalculation only inserts an append-only company_icp_score_snapshots row; no "
+        "audit_events entry in this release.",
+    ),
+    ("POST", "/admin/signals/{company_id}/override"): (
+        "intentionally_unaudited",
+        "Override reason/actor are captured directly on the append-only "
+        "company_icp_score_snapshots row; no separate audit_events entry in this release.",
+    ),
 }
 
 

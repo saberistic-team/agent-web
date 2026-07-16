@@ -72,6 +72,7 @@ def test_company_research_create_writes_one_audit_event() -> None:
             admin_users=MagicMock(),
             pipeline=MagicMock(),
             import_batches=MagicMock(),
+            icp_scoring=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -115,6 +116,7 @@ def test_contact_research_create_writes_one_audit_event() -> None:
             admin_users=MagicMock(),
             pipeline=MagicMock(),
             import_batches=MagicMock(),
+            icp_scoring=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -156,6 +158,7 @@ def test_pipeline_activity_create_writes_one_audit_event() -> None:
             admin_users=MagicMock(),
             pipeline=MagicMock(),
             import_batches=MagicMock(),
+            icp_scoring=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -196,6 +199,7 @@ def test_audit_json_excludes_research_and_activity_free_form_content() -> None:
             admin_users=MagicMock(),
             pipeline=MagicMock(),
             import_batches=MagicMock(),
+            icp_scoring=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -263,6 +267,7 @@ def test_research_audit_failure_rolls_back_without_success_event() -> None:
             admin_users=MagicMock(),
             pipeline=MagicMock(),
             import_batches=MagicMock(),
+            icp_scoring=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -296,6 +301,7 @@ def test_research_repository_failure_writes_no_audit_event() -> None:
             admin_users=MagicMock(),
             pipeline=MagicMock(),
             import_batches=MagicMock(),
+            icp_scoring=MagicMock(),
         )
     )
     conn = MagicMock()
