@@ -34,6 +34,9 @@ class Settings:
     admin_trusted_edge_cidrs: str = ""
     audit_page_size: int = 50
     brief_page_size: int = 50
+    analytics_ingest_rate_limit: int = 60
+    analytics_ingest_rate_window_seconds: int = 60
+    analytics_ingest_lockout_seconds: int = 300
 
     @property
     def database_configured(self) -> bool:
@@ -86,6 +89,12 @@ class Settings:
             return False
         return bool(self.plausible_domain)
 
+    @property
+    def first_party_analytics_enabled(self) -> bool:
+        """True when first-party browser event ingestion is explicitly enabled."""
+        flag = os.environ.get("FIRST_PARTY_ANALYTICS_ENABLED", "").lower()
+        return flag in ("1", "true", "yes")
+
 
 def get_settings() -> Settings:
     return Settings(
@@ -104,9 +113,7 @@ def get_settings() -> Settings:
         admin_username=os.environ.get("ADMIN_USERNAME", "").strip(),
         admin_password_hash=os.environ.get("ADMIN_PASSWORD_HASH", "").strip(),
         admin_session_secret=os.environ.get("ADMIN_SESSION_SECRET", "").strip(),
-        admin_login_limiter_secret=os.environ.get(
-            "ADMIN_LOGIN_LIMITER_SECRET", ""
-        ).strip(),
+        admin_login_limiter_secret=os.environ.get("ADMIN_LOGIN_LIMITER_SECRET", "").strip(),
         admin_login_limiter_secret_previous=os.environ.get(
             "ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS", ""
         ).strip(),
@@ -120,6 +127,13 @@ def get_settings() -> Settings:
         ),
         audit_page_size=int(os.environ.get("AUDIT_PAGE_SIZE", "50")),
         brief_page_size=int(os.environ.get("BRIEF_PAGE_SIZE", "50")),
+        analytics_ingest_rate_limit=int(os.environ.get("ANALYTICS_INGEST_RATE_LIMIT", "60")),
+        analytics_ingest_rate_window_seconds=int(
+            os.environ.get("ANALYTICS_INGEST_RATE_WINDOW_SECONDS", "60")
+        ),
+        analytics_ingest_lockout_seconds=int(
+            os.environ.get("ANALYTICS_INGEST_LOCKOUT_SECONDS", "300")
+        ),
         admin_trust_proxy_headers=os.environ.get(
             "ADMIN_TRUST_PROXY_HEADERS", ""
         ).lower()

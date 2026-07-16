@@ -1,71 +1,80 @@
-"""Admin authentication secrets and privacy-preserving limiter identifiers."""
+"""Fail-fast validation for admin authentication secrets."""
 
 from __future__ import annotations
 
-import hashlib
 import hmac
-import re
-from typing import Final
 
 from app.config import Settings
 
-MIN_ADMIN_LOGIN_LIMITER_SECRET_BYTES: Final = 32
+MIN_ADMIN_SECRET_LENGTH = 32
 
-LIMITER_DOMAIN_SOURCE: Final = "admin-login-limiter:src:v1"
-LIMITER_DOMAIN_ACCOUNT: Final = "admin-login-limiter:acct:v1"
-
-_PLACEHOLDER_PATTERN = re.compile(
-    r"(?i)^(changeme|change[_-]?me|replace[_-]?me|placeholder|your[_-]?secret|"
-    r"admin[_-]?login[_-]?limiter[_-]?secret|example|todo|fixme|secret)$"
+_WEAK_SECRET_LITERALS = frozenset(
+    {
+        "changeme",
+        "change-me",
+        "change_me",
+        "placeholder",
+        "secret",
+        "password",
+        "admin",
+        "test",
+        "development",
+        "dev",
+        "example",
+        "sample",
+        "dummy",
+        "default",
+    }
 )
 
 
-def validate_admin_login_limiter_secret(value: str, *, env_name: str) -> bytes:
-    """Return UTF-8 secret bytes or raise ValueError for weak or missing material."""
+def _is_weak_secret(value: str) -> bool:
     stripped = value.strip()
-    if not stripped:
-        raise ValueError(f"{env_name} is required when admin authentication is enabled")
-    if _PLACEHOLDER_PATTERN.match(stripped):
-        raise ValueError(f"{env_name} must not be a placeholder value")
-    encoded = stripped.encode("utf-8")
-    if len(encoded) < MIN_ADMIN_LOGIN_LIMITER_SECRET_BYTES:
+    if len(stripped) < MIN_ADMIN_SECRET_LENGTH:
+        return True
+    lower = stripped.lower()
+    if lower in _WEAK_SECRET_LITERALS:
+        return True
+    if lower.startswith("changeme") or lower.startswith("change-me"):
+        return True
+    if len(set(stripped)) == 1:
+        return True
+    return False
+
+
+def validate_admin_secret(name: str, value: str) -> None:
+    """Reject missing, short, or placeholder admin secret material."""
+    if _is_weak_secret(value):
         raise ValueError(
-            f"{env_name} must be at least {MIN_ADMIN_LOGIN_LIMITER_SECRET_BYTES} bytes"
+            f"{name} must be at least {MIN_ADMIN_SECRET_LENGTH} characters "
+            "and must not be a placeholder or low-entropy value"
         )
-    return encoded
 
 
-def admin_login_limiter_secrets(settings: Settings) -> tuple[bytes, ...]:
-    """Return the active limiter secret and optional previous secret for rotation."""
-    current = validate_admin_login_limiter_secret(
-        settings.admin_login_limiter_secret,
-        env_name="ADMIN_LOGIN_LIMITER_SECRET",
+def should_validate_admin_security(settings: Settings) -> bool:
+    """True when a production admin deployment is configured."""
+    return bool(
+        settings.database_url
+        and settings.admin_username
+        and settings.admin_password_hash
+        and settings.admin_session_secret
     )
-    secrets: list[bytes] = [current]
-    previous = settings.admin_login_limiter_previous_secret.strip()
-    if previous:
-        previous_bytes = validate_admin_login_limiter_secret(
-            previous,
-            env_name="ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET",
-        )
-        if previous_bytes != current:
-            secrets.append(previous_bytes)
-    return tuple(secrets)
 
 
-def digest_limiter_identifier(domain: str, material: str, secret: bytes) -> str:
-    """Return a keyed HMAC-SHA256 identifier with explicit domain separation."""
-    payload = f"{domain}:{material}".encode("utf-8")
-    return hmac.new(secret, payload, hashlib.sha256).hexdigest()
-
-
-def compare_limiter_identifiers(left: str, right: str) -> bool:
-    """Constant-time comparison for persisted limiter identifiers."""
-    return hmac.compare_digest(left, right)
-
-
-def validate_admin_auth_security_settings(settings: Settings) -> None:
-    """Fail fast on weak admin security configuration at process startup."""
-    if not settings.admin_auth_configured:
+def validate_admin_security_config(settings: Settings) -> None:
+    """Validate admin secrets before serving authenticated routes."""
+    if not should_validate_admin_security(settings):
         return
-    admin_login_limiter_secrets(settings)
+
+    validate_admin_secret("ADMIN_SESSION_SECRET", settings.admin_session_secret)
+    validate_admin_secret("ADMIN_LOGIN_LIMITER_SECRET", settings.admin_login_limiter_secret)
+
+    previous = settings.admin_login_limiter_secret_previous
+    if not previous:
+        return
+
+    validate_admin_secret("ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS", previous)
+    if hmac.compare_digest(previous, settings.admin_login_limiter_secret):
+        raise ValueError(
+            "ADMIN_LOGIN_LIMITER_SECRET_PREVIOUS must differ from ADMIN_LOGIN_LIMITER_SECRET"
+        )

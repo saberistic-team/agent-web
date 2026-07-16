@@ -21,12 +21,18 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import analytics_service, case_studies, db, email_service, insights, page_service, stripe_service
 from app.admin_auth import AdminLoginRequired, login_redirect_url
-from app.admin_secrets import validate_admin_security_secrets
 from app.admin_pipeline_routes import router as admin_pipeline_router
 from app.admin_routes import router as admin_router
 from app.actor_context import CORRELATION_HEADER
-from app.client_source import admin_proxy_trust_summary, client_source_policy_summary
+from app.analytics_ingest import (
+    ANALYTICS_SESSION_COOKIE,
+    ANALYTICS_SESSION_HEADER,
+    IngestRejectReason,
+    ingest_browser_event,
+)
+from app.client_source import admin_proxy_trust_summary, client_source_policy_summary, resolve_client_source
 from app.config import get_settings
+from app.admin_security import should_validate_admin_security, validate_admin_security_config
 from app.models import BriefCreateRequest, BriefCreateResponse
 from app.seo import (
     PERMANENT_REDIRECTS,
@@ -46,10 +52,12 @@ ASSETS_DIR = SITE_DIR / "assets"
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
-    validate_admin_security_secrets(settings)
     if settings.database_configured:
         db.init_db(settings.database_url)
         logger.info("database schema ready")
+        if should_validate_admin_security(settings):
+            validate_admin_security_config(settings)
+            logger.info("admin security configuration validated")
     else:
         logger.warning("DATABASE_URL not set — brief persistence disabled")
     yield
@@ -216,6 +224,60 @@ for redirect_path, target in PERMANENT_REDIRECTS.items():
     app.add_api_route(
         redirect_path, _permanent_redirect, methods=["GET"], include_in_schema=False
     )
+
+
+@app.post("/api/events")
+async def ingest_analytics_event(request: Request) -> JSONResponse:
+    settings = get_settings()
+    raw_body = await request.body()
+    if not settings.first_party_analytics_enabled:
+        return JSONResponse({"detail": IngestRejectReason.DISABLED.value}, status_code=404)
+
+    source = resolve_client_source(request, settings).source
+    if settings.database_configured:
+        with db.db_connection(settings.database_url) as conn:
+            result = ingest_browser_event(
+                settings,
+                raw_body=raw_body,
+                origin=request.headers.get("origin"),
+                referer=request.headers.get("referer"),
+                dnt_header=request.headers.get("dnt"),
+                user_agent=request.headers.get("user-agent"),
+                source_key=source,
+                conn=conn,
+            )
+    else:
+        result = ingest_browser_event(
+            settings,
+            raw_body=raw_body,
+            origin=request.headers.get("origin"),
+            referer=request.headers.get("referer"),
+            dnt_header=request.headers.get("dnt"),
+            user_agent=request.headers.get("user-agent"),
+            source_key=source,
+            conn=None,
+        )
+
+    if not result.accepted:
+        status = 429 if result.reason == IngestRejectReason.RATE_LIMIT else 400
+        if result.reason == IngestRejectReason.DISABLED:
+            status = 404
+        return JSONResponse({"detail": result.reason.value}, status_code=status)
+
+    response = JSONResponse({"accepted": True, "duplicate": result.duplicate})
+    if result.session_id:
+        response.set_cookie(
+            key=ANALYTICS_SESSION_COOKIE,
+            value=result.session_id,
+            httponly=True,
+            secure=settings.base_url.startswith("https"),
+            samesite="lax",
+            path="/",
+            max_age=86_400,
+        )
+    if result.rotate_session:
+        response.headers[ANALYTICS_SESSION_HEADER] = "1"
+    return response
 
 
 @app.post("/api/briefs", response_model=BriefCreateResponse)
