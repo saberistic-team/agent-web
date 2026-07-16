@@ -25,12 +25,13 @@ Playwright can open admin pages **without login**.
 - Admin shell pages fill with **mock intake/CRM data with randomization**
   (dashboard stats, section tables, **briefs list/detail**, etc.) so screenshots
   look like a live operator shell — never real production rows and never an
-  empty “no records yet” shell for newly built admin surfaces. Screenshot runs
-  set stable `ADMIN_PREVIEW_SEED` and `ADMIN_PREVIEW_REFERENCE_AT` (frozen UTC
-  “now”) so paired desktop/mobile captures and reruns render identical fixture
-  data. Optional overrides remain deterministic. See fixture versioning below.
-  Builder must extend `app/admin_preview.py` whenever it adds a page (see
-  `AGENTS/builder.md`).
+  empty “no records yet” shell for newly built admin surfaces. Standard
+  screenshot runs freeze a **root seed** and **reference timestamp** (checked-in
+  CI defaults in `app/preview_context.py`) so desktop/mobile pairs and reruns
+  render identical fixture data. Optional `ADMIN_PREVIEW_SEED` /
+  `ADMIN_PREVIEW_REFERENCE_TIME` override those defaults for exploratory
+  visual testing. Builder must extend `app/admin_preview.py` whenever it adds
+  a page (see `AGENTS/builder.md`).
 - See [ADMIN_AUTH.md](ADMIN_AUTH.md).
 
 **Production renderer routes** (preview uses the same page functions as authenticated
@@ -46,6 +47,24 @@ production, with deterministic fixtures from `app/admin_preview.py`):
 
 Other admin nav pages still use generic `render_preview_section_main` tables until
 they gain production-backed list renderers.
+
+### Fixture versioning and baseline updates
+
+Preview fixtures are versioned via `PREVIEW_FIXTURE_VERSION` in
+`app/preview_context.py` (mirrored as `ADMIN_PREVIEW_FIXTURE_VERSION` in CI).
+Each fixture namespace derives its own RNG from the root seed so unrelated
+route additions do not perturb existing screenshot data.
+
+When fixture shape or namespace derivation changes:
+
+1. Bump `PREVIEW_FIXTURE_VERSION` in `app/preview_context.py`.
+2. Re-run the full Reviewer screenshot suite on a clean PR head.
+3. Compare `branch-reproducibility.json` metadata and PNG hashes; intentional
+   visual diffs should cite the version bump in the PR body.
+
+Standard screenshot runs record seed, reference time, fixture version, head SHA,
+browser version, and viewports in `branch-reproducibility.json` and the
+`reviewer_screenshots_pre` comment.
 
 ### Expected-status visual fixtures
 
@@ -173,8 +192,9 @@ until merged.
 | Name | Type | Purpose |
 |------|------|---------|
 | `ADMIN_PREVIEW_MODE` | env | Set `1` on PR preview server only (script sets this) |
-| `ADMIN_PREVIEW_SEED` | env | Root seed for preview fixtures (script sets stable default) |
-| `ADMIN_PREVIEW_REFERENCE_AT` | env | Frozen timezone-aware UTC timestamp for preview “now” |
+| `ADMIN_PREVIEW_SEED` | env | Root seed for deterministic preview fixtures (script sets stable default) |
+| `ADMIN_PREVIEW_REFERENCE_TIME` | env | Frozen timezone-aware ISO timestamp for preview fixtures |
+| `ADMIN_PREVIEW_FIXTURE_VERSION` | env | Fixture schema version; bump when baseline regeneration is intentional |
 | `DEPLOY_BASE_URL` | variable | default `https://saberistic.com` (post-deploy) |
 | `COVERAGE_ROOT` / `PR_HEAD_ROOT` | env | PR checkout root for branch screenshots |
 | `SCREENSHOTS_REQUIRED` | variable | default true for Reviewer when pages are affected |
@@ -182,26 +202,6 @@ until merged.
 | `RENDER_DEPLOY_HOOK_URL` | secret | deploy trigger |
 | `RENDER_API_KEY` | secret | poll deploy status until live/failed |
 | `RENDER_SERVICE_ID` | secret | optional `srv-…` if not parseable from the hook URL |
-
-### Preview fixture versioning
-
-`PREVIEW_FIXTURE_VERSION` in `app/admin_preview.py` records the fixture schema
-and derivation rules. Screenshot evidence comments and `*-reproducibility.json`
-include `preview_fixture_version`, `preview_root_seed`,
-`preview_reference_at`, PR head SHA, browser version, and viewport sizes.
-
-When you intentionally change preview fixture shape or namespace derivation:
-
-1. Bump `PREVIEW_FIXTURE_VERSION`.
-2. Regenerate screenshot baselines on a clean PR-head capture (standard
-   `ADMIN_PREVIEW_SEED` / `ADMIN_PREVIEW_REFERENCE_AT` from the repo defaults
-   unless the issue specifies new values).
-3. Review paired desktop/mobile manifests and image diffs in the Reviewer
-   comment — semantic fixture changes should match the version bump.
-
-Malformed `ADMIN_PREVIEW_SEED` or `ADMIN_PREVIEW_REFERENCE_AT` values fail
-fast; missing values use the checked-in CI defaults (never unseeded randomness
-or wall-clock `now`).
 
 ## Scripts / workflows
 

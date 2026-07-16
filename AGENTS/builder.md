@@ -66,8 +66,9 @@ view** that Reviewer will screenshot, you **must** also ship
 
 Follow the pattern in ``app/admin_preview.py``:
 
-1. Builders like ``build_preview_*`` use ``_preview_rng()`` /
-   ``ADMIN_PREVIEW_SEED`` so content is random across runs but stable in tests.
+1. Builders like ``build_preview_*`` use namespace-derived RNG and frozen
+   reference time from ``app/preview_context.py`` (``ADMIN_PREVIEW_SEED`` /
+   ``ADMIN_PREVIEW_REFERENCE_TIME`` env vars; stable CI defaults when unset).
 2. Wire the route: when ``settings.admin_preview_enabled``, return mock rows —
    **never** an empty shell that says “no records yet” for brand-new surfaces.
 3. Cover representative states needed by acceptance (populated +

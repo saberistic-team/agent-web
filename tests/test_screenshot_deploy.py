@@ -441,13 +441,6 @@ def test_wait_healthy_builds_absolute_url(monkeypatch) -> None:
 def test_comment_markdown_pre_branch_only() -> None:
     from screenshot_deploy import ScreenshotTarget, comment_markdown_pre_dual
 
-    repro = {
-        "preview_fixture_version": 1,
-        "preview_root_seed": 338234,
-        "preview_reference_at": "2026-07-15T14:30:00+00:00",
-        "browser": "chromium-120.0",
-        "viewports": [{"name": "desktop", "width": 1280, "height": 800}],
-    }
     body = comment_markdown_pre_dual(
         branch_url="http://127.0.0.1:8765",
         branch_urls=["https://raw.example/branch-home.png"],
@@ -455,7 +448,6 @@ def test_comment_markdown_pre_branch_only() -> None:
             ScreenshotTarget(route="/"),
             ScreenshotTarget(route="/admin/briefs/503", expected_status=503),
         ],
-        reproducibility=repro,
     )
     assert "### reviewer_screenshots_pre" in body
     assert "http://127.0.0.1:8765" in body
@@ -467,8 +459,9 @@ def test_comment_markdown_pre_branch_only() -> None:
     assert "`/admin/briefs/503` (expected HTTP 503)" in body
     assert "branch-admin-briefs-503.png" in body
     assert "branch-admin-briefs-503-mobile.png" in body
-    assert "preview_root_seed" in body
-    assert "preview_reference_at" in body
+    assert "fixture_version" in body
+    assert "root_seed" in body
+    assert "reference_time" in body
     assert "- **branch-home.png**\n      ![branch-home.png](" in body
     assert "branch-home.png: ![" not in body
 

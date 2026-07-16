@@ -284,8 +284,8 @@ def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytes
     from app.admin_preview import (
         PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID,
         preview_contact_restore_conflict,
-        reset_preview_context_cache,
     )
+    from app.preview_context import reset_preview_context_cache, resolve_preview_context
 
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "7")
@@ -299,7 +299,7 @@ def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytes
     monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     reset_preview_context_cache()
-    preview = preview_contact_restore_conflict()
+    preview = preview_contact_restore_conflict(context=resolve_preview_context())
     client = TestClient(app, follow_redirects=False)
     response = client.get(
         f"/admin/contacts/{PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID}/restore-conflict"
@@ -317,7 +317,7 @@ def test_preview_company_detail_archive_and_restore_actions(
     from argon2 import PasswordHasher
 
     from app.admin_auth import SESSION_COOKIE_NAME
-    from app.admin_preview import reset_preview_context_cache
+    from app.preview_context import reset_preview_context_cache, resolve_preview_context
 
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "11")
@@ -331,11 +331,14 @@ def test_preview_company_detail_archive_and_restore_actions(
     monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     reset_preview_context_cache()
+    ctx = resolve_preview_context()
     company, _contacts, _records = build_preview_company_detail(
         PREVIEW_COMPANY_DETAIL_ARCHIVE_ID,
+        context=ctx,
     )
     archived_company, _contacts2, _records2 = build_preview_company_detail(
         PREVIEW_COMPANY_DETAIL_RESTORE_ID,
+        context=ctx,
     )
     client = TestClient(app, follow_redirects=False)
     cookies = {SESSION_COOKIE_NAME: "preview-screenshot-session"}
@@ -368,7 +371,7 @@ def test_preview_contact_detail_and_edit_archive_restore_actions(
     from argon2 import PasswordHasher
 
     from app.admin_auth import SESSION_COOKIE_NAME
-    from app.admin_preview import reset_preview_context_cache
+    from app.preview_context import reset_preview_context_cache, resolve_preview_context
 
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "12")
@@ -382,11 +385,14 @@ def test_preview_contact_detail_and_edit_archive_restore_actions(
     monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     reset_preview_context_cache()
+    ctx = resolve_preview_context()
     contact, _company, _records = build_preview_contact_detail(
         PREVIEW_CONTACT_DETAIL_ARCHIVE_ID,
+        context=ctx,
     )
     archived_contact, _company2, _records2 = build_preview_contact_detail(
         PREVIEW_CONTACT_DETAIL_RESTORE_ID,
+        context=ctx,
     )
     client = TestClient(app, follow_redirects=False)
     cookies = {SESSION_COOKIE_NAME: "preview-screenshot-session"}
