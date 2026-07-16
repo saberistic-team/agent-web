@@ -436,16 +436,50 @@ resets automatically. Restore database connectivity to resume shared enforcement
 
 ### Manual cleanup
 
-To prune stale limiter rows manually:
+To prune stale limiter rows manually (one bounded batch at a time):
 
 ```sql
 DELETE FROM admin_login_rate_limits
-WHERE updated_at < NOW() - INTERVAL '30 minutes'
-  AND (locked_until IS NULL OR locked_until < NOW());
+WHERE limiter_key IN (
+    SELECT limiter_key
+    FROM admin_login_rate_limits
+    WHERE updated_at < NOW() - INTERVAL '30 minutes'
+      AND (locked_until IS NULL OR locked_until < NOW())
+    ORDER BY updated_at, limiter_key
+    LIMIT 100
+    FOR UPDATE SKIP LOCKED
+);
 ```
 
-Expired rows are also removed opportunistically after admitted attempts (retention is
-``2 × max(window, lockout)``).
+Repeat until the inner ``SELECT`` returns no rows. For large backlogs, prefer
+letting opportunistic login cleanup drain the table rather than deleting all
+eligible rows in one transaction.
+
+### Opportunistic cleanup
+
+After each **admitted** login attempt, the app deletes up to
+``ADMIN_LOGIN_LIMITER_CLEANUP_BATCH_SIZE`` (**100**) stale rows in one
+transaction. Selection is deterministic oldest-first
+(``updated_at``, then ``limiter_key``). ``FOR UPDATE SKIP LOCKED`` lets multiple
+instances claim disjoint batches without blocking one another.
+
+| Constant / setting | Value | Meaning |
+|------------------|-------|---------|
+| ``ADMIN_LOGIN_LIMITER_CLEANUP_BATCH_SIZE`` | `100` | Maximum rows deleted per cleanup call |
+| Retention | ``2 × max(window, lockout)`` | Same eligibility as manual cleanup |
+| Index | ``admin_login_rate_limits_cleanup_idx`` on ``(updated_at, limiter_key)`` | Supports ordered batch selection |
+
+**Concurrency** — each admitted login performs at most one cleanup batch.
+Authentication latency does not scale with total expired-row cardinality.
+
+**Failure handling** — if cleanup fails after a successful admission, the
+failure is logged with aggregate fields only (batch size, deleted count,
+duration, error category, backlog-may-remain estimate). Admission and active
+lockouts are unchanged; operators can retry on the next login or run manual SQL
+above.
+
+**Telemetry** — cleanup logs never include ``limiter_key`` values, source
+material, or candidate usernames.
 
 ## Login flow retention
 

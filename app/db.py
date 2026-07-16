@@ -627,16 +627,34 @@ def cleanup_expired_admin_login_rate_limits(
     now: datetime,
     window_seconds: int,
     lockout_seconds: int,
+    batch_size: int,
 ) -> int:
+    """Delete stale limiter rows in a bounded, concurrent-safe batch.
+
+    Eligible rows are older than ``2 × max(window, lockout)`` and not actively
+    locked. Selection uses ``updated_at`` with ``limiter_key`` as a stable
+    tie-breaker. ``FOR UPDATE SKIP LOCKED`` lets multiple app instances claim
+    disjoint batches without blocking one another.
+    """
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+
     retention_seconds = max(window_seconds, lockout_seconds) * 2
     with conn.cursor() as cur:
         cur.execute(
             """
             DELETE FROM admin_login_rate_limits
-            WHERE updated_at < %s - make_interval(secs => %s)
-              AND (locked_until IS NULL OR locked_until < %s)
+            WHERE limiter_key IN (
+                SELECT limiter_key
+                FROM admin_login_rate_limits
+                WHERE updated_at < %s - make_interval(secs => %s)
+                  AND (locked_until IS NULL OR locked_until < %s)
+                ORDER BY updated_at, limiter_key
+                LIMIT %s
+                FOR UPDATE SKIP LOCKED
+            )
             """,
-            (now, retention_seconds, now),
+            (now, retention_seconds, now, batch_size),
         )
         deleted = cur.rowcount
         conn.commit()

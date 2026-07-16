@@ -167,16 +167,20 @@ class FakeRateLimitStore:
         *,
         window_seconds: int,
         lockout_seconds: int,
+        batch_size: int,
     ) -> int:
         with self._lock:
             retention = max(window_seconds, lockout_seconds) * 2
             cutoff = now - timedelta(seconds=retention)
-            expired = [
-                key
-                for key, row in self.rows.items()
-                if row["updated_at"] < cutoff
-                and (row["locked_until"] is None or row["locked_until"] < now)
-            ]
+            expired = sorted(
+                (
+                    key
+                    for key, row in self.rows.items()
+                    if row["updated_at"] < cutoff
+                    and (row["locked_until"] is None or row["locked_until"] < now)
+                ),
+                key=lambda key: (self.rows[key]["updated_at"], key),
+            )[:batch_size]
             for key in expired:
                 del self.rows[key]
             return len(expired)
@@ -229,11 +233,13 @@ def shared_rate_limiter(store: FakeRateLimitStore) -> Generator[None, None, None
         now: datetime,
         window_seconds: int,
         lockout_seconds: int,
+        batch_size: int,
     ) -> int:
         return store.cleanup(
             now,
             window_seconds=window_seconds,
             lockout_seconds=lockout_seconds,
+            batch_size=batch_size,
         )
 
     with (
@@ -1184,6 +1190,22 @@ def test_rate_limit_fallback_when_database_unavailable(
         blocked = _login(password="wrong")
         assert blocked.status_code == 429
         assert admin_auth.LOGIN_THROTTLED_MESSAGE in blocked.text
+
+
+@pytest.mark.unit
+def test_limiter_cleanup_failure_preserves_admission(
+    rate_limit_store: FakeRateLimitStore,
+) -> None:
+    with shared_rate_limiter(rate_limit_store):
+        with (
+            patch(
+                "app.admin_auth.db.cleanup_expired_admin_login_rate_limits",
+                side_effect=Exception("cleanup unavailable"),
+            ),
+            mock_db_connection(),
+        ):
+            response = _login(password="wrong")
+    assert response.status_code == 401
 
 
 @pytest.mark.unit

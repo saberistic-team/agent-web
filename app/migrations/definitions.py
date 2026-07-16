@@ -682,4 +682,12 @@ CREATE TABLE IF NOT EXISTS analytics_event_rate_limits (
 ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS analytics_session_id UUID;
 """,
     ),
+    Migration(
+        version="019",
+        name="admin_login_rate_limits_cleanup_idx",
+        up_sql="""
+CREATE INDEX IF NOT EXISTS admin_login_rate_limits_cleanup_idx
+    ON admin_login_rate_limits (updated_at, limiter_key);
+""",
+    ),
 )

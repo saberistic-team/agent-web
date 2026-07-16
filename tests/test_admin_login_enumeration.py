@@ -512,8 +512,21 @@ def test_candidate_storage_is_bounded_and_cleanup_removes_stale_rows(
         now=now + timedelta(seconds=200),
         window_seconds=60,
         lockout_seconds=60,
+        batch_size=admin_auth.ADMIN_LOGIN_LIMITER_CLEANUP_BATCH_SIZE,
     )
-    assert deleted == unique_candidates * 2
+    assert deleted >= 1
+    assert deleted <= admin_auth.ADMIN_LOGIN_LIMITER_CLEANUP_BATCH_SIZE
+
+    while True:
+        deleted = db.cleanup_expired_admin_login_rate_limits(
+            pg_conn,
+            now=now + timedelta(seconds=200),
+            window_seconds=60,
+            lockout_seconds=60,
+            batch_size=admin_auth.ADMIN_LOGIN_LIMITER_CLEANUP_BATCH_SIZE,
+        )
+        if deleted == 0:
+            break
 
     with pg_conn.cursor() as cur:
         cur.execute("SELECT COUNT(*) AS count FROM admin_login_rate_limits")
