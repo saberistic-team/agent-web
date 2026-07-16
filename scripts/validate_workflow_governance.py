@@ -3,9 +3,13 @@
 
 from __future__ import annotations
 
+import argparse
 import json
+import os
 import re
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -195,11 +199,8 @@ def validate_privileged_script_coverage(
     return errors
 
 
-def validate_ruleset_document(path: Path) -> list[str]:
-    """Validate the checked-in ruleset matches required review mechanics."""
-    if not path.is_file():
-        return [f"missing ruleset document: {path.as_posix()}"]
-    payload = json.loads(path.read_text())
+def validate_ruleset_payload(payload: dict[str, Any]) -> list[str]:
+    """Validate a ruleset document (checked-in or fetched live) against policy."""
     errors: list[str] = []
     if payload.get("name") != RULESET_NAME:
         errors.append(f"ruleset name must be {RULESET_NAME!r}")
@@ -229,6 +230,62 @@ def validate_ruleset_document(path: Path) -> list[str]:
                 f"got {parameters.get(key)!r}"
             )
     return errors
+
+
+def validate_ruleset_document(path: Path) -> list[str]:
+    """Validate the checked-in ruleset document matches required review mechanics."""
+    if not path.is_file():
+        return [f"missing ruleset document: {path.as_posix()}"]
+    return validate_ruleset_payload(json.loads(path.read_text()))
+
+
+def fetch_live_ruleset(repo: str, token: str) -> dict[str, Any] | None:
+    """Fetch the live GitHub ruleset for ``repo`` by name via the REST API."""
+    owner, name = repo.split("/", 1)
+    request = urllib.request.Request(
+        f"https://api.github.com/repos/{owner}/{name}/rulesets",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "agent-web-governance-validator",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        rulesets = json.loads(response.read().decode())
+    summary = next((item for item in rulesets if item.get("name") == RULESET_NAME), None)
+    if summary is None or summary.get("id") is None:
+        return None
+    detail_request = urllib.request.Request(
+        f"https://api.github.com/repos/{owner}/{name}/rulesets/{summary['id']}",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "agent-web-governance-validator",
+        },
+    )
+    with urllib.request.urlopen(detail_request, timeout=30) as response:
+        return json.loads(response.read().decode())
+
+
+def validate_live_ruleset(repo: str, token: str) -> list[str]:
+    """Compare the live GitHub ruleset for ``repo`` against required policy.
+
+    Checked-in JSON alone is not proof the protection is active: it can drift
+    from what GitHub actually enforces (this happened in practice — see
+    docs/WORKFLOW_GOVERNANCE.md's "Non-bootstrap proof PR" section). This is
+    the only check that reads the real, live repository configuration.
+    """
+    try:
+        live = fetch_live_ruleset(repo, token)
+    except urllib.error.HTTPError as exc:
+        return [f"live ruleset lookup failed: HTTP {exc.code}"]
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        return [f"live ruleset lookup failed: {exc}"]
+    if live is None:
+        return [f"live ruleset not found: {RULESET_NAME!r}"]
+    return [f"live ruleset drift: {error}" for error in validate_ruleset_payload(live)]
 
 
 def normalize_login(login: str) -> str:
@@ -349,8 +406,31 @@ def validate(root: Path = ROOT) -> list[str]:
     return errors
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--check-live-ruleset",
+        action="store_true",
+        help=(
+            "Also validate the live GitHub ruleset via the REST API "
+            "(requires GITHUB_TOKEN or GH_TOKEN)."
+        ),
+    )
+    parser.add_argument(
+        "--repo",
+        default=os.environ.get("GITHUB_REPOSITORY", "saberistic-team/agent-web"),
+        help="owner/name for live ruleset lookup",
+    )
+    args = parser.parse_args(argv)
+
     errors = validate()
+    if args.check_live_ruleset:
+        token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+        if not token:
+            errors.append("missing GITHUB_TOKEN/GH_TOKEN for --check-live-ruleset")
+        else:
+            errors.extend(validate_live_ruleset(args.repo, token))
+
     if errors:
         for error in errors:
             print(f"FAIL: {error}", file=sys.stderr)

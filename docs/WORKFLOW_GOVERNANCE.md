@@ -27,7 +27,8 @@ It explicitly protects:
   `scripts/builder_conflicts.py`, `scripts/cursor_sdk_patch.py`,
   `scripts/cursor_model.py`, and `scripts/screenshot_deploy.py`);
 - deploy and release automation (`scripts/render_deploy.py`,
-  `scripts/freeze_shipped_migrations.py`, `scripts/post_deploy_visual.py`);
+  `scripts/freeze_shipped_migrations.py`, `scripts/post_deploy_visual.py`,
+  and `scripts/smoke_deploy.py`);
 - CI gates (`scripts/check_coverage.py`);
 - the ownership, ruleset, documentation, and validation policy itself.
 
@@ -46,6 +47,16 @@ Adding a new workflow-invoked script without manifest coverage fails CI.
 Moving privileged logic into an unlisted helper imported by a protected script
 also fails CI. The manifest and `.github/CODEOWNERS` must stay synchronized in
 both directions.
+
+**Known discovery blind spot:** the transitive-helper walk only follows static
+`from X import ...` / `import X` statements. It does not follow
+`subprocess.run([..., "scripts/<name>.py", ...])` or `importlib` dynamic
+loading, so a privileged script reached only that way (for example
+`scripts/run_agent.py` invoking `scripts/smoke_deploy.py` via `subprocess.run`)
+is not auto-discovered — it must be added to the manifest and CODEOWNERS by
+hand, the same way `scripts/copilot_agent.py` is explicitly listed as a dormant
+helper. Treat any new `subprocess`/`importlib` invocation of a `scripts/*.py`
+file the same way until the discovery walk covers those call shapes too.
 
 When adding a new workflow-support path, add it to the inventory and
 `.github/CODEOWNERS` in the same pull request. CI runs
@@ -115,7 +126,18 @@ Then validate the live configuration (do not rely on the checked-in JSON alone):
 ```bash
 gh api repos/saberistic-team/agent-web/rulesets \
   --jq '.[] | select(.name == "Require independent review for workflow governance")'
+
+# Or let the validator do it (requires GITHUB_TOKEN/GH_TOKEN):
+python scripts/validate_workflow_governance.py --check-live-ruleset
 ```
+
+CI runs the second form on every PR: the "Validate workflow-governance
+ownership" step in `.github/workflows/ci.yml` passes
+`GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}` and the `--check-live-ruleset` flag,
+so a live drift (like the one described below) fails CI instead of only
+failing an out-of-band manual check. The default Actions token can read
+`GET /repos/{owner}/{repo}/rulesets` without any elevated `administration`
+scope.
 
 The active repository ruleset is
 [`#18975712`](https://github.com/saberistic-team/agent-web/rules/18975712).
@@ -127,16 +149,66 @@ ruleset URL and the setup/validation command output in the linked issue or PR.
 
 Rulesets enforce the approval mechanics; CODEOWNERS narrows the extra owner
 approval to the protected files. CI validates the repository-side inventory,
-ownership mapping, and ruleset document, but it cannot replace GitHub’s review
-authorization.
+ownership mapping, ruleset document, and (via `--check-live-ruleset`) the live
+ruleset itself, but it cannot replace GitHub’s review authorization.
 
 ## Issue #229 label reconciliation
 
-Issue #229 is closed and complete. Its orchestration labels should read
-`status:done` (not `status:needs-review`). When governance bootstrap or
-follow-up work lands, sync labels through the normal project-sync workflow or
-remove stale `status:needs-review` manually so the board matches the closed
-state.
+Issue #229 is closed and complete with `status:done` and `review:approved` —
+**already reconciled**, not merely a target state. GitHub's issue timeline for
+#229 (`gh api repos/saberistic-team/agent-web/issues/229/timeline`) shows
+`saberistic-agent-web-builder[bot]` removing `status:needs-review` and adding
+`status:done` at `2026-07-16T02:12:01Z`. Re-verified live on 2026-07-16 via
+`gh issue view 229 --json labels`: no stale `status:needs-review` label
+remains. If automation ever re-applies it, reconcile with:
+
+```bash
+gh issue edit 229 --repo saberistic-team/agent-web \
+  --remove-label "status:needs-review"
+```
+
+## Non-bootstrap proof PR (PR #284 / issue #275)
+
+[PR #284](https://github.com/saberistic-team/agent-web/pull/284) (issue #275)
+is the first protected-path change after bootstrap. Verifying its own
+merge-gate enforcement against the **live** repository (not just the
+checked-in JSON) surfaced a real gap and its root cause, both fixed in this PR:
+
+- **The live ruleset had drifted from the checked-in policy.** `gh api
+  repos/saberistic-team/agent-web/rulesets/18975712` returned
+  `require_code_owner_review: false` even though the checked-in ruleset
+  document says `true`. A repo admin re-applied the checked-in policy
+  (`gh api --method PUT repos/saberistic-team/agent-web/rulesets/18975712
+  --input .github/rulesets/independent-workflow-review.json`); a fresh `gh
+  api` read confirmed `require_code_owner_review: true` afterward.
+- **CI never actually checked the live ruleset.** The validator supported (or
+  now supports again) `--check-live-ruleset`, but earlier revisions of this PR
+  either omitted the CI wiring (`GITHUB_TOKEN` + the flag) or dropped the live
+  API check from the script entirely. Either way, CI could report `PASS`
+  indefinitely regardless of live drift — this is how the ruleset drifted
+  unnoticed in the first place. Fixed for good in `.github/workflows/ci.yml`
+  and `scripts/validate_workflow_governance.py` together; see the "Ruleset
+  enforcement" section above.
+- **Bots cannot satisfy `require_code_owner_review` structurally, not just by
+  convention.** `gh api repos/saberistic-team/agent-web/collaborators` lists
+  only `@saberistic`, `@mehdidehdar`, and `@Amirsharifico`; the Reviewer and
+  Builder bots are not collaborators, so no bot approval can ever count as the
+  CODEOWNER review GitHub requires, independent of what CODEOWNERS says.
+- **Live behavioral evidence from this PR:** `@saberistic` (a CODEOWNER)
+  submitted an `APPROVED` review; the Reviewer bot later submitted
+  `CHANGES_REQUESTED`. `gh pr view 284 --json reviewDecision,mergeStateStatus`
+  reported `CHANGES_REQUESTED` / `BLOCKED` — GitHub applies latest-review-per-
+  reviewer semantics live, even with a genuine human CODEOWNER approval on
+  record.
+
+**What remains a real, undemonstrated gap:** a live click-through screenshot
+of the GitHub merge button blocked specifically by a *missing* CODEOWNER
+review (as opposed to an outstanding `CHANGES_REQUESTED`) was not produced.
+Doing that safely would require opening a disposable PR against a protected
+path and getting only a bot review on it, which risks triggering this
+repository's live Builder/Reviewer automation on a throwaway artifact. Left
+for a human maintainer to capture in a few minutes if a literal screenshot is
+required; it is not fabricated here.
 
 ## Recovery and break-glass
 

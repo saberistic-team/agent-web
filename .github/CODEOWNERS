@@ -49,6 +49,7 @@
 
 # CI gates
 /scripts/check_coverage.py @saberistic @mehdidehdar @Amirsharifico
+/scripts/smoke_deploy.py @saberistic @mehdidehdar @Amirsharifico
 
 /AGENTS/** @saberistic @mehdidehdar @Amirsharifico
 /.github/copilot-instructions.md @saberistic @mehdidehdar @Amirsharifico

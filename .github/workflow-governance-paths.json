@@ -102,6 +102,10 @@
       "category": "deploy and release"
     },
     {
+      "path": "scripts/smoke_deploy.py",
+      "category": "CI gates"
+    },
+    {
       "path": "scripts/check_coverage.py",
       "category": "CI gates"
     },
