@@ -88,6 +88,7 @@ def test_render_icp_score_detail_page_includes_breakdown_and_evidence() -> None:
     assert "icp-score-display--override" in html
     assert "Partner intro confirmed" in html
     assert "company.stage" in html
+    assert "category=fintech" in html
     assert "Override reason is required." in html
 
 

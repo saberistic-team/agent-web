@@ -28,6 +28,23 @@ def _format_timestamp(value: Any) -> str:
     return _esc(value)
 
 
+def _format_evidence_item(item: Any) -> str:
+    if not isinstance(item, dict):
+        return _esc(item)
+    if item.get("label"):
+        return _esc(item["label"])
+    if item.get("observed_value"):
+        return _esc(item["observed_value"])
+    field = item.get("field")
+    value = item.get("value")
+    if field and value is not None:
+        return _esc(f"{field}={value}")
+    record_type = item.get("record_type")
+    if record_type:
+        return _esc(record_type)
+    return _esc(item)
+
+
 def _status_badge(status: str) -> str:
     modifier = {
         "scored": "icp-status--scored",
@@ -235,11 +252,12 @@ def render_icp_score_detail_page(
     evidence_html = ""
     if snapshot:
         for item in snapshot.get("breakdown") or []:
-            if not item.get("evidence"):
+            evidence_items = item.get("evidence") or []
+            if not evidence_items:
                 continue
+            formatted = "; ".join(_format_evidence_item(entry) for entry in evidence_items)
             evidence_html += (
-                f"<li><strong>{_esc(item.get('rule_id'))}</strong>: "
-                f"{_esc(item.get('evidence'))}</li>"
+                f"<li><strong>{_esc(item.get('rule_id'))}</strong>: {formatted}</li>"
             )
     evidence_block = ""
     if evidence_html:
