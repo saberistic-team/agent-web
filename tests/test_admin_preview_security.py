@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 from app.admin_auth import SESSION_COOKIE_NAME
 from app.admin_preview_guard import (
     PREVIEW_ALLOWED_METHODS,
+    PREVIEW_SAFE_UNSAFE_METHOD_PATHS,
     AdminPreviewConfigError,
     validate_admin_preview_config,
 )
@@ -118,6 +119,14 @@ def test_build_preview_child_env_does_not_inherit_unlisted_parent_vars() -> None
     assert "CURSOR_API_KEY" not in env
 
 
+_FORBIDDEN_PREVIEW_ENV_NAMES = (
+    "DATABASE_URL",
+    "STRIPE_SECRET_KEY",
+    "STRIPE_WEBHOOK_SECRET",
+    "RESEND_API_KEY",
+)
+
+
 @pytest.mark.unit
 @pytest.mark.parametrize(
     "env_name,env_value",
@@ -126,7 +135,6 @@ def test_build_preview_child_env_does_not_inherit_unlisted_parent_vars() -> None
         ("STRIPE_SECRET_KEY", "sk_live_x"),
         ("STRIPE_WEBHOOK_SECRET", "whsec_x"),
         ("RESEND_API_KEY", "re_x"),
-        ("PLAUSIBLE_API_KEY", "plausible_x"),
     ],
 )
 def test_validate_admin_preview_config_rejects_production_credentials(
@@ -135,6 +143,12 @@ def test_validate_admin_preview_config_rejects_production_credentials(
     env_value: str,
 ) -> None:
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    # Explicitly isolate from any other forbidden var an unrelated test may
+    # have left set in this process's environment, so this parametrized case
+    # only ever sees the one credential under test.
+    for other_name in _FORBIDDEN_PREVIEW_ENV_NAMES:
+        if other_name != env_name:
+            monkeypatch.delenv(other_name, raising=False)
     monkeypatch.setenv(env_name, env_value)
     with pytest.raises(AdminPreviewConfigError, match=env_name):
         validate_admin_preview_config(get_settings())
@@ -173,6 +187,9 @@ def test_preview_denies_every_registered_admin_unsafe_method(
     assert inventory, "expected at least one /admin unsafe route"
     for path, methods in inventory:
         sample_path = _sample_admin_path(path)
+        if sample_path in PREVIEW_SAFE_UNSAFE_METHOD_PATHS:
+            # Explicitly exempted, read-only-by-design preview computation.
+            continue
         for method in sorted(methods):
             if method == "OPTIONS":
                 continue
@@ -335,6 +352,11 @@ def test_preview_disabled_mutations_are_not_blocked_by_read_only_guard(
 ) -> None:
     monkeypatch.delenv("ADMIN_PREVIEW_MODE", raising=False)
     monkeypatch.setenv("BASE_URL", "http://testserver")
+    # This test only cares whether the central read-only guard blocks the
+    # request when preview mode is off; isolate it from a real DATABASE_URL
+    # possibly set elsewhere in the process so a login-failure audit write
+    # cannot turn an unrelated Postgres outage into a false failure here.
+    monkeypatch.delenv("DATABASE_URL", raising=False)
     response = client.post(
         "/admin/login",
         data={"username": "x", "password": "y", "csrf_token": "z"},

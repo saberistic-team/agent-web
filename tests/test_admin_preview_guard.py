@@ -15,6 +15,7 @@ from app.admin_routes import router as admin_router
 from app.admin_preview_guard import (
     PREVIEW_ALLOW_HEADER,
     PREVIEW_FORBIDDEN_ENV_VARS,
+    PREVIEW_SAFE_UNSAFE_METHOD_PATHS,
     AdminPreviewConfigError,
     validate_admin_preview_config,
 )
@@ -133,7 +134,9 @@ def test_validate_admin_preview_config_rejects_database_url(
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("env_name", PREVIEW_FORBIDDEN_ENV_VARS)
+@pytest.mark.parametrize(
+    "env_name", [name for name, _label in PREVIEW_FORBIDDEN_ENV_VARS]
+)
 def test_validate_admin_preview_config_rejects_forbidden_env(
     monkeypatch: pytest.MonkeyPatch,
     env_name: str,
@@ -195,9 +198,27 @@ def test_preview_denies_unsafe_methods_on_admin_routes(
         if method not in methods:
             continue
         sample = _sample_admin_path(path)
+        if sample in PREVIEW_SAFE_UNSAFE_METHOD_PATHS:
+            # Explicitly exempted, read-only-by-design preview computation —
+            # covered by test_preview_allows_safe_unsafe_method_exemptions.
+            continue
         response = client.request(method, sample)
         assert response.status_code == 405, f"{method} {sample} -> {response.status_code}"
         assert response.headers.get("allow") == PREVIEW_ALLOW_HEADER
+
+
+@pytest.mark.unit
+def test_preview_allows_safe_unsafe_method_exemptions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Explicitly exempted read-only preview computations still return 200,
+    never a 405, even though they use an unsafe HTTP method."""
+    _preview_env(monkeypatch)
+    client = TestClient(app, follow_redirects=False)
+    assert PREVIEW_SAFE_UNSAFE_METHOD_PATHS
+    for path in PREVIEW_SAFE_UNSAFE_METHOD_PATHS:
+        response = client.post(path, json={"connections": []})
+        assert response.status_code != 405, f"POST {path} -> {response.status_code}"
 
 
 @pytest.mark.unit

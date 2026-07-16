@@ -120,6 +120,37 @@ def build_preview_child_env(
         env[key] = ""
     return env
 
+
+def build_preview_server_env(
+    base_url: str,
+    *,
+    parent_environ: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Build a database-isolated preview server environment (#331).
+
+    Unlike ``build_preview_child_env`` (which lets an already-safe parent
+    override the fixed preview admin credentials), this always forces the
+    fixed ``PREVIEW_ADMIN_*`` credentials and clears every forbidden secret,
+    regardless of what the parent process has set — admin preview mode must
+    never run with real credentials or data-store access.
+    """
+    parent = parent_environ if parent_environ is not None else os.environ
+    env: dict[str, str] = {}
+    for key in PREVIEW_CHILD_ENV_PASSTHROUGH:
+        value = parent.get(key)
+        if value:
+            env[key] = value
+    env["BASE_URL"] = base_url
+    env["ADMIN_PREVIEW_MODE"] = "1"
+    env["ADMIN_USERNAME"] = PREVIEW_ADMIN_USERNAME
+    env["ADMIN_PASSWORD_HASH"] = PREVIEW_ADMIN_PASSWORD_HASH
+    env["ADMIN_SESSION_SECRET"] = PREVIEW_ADMIN_SESSION_SECRET
+    env["ADMIN_LOGIN_LIMITER_SECRET"] = PREVIEW_ADMIN_LOGIN_LIMITER_SECRET
+    for key in PREVIEW_CLEARED_SECRETS:
+        env[key] = ""
+    return env
+
+
 # Static HTML files under site/ → public page routes.
 SITE_HTML_TO_ROUTE: dict[str, str] = {
     "site/index.html": "/",

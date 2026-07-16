@@ -30,21 +30,6 @@ class AdminSecurityConfigError(ValueError):
     """Raised when required admin security configuration is missing or weak."""
 
 
-class AdminPreviewConfigError(ValueError):
-    """Raised when ADMIN_PREVIEW_MODE is combined with production data access."""
-
-
-# Provider credentials that must never be present in preview child processes.
-PREVIEW_BLOCKED_PROVIDER_ENV_VARS: tuple[str, ...] = (
-    "DATABASE_URL",
-    "STRIPE_SECRET_KEY",
-    "STRIPE_WEBHOOK_SECRET",
-    "STRIPE_PUBLISHABLE_KEY",
-    "RESEND_API_KEY",
-    "PLAUSIBLE_API_KEY",
-)
-
-
 def _secret_byte_length(secret: str) -> int:
     return len(secret.encode("utf-8"))
 
@@ -66,32 +51,6 @@ def validate_limiter_secret(
     if _secret_byte_length(normalized) < MIN_LIMITER_SECRET_BYTES:
         raise AdminSecurityConfigError(
             f"{env_name} must be at least {MIN_LIMITER_SECRET_BYTES} bytes"
-        )
-
-
-def validate_admin_preview_config(settings: Settings) -> None:
-    """Reject preview mode when real database or provider write credentials are set."""
-    if not settings.admin_preview_mode:
-        return
-    if settings.database_url.strip():
-        raise AdminPreviewConfigError(
-            "ADMIN_PREVIEW_MODE cannot run with DATABASE_URL configured"
-        )
-    if settings.stripe_secret_key.strip():
-        raise AdminPreviewConfigError(
-            "ADMIN_PREVIEW_MODE cannot run with STRIPE_SECRET_KEY configured"
-        )
-    if settings.stripe_webhook_secret.strip():
-        raise AdminPreviewConfigError(
-            "ADMIN_PREVIEW_MODE cannot run with STRIPE_WEBHOOK_SECRET configured"
-        )
-    if settings.resend_api_key.strip():
-        raise AdminPreviewConfigError(
-            "ADMIN_PREVIEW_MODE cannot run with RESEND_API_KEY configured"
-        )
-    if settings.plausible_api_key.strip():
-        raise AdminPreviewConfigError(
-            "ADMIN_PREVIEW_MODE cannot run with PLAUSIBLE_API_KEY configured"
         )
 
 

@@ -10,14 +10,24 @@ if TYPE_CHECKING:
 
 # Safe methods permitted for screenshot rendering (RFC 9110).
 PREVIEW_ALLOWED_METHODS = frozenset({"GET", "HEAD"})
+PREVIEW_ALLOW_HEADER = ", ".join(sorted(PREVIEW_ALLOWED_METHODS))
+
+# Read-only-by-design POST endpoints that compute and return a response
+# without persisting anything (verified against ADMIN_MUTATION_ROUTE_CLASSIFICATIONS'
+# "intentionally_unaudited" entries) — exempt from the blanket unsafe-method
+# block below so their own ADMIN_PREVIEW_MODE branch (returning fixed mock
+# data) keeps working instead of being pre-empted by this guard.
+PREVIEW_SAFE_UNSAFE_METHOD_PATHS: frozenset[str] = frozenset(
+    {"/admin/imports/reconcile-preview"}
+)
 
 # Production data-store and provider credentials that must stay empty in preview.
+# Plausible was retired repo-wide (#117/#273) — do not reintroduce a reference here.
 PREVIEW_FORBIDDEN_ENV_VARS: tuple[tuple[str, str], ...] = (
     ("DATABASE_URL", "database"),
     ("STRIPE_SECRET_KEY", "Stripe"),
     ("STRIPE_WEBHOOK_SECRET", "Stripe webhook"),
     ("RESEND_API_KEY", "email provider"),
-    ("PLAUSIBLE_API_KEY", "analytics provider"),
 )
 
 
@@ -74,14 +84,13 @@ class AdminPreviewReadOnlyMiddleware:
             return
 
         method = (scope.get("method") or "GET").upper()
-        if method in PREVIEW_ALLOWED_METHODS:
+        if method in PREVIEW_ALLOWED_METHODS or path in PREVIEW_SAFE_UNSAFE_METHOD_PATHS:
             await self.app(scope, receive, send)
             return
 
         await _drain_request_body(receive)
-        allow = ", ".join(sorted(PREVIEW_ALLOWED_METHODS))
         headers = [
-            (b"allow", allow.encode("latin-1")),
+            (b"allow", PREVIEW_ALLOW_HEADER.encode("latin-1")),
             (b"content-type", b"text/plain; charset=utf-8"),
             (b"content-length", str(len(_method_not_allowed_response_body())).encode()),
         ]

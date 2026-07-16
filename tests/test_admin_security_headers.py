@@ -219,11 +219,14 @@ def test_admin_503_preview_fixture_has_security_headers(preview_mode: None) -> N
 def test_admin_pipeline_json_error_has_security_headers(
     preview_mode: None,
 ) -> None:
+    # The central AdminPreviewReadOnlyMiddleware (#331) now rejects this POST
+    # with 405 before the route handler's own validation ever runs; security
+    # headers must still be applied regardless of status code.
     response = client.post(
         "/admin/pipeline/not-a-uuid/stage",
         data={"stage": "qualifying", "csrf_token": "bad"},
     )
-    assert response.status_code in {400, 404, 422}
+    assert response.status_code == 405
     _assert_admin_security_headers(response)
 
 
