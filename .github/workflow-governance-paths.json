@@ -6,43 +6,11 @@
       "category": "GitHub Actions workflows"
     },
     {
-      "path": "scripts/github_api.py",
-      "category": "GitHub API and control plane"
-    },
-    {
-      "path": "scripts/copilot_agent.py",
-      "category": "GitHub API and control plane"
-    },
-    {
-      "path": "scripts/dispatch_queue.py",
-      "category": "dispatch and queue orchestration"
-    },
-    {
-      "path": "scripts/milestones.py",
-      "category": "dispatch and queue orchestration"
-    },
-    {
-      "path": "scripts/priority.py",
-      "category": "priority selection"
-    },
-    {
-      "path": "scripts/project_sync.py",
-      "category": "project board sync"
-    },
-    {
-      "path": "scripts/require_planner_plan.py",
-      "category": "planner gate"
-    },
-    {
       "path": "scripts/review_*.py",
       "category": "reviewer automation"
     },
     {
       "path": "scripts/review_decision.py",
-      "category": "reviewer automation"
-    },
-    {
-      "path": "scripts/review_models.py",
       "category": "reviewer automation"
     },
     {
@@ -66,8 +34,64 @@
       "category": "reviewer and Builder audit trail"
     },
     {
+      "path": "scripts/github_api.py",
+      "category": "GitHub mutation and API helpers"
+    },
+    {
+      "path": "scripts/copilot_agent.py",
+      "category": "agent orchestration (backup runtime)"
+    },
+    {
+      "path": "scripts/dispatch_queue.py",
+      "category": "agent dispatch and queue control"
+    },
+    {
+      "path": "scripts/require_planner_plan.py",
+      "category": "planner gate enforcement"
+    },
+    {
+      "path": "scripts/priority.py",
+      "category": "priority selection and queue ordering"
+    },
+    {
+      "path": "scripts/milestones.py",
+      "category": "milestone dispatch eligibility"
+    },
+    {
+      "path": "scripts/project_sync.py",
+      "category": "GitHub Project board synchronization"
+    },
+    {
       "path": "scripts/digest_trace.py",
-      "category": "reviewer and Builder audit trail"
+      "category": "trace digest automation"
+    },
+    {
+      "path": "scripts/check_coverage.py",
+      "category": "CI coverage gate"
+    },
+    {
+      "path": "scripts/render_deploy.py",
+      "category": "production deploy trigger"
+    },
+    {
+      "path": "scripts/smoke_deploy.py",
+      "category": "production deploy verification"
+    },
+    {
+      "path": "scripts/freeze_shipped_migrations.py",
+      "category": "post-deploy migration freeze commits"
+    },
+    {
+      "path": "scripts/post_deploy_visual.py",
+      "category": "post-deploy visual verification"
+    },
+    {
+      "path": "scripts/screenshot_deploy.py",
+      "category": "screenshot capture and GitHub uploads"
+    },
+    {
+      "path": "scripts/cursor_model.py",
+      "category": "agent model selection configuration"
     },
     {
       "path": "scripts/codegen_*.py",
@@ -80,30 +104,6 @@
     {
       "path": "scripts/cursor_sdk_patch.py",
       "category": "Builder configuration"
-    },
-    {
-      "path": "scripts/cursor_model.py",
-      "category": "Builder configuration"
-    },
-    {
-      "path": "scripts/screenshot_deploy.py",
-      "category": "Builder configuration"
-    },
-    {
-      "path": "scripts/render_deploy.py",
-      "category": "deploy and release"
-    },
-    {
-      "path": "scripts/freeze_shipped_migrations.py",
-      "category": "deploy and release"
-    },
-    {
-      "path": "scripts/post_deploy_visual.py",
-      "category": "deploy and release"
-    },
-    {
-      "path": "scripts/check_coverage.py",
-      "category": "CI gates"
     },
     {
       "path": "AGENTS/**",
