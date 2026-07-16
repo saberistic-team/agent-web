@@ -295,12 +295,14 @@ def test_crm_service_research_record_helpers() -> None:
     assert len(service.list_research_for_company(conn, COMPANY_ID)) == 1
     assert len(service.list_research_for_contact(conn, CONTACT_ID)) == 1
 
-    record = service.attach_research_record(
-        conn,
-        record_type="hypothesis",
-        company_id=COMPANY_ID,
-        body="Likely buyer",
-    )
+    with patch("app.crm_service.audit_service.record_research_record_create"):
+        record = service.attach_research_record(
+            conn,
+            actor_context=ActorContext(actor="admin", correlation_id="test"),
+            record_type="hypothesis",
+            company_id=COMPANY_ID,
+            body="Likely buyer",
+        )
     assert record["body"] == "Series B"
     conn.commit.assert_called_once()
 

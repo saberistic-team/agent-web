@@ -914,6 +914,7 @@ def admin_company_research_create(
                 )
         _crm.attach_research_record(
             conn,
+            actor_context=actor_context_from_request(request, actor=session.admin_username),
             record_type=payload.record_type,
             company_id=company_id,
             body=payload.body,
@@ -1334,6 +1335,7 @@ def admin_contact_research_create(
             )
         _crm.attach_research_record(
             conn,
+            actor_context=actor_context_from_request(request, actor=session.admin_username),
             record_type=payload.record_type,
             company_id=UUID(str(company_id)),
             body=payload.body,

@@ -24,8 +24,8 @@ def _mock_conn(
     *,
     table_exists: dict[str, bool] | None = None,
     counts: dict[str, int] | None = None,
-    schema_version: str | None = "018",
-    migration_name: str = "project_brief_analytics_session",
+    schema_version: str | None = "019",
+    migration_name: str = "contact_field_sources",
     distribution_rows: dict[str, list[dict[str, Any]]] | None = None,
 ) -> MagicMock:
     exists = table_exists or {table: True for table in CRM_BACKUP_TABLES}
@@ -98,7 +98,7 @@ def test_build_snapshot_includes_all_tables_and_redaction() -> None:
     )
     snapshot = build_snapshot(conn)
     assert snapshot["manifest_version"] == MANIFEST_VERSION
-    assert snapshot["schema_version"] == "018"
+    assert snapshot["schema_version"] == "019"
     assert snapshot["table_counts"] == counts
     assert snapshot["distributions"]["companies.pipeline_stage"] == {
         "researching": 2,
@@ -113,7 +113,7 @@ def test_validate_snapshot_structure_rejects_missing_tables() -> None:
     snapshot = {
         "manifest_version": MANIFEST_VERSION,
         "exported_at": "2026-07-16T00:00:00+00:00",
-        "schema_version": "018",
+        "schema_version": "019",
         "table_counts": {"companies": 1},
         "configuration": build_configuration_block(),
     }

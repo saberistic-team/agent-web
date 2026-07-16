@@ -1387,12 +1387,14 @@ def preview_contact_restore_conflict(
 
 
 AUDIT_ACTIONS = (
-    "admin.login.success",
-    "admin.logout",
+    "auth.login.success",
+    "auth.logout",
     "import.batch",
     "entity.delete",
     "pipeline.update",
     "brief.convert",
+    "research_record.create",
+    "pipeline_activity.create",
 )
 
 
@@ -1411,19 +1413,52 @@ def build_preview_audit_events(
         action = rng.choice(AUDIT_ACTIONS)
         company = rng.choice(COMPANY_NAMES)
         actor = f"{rng.choice(CONTACT_FIRST).lower()}@saberistic.com"
+        entity_type: str | None = None
+        entity_id: str | None = None
+        summary_before: dict[str, object] | None = None
+        summary_after: dict[str, object] | None = None
+        if action == "pipeline.update":
+            entity_type = "pipeline"
+            entity_id = str(rng.randint(10, 99))
+            summary_before = {"name": company}
+            summary_after = {"pipeline_stage": rng.choice(list(PIPELINE_STAGES))}
+        elif action == "research_record.create":
+            entity_type = "research_record"
+            entity_id = str(rng.randint(100, 999))
+            summary_after = {
+                "research_record_id": entity_id,
+                "company_id": str(rng.randint(10, 99)),
+                "record_type": rng.choice(["hypothesis", "verified_fact"]),
+                "has_source_name": True,
+                "has_source_url": True,
+                "has_observed_value": True,
+            }
+        elif action == "pipeline_activity.create":
+            entity_type = "pipeline_activity"
+            entity_id = str(rng.randint(100, 999))
+            summary_after = {
+                "activity_id": entity_id,
+                "company_id": str(rng.randint(10, 99)),
+                "activity_type": "outreach",
+                "created_at": created.isoformat(),
+            }
+        elif "delete" in action:
+            entity_type = "company"
+            entity_id = str(rng.randint(10, 99))
+            summary_after = {"ok": True}
+        else:
+            summary_after = {"ok": True}
         events.append(
             {
                 "id": i + 1,
                 "created_at": created,
                 "actor": actor,
                 "action": action,
-                "entity_type": "company" if "pipeline" in action or "delete" in action else None,
-                "entity_id": str(rng.randint(10, 99)) if "pipeline" in action else None,
+                "entity_type": entity_type,
+                "entity_id": entity_id,
                 "correlation_id": f"corr-preview-{rng.randint(1000, 9999)}",
-                "summary_before": {"name": company} if "update" in action else None,
-                "summary_after": {"pipeline_stage": rng.choice(list(PIPELINE_STAGES))}
-                if "update" in action
-                else {"ok": True},
+                "summary_before": summary_before,
+                "summary_after": summary_after,
             }
         )
     return events

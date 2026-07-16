@@ -330,6 +330,7 @@ def admin_pipeline_activity(
     session = require_admin_session(request)
     _verify_session_csrf(request, session, csrf_token)
     settings = get_settings()
+    actor = actor_context_from_request(request, actor=session.admin_username)
     if settings.admin_preview_enabled:
         return RedirectResponse(url=f"/admin/pipeline/{company_id}", status_code=303)
     if not settings.database_url:
@@ -341,5 +342,10 @@ def admin_pipeline_activity(
         raise HTTPException(status_code=400, detail=str(exc.errors()[0]["msg"])) from exc
 
     with db.db_connection(settings.database_url) as conn:
-        _crm.record_pipeline_activity(conn, company_id=company_id, activity=activity)
+        _crm.record_pipeline_activity(
+            conn,
+            actor_context=actor,
+            company_id=company_id,
+            activity=activity,
+        )
     return RedirectResponse(url=f"/admin/pipeline/{company_id}", status_code=303)

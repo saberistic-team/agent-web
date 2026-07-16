@@ -1083,6 +1083,7 @@ class CrmService:
         self,
         conn: psycopg.Connection,
         *,
+        actor_context: ActorContext,
         record_type: str,
         company_id: UUID,
         body: str,
@@ -1112,6 +1113,24 @@ class CrmService:
                 review_at=review_at,
                 expires_at=expires_at,
                 metadata=metadata,
+            )
+            audit_service.record_research_record_create(
+                conn,
+                actor_context=actor_context,
+                research_record_id=str(record["id"]),
+                summary_after=audit_service.research_record_audit_summary(
+                    research_record_id=str(record["id"]),
+                    company_id=str(company_id),
+                    contact_id=str(contact_id) if contact_id is not None else None,
+                    record_type=record_type,
+                    source_name=source_name,
+                    source_url=source_url,
+                    observed_value=observed_value,
+                    observed_at=observed_at,
+                    confidence=confidence,
+                    review_at=review_at,
+                    expires_at=expires_at,
+                ),
             )
         return record
 
@@ -1854,6 +1873,7 @@ class CrmService:
         self,
         conn: psycopg.Connection,
         *,
+        actor_context: ActorContext,
         company_id: UUID,
         activity: PipelineActivityCreate,
     ) -> dict[str, Any]:
@@ -1866,6 +1886,18 @@ class CrmService:
                 company_id=company_id,
                 contact_id=contact_id,
                 metadata=activity.metadata,
+            )
+            audit_service.record_pipeline_activity_create(
+                conn,
+                actor_context=actor_context,
+                activity_id=str(created["id"]),
+                summary_after=audit_service.pipeline_activity_audit_summary(
+                    activity_id=str(created["id"]),
+                    company_id=str(company_id),
+                    contact_id=str(contact_id) if contact_id is not None else None,
+                    activity_type=activity.activity_type,
+                    created_at=created.get("created_at"),
+                ),
             )
         return created
 
