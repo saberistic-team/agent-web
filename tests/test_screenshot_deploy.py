@@ -449,22 +449,23 @@ def test_comment_markdown_pre_branch_only() -> None:
             ScreenshotTarget(route="/admin/briefs/503", expected_status=503),
         ],
         reproducibility={
-            "fixture_version": "1",
-            "root_seed": 338,
-            "reference_time": "2026-07-14T12:00:00+00:00",
+            "preview_seed": 338,
+            "preview_reference_time": "2026-07-14T12:00:00+00:00",
+            "preview_fixture_version": "1",
             "head_sha": "abc123",
-            "browser_version": "123.0.6312.4",
+            "browser": "chromium",
+            "browser_version": "120.0.0",
             "viewports": [{"name": "desktop", "width": 1280, "height": 800}],
         },
     )
     assert "### reviewer_screenshots_pre" in body
     assert "http://127.0.0.1:8765" in body
     assert "ADMIN_PREVIEW_MODE" in body
+    assert "seed=338" in body
+    assert "fixture_version=1" in body
+    assert "desktop:1280x800" in body
     assert "post-deploy only" in body
     assert "branch-home.png" in body
-    assert "preview seed: `338`" in body
-    assert "preview fixture version: `1`" in body
-    assert "head SHA: `abc123`" in body
     assert "Production baseline" not in body
     assert "pre-home.png" not in body
     assert "`/admin/briefs/503` (expected HTTP 503)" in body

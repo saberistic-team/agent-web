@@ -287,7 +287,7 @@ def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytes
         PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID,
         preview_contact_restore_conflict,
     )
-    from app.preview_context import fixture_rng, load_preview_context
+    from app.preview_context import PreviewContext, set_preview_context
 
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "7")
@@ -300,10 +300,13 @@ def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytes
     monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "preview-limiter-secret-32chars-minimum!!")
     monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    ctx = load_preview_context()
-    preview = preview_contact_restore_conflict(
-        rng=fixture_rng("contact_restore_conflict", context=ctx),
+    set_preview_context(
+        PreviewContext(
+            seed=7,
+            reference_time=datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc),
+        )
     )
+    preview = preview_contact_restore_conflict()
     client = TestClient(app, follow_redirects=False)
     response = client.get(
         f"/admin/contacts/{PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID}/restore-conflict"
@@ -321,7 +324,8 @@ def test_preview_company_detail_archive_and_restore_actions(
     from argon2 import PasswordHasher
 
     from app.admin_auth import SESSION_COOKIE_NAME
-    from app.preview_context import fixture_now, fixture_rng, load_preview_context
+
+    from app.preview_context import PreviewContext, set_preview_context
 
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "11")
@@ -334,16 +338,17 @@ def test_preview_company_detail_archive_and_restore_actions(
     monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "preview-limiter-secret-32chars-minimum!!")
     monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    ctx = load_preview_context()
+    set_preview_context(
+        PreviewContext(
+            seed=11,
+            reference_time=datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc),
+        )
+    )
     company, _contacts, _records = build_preview_company_detail(
         PREVIEW_COMPANY_DETAIL_ARCHIVE_ID,
-        rng=fixture_rng("company_detail", context=ctx),
-        now=fixture_now(context=ctx),
     )
     archived_company, _contacts2, _records2 = build_preview_company_detail(
         PREVIEW_COMPANY_DETAIL_RESTORE_ID,
-        rng=fixture_rng("company_detail", context=ctx),
-        now=fixture_now(context=ctx),
     )
     client = TestClient(app, follow_redirects=False)
     cookies = {SESSION_COOKIE_NAME: "preview-screenshot-session"}
@@ -376,7 +381,8 @@ def test_preview_contact_detail_and_edit_archive_restore_actions(
     from argon2 import PasswordHasher
 
     from app.admin_auth import SESSION_COOKIE_NAME
-    from app.preview_context import fixture_now, fixture_rng, load_preview_context
+
+    from app.preview_context import PreviewContext, set_preview_context
 
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "12")
@@ -389,16 +395,17 @@ def test_preview_contact_detail_and_edit_archive_restore_actions(
     monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "preview-limiter-secret-32chars-minimum!!")
     monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    ctx = load_preview_context()
+    set_preview_context(
+        PreviewContext(
+            seed=12,
+            reference_time=datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc),
+        )
+    )
     contact, _company, _records = build_preview_contact_detail(
         PREVIEW_CONTACT_DETAIL_ARCHIVE_ID,
-        rng=fixture_rng("contact_detail", context=ctx),
-        now=fixture_now(context=ctx),
     )
     archived_contact, _company2, _records2 = build_preview_contact_detail(
         PREVIEW_CONTACT_DETAIL_RESTORE_ID,
-        rng=fixture_rng("contact_detail", context=ctx),
-        now=fixture_now(context=ctx),
     )
     client = TestClient(app, follow_redirects=False)
     cookies = {SESSION_COOKIE_NAME: "preview-screenshot-session"}
