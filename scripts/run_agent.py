@@ -151,6 +151,12 @@ REPEATED_CONFLICT_FAILURE_LIMIT = 3
 _IMPORT_ERROR_MODULE_RE = re.compile(
     r"cannot import name '[^']*' from '([^']+)'|No module named '([^']+)'"
 )
+# ``post_issue_comment`` bodies get truncated to the last N characters
+# (``_truncate_pytest_detail`` keeps the *tail*), which frequently slices off
+# the "cannot import name ... from '<module>'" prefix while leaving the
+# trailing "(/tmp/.../repo/app/<module>.py)" file-path fragment intact — that
+# fragment survives truncation far more reliably, so try it first.
+_IMPORT_ERROR_FILEPATH_RE = re.compile(r"/(app/[a-zA-Z_][a-zA-Z0-9_/]*)\.py\)")
 _CARET_LINE_RE = re.compile(r"^\^+$")
 
 
@@ -169,6 +175,9 @@ def _smoke_error_signature(smoke_error: str) -> str:
     line" signature that never matches (this hid the #242 loop from the
     naive first-line version of this check).
     """
+    path_match = _IMPORT_ERROR_FILEPATH_RE.search(smoke_error)
+    if path_match:
+        return f"import-error:{path_match.group(1).replace('/', '.')}"
     match = _IMPORT_ERROR_MODULE_RE.search(smoke_error)
     if match:
         module = match.group(1) or match.group(2)
