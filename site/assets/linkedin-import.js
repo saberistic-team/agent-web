@@ -12,7 +12,7 @@
     maxCsvRows: 50000,
     maxFieldLength: 10000,
     maxPathLength: 512,
-    maxPreambleScanLines: 20,
+    maxCsvPreambleScanLines: 20,
     approvedBasenames: [
       "connections.csv",
       "messages.csv",
@@ -460,19 +460,13 @@
   }
 
   function findCsvHeaderLineIndex(lines) {
-    var skippedSingleField = 0;
-    var maxScan = LIMITS.maxPreambleScanLines || 20;
-    for (var idx = 0; idx < lines.length; idx += 1) {
-      if (!lines[idx].trim()) {
+    var scanLimit = Math.min(lines.length, LIMITS.maxCsvPreambleScanLines || 20);
+    for (var i = 0; i < scanLimit; i += 1) {
+      if (!lines[i].trim()) {
         continue;
       }
-      var fieldCount = parseCsvLine(lines[idx]).length;
-      if (fieldCount >= 2) {
-        return idx;
-      }
-      skippedSingleField += 1;
-      if (skippedSingleField >= maxScan) {
-        break;
+      if (parseCsvLine(lines[i]).length > 1) {
+        return i;
       }
     }
     return -1;
@@ -513,13 +507,15 @@
     });
 
     var rows = [];
+    var dataRowCount = 0;
     for (var i = headerIndex + 1; i < lines.length; i += 1) {
-      if (i > LIMITS.maxCsvRows) {
-        warnings.push(basenameKey + ": truncated at " + LIMITS.maxCsvRows.toLocaleString() + " rows");
-        break;
-      }
       if (!lines[i].trim()) {
         continue;
+      }
+      dataRowCount += 1;
+      if (dataRowCount > LIMITS.maxCsvRows) {
+        warnings.push(basenameKey + ": truncated at " + LIMITS.maxCsvRows.toLocaleString() + " rows");
+        break;
       }
       var values = parseCsvLine(lines[i]);
       var row = {};
