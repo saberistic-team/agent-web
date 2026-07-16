@@ -112,12 +112,24 @@ def admin_pipeline_detail(request: Request, company_id: UUID) -> HTMLResponse:
     csrf_token = _session_csrf_for_forms(request, settings)
 
     if settings.admin_preview_enabled:
-        from app.admin_preview import build_preview_pipeline_detail
+        from app.admin_preview import (
+            PREVIEW_PIPELINE_EXPECTED_VALUE_ERROR,
+            build_preview_pipeline_detail,
+        )
 
         detail = build_preview_pipeline_detail(company_id)
         if detail is None:
             raise HTTPException(status_code=404, detail="Company not found")
         company, history, activities = detail
+        expected_value_cents_error: str | None = None
+        if request.query_params.get("error") == "validation":
+            company = {
+                **company,
+                "next_action": "Follow up with founder",
+                "pipeline_owner": "alex",
+                "expected_value_cents": "abc",
+            }
+            expected_value_cents_error = PREVIEW_PIPELINE_EXPECTED_VALUE_ERROR
         return HTMLResponse(
             render_pipeline_detail_page(
                 company=company,
@@ -126,6 +138,7 @@ def admin_pipeline_detail(request: Request, company_id: UUID) -> HTMLResponse:
                 csrf_token=csrf_token,
                 admin_username=session.admin_username,
                 preview_banner="Preview data — not production",
+                expected_value_cents_error=expected_value_cents_error,
             )
         )
 

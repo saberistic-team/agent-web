@@ -312,6 +312,22 @@ def test_pipeline_next_action_repeated_invalid_submission_does_not_write(
 
 
 @pytest.mark.unit
+def test_pipeline_preview_detail_validation_error_fixture(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    company_id = PREVIEW_PIPELINE_COMPANY_IDS[0]
+    response = client.get(
+        f"/admin/pipeline/{company_id}?error=validation&focus=expected_value_cents"
+    )
+    assert response.status_code == 200
+    assert EXPECTED_VALUE_CENTS_INVALID_MSG in response.text
+    assert 'id="expected_value_cents-error"' in response.text
+    assert 'value="abc"' in response.text
+
+
+@pytest.mark.unit
 def test_pipeline_activity_post_redirects(authenticated_admin: dict[str, Any]) -> None:
     crm = MagicMock()
     with patch("app.admin_pipeline_routes._crm", crm):

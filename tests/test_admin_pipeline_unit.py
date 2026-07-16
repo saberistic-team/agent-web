@@ -93,5 +93,3 @@ def test_pipeline_detail_page_shows_expected_value_field_error() -> None:
     assert 'id="expected_value_cents-error"' in html
     assert 'aria-invalid="true"' in html
     assert 'aria-describedby="expected_value_cents-error"' in html
-    assert 'value="abc"' in html
-    assert "Enter a whole number of cents" in html
