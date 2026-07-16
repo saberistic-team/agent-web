@@ -29,12 +29,14 @@ from app.admin_preview import (
     build_preview_contact,
     build_preview_contacts,
     build_preview_dashboard_data,
+    build_preview_linkedin_reconcile,
     build_preview_pipeline_companies,
     build_preview_pipeline_detail,
     build_preview_section_rows,
     preview_company_fixture_ids,
     preview_contact_fixture_ids,
     render_preview_dashboard_main,
+    render_preview_imports_main,
     render_preview_section_main,
 )
 from app.admin_auth import SESSION_COOKIE_NAME
@@ -752,6 +754,14 @@ def test_preview_company_contact_routes_return_expected_status(
     assert "Log activity" in pipeline_detail.text
     assert "Stage history" in pipeline_detail.text
 
+    pipeline_validation = client.get(
+        f"/admin/pipeline/{PREVIEW_PIPELINE_COMPANY_IDS[0]}"
+        "?error=validation&focus=expected_value_cents",
+        cookies={"admin_session": "preview-screenshot-session"},
+    )
+    assert pipeline_validation.status_code == 200
+    assert 'id="expected_value_cents-error"' in pipeline_validation.text
+
 
 @pytest.mark.unit
 def test_preview_fixture_id_sets_cover_screenshot_matrix() -> None:
@@ -829,3 +839,23 @@ def test_preview_brief_conversion_states() -> None:
     assert archived_only["contact_matches"] == []
     assert archived_only["archived_contact_match"] is not None
     assert archived_only["archived_contact_match"]["full_name"]
+
+
+@pytest.mark.unit
+def test_preview_linkedin_reconcile_stable_with_seed() -> None:
+    a = build_preview_linkedin_reconcile(rng=random.Random(42))
+    b = build_preview_linkedin_reconcile(rng=random.Random(42))
+    assert a == b
+    assert a["summary_counts"]["insert"] == 1
+    assert a["summary_counts"]["conflict"] == 1
+
+
+@pytest.mark.unit
+def test_render_preview_imports_main_includes_outcomes() -> None:
+    html = render_preview_imports_main(rng=random.Random(42))
+    assert "LinkedIn reconcile preview" in html
+    assert "insert" in html
+    assert "update" in html
+    assert "unchanged" in html
+    assert "conflict" in html
+    assert "absent from this export are preserved" in html

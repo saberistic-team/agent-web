@@ -44,6 +44,20 @@ Optional overrides:
   Reusable fixtures/helpers live in `tests/pg_contract/conftest.py`. Without
   `TEST_DATABASE_URL` the suite skips locally; CI sets `REQUIRE_TEST_DATABASE=1`
   so it fails closed instead.
+- **Backup / restore (#128):** `scripts/crm_backup.py` exports a redacted CRM
+  manifest and verifies restored databases (table counts, migration noop). See
+  [BACKUP_RESTORE.md](BACKUP_RESTORE.md). Unit tests: `tests/test_crm_backup.py`;
+  live Postgres: `tests/pg_contract/test_backup_restore_contract.py`.
+- **Acquisition lifecycle e2e (#130):** `tests/pg_contract/test_acquisition_lifecycle_e2e.py`
+  walks login → CRM → evidence → import commit/replay → discovery review → scoring
+  → pipeline → analytics → export against live Postgres with deterministic fixtures.
+  Recovery: `tests/pg_contract/test_acquisition_recovery_e2e.py` (failed import or
+  migration must not destroy prior valid state). Both use the `contract` marker and
+  run only in `.github/workflows/pg-contract.yml` — never in the fast CI job.
+- **Live / external discovery:** YC and HTTP adapter tests use fixture loaders
+  (`tests/test_discovery_adapters.py`, `tests/test_discovery_yc_adapter.py`) and
+  stay in the fast `pytest -m "not contract"` job. Do not add live-network discovery
+  calls to the pg_contract e2e suite.
 - **Browser (Playwright, `tests/test_linkedin_import_browser.py`):** drives a
   real Chromium browser against the actual authenticated `/admin/imports`
   page to exercise the client-side ZIP parser

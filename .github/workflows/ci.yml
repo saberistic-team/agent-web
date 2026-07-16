@@ -41,7 +41,22 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Validate workflow-governance ownership
-        run: python scripts/validate_workflow_governance.py
+        # The live-ruleset check inside validate_workflow_governance.py has
+        # been re-implemented under a few different names across revisions
+        # of this policy (env-var default-on, an opt-in --check-live-ruleset
+        # CLI flag, an opt-in VERIFY_LIVE_GOVERNANCE_RULESET env var). Set
+        # every token alias and opt-in trigger this script has used so the
+        # live check actually runs no matter which variant is current —
+        # checked-in JSON alone is not proof the live ruleset is enforced,
+        # and this step silently no-op'd for a long time because none of
+        # these were wired in (see docs/WORKFLOW_GOVERNANCE.md's
+        # "Non-bootstrap proof PR" section for the incident writeup).
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VALIDATE_LIVE_RULESET: "1"
+          VERIFY_LIVE_GOVERNANCE_RULESET: "1"
+        run: python scripts/validate_workflow_governance.py --check-live-ruleset
       - name: Run tests
         # The live-PostgreSQL contract suite (marker: contract) runs in its own
         # path-scoped workflow (.github/workflows/pg-contract.yml) to keep this
