@@ -54,34 +54,33 @@ CONNECTIONS_CSV = (
     "Ada,Lovelace,https://www.linkedin.com/in/ada-lovelace/,ada@example.com,"
     "Analytical Engines,Engineer,01 Jan 2024\n"
 )
-
-CONNECTIONS_CSV_WITH_PREAMBLE = (
-    "Notes:\n"
-    '"When exporting your connection data, you may notice that some of the email '
-    'addresses are missing. You will only see email addresses for connections who '
-    'have allowed their connections to see or download their email address."\n'
-    "\n"
-    "First Name,Last Name,URL,Email Address,Company,Position,Connected On\n"
-    "Ada,Lovelace,https://www.linkedin.com/in/ada-lovelace/,ada@example.com,"
-    "Analytical Engines,Engineer,01 Jan 2024\n"
-    "Grace,Hopper,https://linkedin.com/in/grace-hopper/,grace@example.com,"
-    "US Navy,Admiral,02 Feb 2024\n"
-    "Alan,Turing,https://linkedin.com/in/ada-lovelace/,alan@example.com,"
-    "Bletchley,Cryptanalyst,03 Mar 2024\n"
-)
-
-CONNECTIONS_CSV_SINGLE_LINE_PREAMBLE = (
-    "Notes:\n"
-    "First Name,Last Name,URL,Email Address,Company,Position,Connected On\n"
-    "Ada,Lovelace,https://www.linkedin.com/in/ada-lovelace/,ada@example.com,"
-    "Analytical Engines,Engineer,01 Jan 2024\n"
-)
 MESSAGES_CSV = (
     "CONVERSATION ID,FROM,TO,SUBJECT,CONTENT,DATE,FOLDER\n"
     "conv-1,Ada Lovelace,Grace Hopper,Hello,Super secret message body,2024-01-01,INBOX\n"
 )
 INVITATIONS_CSV = "From,To,Sent At,Message\nAda Lovelace,Grace Hopper,2024-01-01,Let's connect\n"
 COMPANY_FOLLOWS_CSV = "Organization,Followed On\nNorthwind Labs,2024-01-01\n"
+
+CONNECTIONS_NOTES_PREAMBLE = (
+    "Notes:\n"
+    '"When exporting your connection data, you may notice that some of the '
+    'email addresses are missing. You will only see email addresses for '
+    'connections who have allowed their connections to see or download their '
+    'email address using this setting '
+    'https://www.linkedin.com/psettings/privacy/email. You can learn more '
+    'here https://www.linkedin.com/help/linkedin/answer/261"\n'
+    "\n"
+    "First Name,Last Name,URL,Email Address,Company,Position,Connected On\n"
+    "Jane,Doe,https://www.linkedin.com/in/jane-doe,,Acme Corp,Engineer,10 Jul 2026\n"
+    "John,Smith,https://www.linkedin.com/in/john-smith,,Beta Inc,Manager,11 Jul 2026\n"
+    "Alex,Rivera,https://www.linkedin.com/in/alex-rivera,,Gamma LLC,Analyst,12 Jul 2026\n"
+)
+
+CONNECTIONS_SINGLE_LINE_PREAMBLE = (
+    "Notes:\n"
+    "First Name,Last Name,URL,Email Address,Company,Position,Connected On\n"
+    "Jane,Doe,https://www.linkedin.com/in/jane-doe,,Acme Corp,Engineer,10 Jul 2026\n"
+)
 
 ALL_FOUR = {
     "Connections.csv": CONNECTIONS_CSV,
@@ -602,13 +601,13 @@ def test_no_network_upload_of_zip_or_message_content(
         context.close()
 
 
-def test_connections_csv_with_notes_preamble(
+def test_connections_csv_notes_preamble_parses_correctly(
     live_admin_server: LiveAdminServer, browser: Any, tmp_path: Path
 ) -> None:
     """Current official LinkedIn exports prepend a Notes: disclaimer before the header."""
     zip_bytes = build_raw_zip(
         _csv_entries(
-            {"Connections.csv": CONNECTIONS_CSV_WITH_PREAMBLE},
+            {"Connections.csv": CONNECTIONS_NOTES_PREAMBLE},
             prefix="LinkedIn Export/",
             compression=8,
             general_purpose_flag=0x08,
@@ -623,17 +622,17 @@ def test_connections_csv_with_notes_preamble(
         preview = preview_text(page)
         assert "unexpected schema" not in preview.lower()
         assert "no rows with a recognizable profile url" not in preview.lower()
-        assert "3" in preview  # three valid connection rows
+        assert "New connections: 3" in preview
     finally:
         context.close()
 
 
-def test_connections_csv_with_single_line_preamble(
+def test_connections_csv_single_line_preamble_parses_correctly(
     live_admin_server: LiveAdminServer, browser: Any, tmp_path: Path
 ) -> None:
     zip_bytes = build_raw_zip(
         _csv_entries(
-            {"Connections.csv": CONNECTIONS_CSV_SINGLE_LINE_PREAMBLE},
+            {"Connections.csv": CONNECTIONS_SINGLE_LINE_PREAMBLE},
             compression=8,
         )
     )
@@ -648,7 +647,7 @@ def test_connections_csv_with_single_line_preamble(
         context.close()
 
 
-def test_connections_csv_without_preamble_unchanged(
+def test_connections_csv_without_preamble_still_parses(
     live_admin_server: LiveAdminServer, browser: Any, tmp_path: Path
 ) -> None:
     zip_bytes = build_raw_zip(_csv_entries({"Connections.csv": CONNECTIONS_CSV}, compression=8))
@@ -666,10 +665,8 @@ def test_connections_csv_without_preamble_unchanged(
 def test_headerless_csv_after_preamble_scan_rejected(
     live_admin_server: LiveAdminServer, browser: Any, tmp_path: Path
 ) -> None:
-    preamble_only = "\n".join(f"line-{i}" for i in range(25))
-    zip_bytes = build_raw_zip(
-        _csv_entries({"Connections.csv": preamble_only}, compression=8)
-    )
+    preamble_only = "\n".join(f"line-{i}" for i in range(25)) + "\n"
+    zip_bytes = build_raw_zip(_csv_entries({"Connections.csv": preamble_only}, compression=8))
     context, page = _authenticated_page(live_admin_server, browser)
     try:
         goto_imports(page, live_admin_server.base_url)

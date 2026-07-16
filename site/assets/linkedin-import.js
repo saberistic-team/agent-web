@@ -12,7 +12,7 @@
     maxCsvRows: 50000,
     maxFieldLength: 10000,
     maxPathLength: 512,
-    preambleScanLimit: 20,
+    maxPreambleScanLines: 20,
     approvedBasenames: [
       "connections.csv",
       "messages.csv",
@@ -459,6 +459,19 @@
       });
   }
 
+  function findHeaderLineIndex(lines) {
+    var maxScan = Math.min(lines.length, LIMITS.maxPreambleScanLines || 20);
+    for (var i = 0; i < maxScan; i += 1) {
+      if (!lines[i].trim()) {
+        continue;
+      }
+      if (parseCsvLine(lines[i]).length > 1) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
   function parseCsvBytes(raw, basenameKey) {
     var text = new TextDecoder("utf-8", { fatal: false }).decode(raw);
     if (text.indexOf("\u0000") !== -1) {
@@ -468,8 +481,11 @@
       text = text.slice(1);
     }
     var lines = splitCsvLines(text);
-    var headerIndex = findCsvHeaderIndex(lines);
-    if (headerIndex === -1) {
+    if (!lines.length) {
+      throw new Error(basenameKey + ": missing CSV header row");
+    }
+    var headerIndex = findHeaderLineIndex(lines);
+    if (headerIndex < 0) {
       throw new Error(basenameKey + ": missing CSV header row");
     }
     var headers = parseCsvLine(lines[headerIndex]);
@@ -520,19 +536,6 @@
       }
     }
     return { rows: rows, warnings: warnings };
-  }
-
-  function findCsvHeaderIndex(lines) {
-    var scanLimit = Math.min(lines.length, LIMITS.preambleScanLimit || 20);
-    for (var i = 0; i < scanLimit; i += 1) {
-      if (!lines[i].trim()) {
-        continue;
-      }
-      if (parseCsvLine(lines[i]).length > 1) {
-        return i;
-      }
-    }
-    return -1;
   }
 
   function splitCsvLines(text) {

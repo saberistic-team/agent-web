@@ -24,7 +24,7 @@ MAX_ZIP_ENTRIES = 500
 MAX_CSV_ROWS = 50_000
 MAX_FIELD_LENGTH = 10_000
 MAX_PATH_LENGTH = 512
-PREAMBLE_SCAN_LIMIT = 20
+MAX_PREAMBLE_SCAN_LINES = 20
 
 APPROVED_BASENAMES: frozenset[str] = frozenset(
     {
@@ -137,22 +137,49 @@ def _is_nested_archive(path: str) -> bool:
     return any(base.endswith(suffix) for suffix in NESTED_ARCHIVE_SUFFIXES)
 
 
-def _count_csv_fields(line: str) -> int:
-    """Count top-level CSV fields in a single line."""
+def _split_csv_lines(text: str) -> list[str]:
+    """Split physical CSV lines while respecting quoted newlines."""
+    lines: list[str] = []
+    current: list[str] = []
+    in_quotes = False
+    index = 0
+    while index < len(text):
+        ch = text[index]
+        if ch == '"':
+            if in_quotes and index + 1 < len(text) and text[index + 1] == '"':
+                current.append('"')
+                index += 2
+                continue
+            in_quotes = not in_quotes
+            current.append(ch)
+        elif ch in "\r\n" and not in_quotes:
+            if ch == "\r" and index + 1 < len(text) and text[index + 1] == "\n":
+                index += 1
+            lines.append("".join(current))
+            current = []
+        else:
+            current.append(ch)
+        index += 1
+    if current:
+        lines.append("".join(current))
+    return lines
+
+
+def _parse_csv_line_fields(line: str) -> list[str]:
+    reader = csv.reader([line])
     try:
-        return len(next(csv.reader([line])))
-    except (csv.Error, StopIteration):
-        return 0
+        return next(reader)
+    except StopIteration:
+        return []
 
 
-def _find_csv_header_index(lines: list[str]) -> int | None:
-    """Locate the real header row, skipping LinkedIn disclaimer preambles."""
-    scan_limit = min(len(lines), PREAMBLE_SCAN_LIMIT)
+def _find_csv_header_line_index(lines: list[str]) -> int | None:
+    """Skip preamble lines that parse to a single CSV field (e.g. LinkedIn Notes: block)."""
+    scan_limit = min(len(lines), MAX_PREAMBLE_SCAN_LINES)
     for index in range(scan_limit):
-        line = lines[index]
-        if not line.strip():
+        if not lines[index].strip():
             continue
-        if _count_csv_fields(line) > 1:
+        if len(_parse_csv_line_fields(lines[index])) > 1:
             return index
     return None
 
@@ -163,8 +190,8 @@ def _read_csv_rows(raw: bytes, *, basename: str) -> tuple[list[dict[str, str]], 
     if "\x00" in text:
         raise ValueError(f"{basename}: binary content is not valid CSV")
 
-    lines = text.splitlines()
-    header_index = _find_csv_header_index(lines)
+    lines = _split_csv_lines(text)
+    header_index = _find_csv_header_line_index(lines)
     if header_index is None:
         raise ValueError(f"{basename}: missing CSV header row")
 
@@ -447,6 +474,6 @@ def export_limits_for_client() -> dict[str, Any]:
         "maxCsvRows": MAX_CSV_ROWS,
         "maxFieldLength": MAX_FIELD_LENGTH,
         "maxPathLength": MAX_PATH_LENGTH,
-        "preambleScanLimit": PREAMBLE_SCAN_LIMIT,
+        "maxPreambleScanLines": MAX_PREAMBLE_SCAN_LINES,
         "approvedBasenames": sorted(APPROVED_BASENAMES),
     }
