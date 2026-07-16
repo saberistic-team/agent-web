@@ -169,8 +169,15 @@ branch, the same reason `freeze_shipped_migrations.py` opens a
 `deploy/freeze-*` PR instead of pushing (issue #362/#366). One human
 CODEOWNER approval merges it; reruns for the same deploy sha reuse the
 existing open PR (`find_open_pr_for_branch`) instead of opening a duplicate.
-The issue comment's screenshot links point at the raw content on that branch,
-so they render before the PR merges.
+
+The same `### deploy_visual_check` (or `### deploy_record` when no issue is
+linked) comment — screenshots and all — is posted on **both** the linked
+issue and the `deploy/screenshots-<sha>` record PR itself
+(`post_deploy_visual.notify_deploy`), so the CODEOWNER reviewing that PR sees
+the before/after evidence inline before approving auto-merge, instead of
+having to open the linked issue or inspect the raw PNG diff. The screenshot
+links point at the raw content on that branch, so they render before the PR
+merges.
 
 ## Source matrix
 

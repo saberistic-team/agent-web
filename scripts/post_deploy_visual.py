@@ -100,6 +100,15 @@ def open_or_reuse_record_pr(
     return {"number": pr["number"], "url": pr["html_url"]}
 
 
+def notify_deploy(repo: str, issue_num: int | None, record_pr_number: int, body: str) -> None:
+    """Post deploy evidence to the record PR (its CODEOWNER reviewer should
+    see the same before/after screenshots inline, not just a generic PR body
+    or a raw file diff) and, when present, to the linked issue."""
+    post_issue_comment(repo, record_pr_number, body)
+    if issue_num:
+        post_issue_comment(repo, issue_num, body)
+
+
 def record_health(
     repo: str,
     branch: str,
@@ -536,9 +545,19 @@ def main(argv: list[str] | None = None) -> int:
             + (f" ([recorded]({health_rec['url']}))" if health_rec.get("url") else "")
         )
 
+        record_pr = open_or_reuse_record_pr(
+            args.repo, record_branch, default, short=short, base_url=base_url
+        )
+
         if not issue_num:
-            record_pr = open_or_reuse_record_pr(
-                args.repo, record_branch, default, short=short, base_url=base_url
+            # No linked issue to comment on — post the evidence to the
+            # record PR itself so its CODEOWNER reviewer sees the screenshots
+            # (not just a generic PR body) before approving auto-merge.
+            notify_deploy(
+                args.repo,
+                None,
+                record_pr["number"],
+                comment_markdown("### deploy_record", base_url, post_urls, extra=[health_line]),
             )
             print(
                 "No issue number in commit message / linked PR; "
@@ -589,7 +608,7 @@ def main(argv: list[str] | None = None) -> int:
                 f"- visual_decision: `{visual['decision']}`\n"
                 f"- visual_summary: {visual['summary']}\n"
             )
-            post_issue_comment(args.repo, issue_num, body)
+            notify_deploy(args.repo, issue_num, record_pr["number"], body)
         else:
             visual = visual_ai_check(
                 issue_title=issue.get("title") or "",
@@ -627,7 +646,7 @@ def main(argv: list[str] | None = None) -> int:
                     pre_lines.append(f"- **{name}**")
                     pre_lines.append(f"  ![]({u})")
                 body += "\n".join(pre_lines) + "\n"
-            post_issue_comment(args.repo, issue_num, body)
+            notify_deploy(args.repo, issue_num, record_pr["number"], body)
 
         try:
             from acceptance import (
@@ -649,10 +668,6 @@ def main(argv: list[str] | None = None) -> int:
                 f"### acceptance_checklist\n- role: `post-deploy`\n"
                 f"- all_done: `false`\n- note: refresh failed (`{acc_exc}`)\n",
             )
-
-        record_pr = open_or_reuse_record_pr(
-            args.repo, record_branch, default, short=short, base_url=base_url
-        )
 
         if visual.get("decision") == "fail":
             post_issue_comment(

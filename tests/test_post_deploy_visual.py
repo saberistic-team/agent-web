@@ -10,6 +10,7 @@ from github_api import GitHubError
 
 from post_deploy_visual import (
     _parse_visual_json,
+    notify_deploy,
     open_or_reuse_record_pr,
     record_branch_name,
     record_pr_body,
@@ -188,3 +189,20 @@ def test_open_or_reuse_record_pr_reuses_existing_open_pr() -> None:
     assert result == {"number": 12, "url": "https://x/12"}
     open_pr.assert_not_called()
     auto_merge.assert_not_called()
+
+
+def test_notify_deploy_always_comments_record_pr() -> None:
+    """The record PR's CODEOWNER reviewer must see screenshots inline, even
+    when no issue is linked (no `Closes #N` / `(#N)` in the commit/PR)."""
+    with patch("post_deploy_visual.post_issue_comment") as comment:
+        notify_deploy("o/r", None, 42, "### deploy_record\nbody")
+    comment.assert_called_once_with("o/r", 42, "### deploy_record\nbody")
+
+
+def test_notify_deploy_also_comments_linked_issue() -> None:
+    with patch("post_deploy_visual.post_issue_comment") as comment:
+        notify_deploy("o/r", 99, 42, "### deploy_visual_check\nbody")
+    assert comment.call_args_list == [
+        (("o/r", 42, "### deploy_visual_check\nbody"), {}),
+        (("o/r", 99, "### deploy_visual_check\nbody"), {}),
+    ]
