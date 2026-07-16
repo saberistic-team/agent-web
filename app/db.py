@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -13,6 +15,8 @@ from psycopg.rows import dict_row
 from app.migrations.runner import apply_migrations
 
 BriefStatus = Literal["pending_payment", "paid", "abandoned"]
+
+_logger = logging.getLogger(__name__)
 
 
 def init_db(database_url: str) -> None:
@@ -621,42 +625,6 @@ def clear_admin_login_rate_limits(
         conn.commit()
 
 
-def _admin_login_rate_limit_retention_seconds(
-    *,
-    window_seconds: int,
-    lockout_seconds: int,
-) -> int:
-    return max(window_seconds, lockout_seconds) * 2
-
-
-def has_expired_admin_login_rate_limits(
-    conn: psycopg.Connection,
-    *,
-    now: datetime,
-    window_seconds: int,
-    lockout_seconds: int,
-) -> bool:
-    """Return whether any rows remain eligible for bounded cleanup."""
-    retention_seconds = _admin_login_rate_limit_retention_seconds(
-        window_seconds=window_seconds,
-        lockout_seconds=lockout_seconds,
-    )
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT EXISTS (
-                SELECT 1
-                FROM admin_login_rate_limits
-                WHERE updated_at < %s - make_interval(secs => %s)
-                  AND (locked_until IS NULL OR locked_until < %s)
-            ) AS has_backlog
-            """,
-            (now, retention_seconds, now),
-        )
-        row = cur.fetchone()
-    return bool(row and row["has_backlog"])
-
-
 def cleanup_expired_admin_login_rate_limits(
     conn: psycopg.Connection,
     *,
@@ -665,21 +633,19 @@ def cleanup_expired_admin_login_rate_limits(
     lockout_seconds: int,
     batch_size: int,
 ) -> int:
-    """Delete expired limiter rows in a bounded, concurrent-safe batch.
+    """Delete expired login limiter rows in a bounded, concurrent-safe batch.
 
     Eligible rows are older than ``2 × max(window, lockout)`` with no active
     lockout. Selection is oldest-first by ``updated_at`` then ``limiter_key``.
     """
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
-    retention_seconds = _admin_login_rate_limit_retention_seconds(
-        window_seconds=window_seconds,
-        lockout_seconds=lockout_seconds,
-    )
+    retention_seconds = max(window_seconds, lockout_seconds) * 2
+    started = time.monotonic()
     with conn.cursor() as cur:
         cur.execute(
             """
-            WITH selected AS (
+            WITH eligible AS (
                 SELECT limiter_key
                 FROM admin_login_rate_limits
                 WHERE updated_at < %s - make_interval(secs => %s)
@@ -688,12 +654,21 @@ def cleanup_expired_admin_login_rate_limits(
                 LIMIT %s
                 FOR UPDATE SKIP LOCKED
             )
-            DELETE FROM admin_login_rate_limits AS target
-            USING selected
-            WHERE target.limiter_key = selected.limiter_key
+            DELETE FROM admin_login_rate_limits AS limits
+            WHERE limits.limiter_key IN (SELECT limiter_key FROM eligible)
             """,
             (now, retention_seconds, now, batch_size),
         )
         deleted = cur.rowcount
         conn.commit()
+    duration_ms = int((time.monotonic() - started) * 1000)
+    _logger.info(
+        "Admin login rate limit cleanup batch finished",
+        extra={
+            "batch_size": batch_size,
+            "deleted_count": deleted,
+            "duration_ms": duration_ms,
+            "backlog_likely": deleted == batch_size,
+        },
+    )
     return deleted

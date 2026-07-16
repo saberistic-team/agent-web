@@ -321,7 +321,7 @@ def test_cleanup_removes_stale_unlocked_rows(pg_conn: psycopg.Connection) -> Non
         now=now + timedelta(seconds=200),
         window_seconds=60,
         lockout_seconds=60,
-        batch_size=admin_auth.LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE,
+        batch_size=admin_auth.ADMIN_LOGIN_LIMITER_CLEANUP_BATCH_SIZE,
     )
     assert deleted >= 1
     assert _count_limiter_rows(pg_conn) == 0

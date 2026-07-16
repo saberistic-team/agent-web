@@ -436,53 +436,58 @@ resets automatically. Restore database connectivity to resume shared enforcement
 
 ### Manual cleanup
 
-To prune stale limiter rows manually, repeat bounded batches (same predicate as
-automatic cleanup) until no rows are returned:
+To prune stale limiter rows manually:
 
 ```sql
-WITH selected AS (
-    SELECT limiter_key
-    FROM admin_login_rate_limits
-    WHERE updated_at < NOW() - make_interval(secs => 1800)
-      AND (locked_until IS NULL OR locked_until < NOW())
-    ORDER BY updated_at ASC, limiter_key ASC
-    LIMIT 100
-    FOR UPDATE SKIP LOCKED
-)
-DELETE FROM admin_login_rate_limits AS target
-USING selected
-WHERE target.limiter_key = selected.limiter_key;
+DELETE FROM admin_login_rate_limits
+WHERE updated_at < NOW() - INTERVAL '30 minutes'
+  AND (locked_until IS NULL OR locked_until < NOW());
 ```
 
-### Automatic bounded cleanup
+Expired rows are also removed opportunistically after admitted attempts (retention is
+``2 × max(window, lockout)``).
 
-After each login admission decision (when Postgres is reachable), the app deletes
-at most **100** expired rows per request
-(``LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE``). Retention is
-``2 × max(window, lockout)`` — e.g. 30 minutes with default 900s window and
-lockout.
+### Limiter row retention and cleanup
 
-| Property | Value |
-|----------|-------|
-| **Batch size** | 100 rows per cleanup call |
-| **Retention** | ``2 × max(ADMIN_LOGIN_RATE_WINDOW_SECONDS, ADMIN_LOGIN_LOCKOUT_SECONDS)`` |
-| **Selection order** | Oldest ``updated_at`` first, ``limiter_key`` tie-breaker |
-| **Concurrency** | ``FOR UPDATE SKIP LOCKED`` — instances claim disjoint batches without waiting |
-| **Index** | ``admin_login_rate_limits_updated_at_idx`` on ``updated_at`` |
-| **Statement budget** | One bounded ``DELETE`` per admission path; latency does not scale with total expired-row count |
+Each admitted login attempt may delete at most **100** expired limiter rows
+(``ADMIN_LOGIN_LIMITER_CLEANUP_BATCH_SIZE``). Cleanup runs in the same database
+connection after admission commits; a cleanup failure is logged and does **not**
+invalidate the admission or trigger the conservative in-memory fallback.
 
-Eligible rows include current- and previous-secret HMAC digests; cleanup does not
-need secret material. Active rows (recent ``updated_at``), rows inside the
-retention window, and rows with ``locked_until >= now`` are never selected.
+| State | Removed when | Rationale |
+|-------|--------------|-----------|
+| **Active** (recent ``updated_at``) | Never | Required for in-flight throttling |
+| **Locked** (``locked_until > now``) | Never | Active lockout must remain enforceable |
+| **Expired** (``updated_at`` older than retention and lockout elapsed) | Opportunistic bounded batches | Drains attacker-created candidate/source rows without blocking login |
 
-If cleanup fails (database error), the failure is logged with aggregate fields
-only (``batch_size``, ``deleted_count``, ``duration_ms``, ``error_category``,
-``backlog_remaining`` when a full batch was deleted). **Admission and limiter
-state are unchanged** — cleanup errors never trigger the conservative in-memory
-fallback. Restore database connectivity or run manual bounded batches above.
+Retention window: ``2 × max(ADMIN_LOGIN_RATE_WINDOW_SECONDS, ADMIN_LOGIN_LOCKOUT_SECONDS)``.
+Rows under the current or previous limiter secret share the same age-based eligibility;
+cleanup does not need secret material.
 
-Repeated admitted logins (or manual batches) eventually drain the backlog; a
-single login never deletes more than one batch.
+Deletion uses a PostgreSQL CTE that selects the oldest eligible rows
+(``ORDER BY updated_at ASC, limiter_key ASC``), locks them with
+``FOR UPDATE SKIP LOCKED``, and deletes at most the batch size in one transaction.
+Concurrent application instances claim disjoint batches without waiting on one
+another. Repeated admitted logins (or manual SQL using the same predicate) drain
+the backlog over time; one login never deletes the entire table.
+
+Aggregate structured logs record ``batch_size``, ``deleted_count``, ``duration_ms``,
+and ``backlog_likely`` (``deleted_count == batch_size``). Cleanup never logs
+``limiter_key`` values or source/candidate material.
+
+| Operational parameter | Value |
+|-----------------------|-------|
+| Batch size | ``100`` (``ADMIN_LOGIN_LIMITER_CLEANUP_BATCH_SIZE``) |
+| Retention | ``2 × max(window, lockout)`` seconds |
+| Index | ``admin_login_rate_limits_updated_at_idx`` on ``updated_at`` |
+| Statement timeout | Inherited from the Postgres session / pool (no extra app mutex) |
+| Cleanup failure | Admission preserved; warning logged with ``error_category=database`` |
+
+Verified PostgreSQL behavior (including concurrent ``SKIP LOCKED`` workers,
+rollback reclaim, and ``EXPLAIN`` index use at 10k rows) lives in
+``tests/test_admin_login_rate_limit_cleanup_integration.py``. CI sets
+``REQUIRE_TEST_DATABASE=1`` so those tests fail closed when ``TEST_DATABASE_URL``
+is unset.
 
 ## Login flow retention
 

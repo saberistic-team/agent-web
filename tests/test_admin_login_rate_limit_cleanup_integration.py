@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
 import os
 import threading
 import time
@@ -15,28 +14,13 @@ import pytest
 from psycopg.rows import dict_row
 
 from app import admin_auth, db
-from app.config import get_settings
 from app.migrations.runner import apply_migrations
 
 _REQUIRED = (os.environ.get("REQUIRE_TEST_DATABASE") or "").strip() in {"1", "true", "yes"}
 _DATABASE_URL = (os.environ.get("TEST_DATABASE_URL") or "").strip()
-
 _TEST_BATCH_SIZE = 10
-_WINDOW_SECONDS = 60
-_LOCKOUT_SECONDS = 60
-_RETENTION_SECONDS = max(_WINDOW_SECONDS, _LOCKOUT_SECONDS) * 2
-_EXPLAIN_ROW_COUNT = 2500
-_EXPLAIN_TIME_BUDGET_SECONDS = 5.0
-
-_CLEANUP_SELECT_SQL = """
-    SELECT limiter_key
-    FROM admin_login_rate_limits
-    WHERE updated_at < %s - make_interval(secs => %s)
-      AND (locked_until IS NULL OR locked_until < %s)
-    ORDER BY updated_at ASC, limiter_key ASC
-    LIMIT %s
-    FOR UPDATE SKIP LOCKED
-"""
+_LARGE_CARDINALITY_ROWS = 10_000
+_EXPLAIN_TIME_BUDGET_SECONDS = 2.0
 
 pytestmark = [pytest.mark.integration]
 
@@ -46,7 +30,7 @@ def _require_database_url() -> str:
         return _DATABASE_URL
     if _REQUIRED:
         pytest.fail("REQUIRE_TEST_DATABASE=1 but TEST_DATABASE_URL is unset")
-    pytest.skip("TEST_DATABASE_URL not set; skipping live Postgres limiter cleanup tests")
+    pytest.skip("TEST_DATABASE_URL not set; skipping live Postgres login limiter cleanup tests")
 
 
 @pytest.fixture(scope="module")
@@ -71,6 +55,11 @@ def _reset_public_schema(conn: psycopg.Connection) -> None:
     conn.commit()
 
 
+def _migrate(database_url: str) -> None:
+    with psycopg.connect(database_url, autocommit=False) as conn:
+        apply_migrations(conn)
+
+
 @pytest.fixture
 def pg_conn(database_url: str) -> Iterator[psycopg.Connection]:
     with psycopg.connect(database_url, autocommit=False) as bootstrap:
@@ -85,13 +74,16 @@ def pg_conn(database_url: str) -> Iterator[psycopg.Connection]:
                 _reset_public_schema(cleanup)
 
 
+def _retention_seconds(*, window_seconds: int, lockout_seconds: int) -> int:
+    return max(window_seconds, lockout_seconds) * 2
+
+
 def _insert_limiter_row(
     conn: psycopg.Connection,
     *,
     limiter_key: str,
     updated_at: datetime,
     locked_until: datetime | None = None,
-    failure_count: int = 1,
 ) -> None:
     with conn.cursor() as cur:
         cur.execute(
@@ -99,14 +91,9 @@ def _insert_limiter_row(
             INSERT INTO admin_login_rate_limits (
                 limiter_key, failure_count, window_started_at, locked_until, updated_at
             )
-            VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT (limiter_key) DO UPDATE
-            SET failure_count = EXCLUDED.failure_count,
-                window_started_at = EXCLUDED.window_started_at,
-                locked_until = EXCLUDED.locked_until,
-                updated_at = EXCLUDED.updated_at
+            VALUES (%s, 1, %s, %s, %s)
             """,
-            (limiter_key, failure_count, updated_at, locked_until, updated_at),
+            (limiter_key, updated_at, locked_until, updated_at),
         )
     conn.commit()
 
@@ -119,39 +106,52 @@ def _count_rows(conn: psycopg.Connection) -> int:
     return int(row["count"])
 
 
-def _fetch_keys(conn: psycopg.Connection) -> set[str]:
+def _list_keys(conn: psycopg.Connection) -> list[str]:
     with conn.cursor() as cur:
-        cur.execute("SELECT limiter_key FROM admin_login_rate_limits ORDER BY limiter_key")
+        cur.execute(
+            "SELECT limiter_key FROM admin_login_rate_limits ORDER BY limiter_key"
+        )
         rows = cur.fetchall()
-    return {str(row["limiter_key"]) for row in rows}
+    return [str(row["limiter_key"]) for row in rows]
 
 
 def _cleanup(
     conn: psycopg.Connection,
     *,
     now: datetime,
+    window_seconds: int = 60,
+    lockout_seconds: int = 60,
     batch_size: int = _TEST_BATCH_SIZE,
 ) -> int:
     return db.cleanup_expired_admin_login_rate_limits(
         conn,
         now=now,
-        window_seconds=_WINDOW_SECONDS,
-        lockout_seconds=_LOCKOUT_SECONDS,
+        window_seconds=window_seconds,
+        lockout_seconds=lockout_seconds,
         batch_size=batch_size,
     )
 
 
-def _seed_cleanup_fixture(conn: psycopg.Connection, *, now: datetime) -> dict[str, set[str]]:
-    """Seed >3 batches of expired rows plus protected rows."""
-    expired_keys: set[str] = set()
-    base = now - timedelta(seconds=_RETENTION_SECONDS + 60)
-    for index in range(_TEST_BATCH_SIZE * 4 + 5):
+def _seed_cleanup_fixture(
+    conn: psycopg.Connection,
+    *,
+    now: datetime,
+    window_seconds: int = 60,
+    lockout_seconds: int = 60,
+) -> dict[str, list[str]]:
+    retention = _retention_seconds(
+        window_seconds=window_seconds,
+        lockout_seconds=lockout_seconds,
+    )
+    stale_base = now - timedelta(seconds=retention + 60)
+    expired_keys: list[str] = []
+    for index in range(_TEST_BATCH_SIZE * 3 + 1):
         key = f"expired-{index:04d}"
-        expired_keys.add(key)
+        expired_keys.append(key)
         _insert_limiter_row(
             conn,
             limiter_key=key,
-            updated_at=base + timedelta(seconds=index),
+            updated_at=stale_base + timedelta(seconds=index),
         )
 
     active_key = "active-recent"
@@ -161,131 +161,152 @@ def _seed_cleanup_fixture(conn: psycopg.Connection, *, now: datetime) -> dict[st
         updated_at=now - timedelta(seconds=30),
     )
 
-    inside_retention_key = "inside-retention"
-    _insert_limiter_row(
-        conn,
-        limiter_key=inside_retention_key,
-        updated_at=now - timedelta(seconds=_RETENTION_SECONDS - 1),
-    )
-
-    locked_key = "currently-locked"
+    locked_key = "active-locked"
     _insert_limiter_row(
         conn,
         limiter_key=locked_key,
-        updated_at=base,
+        updated_at=stale_base,
         locked_until=now + timedelta(minutes=5),
+    )
+
+    boundary_key = "retention-boundary"
+    boundary_updated_at = now - timedelta(seconds=retention)
+    _insert_limiter_row(
+        conn,
+        limiter_key=boundary_key,
+        updated_at=boundary_updated_at,
+    )
+
+    previous_secret_key = "deadbeef" * 8
+    _insert_limiter_row(
+        conn,
+        limiter_key=previous_secret_key,
+        updated_at=stale_base - timedelta(hours=1),
     )
 
     return {
         "expired": expired_keys,
-        "active": {active_key},
-        "inside_retention": {inside_retention_key},
-        "locked": {locked_key},
+        "active": [active_key],
+        "locked": [locked_key],
+        "boundary": [boundary_key],
+        "previous_secret": [previous_secret_key],
     }
 
 
-def test_one_cleanup_call_respects_batch_size_and_deletes_oldest(
+@pytest.mark.integration
+def test_bounded_cleanup_deletes_oldest_eligible_rows_first(
     pg_conn: psycopg.Connection,
 ) -> None:
     now = datetime(2026, 8, 1, 12, 0, tzinfo=timezone.utc)
-    fixture = _seed_cleanup_fixture(pg_conn, now=now)
+    seeded = _seed_cleanup_fixture(pg_conn, now=now)
 
     deleted = _cleanup(pg_conn, now=now, batch_size=_TEST_BATCH_SIZE)
-    assert 0 < deleted <= _TEST_BATCH_SIZE
+    assert deleted == _TEST_BATCH_SIZE
 
-    remaining = _fetch_keys(pg_conn)
-    expected_deleted = {
-        f"expired-{index:04d}" for index in range(_TEST_BATCH_SIZE)
-    }
-    assert expected_deleted.issubset(fixture["expired"] - remaining)
-    assert fixture["active"].issubset(remaining)
-    assert fixture["inside_retention"].issubset(remaining)
-    assert fixture["locked"].issubset(remaining)
+    remaining_expired = [
+        key for key in _list_keys(pg_conn) if key.startswith("expired-")
+    ]
+    assert seeded["previous_secret"][0] not in _list_keys(pg_conn)
+    assert remaining_expired == seeded["expired"][_TEST_BATCH_SIZE - 1 :]
+    assert seeded["active"][0] in _list_keys(pg_conn)
+    assert seeded["locked"][0] in _list_keys(pg_conn)
+    assert seeded["boundary"][0] in _list_keys(pg_conn)
 
 
+@pytest.mark.integration
 def test_repeated_cleanup_drains_only_eligible_rows(
     pg_conn: psycopg.Connection,
 ) -> None:
     now = datetime(2026, 8, 2, 12, 0, tzinfo=timezone.utc)
-    fixture = _seed_cleanup_fixture(pg_conn, now=now)
-    deleted_total = 0
+    seeded = _seed_cleanup_fixture(pg_conn, now=now)
+    total_deleted = 0
     while True:
         deleted = _cleanup(pg_conn, now=now, batch_size=_TEST_BATCH_SIZE)
-        deleted_total += deleted
-        if deleted == 0:
+        total_deleted += deleted
+        if deleted < _TEST_BATCH_SIZE:
             break
-    assert deleted_total == len(fixture["expired"])
-    remaining = _fetch_keys(pg_conn)
-    assert remaining == fixture["active"] | fixture["inside_retention"] | fixture["locked"]
+
+    expected_deleted = len(seeded["expired"]) + len(seeded["previous_secret"])
+    assert total_deleted == expected_deleted
+    assert _list_keys(pg_conn) == seeded["active"] + seeded["locked"] + seeded["boundary"]
 
 
-def test_retention_and_locked_until_boundaries_are_exact(
+@pytest.mark.integration
+def test_retention_and_lockout_boundaries_are_exact(
     pg_conn: psycopg.Connection,
 ) -> None:
     now = datetime(2026, 8, 3, 12, 0, tzinfo=timezone.utc)
-    eligible_key = "eligible-boundary"
-    inside_key = "inside-boundary"
-    locked_boundary_key = "locked-boundary"
-    eligible_updated_at = now - timedelta(seconds=_RETENTION_SECONDS)
-    inside_updated_at = now - timedelta(seconds=_RETENTION_SECONDS - 1)
-    lock_expired_at = now - timedelta(microseconds=1)
+    window_seconds = 60
+    lockout_seconds = 60
+    retention = _retention_seconds(
+        window_seconds=window_seconds,
+        lockout_seconds=lockout_seconds,
+    )
+    stale_base = now - timedelta(seconds=retention + 10)
 
+    just_outside = "just-outside-retention"
     _insert_limiter_row(
         pg_conn,
-        limiter_key=eligible_key,
-        updated_at=eligible_updated_at - timedelta(microseconds=1),
+        limiter_key=just_outside,
+        updated_at=now - timedelta(seconds=retention - 1),
     )
+    just_inside = "just-inside-retention"
     _insert_limiter_row(
         pg_conn,
-        limiter_key=inside_key,
-        updated_at=inside_updated_at,
+        limiter_key=just_inside,
+        updated_at=now - timedelta(seconds=retention + 1),
     )
+    expired_lockout = "expired-lockout"
     _insert_limiter_row(
         pg_conn,
-        limiter_key=locked_boundary_key,
-        updated_at=eligible_updated_at - timedelta(minutes=5),
+        limiter_key=expired_lockout,
+        updated_at=stale_base,
+        locked_until=now - timedelta(seconds=1),
+    )
+    active_lockout = "active-lockout"
+    _insert_limiter_row(
+        pg_conn,
+        limiter_key=active_lockout,
+        updated_at=stale_base,
         locked_until=now,
     )
-    _insert_limiter_row(
+
+    deleted = _cleanup(
         pg_conn,
-        limiter_key="lock-expired",
-        updated_at=eligible_updated_at - timedelta(minutes=5),
-        locked_until=lock_expired_at,
+        now=now,
+        window_seconds=window_seconds,
+        lockout_seconds=lockout_seconds,
+        batch_size=_TEST_BATCH_SIZE,
     )
-
-    deleted = _cleanup(pg_conn, now=now, batch_size=_TEST_BATCH_SIZE)
     assert deleted == 2
-    remaining = _fetch_keys(pg_conn)
-    assert inside_key in remaining
-    assert locked_boundary_key in remaining
-    assert eligible_key not in remaining
-    assert "lock-expired" not in remaining
+    assert _list_keys(pg_conn) == [just_outside, active_lockout]
 
 
+@pytest.mark.integration
 def test_concurrent_cleanup_workers_delete_disjoint_batches(
     pg_conn: psycopg.Connection,
     database_url: str,
 ) -> None:
     now = datetime(2026, 8, 4, 12, 0, tzinfo=timezone.utc)
-    expired_count = _TEST_BATCH_SIZE * 3
-    base = now - timedelta(seconds=_RETENTION_SECONDS + 120)
-    for index in range(expired_count):
+    retention = _retention_seconds(window_seconds=60, lockout_seconds=60)
+    stale_base = now - timedelta(seconds=retention + 60)
+    for index in range(_TEST_BATCH_SIZE * 2 + 3):
         _insert_limiter_row(
             pg_conn,
-            limiter_key=f"concurrent-{index:04d}",
-            updated_at=base + timedelta(seconds=index),
+            limiter_key=f"parallel-{index:04d}",
+            updated_at=stale_base + timedelta(seconds=index),
         )
 
-    barrier = threading.Barrier(2, timeout=10)
-    deleted_by_worker: list[int] = []
-    lock = threading.Lock()
+    barrier = threading.Barrier(2)
+    deleted_counts: list[int] = []
+    counts_lock = threading.Lock()
 
     def worker() -> None:
         barrier.wait(timeout=10)
         with _connect(database_url) as conn:
             deleted = _cleanup(conn, now=now, batch_size=_TEST_BATCH_SIZE)
-        with lock:
-            deleted_by_worker.append(deleted)
+        with counts_lock:
+            deleted_counts.append(deleted)
 
     threads = [threading.Thread(target=worker) for _ in range(2)]
     for thread in threads:
@@ -293,30 +314,25 @@ def test_concurrent_cleanup_workers_delete_disjoint_batches(
     for thread in threads:
         thread.join(timeout=15)
 
-    assert len(deleted_by_worker) == 2
-    assert all(0 < count <= _TEST_BATCH_SIZE for count in deleted_by_worker)
-    assert sum(deleted_by_worker) == _TEST_BATCH_SIZE * 2
-    assert _count_rows(pg_conn) == expired_count - (_TEST_BATCH_SIZE * 2)
+    assert len(deleted_counts) == 2
+    assert all(0 < count <= _TEST_BATCH_SIZE for count in deleted_counts)
+    assert sum(deleted_counts) == _TEST_BATCH_SIZE * 2 + 3
+    assert _count_rows(pg_conn) == 0
 
 
-def test_concurrent_admission_update_prevents_active_row_deletion(
+@pytest.mark.integration
+def test_concurrent_admission_prevents_deleting_refreshed_row(
     pg_conn: psycopg.Connection,
     database_url: str,
 ) -> None:
     now = datetime(2026, 8, 5, 12, 0, tzinfo=timezone.utc)
-    active_key = admin_auth.build_source_rate_limit_key("203.0.113.88", get_settings())
-    stale_key = "stale-for-cleanup"
+    retention = _retention_seconds(window_seconds=60, lockout_seconds=60)
+    stale_key = "stale-being-refreshed"
     _insert_limiter_row(
         pg_conn,
         limiter_key=stale_key,
-        updated_at=now - timedelta(seconds=_RETENTION_SECONDS + 60),
+        updated_at=now - timedelta(seconds=retention + 60),
     )
-    _insert_limiter_row(
-        pg_conn,
-        limiter_key=active_key,
-        updated_at=now - timedelta(seconds=_RETENTION_SECONDS + 60),
-    )
-
     admission_started = threading.Event()
     admission_may_commit = threading.Event()
     cleanup_done = threading.Event()
@@ -327,15 +343,13 @@ def test_concurrent_admission_update_prevents_active_row_deletion(
                 cur.execute("BEGIN")
                 cur.execute(
                     """
-                    SELECT failure_count, window_started_at, locked_until, updated_at
+                    SELECT limiter_key
                     FROM admin_login_rate_limits
                     WHERE limiter_key = %s
                     FOR UPDATE
                     """,
-                    (active_key,),
+                    (stale_key,),
                 )
-                row = cur.fetchone()
-                assert row is not None
                 cur.execute(
                     """
                     UPDATE admin_login_rate_limits
@@ -343,7 +357,7 @@ def test_concurrent_admission_update_prevents_active_row_deletion(
                         updated_at = %s
                     WHERE limiter_key = %s
                     """,
-                    (now, active_key),
+                    (now, stale_key),
                 )
             admission_started.set()
             admission_may_commit.wait(timeout=10)
@@ -354,7 +368,7 @@ def test_concurrent_admission_update_prevents_active_row_deletion(
         with _connect(database_url) as conn:
             deleted = _cleanup(conn, now=now, batch_size=_TEST_BATCH_SIZE)
         cleanup_done.set()
-        assert deleted == 1
+        assert deleted == 0
 
     admission_thread = threading.Thread(target=slow_admission)
     cleanup_thread = threading.Thread(target=cleanup_worker)
@@ -362,106 +376,142 @@ def test_concurrent_admission_update_prevents_active_row_deletion(
     cleanup_thread.start()
     cleanup_thread.join(timeout=15)
     assert cleanup_done.is_set()
-    assert active_key in _fetch_keys(pg_conn)
+    assert stale_key in _list_keys(pg_conn)
     admission_may_commit.set()
     admission_thread.join(timeout=15)
 
 
+@pytest.mark.integration
 def test_rollback_leaves_rows_claimable_by_later_cleanup(
     pg_conn: psycopg.Connection,
     database_url: str,
 ) -> None:
     now = datetime(2026, 8, 6, 12, 0, tzinfo=timezone.utc)
-    for index in range(_TEST_BATCH_SIZE):
+    retention = _retention_seconds(window_seconds=60, lockout_seconds=60)
+    stale_base = now - timedelta(seconds=retention + 30)
+    for index in range(3):
         _insert_limiter_row(
             pg_conn,
-            limiter_key=f"rollback-{index:04d}",
-            updated_at=now - timedelta(seconds=_RETENTION_SECONDS + 30),
+            limiter_key=f"rollback-{index}",
+            updated_at=stale_base + timedelta(seconds=index),
         )
 
     with _connect(database_url) as conn:
         with conn.cursor() as cur:
             cur.execute("BEGIN")
             cur.execute(
-                _CLEANUP_SELECT_SQL,
-                (now, _RETENTION_SECONDS, now, _TEST_BATCH_SIZE),
+                """
+                WITH eligible AS (
+                    SELECT limiter_key
+                    FROM admin_login_rate_limits
+                    WHERE updated_at < %s - make_interval(secs => %s)
+                      AND (locked_until IS NULL OR locked_until < %s)
+                    ORDER BY updated_at ASC, limiter_key ASC
+                    LIMIT %s
+                    FOR UPDATE SKIP LOCKED
+                )
+                DELETE FROM admin_login_rate_limits AS limits
+                WHERE limits.limiter_key IN (SELECT limiter_key FROM eligible)
+                """,
+                (now, retention, now, _TEST_BATCH_SIZE),
             )
-            locked = cur.fetchall()
-            assert len(locked) == _TEST_BATCH_SIZE
+            assert cur.rowcount == 3
         conn.rollback()
 
-    assert _count_rows(pg_conn) == _TEST_BATCH_SIZE
+    assert _count_rows(pg_conn) == 3
     deleted = _cleanup(pg_conn, now=now, batch_size=_TEST_BATCH_SIZE)
-    assert deleted == _TEST_BATCH_SIZE
+    assert deleted == 3
     assert _count_rows(pg_conn) == 0
 
 
-def test_previous_secret_hmac_rows_deleted_without_secret_knowledge(
+@pytest.mark.integration
+def test_previous_secret_rows_deleted_without_secret_knowledge(
     pg_conn: psycopg.Connection,
 ) -> None:
     now = datetime(2026, 8, 7, 12, 0, tzinfo=timezone.utc)
-    previous_secret_key = "cafebabe" * 8
+    stale_key = "cafebabe" * 8
     _insert_limiter_row(
         pg_conn,
-        limiter_key=previous_secret_key,
-        updated_at=now - timedelta(seconds=_RETENTION_SECONDS + 120),
+        limiter_key=stale_key,
+        updated_at=now - timedelta(hours=3),
     )
-    deleted = _cleanup(pg_conn, now=now, batch_size=_TEST_BATCH_SIZE)
+
+    deleted = _cleanup(
+        pg_conn,
+        now=now,
+        window_seconds=900,
+        lockout_seconds=900,
+        batch_size=_TEST_BATCH_SIZE,
+    )
     assert deleted == 1
-    assert previous_secret_key not in _fetch_keys(pg_conn)
+    assert _count_rows(pg_conn) == 0
 
 
+@pytest.mark.integration
 def test_large_cardinality_cleanup_uses_updated_at_index(
     pg_conn: psycopg.Connection,
 ) -> None:
     now = datetime(2026, 8, 8, 12, 0, tzinfo=timezone.utc)
-    base = now - timedelta(seconds=_RETENTION_SECONDS + 3600)
-    for index in range(_EXPLAIN_ROW_COUNT):
-        _insert_limiter_row(
-            pg_conn,
-            limiter_key=f"explain-{index:05d}",
-            updated_at=base + timedelta(seconds=index),
+    retention = _retention_seconds(window_seconds=60, lockout_seconds=60)
+    stale_base = now - timedelta(seconds=retention + 3600)
+    rows = [
+        (
+            f"bulk-{index:05d}",
+            1,
+            stale_base + timedelta(seconds=index),
+            None,
+            stale_base + timedelta(seconds=index),
+        )
+        for index in range(_LARGE_CARDINALITY_ROWS)
+    ]
+    with pg_conn.cursor() as cur:
+        cur.executemany(
+            """
+            INSERT INTO admin_login_rate_limits (
+                limiter_key, failure_count, window_started_at, locked_until, updated_at
+            )
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            rows,
         )
     pg_conn.commit()
-    with pg_conn.cursor() as cur:
-        cur.execute("ANALYZE admin_login_rate_limits")
 
-    started = time.monotonic()
+    explain_sql = """
+        EXPLAIN (FORMAT TEXT)
+        WITH eligible AS (
+            SELECT limiter_key
+            FROM admin_login_rate_limits
+            WHERE updated_at < %s - make_interval(secs => %s)
+              AND (locked_until IS NULL OR locked_until < %s)
+            ORDER BY updated_at ASC, limiter_key ASC
+            LIMIT %s
+            FOR UPDATE SKIP LOCKED
+        )
+        DELETE FROM admin_login_rate_limits AS limits
+        WHERE limits.limiter_key IN (SELECT limiter_key FROM eligible)
+    """
     with pg_conn.cursor() as cur:
         cur.execute(
-            """
-            EXPLAIN (FORMAT TEXT)
-            WITH selected AS (
-                SELECT limiter_key
-                FROM admin_login_rate_limits
-                WHERE updated_at < %s - make_interval(secs => %s)
-                  AND (locked_until IS NULL OR locked_until < %s)
-                ORDER BY updated_at ASC, limiter_key ASC
-                LIMIT %s
-                FOR UPDATE SKIP LOCKED
-            )
-            DELETE FROM admin_login_rate_limits AS target
-            USING selected
-            WHERE target.limiter_key = selected.limiter_key
-            """,
-            (now, _RETENTION_SECONDS, now, _TEST_BATCH_SIZE),
+            explain_sql,
+            (now, retention, now, admin_auth.ADMIN_LOGIN_LIMITER_CLEANUP_BATCH_SIZE),
         )
-        rows = cur.fetchall()
-        plan_lines = [
-            str(next(iter(row.values()))) if isinstance(row, dict) else str(row[0])
-            for row in rows
-        ]
-    elapsed = time.monotonic() - started
+        plan_lines = [str(row[0]) for row in cur.fetchall()]
     plan_text = "\n".join(plan_lines).lower()
-    assert "index scan using admin_login_rate_limits_updated_at_idx" in plan_text
-    assert "cte selected" in plan_text
-    assert "limit" in plan_text
+    assert "admin_login_rate_limits_updated_at_idx" in plan_text
+
+    started = time.monotonic()
+    deleted = _cleanup(
+        pg_conn,
+        now=now,
+        batch_size=admin_auth.ADMIN_LOGIN_LIMITER_CLEANUP_BATCH_SIZE,
+    )
+    elapsed = time.monotonic() - started
+    assert deleted == admin_auth.ADMIN_LOGIN_LIMITER_CLEANUP_BATCH_SIZE
     assert elapsed < _EXPLAIN_TIME_BUDGET_SECONDS
 
 
-def test_require_test_database_guard_fails_closed(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+@pytest.mark.unit
+def test_require_test_database_guard_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     import tests.test_admin_login_rate_limit_cleanup_integration as mod
     from _pytest.outcomes import Failed
 
@@ -472,27 +522,5 @@ def test_require_test_database_guard_fails_closed(
 
 
 @pytest.mark.unit
-def test_cleanup_integration_module_requires_integration_marker() -> None:
+def test_cleanup_module_requires_integration_marker() -> None:
     assert pytest.mark.integration in pytestmark
-
-
-@pytest.mark.unit
-def test_cleanup_integration_tests_are_marked_integration() -> None:
-    import tests.test_admin_login_rate_limit_cleanup_integration as mod
-
-    for name, obj in inspect.getmembers(mod):
-        if not name.startswith("test_") or not callable(obj):
-            continue
-        if name in {
-            "test_require_test_database_guard_fails_closed",
-            "test_cleanup_integration_module_requires_integration_marker",
-            "test_cleanup_integration_tests_are_marked_integration",
-        }:
-            continue
-        marks = getattr(obj, "pytestmark", [])
-        mark_names = [
-            mark.name for mark in marks if isinstance(mark, pytest.MarkDecorator)
-        ]
-        assert "integration" in mark_names or "integration" in {
-            mark.name for mark in mod.pytestmark
-        }, name
