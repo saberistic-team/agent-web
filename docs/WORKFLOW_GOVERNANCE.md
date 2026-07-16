@@ -102,7 +102,7 @@ gh issue edit 229 --repo saberistic-team/agent-web \
   --remove-label "status:needs-review"
 ```
 
-## Non-bootstrap proof PR (#275)
+## Non-bootstrap proof PR (PR #284 / issue #275)
 
 [PR #284](https://github.com/saberistic-team/agent-web/pull/284) (issue #275)
 is the first protected-path change after bootstrap. It expands the manifest,
@@ -118,6 +118,40 @@ demonstrate merge-gate enforcement:
    review; merge proceeds when all other gates pass.
 
 Record the live ruleset export and merge-block screenshot in PR #284.
+
+### Non-bootstrap proof: what was actually verified
+
+Applying step 1 against the live repository (2026-07-16, via
+`gh api --method PUT repos/saberistic-team/agent-web/rulesets/18975712`) found
+the drift this section warns about: the **live** ruleset had
+`require_code_owner_review: false`, even though the checked-in
+`.github/rulesets/independent-workflow-review.json` said `true`. The checked-in
+JSON alone was not proof the protection was active. Re-applying it corrected
+the live ruleset to match; the full before/after `gh api` export and analysis
+are recorded on [PR #284](https://github.com/saberistic-team/agent-web/pull/284).
+
+Steps 3 and 4 are backed by two kinds of real, non-fabricated evidence rather
+than a merge-block screenshot:
+
+- **Structural evidence:** `gh api repos/saberistic-team/agent-web/collaborators`
+  lists only `@saberistic`, `@mehdidehdar`, and `@Amirsharifico`. The Reviewer
+  and Builder bots are not collaborators, so they can never satisfy
+  `require_code_owner_review`, independent of any approval they submit.
+- **Live behavioral evidence:** on PR #284 itself, `@saberistic` (a CODEOWNER)
+  submitted an `APPROVED` review, and the Reviewer bot later submitted
+  `CHANGES_REQUESTED`. GitHub's `reviewDecision` for the PR is `CHANGES_REQUESTED`
+  and `mergeStateStatus` is `BLOCKED` — confirmed live via
+  `gh pr view 284 --json reviewDecision,mergeStateStatus` — because GitHub scores
+  the latest review per reviewer, and it does so even though a genuine human
+  CODEOWNER approval exists.
+
+What remains unverified end-to-end: a live click-through screenshot of the
+GitHub merge button specifically blocked by a *missing* CODEOWNER review (as
+opposed to an outstanding `CHANGES_REQUESTED`). Producing that would require
+opening a disposable PR against a protected path and letting only a bot
+approve it, which risks triggering this repository's live Builder/Reviewer
+automation on a throwaway artifact. That specific screenshot is left as a
+manual follow-up for a human maintainer rather than fabricated or simulated.
 
 ## Ruleset enforcement
 
