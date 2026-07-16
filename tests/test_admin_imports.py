@@ -125,3 +125,54 @@ def test_linkedin_import_js_exists_and_documents_privacy() -> None:
     assert "Nested archives are not allowed" in body
     assert "Unsafe archive path rejected" in body
     assert "DecompressionStream" in body
+
+
+@pytest.mark.unit
+def test_imports_reconcile_preview_in_preview_mode(
+    authenticated_admin: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
+    monkeypatch.setenv("BASE_URL", "http://localhost:8000")
+
+    response = client.post(
+        "/admin/imports/reconcile-preview",
+        cookies=authenticated_admin,
+        json={"connections": []},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert "summary_counts" in payload
+    assert "rows" in payload
+
+
+@pytest.mark.unit
+def test_imports_reconcile_preview_with_database(
+    authenticated_admin: dict[str, str],
+) -> None:
+    mock_preview = {
+        "rows": [],
+        "summary_counts": {"insert": 0, "update": 0, "unchanged": 0, "conflict": 0, "skipped": 0},
+        "absent_preserved": 3,
+    }
+    with patch("app.admin_routes._crm.preview_linkedin_reconcile", return_value=mock_preview):
+        response = client.post(
+            "/admin/imports/reconcile-preview",
+            cookies=authenticated_admin,
+            json={"connections": [{"full_name": "Ada"}]},
+        )
+    assert response.status_code == 200
+    assert response.json()["absent_preserved"] == 3
+
+
+@pytest.mark.unit
+def test_imports_reconcile_preview_rejects_bad_payload(
+    authenticated_admin: dict[str, str],
+) -> None:
+    response = client.post(
+        "/admin/imports/reconcile-preview",
+        cookies=authenticated_admin,
+        json={"connections": "nope"},
+    )
+    assert response.status_code == 400
