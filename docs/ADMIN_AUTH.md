@@ -254,6 +254,33 @@ Bounded overlap (recommended):
    `ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET` and redeploy again. Expired rows under
    the previous key are eligible for opportunistic cleanup.
 
+**Overlap semantics.** Previous-secret rows are *guards only*: the new instance
+reads their ``locked_until`` inside the same PostgreSQL transaction that admits
+current-secret counters, but never increments or extends previous-key rows.
+Non-locked failure counts under the previous secret **do not** carry forward to
+the new secret namespace — only an **active** ``locked_until`` on a previous-key
+row blocks admission during overlap.
+
+**Mixed-version race.** During a rolling deploy, an old instance may still
+increment previous-secret rows while a new instance evaluates those rows as
+guards. Admission locks the union of current and guard rows in ascending
+``limiter_key`` order, evaluates guard lockouts after acquiring the row lock, and
+commits once. If an old-instance lockout commits before the new admission
+decision completes, the new request is denied without Argon2 verification. If
+the new admission commits first while the guard row is not yet locked, the
+attempt is permitted; a subsequent old-instance lockout does not retroactively
+revoke that admission.
+
+**Retirement.** Remove ``ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET`` once the overlap
+window has elapsed and no active lockouts remain on previous-key rows. Stale
+previous-key rows are then eligible for bounded cleanup only.
+
+**Rollback.** To abort a rotation in flight, restore the prior
+``ADMIN_LOGIN_LIMITER_SECRET``, clear ``ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET``,
+and redeploy. Current-secret counters written under the aborted ``NEW_SECRET``
+become unreachable (same as a hard reset); restore operational lockout state
+manually if needed.
+
 Hard reset (acceptable when no active lockouts matter):
 
 1. Update `ADMIN_LOGIN_LIMITER_SECRET` only and redeploy.
@@ -378,11 +405,14 @@ the correct trust boundary is confirmed.
 ``POST /admin/login`` calls :func:`try_admit_login_attempt` **before** Argon2
 verification. The helper executes one PostgreSQL transaction that:
 
-1. Ensures limiter rows exist for the relevant bucket(s).
-2. Locks those rows with ``SELECT … FOR UPDATE`` in deterministic key order.
-3. Denies admission when any bucket is actively locked (no counter increment).
-4. Otherwise increments failure counters and sets ``locked_until`` when the threshold
-   is reached.
+1. Ensures limiter rows exist for the relevant current-key bucket(s).
+2. Locks the union of current and rotation-guard rows with ``SELECT … FOR UPDATE``
+   in ascending ``limiter_key`` order (deterministic across instances).
+3. Evaluates previous-secret guard ``locked_until`` values after the row lock.
+4. Denies admission when any current or guard bucket is actively locked (no
+   current-key counter increment).
+5. Otherwise increments current-key failure counters and sets ``locked_until``
+   when the threshold is reached.
 
 With limit ``N``, at most ``N`` requests per bucket set can reach password verification
 during a synchronized burst across connections and instances.
