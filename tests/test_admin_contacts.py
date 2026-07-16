@@ -245,4 +245,5 @@ def test_company_research_page_shows_associated_contacts() -> None:
         response = client.get(f"/admin/companies/{COMPANY_ID}")
     assert response.status_code == 200
     assert "Ada Lovelace" in response.text
-    assert "Technical buyer" in response.text
+    assert "Buying-group coverage" in response.text
+    assert "CTO" in response.text

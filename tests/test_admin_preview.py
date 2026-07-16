@@ -25,6 +25,7 @@ from app.admin_preview import (
     build_preview_acquisition_dashboard_data,
     build_preview_companies,
     build_preview_company,
+    build_preview_company_contacts,
     build_preview_company_research,
     build_preview_contact,
     build_preview_contacts,
@@ -587,12 +588,19 @@ def test_preview_company_contact_fixtures_resolve_and_render_markup() -> None:
 
     company_detail = render_admin_company_research_page(
         company=populated_company,
-        contacts=[populated_contact],
+        contacts=build_preview_company_contacts(
+            PREVIEW_COMPANY_POPULATED_ID, rng=rng
+        ),
         records=build_preview_company_research(PREVIEW_COMPANY_POPULATED_ID),
         csrf_token="csrf",
         admin_username="preview",
     )
     assert "Archive company" in company_detail
+    assert "Buying-group coverage" in company_detail
+    assert "Warm introduction paths" in company_detail
+    assert "Former colleague" in company_detail
+    assert "Stale employment" in company_detail
+    assert "Research gap" in company_detail
     assert 'id="source_url"' in company_detail
     assert 'type="url"' in company_detail
     assert 'type="number"' in company_detail
