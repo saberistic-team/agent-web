@@ -685,6 +685,28 @@ def test_convert_links_existing_contact_preserves_existing_company() -> None:
     repos["contacts"].update.assert_not_called()
 
 
+def test_convert_rejects_missing_contact_choice_when_archived_exists() -> None:
+    service, conn, repos = _service_with_mocks()
+    repos["source_records"].get_by_source.return_value = None
+    repos["companies"].find_by_domain.return_value = []
+    repos["contacts"].get_active_by_email.return_value = None
+    repos["contacts"].get_archived_by_email.return_value = {
+        "id": CONTACT_ID,
+        "email": "ops@acme.example",
+        "archived_at": "2026-01-01T00:00:00Z",
+    }
+
+    with pytest.raises(BriefConversionValidationError, match="review the archived match first"):
+        service.convert_project_brief(
+            conn,
+            brief=_brief(),
+            actor_context=ACTOR,
+            price_cents=20_000,
+            company_choice="new",
+            contact_choice="",
+        )
+
+
 def test_convert_new_contact_not_linked_to_archived_match() -> None:
     """Archived-only email is not linked; a fresh active contact is created (#226)."""
     service, conn, repos = _service_with_mocks()
@@ -692,6 +714,11 @@ def test_convert_new_contact_not_linked_to_archived_match() -> None:
     repos["companies"].find_by_domain.return_value = []
     # No *active* contact for the email — an archived row may exist but is ignored here.
     repos["contacts"].get_active_by_email.return_value = None
+    repos["contacts"].get_archived_by_email.return_value = {
+        "id": UUID("cccccccc-cccc-cccc-cccc-cccccccccccc"),
+        "email": "ops@acme.example",
+        "archived_at": "2026-01-01T00:00:00Z",
+    }
     repos["companies"].create.return_value = {
         "id": COMPANY_ID,
         "name": "Acme",
@@ -716,7 +743,6 @@ def test_convert_new_contact_not_linked_to_archived_match() -> None:
         )
 
     repos["contacts"].create.assert_called_once()
-    repos["contacts"].get_archived_by_email.assert_not_called()
     assert result["contact"]["id"] == CONTACT_ID
 
 

@@ -760,6 +760,62 @@ def _format_proposed_value(value: Any) -> str:
     return html.escape(str(value))
 
 
+def _render_archived_contact_panel(archived: dict[str, Any]) -> str:
+    contact_id = html.escape(str(archived.get("id", "")), quote=True)
+    name = archived.get("full_name") or archived.get("email") or contact_id
+    email = archived.get("email")
+    company = archived.get("company_name")
+    archived_at = archived.get("archived_at")
+    if archived_at:
+        if isinstance(archived_at, datetime):
+            archived_state = _format_timestamp(archived_at)
+        else:
+            text = str(archived_at).strip()
+            try:
+                parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+                archived_state = _format_timestamp(parsed)
+            except ValueError:
+                archived_state = html.escape(text)
+    else:
+        archived_state = '<span class="audit-muted">Archived</span>'
+    review_href = html.escape(f"/admin/contacts/{contact_id}", quote=True)
+    restore_href = html.escape(f"/admin/contacts/{contact_id}/edit", quote=True)
+    return f"""
+          <section
+            class="brief-detail-section brief-convert-archived-panel"
+            aria-labelledby="brief-convert-archived-title"
+          >
+            <h2 class="brief-detail-heading" id="brief-convert-archived-title">Archived contact match</h2>
+            <p class="admin-note" role="note">
+              A contact with this email exists in archived history. Archived contacts are
+              never linked as active contacts automatically — review or restore the archived
+              record first, or explicitly choose to create a new active contact below.
+            </p>
+            <dl class="brief-detail-dl">
+              <div class="brief-detail-row">
+                <dt>Name</dt>
+                <dd>{_format_proposed_value(name)}</dd>
+              </div>
+              <div class="brief-detail-row">
+                <dt>Email</dt>
+                <dd>{_format_proposed_value(email)}</dd>
+              </div>
+              <div class="brief-detail-row">
+                <dt>Company</dt>
+                <dd>{_format_proposed_value(company)}</dd>
+              </div>
+              <div class="brief-detail-row">
+                <dt>Archived</dt>
+                <dd>{archived_state}</dd>
+              </div>
+            </dl>
+            <p class="brief-convert-archived-actions">
+              <a class="cta admin-action--secondary" href="{review_href}">Review archived contact</a>
+              <a class="cta" href="{restore_href}">Restore archived contact</a>
+            </p>
+          </section>"""
+
+
 def _render_match_radios(
     *,
     choice_name: str,
@@ -801,6 +857,13 @@ def render_admin_brief_convert_page(
     proposal = preview.get("proposal") or {}
     company_matches: list[dict[str, Any]] = list(preview.get("company_matches") or [])
     contact_matches: list[dict[str, Any]] = list(preview.get("contact_matches") or [])
+    archived_contact_match = preview.get("archived_contact_match")
+    # Active matches take precedence; archived history is informational only (#276).
+    archived_only_match = (
+        archived_contact_match
+        if archived_contact_match and not contact_matches
+        else None
+    )
 
     error_html = ""
     if error_message:
@@ -816,11 +879,32 @@ def render_admin_brief_convert_page(
         choice_name="contact_choice",
         matches=contact_matches,
     )
+    archived_panel_html = ""
+    if archived_only_match and isinstance(archived_only_match, dict):
+        archived_panel_html = _render_archived_contact_panel(archived_only_match)
 
     default_company_choice = "existing" if company_matches else "new"
-    default_contact_choice = "existing" if contact_matches else "new"
     company_new_checked = " checked" if default_company_choice == "new" else ""
-    contact_new_checked = " checked" if default_contact_choice == "new" else ""
+    # Archived-only matches are never preselected; operators must choose explicitly (#276).
+    if contact_matches:
+        contact_new_checked = ""
+    elif archived_only_match:
+        contact_new_checked = ""
+    else:
+        contact_new_checked = " checked"
+    contact_choice_required = (
+        " required"
+        if archived_only_match and not contact_matches
+        else ""
+    )
+    contact_fieldset_note = ""
+    contact_fieldset_describedby = ""
+    if archived_only_match and not contact_matches:
+        contact_fieldset_note = """
+              <p class="admin-note" id="brief-convert-contact-choice-help">
+                Select whether to create a new active contact for this brief.
+              </p>"""
+        contact_fieldset_describedby = ' aria-describedby="brief-convert-contact-choice-help"'
 
     expected_value = proposal.get("expected_value")
     expected_display = (
@@ -867,6 +951,7 @@ def render_admin_brief_convert_page(
               </div>
             </dl>
           </section>
+          {archived_panel_html}
           <form class="admin-form admin-form--editor brief-convert-form" method="post" action="/admin/briefs/{html.escape(str(brief_id), quote=True)}/convert">
             <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}" />
             <fieldset class="brief-convert-fieldset">
@@ -876,10 +961,11 @@ def render_admin_brief_convert_page(
               </label>
               {company_match_html}
             </fieldset>
-            <fieldset class="brief-convert-fieldset">
+            <fieldset class="brief-convert-fieldset"{contact_fieldset_describedby}>
               <legend>Contact</legend>
+              {contact_fieldset_note}
               <label class="brief-convert-choice">
-                <input type="radio" name="contact_choice" value="new"{contact_new_checked} /> Create new contact
+                <input type="radio" name="contact_choice" value="new"{contact_new_checked}{contact_choice_required} /> Create new contact
               </label>
               {contact_match_html}
             </fieldset>

@@ -765,4 +765,13 @@ def test_preview_brief_conversion_states() -> None:
     matches = preview_brief_convert_matches(4, price_cents=20_000)
     assert matches["company_matches"]
     assert matches["contact_matches"]
+    assert matches["archived_contact_match"] is None
     assert matches["proposal"]["pipeline_stage"] in {"qualified", "diagnostic_paid"}
+
+    archived_only = preview_brief_convert_matches(5, price_cents=20_000)
+    assert archived_only["archived_contact_match"] is not None
+    assert archived_only["contact_matches"] == []
+
+    active_only = preview_brief_convert_matches(6, price_cents=20_000)
+    assert active_only["contact_matches"]
+    assert active_only["archived_contact_match"] is None

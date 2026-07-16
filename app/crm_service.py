@@ -263,11 +263,19 @@ class CrmService:
             else []
         )
         contact_match = self._repos.contacts.get_active_by_email(conn, email)
+        archived_contact = (
+            None if contact_match else self._repos.contacts.get_archived_by_email(conn, email)
+        )
+        contact_choice = self._normalize_contact_choice_for_conversion(
+            contact_choice=contact_choice,
+            archived_contact=archived_contact,
+        )
         self._validate_conversion_choices(
             company_choice=company_choice,
             contact_choice=contact_choice,
             company_matches=company_matches,
             contact_match=contact_match,
+            archived_contact=archived_contact,
             selected_company_id=selected_company_id,
             selected_contact_id=selected_contact_id,
         )
@@ -498,6 +506,21 @@ class CrmService:
         )
         return updated or contact
 
+    @staticmethod
+    def _normalize_contact_choice_for_conversion(
+        *,
+        contact_choice: str,
+        archived_contact: dict[str, Any] | None,
+    ) -> str:
+        """Require an explicit contact outcome when archived history exists (#276)."""
+        if contact_choice == "":
+            if archived_contact is not None:
+                raise BriefConversionValidationError(
+                    "Choose whether to create a new contact or review the archived match first."
+                )
+            return "new"
+        return contact_choice
+
     def _validate_conversion_choices(
         self,
         *,
@@ -505,6 +528,7 @@ class CrmService:
         contact_choice: str,
         company_matches: list[dict[str, Any]],
         contact_match: dict[str, Any] | None,
+        archived_contact: dict[str, Any] | None = None,
         selected_company_id: UUID | None,
         selected_contact_id: UUID | None,
     ) -> None:
@@ -527,6 +551,12 @@ class CrmService:
 
         if contact_match is None and contact_choice == "existing":
             raise BriefConversionValidationError("No existing contact matches this email.")
+
+        if archived_contact is not None and contact_choice == "existing":
+            raise BriefConversionValidationError(
+                "Archived contacts cannot be linked automatically — restore the archived "
+                "contact first, or explicitly choose to create a new contact."
+            )
 
         if contact_match is not None and contact_choice == "existing":
             if selected_contact_id is None:

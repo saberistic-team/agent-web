@@ -757,6 +757,19 @@ body.admin-app {
   cursor: not-allowed;
 }
 
+.brief-convert-archived-panel {
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  padding: 1rem 1.25rem;
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+
+.brief-convert-archived-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0.75rem 0 0;
+}
+
 .research-evidence-fields {
   border: 1px solid var(--line);
   padding: 1rem 1.25rem;
