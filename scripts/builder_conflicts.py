@@ -121,8 +121,32 @@ def try_repair_main_after_smoke(
     return True, f"added imports for: {', '.join(added)}"
 
 
+# Builder's *own* codegen provider/model selection (how Builder itself talks
+# to Cursor/OpenAI/GitHub Models) is configured via these repo vars/secrets in
+# builder.yml. None of them are set in ci.yml's `test` job, so real CI always
+# exercises tests/test_codegen_provider.py's *default* resolution behavior.
+# `_smoke_env` used to inherit the full parent environment, which leaked
+# Builder's own `CURSOR_MODEL` (e.g. a non-default `composer-2.5` override)
+# into the cloned-PR-head pytest subprocess — failing
+# `test_select_provider_prefers_cursor_when_key_set` /
+# `test_select_provider_force_cursor` (which assert the *default* model
+# contains "sonnet") every single smoke run, on every issue, regardless of
+# the PR's diff. Re-running codegen can never fix an environment mismatch, so
+# this looped Builder forever (#115 / PR #265). Strip them so the smoke gate
+# matches what `pytest -q -m "not contract"` actually sees in ci.yml.
+_CODEGEN_SELECTION_ENV_VARS = (
+    "CURSOR_MODEL",
+    "CURSOR_MAX_MODE",
+    "CODEGEN_PROVIDER",
+    "OPENAI_MODEL",
+    "GITHUB_MODELS_MODEL",
+)
+
+
 def _smoke_env(cwd: Path, *, for_import: bool = False) -> dict[str, str]:
     env = {**os.environ, "PYTHONPATH": str(cwd)}
+    for var in _CODEGEN_SELECTION_ENV_VARS:
+        env.pop(var, None)
     if for_import:
         # Import-only: preview unlocks admin wiring without requiring secrets.
         env.setdefault("ADMIN_PREVIEW_MODE", "1")
