@@ -1314,6 +1314,209 @@ class PostgresProjectBriefRepository:
         return dict(row) if row else None
 
 
+class PostgresIcpScoringRepository:
+    def get_active_version(self, conn: psycopg.Connection) -> dict[str, Any] | None:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, version_number, label, is_active, created_at, created_by
+                FROM icp_scoring_versions
+                WHERE is_active = TRUE
+                ORDER BY version_number DESC
+                LIMIT 1
+                """
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def get_version_by_number(
+        self, conn: psycopg.Connection, version_number: int
+    ) -> dict[str, Any] | None:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, version_number, label, is_active, created_at, created_by
+                FROM icp_scoring_versions
+                WHERE version_number = %s
+                """,
+                (version_number,),
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def list_rules_for_version(
+        self, conn: psycopg.Connection, version_id: UUID
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    id, version_id, dimension, label, weight, threshold,
+                    enabled, accept_hypothesis, sort_order
+                FROM icp_scoring_rules
+                WHERE version_id = %s
+                ORDER BY sort_order ASC, id ASC
+                """,
+                (version_id,),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def create_version(
+        self,
+        conn: psycopg.Connection,
+        *,
+        version_number: int,
+        label: str,
+        created_by: str,
+        activate: bool,
+    ) -> dict[str, Any]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO icp_scoring_versions (
+                    version_number, label, is_active, created_by
+                )
+                VALUES (%s, %s, %s, %s)
+                RETURNING id, version_number, label, is_active, created_at, created_by
+                """,
+                (version_number, label, activate, created_by),
+            )
+            row = cur.fetchone()
+        return dict(row)
+
+    def deactivate_all_versions(self, conn: psycopg.Connection) -> None:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE icp_scoring_versions SET is_active = FALSE WHERE is_active = TRUE")
+
+    def insert_rule(
+        self,
+        conn: psycopg.Connection,
+        *,
+        version_id: UUID,
+        rule_id: str,
+        dimension: str,
+        label: str,
+        weight: float,
+        threshold: dict[str, Any],
+        enabled: bool,
+        accept_hypothesis: bool,
+        sort_order: int,
+    ) -> dict[str, Any]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO icp_scoring_rules (
+                    id, version_id, dimension, label, weight, threshold,
+                    enabled, accept_hypothesis, sort_order
+                )
+                VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s)
+                RETURNING
+                    id, version_id, dimension, label, weight, threshold,
+                    enabled, accept_hypothesis, sort_order
+                """,
+                (
+                    rule_id,
+                    version_id,
+                    dimension,
+                    label,
+                    weight,
+                    json.dumps(threshold),
+                    enabled,
+                    accept_hypothesis,
+                    sort_order,
+                ),
+            )
+            row = cur.fetchone()
+        return dict(row)
+
+    def insert_snapshot(
+        self,
+        conn: psycopg.Connection,
+        *,
+        company_id: UUID,
+        version_id: UUID,
+        version_number: int,
+        total_score: float,
+        computed_score: float,
+        breakdown: list[dict[str, Any]],
+        missing_inputs: list[str],
+        calculated_at: datetime,
+        is_override: bool = False,
+        override_reason: str | None = None,
+        override_by: str | None = None,
+    ) -> dict[str, Any]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO company_icp_score_snapshots (
+                    company_id, version_id, version_number, total_score, computed_score,
+                    breakdown, missing_inputs, calculated_at, is_override,
+                    override_reason, override_by
+                )
+                VALUES (
+                    %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s
+                )
+                RETURNING *
+                """,
+                (
+                    company_id,
+                    version_id,
+                    version_number,
+                    total_score,
+                    computed_score,
+                    json.dumps(breakdown),
+                    json.dumps(missing_inputs),
+                    calculated_at,
+                    is_override,
+                    override_reason,
+                    override_by,
+                ),
+            )
+            row = cur.fetchone()
+        return dict(row)
+
+    def get_latest_snapshot_for_company(
+        self, conn: psycopg.Connection, company_id: UUID
+    ) -> dict[str, Any] | None:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT *
+                FROM company_icp_score_snapshots
+                WHERE company_id = %s
+                ORDER BY calculated_at DESC, created_at DESC
+                LIMIT 1
+                """,
+                (company_id,),
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    def list_latest_snapshots(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT DISTINCT ON (s.company_id)
+                    s.*,
+                    c.name AS company_name
+                FROM company_icp_score_snapshots AS s
+                JOIN companies AS c ON c.id = s.company_id
+                WHERE c.archived_at IS NULL
+                ORDER BY s.company_id, s.calculated_at DESC, s.created_at DESC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+
 class PostgresAuditEventRepository:
     def list_page(
         self,
@@ -1581,6 +1784,7 @@ class PostgresRepositories:
         self.acquisition_dashboard = PostgresAcquisitionDashboardRepository()
         self.pipeline = PostgresPipelineRepository()
         self.import_batches = PostgresImportBatchRepository()
+        self.icp_scoring = PostgresIcpScoringRepository()
 
 
 _default_repositories = PostgresRepositories()
@@ -1604,6 +1808,7 @@ def default_repositories() -> dict[str, Any]:
         "acquisition_dashboard": repos.acquisition_dashboard,
         "pipeline": repos.pipeline,
         "import_batches": repos.import_batches,
+        "icp_scoring": repos.icp_scoring,
     }
 
 

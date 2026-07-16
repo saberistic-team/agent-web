@@ -2008,6 +2008,7 @@ for _link in ADMIN_NAV_LINKS:
         "/admin/contacts",
         "/admin/imports",
         "/admin/pipeline",
+        "/admin/signals",
     }:
         continue
     _section = _link["href"].removeprefix("/admin/")

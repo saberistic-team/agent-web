@@ -74,6 +74,7 @@ def _service_with_mocks(**repos: MagicMock) -> tuple[CrmService, MagicMock, dict
         "admin_users": MagicMock(),
         "pipeline": MagicMock(),
     "import_batches": MagicMock(),
+    "icp_scoring": MagicMock(),
     }
     defaults.update(repos)
     service = CrmService(repos=CrmRepositories(**defaults))

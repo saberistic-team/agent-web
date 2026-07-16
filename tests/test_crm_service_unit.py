@@ -48,6 +48,7 @@ def test_crm_service_records_company_contact_and_activity() -> None:
             admin_users=admin_repo,
             pipeline=MagicMock(),
             import_batches=MagicMock(),
+            icp_scoring=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -89,6 +90,7 @@ def test_crm_service_links_project_brief_source() -> None:
             admin_users=MagicMock(),
             pipeline=MagicMock(),
             import_batches=MagicMock(),
+            icp_scoring=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -121,10 +123,15 @@ def test_default_crm_repositories_use_postgres_backends() -> None:
     assert isinstance(service._repos.activities, PostgresActivityRepository)
     assert isinstance(service._repos.research_records, PostgresResearchRecordRepository)
     assert isinstance(service._repos.admin_users, PostgresAdminUserRepository)
-    from app.repositories.postgres import PostgresImportBatchRepository, PostgresPipelineRepository
+    from app.repositories.postgres import (
+        PostgresIcpScoringRepository,
+        PostgresImportBatchRepository,
+        PostgresPipelineRepository,
+    )
 
     assert isinstance(service._repos.pipeline, PostgresPipelineRepository)
     assert isinstance(service._repos.import_batches, PostgresImportBatchRepository)
+    assert isinstance(service._repos.icp_scoring, PostgresIcpScoringRepository)
 
 
 def _service_with_mocks(
@@ -144,6 +151,7 @@ def _service_with_mocks(
         "admin_users": admin_repo or MagicMock(),
         "pipeline": MagicMock(),
         "import_batches": MagicMock(),
+        "icp_scoring": MagicMock(),
     }
     service = CrmService(repos=CrmRepositories(**repos))
     conn = MagicMock()

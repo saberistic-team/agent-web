@@ -49,6 +49,7 @@ FROZEN_MIGRATION_DIGESTS: dict[str, str] = {
     "016": "91e3cc23c9f19bb17834385bcfad6cbc61d484c1b0f6097583e40d67780c95b9",
     "017": "6fa2fe024a8d854ee329205cb3e9475a6e1527a1576df534611df99d6910e2f6",
     "018": "6650d3d092a41d904f2ab02f1e072876e905612a9d19d86bd605ec0db35b14b8",
+    # Digest for 019 is computed at ship time by freeze_shipped_migrations.py.
 }
 
 
@@ -680,6 +681,103 @@ CREATE TABLE IF NOT EXISTS analytics_event_rate_limits (
         name="project_brief_analytics_session",
         up_sql="""
 ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS analytics_session_id UUID;
+""",
+    ),
+    Migration(
+        version="019",
+        name="icp_scoring",
+        up_sql="""
+CREATE TABLE IF NOT EXISTS icp_scoring_versions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    version_number INTEGER NOT NULL UNIQUE,
+    label TEXT NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_by TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS icp_scoring_rules (
+    id TEXT NOT NULL,
+    version_id UUID NOT NULL REFERENCES icp_scoring_versions (id) ON DELETE CASCADE,
+    dimension TEXT NOT NULL,
+    label TEXT NOT NULL,
+    weight NUMERIC(4, 2) NOT NULL DEFAULT 1.0,
+    threshold JSONB NOT NULL DEFAULT '{}'::jsonb,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    accept_hypothesis BOOLEAN NOT NULL DEFAULT FALSE,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (version_id, id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_icp_scoring_rules_version_sort
+    ON icp_scoring_rules (version_id, sort_order, id);
+
+CREATE TABLE IF NOT EXISTS company_icp_score_snapshots (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID NOT NULL REFERENCES companies (id) ON DELETE CASCADE,
+    version_id UUID NOT NULL REFERENCES icp_scoring_versions (id),
+    version_number INTEGER NOT NULL,
+    total_score NUMERIC(5, 2) NOT NULL,
+    computed_score NUMERIC(5, 2) NOT NULL,
+    breakdown JSONB NOT NULL,
+    missing_inputs JSONB NOT NULL DEFAULT '[]'::jsonb,
+    calculated_at TIMESTAMPTZ NOT NULL,
+    is_override BOOLEAN NOT NULL DEFAULT FALSE,
+    override_reason TEXT,
+    override_by TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_company_icp_score_snapshots_company
+    ON company_icp_score_snapshots (company_id, calculated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_company_icp_score_snapshots_version
+    ON company_icp_score_snapshots (version_id, calculated_at DESC);
+
+INSERT INTO icp_scoring_versions (version_number, label, is_active, created_by)
+SELECT 1, 'Default Saberistic ICP', TRUE, 'system'
+WHERE NOT EXISTS (SELECT 1 FROM icp_scoring_versions);
+
+INSERT INTO icp_scoring_rules (
+    id, version_id, dimension, label, weight, threshold, enabled, accept_hypothesis, sort_order
+)
+SELECT
+    seed.id,
+    active_version.id,
+    seed.dimension,
+    seed.label,
+    seed.weight,
+    seed.threshold::jsonb,
+    TRUE,
+    seed.accept_hypothesis,
+    seed.sort_order
+FROM (
+    VALUES
+        ('vertical_fit', 'vertical', 'Target vertical', 1.0,
+         '{"categories":["fintech","ai_infrastructure","digital_assets"]}', FALSE, 1),
+        ('stage_fit', 'stage', 'Funding stage fit', 1.0,
+         '{"stages":["pre_seed","seed","series_a"]}', FALSE, 2),
+        ('funding_recency', 'funding_recency', 'Recent funding signal', 1.0,
+         '{"keywords":["funding","raised","series","seed round","investment","venture"],"record_types":["verified_fact","public_signal"],"max_days":180}', FALSE, 3),
+        ('hiring_growth', 'hiring_growth', 'Hiring / growth signal', 1.0,
+         '{"keywords":["hiring","headcount","open role","job posting","recruiting","growth"],"record_types":["verified_fact","public_signal"],"min_headcount":10,"max_headcount":250}', FALSE, 4),
+        ('technical_trigger', 'technical_trigger', 'Technical trigger', 1.0,
+         '{"keywords":["api","platform","infrastructure","migration","integration","kubernetes","cloud","data pipeline","mlops","fintech stack"],"record_types":["verified_fact","public_signal"]}', FALSE, 5),
+        ('warm_path', 'warm_path', 'Warm introduction path', 1.0,
+         '{"buying_roles":["introducer"],"record_types":["relationship_context"]}', FALSE, 6),
+        ('decision_maker', 'warm_path', 'Qualifying decision-maker', 1.0,
+         '{"buying_roles":["executive_buyer","founder","technical_buyer"]}', FALSE, 7),
+        ('target_disposition', 'vertical', 'Target disposition', 1.0,
+         '{"target_status":"target"}', FALSE, 8),
+        ('pipeline_progress', 'stage', 'Pipeline engagement', 1.0,
+         '{"pipeline_stages":["qualified","ready_for_outreach","contacted","replied","discovery_scheduled","diagnostic_proposed","diagnostic_paid","larger_engagement","won"]}', FALSE, 9),
+        ('fresh_evidence', 'technical_trigger', 'Fresh verified evidence', 1.0,
+         '{"record_types":["verified_fact","public_signal"],"max_days":90}', FALSE, 10)
+) AS seed(id, dimension, label, weight, threshold, accept_hypothesis, sort_order)
+CROSS JOIN (
+    SELECT id FROM icp_scoring_versions WHERE version_number = 1 LIMIT 1
+) AS active_version
+ON CONFLICT (version_id, id) DO NOTHING;
 """,
     ),
 )

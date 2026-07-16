@@ -59,6 +59,7 @@ def _service_with(**repos: MagicMock) -> tuple[CrmService, MagicMock]:
         "admin_users": MagicMock(),
         "pipeline": MagicMock(),
         "import_batches": MagicMock(),
+        "icp_scoring": MagicMock(),
     }
     bundle.update(repos)
     return CrmService(repos=CrmRepositories(**bundle)), MagicMock()
