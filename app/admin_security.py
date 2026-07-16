@@ -12,7 +12,9 @@ if TYPE_CHECKING:
 
 # Explicit domain separation for limiter key families.
 LIMITER_DOMAIN_SOURCE = "src"
-LIMITER_DOMAIN_ACCOUNT = "acct"
+LIMITER_DOMAIN_CANDIDATE = "cand"
+# Deprecated alias retained for tests and docs migrating from account-only buckets.
+LIMITER_DOMAIN_ACCOUNT = LIMITER_DOMAIN_CANDIDATE
 
 MIN_LIMITER_SECRET_BYTES = 32
 

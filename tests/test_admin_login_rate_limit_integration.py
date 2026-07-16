@@ -180,11 +180,11 @@ def test_concurrent_admission_does_not_overshoot_threshold(
 
 
 @pytest.mark.integration
-def test_account_bucket_limits_configured_admin_across_sources(
+def test_candidate_bucket_limits_submitted_username_across_sources(
     pg_conn: psycopg.Connection,
 ) -> None:
     settings = get_settings()
-    account_key = admin_auth.build_account_rate_limit_key("operator", settings)
+    candidate_key = admin_auth.build_candidate_rate_limit_key("operator", settings)
     now = datetime(2026, 3, 1, 8, 0, tzinfo=timezone.utc)
 
     for index in range(5):
@@ -193,7 +193,7 @@ def test_account_bucket_limits_configured_admin_across_sources(
         )
         admission = _admit(
             pg_conn,
-            keys=(source_key, account_key),
+            keys=(source_key, candidate_key),
             now=now + timedelta(seconds=index),
             rate_limit=5,
         )
@@ -202,7 +202,38 @@ def test_account_bucket_limits_configured_admin_across_sources(
     blocked_source = admin_auth.build_source_rate_limit_key("203.0.113.99", settings)
     blocked = _admit(
         pg_conn,
-        keys=(blocked_source, account_key),
+        keys=(blocked_source, candidate_key),
+        now=now + timedelta(seconds=20),
+        rate_limit=5,
+    )
+    assert not blocked.admitted
+    assert blocked.already_locked
+
+
+@pytest.mark.integration
+def test_unknown_candidate_bucket_limits_submitted_username_across_sources(
+    pg_conn: psycopg.Connection,
+) -> None:
+    settings = get_settings()
+    candidate_key = admin_auth.build_candidate_rate_limit_key("ghost-candidate", settings)
+    now = datetime(2026, 3, 2, 8, 0, tzinfo=timezone.utc)
+
+    for index in range(5):
+        source_key = admin_auth.build_source_rate_limit_key(
+            f"203.0.113.{index + 1}", settings
+        )
+        admission = _admit(
+            pg_conn,
+            keys=(source_key, candidate_key),
+            now=now + timedelta(seconds=index),
+            rate_limit=5,
+        )
+        assert admission.admitted
+
+    blocked_source = admin_auth.build_source_rate_limit_key("203.0.113.99", settings)
+    blocked = _admit(
+        pg_conn,
+        keys=(blocked_source, candidate_key),
         now=now + timedelta(seconds=20),
         rate_limit=5,
     )
