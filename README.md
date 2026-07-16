@@ -13,7 +13,7 @@ the loop.
 - [Trace](docs/TRACE.md) — `agent-trace.jsonl` schema and jq queries
 - [Hello API](docs/HELLO_API.md) — JSON API surface, local run, Render deploy
 - [Landing](docs/LANDING.md) — saberistic.com routes, SEO, DNS
-- [Analytics funnel](docs/ANALYTICS_FUNNEL.md) — Plausible events + UTM
+- [Analytics funnel](docs/ANALYTICS_FUNNEL.md) — first-party events + UTM
 - [Articles / insights](docs/ARTICLES.md) — editorial content under `/insights`
 - [Models / codegen](docs/MODELS.md) — Cursor SDK primary + OpenAI/Models backup
 - [Design AI](docs/DESIGN.md) — UI coding via Cursor / OpenAI
@@ -21,6 +21,9 @@ the loop.
 - [Acceptance](docs/ACCEPTANCE.md) — checklist + evidence before close
 - [Testing / coverage](docs/TESTING.md) — unit ≥90% / integration ≥70% on `app/`
 - [Backup / restore](docs/BACKUP_RESTORE.md) — Render Postgres recovery, CRM export, restore runbook (#128)
+- [Operations runbooks](docs/OPERATIONS_RUNBOOKS.md) — provisioning, import, discovery, retention, incident response (#130)
+- [Architecture / data flow](docs/ARCHITECTURE_DATA_FLOW.md) — trust boundaries and first-party data ownership (#130)
+- [Operations readiness](docs/OPERATIONS_READINESS.md) — e2e verification checklist and Reviewer screenshot matrix (#130)
 
 Milestone: [Website marketing ready](https://github.com/saberistic-team/agent-web/milestone/1) · Board: [agent-web Kanban](https://github.com/orgs/saberistic-team/projects/8/views/2)
 

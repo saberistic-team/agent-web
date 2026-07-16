@@ -59,10 +59,11 @@ def _service(
     *,
     import_batches: MagicMock | None = None,
     contacts: MagicMock | None = None,
+    companies: MagicMock | None = None,
     source_records: MagicMock | None = None,
 ) -> tuple[CrmService, MagicMock, dict[str, MagicMock]]:
     repos = {
-        "companies": MagicMock(),
+        "companies": companies or MagicMock(),
         "contacts": contacts or MagicMock(),
         "source_records": source_records or MagicMock(),
         "activities": MagicMock(),
@@ -385,6 +386,7 @@ def test_get_import_batch_returns_rows() -> None:
 def test_commit_linkedin_import_skips_and_conflicts() -> None:
     import_batches = MagicMock()
     contacts = MagicMock()
+    companies = MagicMock()
     import_batches.get_committed_by_checksum.return_value = None
     import_batches.create.return_value = _batch_row(id=BATCH_ID)
     import_batches.update_status.return_value = _batch_row(id=BATCH_ID)
@@ -393,8 +395,14 @@ def test_commit_linkedin_import_skips_and_conflicts() -> None:
         {"id": CONTACT_ID, "full_name": "Ada", "title": "A", "profile_url": "https://linkedin.com/in/ada"},
         {"id": OTHER_CONTACT_ID, "full_name": "Ada 2", "title": "B", "profile_url": "https://linkedin.com/in/ada"},
     ]
+    contacts.get_active_by_email.return_value = None
+    companies.find_by_exact_name.return_value = []
 
-    service, conn, _ = _service(import_batches=import_batches, contacts=contacts)
+    service, conn, _ = _service(
+        import_batches=import_batches,
+        contacts=contacts,
+        companies=companies,
+    )
 
     with pytest.MonkeyPatch.context() as patcher:
         patcher.setattr(
@@ -405,7 +413,7 @@ def test_commit_linkedin_import_skips_and_conflicts() -> None:
             conn,
             actor_context=ACTOR,
             connections=[
-                {"full_name": "No URL"},
+                {},  # missing profile URL, email, and name → skipped
                 {
                     "profile_url": "https://linkedin.com/in/ada",
                     "full_name": "Ada",
@@ -423,6 +431,7 @@ def test_commit_linkedin_import_skips_and_conflicts() -> None:
 def test_commit_linkedin_import_updates_existing_contact() -> None:
     import_batches = MagicMock()
     contacts = MagicMock()
+    companies = MagicMock()
     source_records = MagicMock()
     import_batches.get_committed_by_checksum.return_value = None
     import_batches.create.return_value = _batch_row(id=BATCH_ID)
@@ -435,9 +444,16 @@ def test_commit_linkedin_import_updates_existing_contact() -> None:
             "title": "Engineer",
             "profile_url": "https://linkedin.com/in/ada-lovelace",
             "company_id": None,
+            "email": None,
+            "email_permission": None,
             "archived_at": None,
+            "field_sources": {
+                "title": {"source": "linkedin", "batch_id": "old", "seen_at": "2026-01-01"},
+            },
         }
     ]
+    contacts.get_active_by_email.return_value = None
+    companies.find_by_exact_name.return_value = []
     contacts.update.return_value = {
         "id": CONTACT_ID,
         "full_name": "Ada Lovelace",
@@ -445,11 +461,15 @@ def test_commit_linkedin_import_updates_existing_contact() -> None:
         "profile_url": "https://linkedin.com/in/ada-lovelace",
         "company_id": None,
         "archived_at": None,
+        "field_sources": {
+            "title": {"source": "linkedin", "batch_id": str(BATCH_ID), "seen_at": "2026-01-02"},
+        },
     }
 
     service, conn, _ = _service(
         import_batches=import_batches,
         contacts=contacts,
+        companies=companies,
         source_records=source_records,
     )
 
@@ -480,6 +500,7 @@ def test_commit_linkedin_import_updates_existing_contact() -> None:
 def test_commit_linkedin_import_marks_conflict_when_update_fails() -> None:
     import_batches = MagicMock()
     contacts = MagicMock()
+    companies = MagicMock()
     import_batches.get_committed_by_checksum.return_value = None
     import_batches.create.return_value = _batch_row(id=BATCH_ID)
     import_batches.update_status.return_value = _batch_row(id=BATCH_ID)
@@ -491,12 +512,23 @@ def test_commit_linkedin_import_marks_conflict_when_update_fails() -> None:
             "title": "Engineer",
             "profile_url": "https://linkedin.com/in/ada-lovelace",
             "company_id": None,
+            "email": None,
+            "email_permission": None,
             "archived_at": None,
+            "field_sources": {
+                "title": {"source": "linkedin", "batch_id": "old", "seen_at": "2026-01-01"},
+            },
         }
     ]
+    contacts.get_active_by_email.return_value = None
+    companies.find_by_exact_name.return_value = []
     contacts.update.return_value = None
 
-    service, conn, _ = _service(import_batches=import_batches, contacts=contacts)
+    service, conn, _ = _service(
+        import_batches=import_batches,
+        contacts=contacts,
+        companies=companies,
+    )
 
     with pytest.MonkeyPatch.context() as patcher:
         patcher.setattr(
