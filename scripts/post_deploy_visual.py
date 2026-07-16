@@ -15,9 +15,19 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from typing import Any
 
 from cursor_model import DEFAULT_CURSOR_MODEL, cursor_model_dict, cursor_model_selection
-from github_api import GitHubError, api, post_issue_comment, split_repo
+from github_api import (
+    GitHubError,
+    api,
+    create_branch,
+    enable_auto_merge,
+    find_open_pr_for_branch,
+    open_pull_request,
+    post_issue_comment,
+    split_repo,
+)
 from screenshot_deploy import (
     PRE_BRANCH_PHASE,
     capture,
@@ -30,6 +40,64 @@ from screenshot_deploy import (
 )
 
 DEFAULT_OPENAI_MODEL = "gpt-4.1-mini"
+
+RECORD_COMMIT_PREFIX = "deploy: record post-deploy artifacts"
+
+
+def record_branch_name(sha: str) -> str:
+    """Deterministic per-deploy branch so a rerun for the same deploy reuses
+    one branch/PR instead of opening a duplicate (mirrors
+    ``freeze_shipped_migrations.freeze_branch_name``)."""
+    short = (sha or "local")[:12] or "local"
+    return f"deploy/screenshots-{short}"
+
+
+def record_pr_body(short: str, base_url: str) -> str:
+    return (
+        "### deploy_record\n"
+        f"- deploy: `{base_url}`\n"
+        f"- sha: `{short}`\n"
+        "- Automated, evidence-only change: records this deploy's `/health` "
+        "snapshot and screenshot uploads under `.agent/`. No application "
+        "code, migration, or test changes.\n"
+        "- Opened as a PR (not a direct push) because the workflow-governance "
+        "ruleset requires every change to `main` go through review — see "
+        "`docs/WORKFLOW_GOVERNANCE.md`. Auto-merge is enabled: approving this "
+        "PR is sufficient, no separate merge click needed.\n"
+    )
+
+
+def open_or_reuse_record_pr(
+    repo: str,
+    head_branch: str,
+    base_branch: str,
+    *,
+    short: str,
+    base_url: str,
+) -> dict[str, Any]:
+    """Open (or reuse) the auto-merge PR that lands this deploy's recorded
+    evidence on ``base_branch``.
+
+    Same pattern as ``freeze_shipped_migrations.maybe_commit_freeze``: a
+    direct push to a protected branch is rejected by the workflow-governance
+    ruleset (issue #362), so evidence commits land on a dedicated branch and
+    merge themselves via GitHub's native auto-merge the instant a human
+    CODEOWNER approves. Reruns against the same deploy sha reuse the existing
+    open PR instead of opening a duplicate.
+    """
+    existing = find_open_pr_for_branch(repo, head_branch)
+    if existing is not None:
+        return {"number": existing["number"], "url": existing["html_url"]}
+    title = f"{RECORD_COMMIT_PREFIX} ({short})"
+    pr = open_pull_request(
+        repo,
+        head=head_branch,
+        base=base_branch,
+        title=title,
+        body=record_pr_body(short, base_url),
+    )
+    enable_auto_merge(repo, pr["node_id"])
+    return {"number": pr["number"], "url": pr["html_url"]}
 
 
 def record_health(
@@ -403,19 +471,26 @@ def main(argv: list[str] | None = None) -> int:
             or find_issue_from_commit(args.repo, args.sha)
         )
         default = api("GET", f"/repos/{owner}/{name}").get("default_branch") or "main"
+        short = (args.sha or "local")[:12] or "local"
+        # Record evidence on a dedicated branch + auto-merge PR rather than
+        # pushing straight to the default branch — same reason and pattern as
+        # freeze_shipped_migrations.py's maybe_commit_freeze (issue #362): the
+        # workflow-governance ruleset rejects direct bot pushes to a
+        # protected branch with a 422.
+        record_branch = record_branch_name(args.sha)
+        create_branch(args.repo, record_branch, base_branch=default)
         base_url = resolve_base_url(args.base_url)
         health = wait_healthy(base_url)
         health_slim = {k: v for k, v in health.items() if not str(k).startswith("_")}
         health_rec = record_health(
             args.repo,
-            default,
+            record_branch,
             sha=args.sha,
             base_url=base_url,
             health=health,
         )
 
         out = Path("trace/screenshots-post")
-        short = (args.sha or "local")[:12]
         changed: list[str] | None = None
         if args.pr:
             changed = fetch_pr_changed_paths(args.repo, args.pr)
@@ -451,7 +526,7 @@ def main(argv: list[str] | None = None) -> int:
                 else f".agent/screenshots/deploy-{short}/post"
             )
             post_urls = (
-                upload_to_branch(args.repo, default, post_files, prefix)
+                upload_to_branch(args.repo, record_branch, post_files, prefix)
                 if post_files
                 else []
             )
@@ -462,6 +537,9 @@ def main(argv: list[str] | None = None) -> int:
         )
 
         if not issue_num:
+            record_pr = open_or_reuse_record_pr(
+                args.repo, record_branch, default, short=short, base_url=base_url
+            )
             print(
                 "No issue number in commit message / linked PR; "
                 f"uploaded post screenshots: {post_urls}; {health_line}"
@@ -470,6 +548,7 @@ def main(argv: list[str] | None = None) -> int:
                 "Tip: include `Closes #N` or `(#N)` in the commit/PR body "
                 "so Reviewer gets deploy_visual_check on the issue."
             )
+            print(f"record_pr={record_pr['url']}")
             return 0
 
         issue = api("GET", f"/repos/{owner}/{name}/issues/{issue_num}")
@@ -486,7 +565,7 @@ def main(argv: list[str] | None = None) -> int:
         if pre_files:
             pre_urls = upload_to_branch(
                 args.repo,
-                default,
+                record_branch,
                 pre_files,
                 f".agent/screenshots/issue-{issue_num}/pre",
             )
@@ -571,15 +650,29 @@ def main(argv: list[str] | None = None) -> int:
                 f"- all_done: `false`\n- note: refresh failed (`{acc_exc}`)\n",
             )
 
+        record_pr = open_or_reuse_record_pr(
+            args.repo, record_branch, default, short=short, base_url=base_url
+        )
+
         if visual.get("decision") == "fail":
             post_issue_comment(
                 args.repo,
                 issue_num,
                 "@human-review Post-deploy visual check failed — change may not be visible on production.\n",
             )
+            print(f"record_pr={record_pr['url']}", file=sys.stderr)
             print("visual check failed", file=sys.stderr)
             return 1
-        print(json.dumps({"issue": issue_num, "visual": visual, "post": post_urls}))
+        print(
+            json.dumps(
+                {
+                    "issue": issue_num,
+                    "visual": visual,
+                    "post": post_urls,
+                    "record_pr": record_pr["url"],
+                }
+            )
+        )
         return 0
     except Exception as exc:
         print(f"FAIL: {exc}", file=sys.stderr)

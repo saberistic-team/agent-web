@@ -158,6 +158,17 @@ until merged.
 3. Comments `### deploy_visual_check` on the linked issue
 4. Compares against pre-merge **branch** shots when available (not production `pre-*`)
 
+Health JSON and screenshot uploads land on a deterministic
+`deploy/screenshots-<sha>` branch and a PR against `main` with auto-merge
+enabled — **not** a direct push. The workflow-governance ruleset
+(`docs/WORKFLOW_GOVERNANCE.md`) rejects bot pushes straight to a protected
+branch, the same reason `freeze_shipped_migrations.py` opens a
+`deploy/freeze-*` PR instead of pushing (issue #362/#366). One human
+CODEOWNER approval merges it; reruns for the same deploy sha reuse the
+existing open PR (`find_open_pr_for_branch`) instead of opening a duplicate.
+The issue comment's screenshot links point at the raw content on that branch,
+so they render before the PR merges.
+
 ## Source matrix
 
 | Phase | Source | Filenames |

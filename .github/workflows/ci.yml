@@ -194,6 +194,12 @@ jobs:
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
           VISUAL_PROVIDER: ${{ vars.VISUAL_PROVIDER }}
           DEPLOY_BASE_URL: ${{ vars.DEPLOY_BASE_URL }}
+          # Passed via env, not interpolated straight into the run: string —
+          # a commit message containing a `"` (e.g. quoting a 422 error
+          # message) previously closed the --commit-message string early and
+          # spilled the rest of the message into unrecognized argv, failing
+          # this job before it ever captured a screenshot.
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           set -euo pipefail
           # Deploy job already waited for Render to go live; short pause then
@@ -202,7 +208,7 @@ jobs:
           python scripts/post_deploy_visual.py \
             --repo "${{ github.repository }}" \
             --sha "${{ github.sha }}" \
-            --commit-message "${{ github.event.head_commit.message }}"
+            --commit-message "$HEAD_COMMIT_MESSAGE"
       - name: Upload deploy health JSON
         if: always()
         uses: actions/upload-artifact@v4
