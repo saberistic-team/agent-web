@@ -114,7 +114,7 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbc/edit",
     # Pipeline detail (Next action, Change stage, Log activity, timeline).
     "/admin/pipeline/11111111-1111-1111-1111-111111111111",
-    "/admin/signals",
+    # ICP scoring list, rules editor, and company score detail fixtures.
     "/admin/signals/rules",
     "/admin/signals/11111111-1111-1111-1111-111111111111",
     "/admin/signals/22222222-2222-2222-2222-222222222222",

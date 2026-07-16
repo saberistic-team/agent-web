@@ -426,7 +426,7 @@ def test_admin_nav_links_present(path: str) -> None:
     [
         ("/admin", "Today's attention", "dashboard-title", "Dashboard"),
         ("/admin/contacts", "Contacts", "contacts-title", "Contacts"),
-        ("/admin/signals", "Signals", "admin-empty-title", "Signals"),
+        ("/admin/signals", "ICP scores", "icp-scores-title", "Signals"),
         ("/admin/pipeline", "Pipeline", "pipeline-title", "Pipeline"),
         ("/admin/imports", "LinkedIn export preview", "imports-title", "Imports"),
         ("/admin/discovery", "Discovery", "admin-empty-title", "Discovery"),
@@ -464,6 +464,9 @@ def test_admin_active_nav(path: str, heading: str, title_id: str, nav_label: str
             patchers.append(patch("app.admin_routes._crm.list_companies", return_value=[]))
         if path == "/admin/pipeline":
             patchers.append(patch("app.admin_pipeline_routes._crm.list_pipeline_companies", return_value=[]))
+        if path == "/admin/signals":
+            patchers.append(patch("app.admin_icp_routes._crm.list_company_icp_scores", return_value=[]))
+            patchers.append(patch("app.admin_icp_routes._crm.get_active_icp_version", return_value=None))
         with patchers[0]:
             for extra in patchers[1:]:
                 extra.start()
@@ -520,7 +523,6 @@ def test_admin_companies_page_renders_research_list() -> None:
 @pytest.mark.parametrize(
     ("path", "milestone"),
     [
-        ("/admin/signals", "Signal intelligence"),
         ("/admin/content", "Content management"),
     ],
 )
