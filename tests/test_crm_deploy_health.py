@@ -16,6 +16,7 @@ from crm_deploy_health import (
     run_route_check,
     smoke_checks_passed,
 )
+from render_deploy import expected_schema_version_from_repo
 
 
 @pytest.mark.unit
@@ -50,7 +51,7 @@ def test_build_record_passes_when_smoke_migration_and_logs_ok() -> None:
     record = build_deploy_health_record(
         sha="abc123def456",
         base_url="https://saberistic.com",
-        health={"status": "ok", "schema_version": "018"},
+        health={"status": "ok", "schema_version": expected_schema_version_from_repo()},
         smoke_checks=[{"id": "health", "result": "pass", "note": "ok"}],
         log_inspection={"regressions_found": False, "summary": "clean"},
         linked_issues=[230],

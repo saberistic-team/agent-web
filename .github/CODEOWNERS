@@ -41,6 +41,7 @@
 /scripts/digest_trace.py @saberistic @mehdidehdar @Amirsharifico
 /scripts/check_coverage.py @saberistic @mehdidehdar @Amirsharifico
 /scripts/smoke_deploy.py @saberistic @mehdidehdar @Amirsharifico
+/scripts/crm_deploy_health.py @saberistic @mehdidehdar @Amirsharifico
 
 # Repository policy and the self-validating policy checker
 /docs/WORKFLOW_GOVERNANCE.md @saberistic @mehdidehdar @Amirsharifico

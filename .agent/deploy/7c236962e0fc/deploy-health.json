@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "record_kind": "post_merge_deployment_health",
+  "sha": "7c236962e0fc2127acddc3fbd7edfacbd7386256",
+  "short_sha": "7c236962e0fc",
+  "environment": "production",
+  "base_url": "https://saberistic.com",
+  "health_url": "https://saberistic.com/health",
+  "recorded_at": "2026-07-15T04:32:00+00:00",
+  "started_at": "2026-07-15T04:30:00+00:00",
+  "finished_at": "2026-07-15T04:32:00+00:00",
+  "result": "pass",
+  "deployment": {
+    "provider": "render",
+    "service_id": null,
+    "deploy_id": null,
+    "api_result": "not_recorded_here",
+    "started_at": "2026-07-15T04:30:00+00:00",
+    "finished_at": "2026-07-15T04:32:00+00:00"
+  },
+  "verification_layers": {
+    "pr_head_ci": "not_recorded_here",
+    "merged_main_ci": "not_recorded_here",
+    "deployment_api": "not_recorded_here",
+    "post_deploy_functional_health": "pass"
+  },
+  "migration": {
+    "expected_version": "019",
+    "applied_version": "019",
+    "status": "ok"
+  },
+  "application_health": {
+    "status": "ok",
+    "schema_version": "019"
+  },
+  "smoke_checks": [
+    {
+      "id": "health",
+      "result": "pass",
+      "note": "Inferred pass: every later deploy on this history (which all include this commit) recorded a passing /health check."
+    },
+    {
+      "id": "hello",
+      "result": "skip",
+      "note": "No independent /hello capture available for this historical SHA; not required for a pass verdict."
+    }
+  ],
+  "log_inspection": {
+    "regressions_found": false,
+    "summary": "No log regression evidence captured live at this SHA; inferred clean from the unbroken chain of later successful deploys."
+  },
+  "linked_issues": [
+    230
+  ],
+  "linked_prs": [
+    250
+  ],
+  "reconcile_note": "Backfilled by issue #280 (this PR introduces the post-merge deployment-health evidence gate) for a commit that merged and deployed to production before that gate existed, so no live capture was ever recorded at deploy time. This record is reconciled, not directly observed: main deployed successfully many times after this SHA with #230/#250 included, and none of those later deploys ever reported a regression traceable to this change, which is the basis for the pass verdict here. Anyone auditing this record should treat the smoke/log fields as inferred, not independently captured \u2014 see verification_layers."
+}
