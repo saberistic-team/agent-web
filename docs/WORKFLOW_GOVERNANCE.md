@@ -234,6 +234,36 @@ enforcement (see **Recovery and break-glass** below); the filed issue links
 straight to that procedure and to the exact validation command to run before
 closing it.
 
+## Automated commits must go through a PR (issue #362)
+
+Restoring live enforcement (above) immediately broke a *different* piece of
+automation that had quietly depended on the ruleset being drifted: the
+`Freeze shipped migrations` CI job pushed its `deploy: freeze …` commit
+**directly** to `main` via a minted Builder GitHub App token. With
+enforcement active and zero bypass actors, GitHub correctly rejects that:
+
+```
+422: {"message":"Repository rule violations found\n\nChanges must be made through a pull request.\n\n"}
+```
+
+This is not a bug in the ruleset — a bot pushing straight to a protected
+branch is exactly what "zero bypass actors" is supposed to stop, and adding
+one for this bot would reopen the hole #229/#252/#284 closed. The fix instead
+changed the automation itself (`scripts/freeze_shipped_migrations.py`,
+`scripts/github_api.py`): it now commits onto a deterministic
+`deploy/freeze-<versions>` branch, opens a PR against `main`, and enables
+GitHub's native auto-merge (`enablePullRequestAutoMerge`, GraphQL — there is
+no REST endpoint for it) so the PR merges itself the instant one human
+CODEOWNER approves. No further click needed, and no permanent ruleset bypass
+introduced. Re-running against the same missing digests reuses the existing
+branch/PR (`find_open_pr_for_branch`) instead of opening a duplicate each
+deploy.
+
+Any other automation that currently pushes straight to `main` (check for
+other direct `put_files(repo, "main", ...)` / `git/refs/heads/main` PATCH
+call sites before adding new ones) will hit the identical 422 and should use
+the same open-PR-with-auto-merge pattern rather than a bypass actor.
+
 ## Recovery and break-glass
 
 Use break-glass only when a protected workflow blocks a production incident or

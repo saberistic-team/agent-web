@@ -162,6 +162,7 @@ def test_brief_convert_fieldset_and_choice_classes_themed() -> None:
     assert "cursor: pointer" in choice_block
     assert "accent-color: var(--accent)" in css
     assert ".brief-convert-match" in css
+    assert ".brief-convert-archived" in css
     assert ".admin-checkbox" in css
 
 

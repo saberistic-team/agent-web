@@ -199,6 +199,60 @@ def test_preview_brief_rows_randomized_and_seed_stable() -> None:
 
 
 @pytest.mark.unit
+def test_preview_brief_rows_include_empty_and_no_email_convert_fixtures() -> None:
+    """Ids 6/7 (#276) are always present and legibly empty/no-email for convert previews."""
+    from app.admin_preview import (
+        PREVIEW_BRIEF_CONVERT_EMPTY_ID,
+        PREVIEW_BRIEF_CONVERT_NO_EMAIL_ID,
+        build_preview_brief_detail,
+        build_preview_brief_rows,
+    )
+
+    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
+    for seed in (1, 2, 3, 4, 5):
+        rows = build_preview_brief_rows(rng=random.Random(seed), now=now)
+        ids = {int(row["id"]) for row in rows}  # type: ignore[arg-type]
+        assert PREVIEW_BRIEF_CONVERT_EMPTY_ID in ids
+        assert PREVIEW_BRIEF_CONVERT_NO_EMAIL_ID in ids
+
+    empty = build_preview_brief_detail(PREVIEW_BRIEF_CONVERT_EMPTY_ID, rng=random.Random(5), now=now)
+    assert empty is not None
+    assert empty["website"] == ""
+    assert empty["contact_value"] == ""
+
+    no_email = build_preview_brief_detail(
+        PREVIEW_BRIEF_CONVERT_NO_EMAIL_ID, rng=random.Random(5), now=now
+    )
+    assert no_email is not None
+    assert no_email["website"] != ""
+    assert no_email["contact_value"] == ""
+
+
+@pytest.mark.unit
+def test_preview_brief_convert_matches_empty_and_no_email_have_no_matches() -> None:
+    from app.admin_preview import (
+        PREVIEW_BRIEF_CONVERT_EMPTY_ID,
+        PREVIEW_BRIEF_CONVERT_NO_EMAIL_ID,
+        preview_brief_convert_matches,
+    )
+
+    empty = preview_brief_convert_matches(PREVIEW_BRIEF_CONVERT_EMPTY_ID, price_cents=20_000)
+    assert empty["company_matches"] == []
+    assert empty["contact_matches"] == []
+    assert empty["archived_contact_match"] is None
+    assert empty["proposal"]["company_name"] == "Unknown company"
+    assert empty["proposal"]["domain"] is None
+    assert empty["proposal"]["contact_email"] == ""
+
+    no_email = preview_brief_convert_matches(PREVIEW_BRIEF_CONVERT_NO_EMAIL_ID, price_cents=20_000)
+    assert no_email["company_matches"] == []
+    assert no_email["contact_matches"] == []
+    assert no_email["archived_contact_match"] is None
+    assert no_email["proposal"]["company_name"] != "Unknown company"
+    assert no_email["proposal"]["contact_email"] == ""
+
+
+@pytest.mark.unit
 def test_preview_audit_events_seed_stable() -> None:
     from app.admin_preview import build_preview_audit_events
 
@@ -756,6 +810,7 @@ def test_preview_import_batches_seed_stable() -> None:
 def test_preview_brief_conversion_states() -> None:
     from app.admin_preview import (
         PREVIEW_BRIEF_CONVERTED_ID,
+        PREVIEW_BRIEF_CONVERT_ARCHIVED_MATCH_ID,
         PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR,
         preview_brief_conversion_state,
         preview_brief_convert_matches,
@@ -772,7 +827,15 @@ def test_preview_brief_conversion_states() -> None:
     matches = preview_brief_convert_matches(4, price_cents=20_000)
     assert matches["company_matches"]
     assert matches["contact_matches"]
+    assert matches["archived_contact_match"] is None
     assert matches["proposal"]["pipeline_stage"] in {"qualified", "diagnostic_paid"}
+    archived_only = preview_brief_convert_matches(
+        PREVIEW_BRIEF_CONVERT_ARCHIVED_MATCH_ID,
+        price_cents=20_000,
+    )
+    assert archived_only["contact_matches"] == []
+    assert archived_only["archived_contact_match"] is not None
+    assert archived_only["archived_contact_match"]["full_name"]
 
 
 @pytest.mark.unit
