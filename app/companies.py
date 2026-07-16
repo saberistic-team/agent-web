@@ -122,6 +122,25 @@ class CompanyCreate(BaseModel):
         return self
 
 
+def company_audit_summary(company: dict[str, Any]) -> dict[str, Any]:
+    """Compact company snapshot for audit events (nullable patch fields only)."""
+    last_verified = company.get("last_verified_at")
+    return {
+        "name": company.get("name"),
+        "website": company.get("website"),
+        "domain": company.get("domain"),
+        "category": company.get("category"),
+        "stage": company.get("stage"),
+        "headcount_estimate": company.get("headcount_estimate"),
+        "funding_summary": company.get("funding_summary"),
+        "target_status": company.get("target_status"),
+        "last_verified_at": (
+            last_verified.isoformat() if last_verified is not None else None
+        ),
+        "notes": company.get("notes"),
+    }
+
+
 class CompanyUpdate(CompanyCreate):
     """Partial company patch.
 

@@ -276,6 +276,26 @@ class PostgresContactRepository:
             row = cur.fetchone()
         return dict(row) if row else None
 
+    def get_active_by_id_for_update(
+        self,
+        conn: psycopg.Connection,
+        contact_id: UUID,
+    ) -> dict[str, Any] | None:
+        """Return one active contact row locked for update (brief conversion #274)."""
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT c.*, co.name AS company_name
+                FROM contacts c
+                LEFT JOIN companies co ON co.id = c.company_id
+                WHERE c.id = %s AND c.archived_at IS NULL
+                FOR UPDATE OF c
+                """,
+                (contact_id,),
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
+
     def get_active_by_email(
         self,
         conn: psycopg.Connection,

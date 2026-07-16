@@ -12,7 +12,7 @@ Covers the three-state patch contract at every boundary:
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import MagicMock, patch
 from uuid import UUID
@@ -26,8 +26,8 @@ from app.acquisition_pipeline import PipelineNextActionUpdate
 from app.actor_context import ActorContext
 from app.admin_auth import SESSION_COOKIE_NAME
 from app.admin_routes import _company_form_payload, _contact_form_payload
-from app.companies import CompanyUpdate
-from app.contacts import ContactUpdate
+from app.companies import CompanyUpdate, company_audit_summary
+from app.contacts import ContactUpdate, contact_audit_summary
 from app.crm_service import CrmRepositories, CrmService
 from app.main import app
 from app.patch import UNSET
@@ -235,6 +235,74 @@ def test_update_contact_clears_email_and_disassociates_company() -> None:
 
 
 @pytest.mark.unit
+def test_update_company_clear_is_audited_as_change() -> None:
+    company_repo = MagicMock()
+    before = {
+        "id": COMPANY_ID,
+        "name": "Acme",
+        "notes": "Keep me",
+        "funding_summary": "Clear me",
+    }
+    after = {**before, "funding_summary": None}
+    company_repo.get_by_id.return_value = before
+    company_repo.find_by_domain.return_value = []
+    company_repo.update.return_value = after
+    service, conn = _service_with(companies=company_repo)
+
+    with patch("app.crm_service.audit_service.record_company_update") as audit:
+        service.update_company(
+            conn,
+            COMPANY_ID,
+            company=CompanyUpdate(name="Acme", funding_summary=None),
+            actor_context=ACTOR,
+        )
+
+    audit.assert_called_once()
+    audit_kwargs = audit.call_args.kwargs
+    assert audit_kwargs["summary_before"]["notes"] == "Keep me"
+    assert audit_kwargs["summary_after"]["notes"] == "Keep me"
+    assert audit_kwargs["summary_before"]["funding_summary"] == "Clear me"
+    assert audit_kwargs["summary_after"]["funding_summary"] is None
+    conn.commit.assert_called_once()
+
+
+@pytest.mark.unit
+def test_update_contact_clear_is_audited_as_change() -> None:
+    contact_repo = MagicMock()
+    before = {
+        "id": CONTACT_ID,
+        "full_name": "Ada",
+        "email": "ada@example.com",
+        "title": "Keep me",
+        "notes": "Clear me",
+    }
+    after = {**before, "notes": None}
+    contact_repo.get_by_id.return_value = before
+    contact_repo.find_by_profile_url.return_value = []
+    contact_repo.find_by_name_company.return_value = []
+    contact_repo.update.return_value = after
+    service, conn = _service_with(contacts=contact_repo)
+
+    with patch("app.crm_service.audit_service.record_contact_update") as audit:
+        service.update_contact(
+            conn,
+            CONTACT_ID,
+            contact=ContactUpdate(full_name="Ada", notes=None),
+            actor_context=ACTOR,
+        )
+
+    audit.assert_called_once()
+    audit_kwargs = audit.call_args.kwargs
+    assert audit_kwargs["summary_before"]["title"] == "Keep me"
+    assert audit_kwargs["summary_after"]["title"] == "Keep me"
+    assert audit_kwargs["summary_before"]["notes"] == "Clear me"
+    assert audit_kwargs["summary_after"]["notes"] is None
+    assert "email" not in audit_kwargs["summary_before"]
+    assert "email" not in audit_kwargs["summary_after"]
+    conn.commit.assert_called_once()
+
+
+@pytest.mark.unit
 def test_update_pipeline_next_action_clear_is_audited_as_change() -> None:
     pipeline_repo = MagicMock()
     before = {
@@ -390,6 +458,37 @@ def test_contact_form_payload_maps_blanks_to_none() -> None:
     assert dumped["email"] is None and dumped["company_id"] is None
 
 
+@pytest.mark.unit
+def test_company_audit_summary_includes_nullable_fields() -> None:
+    summary = company_audit_summary(
+        {
+            "name": "Acme",
+            "notes": "Warm intro",
+            "last_verified_at": date(2025, 1, 15),
+        }
+    )
+    assert summary["notes"] == "Warm intro"
+    assert summary["last_verified_at"] == "2025-01-15"
+    assert "email" not in summary
+
+
+@pytest.mark.unit
+def test_contact_audit_summary_omits_email() -> None:
+    summary = contact_audit_summary(
+        {
+            "full_name": "Ada",
+            "email": "secret@example.com",
+            "title": "CTO",
+            "company_id": COMPANY_ID,
+            "buying_roles": ["founder"],
+        }
+    )
+    assert "email" not in summary
+    assert summary["title"] == "CTO"
+    assert summary["company_id"] == str(COMPANY_ID)
+    assert summary["buying_roles"] == ["founder"]
+
+
 # --------------------------------------------------------------------------- #
 # Route boundary — posting blanks clears through the service                  #
 # --------------------------------------------------------------------------- #
@@ -397,6 +496,7 @@ def test_contact_form_payload_maps_blanks_to_none() -> None:
 TEST_USERNAME = "operator"
 TEST_HASH = PasswordHasher().hash("correct-horse-battery-staple")
 TEST_SECRET = "test-session-secret-32chars-minimum"
+TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!!"
 _session_store: dict[str, dict[str, Any]] = {}
 client = TestClient(app, follow_redirects=False)
 
@@ -406,6 +506,7 @@ def admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_USERNAME", TEST_USERNAME)
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_HASH)
     monkeypatch.setenv("ADMIN_SESSION_SECRET", TEST_SECRET)
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
     monkeypatch.setenv("DATABASE_URL", "postgresql://test/db")
     _session_store.clear()
 

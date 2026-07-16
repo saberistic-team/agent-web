@@ -182,6 +182,7 @@ def test_admin_research_page_renderers_cover_company_and_contact(
     monkeypatch.setenv("ADMIN_USERNAME", "operator")
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", "hash")
     monkeypatch.setenv("ADMIN_SESSION_SECRET", "secret-secret-secret-secret")
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "test-limiter-secret-32chars-minimum!!")
     monkeypatch.setenv("BASE_URL", "https://saberistic.com")
     from app.admin_research_pages import (
         render_admin_companies_page,

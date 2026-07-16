@@ -156,6 +156,22 @@ def test_representative_mutation_helpers_call_record_event() -> None:
         summary_before={"name": "Acme", "email": "hidden@example.com"},
         repository=repo,
     )
+    audit_service.record_company_update(
+        conn,
+        actor_context=actor,
+        entity_id="co-9",
+        summary_before={"notes": "Before"},
+        summary_after={"notes": None},
+        repository=repo,
+    )
+    audit_service.record_contact_update(
+        conn,
+        actor_context=actor,
+        entity_id="ct-1",
+        summary_before={"title": "Before"},
+        summary_after={"title": None},
+        repository=repo,
+    )
     audit_service.record_pipeline_update(
         conn,
         actor_context=actor,
@@ -192,6 +208,8 @@ def test_representative_mutation_helpers_call_record_event() -> None:
     assert actions == [
         audit_service.ACTION_IMPORT_BATCH,
         audit_service.ACTION_ENTITY_DELETE,
+        audit_service.ACTION_COMPANY_UPDATE,
+        audit_service.ACTION_CONTACT_UPDATE,
         audit_service.ACTION_PIPELINE_UPDATE,
         audit_service.ACTION_SCORING_RULE_UPDATE,
         audit_service.ACTION_ANALYTICS_CONFIG_UPDATE,
@@ -544,7 +562,6 @@ def test_audit_login_and_logout_helpers() -> None:
         conn,
         actor_context=actor,
         reason="invalid_credentials",
-        attempted_username="ghost",
         repository=repo,
     )
     audit_service.record_logout(conn, actor_context=actor, session_id=9, repository=repo)

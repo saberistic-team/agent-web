@@ -22,6 +22,7 @@ TEST_USERNAME = "operator"
 TEST_PASSWORD = "correct-horse-battery-staple"
 TEST_HASH = PasswordHasher().hash(TEST_PASSWORD)
 TEST_SECRET = "test-session-secret-32chars-minimum"
+TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!!"
 ADMIN_CSS = Path(__file__).resolve().parents[1] / "site/assets/admin.css"
 
 ADMIN_HREFS = tuple(link["href"] for link in ADMIN_NAV_LINKS)
@@ -34,6 +35,7 @@ def admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_USERNAME", TEST_USERNAME)
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_HASH)
     monkeypatch.setenv("ADMIN_SESSION_SECRET", TEST_SECRET)
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
     monkeypatch.setenv("BASE_URL", "http://testserver")
 
 
@@ -306,6 +308,8 @@ def test_admin_dashboard_long_username_keeps_exit_actions_reachable() -> None:
     assert 'class="admin-exit-group"' in body
     assert "Public site</a>" in body
     assert "Sign out</button>" in body
+
+
 def test_admin_css_archive_action_buttons_reset_native_appearance() -> None:
     css = ADMIN_CSS.read_text(encoding="utf-8")
     action_block = css.split(".admin-action {", 1)[1].split("}", 1)[0]
