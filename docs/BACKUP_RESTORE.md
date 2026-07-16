@@ -217,3 +217,6 @@ commits.
 - [HELLO_API.md](HELLO_API.md) — deploy and `schema_version` gate
 - [TESTING.md](TESTING.md) — live Postgres contract suite
 - [BACKUP_VERIFICATION.md](BACKUP_VERIFICATION.md) — dated drill log
+- [OPERATIONS_RUNBOOKS.md](OPERATIONS_RUNBOOKS.md) — backup, restore, and incident response (#130)
+- [ARCHITECTURE_DATA_FLOW.md](ARCHITECTURE_DATA_FLOW.md) — trust boundaries and data ownership (#130)
+- [OPERATIONS_READINESS.md](OPERATIONS_READINESS.md) — pre-close verification checklist (#130)
