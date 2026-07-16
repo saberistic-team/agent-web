@@ -16,8 +16,6 @@ class Settings:
     from_email: str
     notify_email: str
     base_url: str
-    plausible_domain: str
-    plausible_api_key: str
     analytics_environment: str
     admin_username: str
     admin_password_hash: str
@@ -82,18 +80,13 @@ class Settings:
         return True
 
     @property
-    def analytics_enabled(self) -> bool:
-        """True only when explicitly enabled and a Plausible domain is set."""
-        flag = os.environ.get("ANALYTICS_ENABLED", "").lower()
-        if flag not in ("1", "true", "yes"):
-            return False
-        return bool(self.plausible_domain)
-
-    @property
     def first_party_analytics_enabled(self) -> bool:
-        """True when first-party browser event ingestion is explicitly enabled."""
-        flag = os.environ.get("FIRST_PARTY_ANALYTICS_ENABLED", "").lower()
-        return flag in ("1", "true", "yes")
+        """True when first-party analytics is explicitly enabled."""
+        for env_name in ("FIRST_PARTY_ANALYTICS_ENABLED", "ANALYTICS_ENABLED"):
+            flag = os.environ.get(env_name, "").lower()
+            if flag in ("1", "true", "yes"):
+                return True
+        return False
 
 
 def get_settings() -> Settings:
@@ -106,8 +99,6 @@ def get_settings() -> Settings:
         from_email=os.environ.get("FROM_EMAIL", "noreply@saberistic.com"),
         notify_email=os.environ.get("NOTIFY_EMAIL", "inbox@saberistic.com"),
         base_url=os.environ.get("BASE_URL", "http://localhost:8000").rstrip("/"),
-        plausible_domain=os.environ.get("PLAUSIBLE_DOMAIN", "").strip(),
-        plausible_api_key=os.environ.get("PLAUSIBLE_API_KEY", "").strip(),
         analytics_environment=os.environ.get("ANALYTICS_ENV", "development").strip()
         or "development",
         admin_username=os.environ.get("ADMIN_USERNAME", "").strip(),

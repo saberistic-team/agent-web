@@ -12,3 +12,6 @@ build/
 htmlcov/
 .coverage.*
 .venv2/
+crm-backup-*.json
+backups/
+*.dump
