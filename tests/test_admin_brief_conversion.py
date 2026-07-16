@@ -17,6 +17,7 @@ from app import admin_auth
 from app.admin_auth import SESSION_COOKIE_NAME
 from app.brief_conversion import ARCHIVED_CONTACT_ACK_REQUIRED_MESSAGE, BriefConversionValidationError
 from app.main import app
+from tests.conftest import enable_admin_preview_env
 
 client = TestClient(app, follow_redirects=False)
 
@@ -337,7 +338,7 @@ def test_convert_get_renders_matches_for_unconverted_brief() -> None:
 @pytest.mark.unit
 @pytest.mark.integration
 def test_preview_mode_convert_pages_use_mock_data(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch)
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
         with patch("app.admin_routes._session_csrf_for_forms", return_value=CSRF_TOKEN):
             detail = client.get("/admin/briefs/1")
@@ -419,7 +420,7 @@ def test_convert_preview_radio_labels_wrap_inputs_for_keyboard() -> None:
 @pytest.mark.unit
 @pytest.mark.integration
 def test_preview_convert_validation_error_renders_alert(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch)
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
         with patch("app.admin_routes._session_csrf_for_forms", return_value=CSRF_TOKEN):
             response = client.get("/admin/briefs/4/convert?error=validation")
@@ -598,7 +599,7 @@ def test_convert_post_passes_archived_acknowledgment_to_service() -> None:
 def test_preview_archived_convert_requires_explicit_create_choice(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch)
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
         with patch("app.admin_routes._verify_session_csrf"):
             with patch("app.admin_routes._session_csrf_for_forms", return_value=CSRF_TOKEN):
@@ -636,7 +637,7 @@ def test_preview_archived_convert_requires_explicit_create_choice(
 def test_preview_archived_convert_page_renders_mock_panel(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch)
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
         with patch("app.admin_routes._session_csrf_for_forms", return_value=CSRF_TOKEN):
@@ -654,7 +655,7 @@ def test_preview_empty_convert_page_renders_placeholders(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Brief with no website/email at all (#276): proposal fields legibly show '—'."""
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch)
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
         with patch("app.admin_routes._session_csrf_for_forms", return_value=CSRF_TOKEN):
             response = client.get("/admin/briefs/6/convert")
@@ -672,7 +673,7 @@ def test_preview_no_email_convert_page_renders_company_but_no_email(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Brief with a website but no contact email on file (#276) is legible."""
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch)
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
         with patch("app.admin_routes._session_csrf_for_forms", return_value=CSRF_TOKEN):
             response = client.get("/admin/briefs/7/convert")
@@ -690,7 +691,7 @@ def test_preview_empty_and_no_email_convert_post_succeeds_with_new_records(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Neither edge state has matches to select, so 'new' company/contact always succeeds."""
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch)
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
         with patch("app.admin_routes._verify_session_csrf"):
             with patch("app.admin_routes._session_csrf_for_forms", return_value=CSRF_TOKEN):

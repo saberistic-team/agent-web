@@ -255,7 +255,7 @@ def _load_valid_session(request: Request, settings: Settings) -> admin_auth.Admi
     raw_token = admin_auth.read_session_token(request)
     if raw_token is None:
         return None
-    if settings.admin_preview_mode and raw_token == PREVIEW_SESSION_TOKEN:
+    if settings.admin_preview_enabled and raw_token == PREVIEW_SESSION_TOKEN:
         return _preview_session(settings)
     token_hash = admin_auth.hash_session_token(raw_token)
     with db.db_connection(settings.database_url) as conn:

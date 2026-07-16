@@ -16,6 +16,7 @@ from app.admin_preview import PREVIEW_PIPELINE_COMPANY_IDS
 from app.admin_routes import PREVIEW_SESSION_TOKEN
 from app.brief_service import BriefListFilters
 from app.main import app
+from tests.conftest import enable_admin_preview_env
 
 ADMIN_CSS = Path(__file__).resolve().parents[1] / "site/assets/admin.css"
 SITE_CSS = Path(__file__).resolve().parents[1] / "site/assets/site.css"
@@ -62,7 +63,7 @@ def _rule_block(css: str, selector_fragment: str) -> str:
 
 
 def _preview_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch)
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     return client

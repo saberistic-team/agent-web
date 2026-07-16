@@ -13,6 +13,7 @@ from app.admin_auth import SESSION_COOKIE_NAME
 from app.admin_pipeline_pages import render_pipeline_detail_page
 from app.admin_preview import PREVIEW_PIPELINE_COMPANY_IDS
 from app.main import app
+from tests.conftest import enable_admin_preview_env
 
 SITE_CSS = Path(__file__).resolve().parents[1] / "site/assets/site.css"
 ADMIN_CSS = Path(__file__).resolve().parents[1] / "site/assets/admin.css"
@@ -300,7 +301,7 @@ def test_editor_form_responsive_breakpoints(
 def test_preview_pipeline_detail_renders_editor_forms(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch)
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     response = client.get(

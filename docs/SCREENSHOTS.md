@@ -19,9 +19,12 @@ post-deploy only.
 Pre-merge starts the PR preview server with `ADMIN_PREVIEW_MODE=1` so
 Playwright can open admin pages **without login**.
 
-- Enabled only for local/`127.0.0.1` preview (CI screenshot job).
-- Hard-disabled when `BASE_URL` contains `saberistic.com` even if the env
-  flag is set — never open admin without auth in production.
+- Enabled only when `ADMIN_PREVIEW_MODE=1`, `APP_ENV=development` (or `preview`),
+  `BASE_URL` is a **positively validated loopback origin** (`http://localhost:…`,
+  `http://127.0.0.1:…`, `http://127.x.x.x:…`, or `http://[::1]:…`), and
+  `SERVER_BIND_HOST` is a loopback interface. Startup fails on staging/production,
+  lookalike/malformed origins, or a public bind — never inferred from hostname
+  denylists or request `Host` headers.
 - Admin shell pages fill with **mock intake/CRM data with randomization**
   (dashboard stats, section tables, **briefs list/detail**, etc.) so screenshots
   look like a live operator shell — never real production rows and never an
@@ -181,6 +184,9 @@ so they render before the PR merges.
 | Name | Type | Purpose |
 |------|------|---------|
 | `ADMIN_PREVIEW_MODE` | env | Set `1` on PR preview server only (script sets this) |
+| `APP_ENV` | env | `development` on PR preview server (script sets this) |
+| `SERVER_BIND_HOST` | env | `127.0.0.1` on PR preview server (loopback bind; script sets this) |
+| `BASE_URL` | env | `http://127.0.0.1:<port>` on PR preview server (script sets this) |
 | `DEPLOY_BASE_URL` | variable | default `https://saberistic.com` (post-deploy) |
 | `COVERAGE_ROOT` / `PR_HEAD_ROOT` | env | PR checkout root for branch screenshots |
 | `SCREENSHOTS_REQUIRED` | variable | default true for Reviewer when pages are affected |
