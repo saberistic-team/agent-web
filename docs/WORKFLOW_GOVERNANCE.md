@@ -8,46 +8,50 @@ identity controlled by that same change.
 
 The machine-readable inventory is
 [`.github/workflow-governance-paths.json`](../.github/workflow-governance-paths.json).
-CI does **not** rely on that list alone. `scripts/validate_workflow_governance.py`
-builds the privileged boundary from:
+It explicitly protects:
 
-1. every `python scripts/…` entrypoint referenced in `.github/workflows/**`; and
-2. the transitive closure of local `scripts/*.py` imports from those
-   entrypoints (plus known dynamic loads such as `run_agent.py` →
-   `screenshot_deploy.py`).
+- all GitHub Actions workflows (`.github/workflows/**`);
+- reviewer and Gate automation (`scripts/review_*.py`,
+  `scripts/review_decision.py`, `scripts/acceptance.py`,
+  `scripts/check_permission.py`, `scripts/pr_labels.py`,
+  `scripts/run_agent.py`, and `scripts/write_trace.py`);
+- GitHub mutation and orchestration control plane (`scripts/github_api.py`,
+  `scripts/copilot_agent.py`, `scripts/dispatch_queue.py`,
+  `scripts/require_planner_plan.py`, `scripts/priority.py`,
+  `scripts/milestones.py`, `scripts/project_sync.py`, and
+  `scripts/digest_trace.py`);
+- CI gates and deploy automation (`scripts/check_coverage.py`,
+  `scripts/render_deploy.py`, `scripts/smoke_deploy.py`,
+  `scripts/freeze_shipped_migrations.py`, `scripts/post_deploy_visual.py`,
+  `scripts/screenshot_deploy.py`, and `scripts/cursor_model.py`);
+- Builder prompts and configuration (`AGENTS/**`,
+  `.github/copilot-instructions.md`, `scripts/codegen_*.py`,
+  `scripts/builder_conflicts.py`, and `scripts/cursor_sdk_patch.py`);
+- the ownership, ruleset, documentation, and validation policy itself.
 
-Any workflow-reachable script that is missing from the manifest fails CI. Moving
-privileged logic into an unlisted helper also fails CI because the import
-closure discovers it.
+### Fail-closed discovery
 
-The manifest and `.github/CODEOWNERS` must stay synchronized in both directions.
-CI fails when either file drifts.
+CI does not rely on the manifest alone. `scripts/validate_workflow_governance.py`
+also:
 
-### Explicitly assessed control-plane scripts
+1. scans every workflow for `python scripts/<name>.py` entrypoints;
+2. walks transitive imports from those entrypoints and from manifest-covered
+   scripts; and
+3. fails when any discovered privileged script is missing from the manifest or
+   CODEOWNERS.
 
-Issue #275 required assessment of these entrypoints (all are protected):
+That means adding a new workflow-invoked script, or moving privileged logic into
+an unprotected helper imported by a protected script, fails validation until the
+inventory and CODEOWNERS are updated in the same pull request.
 
-| Script | Privileged behavior |
-|--------|---------------------|
-| `scripts/github_api.py` | Shared GitHub REST/GraphQL mutation layer |
-| `scripts/dispatch_queue.py` | Dispatches queued issues to agent roles |
-| `scripts/require_planner_plan.py` | Fail-closed planner gate before queue release |
-| `scripts/priority.py` | Priority resolution and agent routing |
-| `scripts/project_sync.py` | Syncs labels → org project board fields |
-| `scripts/copilot_agent.py` | Copilot assignment adapter (deferred per [COPILOT.md](COPILOT.md); protected if re-enabled) |
+Manifest patterns and CODEOWNERS entries must stay in sync in both directions.
+CI fails when either side drifts.
 
-Additional workflow-reachable helpers (milestones, screenshot capture, deploy,
-digest, coverage gate, and related modules) are listed in the manifest with the
-same human owners.
-
-When adding a new workflow-invoked script, add it to the manifest and
+When adding a new workflow-support path, add it to the inventory and
 `.github/CODEOWNERS` in the same pull request. CI runs
-`python scripts/validate_workflow_governance.py` and fails if:
-
-- any privileged script is missing from the manifest;
-- manifest and CODEOWNERS patterns drift;
-- any protected file has no owner or has a bot owner; or
-- the checked-in ruleset export is missing required review settings.
+`python scripts/validate_workflow_governance.py` and fails if any existing
+protected file has no owner, has a bot owner, or sits outside the discovered
+boundary.
 
 ## Who may approve
 
@@ -69,34 +73,8 @@ by a workflow-controlled bot because no bot is a CODEOWNER. A Reviewer bot
 review may still help with the normal feature checklist, but it is not the
 independent authorization to merge this class of PR.
 
-Stale approvals are dismissed on push (`dismiss_stale_reviews_on_push` and
-`require_last_push_approval`). Author self-approval and bot/agent approval never
-satisfy the rule. Unit tests in `tests/test_workflow_governance.py` model these
-constraints via `evaluate_merge_authorization()`.
-
-## Bootstrap authorization (PR #252 / issue #229)
-
-[Issue #229](https://github.com/saberistic-team/agent-web/issues/229) closed as
-complete (`status:done`, `review:approved`). The bootstrap landed in
-[PR #252](https://github.com/saberistic-team/agent-web/pull/252) on 2026-07-15.
-
-That PR introduced CODEOWNERS, the manifest, the validator, the ruleset export,
-and the CI check. It merged with approval from the Reviewer App bot only — before
-the ruleset could block bot-only governance changes. This was an **audited
-bootstrap exception**:
-
-1. Human administrators (`@saberistic`, `@mehdidehdar`, `@Amirsharifico`)
-   authorized the bootstrap in issue #229 acceptance criteria.
-2. PR #252 landed the repository-side policy (CODEOWNERS, manifest, validator).
-3. A repository administrator applied the live ruleset from
-   `.github/rulesets/independent-workflow-review.json` immediately afterward
-   (live ruleset
-   [`#18975712`](https://github.com/saberistic-team/agent-web/rules/18975712)).
-4. All subsequent protected-path changes — including this issue (#275) — require
-   independent human CODEOWNER approval; bot-only reviews cannot merge them.
-
-Future governance changes follow the normal protected-path process. Do not
-repeat the bootstrap exception.
+Stale approvals after a new push do not count. Author self-approval does not
+count. Bot or agent approval does not count.
 
 ## Ruleset enforcement
 
@@ -117,8 +95,13 @@ gh api --method POST \
   --input .github/rulesets/independent-workflow-review.json
 ```
 
-Then validate the **live** configuration (checked-in JSON is not proof of
-active enforcement):
+Then validate the live configuration:
+
+```bash
+python scripts/validate_workflow_governance.py --check-live-ruleset
+```
+
+Or inspect manually:
 
 ```bash
 gh api repos/saberistic-team/agent-web/rulesets \
@@ -135,9 +118,29 @@ ruleset URL and the setup/validation command output in the linked issue or PR.
 
 Rulesets enforce the approval mechanics; CODEOWNERS narrows the extra owner
 approval to the protected files. CI validates the repository-side inventory,
-ownership mapping, privileged-script discovery, and ruleset export shape, but it
-cannot replace GitHub’s live review authorization — always verify the live
-ruleset after changes.
+ownership mapping, and (when requested) the live ruleset via API. Checked-in
+JSON is not proof that live settings are active — use
+`--check-live-ruleset` after any ruleset change.
+
+## Bootstrap authorization (PR #252)
+
+[PR #252](https://github.com/saberistic-team/agent-web/pull/252) merged the
+initial governance stack for issue #229 on 2026-07-15. That PR intentionally
+carried a bootstrap exception:
+
+- The PR body required an independent human maintainer approval before merge
+  and stated that Reviewer/Gate bot review was checklist evidence only.
+- Repository administrators authorized the bootstrap merge because no
+  governance controls existed yet to enforce independent review on the very
+  files that define those controls (a classic chicken-and-egg bootstrap).
+- The merge was limited to introducing CODEOWNERS, the manifest, the ruleset
+  spec, the validator, tests, and this documentation — not a feature change.
+- Follow-up governance changes (including issue #275) must **not** rely on that
+  exception. They require independent human CODEOWNER approval and should
+  include a non-bootstrap proof that the ruleset blocked bot-only approval.
+
+Issue #229 is closed with `status:done`. Its workflow is complete; later issues
+extend the boundary rather than reopen #229.
 
 ## Recovery and break-glass
 
@@ -155,8 +158,12 @@ routine change.
    cannot express that, disable the ruleset for the shortest practical window).
    Do not add a permanent bypass actor.
 4. Merge the smallest repair, immediately restore the exact ruleset from
-   `.github/rulesets/independent-workflow-review.json`, and run the validation
-   command above plus `python scripts/validate_workflow_governance.py`.
+   `.github/rulesets/independent-workflow-review.json`, and run:
+
+   ```bash
+   python scripts/validate_workflow_governance.py --check-live-ruleset
+   ```
+
 5. Add the merge commit, ruleset audit-log link or screenshot, timestamps,
    approvers, and validation output to the incident issue. Open a normal
    follow-up PR for any cleanup and obtain independent CODEOWNER approval.
@@ -168,9 +175,20 @@ feature review and Builder retry continue to use their current labels and
 automation; this policy adds a human CODEOWNER requirement only when protected
 files are changed.
 
+## Exception handling
+
+- **Bootstrap only:** PR #252 as documented above.
+- **Break-glass only:** audited two-admin procedure above; must be recorded in
+  a public incident issue before disabling protection.
+- **No standing bypass:** do not add bot, App, or admin bypass actors to the
+  ruleset for convenience.
+
 ## Incident recovery checklist
 
-- Confirm live ruleset `#18975712` is `active` with no bypass actors.
-- Run `python scripts/validate_workflow_governance.py` locally or in CI.
-- Re-apply `.github/rulesets/independent-workflow-review.json` if settings drift.
-- Obtain independent human CODEOWNER approval on any governance repair PR.
+- [ ] Public incident issue opened before ruleset change
+- [ ] Two human admins named in the issue
+- [ ] Minimal repair merged
+- [ ] Ruleset restored from checked-in JSON
+- [ ] `validate_workflow_governance.py` passes
+- [ ] `--check-live-ruleset` passes when token is available
+- [ ] Audit links and timestamps attached to the incident issue
