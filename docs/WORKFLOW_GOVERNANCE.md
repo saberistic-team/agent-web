@@ -101,13 +101,14 @@ independent human CODEOWNER approval on the current head and must pass CI
 ownership validation. Do not merge bootstrap-style exceptions without the same
 public audit trail.
 
-## Proof PR and enforcement evidence
+## Proof PR and enforcement evidence (PR #284 / issue #275)
 
-After bootstrap, every protected-path change must demonstrate enforcement. The
-PR for issue #275 is the non-bootstrap proof: it expands the protected
-boundary, updates CODEOWNERS and the manifest together, and should merge only
-after an independent human CODEOWNER approves the current head while bot/agent
-approval remains non-authorizing.
+After bootstrap, every protected-path change must demonstrate enforcement.
+[PR #284](https://github.com/saberistic-team/agent-web/pull/284) (issue #275)
+is the non-bootstrap proof: it expands the protected boundary, updates
+CODEOWNERS and the manifest together, and should merge only after an
+independent human CODEOWNER approves the current head while bot/agent approval
+remains non-authorizing.
 
 Evidence to attach on that PR:
 
@@ -116,6 +117,49 @@ Evidence to attach on that PR:
 - the live ruleset validation command below; and
 - the GitHub review panel showing a human CODEOWNER approval on the latest
   commit (bot reviews may coexist but do not satisfy merge requirements).
+
+**What was actually verified against the live repository (not just the
+checked-in JSON), and what was found and fixed as a result:**
+
+- **The live ruleset had drifted from the checked-in policy.** `gh api
+  repos/saberistic-team/agent-web/rulesets/18975712` returned
+  `require_code_owner_review: false` even though the checked-in ruleset
+  document says `true`. A repo admin re-applied the checked-in policy
+  (`gh api --method PUT repos/saberistic-team/agent-web/rulesets/18975712
+  --input .github/rulesets/independent-workflow-review.json`); a fresh `gh
+  api` read confirmed `require_code_owner_review: true` afterward.
+- **CI never actually checked the live ruleset.** Across several revisions of
+  this validator, the live-ruleset check has been gated by a different,
+  uncoordinated trigger each time (an env var default-on, an opt-in
+  `--check-live-ruleset` flag, an opt-in `VERIFY_LIVE_GOVERNANCE_RULESET` env
+  var) without `.github/workflows/ci.yml` being updated to match. The net
+  effect was the same every time: the live check silently never ran in CI, so
+  CI could report `PASS` indefinitely regardless of live drift — this is how
+  the ruleset drifted unnoticed in the first place. `ci.yml`'s "Validate
+  workflow-governance ownership" step now sets every alias/trigger this
+  validator has used (`GITHUB_TOKEN`, `GH_TOKEN`, `VALIDATE_LIVE_RULESET=1`,
+  `VERIFY_LIVE_GOVERNANCE_RULESET=1`) plus the CLI flag, specifically so this
+  keeps working across future revisions of this file.
+- **Bots cannot satisfy `require_code_owner_review` structurally, not just by
+  convention.** `gh api repos/saberistic-team/agent-web/collaborators` lists
+  only `@saberistic`, `@mehdidehdar`, and `@Amirsharifico`; the Reviewer and
+  Builder bots are not collaborators, so no bot approval can ever count as the
+  CODEOWNER review GitHub requires, independent of what CODEOWNERS says.
+- **Live behavioral evidence from this PR:** `@saberistic` (a CODEOWNER)
+  submitted an `APPROVED` review; the Reviewer bot later submitted
+  `CHANGES_REQUESTED`. `gh pr view 284 --json reviewDecision,mergeStateStatus`
+  reported `CHANGES_REQUESTED` / `BLOCKED` — GitHub applies latest-review-per-
+  reviewer semantics live, even with a genuine human CODEOWNER approval on
+  record.
+
+**What remains a real, undemonstrated gap:** a live click-through screenshot
+of the GitHub merge button blocked specifically by a *missing* CODEOWNER
+review (as opposed to an outstanding `CHANGES_REQUESTED`) was not produced.
+Doing that safely would require opening a disposable PR against a protected
+path and getting only a bot review on it, which risks triggering this
+repository's live Builder/Reviewer automation on a throwaway artifact. Left
+for a human maintainer to capture in a few minutes if a literal screenshot is
+required; it is not fabricated here.
 
 ## Ruleset enforcement
 
