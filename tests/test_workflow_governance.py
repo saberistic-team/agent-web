@@ -2,15 +2,35 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 from validate_workflow_governance import (
     discover_workflow_scripts,
     evaluate_independent_review,
+    fetch_live_ruleset,
     parse_codeowners,
     transitive_privileged_scripts,
     validate,
+    validate_live_ruleset,
     validate_ruleset_export,
 )
+
+_ACTIVE_RULESET = {
+    "enforcement": "active",
+    "bypass_actors": [],
+    "rules": [
+        {
+            "type": "pull_request",
+            "parameters": {
+                "require_code_owner_review": True,
+                "required_approving_review_count": 1,
+                "require_last_push_approval": True,
+                "dismiss_stale_reviews_on_push": True,
+                "required_review_thread_resolution": True,
+            },
+        }
+    ],
+}
 
 
 def _write_policy_repo(
@@ -41,20 +61,7 @@ def _write_policy_repo(
             {
                 "name": "Require independent review for workflow governance",
                 "target": "branch",
-                "enforcement": "active",
-                "bypass_actors": [],
-                "rules": [
-                    {
-                        "type": "pull_request",
-                        "parameters": {
-                            "dismiss_stale_reviews_on_push": True,
-                            "require_code_owner_review": True,
-                            "require_last_push_approval": True,
-                            "required_approving_review_count": 1,
-                            "required_review_thread_resolution": True,
-                        },
-                    }
-                ],
+                **_ACTIVE_RULESET,
             }
         )
     )
@@ -300,32 +307,16 @@ def test_non_protected_path_changes_do_not_require_codeowner_approval() -> None:
 
 
 def test_ruleset_export_requires_active_codeowner_review() -> None:
-    valid = {
-        "enforcement": "active",
-        "bypass_actors": [],
-        "rules": [
-            {
-                "type": "pull_request",
-                "parameters": {
-                    "require_code_owner_review": True,
-                    "required_approving_review_count": 1,
-                    "require_last_push_approval": True,
-                    "dismiss_stale_reviews_on_push": True,
-                    "required_review_thread_resolution": True,
-                },
-            }
-        ],
-    }
-    assert validate_ruleset_export(valid) == []
+    assert validate_ruleset_export(_ACTIVE_RULESET) == []
 
-    disabled = dict(valid)
+    disabled = dict(_ACTIVE_RULESET)
     disabled["enforcement"] = "disabled"
     assert any(
         "enforcement must be 'active'" in error
         for error in validate_ruleset_export(disabled)
     )
 
-    weak = json.loads(json.dumps(valid))
+    weak = json.loads(json.dumps(_ACTIVE_RULESET))
     weak["rules"][0]["parameters"]["require_code_owner_review"] = False
     assert any(
         "require_code_owner_review must be True" in error
@@ -357,9 +348,90 @@ def test_live_ruleset_fixture_detects_disabled_enforcement() -> None:
     )
 
 
+def test_fetch_live_ruleset_returns_matching_ruleset() -> None:
+    with patch(
+        "validate_workflow_governance._github_api",
+        side_effect=[
+            [{"id": 18975712, "name": "Require independent review for workflow governance"}],
+            _ACTIVE_RULESET,
+        ],
+    ) as api_mock:
+        live = fetch_live_ruleset("saberistic-team/agent-web", "token")
+
+    assert live == _ACTIVE_RULESET
+    assert api_mock.call_count == 2
+    assert api_mock.call_args_list[0].args == ("token", "/repos/saberistic-team/agent-web/rulesets")
+    assert api_mock.call_args_list[1].args == (
+        "token",
+        "/repos/saberistic-team/agent-web/rulesets/18975712",
+    )
+
+
+def test_fetch_live_ruleset_returns_none_when_missing() -> None:
+    with patch(
+        "validate_workflow_governance._github_api",
+        return_value=[{"id": 1, "name": "Other ruleset"}],
+    ):
+        assert fetch_live_ruleset("saberistic-team/agent-web", "token") is None
+
+
+def test_validate_live_ruleset_reports_disabled_export(tmp_path: Path, monkeypatch) -> None:
+    _write_policy_repo(tmp_path)
+    monkeypatch.setenv("GITHUB_REPOSITORY", "saberistic-team/agent-web")
+    monkeypatch.setenv("GITHUB_TOKEN", "token")
+
+    disabled = dict(_ACTIVE_RULESET)
+    disabled["enforcement"] = "disabled"
+    with patch(
+        "validate_workflow_governance.fetch_live_ruleset",
+        return_value=disabled,
+    ):
+        errors = validate_live_ruleset(tmp_path)
+
+    assert any("live ruleset drift:" in error for error in errors)
+    assert any("enforcement must be 'active'" in error for error in errors)
+
+
+def test_validate_live_ruleset_passes_when_active(tmp_path: Path, monkeypatch) -> None:
+    _write_policy_repo(tmp_path)
+    monkeypatch.setenv("GITHUB_REPOSITORY", "saberistic-team/agent-web")
+    monkeypatch.setenv("GITHUB_TOKEN", "token")
+
+    with patch(
+        "validate_workflow_governance.fetch_live_ruleset",
+        return_value=_ACTIVE_RULESET,
+    ):
+        assert validate_live_ruleset(tmp_path) == []
+
+
+def test_validate_live_ruleset_skips_without_credentials(monkeypatch) -> None:
+    monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    assert validate_live_ruleset() == []
+
+
 def test_repository_discovers_privileged_scripts_from_real_workflows() -> None:
     discovered = discover_workflow_scripts(Path(__file__).resolve().parents[1])
     assert "scripts/dispatch_queue.py" in discovered
     assert "scripts/github_api.py" not in discovered
     assert "scripts/project_sync.py" in discovered
     assert "scripts/require_planner_plan.py" in discovered
+
+
+def test_issue_275_target_scripts_are_protected() -> None:
+    root = Path(__file__).resolve().parents[1]
+    manifest = json.loads(
+        (root / ".github" / "workflow-governance-paths.json").read_text(encoding="utf-8")
+    )
+    patterns = [entry["path"] for entry in manifest["protected_paths"]]
+    required = [
+        "scripts/github_api.py",
+        "scripts/copilot_agent.py",
+        "scripts/dispatch_queue.py",
+        "scripts/require_planner_plan.py",
+        "scripts/priority.py",
+        "scripts/project_sync.py",
+    ]
+    for script in required:
+        assert script in patterns, f"{script} must be in governance manifest"

@@ -92,11 +92,32 @@ documented chicken-and-egg exception:
   only, not independent CODEOWNER authorization.
 - **After bootstrap:** every subsequent protected-path change — including
   expansions of the manifest — requires an independent human CODEOWNER approval
-  under the active ruleset. Use a small proof PR (for example a comment-only
-  change to this file) to verify enforcement after re-applying the ruleset.
+  under the active ruleset.
 
-Issue #229 is closed with `status:done` and `review:approved`. Remove any
-stale `status:needs-review` label if it reappears during automation retries.
+Issue #229 is closed with `status:done` and `review:approved`. If automation
+re-applies a stale `status:needs-review` label, remove it with:
+
+```bash
+gh issue edit 229 --repo saberistic-team/agent-web \
+  --remove-label "status:needs-review"
+```
+
+## Non-bootstrap proof PR (#275)
+
+[PR #284](https://github.com/saberistic-team/agent-web/pull/284) (issue #275)
+is the first protected-path change after bootstrap. It expands the manifest,
+CODEOWNERS, and fail-closed discovery to cover every privileged script. To
+demonstrate merge-gate enforcement:
+
+1. A repository admin re-applies the ruleset JSON (see below) so
+   `enforcement` is `active` and `require_code_owner_review` is `true`.
+2. Confirm CI reports `PASS` from `validate_workflow_governance.py` including
+   the live ruleset check.
+3. Verify GitHub blocks merge when only the Reviewer bot has approved PR #284.
+4. An independent human CODEOWNER (not the PR author) submits an approving
+   review; merge proceeds when all other gates pass.
+
+Record the live ruleset export and merge-block screenshot in PR #284.
 
 ## Ruleset enforcement
 
