@@ -132,6 +132,18 @@ def test_admin_checkbox_label_and_fieldset_styles() -> None:
 
 
 @pytest.mark.unit
+def test_brief_convert_archived_panel_styles() -> None:
+    css = _admin_css()
+    panel_block = _rule_block(css, ".brief-convert-archived {")
+    assert "border: 1px solid" in panel_block
+    assert "var(--accent)" in panel_block
+    # The ack checkbox reuses the shared .admin-checkbox flex/cursor styling
+    # (tested separately) and only adds spacing here.
+    ack_block = _rule_block(css, ".brief-convert-archived-ack {")
+    assert "margin-top" in ack_block
+
+
+@pytest.mark.unit
 def test_brief_filter_and_admin_date_controls_use_dark_color_scheme() -> None:
     css = _admin_css()
     block = _rule_block(css, '.admin-form input[type="date"],')
@@ -283,6 +295,49 @@ def test_brief_convert_renders_native_radios_inside_labels() -> None:
 
 
 @pytest.mark.unit
+def test_brief_convert_renders_archived_panel_without_preselecting_new() -> None:
+    html = admin_pages.render_admin_brief_convert_page(
+        admin_username="operator",
+        brief={"id": 5, "status": "paid"},
+        back_filters=BriefListFilters(
+            page=1,
+            per_page=20,
+            query=None,
+            status=None,
+            date_from=None,
+            date_to=None,
+            date_from_raw=None,
+            date_to_raw=None,
+        ),
+        preview={
+            "proposal": {
+                "company_name": "Northwind",
+                "website": "https://northwind.example",
+                "domain": "northwind.example",
+                "contact_email": "ops@northwind.example",
+                "pipeline_stage_label": "Diagnostic paid",
+                "brief_status": "paid",
+                "expected_value": 200.0,
+            },
+            "company_matches": [],
+            "contact_matches": [],
+            "archived_contact_match": {
+                "id": "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+                "full_name": "Jordan Lee",
+                "email": "ops@northwind.example",
+                "company_name": "Northwind Labs",
+                "archived_at": "2026-01-15T12:00:00Z",
+            },
+        },
+        csrf_token="csrf",
+    )
+    assert 'class="brief-convert-archived"' in html
+    assert "Archived contact match" in html
+    assert "acknowledge_archived_identity" in html
+    assert 'name="contact_choice" value="new" checked' not in html
+
+
+@pytest.mark.unit
 @pytest.mark.integration
 def test_preview_briefs_page_includes_date_filters(
     monkeypatch: pytest.MonkeyPatch,
@@ -393,6 +448,23 @@ def test_contacts_list_renders_themed_archived_checkbox() -> None:
     assert 'name="archived"' in html
     assert 'type="checkbox"' in html
     assert " checked" in html
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_preview_convert_archived_only_page_includes_panel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _preview_client(monkeypatch)
+    response = client.get(
+        "/admin/briefs/5/convert",
+        cookies={SESSION_COOKIE_NAME: PREVIEW_SESSION_TOKEN},
+    )
+    assert response.status_code == 200
+    body = response.text
+    assert 'class="brief-convert-archived"' in body
+    assert "Archived contact match" in body
+    assert "acknowledge_archived_identity" in body
 
 
 @pytest.mark.unit
