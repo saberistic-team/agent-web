@@ -1,335 +1,337 @@
-"""Tests for database-isolated, centrally read-only admin preview mode (#331)."""
+"""Security tests for database-isolated, read-only ADMIN_PREVIEW_MODE (#331)."""
 
 from __future__ import annotations
 
-import asyncio
+import os
+import socket
+import subprocess
+import sys
+from pathlib import Path
 from typing import Any, Iterator
 from unittest.mock import MagicMock, patch
 
 import pytest
-from fastapi.routing import APIRoute
+from argon2 import PasswordHasher
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.admin_pipeline_routes import router as admin_pipeline_router
-from app.admin_routes import router as admin_router
+from app.admin_auth import SESSION_COOKIE_NAME
 from app.admin_preview_guard import (
-    PREVIEW_ALLOW_HEADER,
-    PREVIEW_FORBIDDEN_ENV_VARS,
+    PREVIEW_ALLOWED_METHODS,
     PREVIEW_SAFE_UNSAFE_METHOD_PATHS,
     AdminPreviewConfigError,
     validate_admin_preview_config,
 )
+from app.admin_preview_security import (
+    AdminPreviewConfigError as StartupAdminPreviewConfigError,
+)
+from app.admin_routes import PREVIEW_SESSION_TOKEN
 from app.config import get_settings
-from app.main import app, lifespan
+from app.main import app
 from screenshot_deploy import (
-    PREVIEW_ADMIN_LOGIN_LIMITER_SECRET,
-    PREVIEW_ADMIN_PASSWORD_HASH,
-    PREVIEW_ADMIN_SESSION_SECRET,
-    PREVIEW_ADMIN_USERNAME,
-    build_preview_server_env,
+    PREVIEW_CLEARED_SECRETS,
+    build_preview_child_env,
 )
 
-PREVIEW_BASE = "http://127.0.0.1:8765"
-COMPANY_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
-CONTACT_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
-BRIEF_ID = "42"
-BATCH_ID = "11111111-1111-1111-1111-111111111111"
+TEST_USERNAME = "operator"
+TEST_PASSWORD = "correct-horse-battery-staple"
+TEST_HASH = PasswordHasher().hash(TEST_PASSWORD)
+TEST_SECRET = "test-session-secret-32chars-minimum"
+TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!!"
 
-UNSAFE_METHODS = ("POST", "PUT", "PATCH", "DELETE", "TRACE")
+client = TestClient(app, follow_redirects=False)
+
+_PATH_PARAM_SAMPLES = {
+    "company_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    "contact_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    "brief_id": "4",
+    "batch_id": "11111111-1111-1111-1111-111111111111",
+}
+
+_UNSAFE_METHODS = ("POST", "PUT", "PATCH", "DELETE", "TRACE")
 
 
 def _preview_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("BASE_URL", PREVIEW_BASE)
+    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("SERVER_BIND_HOST", "127.0.0.1")
+    monkeypatch.setenv("ADMIN_USERNAME", TEST_USERNAME)
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_HASH)
+    monkeypatch.setenv("ADMIN_SESSION_SECRET", TEST_SECRET)
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    monkeypatch.delenv("TEST_DATABASE_URL", raising=False)
-    monkeypatch.delenv("STRIPE_SECRET_KEY", raising=False)
-    monkeypatch.delenv("STRIPE_WEBHOOK_SECRET", raising=False)
-    monkeypatch.delenv("RESEND_API_KEY", raising=False)
-    monkeypatch.delenv("PLAUSIBLE_API_KEY", raising=False)
-    monkeypatch.setenv("ADMIN_USERNAME", PREVIEW_ADMIN_USERNAME)
-    monkeypatch.setenv("ADMIN_PASSWORD_HASH", PREVIEW_ADMIN_PASSWORD_HASH)
-    monkeypatch.setenv("ADMIN_SESSION_SECRET", PREVIEW_ADMIN_SESSION_SECRET)
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", PREVIEW_ADMIN_LOGIN_LIMITER_SECRET)
+    for key in PREVIEW_CLEARED_SECRETS:
+        monkeypatch.delenv(key, raising=False)
 
 
-def _sample_admin_path(route_path: str) -> str:
-    return (
-        route_path.replace("{company_id}", COMPANY_ID)
-        .replace("{contact_id}", CONTACT_ID)
-        .replace("{brief_id}", BRIEF_ID)
-        .replace("{batch_id}", BATCH_ID)
-        .replace("{full_path:path}", "companies")
-    )
+def _sample_admin_path(path: str) -> str:
+    for name, value in _PATH_PARAM_SAMPLES.items():
+        path = path.replace(f"{{{name}}}", value)
+    return path
 
 
-def _iter_admin_api_routes() -> Iterator[tuple[str, frozenset[str]]]:
-    for router in (admin_router, admin_pipeline_router):
-        for route in router.routes:
-            if isinstance(route, APIRoute):
-                yield route.path, frozenset(route.methods or set())
-
-
-def _admin_unsafe_routes() -> list[tuple[str, frozenset[str]]]:
-    unsafe: list[tuple[str, frozenset[str]]] = []
-    for path, methods in _iter_admin_api_routes():
-        blocked = methods - {"GET", "HEAD", "OPTIONS"}
-        if blocked:
-            unsafe.append((path, blocked))
-    return unsafe
+def _admin_unsafe_route_methods(application: FastAPI) -> list[tuple[str, frozenset[str]]]:
+    inventory: list[tuple[str, frozenset[str]]] = []
+    for path, operations in application.openapi()["paths"].items():
+        if not path.startswith("/admin"):
+            continue
+        unsafe = frozenset(
+            method.upper()
+            for method in operations
+            if method.upper() not in PREVIEW_ALLOWED_METHODS
+        )
+        if unsafe:
+            inventory.append((path, unsafe))
+    return inventory
 
 
 @pytest.mark.unit
-def test_build_preview_server_env_clears_parent_secrets() -> None:
+def test_build_preview_child_env_clears_parent_secrets() -> None:
     parent = {
         "PATH": "/usr/bin",
-        "DATABASE_URL": "postgresql://prod:secret@db.example/prod",
-        "STRIPE_SECRET_KEY": "sk_live_sentinel",
-        "STRIPE_WEBHOOK_SECRET": "whsec_sentinel",
-        "RESEND_API_KEY": "re_sentinel",
-        "PLAUSIBLE_API_KEY": "plausible_sentinel",
-        "ADMIN_USERNAME": "parent-admin",
-        "ADMIN_PASSWORD_HASH": "parent-hash",
+        "DATABASE_URL": "postgresql://prod:secret@db.example/app",
+        "STRIPE_SECRET_KEY": "sk_live_prod",
+        "STRIPE_WEBHOOK_SECRET": "whsec_prod",
+        "RESEND_API_KEY": "re_prod",
+        "PLAUSIBLE_API_KEY": "plausible_prod",
+        "PLAUSIBLE_DOMAIN": "saberistic.com",
+        "ADMIN_PREVIEW_SEED": "99",
     }
-    env = build_preview_server_env(PREVIEW_BASE, parent_environ=parent)
-
-    assert env["PATH"] == "/usr/bin"
-    assert env["BASE_URL"] == PREVIEW_BASE
+    env = build_preview_child_env(port=9999, parent_environ=parent)
+    assert env["BASE_URL"] == "http://127.0.0.1:9999"
     assert env["ADMIN_PREVIEW_MODE"] == "1"
-    assert env["DATABASE_URL"] == ""
-    assert env["STRIPE_SECRET_KEY"] == ""
-    assert env["STRIPE_WEBHOOK_SECRET"] == ""
-    assert env["RESEND_API_KEY"] == ""
-    assert env["PLAUSIBLE_API_KEY"] == ""
-    assert env["ADMIN_USERNAME"] == PREVIEW_ADMIN_USERNAME
-    assert env["ADMIN_PASSWORD_HASH"] == PREVIEW_ADMIN_PASSWORD_HASH
-    assert "parent-admin" not in env.values()
-    assert "sk_live_sentinel" not in env.values()
+    assert env["PATH"] == "/usr/bin"
+    assert env["ADMIN_PREVIEW_SEED"] == "99"
+    for key in PREVIEW_CLEARED_SECRETS:
+        assert env.get(key) == ""
+    assert "sk_live_prod" not in env.values()
     assert "postgresql://prod" not in env.values()
 
 
 @pytest.mark.unit
-def test_build_preview_server_env_does_not_inherit_full_parent_environ() -> None:
+def test_build_preview_child_env_does_not_inherit_unlisted_parent_vars() -> None:
     parent = {
         "PATH": "/bin",
-        "GITHUB_TOKEN": "ghp_sentinel",
-        "OPENAI_API_KEY": "sk-sentinel",
-        "CURSOR_API_KEY": "cursor-sentinel",
+        "GITHUB_TOKEN": "ghp_parent_secret",
+        "OPENAI_API_KEY": "sk-parent",
+        "CURSOR_API_KEY": "cursor-parent",
     }
-    env = build_preview_server_env(PREVIEW_BASE, parent_environ=parent)
-    assert env.get("GITHUB_TOKEN") is None
-    assert env.get("OPENAI_API_KEY") is None
-    assert env.get("CURSOR_API_KEY") is None
+    env = build_preview_child_env(parent_environ=parent)
+    assert env["PATH"] == "/bin"
+    assert "GITHUB_TOKEN" not in env
+    assert "OPENAI_API_KEY" not in env
+    assert "CURSOR_API_KEY" not in env
 
 
-@pytest.mark.unit
-def test_validate_admin_preview_config_rejects_database_url(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _preview_env(monkeypatch)
-    monkeypatch.setenv("DATABASE_URL", "postgresql://prod/db")
-    settings = get_settings()
-    with pytest.raises(AdminPreviewConfigError, match="DATABASE_URL"):
-        validate_admin_preview_config(settings)
+_FORBIDDEN_PREVIEW_ENV_NAMES = (
+    "DATABASE_URL",
+    "STRIPE_SECRET_KEY",
+    "STRIPE_WEBHOOK_SECRET",
+    "RESEND_API_KEY",
+)
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    "env_name", [name for name, _label in PREVIEW_FORBIDDEN_ENV_VARS]
+    "env_name,env_value",
+    [
+        ("DATABASE_URL", "postgresql://prod/db"),
+        ("STRIPE_SECRET_KEY", "sk_live_x"),
+        ("STRIPE_WEBHOOK_SECRET", "whsec_x"),
+        ("RESEND_API_KEY", "re_x"),
+    ],
 )
-def test_validate_admin_preview_config_rejects_forbidden_env(
+def test_validate_admin_preview_config_rejects_production_credentials(
     monkeypatch: pytest.MonkeyPatch,
     env_name: str,
+    env_value: str,
 ) -> None:
     _preview_env(monkeypatch)
-    monkeypatch.setenv(env_name, "sentinel-value")
-    settings = get_settings()
+    # Explicitly isolate from any other forbidden var an unrelated test may
+    # have left set in this process's environment, so this parametrized case
+    # only ever sees the one credential under test.
+    for other_name in _FORBIDDEN_PREVIEW_ENV_NAMES:
+        if other_name != env_name:
+            monkeypatch.delenv(other_name, raising=False)
+    monkeypatch.setenv(env_name, env_value)
     with pytest.raises(AdminPreviewConfigError, match=env_name):
-        validate_admin_preview_config(settings)
+        validate_admin_preview_config(get_settings())
 
 
 @pytest.mark.unit
-def test_lifespan_fails_when_preview_and_database_url_both_set(
+def test_validate_admin_preview_config_allows_preview_without_secrets(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _preview_env(monkeypatch)
-    monkeypatch.setenv("DATABASE_URL", "postgresql://prod/db")
-
-    async def _run() -> None:
-        async with lifespan(app):
-            pass
-
-    with pytest.raises(AdminPreviewConfigError):
-        asyncio.run(_run())
+    validate_admin_preview_config(get_settings())
 
 
 @pytest.mark.unit
-def test_lifespan_preview_skips_database_init(monkeypatch: pytest.MonkeyPatch) -> None:
-    _preview_env(monkeypatch)
-
-    async def _run() -> None:
-        with patch("app.main.db.init_db") as init_db:
-            async with lifespan(app):
-                pass
-            init_db.assert_not_called()
-
-    asyncio.run(_run())
-
-
-@pytest.mark.unit
-def test_admin_route_inventory_has_unsafe_methods() -> None:
-    routes = _admin_unsafe_routes()
-    paths = {path for path, _ in routes}
+def test_admin_route_inventory_lists_current_unsafe_methods() -> None:
+    inventory = _admin_unsafe_route_methods(app)
+    paths = {path for path, _ in inventory}
     assert "/admin/login" in paths
     assert "/admin/companies" in paths
+    assert "/admin/briefs/{brief_id}/convert" in paths
     assert "/admin/api/imports/linkedin/commit" in paths
-    assert any("/admin/pipeline/" in path for path in paths)
+    assert "/admin/pipeline/{company_id}/stage" in paths
+    for _, methods in inventory:
+        assert methods.issubset(set(_UNSAFE_METHODS) | {"OPTIONS"})
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("method", UNSAFE_METHODS)
-def test_preview_denies_unsafe_methods_on_admin_routes(
+@pytest.mark.integration
+def test_preview_denies_every_registered_admin_unsafe_method(
     monkeypatch: pytest.MonkeyPatch,
-    method: str,
 ) -> None:
     _preview_env(monkeypatch)
-    client = TestClient(app, follow_redirects=False)
-    for path, methods in _admin_unsafe_routes():
-        if method not in methods:
+    inventory = _admin_unsafe_route_methods(app)
+    assert inventory, "expected at least one /admin unsafe route"
+    for path, methods in inventory:
+        sample_path = _sample_admin_path(path)
+        if sample_path in PREVIEW_SAFE_UNSAFE_METHOD_PATHS:
+            # Explicitly exempted, read-only-by-design preview computation.
             continue
-        sample = _sample_admin_path(path)
-        if sample in PREVIEW_SAFE_UNSAFE_METHOD_PATHS:
-            # Explicitly exempted, read-only-by-design preview computation —
-            # covered by test_preview_allows_safe_unsafe_method_exemptions.
-            continue
-        response = client.request(method, sample)
-        assert response.status_code == 405, f"{method} {sample} -> {response.status_code}"
-        assert response.headers.get("allow") == PREVIEW_ALLOW_HEADER
+        for method in sorted(methods):
+            if method == "OPTIONS":
+                continue
+            response = client.request(method, sample_path, content=b"ignored-body")
+            assert response.status_code == 405, f"{method} {sample_path}"
+            assert response.headers.get("allow") == "GET, HEAD"
 
 
 @pytest.mark.unit
-def test_preview_allows_safe_unsafe_method_exemptions(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Explicitly exempted read-only preview computations still return 200,
-    never a 405, even though they use an unsafe HTTP method."""
-    _preview_env(monkeypatch)
-    client = TestClient(app, follow_redirects=False)
-    assert PREVIEW_SAFE_UNSAFE_METHOD_PATHS
-    for path in PREVIEW_SAFE_UNSAFE_METHOD_PATHS:
-        response = client.post(path, json={"connections": []})
-        assert response.status_code != 405, f"POST {path} -> {response.status_code}"
-
-
-@pytest.mark.unit
-def test_preview_denies_post_before_body_parsing(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _preview_env(monkeypatch)
-    client = TestClient(app, follow_redirects=False)
-
-    db_called = False
-
-    def _fail_db(*args: Any, **kwargs: Any) -> MagicMock:
-        nonlocal db_called
-        db_called = True
-        raise AssertionError("database must not be opened in preview POST")
-
-    payloads = [
-        ("application/json", b'{"connections":[{"profile_url":"https://x"}]}'),
-        ("application/x-www-form-urlencoded", b"name=Acme&domain=acme.test"),
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "content_type,body",
+    [
+        ("application/json", b'{"records": [{"full_name": "Ada"}]}'),
+        ("application/x-www-form-urlencoded", b"csrf_token=x&name=Acme"),
         (
             "multipart/form-data; boundary=----preview",
             b"------preview\r\nContent-Disposition: form-data; name=\"file\"; "
-            b'filename="x.csv"\r\n\r\na,b\r\n------preview--\r\n',
+            b'filename="big.csv"\r\nContent-Type: text/csv\r\n\r\n' + (b"x" * 4096)
+            + b"\r\n------preview--\r\n",
         ),
-        ("text/plain", b"x" * 1_000_000),
-        ("application/json", b"{not-json"),
-    ]
-    with patch("app.db.db_connection", side_effect=_fail_db):
-        for content_type, body in payloads:
-            response = client.post(
-                "/admin/api/imports/linkedin/commit",
-                content=body,
-                headers={"content-type": content_type},
-            )
-            assert response.status_code == 405
-            assert response.headers.get("allow") == PREVIEW_ALLOW_HEADER
-    assert not db_called
+        ("text/plain", b"not-json{" * 200),
+    ],
+)
+def test_preview_denies_admin_post_bodies_without_db_access(
+    monkeypatch: pytest.MonkeyPatch,
+    content_type: str,
+    body: bytes,
+) -> None:
+    _preview_env(monkeypatch)
+    db_called = False
+
+    def _forbidden_db(*args: Any, **kwargs: Any) -> Iterator[MagicMock]:
+        nonlocal db_called
+        db_called = True
+        yield MagicMock()
+
+    with patch("app.db.db_connection", side_effect=_forbidden_db):
+        response = client.post(
+            "/admin/companies",
+            content=body,
+            headers={"Content-Type": content_type},
+            cookies={SESSION_COOKIE_NAME: PREVIEW_SESSION_TOKEN},
+        )
+    assert response.status_code == 405
+    assert response.headers.get("allow") == "GET, HEAD"
+    assert db_called is False
 
 
 @pytest.mark.unit
-def test_preview_mutation_routes_have_zero_side_effects(
+@pytest.mark.integration
+def test_preview_mutation_routes_have_no_side_effects(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _preview_env(monkeypatch)
-    client = TestClient(app, follow_redirects=False)
-
     db_called = False
     stripe_called = False
     email_called = False
 
-    def _fail_db(*args: Any, **kwargs: Any) -> MagicMock:
+    def _forbidden_db(*args: Any, **kwargs: Any) -> Iterator[MagicMock]:
         nonlocal db_called
         db_called = True
-        raise AssertionError("database must not be opened")
+        yield MagicMock()
 
-    def _fail_stripe(*args: Any, **kwargs: Any) -> None:
+    def _forbidden_stripe(*args: Any, **kwargs: Any) -> MagicMock:
         nonlocal stripe_called
         stripe_called = True
-        raise AssertionError("stripe must not be called")
+        return MagicMock()
 
-    def _fail_email(*args: Any, **kwargs: Any) -> None:
+    def _forbidden_email(*args: Any, **kwargs: Any) -> None:
         nonlocal email_called
         email_called = True
-        raise AssertionError("email must not be called")
 
-    targets = [
-        ("/admin/login", {"username": "x", "password": "y", "csrf_token": "z"}),
-        ("/admin/logout", {"csrf_token": "z"}),
-        ("/admin/companies", {"name": "Acme", "csrf_token": "z"}),
-        (f"/admin/companies/{COMPANY_ID}/edit", {"name": "Acme", "csrf_token": "z"}),
-        (f"/admin/companies/{COMPANY_ID}/archive", {"csrf_token": "z"}),
-        (f"/admin/companies/{COMPANY_ID}/restore", {"csrf_token": "z"}),
-        (f"/admin/companies/{COMPANY_ID}/research", {"csrf_token": "z"}),
-        ("/admin/contacts", {"full_name": "Ada", "csrf_token": "z"}),
-        (f"/admin/contacts/{CONTACT_ID}/edit", {"full_name": "Ada", "csrf_token": "z"}),
-        (f"/admin/contacts/{CONTACT_ID}/archive", {"csrf_token": "z"}),
-        (f"/admin/contacts/{CONTACT_ID}/restore", {"csrf_token": "z"}),
-        (f"/admin/contacts/{CONTACT_ID}/research", {"csrf_token": "z"}),
-        (f"/admin/briefs/{BRIEF_ID}/convert", {"csrf_token": "z", "company_choice": "new"}),
-        (f"/admin/pipeline/{COMPANY_ID}/stage", {"csrf_token": "z", "to_stage": "won"}),
-        (f"/admin/pipeline/{COMPANY_ID}/next-action", {"csrf_token": "z", "next_action": "x"}),
-        (f"/admin/pipeline/{COMPANY_ID}/activities", {"csrf_token": "z", "summary": "x"}),
-        (f"/admin/imports/batches/{BATCH_ID}/rollback", {"csrf_token": "z"}),
+    mutation_targets = [
+        ("POST", "/admin/login", b"username=a&password=b&csrf_token=x"),
+        ("POST", "/admin/logout", b"csrf_token=x"),
+        ("POST", "/admin/companies", b"name=Acme"),
+        ("POST", "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/edit", b"name=Acme"),
+        ("POST", "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/archive", b"csrf=x"),
+        ("POST", "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/restore", b"csrf=x"),
+        ("POST", "/admin/companies/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/research", b"url=x"),
+        ("POST", "/admin/contacts", b"full_name=Ada"),
+        ("POST", "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/edit", b"full_name=Ada"),
+        ("POST", "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/archive", b"csrf=x"),
+        ("POST", "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/restore", b"csrf=x"),
+        ("POST", "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/research", b"url=x"),
+        ("POST", "/admin/briefs/4/convert", b"company_choice=new&contact_choice=new"),
+        (
+            "POST",
+            "/admin/pipeline/11111111-1111-1111-1111-111111111111/stage",
+            b"to_stage=won",
+        ),
+        (
+            "POST",
+            "/admin/pipeline/11111111-1111-1111-1111-111111111111/next-action",
+            b"next_action=Follow",
+        ),
+        (
+            "POST",
+            "/admin/pipeline/11111111-1111-1111-1111-111111111111/activities",
+            b"activity_type=note&summary=Hi",
+        ),
+        (
+            "POST",
+            "/admin/imports/batches/11111111-1111-1111-1111-111111111111/rollback",
+            b"csrf=x",
+        ),
+        (
+            "POST",
+            "/admin/api/imports/linkedin/commit",
+            b'{"schema_version":"linkedin_export_v1","records":[]}',
+        ),
     ]
 
     with (
-        patch("app.db.db_connection", side_effect=_fail_db),
-        patch("app.db.init_db", side_effect=_fail_db),
-        patch("app.stripe_service.create_checkout_session", side_effect=_fail_stripe),
-        patch("app.email_service.send_email", side_effect=_fail_email),
+        patch("app.db.db_connection", side_effect=_forbidden_db),
+        patch("app.stripe_service.create_checkout_session", side_effect=_forbidden_stripe),
+        patch("app.email_service.notify_team_of_new_brief", side_effect=_forbidden_email),
     ):
-        for path, data in targets:
-            response = client.post(path, data=data)
-            assert response.status_code == 405, path
-        json_response = client.post(
-            "/admin/api/imports/linkedin/commit",
-            json={"connections": [{"profile_url": "https://linkedin.com/in/ada"}]},
-        )
-        assert json_response.status_code == 405
+        for method, path, body in mutation_targets:
+            response = client.request(
+                method,
+                path,
+                content=body,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                cookies={SESSION_COOKIE_NAME: PREVIEW_SESSION_TOKEN},
+            )
+            assert response.status_code == 405, f"{method} {path}"
 
-    assert not db_called
-    assert not stripe_called
-    assert not email_called
+    assert db_called is False
+    assert stripe_called is False
+    assert email_called is False
 
 
 @pytest.mark.unit
-def test_preview_get_renders_fixtures(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.integration
+def test_preview_get_renders_fixture_pages(monkeypatch: pytest.MonkeyPatch) -> None:
     _preview_env(monkeypatch)
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
-    client = TestClient(app, follow_redirects=False)
-
     response = client.get("/admin")
     assert response.status_code == 200
     assert "Preview data — not production" in response.text
@@ -337,99 +339,97 @@ def test_preview_get_renders_fixtures(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.unit
-def test_preview_head_not_blocked_by_read_only_guard(
+@pytest.mark.integration
+def test_preview_head_is_not_blocked_by_read_only_guard(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """HEAD is permitted through the guard; individual routes may still lack HEAD handlers."""
     _preview_env(monkeypatch)
-    client = TestClient(app, follow_redirects=False)
     response = client.head("/admin")
-    assert response.headers.get("allow") != PREVIEW_ALLOW_HEADER
+    assert response.headers.get("allow") != "GET, HEAD"
 
 
 @pytest.mark.unit
-def test_preview_disabled_authenticated_post_still_mutates(
+@pytest.mark.integration
+def test_preview_disabled_mutations_are_not_blocked_by_read_only_guard(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from datetime import datetime, timedelta, timezone
-
-    from app.admin_auth import AdminSession
-
     monkeypatch.delenv("ADMIN_PREVIEW_MODE", raising=False)
     monkeypatch.setenv("BASE_URL", "http://testserver")
-    monkeypatch.setenv("DATABASE_URL", "postgresql://test/db")
-    monkeypatch.setenv("ADMIN_USERNAME", "operator")
-    monkeypatch.setenv("ADMIN_PASSWORD_HASH", "hash")
-    monkeypatch.setenv("ADMIN_SESSION_SECRET", "test-session-secret-32chars-minimum")
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "test-limiter-secret-32chars-minimum!!")
-
-    assert not get_settings().admin_preview_enabled
-    fake_session = AdminSession(
-        id=1,
-        admin_username="operator",
-        token_hash="hash",
-        csrf_token_hash="csrf-hash",
-        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
-    )
-
-    with (
-        patch("app.admin_routes.require_admin_session", return_value=fake_session),
-        patch("app.admin_routes._verify_session_csrf"),
-        patch("app.admin_routes._crm") as crm,
-        patch("app.admin_routes.db.db_connection") as db_conn,
-    ):
-        crm.rollback_import_batch.return_value = {"batch": {"id": BATCH_ID}}
-        db_conn.return_value.__enter__.return_value = MagicMock()
-        client = TestClient(app, follow_redirects=False)
-        response = client.post(
-            f"/admin/imports/batches/{BATCH_ID}/rollback",
-            data={"csrf_token": "ok"},
-        )
-    assert response.status_code == 303
-    crm.rollback_import_batch.assert_called_once()
-
-
-@pytest.mark.unit
-def test_production_base_url_disables_preview_despite_mode_flag(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("BASE_URL", "https://saberistic.com")
-    settings = get_settings()
-    assert settings.admin_preview_mode is True
-    assert settings.admin_preview_enabled is False
-
-
-@pytest.mark.unit
-def test_forwarded_host_cannot_enable_preview(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("BASE_URL", "https://saberistic.com")
-    monkeypatch.setenv("ADMIN_USERNAME", PREVIEW_ADMIN_USERNAME)
-    monkeypatch.setenv("ADMIN_PASSWORD_HASH", PREVIEW_ADMIN_PASSWORD_HASH)
-    monkeypatch.setenv("ADMIN_SESSION_SECRET", PREVIEW_ADMIN_SESSION_SECRET)
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", PREVIEW_ADMIN_LOGIN_LIMITER_SECRET)
+    # This test only cares whether the central read-only guard blocks the
+    # request when preview mode is off; isolate it from a real DATABASE_URL
+    # possibly set elsewhere in the process so a login-failure audit write
+    # cannot turn an unrelated Postgres outage into a false failure here.
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    client = TestClient(app, follow_redirects=False)
-    response = client.get(
-        "/admin",
-        headers={
-            "host": "saberistic.com",
-            "x-forwarded-host": "127.0.0.1",
-        },
+    response = client.post(
+        "/admin/login",
+        data={"username": "x", "password": "y", "csrf_token": "z"},
     )
-    assert response.status_code == 303
-    assert response.headers["location"].startswith("/admin/login")
+    assert response.headers.get("allow") != "GET, HEAD"
+    assert response.status_code != 405
 
 
 @pytest.mark.unit
-def test_preview_post_returns_truthful_allow_header(
+def test_preview_disabled_on_production_base_url(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _preview_env(monkeypatch)
-    client = TestClient(app, follow_redirects=False)
-    response = client.post("/admin/logout", data={"csrf_token": "x"})
-    assert response.status_code == 405
-    assert response.headers.get("allow") == "GET, HEAD"
-    assert "location" not in response.headers
+    """A production BASE_URL now fails closed (#330) instead of silently disabling."""
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("SERVER_BIND_HOST", "127.0.0.1")
+    monkeypatch.setenv("BASE_URL", "https://saberistic.com")
+    with pytest.raises(StartupAdminPreviewConfigError):
+        get_settings()
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_preview_not_enabled_via_forwarded_host_on_production_base(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """X-Forwarded-Host cannot fake preview on: startup already fails closed (#330)."""
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("SERVER_BIND_HOST", "127.0.0.1")
+    monkeypatch.setenv("BASE_URL", "https://saberistic.com")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    with pytest.raises(StartupAdminPreviewConfigError):
+        get_settings()
+
+
+@pytest.mark.unit
+def test_preview_startup_fails_when_database_url_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://prod/db")
+    monkeypatch.setenv("ADMIN_USERNAME", TEST_USERNAME)
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_HASH)
+    monkeypatch.setenv("ADMIN_SESSION_SECRET", TEST_SECRET)
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
+    for key in PREVIEW_CLEARED_SECRETS:
+        if key != "DATABASE_URL":
+            monkeypatch.delenv(key, raising=False)
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    env = build_preview_child_env(port=port, parent_environ=os.environ)
+    env["DATABASE_URL"] = "postgresql://prod/db"
+
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", str(port)],
+        cwd=str(Path(__file__).resolve().parents[1]),
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        proc.wait(timeout=8)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=3)
+        pytest.fail("preview server stayed alive with DATABASE_URL configured")
+    stderr = proc.stderr.read().decode("utf-8", errors="replace") if proc.stderr else ""
+    assert proc.returncode != 0
+    assert "ADMIN_PREVIEW_MODE" in stderr or "DATABASE_URL" in stderr

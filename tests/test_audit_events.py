@@ -22,6 +22,7 @@ from app.config import get_settings
 from app.crm_service import CrmRepositories, CrmService
 from app.crm_uow import crm_transaction
 from app.main import app
+from tests.conftest import enable_admin_preview_env
 from app.migrations.definitions import MIGRATIONS
 from app.migrations.runner import pending_migrations
 from app.repositories.postgres import PostgresAuditEventRepository
@@ -686,7 +687,7 @@ def test_render_admin_section_empty_state() -> None:
 def test_render_admin_page_preview_dashboard(monkeypatch: pytest.MonkeyPatch) -> None:
     from app import admin
 
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch)
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
     html_out = admin.render_admin_page("/admin", admin_username=TEST_USERNAME)
     assert "Today&apos;s attention" in html_out

@@ -591,3 +591,75 @@ def test_idempotent_retry_returns_original_conversion(
     assert db.count(verifier, "companies") == 1
     assert db.count(verifier, "contacts") == 1
     assert db.count(verifier, "source_records") == 1
+
+
+def test_archived_contact_never_silently_linked_as_active(
+    migrated_conn: psycopg.Connection,
+    connect: Callable[..., psycopg.Connection],
+    db,
+) -> None:
+    """Archived-only email match requires explicit ack; archived row stays archived (#276)."""
+    from app.brief_conversion import ARCHIVED_CONTACT_ACK_REQUIRED_MESSAGE
+
+    archived_id = uuid4()
+    _insert_contact(
+        migrated_conn,
+        contact_id=archived_id,
+        email="ops@acme.example",
+        full_name="Archived Ops",
+        archived_at="2026-01-01T00:00:00+00:00",
+    )
+    brief = db.insert_paid_brief(migrated_conn, email="ops@acme.example")
+    service = CrmService()
+
+    with pytest.raises(
+        BriefConversionValidationError,
+        match=ARCHIVED_CONTACT_ACK_REQUIRED_MESSAGE,
+    ):
+        service.convert_project_brief(
+            migrated_conn,
+            brief=brief,
+            actor_context=ACTOR,
+            price_cents=20_000,
+            company_choice="new",
+            contact_choice="new",
+            acknowledge_archived_identity=False,
+        )
+
+    verifier = connect()
+    _assert_no_conversion_artifacts(verifier, db)
+    archived = db.fetch_dict(
+        verifier,
+        "SELECT * FROM contacts WHERE id = %s",
+        (archived_id,),
+    )
+    assert archived is not None
+    assert archived["archived_at"] is not None
+
+    result = service.convert_project_brief(
+        migrated_conn,
+        brief=brief,
+        actor_context=ACTOR,
+        price_cents=20_000,
+        company_choice="new",
+        contact_choice="new",
+        acknowledge_archived_identity=True,
+    )
+
+    verifier = connect()
+    assert db.count(verifier, "contacts") == 2
+    new_contact = db.fetch_dict(
+        verifier,
+        "SELECT * FROM contacts WHERE id = %s",
+        (result["contact"]["id"],),
+    )
+    assert new_contact is not None
+    assert new_contact["archived_at"] is None
+    assert str(new_contact["id"]) != str(archived_id)
+    still_archived = db.fetch_dict(
+        verifier,
+        "SELECT * FROM contacts WHERE id = %s",
+        (archived_id,),
+    )
+    assert still_archived is not None
+    assert still_archived["archived_at"] is not None
