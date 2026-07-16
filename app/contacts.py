@@ -172,6 +172,30 @@ class ContactCreate(BaseModel):
         return _validate_buying_roles(value)
 
 
+def contact_audit_summary(contact: dict[str, Any]) -> dict[str, Any]:
+    """Compact contact snapshot for audit events.
+
+    Email is intentionally omitted — it is sensitive and not required to
+    distinguish clear/replace/unchanged semantics for the other patch fields.
+    """
+    company_id = contact.get("company_id")
+    last_interaction = contact.get("last_interaction_at")
+    buying_roles = contact.get("buying_roles") or []
+    return {
+        "full_name": contact.get("full_name"),
+        "title": contact.get("title"),
+        "profile_url": contact.get("profile_url"),
+        "email_permission": contact.get("email_permission"),
+        "company_id": str(company_id) if company_id else None,
+        "last_interaction_at": (
+            last_interaction.isoformat() if last_interaction is not None else None
+        ),
+        "relationship_strength": contact.get("relationship_strength"),
+        "notes": contact.get("notes"),
+        "buying_roles": list(buying_roles),
+    }
+
+
 class ContactUpdate(ContactCreate):
     pass
 
