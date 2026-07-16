@@ -279,18 +279,16 @@ def test_admin_preview_briefs_list_and_detail_have_mock_data(
 
 @pytest.mark.unit
 def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytest.MonkeyPatch) -> None:
-    import random
-
     from argon2 import PasswordHasher
 
     from app.admin_preview import (
         PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID,
         preview_contact_restore_conflict,
+        reset_preview_context_cache,
     )
 
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "7")
-    monkeypatch.setenv("ADMIN_PREVIEW_REFERENCE_TIME", "2026-07-15T12:00:00+00:00")
     monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
     monkeypatch.setenv(
         "ADMIN_PASSWORD_HASH",
@@ -300,8 +298,6 @@ def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytes
     monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "preview-limiter-secret-32chars-minimum!!")
     monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    from app.preview_context import reset_preview_context_cache
-
     reset_preview_context_cache()
     preview = preview_contact_restore_conflict()
     client = TestClient(app, follow_redirects=False)
@@ -321,10 +317,10 @@ def test_preview_company_detail_archive_and_restore_actions(
     from argon2 import PasswordHasher
 
     from app.admin_auth import SESSION_COOKIE_NAME
+    from app.admin_preview import reset_preview_context_cache
 
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "11")
-    monkeypatch.setenv("ADMIN_PREVIEW_REFERENCE_TIME", "2026-07-15T12:00:00+00:00")
     monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
     monkeypatch.setenv(
         "ADMIN_PASSWORD_HASH",
@@ -334,8 +330,6 @@ def test_preview_company_detail_archive_and_restore_actions(
     monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "preview-limiter-secret-32chars-minimum!!")
     monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    from app.preview_context import reset_preview_context_cache
-
     reset_preview_context_cache()
     company, _contacts, _records = build_preview_company_detail(
         PREVIEW_COMPANY_DETAIL_ARCHIVE_ID,
@@ -374,10 +368,10 @@ def test_preview_contact_detail_and_edit_archive_restore_actions(
     from argon2 import PasswordHasher
 
     from app.admin_auth import SESSION_COOKIE_NAME
+    from app.admin_preview import reset_preview_context_cache
 
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "12")
-    monkeypatch.setenv("ADMIN_PREVIEW_REFERENCE_TIME", "2026-07-15T12:00:00+00:00")
     monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
     monkeypatch.setenv(
         "ADMIN_PASSWORD_HASH",
@@ -387,8 +381,6 @@ def test_preview_contact_detail_and_edit_archive_restore_actions(
     monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "preview-limiter-secret-32chars-minimum!!")
     monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    from app.preview_context import reset_preview_context_cache
-
     reset_preview_context_cache()
     contact, _company, _records = build_preview_contact_detail(
         PREVIEW_CONTACT_DETAIL_ARCHIVE_ID,
@@ -470,8 +462,6 @@ def test_preview_company_and_contact_detail_seed_stable() -> None:
     assert records_ca == records_cb
     assert contact_a.get("archived_at") is not None
 
-
-@pytest.mark.unit
 def test_preview_companies_seed_stable() -> None:
     now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
     a = build_preview_companies(rng=random.Random(42), now=now)

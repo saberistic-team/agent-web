@@ -25,18 +25,11 @@ Playwright can open admin pages **without login**.
 - Admin shell pages fill with **mock intake/CRM data with randomization**
   (dashboard stats, section tables, **briefs list/detail**, etc.) so screenshots
   look like a live operator shell — never real production rows and never an
-  empty “no records yet” shell for newly built admin surfaces.
-- **Deterministic preview context** (issue #338): pre-merge screenshot runs set
-  `ADMIN_PREVIEW_SEED` and `ADMIN_PREVIEW_REFERENCE_TIME` to checked-in CI
-  defaults. Each fixture namespace derives its own RNG from the root seed so
-  request order and worker scheduling cannot perturb data. Bump
-  `PREVIEW_FIXTURE_VERSION` in `app/preview_context.py` when fixture shape or
-  derivation rules change intentionally; regenerate and review screenshot
-  baselines when that version changes.
-- Optional `ADMIN_PREVIEW_SEED` / `ADMIN_PREVIEW_REFERENCE_TIME` overrides
-  remain deterministic for exploratory visual testing. Malformed values fail
-  fast — never unseeded wall-clock randomness.
-- Builder must extend `app/admin_preview.py` whenever it adds a page (see
+  empty “no records yet” shell for newly built admin surfaces. Screenshot runs
+  set stable `ADMIN_PREVIEW_SEED` and `ADMIN_PREVIEW_REFERENCE_AT` (frozen UTC
+  “now”) so paired desktop/mobile captures and reruns render identical fixture
+  data. Optional overrides remain deterministic. See fixture versioning below.
+  Builder must extend `app/admin_preview.py` whenever it adds a page (see
   `AGENTS/builder.md`).
 - See [ADMIN_AUTH.md](ADMIN_AUTH.md).
 
@@ -142,8 +135,6 @@ until merged.
 
 1. Resolves **PR-affected routes** (public + admin when relevant)
 2. Starts **local uvicorn** with `ADMIN_PREVIEW_MODE=1` on the PR head
-   (plus `ADMIN_PREVIEW_SEED` and `ADMIN_PREVIEW_REFERENCE_TIME` for deterministic
-   fixtures)
 3. Captures desktop (1280×800) + mobile (390×844) → `branch-*.png` only
 4. When admin files change, also captures **admin nav evidence** on
    `/admin`, `/admin/audit`, and `/admin/briefs`: tablet (768×1024),
@@ -182,9 +173,8 @@ until merged.
 | Name | Type | Purpose |
 |------|------|---------|
 | `ADMIN_PREVIEW_MODE` | env | Set `1` on PR preview server only (script sets this) |
-| `ADMIN_PREVIEW_SEED` | env | Root seed for preview fixtures (script sets checked-in CI default) |
-| `ADMIN_PREVIEW_REFERENCE_TIME` | env | Frozen ISO-8601 reference timestamp (script sets CI default) |
-| `PREVIEW_FIXTURE_VERSION` | code | Bump in `app/preview_context.py` when fixtures change intentionally |
+| `ADMIN_PREVIEW_SEED` | env | Root seed for preview fixtures (script sets stable default) |
+| `ADMIN_PREVIEW_REFERENCE_AT` | env | Frozen timezone-aware UTC timestamp for preview “now” |
 | `DEPLOY_BASE_URL` | variable | default `https://saberistic.com` (post-deploy) |
 | `COVERAGE_ROOT` / `PR_HEAD_ROOT` | env | PR checkout root for branch screenshots |
 | `SCREENSHOTS_REQUIRED` | variable | default true for Reviewer when pages are affected |
@@ -192,6 +182,26 @@ until merged.
 | `RENDER_DEPLOY_HOOK_URL` | secret | deploy trigger |
 | `RENDER_API_KEY` | secret | poll deploy status until live/failed |
 | `RENDER_SERVICE_ID` | secret | optional `srv-…` if not parseable from the hook URL |
+
+### Preview fixture versioning
+
+`PREVIEW_FIXTURE_VERSION` in `app/admin_preview.py` records the fixture schema
+and derivation rules. Screenshot evidence comments and `*-reproducibility.json`
+include `preview_fixture_version`, `preview_root_seed`,
+`preview_reference_at`, PR head SHA, browser version, and viewport sizes.
+
+When you intentionally change preview fixture shape or namespace derivation:
+
+1. Bump `PREVIEW_FIXTURE_VERSION`.
+2. Regenerate screenshot baselines on a clean PR-head capture (standard
+   `ADMIN_PREVIEW_SEED` / `ADMIN_PREVIEW_REFERENCE_AT` from the repo defaults
+   unless the issue specifies new values).
+3. Review paired desktop/mobile manifests and image diffs in the Reviewer
+   comment — semantic fixture changes should match the version bump.
+
+Malformed `ADMIN_PREVIEW_SEED` or `ADMIN_PREVIEW_REFERENCE_AT` values fail
+fast; missing values use the checked-in CI defaults (never unseeded randomness
+or wall-clock `now`).
 
 ## Scripts / workflows
 
