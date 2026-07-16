@@ -169,11 +169,15 @@ def test_record_pipeline_activity_commits() -> None:
     )
     conn = MagicMock()
     from app.acquisition_pipeline import PipelineActivityCreate
+    from app.actor_context import ActorContext
 
-    row = service.record_pipeline_activity(
-        conn,
-        company_id=COMPANY_ID,
-        activity=PipelineActivityCreate(activity_type="outreach", summary="Called CEO"),
-    )
+    actor = ActorContext(actor="admin", correlation_id="test")
+    with patch("app.crm_service.audit_service.record_pipeline_activity_create"):
+        row = service.record_pipeline_activity(
+            conn,
+            actor_context=actor,
+            company_id=COMPANY_ID,
+            activity=PipelineActivityCreate(activity_type="outreach", summary="Called CEO"),
+        )
     assert row["summary"] == "Called CEO"
     conn.commit.assert_called_once()

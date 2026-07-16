@@ -16,6 +16,9 @@ jobs:
         !startsWith(github.event.head_commit.message, 'deploy: freeze')
       )
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     services:
       postgres:
         image: postgres:16-alpine
@@ -51,11 +54,19 @@ jobs:
         # and this step silently no-op'd for a long time because none of
         # these were wired in (see docs/WORKFLOW_GOVERNANCE.md's
         # "Non-bootstrap proof PR" section for the incident writeup).
+        # REPORT_GOVERNANCE_DRIFT only files/refreshes a plain tracking issue
+        # when the live-ruleset check itself fails (repo-settings drift, not
+        # a code bug in this PR's diff) — gated to push-to-main only so PR
+        # runs never open issues, and scoped so it cannot mask as a status
+        # the Planner/Builder pipeline would try to "fix" with codegen (see
+        # docs/WORKFLOW_GOVERNANCE.md "Ruleset drift alerting").
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
           VALIDATE_LIVE_RULESET: "1"
           VERIFY_LIVE_GOVERNANCE_RULESET: "1"
+          REPORT_GOVERNANCE_DRIFT: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && '1' || '' }}
         run: python scripts/validate_workflow_governance.py --check-live-ruleset
       - name: Run tests
         # The live-PostgreSQL contract suite (marker: contract) runs in its own

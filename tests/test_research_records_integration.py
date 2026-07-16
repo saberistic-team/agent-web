@@ -5,13 +5,14 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any, Generator
 from unittest.mock import MagicMock, patch
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 
 from app import admin_auth
+from app.actor_context import ActorContext
 from app.crm_service import CrmRepositories, CrmService
 from app.main import app
 from app.repositories.postgres import PostgresResearchRecordRepository
@@ -89,6 +90,7 @@ def test_research_record_repository_round_trip_with_mock_conn() -> None:
 def test_crm_service_attach_research_record_commits() -> None:
     research_repo = MagicMock()
     research_repo.create.return_value = {
+        "id": uuid4(),
         "record_type": "outreach_angle",
         "body": "Lead with platform migration",
     }
@@ -106,12 +108,15 @@ def test_crm_service_attach_research_record_commits() -> None:
         )
     )
     conn = MagicMock()
-    record = service.attach_research_record(
-        conn,
-        record_type="outreach_angle",
-        company_id=COMPANY_ID,
-        body="Lead with platform migration",
-    )
+    actor = ActorContext(actor="admin", correlation_id="test")
+    with patch("app.crm_service.audit_service.record_research_record_create"):
+        record = service.attach_research_record(
+            conn,
+            actor_context=actor,
+            record_type="outreach_angle",
+            company_id=COMPANY_ID,
+            body="Lead with platform migration",
+        )
     assert record["record_type"] == "outreach_angle"
     conn.commit.assert_called_once()
 
