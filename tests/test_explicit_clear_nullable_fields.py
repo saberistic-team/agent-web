@@ -235,6 +235,74 @@ def test_update_contact_clears_email_and_disassociates_company() -> None:
 
 
 @pytest.mark.unit
+def test_update_company_clear_is_audited_as_change() -> None:
+    company_repo = MagicMock()
+    before = {
+        "id": COMPANY_ID,
+        "name": "Acme",
+        "notes": "Keep me",
+        "funding_summary": "Clear me",
+    }
+    after = {**before, "funding_summary": None}
+    company_repo.get_by_id.return_value = before
+    company_repo.find_by_domain.return_value = []
+    company_repo.update.return_value = after
+    service, conn = _service_with(companies=company_repo)
+
+    with patch("app.crm_service.audit_service.record_company_update") as audit:
+        service.update_company(
+            conn,
+            COMPANY_ID,
+            company=CompanyUpdate(name="Acme", funding_summary=None),
+            actor_context=ACTOR,
+        )
+
+    audit.assert_called_once()
+    audit_kwargs = audit.call_args.kwargs
+    assert audit_kwargs["summary_before"]["notes"] == "Keep me"
+    assert audit_kwargs["summary_after"]["notes"] == "Keep me"
+    assert audit_kwargs["summary_before"]["funding_summary"] == "Clear me"
+    assert audit_kwargs["summary_after"]["funding_summary"] is None
+    conn.commit.assert_called_once()
+
+
+@pytest.mark.unit
+def test_update_contact_clear_is_audited_as_change() -> None:
+    contact_repo = MagicMock()
+    before = {
+        "id": CONTACT_ID,
+        "full_name": "Ada",
+        "email": "ada@example.com",
+        "title": "Keep me",
+        "notes": "Clear me",
+    }
+    after = {**before, "notes": None}
+    contact_repo.get_by_id.return_value = before
+    contact_repo.find_by_profile_url.return_value = []
+    contact_repo.find_by_name_company.return_value = []
+    contact_repo.update.return_value = after
+    service, conn = _service_with(contacts=contact_repo)
+
+    with patch("app.crm_service.audit_service.record_contact_update") as audit:
+        service.update_contact(
+            conn,
+            CONTACT_ID,
+            contact=ContactUpdate(full_name="Ada", notes=None),
+            actor_context=ACTOR,
+        )
+
+    audit.assert_called_once()
+    audit_kwargs = audit.call_args.kwargs
+    assert audit_kwargs["summary_before"]["title"] == "Keep me"
+    assert audit_kwargs["summary_after"]["title"] == "Keep me"
+    assert audit_kwargs["summary_before"]["notes"] == "Clear me"
+    assert audit_kwargs["summary_after"]["notes"] is None
+    assert "email" not in audit_kwargs["summary_before"]
+    assert "email" not in audit_kwargs["summary_after"]
+    conn.commit.assert_called_once()
+
+
+@pytest.mark.unit
 def test_update_pipeline_next_action_clear_is_audited_as_change() -> None:
     pipeline_repo = MagicMock()
     before = {

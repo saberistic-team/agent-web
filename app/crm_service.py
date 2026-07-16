@@ -28,11 +28,18 @@ from app.brief_conversion import (
     safe_conversion_payload,
 )
 from app.brief_conversion_lock import acquire_brief_conversion_lock
-from app.companies import CompanyCreate, CompanyUpdate, find_domain_duplicate_warnings, normalize_domain
+from app.companies import (
+    CompanyCreate,
+    CompanyUpdate,
+    company_audit_summary,
+    find_domain_duplicate_warnings,
+    normalize_domain,
+)
 from app.contacts import (
     ContactCreate,
     ContactEmailConflictError,
     ContactUpdate,
+    contact_audit_summary,
     find_email_duplicate_warnings,
     find_name_company_duplicate_warnings,
     find_profile_url_duplicate_warnings,
@@ -713,8 +720,15 @@ class CrmService:
         company_id: UUID,
         *,
         company: CompanyUpdate,
+        actor_context: ActorContext | None = None,
     ) -> dict[str, Any] | None:
         with crm_transaction(conn):
+            existing = self._repos.companies.get_by_id(conn, company_id)
+            if existing is None:
+                return None
+            summary_before = (
+                company_audit_summary(existing) if actor_context is not None else None
+            )
             duplicates = (
                 self._repos.companies.find_by_domain(
                     conn, company.domain, exclude_company_id=company_id
@@ -725,8 +739,16 @@ class CrmService:
             updated = self._repos.companies.update(
                 conn, company_id, **company.model_dump(exclude_unset=True)
             )
-        if updated is None:
-            return None
+            if updated is None:
+                return None
+            if actor_context is not None:
+                audit_service.record_company_update(
+                    conn,
+                    actor_context=actor_context,
+                    entity_id=str(company_id),
+                    summary_before=summary_before,
+                    summary_after=company_audit_summary(updated),
+                )
         return {
             "company": updated,
             "duplicate_warnings": find_domain_duplicate_warnings(
@@ -834,8 +856,15 @@ class CrmService:
         contact_id: UUID,
         *,
         contact: ContactUpdate,
+        actor_context: ActorContext | None = None,
     ) -> dict[str, Any] | None:
         with crm_transaction(conn):
+            existing = self._repos.contacts.get_by_id(conn, contact_id)
+            if existing is None:
+                return None
+            summary_before = (
+                contact_audit_summary(existing) if actor_context is not None else None
+            )
             profile_matches = (
                 self._repos.contacts.find_by_profile_url(
                     conn, contact.profile_url, exclude_contact_id=contact_id
@@ -845,11 +874,11 @@ class CrmService:
             )
             email_matches: list[dict[str, Any]] = []
             if contact.email:
-                existing = self._repos.contacts.get_active_by_email(
+                existing_email = self._repos.contacts.get_active_by_email(
                     conn, contact.email, exclude_contact_id=contact_id
                 )
-                if existing is not None:
-                    email_matches.append(existing)
+                if existing_email is not None:
+                    email_matches.append(existing_email)
             name_company_matches = (
                 self._repos.contacts.find_by_name_company(
                     conn,
@@ -868,8 +897,16 @@ class CrmService:
                 if not _is_contact_email_unique_violation(exc):
                     raise
                 raise ContactEmailConflictError(contact.email) from exc
-        if updated is None:
-            return None
+            if updated is None:
+                return None
+            if actor_context is not None:
+                audit_service.record_contact_update(
+                    conn,
+                    actor_context=actor_context,
+                    entity_id=str(contact_id),
+                    summary_before=summary_before,
+                    summary_after=contact_audit_summary(updated),
+                )
         duplicate_warnings = [
             *find_profile_url_duplicate_warnings(
                 profile_matches, profile_url=contact.profile_url, exclude_contact_id=contact_id
