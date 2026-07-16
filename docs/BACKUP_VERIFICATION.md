@@ -19,7 +19,7 @@ Procedure: [BACKUP_RESTORE.md](BACKUP_RESTORE.md).
 | **Table counts (empty CRM data)** | CRM/analytics data tables `0`; `schema_migrations` `18` |
 | **Export manifest** | `manifest_version: 1`, structure validation passed |
 | **Count parity check** | `crm_backup.py verify --snapshot` matched export |
-| **Automated tests** | `tests/test_crm_backup.py` (unit), `tests/pg_contract/test_migrations_contract.py` (contract; analytics tables in `CORE_TABLES`) |
+| **Automated tests** | `tests/test_crm_backup.py` (unit), `tests/pg_contract/test_migrations_contract.py` (contract; analytics tables in `CORE_TABLES`), `tests/pg_contract/test_acquisition_recovery_e2e.py` (failed import/migration preserves prior state) |
 | **Production smoke** | Not run (no production restore); use `scripts/smoke_deploy.py` after real PITR |
 
 **Notes:** Render production database **agent-web-db** remains on the Free instance
