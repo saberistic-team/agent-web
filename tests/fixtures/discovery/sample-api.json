@@ -1,0 +1,21 @@
+{
+  "companies": [
+    {
+      "id": "co-100",
+      "name": "Nimbus Analytics",
+      "domain": "nimbus.example.com",
+      "website": "https://nimbus.example.com",
+      "signals": ["hiring", "product_launch"]
+    },
+    {
+      "id": "co-101",
+      "name": "Orbit Systems",
+      "domain": "orbit.example.com",
+      "signals": ["funding"]
+    },
+    {
+      "id": "co-102",
+      "name": ""
+    }
+  ]
+}

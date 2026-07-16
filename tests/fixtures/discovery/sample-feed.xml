@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Startup Signals</title>
+    <item>
+      <guid>signal-001</guid>
+      <title>Series A round</title>
+      <company>Analytical Engines Ltd</company>
+      <link>https://analytical.example.com/news/series-a</link>
+      <description>Raised Series A to expand inference platform.</description>
+    </item>
+    <item>
+      <guid>signal-002</guid>
+      <title>Hiring spree</title>
+      <company>Vector Research</company>
+      <link>https://vector.example.com/careers</link>
+      <description>Opened 12 engineering roles.</description>
+    </item>
+    <item>
+      <description>Missing company name on purpose.</description>
+    </item>
+  </channel>
+</rss>
