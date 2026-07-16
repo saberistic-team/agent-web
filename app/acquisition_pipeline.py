@@ -140,6 +140,37 @@ class PipelineStageChange(BaseModel):
         return self
 
 
+# PostgreSQL INTEGER upper bound for expected_value_cents.
+MAX_EXPECTED_VALUE_CENTS = 2_147_483_647
+
+EXPECTED_VALUE_CENTS_INVALID_MSG = (
+    "Enter a whole number of cents (0 or greater)."
+)
+
+
+def parse_expected_value_cents_form(raw: str | None) -> int | None:
+    """Parse nullable expected-value cents from an admin form field.
+
+    Policy:
+    - Blank or whitespace-only input clears the value (returns ``None``).
+    - Surrounding whitespace is stripped before validation.
+    - Only non-negative integer digit strings are accepted (no signs,
+      decimals, or letters).
+    - Values above ``MAX_EXPECTED_VALUE_CENTS`` are rejected.
+    """
+    if raw is None:
+        return None
+    stripped = raw.strip()
+    if not stripped:
+        return None
+    if not stripped.isdigit():
+        raise ValueError(EXPECTED_VALUE_CENTS_INVALID_MSG)
+    parsed = int(stripped)
+    if parsed > MAX_EXPECTED_VALUE_CENTS:
+        raise ValueError(EXPECTED_VALUE_CENTS_INVALID_MSG)
+    return parsed
+
+
 class PipelineNextActionUpdate(BaseModel):
     next_action: str | None = Field(default=None, max_length=2000)
     next_action_due_at: datetime | None = None

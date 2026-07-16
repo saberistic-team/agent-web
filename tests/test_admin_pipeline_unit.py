@@ -71,3 +71,27 @@ def test_pipeline_detail_page_renders_history_and_forms() -> None:
     assert "Sent intro email" in html
     assert 'name="to_stage"' in html
     assert 'name="activity_type"' in html
+
+
+@pytest.mark.unit
+def test_pipeline_detail_page_shows_expected_value_field_error() -> None:
+    html = render_pipeline_detail_page(
+        company={
+            "id": COMPANY_ID,
+            "name": "Northwind Labs",
+            "pipeline_stage": "contacted",
+            "next_action": "Follow up",
+            "pipeline_owner": "alex",
+            "expected_value_cents": "abc",
+        },
+        history=[],
+        activities=[],
+        csrf_token="csrf",
+        admin_username="operator",
+        expected_value_cents_error="Enter a whole number of cents (0 or greater).",
+    )
+    assert 'id="expected_value_cents-error"' in html
+    assert 'aria-invalid="true"' in html
+    assert 'aria-describedby="expected_value_cents-error"' in html
+    assert 'value="abc"' in html
+    assert "Enter a whole number of cents" in html

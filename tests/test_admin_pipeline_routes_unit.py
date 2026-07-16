@@ -13,7 +13,10 @@ from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 
 from app import admin_auth, db
-from app.acquisition_pipeline import PipelineTransitionError
+from app.acquisition_pipeline import (
+    EXPECTED_VALUE_CENTS_INVALID_MSG,
+    PipelineTransitionError,
+)
 from app.admin_auth import SESSION_COOKIE_NAME
 from app.admin_preview import PREVIEW_PIPELINE_COMPANY_IDS
 from app.main import app
@@ -27,6 +30,32 @@ TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!!"
 COMPANY_ID = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 
 _session_store: dict[str, dict[str, Any]] = {}
+
+
+def _pipeline_company() -> dict[str, Any]:
+    return {
+        "id": COMPANY_ID,
+        "name": "Acme",
+        "pipeline_stage": "researching",
+        "next_action": "Old action",
+        "next_action_due_at": datetime(2026, 7, 20, 12, 0, tzinfo=timezone.utc),
+        "pipeline_owner": "operator",
+        "expected_value_cents": 50_000,
+    }
+
+
+def _post_next_action(
+    authenticated_admin: dict[str, Any],
+    *,
+    crm: MagicMock,
+    data: dict[str, str],
+) -> Any:
+    with patch("app.admin_pipeline_routes._crm", crm):
+        return client.post(
+            f"/admin/pipeline/{COMPANY_ID}/next-action",
+            data={"csrf_token": authenticated_admin["csrf_token"], **data},
+            cookies=authenticated_admin["cookies"],
+        )
 
 
 @pytest.fixture(autouse=True)
@@ -197,18 +226,89 @@ def test_pipeline_detail_renders(authenticated_admin: dict[str, Any]) -> None:
 @pytest.mark.unit
 def test_pipeline_next_action_update_redirects(authenticated_admin: dict[str, Any]) -> None:
     crm = MagicMock()
-    with patch("app.admin_pipeline_routes._crm", crm):
-        response = client.post(
-            f"/admin/pipeline/{COMPANY_ID}/next-action",
-            data={
-                "csrf_token": authenticated_admin["csrf_token"],
-                "next_action": "Follow up",
-                "expected_value_cents": "50000",
-            },
-            cookies=authenticated_admin["cookies"],
-        )
+    response = _post_next_action(
+        authenticated_admin,
+        crm=crm,
+        data={"next_action": "Follow up", "expected_value_cents": "50000"},
+    )
     assert response.status_code == 303
     crm.update_pipeline_next_action.assert_called_once()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("expected_value_cents", "expected_parsed"),
+    [
+        ("", None),
+        ("0", 0),
+        ("50000", 50_000),
+        ("  75000  ", 75_000),
+    ],
+)
+def test_pipeline_next_action_valid_expected_value_updates(
+    authenticated_admin: dict[str, Any],
+    expected_value_cents: str,
+    expected_parsed: int | None,
+) -> None:
+    crm = MagicMock()
+    response = _post_next_action(
+        authenticated_admin,
+        crm=crm,
+        data={"expected_value_cents": expected_value_cents},
+    )
+    assert response.status_code == 303
+    update = crm.update_pipeline_next_action.call_args.kwargs["update"]
+    assert update.expected_value_cents == expected_parsed
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "expected_value_cents",
+    ["abc", "12.5", "-1", "2147483648", "999999999999999999999"],
+)
+def test_pipeline_next_action_invalid_expected_value_redisplays_form(
+    authenticated_admin: dict[str, Any],
+    expected_value_cents: str,
+) -> None:
+    crm = MagicMock()
+    crm.get_pipeline_company.return_value = _pipeline_company()
+    crm.list_pipeline_stage_history.return_value = []
+    crm._repos.activities.list_for_company.return_value = []
+    response = _post_next_action(
+        authenticated_admin,
+        crm=crm,
+        data={
+            "next_action": "Follow up",
+            "next_action_due_at": "2026-08-01T09:30",
+            "pipeline_owner": "Pat",
+            "expected_value_cents": expected_value_cents,
+        },
+    )
+    assert response.status_code == 400
+    assert EXPECTED_VALUE_CENTS_INVALID_MSG in response.text
+    assert 'id="expected_value_cents-error"' in response.text
+    assert 'aria-invalid="true"' in response.text
+    assert f'value="{expected_value_cents}"' in response.text
+    assert "Follow up" in response.text
+    assert "Pat" in response.text
+    assert 'value="2026-08-01T09:30"' in response.text
+    crm.update_pipeline_next_action.assert_not_called()
+
+
+@pytest.mark.unit
+def test_pipeline_next_action_repeated_invalid_submission_does_not_write(
+    authenticated_admin: dict[str, Any],
+) -> None:
+    crm = MagicMock()
+    crm.get_pipeline_company.return_value = _pipeline_company()
+    crm.list_pipeline_stage_history.return_value = []
+    crm._repos.activities.list_for_company.return_value = []
+    data = {"expected_value_cents": "abc"}
+    for _ in range(2):
+        response = _post_next_action(authenticated_admin, crm=crm, data=data)
+        assert response.status_code == 400
+        assert EXPECTED_VALUE_CENTS_INVALID_MSG in response.text
+    crm.update_pipeline_next_action.assert_not_called()
 
 
 @pytest.mark.unit
