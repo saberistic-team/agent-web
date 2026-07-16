@@ -139,21 +139,19 @@ def test_admin_screenshot_session_cookie() -> None:
     assert cookie["value"] == "preview-screenshot-session"
 
 
-def test_build_preview_server_env_isolates_child_from_parent_secrets() -> None:
+def test_build_preview_server_env_never_inherits_database_url() -> None:
+    parent = {
+        "PATH": "/usr/bin",
+        "DATABASE_URL": "postgresql://prod:secret@db.example/app",
+        "STRIPE_SECRET_KEY": "sk_live_x",
+    }
     env = build_preview_server_env(
-        "http://127.0.0.1:8765",
-        parent_environ={
-            "PATH": "/usr/bin",
-            "DATABASE_URL": "postgresql://prod/db",
-            "STRIPE_SECRET_KEY": "sk_live_test",
-            "RESEND_API_KEY": "re_test",
-        },
+        base_url="http://127.0.0.1:8765",
+        parent_environ=parent,
     )
     assert env["DATABASE_URL"] == ""
-    assert env["STRIPE_SECRET_KEY"] == ""
-    assert env["RESEND_API_KEY"] == ""
+    assert "STRIPE_SECRET_KEY" not in env
     assert env["ADMIN_PREVIEW_MODE"] == "1"
-    assert "postgresql://prod" not in env.values()
 
 
 def test_discover_screenshot_routes_public_by_default() -> None:

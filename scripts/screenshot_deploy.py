@@ -55,69 +55,40 @@ PREVIEW_ADMIN_LOGIN_LIMITER_SECRET = "preview-limiter-secret-32chars-minimum"
 PREVIEW_SESSION_TOKEN = "preview-screenshot-session"
 ADMIN_SESSION_COOKIE = "admin_session"
 
-# Parent shell vars copied into the preview child only when present.
-_PREVIEW_SERVER_ENV_ALLOWLIST = (
+# Parent env keys copied into the preview uvicorn child (never DATABASE_URL or provider secrets).
+_PREVIEW_SERVER_PRESERVE_KEYS: tuple[str, ...] = (
     "PATH",
     "HOME",
+    "USER",
     "LANG",
     "LC_ALL",
     "LC_CTYPE",
+    "TMPDIR",
+    "TEMP",
+    "TMP",
     "PYTHONPATH",
     "VIRTUAL_ENV",
+    "PYTHONUNBUFFERED",
+    "SSL_CERT_FILE",
+    "REQUESTS_CA_BUNDLE",
     "SYSTEMROOT",
-    "USERPROFILE",
     "WINDIR",
-    "TMPDIR",
-    "TMP",
-    "TEMP",
-    "PYTHONHOME",
-    "PYTHONNOUSERSITE",
 )
 
-# Explicitly cleared in the preview child — never inherit production secrets.
-_PREVIEW_SERVER_FORBIDDEN_ENV_VARS = (
-    "DATABASE_URL",
-    "TEST_DATABASE_URL",
-    "STRIPE_SECRET_KEY",
-    "STRIPE_WEBHOOK_SECRET",
-    "STRIPE_PUBLISHABLE_KEY",
-    "RESEND_API_KEY",
-    "PLAUSIBLE_API_KEY",
-    "PLAUSIBLE_DOMAIN",
-    "ANALYTICS_ENABLED",
-    "FIRST_PARTY_ANALYTICS_ENABLED",
+# Prefixes stripped from the child env even when present on the parent shell.
+_PREVIEW_SERVER_BLOCKED_PREFIXES: tuple[str, ...] = (
+    "DATABASE_",
+    "STRIPE_",
+    "RESEND_",
+    "PLAUSIBLE_",
+    "OPENAI_",
+    "GITHUB_",
+    "RENDER_",
+    "AWS_",
+    "AZURE_",
+    "GCP_",
+    "GOOGLE_",
 )
-
-
-def build_preview_server_env(
-    base_url: str,
-    *,
-    seed: str | None = None,
-    parent_environ: dict[str, str] | None = None,
-) -> dict[str, str]:
-    """Build a minimal, database-isolated environment for the preview server."""
-    parent = parent_environ if parent_environ is not None else os.environ
-    env: dict[str, str] = {}
-    for key in _PREVIEW_SERVER_ENV_ALLOWLIST:
-        if key in parent:
-            env[key] = parent[key]
-
-    env.update(
-        {
-            "BASE_URL": base_url,
-            "DATABASE_URL": "",
-            "ADMIN_PREVIEW_MODE": "1",
-            "ADMIN_USERNAME": PREVIEW_ADMIN_USERNAME,
-            "ADMIN_PASSWORD_HASH": PREVIEW_ADMIN_PASSWORD_HASH,
-            "ADMIN_SESSION_SECRET": PREVIEW_ADMIN_SESSION_SECRET,
-            "ADMIN_LOGIN_LIMITER_SECRET": PREVIEW_ADMIN_LOGIN_LIMITER_SECRET,
-        }
-    )
-    for key in _PREVIEW_SERVER_FORBIDDEN_ENV_VARS:
-        env[key] = ""
-    if seed:
-        env["ADMIN_PREVIEW_SEED"] = seed
-    return env
 
 # Static HTML files under site/ → public page routes.
 SITE_HTML_TO_ROUTE: dict[str, str] = {
@@ -779,6 +750,43 @@ def _wait_http_ok(url: str, *, attempts: int = 30) -> None:
     raise GitHubError(f"local preview not ready at {url}: {last}")
 
 
+def build_preview_server_env(
+    *,
+    base_url: str,
+    parent_environ: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Build a minimal child-process env for ADMIN_PREVIEW_MODE screenshot capture.
+
+    Never inherits ``DATABASE_URL`` or production provider credentials from the parent
+    shell. Only whitelisted process keys are preserved; preview admin auth uses
+    dedicated fixture secrets when the parent omits them.
+    """
+    source = parent_environ if parent_environ is not None else os.environ
+    env: dict[str, str] = {}
+    for key in _PREVIEW_SERVER_PRESERVE_KEYS:
+        value = source.get(key)
+        if not value:
+            continue
+        if any(key.startswith(prefix) for prefix in _PREVIEW_SERVER_BLOCKED_PREFIXES):
+            continue
+        env[key] = value
+    env.update(
+        {
+            "BASE_URL": base_url,
+            "DATABASE_URL": "",
+            "ADMIN_PREVIEW_MODE": "1",
+            "ADMIN_USERNAME": source.get("ADMIN_USERNAME") or PREVIEW_ADMIN_USERNAME,
+            "ADMIN_PASSWORD_HASH": source.get("ADMIN_PASSWORD_HASH")
+            or PREVIEW_ADMIN_PASSWORD_HASH,
+            "ADMIN_SESSION_SECRET": source.get("ADMIN_SESSION_SECRET")
+            or PREVIEW_ADMIN_SESSION_SECRET,
+            "ADMIN_LOGIN_LIMITER_SECRET": source.get("ADMIN_LOGIN_LIMITER_SECRET")
+            or PREVIEW_ADMIN_LOGIN_LIMITER_SECRET,
+        }
+    )
+    return env
+
+
 @contextmanager
 def local_preview_server(
     app_root: Path | None = None,
@@ -793,7 +801,7 @@ def local_preview_server(
             "(set COVERAGE_ROOT / PR_HEAD_ROOT to the checked-out PR head)"
         )
     base = f"http://127.0.0.1:{port}"
-    env = build_preview_server_env(base)
+    env = build_preview_server_env(base_url=base)
     proc = subprocess.Popen(
         [
             sys.executable,

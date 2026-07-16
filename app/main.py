@@ -30,12 +30,9 @@ from app.analytics_ingest import (
     IngestRejectReason,
     ingest_browser_event,
 )
-from app.admin_preview_guard import (
-    AdminPreviewConfigError,
-    AdminPreviewReadOnlyMiddleware,
-    validate_admin_preview_config,
-)
+from app.admin_preview_guard import AdminPreviewReadOnlyMiddleware
 from app.admin_security import AdminSecurityConfigError, validate_admin_security_config
+from app.preview_config import PreviewConfigError, validate_preview_config
 from app.client_source import admin_proxy_trust_summary, client_source_policy_summary, resolve_client_source
 from app.config import get_settings
 from app.models import BriefCreateRequest, BriefCreateResponse
@@ -245,14 +242,13 @@ def _send_paid_notifications(
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
-    if settings.admin_preview_enabled:
+    if settings.admin_preview_mode:
         try:
-            validate_admin_preview_config(settings)
-        except AdminPreviewConfigError:
+            validate_preview_config(settings)
+        except PreviewConfigError:
             logger.exception("Admin preview configuration is invalid")
             raise
-        logger.info("admin preview mode active — database and mutations disabled")
-    elif settings.database_configured:
+    if settings.database_configured and not settings.admin_preview_mode:
         try:
             validate_admin_security_config(settings)
         except AdminSecurityConfigError:
@@ -260,7 +256,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             raise
         db.init_db(settings.database_url)
         logger.info("database schema ready")
-    else:
+    elif not settings.database_configured:
         logger.warning("DATABASE_URL not set — brief persistence disabled")
     yield
 

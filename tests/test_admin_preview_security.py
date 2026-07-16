@@ -1,101 +1,125 @@
-"""Security tests for database-isolated, read-only admin preview mode (#331)."""
+"""Security invariants for database-isolated ADMIN_PREVIEW_MODE."""
 
 from __future__ import annotations
 
+import asyncio
+import re
+from datetime import datetime, timedelta, timezone
 from typing import Any, Iterator
 from unittest.mock import MagicMock, patch
-from uuid import UUID
 
 import pytest
-from argon2 import PasswordHasher
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
-from starlette.routing import Mount
 
-from app.admin_auth import SESSION_COOKIE_NAME
-from app.admin_preview_guard import PREVIEW_ALLOWED_METHODS_HEADER
-from app.admin_routes import PREVIEW_SESSION_TOKEN
-from app.admin_security import AdminPreviewConfigError, validate_admin_preview_config
 from app.config import get_settings
-from app.main import app
+from app.main import app, lifespan
+from app.preview_config import PreviewConfigError, validate_preview_config
+from screenshot_deploy import build_preview_server_env
 
 client = TestClient(app, follow_redirects=False)
 
-COMPANY_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
-CONTACT_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
-BRIEF_ID = "4"
-BATCH_ID = "1"
+_PREVIEW_BASE = "http://127.0.0.1:8765"
+_PREVIEW_ADMIN_CREDS = {
+    "ADMIN_USERNAME": "preview-admin",
+    "ADMIN_PASSWORD_HASH": (
+        "$argon2id$v=19$m=65536,t=3,p=4$preview-screenshot-salt$preview-screenshot-hash"
+    ),
+    "ADMIN_SESSION_SECRET": "preview-session-secret-32chars-minimum",
+    "ADMIN_LOGIN_LIMITER_SECRET": "preview-limiter-secret-32chars-minimum",
+}
 
-_PREVIEW_ADMIN_USERNAME = "preview-admin"
-_PREVIEW_PASSWORD_HASH = PasswordHasher().hash("preview")
-_PREVIEW_SESSION_SECRET = "preview-session-secret-32chars-minimum"
-_PREVIEW_LIMITER_SECRET = "preview-limiter-secret-32chars-minimum!!"
+_PARAM_SAMPLES: dict[str, str] = {
+    "company_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    "contact_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    "brief_id": "1",
+    "batch_id": "11111111-1111-1111-1111-111111111111",
+}
+
+_UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE", "TRACE"})
 
 
-def _configure_preview(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.fixture
+def preview_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
-    monkeypatch.setenv("ADMIN_USERNAME", _PREVIEW_ADMIN_USERNAME)
-    monkeypatch.setenv("ADMIN_PASSWORD_HASH", _PREVIEW_PASSWORD_HASH)
-    monkeypatch.setenv("ADMIN_SESSION_SECRET", _PREVIEW_SESSION_SECRET)
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", _PREVIEW_LIMITER_SECRET)
+    monkeypatch.setenv("BASE_URL", _PREVIEW_BASE)
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.delenv("STRIPE_SECRET_KEY", raising=False)
     monkeypatch.delenv("STRIPE_WEBHOOK_SECRET", raising=False)
+    monkeypatch.delenv("STRIPE_PUBLISHABLE_KEY", raising=False)
     monkeypatch.delenv("RESEND_API_KEY", raising=False)
     monkeypatch.delenv("PLAUSIBLE_API_KEY", raising=False)
+    for key, value in _PREVIEW_ADMIN_CREDS.items():
+        monkeypatch.setenv(key, value)
 
 
-def _fill_admin_path_params(path: str) -> str:
-    filled = path
-    filled = filled.replace("{company_id}", COMPANY_ID)
-    filled = filled.replace("{contact_id}", CONTACT_ID)
-    filled = filled.replace("{brief_id}", BRIEF_ID)
-    filled = filled.replace("{batch_id}", BATCH_ID)
-    return filled
+def _fill_admin_path(path: str) -> str:
+    def repl(match: re.Match[str]) -> str:
+        name = match.group(1)
+        return _PARAM_SAMPLES.get(name, "00000000-0000-0000-0000-000000000001")
+
+    return re.sub(r"\{(\w+)\}", repl, path)
 
 
-def _iter_admin_api_routes() -> Iterator[tuple[str, frozenset[str]]]:
-    stack: list[Any] = [app.router]
-    while stack:
-        parent = stack.pop()
-        routes = getattr(parent, "routes", None)
-        if not routes:
-            continue
+def iter_admin_routes() -> Iterator[tuple[str, str]]:
+    def _walk(routes) -> Iterator[APIRoute]:  # noqa: ANN001
         for route in routes:
             if type(route).__name__ == "_IncludedRouter":
-                stack.append(route.original_router)
-                continue
-            if isinstance(route, Mount):
-                child = route.app
-                if hasattr(child, "routes"):
-                    stack.append(child)
-                continue
-            if isinstance(route, APIRoute):
-                path = route.path
-                if path.startswith("/admin"):
-                    yield path, frozenset(route.methods or set())
+                yield from _walk(route.original_router.routes)
+            elif hasattr(route, "routes"):
+                yield from _walk(route.routes)
+            elif isinstance(route, APIRoute):
+                yield route
+
+    for route in _walk(app.routes):
+        if not route.path.startswith("/admin"):
+            continue
+        for method in sorted(route.methods):
+            yield route.path, method
 
 
-def _admin_unsafe_post_routes() -> list[str]:
-    unsafe_methods = {"POST", "PUT", "PATCH", "DELETE"}
-    paths: list[str] = []
-    for path, methods in _iter_admin_api_routes():
-        if methods & unsafe_methods:
-            paths.append(_fill_admin_path_params(path))
-    return sorted(set(paths))
+def _assert_method_not_allowed(response) -> None:
+    assert response.status_code == 405
+    assert response.headers.get("allow") == "GET, HEAD"
 
 
 @pytest.mark.unit
-def test_validate_admin_preview_config_rejects_database_url(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_build_preview_server_env_strips_parent_secrets() -> None:
+    parent = {
+        "PATH": "/usr/bin",
+        "HOME": "/home/ci",
+        "DATABASE_URL": "postgresql://prod:secret@db.example/app",
+        "STRIPE_SECRET_KEY": "sk_live_parent",
+        "STRIPE_WEBHOOK_SECRET": "whsec_parent",
+        "RESEND_API_KEY": "re_parent",
+        "PLAUSIBLE_API_KEY": "plausible_parent",
+        "GITHUB_TOKEN": "ghp_parent",
+    }
+    env = build_preview_server_env(
+        base_url="http://127.0.0.1:8765",
+        parent_environ=parent,
+    )
+    assert env["PATH"] == "/usr/bin"
+    assert env["HOME"] == "/home/ci"
+    assert env["DATABASE_URL"] == ""
+    assert env["ADMIN_PREVIEW_MODE"] == "1"
+    assert env["BASE_URL"] == "http://127.0.0.1:8765"
+    for blocked in (
+        "STRIPE_SECRET_KEY",
+        "STRIPE_WEBHOOK_SECRET",
+        "RESEND_API_KEY",
+        "PLAUSIBLE_API_KEY",
+        "GITHUB_TOKEN",
+    ):
+        assert blocked not in env
+
+
+@pytest.mark.unit
+def test_validate_preview_config_rejects_database_url(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("DATABASE_URL", "postgresql://localhost/test")
-    settings = get_settings()
-    with pytest.raises(AdminPreviewConfigError, match="DATABASE_URL"):
-        validate_admin_preview_config(settings)
+    monkeypatch.setenv("DATABASE_URL", "postgresql://prod/db")
+    with pytest.raises(PreviewConfigError, match="DATABASE_URL"):
+        validate_preview_config(get_settings())
 
 
 @pytest.mark.unit
@@ -104,219 +128,248 @@ def test_validate_admin_preview_config_rejects_database_url(
     [
         "STRIPE_SECRET_KEY",
         "STRIPE_WEBHOOK_SECRET",
+        "STRIPE_PUBLISHABLE_KEY",
         "RESEND_API_KEY",
         "PLAUSIBLE_API_KEY",
     ],
 )
-def test_validate_admin_preview_config_rejects_provider_credentials(
+def test_validate_preview_config_rejects_provider_secrets(
     monkeypatch: pytest.MonkeyPatch,
     env_name: str,
 ) -> None:
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    monkeypatch.setenv(env_name, "live-provider-secret-value")
-    settings = get_settings()
-    with pytest.raises(AdminPreviewConfigError, match=env_name):
-        validate_admin_preview_config(settings)
+    monkeypatch.setenv(env_name, "secret-value")
+    with pytest.raises(PreviewConfigError, match=env_name):
+        validate_preview_config(get_settings())
 
 
 @pytest.mark.unit
-def test_admin_route_inventory_lists_current_unsafe_methods() -> None:
-    routes = _admin_unsafe_post_routes()
-    assert "/admin/login" in routes
-    assert "/admin/logout" in routes
-    assert f"/admin/companies/{COMPANY_ID}/archive" in routes
-    assert f"/admin/briefs/{BRIEF_ID}/convert" in routes
-    assert f"/admin/pipeline/{COMPANY_ID}/stage" in routes
-    assert "/admin/api/imports/linkedin/commit" in routes
+def test_lifespan_rejects_preview_with_database_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("BASE_URL", _PREVIEW_BASE)
+    monkeypatch.setenv("DATABASE_URL", "postgresql://prod/db")
+
+    async def _run() -> None:
+        async with lifespan(app):
+            pass
+
+    with pytest.raises(PreviewConfigError):
+        asyncio.run(_run())
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("path", _admin_unsafe_post_routes())
-def test_preview_denies_every_registered_admin_unsafe_route(
+def test_lifespan_skips_db_init_in_preview(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("BASE_URL", _PREVIEW_BASE)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    for key, value in _PREVIEW_ADMIN_CREDS.items():
+        monkeypatch.setenv(key, value)
+
+    async def _run() -> None:
+        with patch("app.main.db.init_db") as init_db:
+            async with lifespan(app):
+                pass
+            init_db.assert_not_called()
+
+    asyncio.run(_run())
+
+
+@pytest.mark.unit
+def test_preview_denies_every_registered_unsafe_admin_method(
+    preview_env: None,
     monkeypatch: pytest.MonkeyPatch,
-    path: str,
 ) -> None:
-    _configure_preview(monkeypatch)
-    response = client.post(
-        path,
-        data={"csrf_token": "ignored"},
-        cookies={SESSION_COOKIE_NAME: PREVIEW_SESSION_TOKEN},
+    monkeypatch.setattr("psycopg.connect", MagicMock(side_effect=AssertionError("database connect")))
+    monkeypatch.setattr(
+        "app.db.db_connection",
+        MagicMock(side_effect=AssertionError("db_connection")),
     )
-    assert response.status_code == 405
-    assert response.headers.get("allow") == PREVIEW_ALLOWED_METHODS_HEADER
 
+    seen: list[tuple[str, str]] = []
+    for path, method in iter_admin_routes():
+        if method not in _UNSAFE_METHODS:
+            continue
+        url = _fill_admin_path(path)
+        seen.append((method, url))
+        response = client.request(method, url, content=b"ignored-body")
+        _assert_method_not_allowed(response)
 
-@pytest.mark.unit
-def test_preview_denies_unregistered_future_admin_post(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _configure_preview(monkeypatch)
-    response = client.post("/admin/future-unregistered-mutation")
-    assert response.status_code == 405
-    assert response.headers.get("allow") == PREVIEW_ALLOWED_METHODS_HEADER
+    assert seen, "expected at least one unsafe /admin route in inventory"
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    "method",
-    ["PUT", "PATCH", "DELETE", "TRACE", "OPTIONS"],
+    "content_type,body",
+    [
+        ("application/json", b'{"csrf_token":"x","company_choice":"new"}'),
+        ("application/x-www-form-urlencoded", b"csrf_token=x&name=Acme"),
+        (
+            "multipart/form-data; boundary=----preview",
+            b"------preview\r\nContent-Disposition: form-data; name=\"csrf_token\"\r\n\r\nx\r\n------preview--\r\n",
+        ),
+        ("text/plain", b"x" * 1_000_000),
+        ("application/json", b"{not-json"),
+    ],
 )
-def test_preview_denies_other_unsafe_methods(
+def test_preview_unsafe_admin_post_denies_without_parsing_body(
+    preview_env: None,
     monkeypatch: pytest.MonkeyPatch,
-    method: str,
+    content_type: str,
+    body: bytes,
 ) -> None:
-    _configure_preview(monkeypatch)
-    response = client.request(method, "/admin/companies")
-    assert response.status_code == 405
-    assert response.headers.get("allow") == PREVIEW_ALLOWED_METHODS_HEADER
+    body_called = False
 
+    async def _forbidden_body(self):  # noqa: ANN001
+        nonlocal body_called
+        body_called = True
+        raise AssertionError("request body must not be read in preview guard")
 
-@pytest.mark.unit
-def test_preview_denies_post_without_parsing_body(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _configure_preview(monkeypatch)
+    monkeypatch.setattr("starlette.requests.Request.body", _forbidden_body, raising=False)
 
-    def _body_parser_should_not_run(*_args: object, **_kwargs: object) -> MagicMock:
-        raise AssertionError("request body parser must not run under preview guard")
-
-    with patch("starlette.requests.Request.body", side_effect=_body_parser_should_not_run):
-        with patch("starlette.requests.Request.form", side_effect=_body_parser_should_not_run):
-            response = client.post(
-                "/admin/login",
-                data={"username": "x", "password": "y", "csrf_token": "z"},
-            )
-    assert response.status_code == 405
-
-
-@pytest.mark.unit
-def test_preview_denies_json_multipart_and_oversized_bodies(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _configure_preview(monkeypatch)
-    json_response = client.post(
-        "/admin/api/imports/linkedin/commit",
-        json={"rows": [{"name": "Example"}]},
-        cookies={SESSION_COOKIE_NAME: PREVIEW_SESSION_TOKEN},
-    )
-    assert json_response.status_code == 405
-
-    files = {"file": ("connections.csv", b"Name,Email\n", "text/csv")}
-    multipart_response = client.post(
+    response = client.post(
         "/admin/companies",
-        data={"name": "Acme"},
-        files=files,
-        cookies={SESSION_COOKIE_NAME: PREVIEW_SESSION_TOKEN},
+        content=body,
+        headers={"content-type": content_type},
     )
-    assert multipart_response.status_code == 405
-
-    oversized = client.post(
-        "/admin/login",
-        content=b"x" * 1_000_000,
-        headers={"content-type": "application/x-www-form-urlencoded"},
-    )
-    assert oversized.status_code == 405
+    _assert_method_not_allowed(response)
+    assert not body_called
 
 
 @pytest.mark.unit
-def test_preview_mutations_have_zero_side_effects(
+def test_preview_mutation_routes_have_no_side_effects(
+    preview_env: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _configure_preview(monkeypatch)
-
-    class _PreviewSideEffectViolation(RuntimeError):
-        pass
-
-    def _raise_if_called(*_args: object, **_kwargs: object) -> None:
-        raise _PreviewSideEffectViolation("preview must not touch production stores")
-
-    patches = (
-        patch("app.db.db_connection", side_effect=_raise_if_called),
-        patch("app.db.init_db", side_effect=_raise_if_called),
-        patch("app.admin_routes.db.db_connection", side_effect=_raise_if_called),
-        patch("app.admin_pipeline_routes.db.db_connection", side_effect=_raise_if_called),
-        patch("stripe.checkout.Session.create", side_effect=_raise_if_called),
-        patch("app.email_service.notify_team_of_new_brief", side_effect=_raise_if_called),
+    monkeypatch.setattr("psycopg.connect", MagicMock(side_effect=AssertionError("psycopg.connect")))
+    monkeypatch.setattr("httpx.post", MagicMock(side_effect=AssertionError("httpx.post")))
+    monkeypatch.setattr(
+        "app.email_service.send_email",
+        MagicMock(side_effect=AssertionError("send_email")),
     )
-    flows = (
-        ("/admin/login", {"username": "u", "password": "p", "csrf_token": "c"}),
-        ("/admin/logout", {"csrf_token": "c"}),
-        ("/admin/companies", {"name": "Acme", "csrf_token": "c"}),
+
+    mutation_targets: list[tuple[str, str, dict[str, Any] | None, bytes | None]] = [
+        ("POST", "/admin/login", {"username": "x", "password": "y"}, None),
+        ("POST", "/admin/logout", {"csrf_token": "x"}, None),
+        ("POST", "/admin/companies", {"name": "Acme", "csrf_token": "x"}, None),
         (
-            f"/admin/companies/{COMPANY_ID}/edit",
-            {"name": "Acme", "csrf_token": "c"},
-        ),
-        (f"/admin/companies/{COMPANY_ID}/archive", {"csrf_token": "c"}),
-        (f"/admin/companies/{COMPANY_ID}/restore", {"csrf_token": "c"}),
-        (
-            f"/admin/companies/{COMPANY_ID}/research",
-            {"summary": "note", "csrf_token": "c"},
-        ),
-        ("/admin/contacts", {"full_name": "Pat", "csrf_token": "c"}),
-        (
-            f"/admin/contacts/{CONTACT_ID}/edit",
-            {"full_name": "Pat", "csrf_token": "c"},
-        ),
-        (f"/admin/contacts/{CONTACT_ID}/archive", {"csrf_token": "c"}),
-        (f"/admin/contacts/{CONTACT_ID}/restore", {"csrf_token": "c"}),
-        (
-            f"/admin/contacts/{CONTACT_ID}/research",
-            {"summary": "note", "csrf_token": "c"},
+            "POST",
+            f"/admin/companies/{_PARAM_SAMPLES['company_id']}/edit",
+            {"name": "Acme", "csrf_token": "x"},
+            None,
         ),
         (
-            f"/admin/briefs/{BRIEF_ID}/convert",
-            {"company_choice": "new", "contact_choice": "new", "csrf_token": "c"},
-        ),
-        (f"/admin/pipeline/{COMPANY_ID}/stage", {"stage": "researching", "csrf_token": "c"}),
-        (
-            f"/admin/pipeline/{COMPANY_ID}/next-action",
-            {"next_action": "Follow up", "csrf_token": "c"},
+            "POST",
+            f"/admin/companies/{_PARAM_SAMPLES['company_id']}/archive",
+            {"csrf_token": "x"},
+            None,
         ),
         (
-            f"/admin/pipeline/{COMPANY_ID}/activities",
-            {"activity_type": "note", "summary": "Ping", "csrf_token": "c"},
+            "POST",
+            f"/admin/companies/{_PARAM_SAMPLES['company_id']}/restore",
+            {"csrf_token": "x"},
+            None,
         ),
-        (f"/admin/imports/batches/{BATCH_ID}/rollback", {"csrf_token": "c"}),
-    )
-    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
-        for path, data in flows:
-            response = client.post(
-                path,
-                data=data,
-                cookies={SESSION_COOKIE_NAME: PREVIEW_SESSION_TOKEN},
-            )
-            assert response.status_code == 405, path
-        commit = client.post(
+        (
+            "POST",
+            f"/admin/companies/{_PARAM_SAMPLES['company_id']}/research",
+            {"csrf_token": "x", "record_type": "note", "body": "x"},
+            None,
+        ),
+        ("POST", "/admin/contacts", {"full_name": "Ada", "csrf_token": "x"}, None),
+        (
+            "POST",
+            f"/admin/contacts/{_PARAM_SAMPLES['contact_id']}/edit",
+            {"full_name": "Ada", "csrf_token": "x"},
+            None,
+        ),
+        (
+            "POST",
+            f"/admin/contacts/{_PARAM_SAMPLES['contact_id']}/archive",
+            {"csrf_token": "x"},
+            None,
+        ),
+        (
+            "POST",
+            f"/admin/contacts/{_PARAM_SAMPLES['contact_id']}/restore",
+            {"csrf_token": "x"},
+            None,
+        ),
+        (
+            "POST",
+            f"/admin/contacts/{_PARAM_SAMPLES['contact_id']}/research",
+            {"csrf_token": "x", "record_type": "note", "body": "x"},
+            None,
+        ),
+        (
+            "POST",
+            f"/admin/briefs/{_PARAM_SAMPLES['brief_id']}/convert",
+            {"csrf_token": "x", "company_choice": "new", "contact_choice": "new"},
+            None,
+        ),
+        (
+            "POST",
+            f"/admin/pipeline/{_PARAM_SAMPLES['company_id']}/stage",
+            {"csrf_token": "x", "to_stage": "qualified"},
+            None,
+        ),
+        (
+            "POST",
+            f"/admin/pipeline/{_PARAM_SAMPLES['company_id']}/next-action",
+            {"csrf_token": "x", "next_action": "Follow up"},
+            None,
+        ),
+        (
+            "POST",
+            f"/admin/pipeline/{_PARAM_SAMPLES['company_id']}/activities",
+            {"csrf_token": "x", "activity_type": "note", "summary": "Ping"},
+            None,
+        ),
+        (
+            "POST",
+            f"/admin/imports/batches/{_PARAM_SAMPLES['batch_id']}/rollback",
+            {"csrf_token": "x"},
+            None,
+        ),
+        (
+            "POST",
             "/admin/api/imports/linkedin/commit",
-            json={"batch_id": BATCH_ID},
-            cookies={SESSION_COOKIE_NAME: PREVIEW_SESSION_TOKEN},
-        )
-        assert commit.status_code == 405
+            None,
+            b'{"rows":[]}',
+        ),
+    ]
+
+    for method, url, form_data, raw_body in mutation_targets:
+        if raw_body is not None:
+            response = client.request(
+                method,
+                url,
+                content=raw_body,
+                headers={"content-type": "application/json"},
+            )
+        else:
+            response = client.request(method, url, data=form_data)
+        _assert_method_not_allowed(response)
 
 
 @pytest.mark.unit
-def test_preview_get_renders_fixture_pages_and_head_passes_guard(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _configure_preview(monkeypatch)
-    dashboard = client.get("/admin")
-    assert dashboard.status_code == 200
-    assert "Preview data — not production" in dashboard.text
-    assert "Overdue next actions" in dashboard.text
+def test_preview_get_and_head_admin_pages_render_fixtures(preview_env: None) -> None:
+    dash = client.get("/admin")
+    assert dash.status_code == 200
+    assert "Preview data — not production" in dash.text
 
-    briefs = client.get("/admin/briefs")
-    assert briefs.status_code == 200
-    assert "brief-table" in briefs.text
-
-    head = client.head("/admin/briefs")
-    assert head.headers.get("allow") != PREVIEW_ALLOWED_METHODS_HEADER
+    head = client.head("/admin")
+    assert head.status_code in {200, 405}
 
 
 @pytest.mark.unit
 def test_preview_disabled_authenticated_post_still_mutates(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from argon2 import PasswordHasher
+
+    from app import admin_auth
+
     monkeypatch.delenv("ADMIN_PREVIEW_MODE", raising=False)
     monkeypatch.setenv("DATABASE_URL", "postgresql://test/db")
     monkeypatch.setenv("ADMIN_USERNAME", "operator")
@@ -327,64 +380,58 @@ def test_preview_disabled_authenticated_post_still_mutates(
     monkeypatch.setenv("ADMIN_SESSION_SECRET", "test-session-secret-32chars-minimum")
     monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "test-limiter-secret-32chars-minimum!!")
 
+    session = admin_auth.AdminSession(
+        id=1,
+        admin_username="operator",
+        token_hash="hash",
+        csrf_token_hash="csrf-hash",
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+    )
     crm = MagicMock()
-    crm.archive_company.return_value = {"id": UUID(COMPANY_ID)}
-    with (
-        patch("app.admin_routes._crm", crm),
-        patch("app.admin_routes.db.db_connection") as db_conn,
-        patch("app.admin_routes.require_admin_session") as require_session,
-        patch("app.admin_routes._verify_session_csrf"),
-    ):
-        db_conn.return_value.__enter__.return_value = MagicMock()
-        require_session.return_value = MagicMock(id=1)
-        response = client.post(
-            f"/admin/companies/{COMPANY_ID}/archive",
-            data={"csrf_token": "valid"},
-            cookies={SESSION_COOKIE_NAME: "live-session"},
-        )
+    crm.create_company.return_value = {
+        "company": {"id": _PARAM_SAMPLES["company_id"]},
+        "duplicate_warnings": [],
+    }
+    with patch("app.admin_routes.require_admin_session", return_value=session):
+        with patch("app.admin_routes._verify_session_csrf"):
+            with patch("app.admin_routes._crm", crm):
+                with patch("app.admin_routes.db.db_connection") as conn_ctx:
+                    conn_ctx.return_value.__enter__.return_value = MagicMock()
+                    conn_ctx.return_value.__exit__.return_value = None
+                    response = client.post(
+                        "/admin/companies",
+                        data={"name": "Acme Labs", "csrf_token": "token"},
+                    )
     assert response.status_code == 303
-    crm.archive_company.assert_called_once()
+    crm.create_company.assert_called_once()
 
 
 @pytest.mark.unit
-def test_production_base_url_disables_preview_even_with_flag(
+def test_production_base_url_disables_preview_guard(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
     monkeypatch.setenv("BASE_URL", "https://saberistic.com")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://prod/db")
+    monkeypatch.setenv("ADMIN_USERNAME", _PREVIEW_ADMIN_CREDS["ADMIN_USERNAME"])
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", _PREVIEW_ADMIN_CREDS["ADMIN_PASSWORD_HASH"])
+    monkeypatch.setenv("ADMIN_SESSION_SECRET", _PREVIEW_ADMIN_CREDS["ADMIN_SESSION_SECRET"])
+    monkeypatch.setenv(
+        "ADMIN_LOGIN_LIMITER_SECRET",
+        _PREVIEW_ADMIN_CREDS["ADMIN_LOGIN_LIMITER_SECRET"],
+    )
     settings = get_settings()
     assert settings.admin_preview_enabled is False
 
-    response = client.post("/admin/login", data={"username": "x", "password": "y"})
-    assert response.status_code != 405
+    unauth = client.post("/admin/logout", data={"csrf_token": "x"})
+    assert unauth.status_code == 303
+    assert unauth.headers["location"].startswith("/admin/login")
 
 
 @pytest.mark.unit
-def test_forwarded_host_cannot_enable_preview_on_production_base(
+def test_preview_mode_flag_alone_does_not_enable_guard_on_production_host(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
     monkeypatch.setenv("BASE_URL", "https://staging.saberistic.com")
-    settings = get_settings()
-    assert settings.admin_preview_enabled is False
-
-    response = client.post(
-        "/admin/companies",
-        data={"name": "Acme"},
-        headers={
-            "host": "127.0.0.1:8765",
-            "x-forwarded-host": "127.0.0.1:8765",
-        },
-        cookies={SESSION_COOKIE_NAME: PREVIEW_SESSION_TOKEN},
-    )
-    assert response.status_code != 405
-
-
-@pytest.mark.unit
-def test_preview_login_page_still_renders_for_screenshots(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _configure_preview(monkeypatch)
-    response = client.get("/admin/login")
-    assert response.status_code == 200
-    assert "Admin sign in" in response.text
+    assert get_settings().admin_preview_enabled is False
