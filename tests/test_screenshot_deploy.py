@@ -225,6 +225,11 @@ def test_admin_screenshot_paths_contain_crm_detail_editor_targets() -> None:
     assert "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/edit" in paths
     assert "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbc/edit" in paths
     assert "/admin/pipeline/11111111-1111-1111-1111-111111111111" in paths
+    assert (
+        "/admin/pipeline/11111111-1111-1111-1111-111111111111"
+        "?error=validation&focus=expected_value_cents"
+        in paths
+    )
 
 
 def test_screenshot_basename_encodes_multipart_query() -> None:
@@ -235,6 +240,15 @@ def test_screenshot_basename_encodes_multipart_query() -> None:
     ) == (
         "branch-admin-companies-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa-edit"
         "-error-validation-focus-name.png"
+    )
+    assert screenshot_basename(
+        "branch",
+        "/admin/pipeline/11111111-1111-1111-1111-111111111111"
+        "?error=validation&focus=expected_value_cents",
+        "desktop",
+    ) == (
+        "branch-admin-pipeline-11111111-1111-1111-1111-111111111111"
+        "-error-validation-focus-expected_value_cents.png"
     )
 
 
@@ -247,6 +261,12 @@ def test_focus_field_from_route_parses_query() -> None:
             "/admin/companies/x/edit?error=validation&focus=name"
         )
         == "name"
+    )
+    assert (
+        _focus_field_from_route(
+            "/admin/pipeline/x?error=validation&focus=expected_value_cents"
+        )
+        == "expected_value_cents"
     )
     assert _focus_field_from_route("/admin/companies/x/edit") is None
 

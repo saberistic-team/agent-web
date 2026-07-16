@@ -13,7 +13,12 @@ def _esc(value: object) -> str:
     return html.escape("" if value is None else str(value), quote=True)
 
 
-def render_imports_page(*, admin_username: str, csrf_token: str) -> str:
+def render_imports_page(
+    *,
+    admin_username: str,
+    csrf_token: str,
+    csp_nonce: str,
+) -> str:
     """Return the authenticated admin imports page (ZIP stays in-browser)."""
     limits_json = json.dumps(export_limits_for_client())
     main = f"""<section class="admin-section linkedin-import" aria-labelledby="imports-title">
@@ -75,7 +80,7 @@ def render_imports_page(*, admin_username: str, csrf_token: str) -> str:
       <div id="linkedin-import-status" class="linkedin-import-status" role="status" aria-live="polite"></div>
       <div id="linkedin-import-preview" class="linkedin-import-preview" hidden></div>
 
-      <script type="application/json" id="linkedin-import-limits">{limits_json}</script>
+      <script type="application/json" id="linkedin-import-limits" nonce="{html.escape(csp_nonce, quote=True)}">{limits_json}</script>
       <script src="/assets/linkedin-import.js" defer></script>
     </section>"""
     return render_admin_shell(

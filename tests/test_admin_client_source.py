@@ -41,8 +41,6 @@ def _settings(
         from_email=base.from_email,
         notify_email=base.notify_email,
         base_url=base.base_url,
-        plausible_domain=base.plausible_domain,
-        plausible_api_key=base.plausible_api_key,
         analytics_environment=base.analytics_environment,
         admin_username=base.admin_username,
         admin_password_hash=base.admin_password_hash,
