@@ -12,6 +12,8 @@ from freeze_shipped_migrations import (
     build_freeze_files_at,
     commit_message,
     format_frozen_block,
+    freeze_branch_name,
+    freeze_pr_body,
     load_definitions,
     maybe_commit_freeze,
     missing_frozen_digests,
@@ -93,6 +95,19 @@ def test_apply_freeze_preserves_existing_digest() -> None:
 
 
 @pytest.mark.unit
+def test_freeze_branch_name_is_deterministic() -> None:
+    assert freeze_branch_name(["019", "020"]) == "deploy/freeze-019-020"
+
+
+@pytest.mark.unit
+def test_freeze_pr_body_mentions_versions_and_auto_merge() -> None:
+    body = freeze_pr_body(["019"])
+    assert "019" in body
+    assert "auto-merge" in body.lower()
+    assert "WORKFLOW_GOVERNANCE" in body
+
+
+@pytest.mark.unit
 def test_maybe_commit_freeze_noop_when_complete(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "freeze_shipped_migrations.missing_frozen_digests",
@@ -104,10 +119,7 @@ def test_maybe_commit_freeze_noop_when_complete(monkeypatch: pytest.MonkeyPatch)
     put.assert_not_called()
 
 
-@pytest.mark.unit
-def test_maybe_commit_freeze_pushes_when_missing(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def _write_definitions_with_pending_migration(tmp_path: Path) -> tuple[str, str]:
     import hashlib
 
     definitions = tmp_path / "app" / "migrations"
@@ -142,16 +154,75 @@ MIGRATIONS = (
 ''',
         encoding="utf-8",
     )
+    return digest_001, digest_002
 
-    with patch("github_api.put_files", return_value="newsha") as put:
+
+@pytest.mark.unit
+def test_maybe_commit_freeze_opens_pr_with_auto_merge_when_missing(
+    tmp_path: Path,
+) -> None:
+    _digest_001, digest_002 = _write_definitions_with_pending_migration(tmp_path)
+
+    with (
+        patch("github_api.find_open_pr_for_branch", return_value=None) as find_pr,
+        patch("github_api.create_branch") as create_branch,
+        patch("github_api.put_files", return_value="newsha") as put,
+        patch(
+            "github_api.open_pull_request",
+            return_value={"number": 7, "node_id": "PR_kw7", "html_url": "https://x/7"},
+        ) as open_pr,
+        patch("github_api.enable_auto_merge") as auto_merge,
+    ):
         result = maybe_commit_freeze("o/r", "main", root=tmp_path)
+
     assert result["frozen"] == ["002"]
     assert result["sha"] == "newsha"
     assert result["message"] == commit_message(["002"])
+    assert result["pr_number"] == 7
+    assert result["pr_url"] == "https://x/7"
+
+    find_pr.assert_called_once_with("o/r", "deploy/freeze-002")
+    create_branch.assert_called_once_with("o/r", "deploy/freeze-002", base_branch="main")
+
     put.assert_called_once()
-    args = put.call_args.args
-    assert args[0] == "o/r"
-    assert args[1] == "main"
-    assert args[3] == commit_message(["002"])
-    written = args[2][0][1].decode("utf-8")
+    put_args = put.call_args.args
+    assert put_args[0] == "o/r"
+    assert put_args[1] == "deploy/freeze-002"
+    assert put_args[3] == commit_message(["002"])
+    written = put_args[2][0][1].decode("utf-8")
     assert digest_002 in written
+
+    open_pr.assert_called_once_with(
+        "o/r",
+        head="deploy/freeze-002",
+        base="main",
+        title=commit_message(["002"]),
+        body=freeze_pr_body(["002"]),
+    )
+    auto_merge.assert_called_once_with("o/r", "PR_kw7")
+
+
+@pytest.mark.unit
+def test_maybe_commit_freeze_reuses_existing_open_pr(tmp_path: Path) -> None:
+    _write_definitions_with_pending_migration(tmp_path)
+
+    with (
+        patch(
+            "github_api.find_open_pr_for_branch",
+            return_value={"number": 9, "html_url": "https://x/9"},
+        ),
+        patch("github_api.create_branch") as create_branch,
+        patch("github_api.put_files") as put,
+        patch("github_api.open_pull_request") as open_pr,
+        patch("github_api.enable_auto_merge") as auto_merge,
+    ):
+        result = maybe_commit_freeze("o/r", "main", root=tmp_path)
+
+    assert result["frozen"] == ["002"]
+    assert result["sha"] is None
+    assert result["pr_number"] == 9
+    assert result["pr_url"] == "https://x/9"
+    create_branch.assert_not_called()
+    put.assert_not_called()
+    open_pr.assert_not_called()
+    auto_merge.assert_not_called()
