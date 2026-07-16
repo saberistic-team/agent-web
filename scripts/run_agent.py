@@ -26,6 +26,7 @@ from github_api import (
     api,
     delete_label,
     list_issue_comments,
+    list_pr_files,
     post_issue_comment,
     split_repo,
 )
@@ -1170,7 +1171,10 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
             hard_fail_reasons.append(f"security check failed: {run.get('name')}")
 
     # Missing tests / stub-only / scaffold-sync heuristics
-    files = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}/files") or []
+    # Use the paginated helper (not raw `api()`): the default PR-files page
+    # is only 30 items, which silently dropped tests/ on PRs with >30 changed
+    # files and caused a false "no test file updates" hard-fail loop (#206).
+    files = list_pr_files(repo, pr_number)
     filenames = [f["filename"] for f in files]
     only_worklog = filenames and all(
         name.startswith(".agent/worklogs/") or name.endswith(".md")
