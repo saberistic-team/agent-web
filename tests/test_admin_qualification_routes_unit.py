@@ -270,3 +270,76 @@ def test_save_working_list_preview_redirects(
     )
     assert response.status_code == 303
     assert response.headers["location"] == "/admin/targets?saved=1"
+
+
+@pytest.mark.unit
+def test_targets_list_handles_database_errors(authenticated_admin: dict[str, Any]) -> None:
+    crm = MagicMock()
+    crm.list_qualification_targets.side_effect = RuntimeError("db down")
+    crm.list_qualification_working_lists.return_value = []
+    with patch("app.admin_qualification_routes._crm", crm):
+        response = client.get("/admin/targets", cookies=authenticated_admin["cookies"])
+    assert response.status_code == 200
+    assert "No active targets match these filters" in response.text
+
+
+@pytest.mark.unit
+def test_target_detail_503_without_database(
+    authenticated_admin: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ADMIN_PREVIEW_MODE", raising=False)
+    monkeypatch.setenv("DATABASE_URL", "")
+    response = client.get(
+        f"/admin/targets/{COMPANY_ID}",
+        cookies=authenticated_admin["cookies"],
+    )
+    assert response.status_code == 503
+
+
+@pytest.mark.unit
+def test_save_working_list_invalid_payload_redirects(authenticated_admin: dict[str, Any]) -> None:
+    from app.qualification_targets import MAX_WORKING_LIST_ITEMS
+
+    with patch("app.admin_qualification_routes._crm", MagicMock()):
+        response = client.post(
+            "/admin/targets/working-list",
+            data={
+                "csrf_token": authenticated_admin["csrf_token"],
+                "name": "Too big",
+                "company_ids": [str(UUID(int=i)) for i in range(MAX_WORKING_LIST_ITEMS + 1)],
+            },
+            cookies=authenticated_admin["cookies"],
+        )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/admin/targets"
+
+
+@pytest.mark.unit
+def test_save_working_list_503_without_database(
+    authenticated_admin: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ADMIN_PREVIEW_MODE", raising=False)
+    monkeypatch.setenv("DATABASE_URL", "")
+    response = client.post(
+        "/admin/targets/working-list",
+        data={
+            "csrf_token": authenticated_admin["csrf_token"],
+            "name": "Shortlist",
+            "company_ids": [str(COMPANY_ID)],
+        },
+        cookies=authenticated_admin["cookies"],
+    )
+    assert response.status_code == 503
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_target_detail_preview_404_for_unknown_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    response = client.get(
+        "/admin/targets/00000000-0000-0000-0000-000000000099",
+    )
+    assert response.status_code == 404

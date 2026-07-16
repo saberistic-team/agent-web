@@ -210,3 +210,48 @@ def test_get_qualification_working_list_items_delegates() -> None:
     ]
     rows = service.get_qualification_working_list_items(conn, list_id)
     assert rows[0]["company_id"] == str(COMPANY_ID)
+
+
+@pytest.mark.unit
+def test_save_qualification_working_list_rejects_too_many_ids() -> None:
+    conn = MagicMock()
+    service = _service()
+    from app.qualification_targets import MAX_WORKING_LIST_ITEMS
+
+    payload = WorkingListCreate.model_construct(
+        name="Too big",
+        company_ids=[str(UUID(int=i)) for i in range(MAX_WORKING_LIST_ITEMS + 1)],
+    )
+    with pytest.raises(ValueError, match=str(MAX_WORKING_LIST_ITEMS)):
+        service.save_qualification_working_list(
+            conn,
+            owner="operator",
+            payload=payload,
+        )
+
+
+@pytest.mark.unit
+def test_list_qualification_targets_skips_below_threshold_companies() -> None:
+    conn = MagicMock()
+    service = _service()
+    service._repos.icp_scoring.get_active_version.return_value = {
+        "id": VERSION_ID,
+        "version_number": 1,
+    }
+    service._repos.icp_scoring.list_rules_for_version.return_value = [
+        rule.model_dump() for rule in default_icp_rules()
+    ]
+    service._repos.qualification.list_active_companies.return_value = [
+        {
+            "id": str(COMPANY_ID),
+            "name": "Low Score",
+            "category": "other",
+            "stage": "other",
+            "target_status": "not_target",
+        }
+    ]
+    service._repos.contacts.list_for_company.return_value = []
+    service._repos.research_records.list_for_company.return_value = []
+
+    rows = service.list_qualification_targets(conn, persist_scores=False)
+    assert rows == []

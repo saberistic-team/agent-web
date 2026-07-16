@@ -407,3 +407,158 @@ def test_tier_change_metadata_includes_score_and_tiers() -> None:
     assert meta["new_tier"] == "A"
     assert meta["score"] == 8.5
     assert "recorded_at" in meta
+
+
+@pytest.mark.unit
+def test_warm_path_summary_relationship_context_evidence() -> None:
+    from app.qualification_targets import _warm_path_summary
+
+    result = IcpScoreResult(
+        version_number=1,
+        total_score=7.0,
+        computed_score=7.0,
+        breakdown=[
+            RuleContribution(
+                rule_id="warm_path",
+                dimension="warm_path",
+                label="Warm path",
+                weight=1.0,
+                points_awarded=1.0,
+                status=RULE_STATUS_SCORED,
+                missing_inputs=[],
+                evidence=[{"record_type": "relationship_context", "source_name": "YC batch peer"}],
+            )
+        ],
+        missing_inputs=[],
+        calculated_at=datetime(2026, 7, 16, tzinfo=timezone.utc),
+    )
+    warm_path, has_warm = _warm_path_summary(result)
+    assert warm_path == "YC batch peer"
+    assert has_warm is True
+
+
+@pytest.mark.unit
+def test_build_target_row_adjusts_freshness_when_stale_evidence() -> None:
+    company_fresh = {
+        "id": COMPANY_ID,
+        "name": "Fresh Co",
+        "category": "fintech",
+        "stage": "seed",
+        "last_verified_at": date(2026, 7, 10),
+    }
+    company_unknown = {
+        "id": UUID("22222222-2222-2222-2222-222222222222"),
+        "name": "Unknown Co",
+        "category": "fintech",
+        "stage": "seed",
+        "last_verified_at": None,
+    }
+    stale_breakdown = [
+        RuleContribution(
+            rule_id="funding_recency",
+            dimension="funding_recency",
+            label="Funding",
+            weight=1.0,
+            points_awarded=0.0,
+            status="expired_only",
+            missing_inputs=[],
+        )
+    ]
+    fresh_row = build_target_row(
+        company=company_fresh,
+        score_result=IcpScoreResult(
+            version_number=1,
+            total_score=6.0,
+            computed_score=6.0,
+            breakdown=stale_breakdown,
+            missing_inputs=[],
+            calculated_at=datetime(2026, 7, 16, tzinfo=timezone.utc),
+        ),
+    )
+    unknown_row = build_target_row(
+        company=company_unknown,
+        score_result=IcpScoreResult(
+            version_number=1,
+            total_score=5.0,
+            computed_score=5.0,
+            breakdown=stale_breakdown,
+            missing_inputs=[],
+            calculated_at=datetime(2026, 7, 16, tzinfo=timezone.utc),
+        ),
+    )
+    assert fresh_row is not None
+    assert fresh_row.evidence_freshness == "mixed"
+    assert unknown_row is not None
+    assert unknown_row.evidence_freshness == "stale"
+
+
+@pytest.mark.unit
+def test_filter_target_rows_covers_remaining_branches() -> None:
+    rows = [
+        QualificationTargetRow(
+            company_id="1",
+            name="Acme",
+            score=6.0,
+            tier="B",
+            stage="seed",
+            vertical="fintech",
+            strongest_signals=(),
+            warm_path=None,
+            has_warm_path=False,
+            next_action=None,
+            evidence_freshness="mixed",
+            missing_fields=(),
+            pipeline_stage="qualified",
+            pipeline_owner="Alex",
+            score_calculated_at=datetime(2026, 7, 16, tzinfo=timezone.utc),
+            tie_breaker_name="Acme",
+            stale_evidence=True,
+        )
+    ]
+    assert len(filter_target_rows(rows, QualificationTargetFilters(category="other"))) == 0
+    assert len(filter_target_rows(rows, QualificationTargetFilters(stage="series_a"))) == 0
+    assert len(filter_target_rows(rows, QualificationTargetFilters(pipeline_stage="researching"))) == 0
+    assert len(filter_target_rows(rows, QualificationTargetFilters(freshness="stale"))) == 1
+    assert len(filter_target_rows(rows, QualificationTargetFilters(freshness="fresh"))) == 0
+
+
+@pytest.mark.unit
+def test_sort_key_handles_unknown_tier() -> None:
+    row = QualificationTargetRow(
+        company_id="z-id",
+        name="Zeta",
+        score=8.0,
+        tier="Z",
+        stage="seed",
+        vertical="fintech",
+        strongest_signals=(),
+        warm_path=None,
+        has_warm_path=False,
+        next_action=None,
+        evidence_freshness="fresh",
+        missing_fields=(),
+        pipeline_stage=None,
+        pipeline_owner=None,
+        score_calculated_at=datetime(2026, 7, 16, tzinfo=timezone.utc),
+        tie_breaker_name="Zeta",
+        stale_evidence=False,
+    )
+    assert row.sort_key()[1] == 99
+
+
+@pytest.mark.unit
+def test_score_company_with_rules_and_rules_from_rows() -> None:
+    from app.qualification_targets import rules_from_rows, score_company_with_rules
+
+    company = {"id": COMPANY_ID, "name": "Acme", "category": "fintech", "stage": "seed"}
+    rules = default_icp_rules()
+    result = score_company_with_rules(
+        company=company,
+        contacts=[],
+        research_records=[],
+        rules=rules,
+        version_number=1,
+        calculated_at=datetime(2026, 7, 16, tzinfo=timezone.utc),
+    )
+    assert result.version_number == 1
+    assert rules_from_rows([rule.model_dump() for rule in rules])[0].id == "vertical_fit"
