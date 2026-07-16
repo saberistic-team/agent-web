@@ -448,21 +448,12 @@ def test_comment_markdown_pre_branch_only() -> None:
             ScreenshotTarget(route="/"),
             ScreenshotTarget(route="/admin/briefs/503", expected_status=503),
         ],
-        preview_manifest={
-            "preview_seed": 338001,
-            "preview_reference_time": "2026-07-14T12:00:00+00:00",
-            "preview_fixture_version": "1",
-            "head_sha": "abc123",
-            "browser": "Chromium 120.0.0.0",
-            "viewports": [{"name": "desktop", "width": 1280, "height": 800}],
-        },
     )
     assert "### reviewer_screenshots_pre" in body
     assert "http://127.0.0.1:8765" in body
     assert "ADMIN_PREVIEW_MODE" in body
-    assert "preview reproducibility" in body
-    assert "preview_seed" in body
-    assert "338001" in body
+    assert "preview seed:" in body
+    assert "preview reference time:" in body
     assert "post-deploy only" in body
     assert "branch-home.png" in body
     assert "Production baseline" not in body

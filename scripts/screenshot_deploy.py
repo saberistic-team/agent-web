@@ -55,11 +55,6 @@ PREVIEW_ADMIN_LOGIN_LIMITER_SECRET = "preview-limiter-secret-32chars-minimum"
 PREVIEW_SESSION_TOKEN = "preview-screenshot-session"
 ADMIN_SESSION_COOKIE = "admin_session"
 
-# Stable preview defaults — keep in sync with app.admin_preview.
-DEFAULT_PREVIEW_SEED = 338_001
-DEFAULT_PREVIEW_REFERENCE_TIME = "2026-07-14T12:00:00+00:00"
-PREVIEW_FIXTURE_VERSION = "1"
-
 # Static HTML files under site/ → public page routes.
 SITE_HTML_TO_ROUTE: dict[str, str] = {
     "site/index.html": "/",
@@ -192,7 +187,6 @@ class CaptureResult(NamedTuple):
     overflows: list[dict[str, Any]]
     empty_pages: list[dict[str, Any]] = []
     nav_failures: list[dict[str, Any]] = []
-    preview_manifest: dict[str, Any] | None = None
 
 
 class PreCaptureResult(NamedTuple):
@@ -206,7 +200,6 @@ class PreCaptureResult(NamedTuple):
     prod_url: str
     branch_empty_pages: list[dict[str, Any]] = []
     branch_nav_failures: list[dict[str, Any]] = []
-    preview_manifest: dict[str, Any] | None = None
 
     @property
     def paths(self) -> list[Path]:
@@ -722,75 +715,107 @@ def _wait_http_ok(url: str, *, attempts: int = 30) -> None:
     raise GitHubError(f"local preview not ready at {url}: {last}")
 
 
-def preview_server_env(base_env: dict[str, str] | None = None) -> dict[str, str]:
-    """Environment for PR-head uvicorn with frozen preview seed and reference time."""
-    env = {**(base_env or os.environ)}
-    env["ADMIN_PREVIEW_MODE"] = "1"
-    env["ADMIN_PREVIEW_SEED"] = (
-        (env.get("ADMIN_PREVIEW_SEED") or "").strip() or str(DEFAULT_PREVIEW_SEED)
-    )
-    env["ADMIN_PREVIEW_REFERENCE_TIME"] = (
-        (env.get("ADMIN_PREVIEW_REFERENCE_TIME") or "").strip()
-        or DEFAULT_PREVIEW_REFERENCE_TIME
-    )
-    env["ADMIN_PREVIEW_FIXTURE_VERSION"] = (
-        (env.get("ADMIN_PREVIEW_FIXTURE_VERSION") or "").strip()
-        or PREVIEW_FIXTURE_VERSION
-    )
-    return env
+def _preview_server_env(base_env: dict[str, str]) -> dict[str, str]:
+    """Env for PR-head uvicorn with deterministic preview fixtures (#338)."""
+    try:
+        from app.preview_context import (  # type: ignore
+            PREVIEW_FIXTURE_VERSION,
+            default_reference_at_iso,
+            default_root_seed_str,
+        )
+    except ImportError:
+        default_root_seed_str = lambda: "338001"  # noqa: E731
+        default_reference_at_iso = lambda: "2026-07-14T12:00:00+00:00"  # noqa: E731
+        PREVIEW_FIXTURE_VERSION = "1"
+
+    return {
+        **base_env,
+        "ADMIN_PREVIEW_SEED": base_env.get("ADMIN_PREVIEW_SEED")
+        or os.environ.get("ADMIN_PREVIEW_SEED")
+        or default_root_seed_str(),
+        "ADMIN_PREVIEW_REFERENCE_AT": base_env.get("ADMIN_PREVIEW_REFERENCE_AT")
+        or os.environ.get("ADMIN_PREVIEW_REFERENCE_AT")
+        or default_reference_at_iso(),
+        "ADMIN_PREVIEW_FIXTURE_VERSION": base_env.get("ADMIN_PREVIEW_FIXTURE_VERSION")
+        or os.environ.get("ADMIN_PREVIEW_FIXTURE_VERSION")
+        or PREVIEW_FIXTURE_VERSION,
+    }
 
 
-def build_preview_reproducibility_manifest(
+def _resolve_head_sha() -> str:
+    explicit = (os.environ.get("GITHUB_SHA") or "").strip()
+    if explicit:
+        return explicit
+    try:
+        out = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+        return out.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return ""
+
+
+def write_preview_reproducibility_manifest(
+    out_dir: Path,
     *,
     phase: str,
-    browser_version: str,
     head_sha: str = "",
-    pr_number: int | None = None,
-) -> dict[str, Any]:
-    """Non-secret fields recorded with screenshot evidence for reruns."""
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from app.admin_preview import resolve_preview_context  # type: ignore
+    browser_version: str = "",
+) -> Path:
+    """Record non-secret preview reproducibility metadata for screenshot evidence."""
+    try:
+        from app.preview_context import load_preview_context  # type: ignore
+    except ImportError:
+        payload: dict[str, Any] = {
+            "preview_seed": int(os.environ.get("ADMIN_PREVIEW_SEED") or "338001"),
+            "preview_reference_at": os.environ.get("ADMIN_PREVIEW_REFERENCE_AT")
+            or "2026-07-14T12:00:00+00:00",
+            "preview_fixture_version": os.environ.get("ADMIN_PREVIEW_FIXTURE_VERSION")
+            or "1",
+        }
+    else:
+        payload = load_preview_context().reproducibility_dict()
 
-    context = resolve_preview_context(force=True)
-    manifest: dict[str, Any] = {
-        "phase": phase,
-        "viewports": [
-            {"name": name, "width": width, "height": height}
-            for name, width, height in VIEWPORTS
-        ],
-        "browser": browser_version,
-        "head_sha": (head_sha or os.environ.get("GITHUB_SHA") or "").strip(),
-    }
-    if pr_number is not None:
-        manifest["pr_number"] = pr_number
-    if context is not None:
-        manifest.update(context.manifest_fields())
-    return manifest
+    payload.update(
+        {
+            "head_sha": head_sha or _resolve_head_sha(),
+            "browser_version": browser_version,
+            "viewports": [
+                {"name": name, "width": width, "height": height}
+                for name, width, height in VIEWPORTS
+            ],
+            "phase": phase,
+        }
+    )
+    path = out_dir / f"{phase}-preview-reproducibility.json"
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return path
 
 
-def format_preview_reproducibility_lines(manifest: dict[str, Any] | None) -> list[str]:
-    if not manifest:
-        return []
-    lines = ["- preview reproducibility:"]
-    for key in (
-        "preview_seed",
-        "preview_reference_time",
-        "preview_fixture_version",
-        "head_sha",
-        "browser",
-    ):
-        value = manifest.get(key)
-        if value:
-            lines.append(f"  - {key}: `{value}`")
-    viewports = manifest.get("viewports")
-    if isinstance(viewports, list) and viewports:
-        summary = ", ".join(
-            f"{item.get('name')} {item.get('width')}×{item.get('height')}"
-            for item in viewports
-            if isinstance(item, dict)
-        )
-        if summary:
-            lines.append(f"  - viewports: {summary}")
+def preview_reproducibility_comment_lines() -> list[str]:
+    """Markdown bullets for reviewer comments (no secrets)."""
+    try:
+        from app.preview_context import load_preview_context  # type: ignore
+
+        fields = load_preview_context().reproducibility_dict()
+    except ImportError:
+        fields = {
+            "preview_seed": os.environ.get("ADMIN_PREVIEW_SEED") or "338001",
+            "preview_reference_at": os.environ.get("ADMIN_PREVIEW_REFERENCE_AT")
+            or "2026-07-14T12:00:00+00:00",
+            "preview_fixture_version": os.environ.get("ADMIN_PREVIEW_FIXTURE_VERSION")
+            or "1",
+        }
+    head_sha = _resolve_head_sha()
+    lines = [
+        f"- preview seed: `{fields['preview_seed']}`",
+        f"- preview reference time: `{fields['preview_reference_at']}`",
+        f"- preview fixture version: `{fields['preview_fixture_version']}`",
+    ]
+    if head_sha:
+        lines.append(f"- head sha: `{head_sha}`")
     return lines
 
 
@@ -808,12 +833,14 @@ def local_preview_server(
             "(set COVERAGE_ROOT / PR_HEAD_ROOT to the checked-out PR head)"
         )
     base = f"http://127.0.0.1:{port}"
-    env = preview_server_env(
+    env = _preview_server_env(
         {
             **os.environ,
             "BASE_URL": base,
             # HTML pages must render without requiring production secrets.
             "DATABASE_URL": os.environ.get("DATABASE_URL") or "",
+            # Open /admin without login for branch screenshot evidence only.
+            "ADMIN_PREVIEW_MODE": "1",
             "ADMIN_USERNAME": os.environ.get("ADMIN_USERNAME") or PREVIEW_ADMIN_USERNAME,
             "ADMIN_PASSWORD_HASH": os.environ.get("ADMIN_PASSWORD_HASH")
             or PREVIEW_ADMIN_PASSWORD_HASH,
@@ -899,7 +926,6 @@ def capture_pre_dual(
         prod_url="",
         branch_empty_pages=list(branch.empty_pages),
         branch_nav_failures=list(branch.nav_failures),
-        preview_manifest=branch.preview_manifest,
     )
 
 
@@ -1330,7 +1356,6 @@ def capture(
         html_targets = routes_to_targets(list(HTML_PATHS), app_root=preview_root)
 
     captured_routes: set[str] = set()
-    preview_manifest: dict[str, Any] | None = None
 
     def _load_target_page(
         page: Any, target: ScreenshotTarget, *, viewport_name: str
@@ -1374,11 +1399,7 @@ def capture(
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        if allow_admin:
-            preview_manifest = build_preview_reproducibility_manifest(
-                phase=phase,
-                browser_version=browser.version,
-            )
+        browser_version = browser.version
         for viewport_name, width, height in VIEWPORTS:
             page = browser.new_page(viewport={"width": width, "height": height})
             if allow_admin:
@@ -1487,18 +1508,18 @@ def capture(
     empty_report.write_text(json.dumps(empty_pages, indent=2) + "\n", encoding="utf-8")
     nav_report = out_dir / f"{phase}-nav-failures.json"
     nav_report.write_text(json.dumps(nav_failures, indent=2) + "\n", encoding="utf-8")
-    if preview_manifest is not None:
-        manifest_path = out_dir / f"{phase}-preview-manifest.json"
-        manifest_path.write_text(
-            json.dumps(preview_manifest, indent=2) + "\n",
-            encoding="utf-8",
+    if allow_admin and phase == PRE_BRANCH_PHASE:
+        manifest_path = write_preview_reproducibility_manifest(
+            out_dir,
+            phase=phase,
+            browser_version=browser_version,
         )
+        paths.append(manifest_path)
     return CaptureResult(
         paths=paths,
         overflows=overflows,
         empty_pages=empty_pages,
         nav_failures=nav_failures,
-        preview_manifest=preview_manifest,
     )
 
 
@@ -1562,7 +1583,6 @@ def comment_markdown_pre_dual(
     extra: list[str] | None = None,
     routes: list[str | ScreenshotTarget] | None = None,
     targets: list[ScreenshotTarget] | None = None,
-    preview_manifest: dict[str, Any] | None = None,
 ) -> str:
     """PR review comment: branch preview shots only (no saberistic.com pre)."""
     del prod_url, prod_urls  # production screenshots are post-deploy only
@@ -1576,8 +1596,8 @@ def comment_markdown_pre_dual(
         "### reviewer_screenshots_pre",
         f"- branch (PR head local, ADMIN_PREVIEW_MODE): `{branch_url}`",
         "- production: skipped pre-merge (saberistic.com shots are post-deploy only)",
+        *preview_reproducibility_comment_lines(),
     ]
-    lines.extend(format_preview_reproducibility_lines(preview_manifest))
     if resolved_targets is not None:
         lines.append(
             f"- routes (PR-affected): {format_screenshot_targets(resolved_targets)}"
@@ -1692,7 +1712,6 @@ def main(argv: list[str] | None = None) -> int:
                     branch_url=dual.branch_url,
                     branch_urls=branch_urls,
                     targets=routes,
-                    preview_manifest=dual.preview_manifest,
                 )
                 urls = branch_urls
         else:

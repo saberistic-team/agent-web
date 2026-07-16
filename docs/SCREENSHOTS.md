@@ -25,12 +25,16 @@ Playwright can open admin pages **without login**.
 - Admin shell pages fill with **mock intake/CRM data with randomization**
   (dashboard stats, section tables, **briefs list/detail**, etc.) so screenshots
   look like a live operator shell — never real production rows and never an
-  empty “no records yet” shell for newly built admin surfaces.
-  `ADMIN_PREVIEW_SEED` and `ADMIN_PREVIEW_REFERENCE_TIME` freeze mock data for
-  deterministic screenshot runs (defaults are checked in at `app/admin_preview.py`).
-  Bump `ADMIN_PREVIEW_FIXTURE_VERSION` when preview row shapes change and
-  regenerate baselines intentionally. Builder must extend
-  `app/admin_preview.py` whenever it adds a page (see `AGENTS/builder.md`).
+  empty “no records yet” shell for newly built admin surfaces. Standard CI
+  runs set a **stable root seed** (`ADMIN_PREVIEW_SEED`, default `338001`) and
+  **frozen reference time** (`ADMIN_PREVIEW_REFERENCE_AT`, default
+  `2026-07-14T12:00:00+00:00`) so desktop/mobile pairs and reruns of the same
+  revision render identical fixture data. Each route/fixture namespace derives
+  its own RNG from the root seed so request order does not perturb captures.
+  Bump `ADMIN_PREVIEW_FIXTURE_VERSION` (see `app/preview_context.py`) when
+  preview builder semantics change and regenerate screenshot baselines
+  intentionally. Builder must extend `app/admin_preview.py` whenever it adds a
+  page (see `AGENTS/builder.md`).
 - See [ADMIN_AUTH.md](ADMIN_AUTH.md).
 
 **Production renderer routes** (preview uses the same page functions as authenticated
@@ -173,9 +177,9 @@ until merged.
 | Name | Type | Purpose |
 |------|------|---------|
 | `ADMIN_PREVIEW_MODE` | env | Set `1` on PR preview server only (script sets this) |
-| `ADMIN_PREVIEW_SEED` | env | Root seed for preview fixtures (default `338001`; set by screenshot launcher) |
-| `ADMIN_PREVIEW_REFERENCE_TIME` | env | Frozen UTC reference timestamp (ISO-8601; default `2026-07-14T12:00:00+00:00`) |
-| `ADMIN_PREVIEW_FIXTURE_VERSION` | env | Fixture schema version for namespace derivation (default `1`) |
+| `ADMIN_PREVIEW_SEED` | env | Root seed for deterministic preview fixtures (default `338001`) |
+| `ADMIN_PREVIEW_REFERENCE_AT` | env | Frozen UTC reference timestamp for time-derived fields (default `2026-07-14T12:00:00+00:00`) |
+| `ADMIN_PREVIEW_FIXTURE_VERSION` | env | Preview fixture schema version recorded in evidence (default `1`) |
 | `DEPLOY_BASE_URL` | variable | default `https://saberistic.com` (post-deploy) |
 | `COVERAGE_ROOT` / `PR_HEAD_ROOT` | env | PR checkout root for branch screenshots |
 | `SCREENSHOTS_REQUIRED` | variable | default true for Reviewer when pages are affected |
