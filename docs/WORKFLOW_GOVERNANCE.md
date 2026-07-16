@@ -205,6 +205,35 @@ approval to the protected files. CI validates the repository-side inventory,
 workflow discovery, transitive helper coverage, and ownership mapping, but it
 cannot replace GitHub's review authorization.
 
+## Ruleset drift alerting
+
+The live ruleset has drifted from the checked-in policy **twice** now: once
+before the "Proof PR" evidence above was gathered (`require_code_owner_review`
+silently `false`), and again on 2026-07-16 when the ruleset's `enforcement`
+itself was found `disabled` via `gh api repos/saberistic-team/agent-web/rulesets`
+— the checked-in `.github/rulesets/independent-workflow-review.json` says
+`"enforcement": "active"`. Both times, the only visible symptom was the
+`test` job's "Validate workflow-governance ownership" step failing with
+`FAIL: live ruleset: ruleset enforcement must be active` — a bare CI red X on
+`main`, indistinguishable among the dozens of Builder/Reviewer bot pushes this
+repository runs per day. Nothing paged a human, so it can recur silently for
+hours (the second drift ran red across 6+ consecutive pushes to `main` before
+being noticed).
+
+`scripts/validate_workflow_governance.py`'s `report_ruleset_drift()` closes
+that gap: when the live-ruleset check fails specifically because of drift
+(not a code-side ownership/manifest problem this validator also checks), and
+`REPORT_GOVERNANCE_DRIFT=1` is set (`ci.yml` sets it only for `push` to
+`main`, never for PR runs), it files — or comments on, if already open — a
+single plain tracking issue titled *"Live ruleset drift: workflow-governance
+enforcement is not active"*. That issue deliberately carries **no**
+`status:*` / `type:*` / `priority:*` / `agent:*` label: this is a repository
+**settings** problem, and the Planner/Builder/dispatcher pipeline must never
+try to "fix" it with a code PR. Only a human repository admin can restore
+enforcement (see **Recovery and break-glass** below); the filed issue links
+straight to that procedure and to the exact validation command to run before
+closing it.
+
 ## Recovery and break-glass
 
 Use break-glass only when a protected workflow blocks a production incident or
