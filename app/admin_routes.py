@@ -41,6 +41,7 @@ from app.actor_context import (
 )
 from app.admin_layout import ADMIN_NAV_LINKS, render_admin_shell
 from app.admin_response import admin_html_response
+from app.admin_response_policy import csp_nonce_from_request
 from app.admin_preview import (
     PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR,
     PREVIEW_BRIEF_DATABASE_ERROR_ID,
@@ -910,6 +911,7 @@ def admin_company_research_create(
                 )
         _crm.attach_research_record(
             conn,
+            actor_context=actor_context_from_request(request, actor=session.admin_username),
             record_type=payload.record_type,
             company_id=company_id,
             body=payload.body,
@@ -1330,6 +1332,7 @@ def admin_contact_research_create(
             )
         _crm.attach_research_record(
             conn,
+            actor_context=actor_context_from_request(request, actor=session.admin_username),
             record_type=payload.record_type,
             company_id=UUID(str(company_id)),
             body=payload.body,
@@ -1966,8 +1969,33 @@ def admin_imports(request: Request) -> HTMLResponse:
         import_pages.render_imports_page(
             admin_username=session.admin_username,
             csrf_token=csrf_token,
+            csp_nonce=csp_nonce_from_request(request),
         )
     )
+
+
+
+@router.post("/imports/reconcile-preview")
+async def admin_imports_reconcile_preview(request: Request) -> JSONResponse:
+    """Server-side incremental reconciliation preview for parsed LinkedIn connections."""
+    require_admin_session(request)
+    settings = get_settings()
+    if settings.admin_preview_enabled:
+        from app.admin_preview import build_preview_linkedin_reconcile
+
+        return JSONResponse(build_preview_linkedin_reconcile())
+    if not settings.database_url:
+        raise HTTPException(status_code=503, detail="Database is not configured.")
+    try:
+        body = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON body.") from exc
+    connections = body.get("connections")
+    if not isinstance(connections, list):
+        raise HTTPException(status_code=400, detail="connections must be a list.")
+    with db.db_connection(settings.database_url) as conn:
+        preview = _crm.preview_linkedin_reconcile(conn, connections=connections)
+    return JSONResponse(preview)
 
 
 for _link in ADMIN_NAV_LINKS:

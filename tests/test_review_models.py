@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import os
 from unittest.mock import patch
 
-from review_models import ai_review, extract_json
+from review_models import ai_review, extract_json, reviewer_agent_cwd
 
 
 def test_extract_json_recovers_truncated_approved() -> None:
@@ -92,3 +93,22 @@ def test_ai_review_keeps_changes_when_real_reason_and_acceptance_claimed() -> No
             verdict = ai_review("o/r", 58, 60)
     assert verdict["decision"] == "changes-requested"
     assert verdict["meets_acceptance"] is False
+
+
+def test_reviewer_agent_cwd_prefers_pr_head_worktree(tmp_path) -> None:
+    """#342: the AI reviewer must be rooted at the PR tree (COVERAGE_ROOT),
+    never at the sibling `main` checkout — otherwise it can diff `main`
+    against `pr-head/` directly and hallucinate deletions/reverts for files
+    that were simply added to `main` after a stale branch forked."""
+    pr_head = tmp_path / "pr-head"
+    pr_head.mkdir()
+    with patch.dict(os.environ, {"COVERAGE_ROOT": str(pr_head)}):
+        assert reviewer_agent_cwd() == str(pr_head)
+
+
+def test_reviewer_agent_cwd_falls_back_when_coverage_root_missing() -> None:
+    with patch.dict(os.environ, {"COVERAGE_ROOT": "/nonexistent/pr-head-path"}):
+        assert reviewer_agent_cwd() == os.getcwd()
+    with patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("COVERAGE_ROOT", None)
+        assert reviewer_agent_cwd() == os.getcwd()

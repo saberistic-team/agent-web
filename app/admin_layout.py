@@ -114,6 +114,7 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbc/edit",
     # Pipeline detail (Next action, Change stage, Log activity, timeline).
     "/admin/pipeline/11111111-1111-1111-1111-111111111111",
+    "/admin/pipeline/11111111-1111-1111-1111-111111111111?error=validation&focus=expected_value_cents",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).

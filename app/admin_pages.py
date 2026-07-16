@@ -14,6 +14,69 @@ import json
 from app.brief_service import BriefListFilters
 from app.config import Settings
 from app.pipeline_stages import pipeline_stage_label
+from app import audit_service
+
+
+AUDIT_ACTION_LABELS: dict[str, str] = {
+    audit_service.ACTION_AUTH_LOGIN_SUCCESS: "Login success",
+    audit_service.ACTION_AUTH_LOGIN_FAILURE: "Login failure",
+    audit_service.ACTION_AUTH_LOGOUT: "Logout",
+    audit_service.ACTION_IMPORT_BATCH: "Import batch",
+    audit_service.ACTION_IMPORT_BATCH_ROLLBACK: "Import rollback",
+    audit_service.ACTION_ENTITY_DELETE: "Entity delete",
+    audit_service.ACTION_COMPANY_UPDATE: "Company update",
+    audit_service.ACTION_CONTACT_UPDATE: "Contact update",
+    audit_service.ACTION_PIPELINE_UPDATE: "Pipeline update",
+    audit_service.ACTION_SCORING_RULE_UPDATE: "Scoring rule update",
+    audit_service.ACTION_ANALYTICS_CONFIG_UPDATE: "Analytics config update",
+    audit_service.ACTION_EXPORT_REQUEST: "Export request",
+    audit_service.ACTION_BRIEF_CONVERT: "Brief convert",
+    audit_service.ACTION_CONTACT_RESTORE: "Contact restore",
+    audit_service.ACTION_RESEARCH_RECORD_CREATE: "Research evidence added",
+    audit_service.ACTION_PIPELINE_ACTIVITY_CREATE: "Pipeline activity logged",
+}
+
+
+def _format_audit_action(action: str) -> str:
+    label = AUDIT_ACTION_LABELS.get(action, action.replace(".", " ").title())
+    return (
+        f'<span class="audit-action-label">{html.escape(label)}</span> '
+        f'<code class="audit-action-code">{html.escape(action)}</code>'
+    )
+
+
+def _format_bounded_audit_summary(action: str, summary: Any) -> str:
+    """Render escaped, bounded summaries for known audit event types."""
+    if summary is None:
+        return '<span class="audit-muted">—</span>'
+    if not isinstance(summary, dict):
+        return _format_json_blob(summary)
+    if action == audit_service.ACTION_RESEARCH_RECORD_CREATE:
+        parts = [
+            f"type={html.escape(str(summary.get('record_type', '')))}",
+            f"company={html.escape(str(summary.get('company_id', '')))}",
+        ]
+        if summary.get("contact_id"):
+            parts.append(f"contact={html.escape(str(summary['contact_id']))}")
+        flags = [
+            name.replace("has_", "")
+            for name, present in summary.items()
+            if name.startswith("has_") and present
+        ]
+        if flags:
+            parts.append(f"fields={html.escape(', '.join(flags))}")
+        return f'<code class="audit-json">{", ".join(parts)}</code>'
+    if action == audit_service.ACTION_PIPELINE_ACTIVITY_CREATE:
+        parts = [
+            f"type={html.escape(str(summary.get('activity_type', '')))}",
+            f"company={html.escape(str(summary.get('company_id', '')))}",
+        ]
+        if summary.get("contact_id"):
+            parts.append(f"contact={html.escape(str(summary['contact_id']))}")
+        if summary.get("created_at"):
+            parts.append(f"at={html.escape(str(summary['created_at']))}")
+        return f'<code class="audit-json">{", ".join(parts)}</code>'
+    return _format_json_blob(summary)
 
 
 def render_admin_login_page(
@@ -917,11 +980,11 @@ def render_admin_audit_page(
             "<tr>"
             f"<td>{_format_timestamp(event.get('created_at', ''))}</td>"
             f"<td>{html.escape(str(event.get('actor', '')))}</td>"
-            f"<td><code>{html.escape(str(event.get('action', '')))}</code></td>"
+            f"<td>{_format_audit_action(str(event.get('action', '')))}</td>"
             f"<td>{entity_cell}</td>"
             f"<td><code>{html.escape(str(event.get('correlation_id', '')))}</code></td>"
-            f"<td>{_format_json_blob(event.get('summary_before'))}</td>"
-            f"<td>{_format_json_blob(event.get('summary_after'))}</td>"
+            f"<td>{_format_bounded_audit_summary(str(event.get('action', '')), event.get('summary_before'))}</td>"
+            f"<td>{_format_bounded_audit_summary(str(event.get('action', '')), event.get('summary_after'))}</td>"
             "</tr>"
         )
 
