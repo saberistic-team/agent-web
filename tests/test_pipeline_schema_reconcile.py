@@ -484,7 +484,7 @@ def test_fresh_database_applies_001_through_015_idempotently(
 ) -> None:
     first = apply_migrations(pg_conn)
     assert first == [m.version for m in MIGRATIONS]
-    assert first[-1] == "018"
+    assert first[-1] == "017"
 
     columns = _company_columns(pg_conn)
     for name in (
