@@ -7,15 +7,11 @@
     },
     {
       "path": "scripts/github_api.py",
-      "category": "GitHub control-plane API helpers"
-    },
-    {
-      "path": "scripts/copilot_agent.py",
-      "category": "Copilot agent adapters (privileged when enabled)"
+      "category": "control-plane GitHub API"
     },
     {
       "path": "scripts/dispatch_queue.py",
-      "category": "agent dispatch and queue orchestration"
+      "category": "dispatch and queue orchestration"
     },
     {
       "path": "scripts/require_planner_plan.py",
@@ -23,15 +19,47 @@
     },
     {
       "path": "scripts/priority.py",
-      "category": "priority label selection"
-    },
-    {
-      "path": "scripts/milestones.py",
-      "category": "milestone orchestration"
+      "category": "priority selection and routing"
     },
     {
       "path": "scripts/project_sync.py",
-      "category": "GitHub Project board synchronization"
+      "category": "project board synchronization"
+    },
+    {
+      "path": "scripts/milestones.py",
+      "category": "milestone eligibility for dispatch"
+    },
+    {
+      "path": "scripts/copilot_agent.py",
+      "category": "Copilot agent assignment (deferred; assessed privileged)"
+    },
+    {
+      "path": "scripts/screenshot_deploy.py",
+      "category": "reviewer screenshot capture and branch commits"
+    },
+    {
+      "path": "scripts/cursor_model.py",
+      "category": "model selection for agent roles"
+    },
+    {
+      "path": "scripts/render_deploy.py",
+      "category": "production deploy orchestration"
+    },
+    {
+      "path": "scripts/freeze_shipped_migrations.py",
+      "category": "post-deploy migration freeze commits"
+    },
+    {
+      "path": "scripts/post_deploy_visual.py",
+      "category": "post-deploy visual verification"
+    },
+    {
+      "path": "scripts/digest_trace.py",
+      "category": "weekly stakeholder digest generation"
+    },
+    {
+      "path": "scripts/check_coverage.py",
+      "category": "reviewer coverage gate enforcement"
     },
     {
       "path": "scripts/review_*.py",
@@ -72,38 +100,6 @@
     {
       "path": "scripts/cursor_sdk_patch.py",
       "category": "Builder configuration"
-    },
-    {
-      "path": "scripts/cursor_model.py",
-      "category": "Cursor model selection for agents"
-    },
-    {
-      "path": "scripts/screenshot_deploy.py",
-      "category": "screenshot capture and GitHub upload"
-    },
-    {
-      "path": "scripts/render_deploy.py",
-      "category": "Render production deploy"
-    },
-    {
-      "path": "scripts/freeze_shipped_migrations.py",
-      "category": "production migration freeze commits"
-    },
-    {
-      "path": "scripts/post_deploy_visual.py",
-      "category": "post-deploy visual verification"
-    },
-    {
-      "path": "scripts/smoke_deploy.py",
-      "category": "deploy smoke verification"
-    },
-    {
-      "path": "scripts/digest_trace.py",
-      "category": "weekly trace digest"
-    },
-    {
-      "path": "scripts/check_coverage.py",
-      "category": "CI coverage gate"
     },
     {
       "path": "AGENTS/**",

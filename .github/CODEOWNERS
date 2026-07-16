@@ -7,14 +7,21 @@
 # GitHub Actions
 /.github/workflows/** @saberistic @mehdidehdar @Amirsharifico
 
-# Control plane and orchestration helpers
+# Control-plane orchestration
 /scripts/github_api.py @saberistic @mehdidehdar @Amirsharifico
-/scripts/copilot_agent.py @saberistic @mehdidehdar @Amirsharifico
 /scripts/dispatch_queue.py @saberistic @mehdidehdar @Amirsharifico
 /scripts/require_planner_plan.py @saberistic @mehdidehdar @Amirsharifico
 /scripts/priority.py @saberistic @mehdidehdar @Amirsharifico
-/scripts/milestones.py @saberistic @mehdidehdar @Amirsharifico
 /scripts/project_sync.py @saberistic @mehdidehdar @Amirsharifico
+/scripts/milestones.py @saberistic @mehdidehdar @Amirsharifico
+/scripts/copilot_agent.py @saberistic @mehdidehdar @Amirsharifico
+/scripts/screenshot_deploy.py @saberistic @mehdidehdar @Amirsharifico
+/scripts/cursor_model.py @saberistic @mehdidehdar @Amirsharifico
+/scripts/render_deploy.py @saberistic @mehdidehdar @Amirsharifico
+/scripts/freeze_shipped_migrations.py @saberistic @mehdidehdar @Amirsharifico
+/scripts/post_deploy_visual.py @saberistic @mehdidehdar @Amirsharifico
+/scripts/digest_trace.py @saberistic @mehdidehdar @Amirsharifico
+/scripts/check_coverage.py @saberistic @mehdidehdar @Amirsharifico
 
 # Reviewer automation
 /scripts/review_*.py @saberistic @mehdidehdar @Amirsharifico
@@ -29,18 +36,6 @@
 /scripts/codegen_*.py @saberistic @mehdidehdar @Amirsharifico
 /scripts/builder_conflicts.py @saberistic @mehdidehdar @Amirsharifico
 /scripts/cursor_sdk_patch.py @saberistic @mehdidehdar @Amirsharifico
-/scripts/cursor_model.py @saberistic @mehdidehdar @Amirsharifico
-/scripts/screenshot_deploy.py @saberistic @mehdidehdar @Amirsharifico
-
-# Deploy, digest, and CI gates
-/scripts/render_deploy.py @saberistic @mehdidehdar @Amirsharifico
-/scripts/freeze_shipped_migrations.py @saberistic @mehdidehdar @Amirsharifico
-/scripts/post_deploy_visual.py @saberistic @mehdidehdar @Amirsharifico
-/scripts/smoke_deploy.py @saberistic @mehdidehdar @Amirsharifico
-/scripts/digest_trace.py @saberistic @mehdidehdar @Amirsharifico
-/scripts/check_coverage.py @saberistic @mehdidehdar @Amirsharifico
-
-# Builder prompts and repository policy
 /AGENTS/** @saberistic @mehdidehdar @Amirsharifico
 /.github/copilot-instructions.md @saberistic @mehdidehdar @Amirsharifico
 
