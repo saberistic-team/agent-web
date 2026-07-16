@@ -150,9 +150,29 @@ Rules:
 active contact only *fills in* a **missing** company association
 (`contacts.company_id IS NULL` → set to the brief's company). A contact that
 already belongs to a company keeps that association and is **never silently
-reassigned**; an explicit selection that points a contact at a different company
-is rejected as a validation error. Enforced in
-`CrmService._associate_contact_company`.
+reassigned**; any selection that pairs the contact with a **different** company
+— whether the target company is newly created or an existing match — is rejected
+as a validation error before durable conversion writes. Enforced in
+`CrmService._validate_contact_company_association` (preview) and
+`CrmService._assert_contact_eligible_for_conversion` (inside the conversion
+transaction).
+
+**In-transaction contact authority (#274).** After the brief-scoped advisory
+lock is acquired, an existing-contact choice re-reads the selected row with
+`SELECT … FOR UPDATE` (`ContactRepository.get_active_by_id_for_update`),
+revalidates active state, normalized email identity, and company association,
+then applies `_associate_contact_company` only when the contact is unassigned
+or already on the target company. Preview-time validation uses the same
+company-association rule but is not authoritative: archive, reassignment, or an
+active-email claim between preview and confirm is caught on this in-transaction
+re-read.
+
+**Cross-brief email concurrency (#274).** Concurrent confirms on *different*
+briefs that share a normalized email and both choose `contact_choice=new` race on
+`idx_contacts_email_unique`. The loser maps the uniqueness violation to a safe
+domain outcome: link the committed active contact when company association
+allows, otherwise raise `BriefConversionValidationError` and roll back — never
+an HTTP 500 or raw SQL detail.
 
 ### `source_records`
 
