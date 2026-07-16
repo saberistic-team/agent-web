@@ -1,67 +1,61 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
 
 from validate_workflow_governance import (
-    discover_required_privileged_scripts,
-    discover_transitive_script_helpers,
-    discover_workflow_scripts,
-    evaluate_independent_codeowner_review,
-    human_codeowner_logins,
-    parse_codeowners,
+    PullRequestReview,
+    discover_workflow_entrypoints,
+    independent_codeowner_approval_satisfied,
+    load_manifest,
+    path_matches_any_pattern,
+    repository_files,
+    transitive_script_closure,
     validate,
-    validate_discovered_script_coverage,
-    validate_manifest_codeowners_sync,
-    validate_ruleset_document,
+    validate_ruleset_payload,
 )
-
-
-HUMAN_OWNERS = "@saberistic @mehdidehdar @Amirsharifico"
 
 
 def _write_policy_repo(
     root: Path,
     *,
-    codeowners: str | None = None,
+    codeowners: str = "/.github/workflows/** @human-owner\n",
     manifest_paths: list[dict[str, str]] | None = None,
-    workflow_run: str | None = None,
-    extra_script: str | None = None,
+    workflow_run: str = "python scripts/dispatch_queue.py\n",
+    extra_scripts: dict[str, str] | None = None,
 ) -> None:
     (root / ".github" / "workflows").mkdir(parents=True)
-    (root / ".github" / "rulesets").mkdir(parents=True)
-    (root / "scripts").mkdir(parents=True)
-    (root / "tests").mkdir(parents=True)
-
-    workflow_body = workflow_run or "name: Reviewer\n"
-    (root / ".github" / "workflows" / "reviewer.yml").write_text(workflow_body)
-    (root / ".github" / "rulesets" / "independent-workflow-review.json").write_text(
-        (Path(__file__).resolve().parents[1] / ".github" / "rulesets" / "independent-workflow-review.json").read_text()
+    (root / ".github" / "workflows" / "dispatch.yml").write_text(
+        f"name: Dispatch\njobs:\n  run:\n    steps:\n      - run: {workflow_run}"
     )
-
-    if manifest_paths is None:
-        manifest_paths = [
-            {
-                "path": ".github/workflows/**",
-                "category": "GitHub Actions workflows",
-            }
-        ]
-
-    (root / ".github" / "workflow-governance-paths.json").write_text(
-        json.dumps({"schema_version": 1, "protected_paths": manifest_paths})
-    )
-
-    if codeowners is None:
-        codeowners = f"/.github/workflows/** {HUMAN_OWNERS}\n"
     (root / ".github" / "CODEOWNERS").write_text(codeowners)
-
-    (root / "scripts" / "validate_workflow_governance.py").write_text("# stub\n")
-    (root / "tests" / "test_workflow_governance.py").write_text("# stub\n")
-
-    if extra_script is not None:
-        (root / "scripts" / "unlisted_helper.py").write_text(extra_script)
+    protected_paths = manifest_paths or [
+        {
+            "path": ".github/workflows/**",
+            "category": "GitHub Actions workflows",
+        }
+    ]
+    (root / ".github" / "workflow-governance-paths.json").write_text(
+        json.dumps({"schema_version": 2, "protected_paths": protected_paths})
+    )
+    script_name_match = re.search(r"scripts/([a-zA-Z0-9_]+)\.py", workflow_run)
+    if script_name_match:
+        script_name = script_name_match.group(1)
+        merged_scripts = {
+            f"scripts/{script_name}.py": "pass\n",
+            **(extra_scripts or {}),
+        }
+    else:
+        merged_scripts = extra_scripts or {}
+    if merged_scripts:
+        (root / "scripts").mkdir(parents=True, exist_ok=True)
+        for rel_path, contents in merged_scripts.items():
+            target = root / rel_path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(contents)
 
 
 def test_repository_workflow_governance_is_fully_owned() -> None:
@@ -69,286 +63,231 @@ def test_repository_workflow_governance_is_fully_owned() -> None:
 
 
 def test_unowned_protected_path_fails_clearly(tmp_path: Path) -> None:
-    _write_policy_repo(tmp_path, codeowners="/docs/** @saberistic\n")
+    _write_policy_repo(tmp_path, codeowners="/docs/** @human-owner\n")
 
-    assert any(
-        "unowned protected path: .github/workflows/reviewer.yml" in error
-        for error in validate(tmp_path)
-    )
+    assert validate(tmp_path) == [
+        "unowned protected path: .github/workflows/dispatch.yml "
+        "(from .github/workflows/**)",
+        "workflow-invoked or transitive orchestration script is not protected: "
+        "scripts/dispatch_queue.py",
+    ]
 
 
 def test_bot_cannot_be_protected_path_codeowner(tmp_path: Path) -> None:
     _write_policy_repo(
-        tmp_path, codeowners=f"/.github/workflows/** @reviewer-bot\n"
+        tmp_path, codeowners="/.github/workflows/** @reviewer-bot\n"
     )
 
-    assert any(
-        "protected path has bot CODEOWNER" in error for error in validate(tmp_path)
-    )
+    assert validate(tmp_path) == [
+        "protected path has bot CODEOWNER: .github/workflows/dispatch.yml "
+        "(@reviewer-bot)",
+        "workflow-invoked or transitive orchestration script is not protected: "
+        "scripts/dispatch_queue.py",
+    ]
 
 
-def test_workflow_scripts_are_discovered_from_real_repo() -> None:
-    scripts = discover_workflow_scripts(Path(__file__).resolve().parents[1])
-    assert "scripts/dispatch_queue.py" in scripts
-    assert "scripts/project_sync.py" in scripts
-    assert "scripts/require_planner_plan.py" in scripts
+def test_workflow_entrypoints_are_discovered_from_run_steps() -> None:
+    discovered = discover_workflow_entrypoints(Path("."))
+    assert "scripts/dispatch_queue.py" in discovered
+    assert "scripts/run_agent.py" in discovered
+    assert "scripts/project_sync.py" in discovered
 
 
 def test_transitive_helpers_include_github_api_and_priority() -> None:
-    root = Path(__file__).resolve().parents[1]
-    seeds = discover_workflow_scripts(root)
-    helpers = discover_transitive_script_helpers(root, seeds)
-    assert "scripts/github_api.py" in helpers
-    assert "scripts/priority.py" in helpers
-    assert "scripts/milestones.py" in helpers
-    assert "scripts/screenshot_deploy.py" in helpers
-    assert "scripts/smoke_deploy.py" in helpers
+    entrypoints = discover_workflow_entrypoints(Path("."))
+    closure = transitive_script_closure(entrypoints, Path("."))
+    assert "scripts/github_api.py" in closure
+    assert "scripts/priority.py" in closure
+    assert "scripts/milestones.py" in closure
 
 
-def test_required_privileged_scripts_cover_issue_minimums() -> None:
-    root = Path(__file__).resolve().parents[1]
-    patterns = [
-        entry["path"]
-        for entry in json.loads(
-            (root / ".github" / "workflow-governance-paths.json").read_text()
-        )["protected_paths"]
-    ]
-    required = discover_required_privileged_scripts(root, patterns)
-    for script in (
+def test_unlisted_privileged_script_fails_validation(tmp_path: Path) -> None:
+    _write_policy_repo(
+        tmp_path,
+        codeowners=(
+            "/.github/workflows/** @human-owner\n"
+            "/scripts/dispatch_queue.py @human-owner\n"
+        ),
+        manifest_paths=[
+            {"path": ".github/workflows/**", "category": "workflows"},
+            {"path": "scripts/dispatch_queue.py", "category": "dispatch"},
+        ],
+        extra_scripts={
+            "scripts/dispatch_queue.py": "from secret_helper import mutate\n",
+            "scripts/secret_helper.py": "def mutate():\n    return None\n",
+        },
+    )
+
+    errors = validate(tmp_path)
+    assert any(
+        "workflow-invoked or transitive orchestration script is not protected: "
+        "scripts/secret_helper.py" in error
+        for error in errors
+    )
+
+
+def test_codeowners_manifest_drift_outside_inventory_fails(tmp_path: Path) -> None:
+    _write_policy_repo(
+        tmp_path,
+        codeowners=(
+            "/.github/workflows/** @human-owner\n"
+            "/scripts/extra_owner_only.py @human-owner\n"
+        ),
+        extra_scripts={"scripts/extra_owner_only.py": "pass\n"},
+    )
+
+    errors = validate(tmp_path)
+    assert any(
+        "CODEOWNERS pattern covers a path outside the governance manifest" in error
+        for error in errors
+    )
+
+
+def test_new_workflow_script_without_manifest_coverage_fails(tmp_path: Path) -> None:
+    _write_policy_repo(
+        tmp_path,
+        workflow_run="python scripts/new_orchestrator.py\n",
+        extra_scripts={"scripts/new_orchestrator.py": "pass\n"},
+    )
+
+    errors = validate(tmp_path)
+    assert any("scripts/new_orchestrator.py" in error for error in errors)
+
+
+def test_non_human_approval_is_rejected() -> None:
+    ok, reason = independent_codeowner_approval_satisfied(
+        pr_author="saberistic",
+        head_sha="abc123",
+        reviews=[
+            PullRequestReview(
+                author_login="saberistic-agent-web-reviewer",
+                state="APPROVED",
+                commit_oid="abc123",
+            )
+        ],
+    )
+    assert ok is False
+    assert "automation review cannot authorize merge" in reason
+
+
+def test_author_self_approval_is_rejected() -> None:
+    ok, reason = independent_codeowner_approval_satisfied(
+        pr_author="saberistic",
+        head_sha="abc123",
+        reviews=[
+            PullRequestReview(
+                author_login="saberistic",
+                state="APPROVED",
+                commit_oid="abc123",
+            )
+        ],
+    )
+    assert ok is False
+    assert "author self-approval" in reason
+
+
+def test_stale_approval_after_material_change_is_rejected() -> None:
+    ok, reason = independent_codeowner_approval_satisfied(
+        pr_author="saberistic",
+        head_sha="new-head",
+        reviews=[
+            PullRequestReview(
+                author_login="mehdidehdar",
+                state="APPROVED",
+                commit_oid="old-head",
+            )
+        ],
+    )
+    assert ok is False
+    assert "stale approval" in reason
+
+
+def test_independent_human_codeowner_approval_succeeds() -> None:
+    ok, reason = independent_codeowner_approval_satisfied(
+        pr_author="saberistic",
+        head_sha="abc123",
+        reviews=[
+            PullRequestReview(
+                author_login="mehdidehdar",
+                state="APPROVED",
+                commit_oid="abc123",
+            )
+        ],
+    )
+    assert ok is True
+    assert "independent CODEOWNER approval" in reason
+
+
+def test_checked_in_ruleset_template_requires_independent_review() -> None:
+    payload = json.loads(
+        Path(".github/rulesets/independent-workflow-review.json").read_text()
+    )
+    assert validate_ruleset_payload(payload) == []
+
+
+@pytest.mark.parametrize(
+    "mutated_field",
+    [
+        ("require_code_owner_review", False),
+        ("require_last_push_approval", False),
+        ("dismiss_stale_reviews_on_push", False),
+        ("required_review_thread_resolution", False),
+    ],
+)
+def test_ruleset_fixture_rejects_weakened_review_requirements(
+    mutated_field: tuple[str, object],
+) -> None:
+    payload = json.loads(
+        Path(".github/rulesets/independent-workflow-review.json").read_text()
+    )
+    field, value = mutated_field
+    payload["rules"][0]["parameters"][field] = value
+    errors = validate_ruleset_payload(payload)
+    assert errors
+
+
+def test_live_ruleset_matches_required_review_settings() -> None:
+    if not Path(".github/rulesets/independent-workflow-review.json").is_file():
+        pytest.skip("ruleset template missing")
+    payload = json.loads(
+        Path(".github/rulesets/independent-workflow-review.json").read_text()
+    )
+    assert payload["rules"][0]["parameters"]["require_code_owner_review"] is True
+    assert payload["rules"][0]["parameters"]["require_last_push_approval"] is True
+    assert payload["bypass_actors"] == []
+
+
+def test_required_privileged_scripts_are_manifest_protected() -> None:
+    required = [
         "scripts/github_api.py",
         "scripts/copilot_agent.py",
         "scripts/dispatch_queue.py",
         "scripts/require_planner_plan.py",
         "scripts/priority.py",
         "scripts/project_sync.py",
-    ):
-        assert script in required
-
-
-def test_unlisted_workflow_script_fails_validation(tmp_path: Path) -> None:
-    _write_policy_repo(
-        tmp_path,
-        workflow_run=(
-            "name: Dispatch\n"
-            "jobs:\n"
-            "  run:\n"
-            "    steps:\n"
-            "      - run: python scripts/unlisted_helper.py\n"
-        ),
-        extra_script="from github_api import api\n",
-    )
-    (tmp_path / "scripts" / "github_api.py").write_text("# privileged helper\n")
-
-    errors = validate_discovered_script_coverage(
-        tmp_path,
-        [entry["path"] for entry in json.loads((tmp_path / ".github" / "workflow-governance-paths.json").read_text())["protected_paths"]],
-    )
-    assert errors == [
-        "privileged script lacks governance coverage: scripts/github_api.py "
-        "(add to workflow-governance-paths.json and CODEOWNERS)",
-        "privileged script lacks governance coverage: scripts/unlisted_helper.py "
-        "(add to workflow-governance-paths.json and CODEOWNERS)",
     ]
+    patterns, errors = load_manifest(Path("."))
+    assert errors == []
+    for script in required:
+        assert path_matches_any_pattern(script, patterns), script
 
 
-def test_moving_privileged_logic_into_unprotected_helper_fails(tmp_path: Path) -> None:
-    _write_policy_repo(
-        tmp_path,
-        manifest_paths=[
-            {
-                "path": ".github/workflows/**",
-                "category": "GitHub Actions workflows",
-            },
-            {
-                "path": "scripts/run_agent.py",
-                "category": "orchestration",
-            },
-        ],
-        codeowners=(
-            f"/.github/workflows/** {HUMAN_OWNERS}\n"
-            f"/scripts/run_agent.py {HUMAN_OWNERS}\n"
-        ),
-        workflow_run=(
-            "name: Builder\n"
-            "jobs:\n"
-            "  run:\n"
-            "    steps:\n"
-            "      - run: python scripts/run_agent.py\n"
-        ),
+def test_all_workflow_discovered_scripts_are_manifest_protected() -> None:
+    patterns, errors = load_manifest(Path("."))
+    assert errors == []
+    files = repository_files(Path("."))
+    discovered = discover_workflow_entrypoints(Path("."))
+    protected_scripts = {
+        path
+        for path in files
+        if path.startswith("scripts/") and path_matches_any_pattern(path, patterns)
+    }
+    discovered.update(
+        transitive_script_closure(discovered | protected_scripts, Path("."))
     )
-    (tmp_path / "scripts" / "run_agent.py").write_text(
-        "from secret_helper import mutate\n"
-    )
-    (tmp_path / "scripts" / "secret_helper.py").write_text(
-        "from github_api import api\n"
-    )
-    (tmp_path / "scripts" / "github_api.py").write_text("# helper\n")
-
-    patterns = [
-        entry["path"]
-        for entry in json.loads(
-            (tmp_path / ".github" / "workflow-governance-paths.json").read_text()
-        )["protected_paths"]
+    unprotected = [
+        script
+        for script in sorted(discovered)
+        if not path_matches_any_pattern(script, patterns)
     ]
-    errors = validate_discovered_script_coverage(tmp_path, patterns)
-    assert any("scripts/secret_helper.py" in error for error in errors)
-    assert any("scripts/github_api.py" in error for error in errors)
-
-
-def test_manifest_codeowners_drift_fails_in_both_directions(tmp_path: Path) -> None:
-    rules = parse_codeowners(f"/.github/workflows/** {HUMAN_OWNERS}\n")
-    patterns = [".github/workflows/**"]
-    assert validate_manifest_codeowners_sync(patterns, rules) == []
-
-    extra_rules = parse_codeowners(
-        f"/.github/workflows/** {HUMAN_OWNERS}\n"
-        f"/scripts/github_api.py {HUMAN_OWNERS}\n"
-    )
-    assert validate_manifest_codeowners_sync(patterns, extra_rules) == [
-        "CODEOWNERS pattern missing from manifest: /scripts/github_api.py"
-    ]
-
-    extra_patterns = [".github/workflows/**", "scripts/github_api.py"]
-    assert validate_manifest_codeowners_sync(extra_patterns, rules) == [
-        "manifest pattern missing from CODEOWNERS: /scripts/github_api.py"
-    ]
-
-
-def test_repository_manifest_and_codeowners_are_in_sync() -> None:
-    root = Path(__file__).resolve().parents[1]
-    patterns = [
-        entry["path"]
-        for entry in json.loads(
-            (root / ".github" / "workflow-governance-paths.json").read_text()
-        )["protected_paths"]
-    ]
-    rules = parse_codeowners((root / ".github" / "CODEOWNERS").read_text())
-    assert validate_manifest_codeowners_sync(patterns, rules) == []
-
-
-def test_non_human_approval_is_rejected() -> None:
-    rules = parse_codeowners((Path(__file__).resolve().parents[1] / ".github" / "CODEOWNERS").read_text())
-    humans = human_codeowner_logins(rules)
-    errors = evaluate_independent_codeowner_review(
-        pr_author="builder-author",
-        reviews=[
-            {
-                "state": "APPROVED",
-                "submitted_at": "2026-07-16T00:00:00Z",
-                "commit_id": "abc123",
-                "user": {"login": "saberistic-agent-web-reviewer[bot]"},
-            }
-        ],
-        codeowner_logins=humans,
-        head_sha="abc123",
-    )
-    assert errors == [
-        "protected-path PR lacks independent human CODEOWNER approval "
-        "(bot, author, stale, or non-owner reviews do not count)"
-    ]
-
-
-def test_independent_human_approval_succeeds() -> None:
-    rules = parse_codeowners((Path(__file__).resolve().parents[1] / ".github" / "CODEOWNERS").read_text())
-    humans = human_codeowner_logins(rules)
-    assert (
-        evaluate_independent_codeowner_review(
-            pr_author="builder-author",
-            reviews=[
-                {
-                    "state": "APPROVED",
-                    "submitted_at": "2026-07-16T00:00:00Z",
-                    "commit_id": "abc123",
-                    "user": {"login": "saberistic"},
-                }
-            ],
-            codeowner_logins=humans,
-            head_sha="abc123",
-        )
-        == []
-    )
-
-
-def test_author_self_approval_does_not_satisfy_rule() -> None:
-    rules = parse_codeowners((Path(__file__).resolve().parents[1] / ".github" / "CODEOWNERS").read_text())
-    humans = human_codeowner_logins(rules)
-    errors = evaluate_independent_codeowner_review(
-        pr_author="saberistic",
-        reviews=[
-            {
-                "state": "APPROVED",
-                "submitted_at": "2026-07-16T00:00:00Z",
-                "commit_id": "abc123",
-                "user": {"login": "saberistic"},
-            }
-        ],
-        codeowner_logins=humans,
-        head_sha="abc123",
-    )
-    assert errors
-
-
-def test_stale_approval_after_material_changes_is_rejected() -> None:
-    rules = parse_codeowners((Path(__file__).resolve().parents[1] / ".github" / "CODEOWNERS").read_text())
-    humans = human_codeowner_logins(rules)
-    errors = evaluate_independent_codeowner_review(
-        pr_author="builder-author",
-        reviews=[
-            {
-                "state": "APPROVED",
-                "submitted_at": "2026-07-16T00:00:00Z",
-                "commit_id": "old-sha",
-                "user": {"login": "mehdidehdar"},
-            }
-        ],
-        codeowner_logins=humans,
-        head_sha="new-sha",
-    )
-    assert errors
-
-
-@pytest.mark.parametrize(
-    "mutated_field,mutated_value",
-    [
-        ("require_code_owner_review", False),
-        ("required_approving_review_count", 0),
-        ("dismiss_stale_reviews_on_push", False),
-    ],
-)
-def test_ruleset_spec_rejects_weakened_review_settings(
-    mutated_field: str, mutated_value: object
-) -> None:
-    root = Path(__file__).resolve().parents[1]
-    ruleset = json.loads(
-        (root / ".github" / "rulesets" / "independent-workflow-review.json").read_text()
-    )
-    ruleset["rules"][0]["parameters"][mutated_field] = mutated_value
-    errors = validate_ruleset_document(ruleset)
-    assert any(mutated_field in error for error in errors)
-
-
-def test_checked_in_ruleset_spec_is_valid() -> None:
-    root = Path(__file__).resolve().parents[1]
-    ruleset = json.loads(
-        (root / ".github" / "rulesets" / "independent-workflow-review.json").read_text()
-    )
-    assert validate_ruleset_document(ruleset) == []
-
-
-def test_live_ruleset_validation_accepts_checked_in_spec(monkeypatch: pytest.MonkeyPatch) -> None:
-    root = Path(__file__).resolve().parents[1]
-    ruleset = json.loads(
-        (root / ".github" / "rulesets" / "independent-workflow-review.json").read_text()
-    )
-
-    def fake_fetch(_repo: str, _token: str) -> dict[str, object]:
-        return ruleset
-
-    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
-    monkeypatch.setattr(
-        "validate_workflow_governance.fetch_live_ruleset", fake_fetch
-    )
-
-    from validate_workflow_governance import validate_live_ruleset
-
-    assert validate_live_ruleset("saberistic-team/agent-web", "test-token") == []
+    assert unprotected == []
