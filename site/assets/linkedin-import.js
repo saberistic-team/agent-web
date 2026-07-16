@@ -460,13 +460,19 @@
   }
 
   function findCsvHeaderLineIndex(lines) {
-    var limit = Math.min(lines.length, LIMITS.maxPreambleScanLines || 20);
-    for (var i = 0; i < limit; i += 1) {
-      if (!lines[i].trim()) {
+    var skippedSingleField = 0;
+    var maxScan = LIMITS.maxPreambleScanLines || 20;
+    for (var idx = 0; idx < lines.length; idx += 1) {
+      if (!lines[idx].trim()) {
         continue;
       }
-      if (parseCsvLine(lines[i]).length > 1) {
-        return i;
+      var fieldCount = parseCsvLine(lines[idx]).length;
+      if (fieldCount >= 2) {
+        return idx;
+      }
+      skippedSingleField += 1;
+      if (skippedSingleField >= maxScan) {
+        break;
       }
     }
     return -1;

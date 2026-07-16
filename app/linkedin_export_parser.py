@@ -137,51 +137,24 @@ def _is_nested_archive(path: str) -> bool:
     return any(base.endswith(suffix) for suffix in NESTED_ARCHIVE_SUFFIXES)
 
 
-def _split_csv_lines(text: str) -> list[str]:
-    """Split text into logical CSV lines, respecting quoted fields."""
-    lines: list[str] = []
-    current: list[str] = []
-    in_quotes = False
-    i = 0
-    while i < len(text):
-        ch = text[i]
-        if ch == '"':
-            if in_quotes and i + 1 < len(text) and text[i + 1] == '"':
-                current.append('""')
-                i += 2
-                continue
-            in_quotes = not in_quotes
-            current.append(ch)
-        elif ch in ("\n", "\r") and not in_quotes:
-            if ch == "\r" and i + 1 < len(text) and text[i + 1] == "\n":
-                i += 1
-            lines.append("".join(current))
-            current = []
-        else:
-            current.append(ch)
-        i += 1
-    if current:
-        lines.append("".join(current))
-    return lines
-
-
-def _parse_csv_line(line: str) -> list[str]:
-    reader = csv.reader([line])
+def _count_csv_fields(line: str) -> int:
     try:
-        return next(reader)
-    except StopIteration:
-        return []
+        return len(next(csv.reader([line])))
+    except (csv.Error, StopIteration):
+        return 0
 
 
 def _find_csv_header_line_index(lines: list[str]) -> int | None:
-    """Locate the real header row, skipping blank and single-field preamble lines."""
-    limit = min(len(lines), MAX_PREAMBLE_SCAN_LINES)
-    for index in range(limit):
-        line = lines[index]
+    """Locate the real header row, skipping LinkedIn disclaimer preambles."""
+    skipped_single_field = 0
+    for index, line in enumerate(lines):
         if not line.strip():
             continue
-        if len(_parse_csv_line(line)) > 1:
+        if _count_csv_fields(line) >= 2:
             return index
+        skipped_single_field += 1
+        if skipped_single_field >= MAX_PREAMBLE_SCAN_LINES:
+            break
     return None
 
 
@@ -191,12 +164,13 @@ def _read_csv_rows(raw: bytes, *, basename: str) -> tuple[list[dict[str, str]], 
     if "\x00" in text:
         raise ValueError(f"{basename}: binary content is not valid CSV")
 
-    lines = _split_csv_lines(text)
+    lines = text.splitlines()
     header_index = _find_csv_header_line_index(lines)
     if header_index is None:
         raise ValueError(f"{basename}: missing CSV header row")
 
-    reader = csv.DictReader(io.StringIO("\n".join(lines[header_index:])))
+    remaining = "\n".join(lines[header_index:])
+    reader = csv.DictReader(io.StringIO(remaining))
     if reader.fieldnames is None:
         raise ValueError(f"{basename}: missing CSV header row")
 
@@ -207,7 +181,8 @@ def _read_csv_rows(raw: bytes, *, basename: str) -> tuple[list[dict[str, str]], 
             warnings.append(f"{basename}: unexpected schema (missing '{token}' column)")
 
     rows: list[dict[str, str]] = []
-    for index, row in enumerate(reader, start=header_index + 2):
+    first_data_row_number = header_index + 2
+    for index, row in enumerate(reader, start=first_data_row_number):
         if index - 1 > MAX_CSV_ROWS:
             warnings.append(f"{basename}: truncated at {MAX_CSV_ROWS:,} rows")
             break
