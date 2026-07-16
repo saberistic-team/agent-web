@@ -75,6 +75,7 @@ def _settings(**overrides: Any) -> Settings:
         "notify_email": base.notify_email,
         "base_url": base.base_url,
         "analytics_environment": base.analytics_environment,
+        "app_environment": base.app_environment,
         "admin_username": TEST_USERNAME,
         "admin_password_hash": TEST_HASH,
         "admin_session_secret": TEST_SESSION_SECRET,
