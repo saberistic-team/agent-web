@@ -29,7 +29,7 @@ from tests.test_admin_auth import (
     mock_db_connection,
     shared_rate_limiter,
 )
-from tests.test_admin_security_headers import _assert_admin_cache_control
+from tests.test_admin_security_headers import _assert_admin_cache_headers
 
 client = TestClient(app, follow_redirects=False)
 
@@ -87,7 +87,7 @@ def test_admin_response_matrix_has_single_cache_policy(
     else:
         response = client.request(method, path)
     assert response.status_code == status_code
-    _assert_admin_cache_control(response)
+    _assert_admin_cache_headers(response)
 
 
 @pytest.mark.integration
@@ -95,7 +95,7 @@ def test_admin_fastapi_validation_error_has_no_store() -> None:
     client.cookies.clear()
     response = client.post("/admin/login", data={})
     assert response.status_code == 422
-    _assert_admin_cache_control(response)
+    _assert_admin_cache_headers(response)
 
 
 @pytest.mark.integration
@@ -113,7 +113,7 @@ def test_admin_preview_response_matrix_has_single_cache_policy(
 ) -> None:
     response = client.get(path)
     assert response.status_code == status_code
-    _assert_admin_cache_control(response)
+    _assert_admin_cache_headers(response)
 
 
 @pytest.mark.integration
@@ -121,7 +121,7 @@ def test_admin_login_get_has_no_store() -> None:
     with mock_db_connection():
         response = client.get("/admin/login")
     assert response.status_code == 200
-    _assert_admin_cache_control(response)
+    _assert_admin_cache_headers(response)
 
 
 @pytest.mark.integration
@@ -139,7 +139,7 @@ def test_admin_login_failed_post_has_no_store() -> None:
                     },
                 )
     assert response.status_code == 400
-    _assert_admin_cache_control(response)
+    _assert_admin_cache_headers(response)
 
 
 @pytest.mark.integration
@@ -149,7 +149,7 @@ def test_admin_login_invalid_credentials_has_no_store() -> None:
         with mock_db_connection():
             response = _login(password="not-the-password")
     assert response.status_code == 401
-    _assert_admin_cache_control(response)
+    _assert_admin_cache_headers(response)
 
 
 @pytest.mark.integration
@@ -157,7 +157,7 @@ def test_admin_login_success_redirect_has_no_store() -> None:
     response = _login_success()
     assert response.status_code == 303
     assert response.headers["location"] == "/admin"
-    _assert_admin_cache_control(response)
+    _assert_admin_cache_headers(response)
 
 
 @pytest.mark.integration
@@ -178,14 +178,14 @@ def test_admin_logout_redirect_has_no_store() -> None:
             )
     assert response.status_code == 303
     assert response.headers["location"] == "/admin/login"
-    _assert_admin_cache_control(response)
+    _assert_admin_cache_headers(response)
 
 
 @pytest.mark.integration
 def test_authenticated_admin_html_has_no_store(preview_mode: None) -> None:
     response = client.get("/admin/briefs")
     assert response.status_code == 200
-    _assert_admin_cache_control(response)
+    _assert_admin_cache_headers(response)
 
 
 @pytest.mark.integration
@@ -200,7 +200,7 @@ def test_authenticated_admin_json_has_no_store() -> None:
             json={"batch_label": "test", "rows": []},
         )
     assert response.status_code in {400, 422, 503}
-    _assert_admin_cache_control(response)
+    _assert_admin_cache_headers(response)
 
 
 @pytest.mark.integration
@@ -234,7 +234,7 @@ def test_admin_rate_limit_429_has_no_store() -> None:
                 cookies=cookies,
             )
     assert blocked.status_code == 429
-    _assert_admin_cache_control(blocked)
+    _assert_admin_cache_headers(blocked)
 
 
 @pytest.mark.integration
@@ -242,7 +242,7 @@ def test_admin_unconfigured_503_has_no_store(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.delenv("ADMIN_USERNAME", raising=False)
     response = client.get("/admin/login")
     assert response.status_code == 503
-    _assert_admin_cache_control(response)
+    _assert_admin_cache_headers(response)
 
 
 @pytest.mark.integration
@@ -254,7 +254,7 @@ def test_admin_unhandled_exception_500_has_no_store(preview_mode: None) -> None:
         ):
             response = client.get("/admin")
     assert response.status_code == 500
-    _assert_admin_cache_control(response)
+    _assert_admin_cache_headers(response)
 
 
 @pytest.mark.integration
@@ -264,7 +264,7 @@ def test_admin_preview_guard_405_has_no_store(preview_mode: None) -> None:
         data={"stage": "qualifying", "csrf_token": "bad"},
     )
     assert response.status_code == 405
-    _assert_admin_cache_control(response)
+    _assert_admin_cache_headers(response)
 
 
 @pytest.mark.integration
@@ -287,7 +287,7 @@ def test_handler_cache_control_cannot_weaken_admin_policy() -> None:
     response = Response(content="admin", status_code=200)
     response.headers["Cache-Control"] = "public, max-age=3600"
     apply_admin_cache_headers(response)
-    _assert_admin_cache_control(response)
+    _assert_admin_cache_headers(response)
 
 
 @pytest.mark.integration
@@ -301,4 +301,4 @@ def test_admin_cache_control_header_appears_once(preview_mode: None) -> None:
 def test_admin_login_required_redirect_has_no_store() -> None:
     response = client.get("/admin/companies")
     assert response.status_code == 303
-    _assert_admin_cache_control(response)
+    _assert_admin_cache_headers(response)
