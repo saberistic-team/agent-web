@@ -17,6 +17,10 @@ _CSP_NONCE_BYTES = 16
 # One-year HSTS max-age; includeSubDomains omitted until all subdomains are HTTPS.
 _HSTS_MAX_AGE_SECONDS = 31_536_000
 
+# Authoritative admin cache isolation (#337). ``no-store`` prevents storage/reuse;
+# ``private`` documents user-specific responses for shared caches.
+ADMIN_CACHE_CONTROL = "no-store, private"
+
 # Reviewed admin CSP directive inventory (see issue #308 asset audit).
 _CSP_DIRECTIVES: dict[str, str] = {
     "default-src": "'none'",
@@ -51,9 +55,6 @@ _PERMISSIONS_POLICY = (
 # after automated browser verification (see docs/ADMIN_SECURITY_HEADERS.md).
 CSP_ENFORCEMENT_OWNER = "agent-web maintainers"
 CSP_ENFORCEMENT_DEADLINE = "2026-08-01"
-
-# Authoritative admin cache directive (RFC 9111 §5.2.2.5 / §5.2.2.7).
-ADMIN_CACHE_CONTROL = "no-store, private"
 
 
 def is_admin_path(path: str) -> bool:
@@ -158,7 +159,7 @@ def apply_response_headers(
 
 
 def admin_cache_headers() -> dict[str, str]:
-    """Return the admin cache-isolation header set (single value per name)."""
+    """Return the reviewed admin cache isolation header set."""
     return {"Cache-Control": ADMIN_CACHE_CONTROL}
 
 
@@ -173,7 +174,7 @@ def apply_admin_security_headers(
 
 
 def apply_admin_cache_headers(response: Response) -> None:
-    """Attach the admin cache-isolation policy to a response."""
+    """Attach admin cache isolation headers, replacing weaker downstream values."""
     apply_response_headers(response, admin_cache_headers())
 
 

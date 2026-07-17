@@ -8,9 +8,8 @@ All `/admin` and `/admin/*` responses receive a centrally composed browser
 security-header policy from `app/admin_response_policy.py`, applied by the
 `admin_response_security_policy` middleware in `app/main.py`.
 
-Admin cache isolation (`Cache-Control: no-store, private`) is documented in
-[ADMIN_CACHE_HEADERS.md](ADMIN_CACHE_HEADERS.md) ([#337](https://github.com/saberistic-team/agent-web/issues/337)).
-Both policies share the same middleware hook.
+Admin cache isolation (`Cache-Control: no-store, private`) is implemented in
+the same middleware entry point; see `docs/ADMIN_CACHE_POLICY.md` (#337).
 
 ## Enforced headers
 
@@ -87,5 +86,5 @@ Local HTTP (`BASE_URL=http://localhost:8000`) must **not** emit HSTS.
 
 `admin_response_security_policy` is registered outermost (after
 `redirect_www_to_apex`) so redirects, exception-handler output, JSON errors,
-and validation failures retain headers. Cache isolation (#337) and security
-headers (#308) are both applied from the same post-`call_next` hook.
+and validation failures retain headers. Cache isolation (#337) is applied in
+the same middleware hook; see `docs/ADMIN_CACHE_POLICY.md`.
