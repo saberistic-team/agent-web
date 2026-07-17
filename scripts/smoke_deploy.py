@@ -9,7 +9,7 @@ import sys
 import urllib.error
 import urllib.request
 
-from app.admin_response_policy import ADMIN_CACHE_CONTROL
+ADMIN_CACHE_CONTROL = "no-store, private"
 
 
 def get_json(url: str) -> dict:
@@ -17,10 +17,18 @@ def get_json(url: str) -> dict:
         return json.loads(resp.read().decode())
 
 
-def fetch_response_headers(url: str) -> dict[str, str]:
-    """Return response headers for ``url`` without reading the body."""
-    with urllib.request.urlopen(url, timeout=30) as resp:
-        return {name.lower(): value for name, value in resp.headers.items()}
+def fetch_response_headers(url: str, *, method: str = "HEAD") -> dict[str, str]:
+    """Return response headers without reading a body (production-safe probe)."""
+    request = urllib.request.Request(url, method=method)
+    with urllib.request.urlopen(request, timeout=30) as resp:
+        return {key.lower(): value for key, value in resp.headers.items()}
+
+
+def verify_admin_login_cache_headers(base_url: str) -> bool:
+    """Return True when /admin/login emits the required cache isolation policy."""
+    origin = base_url.rstrip("/")
+    headers = fetch_response_headers(f"{origin}/admin/login")
+    return headers.get("cache-control") == ADMIN_CACHE_CONTROL
 
 
 def verify_admin_login_source_trust(health_payload: dict, base_url: str) -> bool:
@@ -36,11 +44,6 @@ def verify_admin_login_source_trust(health_payload: dict, base_url: str) -> bool
     if not isinstance(trust, dict):
         return False
     return bool(trust.get("enabled")) and int(trust.get("trusted_proxy_entry_count", 0)) > 0
-
-
-def verify_admin_cache_headers(headers: dict[str, str]) -> bool:
-    """Return True when production admin login emits the enforced cache policy."""
-    return headers.get("cache-control") == ADMIN_CACHE_CONTROL
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -85,21 +88,19 @@ def main(argv: list[str] | None = None) -> int:
     if base.endswith("saberistic.com") or "onrender.com" in base:
         print(f"PASS {health_url} → admin_proxy_trust boundary active")
 
-    admin_login_url = f"{base}/admin/login"
+    login_url = f"{base}/admin/login"
     try:
-        admin_headers = fetch_response_headers(admin_login_url)
+        cache_ok = verify_admin_login_cache_headers(base)
     except (urllib.error.URLError, TimeoutError) as exc:
-        print(f"FAIL {admin_login_url}: {exc}", file=sys.stderr)
+        print(f"FAIL {login_url}: {exc}", file=sys.stderr)
         return 1
-    if not verify_admin_cache_headers(admin_headers):
-        recorded = admin_headers.get("cache-control", "<missing>")
+    if not cache_ok:
         print(
-            f"FAIL {admin_login_url}: expected Cache-Control={ADMIN_CACHE_CONTROL!r}, "
-            f"got {recorded!r}",
+            f"FAIL {login_url}: expected Cache-Control: {ADMIN_CACHE_CONTROL!r}",
             file=sys.stderr,
         )
         return 1
-    print(f"PASS {admin_login_url} → Cache-Control: {ADMIN_CACHE_CONTROL}")
+    print(f"PASS {login_url} → Cache-Control: {ADMIN_CACHE_CONTROL}")
     return 0
 
 

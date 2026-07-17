@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 
-from app.admin_response_policy import ADMIN_CACHE_CONTROL
-from scripts.smoke_deploy import verify_admin_cache_headers, verify_admin_login_source_trust
+from scripts.smoke_deploy import (
+    ADMIN_CACHE_CONTROL,
+    verify_admin_login_cache_headers,
+    verify_admin_login_source_trust,
+)
 
 
 @pytest.mark.unit
@@ -31,12 +36,18 @@ def test_verify_admin_login_source_trust_skips_non_production_origin() -> None:
 
 
 @pytest.mark.unit
-def test_verify_admin_cache_headers_accepts_enforced_policy() -> None:
-    assert verify_admin_cache_headers({"cache-control": ADMIN_CACHE_CONTROL})
+def test_verify_admin_login_cache_headers_accepts_required_policy() -> None:
+    headers = {"cache-control": ADMIN_CACHE_CONTROL}
+    with patch("scripts.smoke_deploy.fetch_response_headers", return_value=headers):
+        assert verify_admin_login_cache_headers("https://saberistic.com")
 
 
 @pytest.mark.unit
-def test_verify_admin_cache_headers_rejects_missing_or_weak_policy() -> None:
-    assert not verify_admin_cache_headers({})
-    assert not verify_admin_cache_headers({"cache-control": "no-cache"})
-    assert not verify_admin_cache_headers({"cache-control": "public, max-age=3600"})
+def test_verify_admin_login_cache_headers_rejects_missing_or_weak_policy() -> None:
+    with patch(
+        "scripts.smoke_deploy.fetch_response_headers",
+        return_value={"cache-control": "no-cache"},
+    ):
+        assert not verify_admin_login_cache_headers("https://saberistic.com")
+    with patch("scripts.smoke_deploy.fetch_response_headers", return_value={}):
+        assert not verify_admin_login_cache_headers("https://saberistic.com")

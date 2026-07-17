@@ -53,7 +53,7 @@ CSP_ENFORCEMENT_OWNER = "agent-web maintainers"
 CSP_ENFORCEMENT_DEADLINE = "2026-08-01"
 
 # Authoritative admin cache isolation (#337). ``no-store`` prevents storage and
-# reuse; ``private`` documents user-specific representations for shared caches.
+# reuse; ``private`` documents user-specific content for shared caches.
 ADMIN_CACHE_CONTROL = "no-store, private"
 
 
@@ -158,6 +158,16 @@ def apply_response_headers(
         response.headers[name] = value
 
 
+def admin_cache_headers() -> dict[str, str]:
+    """Return the reviewed admin cache-control policy (single value)."""
+    return {"Cache-Control": ADMIN_CACHE_CONTROL}
+
+
+def apply_admin_cache_headers(response: Response) -> None:
+    """Attach admin cache isolation headers, replacing weaker downstream values."""
+    apply_response_headers(response, admin_cache_headers())
+
+
 def apply_admin_security_headers(
     response: Response,
     settings: Settings,
@@ -166,16 +176,6 @@ def apply_admin_security_headers(
 ) -> None:
     """Attach the full admin security header policy to a response."""
     apply_response_headers(response, admin_security_headers(settings, nonce=nonce))
-
-
-def admin_cache_headers() -> dict[str, str]:
-    """Return the enforced admin cache-isolation header set (#337)."""
-    return {"Cache-Control": ADMIN_CACHE_CONTROL}
-
-
-def apply_admin_cache_headers(response: Response) -> None:
-    """Attach admin cache isolation, replacing any weaker downstream directive."""
-    apply_response_headers(response, admin_cache_headers())
 
 
 def apply_static_asset_headers(response: Response) -> None:

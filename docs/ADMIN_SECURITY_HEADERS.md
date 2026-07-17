@@ -8,9 +8,9 @@ All `/admin` and `/admin/*` responses receive a centrally composed browser
 security-header policy from `app/admin_response_policy.py`, applied by the
 `admin_response_security_policy` middleware in `app/main.py`.
 
-Admin cache isolation (`Cache-Control: no-store, private`) is documented in
-[ADMIN_CACHE_POLICY.md](ADMIN_CACHE_POLICY.md) ([#337](https://github.com/saberistic-team/agent-web/issues/337)).
-This module applies CSP and supporting security headers only.
+Admin cache isolation (`Cache-Control: no-store, private`) is implemented in the
+same module and applied by the same middleware ([#337](https://github.com/saberistic-team/agent-web/issues/337)).
+See **Admin cache isolation** below.
 
 ## Enforced headers
 
@@ -23,7 +23,42 @@ This module applies CSP and supporting security headers only.
 | `X-Frame-Options` | `DENY` | Legacy complement to CSP `frame-ancestors 'none'` |
 | `X-XSS-Protection` | `0` | Legacy auditor disabled; CSP is authoritative |
 | `Strict-Transport-Security` | `max-age=31536000` | **Only** when `BASE_URL` is `https://…` |
-| `Cache-Control` | `no-store, private` | See [ADMIN_CACHE_POLICY.md](ADMIN_CACHE_POLICY.md) (#337) |
+| `Cache-Control` | `no-store, private` | **All** `/admin` responses (#337); see below |
+
+## Admin cache isolation (#337)
+
+Every `/admin` and `/admin/*` response — including login GET/POST, redirects,
+validation failures, throttling, temporary errors, and authenticated HTML/JSON
+— receives:
+
+```http
+Cache-Control: no-store, private
+```
+
+| Directive | Role |
+|-----------|------|
+| `no-store` | Prevents browsers and intermediaries from storing or reusing the response |
+| `private` | Documents user-specific content; blocks shared-cache retention if policy evolves |
+
+**Limits:** HTTP cache controls reduce storage and reuse but are **not** secure
+erasure. They do not clear back-forward cache (bfcache), screenshots, OS swap,
+or malicious caches. Logout revokes server-side session state; a cached document
+could still display previously rendered content until the user navigates away.
+
+Static fingerprinted assets under `/assets/*` keep their intentional cache
+behavior and are **not** forced to `no-store` because an admin page references
+them.
+
+Public pages (`/`, `/about`, etc.) are unchanged unless broader header work
+(#308+) defines a global baseline.
+
+Implementation: `admin_cache_headers()` / `apply_admin_cache_headers()` in
+`app/admin_response_policy.py`, invoked from `admin_response_security_policy`
+middleware after route/exception handling so downstream handlers cannot weaken
+the policy (`apply_response_headers` replaces conflicting values).
+
+Verification: `tests/test_admin_cache_headers.py`,
+`tests/test_admin_cache_headers_browser.py`.
 
 ## Content Security Policy inventory
 
@@ -75,12 +110,15 @@ After deploy with `BASE_URL=https://saberistic.com`:
 
 ```bash
 curl -sI https://saberistic.com/admin/login | grep -Ei \
-  'content-security-policy|cache-control|x-content-type-options|x-frame-options|referrer-policy|permissions-policy|strict-transport-security'
+  'content-security-policy|x-content-type-options|x-frame-options|referrer-policy|permissions-policy|strict-transport-security|cache-control'
 ```
 
-Expect CSP with `frame-ancestors 'none'`, `Cache-Control: no-store, private`,
-`nosniff`, `DENY`, `no-referrer`, disabled Permissions-Policy features, and HSTS
-`max-age=31536000` without `includeSubDomains` or `preload`.
+Expect CSP with `frame-ancestors 'none'`, `nosniff`, `DENY`, `no-referrer`,
+disabled Permissions-Policy features, HSTS `max-age=31536000` without
+`includeSubDomains` or `preload`, and `Cache-Control: no-store, private`.
+
+This check records response headers only — do not log `Set-Cookie`, CSRF tokens,
+or response bodies in shared ops channels.
 
 Local HTTP (`BASE_URL=http://localhost:8000`) must **not** emit HSTS.
 
@@ -88,7 +126,5 @@ Local HTTP (`BASE_URL=http://localhost:8000`) must **not** emit HSTS.
 
 `admin_response_security_policy` is registered outermost (after
 `redirect_www_to_apex`) so redirects, exception-handler output, JSON errors,
-and validation failures retain headers. Unhandled admin exceptions are caught
-in that middleware and returned as `500` so outer `ServerErrorMiddleware` cannot
-emit a headerless shell. Cache isolation (#337) and CSP (#308) are both applied
-from this middleware entry point.
+and validation failures retain headers. Security headers (#308) and cache
+isolation (#337) are both applied from this middleware entry point.
