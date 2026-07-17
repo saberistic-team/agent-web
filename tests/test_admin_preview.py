@@ -336,27 +336,13 @@ def test_admin_preview_briefs_list_and_detail_have_mock_data(
 
 @pytest.mark.unit
 def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytest.MonkeyPatch) -> None:
-    import random
-
-    from argon2 import PasswordHasher
-
     from app.admin_preview import (
         PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID,
         preview_contact_restore_conflict,
     )
-    from app.preview_context import reset_preview_context_cache
 
-    enable_admin_preview_env(monkeypatch)
-    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "7")
-    monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
-    monkeypatch.setenv(
-        "ADMIN_PASSWORD_HASH",
-        PasswordHasher().hash("preview"),
-    )
-    monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "preview-limiter-secret-32chars-minimum!!")
+    enable_admin_preview_env(monkeypatch, preview_seed="7")
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    reset_preview_context_cache()
     preview = preview_contact_restore_conflict()
     client = TestClient(app, follow_redirects=False)
     response = client.get(
@@ -375,10 +361,9 @@ def test_preview_company_detail_archive_and_restore_actions(
     from argon2 import PasswordHasher
 
     from app.admin_auth import SESSION_COOKIE_NAME
-    from app.preview_context import reset_preview_context_cache
+    from app.admin_preview_context import reset_preview_context_cache
 
-    enable_admin_preview_env(monkeypatch)
-    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "11")
+    enable_admin_preview_env(monkeypatch, preview_seed="11")
     monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
     monkeypatch.setenv(
         "ADMIN_PASSWORD_HASH",
@@ -425,10 +410,9 @@ def test_preview_contact_detail_and_edit_archive_restore_actions(
     from argon2 import PasswordHasher
 
     from app.admin_auth import SESSION_COOKIE_NAME
-    from app.preview_context import reset_preview_context_cache
+    from app.admin_preview_context import reset_preview_context_cache
 
-    enable_admin_preview_env(monkeypatch)
-    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "12")
+    enable_admin_preview_env(monkeypatch, preview_seed="12")
     monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
     monkeypatch.setenv(
         "ADMIN_PASSWORD_HASH",

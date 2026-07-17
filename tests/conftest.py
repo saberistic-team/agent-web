@@ -13,12 +13,16 @@ def enable_admin_preview_env(
     base_url: str = "http://127.0.0.1:8765",
     bind_host: str = "127.0.0.1",
     app_env: str = "development",
+    preview_seed: str = "42",
+    preview_reference_time: str = "2026-07-14T12:00:00+00:00",
 ) -> None:
     """Set the env contract required for a safe admin preview bypass."""
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
     monkeypatch.setenv("APP_ENV", app_env)
     monkeypatch.setenv("SERVER_BIND_HOST", bind_host)
     monkeypatch.setenv("BASE_URL", base_url)
+    monkeypatch.setenv("ADMIN_PREVIEW_SEED", preview_seed)
+    monkeypatch.setenv("ADMIN_PREVIEW_REFERENCE_TIME", preview_reference_time)
 
 
 @pytest.fixture(autouse=True)
