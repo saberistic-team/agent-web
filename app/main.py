@@ -314,31 +314,18 @@ async def redirect_www_to_apex(request: Request, call_next):
 
 @app.middleware("http")
 async def admin_response_security_policy(request: Request, call_next):
-    """Attach admin cache isolation, CSP, and supporting headers; nosniff on static assets."""
+    """Attach admin CSP, cache isolation, and supporting headers; nosniff on static assets."""
     path = request.url.path
-    admin = is_admin_path(path)
-    if admin:
+    if is_admin_path(path):
         request.state.csp_nonce = generate_csp_nonce()
-    try:
-        response = await call_next(request)
-    except Exception:
-        if not admin:
-            raise
-        logger.exception(
-            "Unhandled admin error (correlation_id=%s)",
-            getattr(request.state, "correlation_id", ""),
-        )
-        response = JSONResponse(
-            {"detail": "Internal Server Error"},
-            status_code=500,
-        )
-    if admin:
-        apply_admin_cache_headers(response)
+    response = await call_next(request)
+    if is_admin_path(path):
         apply_admin_security_headers(
             response,
             get_settings(),
             nonce=csp_nonce_from_request(request),
         )
+        apply_admin_cache_headers(response)
     elif path.startswith("/assets/"):
         apply_static_asset_headers(response)
     return response

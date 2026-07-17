@@ -43,25 +43,17 @@ class LiveAdminServer:
 
 
 @pytest.fixture
-def live_admin_preview_server(
-    monkeypatch: pytest.MonkeyPatch,
-) -> Generator[LiveAdminServer, None, None]:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
-    yield from _start_live_admin_server(monkeypatch)
-
-
-def _start_live_admin_server(
-    monkeypatch: pytest.MonkeyPatch,
-) -> Generator[LiveAdminServer, None, None]:
+def live_admin_server(monkeypatch: pytest.MonkeyPatch) -> Generator[LiveAdminServer, None, None]:
     from argon2 import PasswordHasher
 
     password_hash = PasswordHasher().hash(TEST_PASSWORD)
     monkeypatch.setenv("ADMIN_USERNAME", TEST_USERNAME)
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", password_hash)
     monkeypatch.setenv("ADMIN_SESSION_SECRET", TEST_SECRET)
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "test-limiter-secret-32chars-minimum!!")
     monkeypatch.setenv("DATABASE_URL", "postgresql://test/db")
     monkeypatch.setenv("BASE_URL", "http://127.0.0.1")
+    monkeypatch.delenv("ADMIN_PREVIEW_MODE", raising=False)
 
     raw_token = admin_auth.generate_session_token()
     csrf_raw = admin_auth.generate_csrf_value()
@@ -128,7 +120,7 @@ def browser() -> Iterator[Any]:
             browser.close()
 
 
-def _authenticated_context(live_admin_server: LiveAdminServer, browser: Any) -> Any:
+def _authenticated_page(live_admin_server: LiveAdminServer, browser: Any) -> tuple[Any, Any]:
     context = browser.new_context()
     context.add_cookies(
         [
@@ -141,61 +133,48 @@ def _authenticated_context(live_admin_server: LiveAdminServer, browser: Any) -> 
             for name, value in live_admin_server.cookies.items()
         ]
     )
-    return context
-
-
-def test_admin_responses_emit_no_store(
-    live_admin_preview_server: LiveAdminServer, browser: Any
-) -> None:
-    context = _authenticated_context(live_admin_preview_server, browser)
     page = context.new_page()
-    seen: list[str] = []
-    page.on(
-        "response",
-        lambda response: seen.append(response.headers.get("cache-control", ""))
-        if response.url.startswith(f"{live_admin_preview_server.base_url}/admin")
-        else None,
-    )
-    try:
-        page.goto(f"{live_admin_preview_server.base_url}/admin/briefs")
-        page.wait_for_selector(".admin-main")
-        assert ADMIN_CACHE_CONTROL in seen
-    finally:
-        context.close()
+    return context, page
 
 
-def test_logout_back_navigation_does_not_reuse_authenticated_http_cache(
-    live_admin_preview_server: LiveAdminServer, browser: Any
+def _document_cache_control(response: Any) -> str | None:
+    if response.request.resource_type != "document":
+        return None
+    if "/admin" not in response.url:
+        return None
+    return response.headers.get("cache-control")
+
+
+def test_logout_back_navigation_does_not_reuse_http_cached_admin_page(
+    live_admin_server: LiveAdminServer,
+    browser: Any,
 ) -> None:
-    """Within HTTP cache guarantees: after logout, back/reload must not show CRM shell."""
-    context = _authenticated_context(live_admin_preview_server, browser)
-    page = context.new_page()
+    """After logout, reload must not reuse a stored admin document from HTTP cache."""
+    context, page = _authenticated_page(live_admin_server, browser)
+    document_cache_controls: list[str] = []
+
+    def _track_admin_documents(response: Any) -> None:
+        cache_control = _document_cache_control(response)
+        if cache_control is not None:
+            document_cache_controls.append(cache_control)
+
+    page.on("response", _track_admin_documents)
     try:
-        page.goto(f"{live_admin_preview_server.base_url}/admin/briefs")
+        page.goto(f"{live_admin_server.base_url}/admin")
         page.wait_for_selector(".admin-main")
-        assert page.locator(".admin-main").count() == 1
+        assert page.locator(".admin-logout").is_visible()
 
-        page.goto(f"{live_admin_preview_server.base_url}/admin")
-        page.wait_for_selector(".admin-main")
-        csrf_token = page.locator('input[name="csrf_token"]').input_value()
-        page.request.post(
-            f"{live_admin_preview_server.base_url}/admin/logout",
-            form={"csrf_token": csrf_token},
-        )
-
-        page.goto(f"{live_admin_preview_server.base_url}/admin/login")
-        page.wait_for_selector("form.admin-form--compact")
+        page.locator(".admin-logout").click()
+        page.wait_for_url("**/admin/login")
+        assert page.locator("form.admin-form--compact").is_visible()
 
         page.go_back()
         page.reload()
-        page.wait_for_load_state("networkidle")
 
-        # Authenticated CRM shell should not be the reusable document after logout.
-        # Login form may appear from navigation or fresh fetch; bfcache may differ.
-        login_form = page.locator("form.admin-form--compact")
-        admin_main = page.locator(".admin-main")
-        username_field = page.locator('input[name="username"]')
-        assert login_form.count() >= 1 or admin_main.count() == 0
-        assert username_field.count() >= 1 or "/admin/login" in page.url
+        assert page.locator("form.admin-form--compact").is_visible()
+        assert not page.locator(".admin-logout").is_visible()
+
+        for cache_control in document_cache_controls:
+            assert cache_control == ADMIN_CACHE_CONTROL
     finally:
         context.close()
