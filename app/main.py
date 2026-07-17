@@ -35,8 +35,8 @@ from app.admin_preview_guard import (
     AdminPreviewReadOnlyMiddleware,
     validate_admin_preview_config,
 )
-from app.admin_cache_policy import apply_admin_cache_headers
 from app.admin_response_policy import (
+    apply_admin_cache_headers,
     apply_admin_security_headers,
     apply_static_asset_headers,
     csp_nonce_from_request,
@@ -316,10 +316,17 @@ async def redirect_www_to_apex(request: Request, call_next):
 async def admin_response_security_policy(request: Request, call_next):
     """Attach admin CSP, cache isolation, and supporting headers; nosniff on static assets."""
     path = request.url.path
-    if is_admin_path(path):
+    is_admin = is_admin_path(path)
+    if is_admin:
         request.state.csp_nonce = generate_csp_nonce()
-    response = await call_next(request)
-    if is_admin_path(path):
+    try:
+        response = await call_next(request)
+    except Exception:
+        if not is_admin:
+            raise
+        logger.exception("Unhandled admin request error")
+        response = PlainTextResponse("Internal Server Error", status_code=500)
+    if is_admin:
         apply_admin_security_headers(
             response,
             get_settings(),

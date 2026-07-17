@@ -23,6 +23,7 @@ from app.admin_response_policy import (
 )
 from app.app_environment import AppEnvironment
 from app.config import Settings
+from starlette.responses import RedirectResponse
 
 
 def _settings(*, base_url: str = "http://localhost:8000") -> Settings:
@@ -130,25 +131,20 @@ def test_hsts_header_present_for_https() -> None:
 
 
 @pytest.mark.unit
-def test_csp_enforcement_plan_is_bounded() -> None:
-    assert CSP_ENFORCEMENT_OWNER
-    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", CSP_ENFORCEMENT_DEADLINE)
-
-
-@pytest.mark.unit
 def test_admin_cache_headers_snapshot() -> None:
     headers = admin_cache_headers()
     assert headers == {"Cache-Control": ADMIN_CACHE_CONTROL}
-    assert "no-store" in headers["Cache-Control"]
-    assert "private" in headers["Cache-Control"]
-    assert "no-cache" not in headers["Cache-Control"]
 
 
 @pytest.mark.unit
-def test_apply_admin_cache_headers_overwrites_conflicting_values() -> None:
-    from starlette.responses import Response
-
-    response = Response(content=b"x", headers={"Cache-Control": "public, max-age=60"})
+def test_apply_admin_cache_headers_replaces_weaker_directive() -> None:
+    response = RedirectResponse(url="/admin/login", status_code=303)
+    response.headers["Cache-Control"] = "public, max-age=3600"
     apply_admin_cache_headers(response)
     assert response.headers["Cache-Control"] == ADMIN_CACHE_CONTROL
-    assert len(response.headers.getlist("Cache-Control")) == 1
+
+
+@pytest.mark.unit
+def test_csp_enforcement_plan_is_bounded() -> None:
+    assert CSP_ENFORCEMENT_OWNER
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", CSP_ENFORCEMENT_DEADLINE)

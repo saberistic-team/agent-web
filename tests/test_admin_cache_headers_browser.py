@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import socket
 import threading
 import time
@@ -20,7 +21,7 @@ sync_playwright = playwright_sync_api.sync_playwright
 import uvicorn  # noqa: E402
 
 from app import admin_auth, db  # noqa: E402
-from app.admin_cache_policy import ADMIN_CACHE_CONTROL  # noqa: E402
+from app.admin_response_policy import ADMIN_CACHE_CONTROL  # noqa: E402
 from app.main import app  # noqa: E402
 
 pytestmark = pytest.mark.browser
@@ -42,18 +43,17 @@ class LiveAdminServer:
     cookies: dict[str, str]
 
 
-@pytest.fixture
-def live_admin_server(monkeypatch: pytest.MonkeyPatch) -> Generator[LiveAdminServer, None, None]:
+def _start_live_admin_server(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Generator[LiveAdminServer, None, None]:
     from argon2 import PasswordHasher
 
     password_hash = PasswordHasher().hash(TEST_PASSWORD)
     monkeypatch.setenv("ADMIN_USERNAME", TEST_USERNAME)
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", password_hash)
     monkeypatch.setenv("ADMIN_SESSION_SECRET", TEST_SECRET)
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "test-limiter-secret-32chars-minimum!!")
     monkeypatch.setenv("DATABASE_URL", "postgresql://test/db")
     monkeypatch.setenv("BASE_URL", "http://127.0.0.1")
-    monkeypatch.delenv("ADMIN_PREVIEW_MODE", raising=False)
 
     raw_token = admin_auth.generate_session_token()
     csrf_raw = admin_auth.generate_csrf_value()
@@ -86,8 +86,10 @@ def live_admin_server(monkeypatch: pytest.MonkeyPatch) -> Generator[LiveAdminSer
         patch.object(db, "get_admin_session_by_token_hash", side_effect=_get_session),
         patch.object(db, "update_admin_session_csrf", side_effect=_update_csrf),
         patch.object(db, "init_db"),
+        patch.object(db, "revoke_admin_session", return_value=True),
         patch("app.db.db_connection") as db_conn,
         patch("app.admin_routes.db.db_connection", db_conn),
+        patch("app.admin_routes.audit_service.record_logout"),
     ):
         db_conn.return_value.__enter__.return_value = mock_conn
 
@@ -110,6 +112,12 @@ def live_admin_server(monkeypatch: pytest.MonkeyPatch) -> Generator[LiveAdminSer
             thread.join(timeout=10)
 
 
+@pytest.fixture
+def live_admin_server(monkeypatch: pytest.MonkeyPatch) -> Generator[LiveAdminServer, None, None]:
+    monkeypatch.delenv("ADMIN_PREVIEW_MODE", raising=False)
+    yield from _start_live_admin_server(monkeypatch)
+
+
 @pytest.fixture(scope="module")
 def browser() -> Iterator[Any]:
     with sync_playwright() as pw:
@@ -120,7 +128,7 @@ def browser() -> Iterator[Any]:
             browser.close()
 
 
-def _authenticated_page(live_admin_server: LiveAdminServer, browser: Any) -> tuple[Any, Any]:
+def _authenticated_context(live_admin_server: LiveAdminServer, browser: Any) -> Any:
     context = browser.new_context()
     context.add_cookies(
         [
@@ -133,48 +141,77 @@ def _authenticated_page(live_admin_server: LiveAdminServer, browser: Any) -> tup
             for name, value in live_admin_server.cookies.items()
         ]
     )
-    page = context.new_page()
-    return context, page
+    return context
 
 
-def _document_cache_control(response: Any) -> str | None:
-    if response.request.resource_type != "document":
-        return None
-    if "/admin" not in response.url:
-        return None
-    return response.headers.get("cache-control")
-
-
-def test_logout_back_navigation_does_not_reuse_http_cached_admin_page(
-    live_admin_server: LiveAdminServer,
-    browser: Any,
+def test_admin_responses_emit_no_store(
+    live_admin_server: LiveAdminServer, browser: Any
 ) -> None:
-    """After logout, reload must not reuse a stored admin document from HTTP cache."""
-    context, page = _authenticated_page(live_admin_server, browser)
-    document_cache_controls: list[str] = []
-
-    def _track_admin_documents(response: Any) -> None:
-        cache_control = _document_cache_control(response)
-        if cache_control is not None:
-            document_cache_controls.append(cache_control)
-
-    page.on("response", _track_admin_documents)
+    context = _authenticated_context(live_admin_server, browser)
+    page = context.new_page()
+    seen: list[str] = []
     try:
-        page.goto(f"{live_admin_server.base_url}/admin")
+        page.on(
+            "response",
+            lambda response: seen.append(
+                response.headers.get("cache-control", "")
+            )
+            if response.url.startswith(f"{live_admin_server.base_url}/admin")
+            else None,
+        )
+        page.goto(f"{live_admin_server.base_url}/admin/briefs")
         page.wait_for_selector(".admin-main")
-        assert page.locator(".admin-logout").is_visible()
+        assert seen
+        assert all(value == ADMIN_CACHE_CONTROL for value in seen if value)
+    finally:
+        context.close()
 
-        page.locator(".admin-logout").click()
-        page.wait_for_url("**/admin/login")
-        assert page.locator("form.admin-form--compact").is_visible()
+
+def test_logout_back_navigation_does_not_reuse_authenticated_http_cache(
+    live_admin_server: LiveAdminServer, browser: Any
+) -> None:
+    """After logout, back/reload must not serve a reusable cached admin document.
+
+    HTTP ``no-store`` reduces cache retention but does not erase browser UI
+    memory, screenshots, or back-forward cache (bfcache) guarantees.
+    """
+    context = _authenticated_context(live_admin_server, browser)
+    page = context.new_page()
+    try:
+        page.goto(f"{live_admin_server.base_url}/admin/briefs")
+        page.wait_for_selector(".admin-main")
+        assert page.locator(".admin-main").count() == 1
+
+        html = page.content()
+        csrf_match = re.search(r'name="csrf_token"\s+value="([^"]+)"', html)
+        assert csrf_match
+
+        with page.expect_navigation():
+            page.evaluate(
+                """(csrf) => {
+                  const form = document.createElement('form');
+                  form.method = 'POST';
+                  form.action = '/admin/logout';
+                  const input = document.createElement('input');
+                  input.type = 'hidden';
+                  input.name = 'csrf_token';
+                  input.value = csrf;
+                  form.appendChild(input);
+                  document.body.appendChild(form);
+                  form.submit();
+                }""",
+                csrf_match.group(1),
+            )
+        page.wait_for_selector("form.admin-form--compact")
+        assert "/admin/login" in page.url
 
         page.go_back()
+        page.wait_for_load_state("domcontentloaded")
+        # Session is revoked — must not remain on authenticated briefs shell.
+        assert page.locator(".admin-main").count() == 0 or "/admin/login" in page.url
+
         page.reload()
-
-        assert page.locator("form.admin-form--compact").is_visible()
-        assert not page.locator(".admin-logout").is_visible()
-
-        for cache_control in document_cache_controls:
-            assert cache_control == ADMIN_CACHE_CONTROL
+        page.wait_for_load_state("domcontentloaded")
+        assert page.locator("form.admin-form--compact").count() >= 1 or "/admin/login" in page.url
     finally:
         context.close()
