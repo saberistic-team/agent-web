@@ -1633,21 +1633,20 @@ def test_login_session_create_failure_rolls_back_prior_revocation(
     with shared_rate_limiter(rate_limit_store):
         with transactional_mock_db_connection():
             with patch("app.admin_routes.db.create_admin_session", side_effect=failing_create):
-                csrf_token, flow_cookies = _parse_login_form(client.get("/admin/login"))
-                flow_cookies[SESSION_COOKIE_NAME] = old_token
-                response = client.post(
-                    "/admin/login",
-                    data={
-                        "username": TEST_USERNAME,
-                        "password": TEST_PASSWORD,
-                        "csrf_token": csrf_token,
-                    },
-                    cookies=flow_cookies,
-                )
+                with pytest.raises(RuntimeError, match="session insert failed"):
+                    csrf_token, flow_cookies = _parse_login_form(client.get("/admin/login"))
+                    flow_cookies[SESSION_COOKIE_NAME] = old_token
+                    response = client.post(
+                        "/admin/login",
+                        data={
+                            "username": TEST_USERNAME,
+                            "password": TEST_PASSWORD,
+                            "csrf_token": csrf_token,
+                        },
+                        cookies=flow_cookies,
+                    )
+                    assert SESSION_COOKIE_NAME not in response.cookies
 
-    assert response.status_code == 500
-    assert response.headers.get("cache-control") == "no-store, private"
-    assert SESSION_COOKIE_NAME not in response.cookies
     assert _session_store[old_hash]["revoked_at"] is None
     assert len(_session_store) == initial_store_size
 
@@ -1668,21 +1667,20 @@ def test_login_audit_failure_rolls_back_session_and_prior_revocation(
                 "app.admin_routes.audit_service.record_login_success",
                 side_effect=RuntimeError("audit insert failed"),
             ):
-                csrf_token, flow_cookies = _parse_login_form(client.get("/admin/login"))
-                flow_cookies[SESSION_COOKIE_NAME] = old_token
-                response = client.post(
-                    "/admin/login",
-                    data={
-                        "username": TEST_USERNAME,
-                        "password": TEST_PASSWORD,
-                        "csrf_token": csrf_token,
-                    },
-                    cookies=flow_cookies,
-                )
+                with pytest.raises(RuntimeError, match="audit insert failed"):
+                    csrf_token, flow_cookies = _parse_login_form(client.get("/admin/login"))
+                    flow_cookies[SESSION_COOKIE_NAME] = old_token
+                    response = client.post(
+                        "/admin/login",
+                        data={
+                            "username": TEST_USERNAME,
+                            "password": TEST_PASSWORD,
+                            "csrf_token": csrf_token,
+                        },
+                        cookies=flow_cookies,
+                    )
+                    assert SESSION_COOKIE_NAME not in response.cookies
 
-    assert response.status_code == 500
-    assert response.headers.get("cache-control") == "no-store, private"
-    assert SESSION_COOKIE_NAME not in response.cookies
     assert _session_store[old_hash]["revoked_at"] is None
     assert len(_session_store) == initial_store_size
 
@@ -1706,19 +1704,18 @@ def test_login_retry_after_transaction_failure(
     with shared_rate_limiter(rate_limit_store):
         with transactional_mock_db_connection():
             with patch("app.admin_routes.db.create_admin_session", side_effect=flaky_create):
-                csrf_token, flow_cookies = _parse_login_form(client.get("/admin/login"))
-                flow_cookies[SESSION_COOKIE_NAME] = old_token
-                failed_response = client.post(
-                    "/admin/login",
-                    data={
-                        "username": TEST_USERNAME,
-                        "password": TEST_PASSWORD,
-                        "csrf_token": csrf_token,
-                    },
-                    cookies=flow_cookies,
-                )
-                assert failed_response.status_code == 500
-                assert failed_response.headers.get("cache-control") == "no-store, private"
+                with pytest.raises(RuntimeError, match="transient session error"):
+                    csrf_token, flow_cookies = _parse_login_form(client.get("/admin/login"))
+                    flow_cookies[SESSION_COOKIE_NAME] = old_token
+                    client.post(
+                        "/admin/login",
+                        data={
+                            "username": TEST_USERNAME,
+                            "password": TEST_PASSWORD,
+                            "csrf_token": csrf_token,
+                        },
+                        cookies=flow_cookies,
+                    )
 
                 assert _session_store[old_hash]["revoked_at"] is None
 

@@ -90,7 +90,7 @@ only. They do not inherit the admin document CSP.
 | Mode | **Enforced** `Content-Security-Policy` (no permanent report-only) |
 | Owner | `agent-web` maintainers |
 | Enforcement deadline | 2026-08-01 |
-| Verification | `tests/test_admin_security_headers.py`, `tests/test_admin_security_headers_browser.py`, `tests/test_admin_cache_headers.py`, `tests/test_admin_cache_headers_browser.py`, Playwright imports suite |
+| Verification | `tests/test_admin_security_headers.py`, `tests/test_admin_security_headers_browser.py`, `tests/test_admin_cache_control.py`, `tests/test_admin_cache_headers_browser.py`, Playwright imports suite |
 | Violation handling | CSP reports are **not** collected in-app; triage via CI browser tests |
 
 Rollback: revert `app/admin_response_policy.py` and remove the middleware hook

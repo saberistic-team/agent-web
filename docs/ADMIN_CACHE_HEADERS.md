@@ -75,7 +75,7 @@ Verify CDN/Cloudflare preserves the origin `Cache-Control` on admin routes.
 
 ## Tests
 
-- `tests/test_admin_cache_headers.py` — response matrix and header replacement
-- `tests/test_admin_cache_headers_browser.py` — logout/back-navigation within
-  HTTP cache guarantees
+- `tests/test_admin_cache_control.py` — response matrix and header replacement
+- `tests/test_admin_cache_headers_browser.py`, `tests/test_admin_cache_control_browser.py` —
+  logout/back-navigation within HTTP cache guarantees
 - `tests/test_admin_response_policy_unit.py` — policy helper snapshot

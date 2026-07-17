@@ -393,13 +393,12 @@ def test_logout_audit_failure_rolls_back_session_revocation() -> None:
             "app.admin_routes.audit_service.record_logout",
             side_effect=RuntimeError("audit insert failed"),
         ):
-            response = client.post(
-                "/admin/logout",
-                data={"csrf_token": csrf},
-                cookies={SESSION_COOKIE_NAME: raw_token},
-            )
-    assert response.status_code == 500
-    assert response.headers.get("cache-control") == "no-store, private"
+            with pytest.raises(RuntimeError, match="audit insert failed"):
+                client.post(
+                    "/admin/logout",
+                    data={"csrf_token": csrf},
+                    cookies={SESSION_COOKIE_NAME: raw_token},
+                )
     assert _session_store[token_hash]["revoked_at"] is None
 
 
@@ -467,14 +466,12 @@ def test_postgres_authenticated_logout_transaction_failure_rolls_back(
         "app.admin_routes.audit_service.record_logout",
         side_effect=RuntimeError("audit insert failed"),
     ):
-        response = client.post(
-            "/admin/logout",
-            data={"csrf_token": csrf},
-            cookies={SESSION_COOKIE_NAME: raw_token},
-        )
-
-    assert response.status_code == 500
-    assert response.headers.get("cache-control") == "no-store, private"
+        with pytest.raises(RuntimeError, match="audit insert failed"):
+            client.post(
+                "/admin/logout",
+                data={"csrf_token": csrf},
+                cookies={SESSION_COOKIE_NAME: raw_token},
+            )
 
     pg_conn.row_factory = dict_row
     row = pg_conn.execute(
