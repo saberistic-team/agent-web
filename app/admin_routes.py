@@ -2065,21 +2065,16 @@ for _link in ADMIN_NAV_LINKS:
 
 @router.get("", response_class=HTMLResponse)
 @router.get("/", response_class=HTMLResponse)
-def admin_dashboard(request: Request) -> Response:
+def admin_dashboard(request: Request) -> HTMLResponse:
     session = require_admin_session(request)
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
         from app.admin_preview import build_preview_acquisition_dashboard_data
 
-        try:
-            preview_data = build_preview_acquisition_dashboard_data()
-        except Exception:
-            logger.exception("Failed to build preview acquisition dashboard")
-            return JSONResponse({"detail": "Internal Server Error"}, status_code=500)
         return HTMLResponse(
             admin_dashboard_pages.render_acquisition_dashboard_page(
-                data=preview_data,
+                data=build_preview_acquisition_dashboard_data(),
                 admin_username=session.admin_username,
                 csrf_token=csrf_token,
                 preview_banner="Preview data — not production",

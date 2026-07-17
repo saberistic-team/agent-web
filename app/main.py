@@ -319,7 +319,16 @@ async def admin_response_security_policy(request: Request, call_next):
     admin = is_admin_path(path)
     if admin:
         request.state.csp_nonce = generate_csp_nonce()
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception:
+        if not admin:
+            raise
+        logger.exception("Unhandled admin request error")
+        response = JSONResponse(
+            {"detail": "Internal Server Error"},
+            status_code=500,
+        )
     if admin:
         apply_admin_security_headers(
             response,
