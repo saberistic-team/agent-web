@@ -1,4 +1,4 @@
-"""Unit tests for admin response security policy (#308)."""
+"""Unit tests for admin response security policy (#308, #337)."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from app.admin_response_policy import (
     admin_cache_headers,
     admin_security_headers,
     apply_admin_cache_headers,
+    apply_response_headers,
     build_admin_csp,
     generate_csp_nonce,
     hsts_enabled,
@@ -132,23 +133,31 @@ def test_hsts_header_present_for_https() -> None:
 
 
 @pytest.mark.unit
-def test_admin_cache_headers_snapshot() -> None:
+def test_csp_enforcement_plan_is_bounded() -> None:
+    assert CSP_ENFORCEMENT_OWNER
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", CSP_ENFORCEMENT_DEADLINE)
+
+
+@pytest.mark.unit
+def test_admin_cache_headers_value() -> None:
     headers = admin_cache_headers()
     assert headers == {"Cache-Control": ADMIN_CACHE_CONTROL}
+    assert "no-store" in headers["Cache-Control"]
+    assert "private" in headers["Cache-Control"]
+    assert "no-cache" not in headers["Cache-Control"]
 
 
 @pytest.mark.unit
 def test_apply_admin_cache_headers_replaces_weaker_directive() -> None:
-    response = Response(
-        content=b"ok",
-        headers={"Cache-Control": "public, max-age=3600"},
-    )
+    response = Response(content=b"admin", headers={"Cache-Control": "public, max-age=3600"})
     apply_admin_cache_headers(response)
-    assert response.headers["Cache-Control"] == ADMIN_CACHE_CONTROL
-    assert len(response.headers.getlist("Cache-Control")) == 1
+    assert response.headers.getlist("cache-control") == [ADMIN_CACHE_CONTROL]
 
 
 @pytest.mark.unit
-def test_csp_enforcement_plan_is_bounded() -> None:
-    assert CSP_ENFORCEMENT_OWNER
-    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", CSP_ENFORCEMENT_DEADLINE)
+def test_apply_response_headers_replaces_duplicate_names() -> None:
+    response = Response(content=b"admin")
+    response.headers.append("Cache-Control", "public, max-age=60")
+    response.headers.append("Cache-Control", "no-cache")
+    apply_response_headers(response, {"Cache-Control": ADMIN_CACHE_CONTROL})
+    assert response.headers.getlist("cache-control") == [ADMIN_CACHE_CONTROL]
