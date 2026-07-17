@@ -17,6 +17,7 @@ from app.actor_context import ActorContext
 from app.contacts import ContactRestoreResult, ContactSafeSummary
 from app.crm_service import CrmService, CrmRepositories
 from app.main import app
+from tests.conftest import enable_admin_preview_env
 
 pytestmark = pytest.mark.unit
 
@@ -346,7 +347,7 @@ def test_preview_contact_restore_conflict_stable_with_seed() -> None:
 
 
 def test_preview_restore_conflict_route_renders_mock_data(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch)
     from app.admin_preview import PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID
 
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):

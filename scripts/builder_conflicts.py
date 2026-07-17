@@ -150,6 +150,9 @@ def _smoke_env(cwd: Path, *, for_import: bool = False) -> dict[str, str]:
     if for_import:
         # Import-only: preview unlocks admin wiring without requiring secrets.
         env.setdefault("ADMIN_PREVIEW_MODE", "1")
+        env.setdefault("APP_ENV", "development")
+        env.setdefault("SERVER_BIND_HOST", "127.0.0.1")
+        env.setdefault("BASE_URL", "http://127.0.0.1:8000")
     else:
         # Full pytest must match CI. Preview mode short-circuits auth and breaks
         # login redirects / authenticated fixtures across the admin suite.

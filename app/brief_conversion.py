@@ -26,6 +26,11 @@ class BriefConversionValidationError(BriefConversionError):
     """Raised when operator input fails validation."""
 
 
+ARCHIVED_CONTACT_ACK_REQUIRED_MESSAGE = (
+    "Confirm that you want a new active contact while an archived identity exists."
+)
+
+
 def normalize_brief_email(value: str) -> str:
     """Apply the shared contact-email normalization policy (issue #226).
 

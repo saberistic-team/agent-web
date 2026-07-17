@@ -31,6 +31,11 @@ from app.analytics_ingest import (
     IngestRejectReason,
     ingest_browser_event,
 )
+from app.admin_preview_guard import (
+    AdminPreviewConfigError,
+    AdminPreviewReadOnlyMiddleware,
+    validate_admin_preview_config,
+)
 from app.admin_response_policy import (
     apply_admin_security_headers,
     apply_static_asset_headers,
@@ -39,6 +44,7 @@ from app.admin_response_policy import (
     is_admin_path,
 )
 from app.admin_security import AdminSecurityConfigError, validate_admin_security_config
+from app.admin_preview_security import log_admin_preview_posture
 from app.client_source import admin_proxy_trust_summary, client_source_policy_summary, resolve_client_source
 from app.config import get_settings
 from app.models import BriefCreateRequest, BriefCreateResponse
@@ -248,6 +254,16 @@ def _send_paid_notifications(
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
+    log_admin_preview_posture(admin_preview_enabled=settings.admin_preview_enabled)
+    try:
+        validate_admin_preview_config(settings)
+    except AdminPreviewConfigError:
+        logger.exception("Admin preview configuration is invalid")
+        raise
+    if settings.admin_preview_enabled:
+        logger.info("admin preview mode active — /admin mutations disabled; database unused")
+        yield
+        return
     if settings.database_configured:
         try:
             validate_admin_security_config(settings)
@@ -265,6 +281,7 @@ app = FastAPI(title="agent-web", version="0.3.0", lifespan=lifespan)
 app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
 app.include_router(admin_pipeline_router)
 app.include_router(admin_router)
+app.add_middleware(AdminPreviewReadOnlyMiddleware)
 
 
 @app.exception_handler(AdminLoginRequired)

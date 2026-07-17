@@ -160,6 +160,7 @@ def test_acquisition_lifecycle_end_to_end(lifecycle_env: dict[str, Any]) -> None
     # 3. Evidence (research record)
     record = crm.attach_research_record(
         conn,
+        actor_context=ACTOR,
         record_type="public_signal",
         company_id=company_id,
         contact_id=contact_id,
