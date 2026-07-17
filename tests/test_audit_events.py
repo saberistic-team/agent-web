@@ -17,10 +17,8 @@ from fastapi.testclient import TestClient
 from app import admin_auth, audit_service, db
 from app.actor_context import ActorContext
 from app.admin_auth import SESSION_COOKIE_NAME
-from app.admin_response import (
-    ADMIN_BROWSER_SECURITY_HEADERS,
-    ADMIN_NO_STORE_CACHE_CONTROL,
-)
+from app.admin_response import ADMIN_BROWSER_SECURITY_HEADERS
+from app.admin_response_policy import ADMIN_CACHE_CONTROL
 from app.audit_service import REDACTED_VALUE
 from app.config import get_settings
 from app.crm_service import CrmRepositories, CrmService
@@ -773,7 +771,7 @@ def test_admin_audit_response_retains_no_store_and_security_headers() -> None:
                     cookies={SESSION_COOKIE_NAME: "audit-headers-session"},
                 )
     assert response.status_code == 200
-    assert response.headers.get("cache-control") == ADMIN_NO_STORE_CACHE_CONTROL
+    assert response.headers.get("cache-control") == ADMIN_CACHE_CONTROL
     for header, value in ADMIN_BROWSER_SECURITY_HEADERS.items():
         assert response.headers.get(header.lower()) == value
 
@@ -795,7 +793,7 @@ def test_admin_audit_repository_error_is_handled_safely() -> None:
                 )
     assert response.status_code == 200
     assert "Audit log temporarily unavailable" in response.text
-    assert response.headers.get("cache-control") == ADMIN_NO_STORE_CACHE_CONTROL
+    assert response.headers.get("cache-control") == ADMIN_CACHE_CONTROL
 
 
 @pytest.mark.unit
