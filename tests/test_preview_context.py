@@ -31,6 +31,7 @@ from app.preview_context import (
     reset_preview_context_cache,
 )
 from app.main import app
+from tests.conftest import enable_admin_preview_env
 
 
 def _preview_env(
@@ -41,7 +42,11 @@ def _preview_env(
     preview_mode: str = "1",
 ) -> None:
     reset_preview_context_cache()
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", preview_mode)
+    if preview_mode == "1":
+        enable_admin_preview_env(monkeypatch)
+    else:
+        monkeypatch.setenv("ADMIN_PREVIEW_MODE", preview_mode)
+        monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
     if seed is not None:
         monkeypatch.setenv("ADMIN_PREVIEW_SEED", seed)
     else:
@@ -51,7 +56,6 @@ def _preview_env(
     else:
         monkeypatch.delenv("ADMIN_PREVIEW_REFERENCE_AT", raising=False)
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
 
 
 @pytest.mark.unit
