@@ -467,11 +467,12 @@ def test_admin_brief_detail_programming_error_is_not_swallowed() -> None:
                 "app.admin_routes.brief_service.get_brief",
                 side_effect=ValueError("programming bug"),
             ):
-                with pytest.raises(ValueError, match="programming bug"):
-                    client.get(
-                        "/admin/briefs/42",
-                        cookies={SESSION_COOKIE_NAME: "detail-bug"},
-                    )
+                response = client.get(
+                    "/admin/briefs/42",
+                    cookies={SESSION_COOKIE_NAME: "detail-bug"},
+                )
+    assert response.status_code == 500
+    assert response.headers.get("cache-control") == "no-store, private"
 
 
 @pytest.mark.unit
