@@ -158,11 +158,6 @@ def apply_response_headers(
         response.headers[name] = value
 
 
-def admin_cache_headers() -> dict[str, str]:
-    """Return the required admin cache isolation headers (#337)."""
-    return {"Cache-Control": ADMIN_CACHE_CONTROL}
-
-
 def apply_admin_security_headers(
     response: Response,
     settings: Settings,
@@ -173,8 +168,13 @@ def apply_admin_security_headers(
     apply_response_headers(response, admin_security_headers(settings, nonce=nonce))
 
 
+def admin_cache_headers() -> dict[str, str]:
+    """Return the enforced admin cache-isolation header set (#337)."""
+    return {"Cache-Control": ADMIN_CACHE_CONTROL}
+
+
 def apply_admin_cache_headers(response: Response) -> None:
-    """Attach no-store cache isolation to an admin response (#337)."""
+    """Attach admin cache isolation, replacing any weaker downstream directive."""
     apply_response_headers(response, admin_cache_headers())
 
 

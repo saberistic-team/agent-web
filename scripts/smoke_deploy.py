@@ -9,12 +9,18 @@ import sys
 import urllib.error
 import urllib.request
 
-ADMIN_CACHE_CONTROL = "no-store, private"
+from app.admin_response_policy import ADMIN_CACHE_CONTROL
 
 
 def get_json(url: str) -> dict:
     with urllib.request.urlopen(url, timeout=30) as resp:
         return json.loads(resp.read().decode())
+
+
+def fetch_response_headers(url: str) -> dict[str, str]:
+    """Return response headers for ``url`` without reading the body."""
+    with urllib.request.urlopen(url, timeout=30) as resp:
+        return {name.lower(): value for name, value in resp.headers.items()}
 
 
 def verify_admin_login_source_trust(health_payload: dict, base_url: str) -> bool:
@@ -32,18 +38,9 @@ def verify_admin_login_source_trust(health_payload: dict, base_url: str) -> bool
     return bool(trust.get("enabled")) and int(trust.get("trusted_proxy_entry_count", 0)) > 0
 
 
-def verify_admin_cache_control(base_url: str) -> tuple[bool, str]:
-    """HEAD /admin/login and verify Cache-Control without logging cookies or bodies."""
-    url = f"{base_url.rstrip('/')}/admin/login"
-    request = urllib.request.Request(url, method="HEAD")
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            cache_control = response.headers.get("Cache-Control", "")
-    except (urllib.error.URLError, TimeoutError) as exc:
-        return False, f"{url}: {exc}"
-    if cache_control != ADMIN_CACHE_CONTROL:
-        return False, f"{url}: cache-control={cache_control!r}, expected {ADMIN_CACHE_CONTROL!r}"
-    return True, f"{url}: cache-control={cache_control}"
+def verify_admin_cache_headers(headers: dict[str, str]) -> bool:
+    """Return True when production admin login emits the enforced cache policy."""
+    return headers.get("cache-control") == ADMIN_CACHE_CONTROL
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -88,11 +85,21 @@ def main(argv: list[str] | None = None) -> int:
     if base.endswith("saberistic.com") or "onrender.com" in base:
         print(f"PASS {health_url} → admin_proxy_trust boundary active")
 
-    cache_ok, cache_detail = verify_admin_cache_control(base)
-    if not cache_ok:
-        print(f"FAIL {cache_detail}", file=sys.stderr)
+    admin_login_url = f"{base}/admin/login"
+    try:
+        admin_headers = fetch_response_headers(admin_login_url)
+    except (urllib.error.URLError, TimeoutError) as exc:
+        print(f"FAIL {admin_login_url}: {exc}", file=sys.stderr)
         return 1
-    print(f"PASS {cache_detail}")
+    if not verify_admin_cache_headers(admin_headers):
+        recorded = admin_headers.get("cache-control", "<missing>")
+        print(
+            f"FAIL {admin_login_url}: expected Cache-Control={ADMIN_CACHE_CONTROL!r}, "
+            f"got {recorded!r}",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"PASS {admin_login_url} → Cache-Control: {ADMIN_CACHE_CONTROL}")
     return 0
 
 

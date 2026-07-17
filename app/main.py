@@ -8,7 +8,6 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncIterator
 
-from fastapi.exceptions import RequestValidationError
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import (
     HTMLResponse,
@@ -59,23 +58,6 @@ from app.seo import (
 )
 
 logger = logging.getLogger(__name__)
-
-# Exceptions that inner middleware/handlers convert to responses; do not map to 500.
-_ADMIN_MIDDLEWARE_PASSTHROUGH: tuple[type[BaseException], ...] = (
-    HTTPException,
-    StarletteHTTPException,
-    RequestValidationError,
-    AdminLoginRequired,
-    AdminPreviewConfigError,
-)
-
-
-def _unwrap_middleware_exception(exc: BaseException) -> BaseException:
-    """Return the underlying error when Starlette wraps middleware failures."""
-    nested = getattr(exc, "exceptions", None)
-    if nested:
-        return nested[0]
-    return exc
 
 SITE_DIR = Path(__file__).resolve().parent.parent / "site"
 ASSETS_DIR = SITE_DIR / "assets"
@@ -339,15 +321,10 @@ async def admin_response_security_policy(request: Request, call_next):
         request.state.csp_nonce = generate_csp_nonce()
     try:
         response = await call_next(request)
-    except _ADMIN_MIDDLEWARE_PASSTHROUGH:
-        raise
-    except Exception as exc:
+    except Exception:
         if not admin:
             raise
-        unwrapped = _unwrap_middleware_exception(exc)
-        if isinstance(unwrapped, _ADMIN_MIDDLEWARE_PASSTHROUGH):
-            raise unwrapped
-        logger.exception("Unhandled admin request error")
+        logger.exception("Unhandled error on admin path %s", path)
         response = PlainTextResponse("Internal Server Error", status_code=500)
     if admin:
         apply_admin_security_headers(

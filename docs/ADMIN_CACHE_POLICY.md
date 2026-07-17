@@ -2,65 +2,70 @@
 
 Parent issue: [#337](https://github.com/saberistic-team/agent-web/issues/337).
 
-Related: admin security headers and CSP in [#308](https://github.com/saberistic-team/agent-web/issues/308)
-(`docs/ADMIN_SECURITY_HEADERS.md`).
-
 ## Overview
 
-Every `/admin` and `/admin/*` response carries a centrally composed cache policy
-from `app/admin_cache_policy.py`, applied by the `admin_response_security_policy`
-middleware in `app/main.py` alongside the #308 security-header policy.
+Every `/admin` and `/admin/*` response — including login, authenticated HTML/JSON,
+redirects, validation failures, rate limits, and framework-generated errors —
+receives a single authoritative cache directive from
+`app/admin_response_policy.py`, applied by the `admin_response_security_policy`
+middleware in `app/main.py`.
 
 ## Enforced header
 
 | Header | Admin value | Notes |
 |--------|-------------|-------|
-| `Cache-Control` | `no-store, private` | All admin and authentication responses |
+| `Cache-Control` | `no-store, private` | Applied to every admin response regardless of auth state |
 
 `no-store` is the authoritative directive: caches must not store the response for
 reuse. `private` documents that the representation is user-specific and prevents
 shared-cache storage if policy is later adjusted. Do **not** substitute
 `no-cache`; it permits storage and requires revalidation.
 
+Broader CSP and security-header policy is owned by [#308](https://github.com/saberistic-team/agent-web/issues/308)
+and is applied in the same middleware entry point.
+
 ## Scope
 
-Applied uniformly for every `/admin` path regardless of authentication state:
+The policy applies to:
 
-- login GET/POST and login-flow failures;
-- authenticated admin HTML and JSON;
-- redirects to/from login and logout;
-- 4xx/5xx admin-shell, validation, and temporary-error responses;
-- session/CSRF failures and rate limiting (429);
-- framework-generated responses (422 validation, unhandled 500).
+- `GET`/`POST` `/admin/login` and login-flow failures
+- Authenticated admin HTML and JSON
+- Redirects to/from login and logout (`303`)
+- `4xx`/`5xx` admin-shell, validation, and temporary-error responses
+- Session/CSRF failures
+- Framework-generated responses whose request path is under `/admin`
 
-Fingerprinted public static assets under `/assets/*` are **not** forced to
-`no-store` when referenced from admin pages. They keep their existing cache
-behavior (no `Cache-Control` override from this policy).
+The policy does **not** apply to fingerprinted public static assets under
+`/assets/*` solely because an admin page references them. Static asset caching
+remains unchanged.
 
-Public site pages outside `/admin` are unchanged by this issue.
+## Implementation
 
-## Middleware ordering
+- `ADMIN_CACHE_CONTROL` and `apply_admin_cache_headers()` live in
+  `app/admin_response_policy.py`.
+- `apply_response_headers()` replaces any prior `Cache-Control` value so routes
+  and exception handlers cannot weaken the central policy.
+- Middleware ordering places `admin_response_security_policy` outermost (after
+  `redirect_www_to_apex`) so headers survive redirects, exception handlers,
+  validation failures, and early middleware short-circuits.
+- Unhandled exceptions on admin paths are converted to a `500` response inside
+  that middleware so `ServerErrorMiddleware` cannot return a headerless shell.
 
-`admin_response_security_policy` is registered outermost (after
-`redirect_www_to_apex`) so redirects, exception-handler output, JSON errors,
-validation failures, and preview read-only 405 responses all receive the policy.
-The middleware replaces any weaker downstream `Cache-Control` value so handlers
-cannot weaken the central rule.
+## Browser history and limits
 
-## Limitations (honest expectations)
+`Cache-Control: no-store` reduces HTTP cache storage and reuse for admin
+responses. It is **not** a secure erasure guarantee:
 
-HTTP `Cache-Control: no-store, private` reduces browser and intermediary HTTP
-cache storage and reuse. It is **not** a secure erasure guarantee:
+- Browser back/forward UI may still show previously rendered content from
+  in-memory document state until a fresh network response replaces it.
+- Screenshots, OS swap, malicious intermediaries, and compromised endpoints are
+  outside HTTP cache-control scope.
 
-- Back/forward cache (bfcache) and in-memory UI state may still show prior
-  content until navigation or reload completes.
-- Malicious proxies, screenshots, OS swap, and compromised endpoints are out of
-  scope.
-- `Clear-Site-Data` on logout is a separate compatibility decision and is not
-  required here.
+Logout revokes server-side session state; pairing that with `no-store` limits
+stale admin shells from being served again from the HTTP cache after logout.
 
-Automated browser coverage (`tests/test_admin_cache_headers_browser.py`) verifies
-logout → back → reload behavior within these HTTP cache guarantees.
+`Clear-Site-Data` on logout is a separate compatibility/privacy decision and is
+not required for this policy.
 
 ## Production verification
 
@@ -69,30 +74,24 @@ only — do not log cookies, CSRF tokens, or page bodies:
 
 ```bash
 curl -sI https://saberistic.com/admin/login | grep -Ei '^cache-control:'
-curl -sI https://saberistic.com/admin | grep -Ei '^cache-control:'
 ```
 
-Expect exactly one `Cache-Control: no-store, private` on each response. When
-testing authenticated paths, use an operator session in a private browser profile
-and avoid piping response bodies to logs.
+Expect exactly:
 
-Verify CDN/Cloudflare preserves the origin policy (header value should match at
-the edge). Static assets should **not** gain `no-store` solely because an admin
-page references them:
-
-```bash
-curl -sI https://saberistic.com/assets/admin.css | grep -Ei '^cache-control:' || true
+```http
+Cache-Control: no-store, private
 ```
 
-An empty result is acceptable when no deliberate asset cache directive is set.
+`scripts/smoke_deploy.py` exposes `verify_admin_cache_headers()` for the same
+check without persisting sensitive response data.
 
-## Verification
+## Tests
 
-| Suite | Coverage |
-|-------|----------|
-| `tests/test_admin_cache_policy_unit.py` | Header constants and replacement semantics |
-| `tests/test_admin_cache_policy.py` | Admin response matrix (200/303/400/401/404/405/422/429/500/503) |
-| `tests/test_admin_cache_headers_browser.py` | Logout/back/reload within HTTP cache guarantees |
+| File | Coverage |
+|------|----------|
+| `tests/test_admin_cache_headers.py` | Integration matrix across status classes |
+| `tests/test_admin_response_policy_unit.py` | Header builder and replacement helpers |
+| `tests/test_admin_cache_headers_browser.py` | Logout, back navigation, reload within HTTP cache guarantees |
 
-Rollback: revert `app/admin_cache_policy.py` and remove the middleware hook in
-`app/main.py`.
+Rollback: remove `apply_admin_cache_headers()` from the middleware hook in
+`app/main.py` and delete the cache helpers from `app/admin_response_policy.py`.

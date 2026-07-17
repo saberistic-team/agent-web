@@ -6,8 +6,6 @@ import re
 
 import pytest
 
-from starlette.responses import Response
-
 from app.admin_response_policy import (
     ADMIN_CACHE_CONTROL,
     CSP_ENFORCEMENT_DEADLINE,
@@ -147,17 +145,20 @@ def test_admin_cache_headers_snapshot() -> None:
 
 @pytest.mark.unit
 def test_apply_admin_cache_headers_replaces_weaker_directive() -> None:
-    response = Response(content="admin")
+    from starlette.responses import Response
+
+    response = Response("ok")
     response.headers["Cache-Control"] = "public, max-age=3600"
     apply_admin_cache_headers(response)
-    assert response.headers["Cache-Control"] == ADMIN_CACHE_CONTROL
+    assert response.headers["cache-control"] == ADMIN_CACHE_CONTROL
 
 
 @pytest.mark.unit
 def test_apply_response_headers_replaces_duplicate_names() -> None:
-    response = Response(content="admin")
-    response.headers.append("Cache-Control", "no-cache")
+    from starlette.responses import Response
+
+    response = Response("ok")
+    response.headers["Cache-Control"] = "no-cache"
     response.headers.append("Cache-Control", "public")
     apply_response_headers(response, {"Cache-Control": ADMIN_CACHE_CONTROL})
-    values = [value for key, value in response.headers.items() if key.lower() == "cache-control"]
-    assert values == [ADMIN_CACHE_CONTROL]
+    assert list(response.headers.getlist("cache-control")) == [ADMIN_CACHE_CONTROL]

@@ -2,15 +2,10 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
-
 import pytest
 
-from scripts.smoke_deploy import (
-    ADMIN_CACHE_CONTROL,
-    verify_admin_cache_control,
-    verify_admin_login_source_trust,
-)
+from app.admin_response_policy import ADMIN_CACHE_CONTROL
+from scripts.smoke_deploy import verify_admin_cache_headers, verify_admin_login_source_trust
 
 
 @pytest.mark.unit
@@ -36,24 +31,12 @@ def test_verify_admin_login_source_trust_skips_non_production_origin() -> None:
 
 
 @pytest.mark.unit
-def test_verify_admin_cache_control_accepts_no_store_private() -> None:
-    response = MagicMock()
-    response.headers = {"Cache-Control": ADMIN_CACHE_CONTROL}
-    response.__enter__ = MagicMock(return_value=response)
-    response.__exit__ = MagicMock(return_value=False)
-    with patch("scripts.smoke_deploy.urllib.request.urlopen", return_value=response):
-        ok, detail = verify_admin_cache_control("https://saberistic.com")
-    assert ok is True
-    assert ADMIN_CACHE_CONTROL in detail
+def test_verify_admin_cache_headers_accepts_enforced_policy() -> None:
+    assert verify_admin_cache_headers({"cache-control": ADMIN_CACHE_CONTROL})
 
 
 @pytest.mark.unit
-def test_verify_admin_cache_control_rejects_missing_header() -> None:
-    response = MagicMock()
-    response.headers = {}
-    response.__enter__ = MagicMock(return_value=response)
-    response.__exit__ = MagicMock(return_value=False)
-    with patch("scripts.smoke_deploy.urllib.request.urlopen", return_value=response):
-        ok, detail = verify_admin_cache_control("https://saberistic.com")
-    assert ok is False
-    assert "cache-control=''" in detail
+def test_verify_admin_cache_headers_rejects_missing_or_weak_policy() -> None:
+    assert not verify_admin_cache_headers({})
+    assert not verify_admin_cache_headers({"cache-control": "no-cache"})
+    assert not verify_admin_cache_headers({"cache-control": "public, max-age=3600"})
