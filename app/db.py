@@ -622,22 +622,66 @@ def clear_admin_login_rate_limits(
         conn.commit()
 
 
+def has_expired_admin_login_rate_limits(
+    conn: psycopg.Connection,
+    *,
+    now: datetime,
+    window_seconds: int,
+    lockout_seconds: int,
+) -> bool:
+    """Cheap existence check for a cleanup backlog, using the same eligibility
+    rule as ``cleanup_expired_admin_login_rate_limits`` (no row lock/delete).
+    """
+    retention_seconds = max(window_seconds, lockout_seconds) * 2
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM admin_login_rate_limits
+                WHERE updated_at < %s - make_interval(secs => %s)
+                  AND (locked_until IS NULL OR locked_until < %s)
+            ) AS has_backlog
+            """,
+            (now, retention_seconds, now),
+        )
+        row = cur.fetchone()
+    return bool(row["has_backlog"]) if row else False
+
+
 def cleanup_expired_admin_login_rate_limits(
     conn: psycopg.Connection,
     *,
     now: datetime,
     window_seconds: int,
     lockout_seconds: int,
+    batch_size: int,
 ) -> int:
+    """Delete expired login rate-limit rows in a bounded batch.
+
+    Eligible rows have ``updated_at`` older than ``2 × max(window, lockout)``
+    and no active lockout (``locked_until`` is null or in the past). Selects
+    the oldest eligible rows first using ``updated_at`` and ``limiter_key``.
+    Uses ``FOR UPDATE SKIP LOCKED`` so concurrent instances claim disjoint batches.
+    """
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
     retention_seconds = max(window_seconds, lockout_seconds) * 2
     with conn.cursor() as cur:
         cur.execute(
             """
             DELETE FROM admin_login_rate_limits
-            WHERE updated_at < %s - make_interval(secs => %s)
-              AND (locked_until IS NULL OR locked_until < %s)
+            WHERE limiter_key IN (
+                SELECT limiter_key
+                FROM admin_login_rate_limits
+                WHERE updated_at < %s - make_interval(secs => %s)
+                  AND (locked_until IS NULL OR locked_until < %s)
+                ORDER BY updated_at, limiter_key
+                FOR UPDATE SKIP LOCKED
+                LIMIT %s
+            )
             """,
-            (now, retention_seconds, now),
+            (now, retention_seconds, now, batch_size),
         )
         deleted = cur.rowcount
         conn.commit()

@@ -55,6 +55,102 @@ PREVIEW_ADMIN_LOGIN_LIMITER_SECRET = "preview-limiter-secret-32chars-minimum"
 PREVIEW_SESSION_TOKEN = "preview-screenshot-session"
 ADMIN_SESSION_COOKIE = "admin_session"
 
+# Minimal parent variables required to spawn the local uvicorn preview child.
+PREVIEW_CHILD_ENV_PASSTHROUGH: tuple[str, ...] = (
+    "PATH",
+    "HOME",
+    "USER",
+    "PYTHONPATH",
+    "PYTHONHOME",
+    "VIRTUAL_ENV",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "TERM",
+    "TMPDIR",
+    "TMP",
+    "TEMP",
+)
+
+# Never inherit production data-store or provider credentials into preview.
+PREVIEW_CLEARED_SECRETS: tuple[str, ...] = (
+    "DATABASE_URL",
+    "STRIPE_SECRET_KEY",
+    "STRIPE_WEBHOOK_SECRET",
+    "STRIPE_PUBLISHABLE_KEY",
+    "RESEND_API_KEY",
+    "PLAUSIBLE_API_KEY",
+    "PLAUSIBLE_DOMAIN",
+)
+
+
+def build_preview_child_env(
+    *,
+    port: int = 8765,
+    parent_environ: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Build a minimal uvicorn child environment for ADMIN_PREVIEW_MODE screenshots.
+
+    The child must not inherit ``DATABASE_URL`` or production provider secrets from
+    the parent shell even when the parent is production-configured.
+    """
+    parent = parent_environ if parent_environ is not None else os.environ
+    env: dict[str, str] = {}
+    for key in PREVIEW_CHILD_ENV_PASSTHROUGH:
+        value = parent.get(key)
+        if value:
+            env[key] = value
+    base = f"http://127.0.0.1:{port}"
+    env["BASE_URL"] = base
+    env["ADMIN_PREVIEW_MODE"] = "1"
+    env["ADMIN_USERNAME"] = parent.get("ADMIN_USERNAME") or PREVIEW_ADMIN_USERNAME
+    env["ADMIN_PASSWORD_HASH"] = (
+        parent.get("ADMIN_PASSWORD_HASH") or PREVIEW_ADMIN_PASSWORD_HASH
+    )
+    env["ADMIN_SESSION_SECRET"] = (
+        parent.get("ADMIN_SESSION_SECRET") or PREVIEW_ADMIN_SESSION_SECRET
+    )
+    env["ADMIN_LOGIN_LIMITER_SECRET"] = (
+        parent.get("ADMIN_LOGIN_LIMITER_SECRET") or PREVIEW_ADMIN_LOGIN_LIMITER_SECRET
+    )
+    preview_seed = (parent.get("ADMIN_PREVIEW_SEED") or "").strip()
+    if preview_seed:
+        env["ADMIN_PREVIEW_SEED"] = preview_seed
+    for key in PREVIEW_CLEARED_SECRETS:
+        env[key] = ""
+    return env
+
+
+def build_preview_server_env(
+    base_url: str,
+    *,
+    parent_environ: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Build a database-isolated preview server environment (#331).
+
+    Unlike ``build_preview_child_env`` (which lets an already-safe parent
+    override the fixed preview admin credentials), this always forces the
+    fixed ``PREVIEW_ADMIN_*`` credentials and clears every forbidden secret,
+    regardless of what the parent process has set — admin preview mode must
+    never run with real credentials or data-store access.
+    """
+    parent = parent_environ if parent_environ is not None else os.environ
+    env: dict[str, str] = {}
+    for key in PREVIEW_CHILD_ENV_PASSTHROUGH:
+        value = parent.get(key)
+        if value:
+            env[key] = value
+    env["BASE_URL"] = base_url
+    env["ADMIN_PREVIEW_MODE"] = "1"
+    env["ADMIN_USERNAME"] = PREVIEW_ADMIN_USERNAME
+    env["ADMIN_PASSWORD_HASH"] = PREVIEW_ADMIN_PASSWORD_HASH
+    env["ADMIN_SESSION_SECRET"] = PREVIEW_ADMIN_SESSION_SECRET
+    env["ADMIN_LOGIN_LIMITER_SECRET"] = PREVIEW_ADMIN_LOGIN_LIMITER_SECRET
+    for key in PREVIEW_CLEARED_SECRETS:
+        env[key] = ""
+    return env
+
+
 # Static HTML files under site/ → public page routes.
 SITE_HTML_TO_ROUTE: dict[str, str] = {
     "site/index.html": "/",
@@ -87,6 +183,9 @@ ADMIN_SCREENSHOT_ROUTES: tuple[str, ...] = (
     "/admin/briefs/4",
     "/admin/briefs/4/convert",
     "/admin/briefs/4/convert?error=validation",
+    "/admin/briefs/5/convert",
+    "/admin/briefs/6/convert",
+    "/admin/briefs/7/convert",
     "/admin/briefs/503",
     "/admin/companies/dddddddd-dddd-dddd-dddd-dddddddddd01",
     "/admin/companies/dddddddd-dddd-dddd-dddd-dddddddddd02",
@@ -730,21 +829,16 @@ def local_preview_server(
             "(set COVERAGE_ROOT / PR_HEAD_ROOT to the checked-out PR head)"
         )
     base = f"http://127.0.0.1:{port}"
-    env = {
-        **os.environ,
-        "BASE_URL": base,
-        # HTML pages must render without requiring production secrets.
-        "DATABASE_URL": os.environ.get("DATABASE_URL") or "",
-        # Open /admin without login for branch screenshot evidence only.
-        "ADMIN_PREVIEW_MODE": "1",
-        "ADMIN_USERNAME": os.environ.get("ADMIN_USERNAME") or PREVIEW_ADMIN_USERNAME,
-        "ADMIN_PASSWORD_HASH": os.environ.get("ADMIN_PASSWORD_HASH")
-        or PREVIEW_ADMIN_PASSWORD_HASH,
-        "ADMIN_SESSION_SECRET": os.environ.get("ADMIN_SESSION_SECRET")
-        or PREVIEW_ADMIN_SESSION_SECRET,
-        "ADMIN_LOGIN_LIMITER_SECRET": os.environ.get("ADMIN_LOGIN_LIMITER_SECRET")
-        or PREVIEW_ADMIN_LOGIN_LIMITER_SECRET,
-    }
+    bind_host = "127.0.0.1"
+    from app.admin_preview_security import validate_preview_bind_host  # type: ignore
+
+    validate_preview_bind_host(bind_host)
+    env = build_preview_child_env(port=port, parent_environ=os.environ)
+    # validate_admin_preview_config() (#330) requires APP_ENV + SERVER_BIND_HOST
+    # whenever ADMIN_PREVIEW_MODE is set; build_preview_child_env() (#331) only
+    # isolates the child from DATABASE_URL/provider secrets, so set these here.
+    env["APP_ENV"] = "development"
+    env["SERVER_BIND_HOST"] = bind_host
     proc = subprocess.Popen(
         [
             sys.executable,
@@ -752,7 +846,7 @@ def local_preview_server(
             "uvicorn",
             "app.main:app",
             "--host",
-            "127.0.0.1",
+            bind_host,
             "--port",
             str(port),
         ],

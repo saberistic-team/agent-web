@@ -1,8 +1,10 @@
-# Builder / Reviewer / visual model providers
+# Builder / Reviewer model providers
 
-**Builder codegen**, **Reviewer AI** (PR review + acceptance), and
-**post-deploy visual** prefer the **Cursor Agent SDK** when `CURSOR_API_KEY`
-is set. OpenAI and GitHub Models are backups (OpenAI quota is often exhausted).
+**Builder codegen** and **Reviewer AI** (PR review + acceptance) prefer the
+**Cursor Agent SDK** when `CURSOR_API_KEY` is set. OpenAI and GitHub Models
+are backups (OpenAI quota is often exhausted). Post-deploy screenshots are
+captured as evidence only — verification is a manual admin step, not an
+AI-gated check (see [SCREENSHOTS.md](SCREENSHOTS.md)).
 Every Cursor SDK call defaults to Claude **Sonnet with Max Mode enabled**
 (`scripts/cursor_model.py`) — override with `CURSOR_MODEL` / `CURSOR_MAX_MODE`.
 
@@ -77,23 +79,17 @@ commit per file, which storms CI and races merges).
 
 1. Issue gets `agent:reviewer`
 2. `scripts/review_models.py` → Cursor (`mode=plan`, read-only) → OpenAI → Models
-3. Acceptance AI uses the same `chat()` stack
+3. Acceptance AI uses the same `chat()` stack (including the post-deploy
+   acceptance-checklist refresh in `scripts/post_deploy_visual.py`)
 4. Force with `REVIEW_PROVIDER=cursor|openai|github-models`
-
-## Post-deploy visual flow
-
-1. CI `post-deploy-visual` after Render deploy
-2. `scripts/post_deploy_visual.py` → Cursor (`mode=plan`, read local PNGs) →
-   OpenAI vision backup
-3. Force with `VISUAL_PROVIDER=cursor|openai`
 
 ## Auth
 
 | Token | Purpose |
 |-------|---------|
 | Builder / Reviewer App tokens | Comments, labels, commits, PRs, reviews |
-| `CURSOR_API_KEY` | **Preferred** Cursor SDK for Builder + Reviewer + visual |
-| `OPENAI_API_KEY` | Optional backup for review / acceptance / visual |
+| `CURSOR_API_KEY` | **Preferred** Cursor SDK for Builder + Reviewer + acceptance |
+| `OPENAI_API_KEY` | Optional backup for review / acceptance |
 | `MODELS_TOKEN` (optional) | GitHub Models last-resort backup |
 
 ## Variables
@@ -102,19 +98,17 @@ commit per file, which storms CI and races merges).
 |----------|---------|
 | `CODEGEN_PROVIDER` | unset → Cursor if key present, else OpenAI, else Models |
 | `REVIEW_PROVIDER` | unset → Cursor if key present, else OpenAI, else Models |
-| `VISUAL_PROVIDER` | unset → Cursor if key present, else OpenAI |
 | `CURSOR_MODEL` | `sonnet-4.5` |
 | `CURSOR_MAX_MODE` | `true` (Max Mode on for every Cursor SDK call; set `false` to disable) |
 | `CURSOR_RUNTIME` | `local` in Actions (Builder); set `cloud` only when needed |
-| `OPENAI_MODEL` | Path-specific defaults when unset: codegen / post-deploy visual → `gpt-4.1-mini`; Reviewer / acceptance / conflict helpers → `gpt-4o-mini` |
+| `OPENAI_MODEL` | Path-specific defaults when unset: codegen → `gpt-4.1-mini`; Reviewer / acceptance / conflict helpers → `gpt-4o-mini` |
 | `GITHUB_MODELS_MODEL` | `openai/gpt-4o-mini` |
 
 ## Cursor setup
 
 1. Create a Cursor API key (user or team service account)
 2. Repo secret: `CURSOR_API_KEY`
-3. Repo variables: `CODEGEN_PROVIDER=cursor`, optionally `REVIEW_PROVIDER=cursor`,
-   `VISUAL_PROVIDER=cursor`
+3. Repo variables: `CODEGEN_PROVIDER=cursor`, optionally `REVIEW_PROVIDER=cursor`
 4. Optional: `CURSOR_MODEL=sonnet-4.5` (defaults to Sonnet with Max Mode on;
    `CURSOR_MAX_MODE=false` disables Max Mode), `CURSOR_RUNTIME=local`
 5. For Builder **cloud** only: connect GitHub so Cursor can clone/open PRs

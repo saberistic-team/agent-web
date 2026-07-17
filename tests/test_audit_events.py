@@ -26,6 +26,7 @@ from app.config import get_settings
 from app.crm_service import CrmRepositories, CrmService
 from app.crm_uow import crm_transaction
 from app.main import app
+from tests.conftest import enable_admin_preview_env
 from app.migrations.definitions import MIGRATIONS
 from app.migrations.runner import pending_migrations
 from app.repositories.postgres import PostgresAuditEventRepository
@@ -95,8 +96,8 @@ def test_audit_migration_present_and_ordered() -> None:
 @pytest.mark.unit
 def test_pending_migrations_includes_audit_after_sessions() -> None:
     pending = pending_migrations(applied_versions={"001", "002", "003", "004", "005", "006"})
-    assert len(pending) == 13
-    assert [m.version for m in pending] == ["007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018", "019"]
+    assert len(pending) == 14
+    assert [m.version for m in pending] == ["007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018", "019", "020"]
 
 
 @pytest.mark.unit
@@ -690,7 +691,7 @@ def test_render_admin_section_empty_state() -> None:
 def test_render_admin_page_preview_dashboard(monkeypatch: pytest.MonkeyPatch) -> None:
     from app import admin
 
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch)
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
     html_out = admin.render_admin_page("/admin", admin_username=TEST_USERNAME)
     assert "Today&apos;s attention" in html_out

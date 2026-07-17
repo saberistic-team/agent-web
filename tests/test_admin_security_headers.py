@@ -21,6 +21,8 @@ from app.admin_response_policy import (
 )
 from app.main import app
 
+from tests.conftest import enable_admin_preview_env
+
 client = TestClient(app, follow_redirects=False)
 
 TEST_USERNAME = "operator"
@@ -120,9 +122,8 @@ def authenticated_admin() -> Generator[dict[str, str], None, None]:
 
 @pytest.fixture
 def preview_mode(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch, base_url="http://localhost:8000")
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
-    monkeypatch.setenv("BASE_URL", "http://localhost:8000")
 
 
 @pytest.mark.integration
@@ -219,11 +220,14 @@ def test_admin_503_preview_fixture_has_security_headers(preview_mode: None) -> N
 def test_admin_pipeline_json_error_has_security_headers(
     preview_mode: None,
 ) -> None:
+    # The central AdminPreviewReadOnlyMiddleware (#331) now rejects this POST
+    # with 405 before the route handler's own validation ever runs; security
+    # headers must still be applied regardless of status code.
     response = client.post(
         "/admin/pipeline/not-a-uuid/stage",
         data={"stage": "qualifying", "csrf_token": "bad"},
     )
-    assert response.status_code in {400, 404, 422}
+    assert response.status_code == 405
     _assert_admin_security_headers(response)
 
 
@@ -277,10 +281,12 @@ def test_static_assets_have_nosniff_without_admin_csp() -> None:
 def test_hsts_present_only_for_https_production(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
+    # Preview mode now requires a validated loopback BASE_URL (#330); this
+    # test only needs the public, unauthenticated /admin/login GET page, so
+    # it never needed preview mode to begin with.
     monkeypatch.setenv("BASE_URL", "https://staging.example.test")
-    response = client.get("/admin/login")
+    with mock_db_connection():
+        response = client.get("/admin/login")
     assert response.status_code == 200
     assert response.headers.get("strict-transport-security") == "max-age=31536000"
 

@@ -18,6 +18,7 @@ from app.admin_response_policy import (
     parse_csp_directives,
     validate_admin_csp,
 )
+from app.app_environment import AppEnvironment
 from app.config import Settings
 
 
@@ -32,6 +33,7 @@ def _settings(*, base_url: str = "http://localhost:8000") -> Settings:
         notify_email="inbox@saberistic.com",
         base_url=base_url,
         analytics_environment="development",
+        app_environment=AppEnvironment.DEVELOPMENT,
         admin_username="",
         admin_password_hash="",
         admin_session_secret="",
