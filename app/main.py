@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncIterator
 
+from fastapi.exceptions import RequestValidationError
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import (
     HTMLResponse,
@@ -35,8 +36,8 @@ from app.admin_preview_guard import (
     AdminPreviewReadOnlyMiddleware,
     validate_admin_preview_config,
 )
-from app.admin_cache_policy import apply_admin_cache_headers
 from app.admin_response_policy import (
+    apply_admin_cache_headers,
     apply_admin_security_headers,
     apply_static_asset_headers,
     csp_nonce_from_request,
@@ -58,6 +59,23 @@ from app.seo import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Exceptions that inner middleware/handlers convert to responses; do not map to 500.
+_ADMIN_MIDDLEWARE_PASSTHROUGH: tuple[type[BaseException], ...] = (
+    HTTPException,
+    StarletteHTTPException,
+    RequestValidationError,
+    AdminLoginRequired,
+    AdminPreviewConfigError,
+)
+
+
+def _unwrap_middleware_exception(exc: BaseException) -> BaseException:
+    """Return the underlying error when Starlette wraps middleware failures."""
+    nested = getattr(exc, "exceptions", None)
+    if nested:
+        return nested[0]
+    return exc
 
 SITE_DIR = Path(__file__).resolve().parent.parent / "site"
 ASSETS_DIR = SITE_DIR / "assets"
@@ -314,24 +332,30 @@ async def redirect_www_to_apex(request: Request, call_next):
 
 @app.middleware("http")
 async def admin_response_security_policy(request: Request, call_next):
-    """Attach admin CSP, cache isolation, and supporting headers; nosniff on static assets."""
+    """Attach admin CSP, cache isolation, and supporting headers; nosniff on assets."""
     path = request.url.path
-    if is_admin_path(path):
+    admin = is_admin_path(path)
+    if admin:
         request.state.csp_nonce = generate_csp_nonce()
     try:
         response = await call_next(request)
-    except Exception:
-        if not is_admin_path(path):
+    except _ADMIN_MIDDLEWARE_PASSTHROUGH:
+        raise
+    except Exception as exc:
+        if not admin:
             raise
-        logger.exception("Unhandled admin request failure")
-        response = JSONResponse({"detail": "Internal Server Error"}, status_code=500)
-    if is_admin_path(path):
-        apply_admin_cache_headers(response)
+        unwrapped = _unwrap_middleware_exception(exc)
+        if isinstance(unwrapped, _ADMIN_MIDDLEWARE_PASSTHROUGH):
+            raise unwrapped
+        logger.exception("Unhandled admin request error")
+        response = PlainTextResponse("Internal Server Error", status_code=500)
+    if admin:
         apply_admin_security_headers(
             response,
             get_settings(),
             nonce=csp_nonce_from_request(request),
         )
+        apply_admin_cache_headers(response)
     elif path.startswith("/assets/"):
         apply_static_asset_headers(response)
     return response

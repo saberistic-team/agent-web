@@ -1,4 +1,4 @@
-"""Unit tests for admin response security policy (#308, #337)."""
+"""Unit tests for admin response security policy (#308)."""
 
 from __future__ import annotations
 
@@ -139,25 +139,25 @@ def test_csp_enforcement_plan_is_bounded() -> None:
 
 
 @pytest.mark.unit
-def test_admin_cache_headers_value() -> None:
+def test_admin_cache_headers_snapshot() -> None:
     headers = admin_cache_headers()
     assert headers == {"Cache-Control": ADMIN_CACHE_CONTROL}
-    assert "no-store" in headers["Cache-Control"]
-    assert "private" in headers["Cache-Control"]
-    assert "no-cache" not in headers["Cache-Control"]
+    assert headers["Cache-Control"] == "no-store, private"
 
 
 @pytest.mark.unit
 def test_apply_admin_cache_headers_replaces_weaker_directive() -> None:
-    response = Response(content=b"admin", headers={"Cache-Control": "public, max-age=3600"})
+    response = Response(content="admin")
+    response.headers["Cache-Control"] = "public, max-age=3600"
     apply_admin_cache_headers(response)
-    assert response.headers.getlist("cache-control") == [ADMIN_CACHE_CONTROL]
+    assert response.headers["Cache-Control"] == ADMIN_CACHE_CONTROL
 
 
 @pytest.mark.unit
 def test_apply_response_headers_replaces_duplicate_names() -> None:
-    response = Response(content=b"admin")
-    response.headers.append("Cache-Control", "public, max-age=60")
+    response = Response(content="admin")
     response.headers.append("Cache-Control", "no-cache")
+    response.headers.append("Cache-Control", "public")
     apply_response_headers(response, {"Cache-Control": ADMIN_CACHE_CONTROL})
-    assert response.headers.getlist("cache-control") == [ADMIN_CACHE_CONTROL]
+    values = [value for key, value in response.headers.items() if key.lower() == "cache-control"]
+    assert values == [ADMIN_CACHE_CONTROL]

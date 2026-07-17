@@ -1,16 +1,4 @@
-"""Central admin response security-header, CSP, and cache policy (#308, #337).
-
-All ``/admin`` responses receive ``Cache-Control: no-store, private`` so CRM
-data, brief contents, audit records, session CSRF values, and login-flow state
-are not stored or reused by browser or intermediary HTTP caches.
-
-``no-store`` prevents storage/reuse. ``private`` documents that the
-representation is user-specific. Do not substitute ``no-cache`` — it permits
-storage and requires revalidation.
-
-HTTP cache controls reduce storage/reuse but are not a secure erasure guarantee
-(browser history, bfcache, screenshots, and OS memory are out of scope).
-"""
+"""Central admin response security-header, CSP, and cache policy (#308, #337)."""
 
 from __future__ import annotations
 
@@ -21,10 +9,7 @@ from typing import Mapping
 from starlette.requests import Request
 from starlette.responses import Response
 
-from starlette.datastructures import MutableHeaders
-from starlette.types import ASGIApp, Message, Receive, Scope, Send
-
-from app.config import Settings, get_settings
+from app.config import Settings
 
 # 16 bytes = 128 bits (W3C CSP minimum nonce entropy).
 _CSP_NONCE_BYTES = 16
@@ -66,6 +51,10 @@ _PERMISSIONS_POLICY = (
 # after automated browser verification (see docs/ADMIN_SECURITY_HEADERS.md).
 CSP_ENFORCEMENT_OWNER = "agent-web maintainers"
 CSP_ENFORCEMENT_DEADLINE = "2026-08-01"
+
+# Authoritative admin cache isolation (#337). ``no-store`` prevents storage and
+# reuse; ``private`` documents user-specific representations for shared caches.
+ADMIN_CACHE_CONTROL = "no-store, private"
 
 
 def is_admin_path(path: str) -> bool:
@@ -158,19 +147,6 @@ def static_asset_security_headers() -> dict[str, str]:
     return {"X-Content-Type-Options": "nosniff"}
 
 
-ADMIN_CACHE_CONTROL = "no-store, private"
-
-
-def admin_cache_headers() -> dict[str, str]:
-    """Return the admin cache-isolation header set (single value per name)."""
-    return {"Cache-Control": ADMIN_CACHE_CONTROL}
-
-
-def apply_admin_cache_headers(response: Response) -> None:
-    """Attach admin cache isolation, replacing any weaker downstream directive."""
-    apply_response_headers(response, admin_cache_headers())
-
-
 def apply_response_headers(
     response: Response,
     headers: Mapping[str, str],
@@ -180,6 +156,11 @@ def apply_response_headers(
         if name in response.headers:
             del response.headers[name]
         response.headers[name] = value
+
+
+def admin_cache_headers() -> dict[str, str]:
+    """Return the required admin cache isolation headers (#337)."""
+    return {"Cache-Control": ADMIN_CACHE_CONTROL}
 
 
 def apply_admin_security_headers(
@@ -192,59 +173,11 @@ def apply_admin_security_headers(
     apply_response_headers(response, admin_security_headers(settings, nonce=nonce))
 
 
+def apply_admin_cache_headers(response: Response) -> None:
+    """Attach no-store cache isolation to an admin response (#337)."""
+    apply_response_headers(response, admin_cache_headers())
+
+
 def apply_static_asset_headers(response: Response) -> None:
     """Attach MIME-sniff protection to static asset responses."""
     apply_response_headers(response, static_asset_security_headers())
-
-
-def _apply_policy_headers_to_message(message: Message, headers: Mapping[str, str]) -> None:
-    """Replace response headers on an ASGI http.response.start message."""
-    if message["type"] != "http.response.start":
-        return
-    mutable = MutableHeaders(scope=message)
-    for name, value in headers.items():
-        if name in mutable:
-            del mutable[name]
-        mutable[name] = value
-
-
-class AdminResponsePolicyMiddleware:
-    """Outermost ASGI middleware for admin CSP, cache isolation, and asset nosniff.
-
-    Wrapping the full application ensures ``Cache-Control: no-store, private`` and
-    sibling security headers apply even when ``ServerErrorMiddleware`` converts an
-    unhandled exception into a 500 without re-entering inner HTTP middleware.
-    """
-
-    def __init__(self, app: ASGIApp) -> None:
-        self.app = app
-
-    def __getattr__(self, name: str) -> object:
-        return getattr(self.app, name)
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http":
-            await self.app(scope, receive, send)
-            return
-
-        path = scope.get("path", "")
-        admin = is_admin_path(path)
-        asset = path.startswith("/assets/")
-        nonce = ""
-        if admin:
-            state = scope.setdefault("state", {})
-            nonce = generate_csp_nonce()
-            state["csp_nonce"] = nonce
-
-        async def send_with_policy_headers(message: Message) -> None:
-            if message["type"] == "http.response.start":
-                if admin:
-                    settings = get_settings()
-                    combined = dict(admin_security_headers(settings, nonce=nonce))
-                    combined.update(admin_cache_headers())
-                    _apply_policy_headers_to_message(message, combined)
-                elif asset:
-                    _apply_policy_headers_to_message(message, static_asset_security_headers())
-            await send(message)
-
-        await self.app(scope, receive, send_with_policy_headers)
