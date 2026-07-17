@@ -36,6 +36,7 @@ from app.admin_preview_guard import (
     validate_admin_preview_config,
 )
 from app.admin_response_policy import (
+    apply_admin_cache_headers,
     apply_admin_security_headers,
     apply_static_asset_headers,
     csp_nonce_from_request,
@@ -313,17 +314,19 @@ async def redirect_www_to_apex(request: Request, call_next):
 
 @app.middleware("http")
 async def admin_response_security_policy(request: Request, call_next):
-    """Attach admin CSP and supporting headers; nosniff on static assets."""
+    """Attach admin CSP, cache isolation, and supporting headers; nosniff on static assets."""
     path = request.url.path
-    if is_admin_path(path):
+    admin = is_admin_path(path)
+    if admin:
         request.state.csp_nonce = generate_csp_nonce()
     response = await call_next(request)
-    if is_admin_path(path):
+    if admin:
         apply_admin_security_headers(
             response,
             get_settings(),
             nonce=csp_nonce_from_request(request),
         )
+        apply_admin_cache_headers(response)
     elif path.startswith("/assets/"):
         apply_static_asset_headers(response)
     return response

@@ -7,10 +7,14 @@ import re
 import pytest
 
 from app.admin_response_policy import (
+    ADMIN_CACHE_CONTROL,
     CSP_ENFORCEMENT_DEADLINE,
     CSP_ENFORCEMENT_OWNER,
     _REQUIRED_CSP_DIRECTIVE_NAMES,
+    admin_cache_headers,
     admin_security_headers,
+    apply_admin_cache_headers,
+    apply_response_headers,
     build_admin_csp,
     generate_csp_nonce,
     hsts_enabled,
@@ -18,6 +22,7 @@ from app.admin_response_policy import (
     parse_csp_directives,
     validate_admin_csp,
 )
+from starlette.responses import Response
 from app.app_environment import AppEnvironment
 from app.config import Settings
 
@@ -130,3 +135,27 @@ def test_hsts_header_present_for_https() -> None:
 def test_csp_enforcement_plan_is_bounded() -> None:
     assert CSP_ENFORCEMENT_OWNER
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", CSP_ENFORCEMENT_DEADLINE)
+
+
+@pytest.mark.unit
+def test_admin_cache_headers_value() -> None:
+    headers = admin_cache_headers()
+    assert headers["Cache-Control"] == ADMIN_CACHE_CONTROL
+    assert headers["Cache-Control"] == "no-store, private"
+
+
+@pytest.mark.unit
+def test_apply_admin_cache_headers_replaces_weaker_directive() -> None:
+    response = Response(content="admin", media_type="text/html")
+    response.headers["Cache-Control"] = "public, max-age=3600"
+    apply_admin_cache_headers(response)
+    assert response.headers["Cache-Control"] == ADMIN_CACHE_CONTROL
+
+
+@pytest.mark.unit
+def test_apply_response_headers_replaces_duplicate_names() -> None:
+    response = Response(content="admin", media_type="text/html")
+    response.headers["Cache-Control"] = "no-cache"
+    apply_response_headers(response, {"Cache-Control": ADMIN_CACHE_CONTROL})
+    values = [value for _, value in response.raw_headers if _ == b"cache-control"]
+    assert values == [ADMIN_CACHE_CONTROL.encode()]
