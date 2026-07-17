@@ -15,7 +15,7 @@ import urllib.request
 from typing import Any
 
 from cursor_model import DEFAULT_CURSOR_MODEL, cursor_model_dict, cursor_model_selection
-from github_api import GitHubError, api, split_repo
+from github_api import GitHubError, api, list_pr_files, split_repo
 
 DEFAULT_MODEL = "openai/gpt-4o-mini"
 DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
@@ -332,14 +332,36 @@ def extract_json(text: str) -> dict[str, Any]:
     return data
 
 
+def _is_screenshot_evidence_path(path: str) -> bool:
+    return path.startswith(".agent/screenshots/")
+
+
 def collect_pr_context(repo: str, issue: int, pr_number: int) -> dict[str, Any]:
     owner, name = split_repo(repo)
     issue_data = api("GET", f"/repos/{owner}/{name}/issues/{issue}")
     pr = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}")
-    files = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}/files") or []
+    # Must paginate (default API page is only 30): PRs that also carry
+    # Reviewer screenshot evidence commonly exceed 100 files, and
+    # `.agent/screenshots/...` sorts alphabetically before `app/`/`docs/`/
+    # `tests/`, so a single unpaginated page can be 100% screenshots with
+    # every real code/test/doc file silently missing from the model's
+    # context — producing a false "screenshot-only diff" changes-requested
+    # verdict no matter how many times Builder re-pushes (mirrors the
+    # pagination bug already fixed for `list_pr_files` callers in #206).
+    files = list_pr_files(repo, pr_number)
     commits = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}/commits") or []
+    # Even with full pagination, `.agent/screenshots/...` still sorts first
+    # alphabetically, so a plain files[:20] slice can still be 100%
+    # screenshots on evidence-heavy PRs. Prioritize substantive files for
+    # the patches actually shown to the model; screenshots need no patch
+    # (policy already treats them as allowed evidence, not something to
+    # diff), so surface their count instead of crowding out real changes.
+    substantive = [
+        f for f in files if not _is_screenshot_evidence_path(f.get("filename") or "")
+    ]
+    screenshot_count = len(files) - len(substantive)
     patches = []
-    for f in files[:20]:
+    for f in substantive[:20]:
         patch = f.get("patch") or ""
         if len(patch) > 4000:
             patch = patch[:4000] + "\n…[truncated]…"
@@ -359,6 +381,7 @@ def collect_pr_context(repo: str, issue: int, pr_number: int) -> dict[str, Any]:
         "pr_body": (pr.get("body") or "")[:4000],
         "commit_messages": [c.get("commit", {}).get("message", "") for c in commits],
         "files": patches,
+        "screenshot_evidence_file_count": screenshot_count,
     }
 
 
@@ -402,6 +425,10 @@ def ai_review(repo: str, issue: int, pr_number: int) -> dict[str, Any]:
         "`branch-admin*.png` under ADMIN_PREVIEW_MODE, OR when the PR is admin-only "
         "and posted a skip/branch note — admin is never shot on saberistic.com\n"
         "- files under `.agent/screenshots/` (allowed Reviewer evidence)\n"
+        "`files` below excludes `.agent/screenshots/` entries — their count is in "
+        "`screenshot_evidence_file_count` instead. Never claim the diff is "
+        "'screenshot-only' or that no code/test/doc files changed on that basis; "
+        "judge acceptance strictly from the non-screenshot entries in `files`.\n"
         "- noisy/file-by-file commit history (gate squash-merges to main)\n"
         "- wording/style nits when acceptance criteria are met\n"
         "If acceptance criteria are met, set decision=approved and meets_acceptance=true.\n"

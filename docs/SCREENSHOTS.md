@@ -19,9 +19,20 @@ post-deploy only.
 Pre-merge starts the PR preview server with `ADMIN_PREVIEW_MODE=1` so
 Playwright can open admin pages **without login**.
 
-- Enabled only for local/`127.0.0.1` preview (CI screenshot job).
-- Hard-disabled when `BASE_URL` contains `saberistic.com` even if the env
-  flag is set — never open admin without auth in production.
+- Enabled only when `ADMIN_PREVIEW_MODE=1`, `APP_ENV=development` (or `preview`),
+  `BASE_URL` is a **positively validated loopback origin** (`http://localhost:…`,
+  `http://127.0.0.1:…`, `http://127.x.x.x:…`, or `http://[::1]:…`), and
+  `SERVER_BIND_HOST` is a loopback interface. Startup fails on staging/production,
+  lookalike/malformed origins, or a public bind — never inferred from hostname
+  denylists or request `Host` headers.
+- **Database-isolated:** the screenshot launcher builds a minimal child-process
+  environment via ``build_preview_child_env()`` — it never inherits ``DATABASE_URL``
+  or production Stripe/email/analytics credentials from the parent shell.
+- **Read-only:** startup rejects ``ADMIN_PREVIEW_MODE`` when any production
+  data-store or provider secret is configured; while preview is active, a central
+  ASGI guard in ``app/admin_preview_guard.py`` allows only ``GET``/``HEAD`` on
+  ``/admin/*`` and returns ``405 Method Not Allowed`` (with ``Allow: GET, HEAD``)
+  for every other method before request bodies are parsed.
 - Admin shell pages fill with **mock intake/CRM data with randomization**
   (dashboard stats, section tables, **briefs list/detail**, etc.) so screenshots
   look like a live operator shell — never real production rows and never an
@@ -162,8 +173,38 @@ until merged.
 
 1. Polls `/health` as JSON; records under `.agent/deploy/<sha>/`
 2. Captures `post-*.png` of **public** PR-affected routes on **saberistic.com**
-3. Comments `### deploy_visual_check` on the linked issue
-4. Compares against pre-merge **branch** shots when available (not production `pre-*`)
+3. Comments `### deploy_visual_check` on the linked issue, including any
+   pre-merge **branch** shots available for side-by-side comparison
+4. **No automated pass/fail** — verification is a manual admin step (see
+   "Post-deploy visual verification" below). Screenshots and health are
+   evidence only.
+
+### Post-deploy visual verification
+
+`scripts/post_deploy_visual.py` used to ask Cursor/OpenAI to compare
+before/after screenshots and gate the CI job on a `pass`/`fail` decision.
+That was removed: many post-deploy changes are backend/security-only with no
+visible public-page diff, which produced routine false-negative failures
+(the AI correctly reporting "nothing to see" and failing the job over it).
+An admin now reviews the posted screenshots directly instead.
+
+Health JSON and screenshot uploads land on a deterministic
+`deploy/screenshots-<sha>` branch and a PR against `main` with auto-merge
+enabled — **not** a direct push. The workflow-governance ruleset
+(`docs/WORKFLOW_GOVERNANCE.md`) rejects bot pushes straight to a protected
+branch, the same reason `freeze_shipped_migrations.py` opens a
+`deploy/freeze-*` PR instead of pushing (issue #362/#366). One human
+CODEOWNER approval merges it; reruns for the same deploy sha reuse the
+existing open PR (`find_open_pr_for_branch`) instead of opening a duplicate.
+
+The same `### deploy_visual_check` (or `### deploy_record` when no issue is
+linked) comment — screenshots and all — is posted on **both** the linked
+issue and the `deploy/screenshots-<sha>` record PR itself
+(`post_deploy_visual.notify_deploy`), so the CODEOWNER reviewing that PR sees
+the before/after evidence inline before approving auto-merge, instead of
+having to open the linked issue or inspect the raw PNG diff. The screenshot
+links point at the raw content on that branch, so they render before the PR
+merges.
 
 ## Source matrix
 
@@ -180,10 +221,13 @@ until merged.
 | `ADMIN_PREVIEW_SEED` | env | Root seed for deterministic preview fixtures (default `338001`) |
 | `ADMIN_PREVIEW_REFERENCE_AT` | env | Frozen UTC reference timestamp for time-derived fields (default `2026-07-14T12:00:00+00:00`) |
 | `ADMIN_PREVIEW_FIXTURE_VERSION` | env | Preview fixture schema version recorded in evidence (default `1`) |
+| `APP_ENV` | env | `development` on PR preview server (script sets this) |
+| `SERVER_BIND_HOST` | env | `127.0.0.1` on PR preview server (loopback bind; script sets this) |
+| `BASE_URL` | env | `http://127.0.0.1:<port>` on PR preview server (script sets this) |
 | `DEPLOY_BASE_URL` | variable | default `https://saberistic.com` (post-deploy) |
 | `COVERAGE_ROOT` / `PR_HEAD_ROOT` | env | PR checkout root for branch screenshots |
 | `SCREENSHOTS_REQUIRED` | variable | default true for Reviewer when pages are affected |
-| `CURSOR_API_KEY` | secret | Preferred visual / review |
+| `CURSOR_API_KEY` | secret | Preferred model for Reviewer / acceptance checks |
 | `RENDER_DEPLOY_HOOK_URL` | secret | deploy trigger |
 | `RENDER_API_KEY` | secret | poll deploy status until live/failed |
 | `RENDER_SERVICE_ID` | secret | optional `srv-…` if not parseable from the hook URL |
@@ -191,6 +235,6 @@ until merged.
 ## Scripts / workflows
 
 - `scripts/screenshot_deploy.py` — discovery, PR filter, preview capture, upload
-- `scripts/post_deploy_visual.py` — production capture + visual check
+- `scripts/post_deploy_visual.py` — production capture + health recording (manual visual review, no automated gate)
 - `.github/workflows/reviewer.yml` — pre-merge Playwright
 - `.github/workflows/ci.yml` — `post-deploy-visual` job

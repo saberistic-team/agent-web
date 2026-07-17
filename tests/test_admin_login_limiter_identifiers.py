@@ -57,6 +57,10 @@ def _settings(**overrides: Any) -> Settings:
         "notify_email": base.notify_email,
         "base_url": base.base_url,
         "analytics_environment": base.analytics_environment,
+        "app_environment": base.app_environment,
+        "admin_preview_mode": base.admin_preview_mode,
+        "admin_preview_enabled": base.admin_preview_enabled,
+        "server_bind_host": base.server_bind_host,
         "admin_username": TEST_USERNAME,
         "admin_password_hash": TEST_HASH,
         "admin_session_secret": TEST_SESSION_SECRET,
@@ -315,6 +319,7 @@ def test_expired_previous_key_rows_are_eligible_for_cleanup(pg_conn: psycopg.Con
         now=now,
         window_seconds=900,
         lockout_seconds=900,
+        batch_size=admin_auth.LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE,
     )
     assert deleted == 1
 

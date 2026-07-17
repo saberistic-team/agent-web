@@ -963,7 +963,7 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
                     "body": (
                         f"Closes #{issue}\n\n"
                         "Screenshot infra: pre-merge Reviewer captures + post-deploy "
-                        "visual check (see docs/SCREENSHOTS.md).\n"
+                        "evidence capture (see docs/SCREENSHOTS.md).\n"
                     ),
                 },
             )
