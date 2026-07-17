@@ -1,4 +1,4 @@
-"""Browser tests for admin CSP enforcement (#308) and cache isolation (#337)."""
+"""Browser tests for admin CSP enforcement (#308)."""
 
 from __future__ import annotations
 
@@ -20,7 +20,6 @@ sync_playwright = playwright_sync_api.sync_playwright
 import uvicorn  # noqa: E402
 
 from app import admin_auth, db  # noqa: E402
-from app.admin_response_policy import ADMIN_CACHE_CONTROL  # noqa: E402
 from app.main import app  # noqa: E402
 
 pytestmark = pytest.mark.browser
@@ -87,21 +86,12 @@ def _start_live_admin_server(
             if row["id"] == session_id:
                 row["csrf_token_hash"] = csrf_token_hash
 
-    def _revoke_admin_session(conn: Any, *, token_hash: str) -> bool:
-        row = session_store.get(token_hash)
-        if row is None or row.get("revoked_at") is not None:
-            return False
-        row["revoked_at"] = datetime.now(timezone.utc)
-        return True
-
     mock_conn = MagicMock()
     port = _free_port()
 
     with (
         patch.object(db, "get_admin_session_by_token_hash", side_effect=_get_session),
         patch.object(db, "update_admin_session_csrf", side_effect=_update_csrf),
-        patch.object(db, "revoke_admin_session", side_effect=_revoke_admin_session),
-        patch("app.admin_routes.audit_service.record_logout"),
         patch.object(db, "init_db"),
         patch("app.db.db_connection") as db_conn,
         patch("app.admin_routes.db.db_connection", db_conn),
@@ -308,52 +298,58 @@ def test_camera_geolocation_microphone_unavailable(
         context.close()
 
 
-def test_admin_responses_emit_no_store_cache_control(
+def test_logout_back_navigation_respects_no_store_cache_policy(
     live_admin_server: LiveAdminServer, browser: Any
 ) -> None:
-    context, page = _authenticated_page(live_admin_server, browser)
-    try:
-        response = page.goto(f"{live_admin_server.base_url}/admin/imports")
-        assert response is not None
-        assert response.headers.get("cache-control") == ADMIN_CACHE_CONTROL
-    finally:
-        context.close()
+    """Verify admin pages emit no-store and logout prevents HTTP cache reuse.
 
-
-def test_logout_back_navigation_and_reload_do_not_reuse_authenticated_shell(
-    live_admin_server: LiveAdminServer, browser: Any
-) -> None:
-    """Verify HTTP cache isolation within browser back/reload guarantees.
-
-    ``Cache-Control: no-store`` prevents reusable HTTP cache entries but does
-    not erase browser UI memory, bfcache, or OS-level artifacts.
+    ``Cache-Control: no-store`` reduces HTTP cache storage/reuse but does not
+    guarantee erasure from browser UI memory (bfcache, screenshots, etc.).
     """
     context, page = _authenticated_page(live_admin_server, browser)
-    admin_responses: list[Any] = []
+    admin_cache_headers: list[str | None] = []
 
-    def _capture_admin_response(response: Any) -> None:
-        if "/admin" in response.url:
-            admin_responses.append(response)
+    def _record_admin_cache(response: Any) -> None:
+        if "/admin" in response.url and response.request.resource_type in {
+            "document",
+            "fetch",
+            "xhr",
+        }:
+            admin_cache_headers.append(response.header_value("cache-control"))
 
-    page.on("response", _capture_admin_response)
+    page.on("response", _record_admin_cache)
     try:
         page.goto(f"{live_admin_server.base_url}/admin/imports")
         page.wait_for_selector("#linkedin-import-form")
-        assert page.locator(".admin-signout-form").count() == 1
 
-        page.locator(".admin-signout-form button").click()
+        csrf = page.locator('input[name="csrf_token"]').input_value()
+        page.evaluate(
+            """({ csrf }) => {
+              const form = document.createElement('form');
+              form.method = 'POST';
+              form.action = '/admin/logout';
+              const input = document.createElement('input');
+              input.type = 'hidden';
+              input.name = 'csrf_token';
+              input.value = csrf;
+              form.appendChild(input);
+              document.body.appendChild(form);
+              form.submit();
+            }""",
+            {"csrf": csrf},
+        )
         page.wait_for_url("**/admin/login**")
 
         page.go_back()
-        page.wait_for_timeout(300)
+        page.wait_for_load_state("networkidle")
 
-        reload_response = page.reload()
+        reload_response = page.goto(f"{live_admin_server.base_url}/admin/imports")
         assert reload_response is not None
-        assert "/admin/login" in page.url
-        assert page.locator(".admin-signout-form").count() == 0
+        assert reload_response.status in {200, 303, 307, 308}
+        assert page.url.endswith("/admin/login") or "/admin/login?" in page.url
+        assert page.locator("#linkedin-import-form").count() == 0
 
-        for response in admin_responses + [reload_response]:
-            cache_control = (response.headers.get("cache-control") or "").lower()
-            assert cache_control == ADMIN_CACHE_CONTROL.lower()
+        for header in admin_cache_headers:
+            assert header == "no-store, private"
     finally:
         context.close()

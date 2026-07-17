@@ -23,7 +23,7 @@ from app.admin_response_policy import (
 )
 from app.app_environment import AppEnvironment
 from app.config import Settings
-from starlette.responses import RedirectResponse
+from starlette.responses import Response
 
 
 def _settings(*, base_url: str = "http://localhost:8000") -> Settings:
@@ -131,20 +131,22 @@ def test_hsts_header_present_for_https() -> None:
 
 
 @pytest.mark.unit
-def test_admin_cache_headers_snapshot() -> None:
+def test_csp_enforcement_plan_is_bounded() -> None:
+    assert CSP_ENFORCEMENT_OWNER
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", CSP_ENFORCEMENT_DEADLINE)
+
+
+@pytest.mark.unit
+def test_admin_cache_headers_constant() -> None:
     headers = admin_cache_headers()
     assert headers == {"Cache-Control": ADMIN_CACHE_CONTROL}
+    assert headers["Cache-Control"] == "no-store, private"
 
 
 @pytest.mark.unit
 def test_apply_admin_cache_headers_replaces_weaker_directive() -> None:
-    response = RedirectResponse(url="/admin/login", status_code=303)
+    response = Response(content="ok", status_code=200)
     response.headers["Cache-Control"] = "public, max-age=3600"
     apply_admin_cache_headers(response)
     assert response.headers["Cache-Control"] == ADMIN_CACHE_CONTROL
-
-
-@pytest.mark.unit
-def test_csp_enforcement_plan_is_bounded() -> None:
-    assert CSP_ENFORCEMENT_OWNER
-    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", CSP_ENFORCEMENT_DEADLINE)
+    assert len(list(response.headers.getlist("Cache-Control"))) == 1

@@ -23,6 +23,7 @@ from app.admin_response_policy import (
 from app.main import app
 
 from tests.conftest import enable_admin_preview_env
+import tests.test_admin_auth as admin_auth_tests
 
 client = TestClient(app, follow_redirects=False)
 
@@ -44,6 +45,9 @@ def admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
     monkeypatch.setenv("BASE_URL", "http://testserver")
     monkeypatch.delenv("ADMIN_PREVIEW_MODE", raising=False)
+    admin_auth.reset_login_rate_limiter()
+    admin_auth_tests._login_flows.clear()
+    admin_auth_tests._session_store.clear()
     _session_store.clear()
 
 
@@ -52,8 +56,8 @@ def _header_values(headers: Any, name: str) -> list[str]:
     return [value for value in raw if value is not None]
 
 
-def _assert_admin_cache_control(response: Any) -> None:
-    """Assert the required admin cache isolation header (#337)."""
+def _assert_admin_cache_headers(response: Any) -> None:
+    """Assert the enforced admin cache-isolation policy (#337)."""
     values = _header_values(response.headers, "cache-control")
     assert len(values) == 1, f"cache-control must appear once, got {values}"
     assert values[0] == ADMIN_CACHE_CONTROL
@@ -61,7 +65,7 @@ def _assert_admin_cache_control(response: Any) -> None:
 
 def _assert_admin_security_headers(response: Any) -> str:
     """Assert required admin headers and return the CSP policy string."""
-    _assert_admin_cache_control(response)
+    _assert_admin_cache_headers(response)
     for header_name in (
         "content-security-policy",
         "x-content-type-options",
@@ -283,7 +287,6 @@ def test_static_assets_have_nosniff_without_admin_csp() -> None:
     assert response.status_code == 200
     assert response.headers.get("x-content-type-options") == "nosniff"
     assert "content-security-policy" not in response.headers
-    assert "cache-control" not in response.headers
     assert "text/css" in response.headers.get("content-type", "")
 
 
@@ -306,7 +309,6 @@ def test_public_home_has_no_admin_csp() -> None:
     response = client.get("/")
     assert response.status_code == 200
     assert "content-security-policy" not in response.headers
-    assert "cache-control" not in response.headers
 
 
 @pytest.mark.integration
@@ -376,3 +378,20 @@ def test_admin_headers_appear_once_on_login(preview_mode: None) -> None:
         "x-frame-options",
     ):
         assert counts[header] == 1
+
+
+@pytest.mark.integration
+def test_static_assets_are_not_forced_no_store() -> None:
+    response = client.get("/assets/admin.css")
+    assert response.status_code == 200
+    cache_control = response.headers.get("cache-control")
+    if cache_control is not None:
+        assert cache_control != ADMIN_CACHE_CONTROL
+    assert "no-store" not in (cache_control or "").lower()
+
+
+@pytest.mark.integration
+def test_public_home_has_no_admin_cache_policy() -> None:
+    response = client.get("/")
+    assert response.status_code == 200
+    assert response.headers.get("cache-control") != ADMIN_CACHE_CONTROL

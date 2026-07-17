@@ -1,4 +1,9 @@
-"""Central admin response security-header, CSP, and cache policy (#308, #337)."""
+"""Central admin response security-header, CSP, and cache policy (#308, #337).
+
+Security headers (CSP, nosniff, frame denial, etc.) satisfy #308. Admin cache
+isolation (``Cache-Control: no-store, private``) satisfies #337 — both are
+applied from the same middleware entry point in ``app/main.py``.
+"""
 
 from __future__ import annotations
 
@@ -16,10 +21,6 @@ _CSP_NONCE_BYTES = 16
 
 # One-year HSTS max-age; includeSubDomains omitted until all subdomains are HTTPS.
 _HSTS_MAX_AGE_SECONDS = 31_536_000
-
-# Authoritative admin cache isolation (#337). ``no-store`` prevents storage/reuse;
-# ``private`` documents user-specific responses for shared caches.
-ADMIN_CACHE_CONTROL = "no-store, private"
 
 # Reviewed admin CSP directive inventory (see issue #308 asset audit).
 _CSP_DIRECTIVES: dict[str, str] = {
@@ -55,6 +56,10 @@ _PERMISSIONS_POLICY = (
 # after automated browser verification (see docs/ADMIN_SECURITY_HEADERS.md).
 CSP_ENFORCEMENT_OWNER = "agent-web maintainers"
 CSP_ENFORCEMENT_DEADLINE = "2026-08-01"
+
+# Authoritative admin cache directive (#337). ``no-store`` prevents storage and
+# reuse; ``private`` documents user-specific content for shared caches.
+ADMIN_CACHE_CONTROL = "no-store, private"
 
 
 def is_admin_path(path: str) -> bool:
@@ -159,7 +164,7 @@ def apply_response_headers(
 
 
 def admin_cache_headers() -> dict[str, str]:
-    """Return the reviewed admin cache isolation header set."""
+    """Return the enforced admin cache-isolation header set."""
     return {"Cache-Control": ADMIN_CACHE_CONTROL}
 
 
@@ -174,7 +179,7 @@ def apply_admin_security_headers(
 
 
 def apply_admin_cache_headers(response: Response) -> None:
-    """Attach admin cache isolation headers, replacing weaker downstream values."""
+    """Attach no-store cache isolation, replacing any weaker downstream value."""
     apply_response_headers(response, admin_cache_headers())
 
 
