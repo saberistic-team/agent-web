@@ -6,11 +6,16 @@ import re
 
 import pytest
 
+from starlette.responses import Response
+
 from app.admin_response_policy import (
+    ADMIN_CACHE_CONTROL,
     CSP_ENFORCEMENT_DEADLINE,
     CSP_ENFORCEMENT_OWNER,
     _REQUIRED_CSP_DIRECTIVE_NAMES,
+    admin_cache_headers,
     admin_security_headers,
+    apply_admin_cache_headers,
     build_admin_csp,
     generate_csp_nonce,
     hsts_enabled,
@@ -124,6 +129,23 @@ def test_hsts_header_present_for_https() -> None:
     assert headers["Strict-Transport-Security"] == "max-age=31536000"
     assert "includeSubDomains" not in headers["Strict-Transport-Security"]
     assert "preload" not in headers["Strict-Transport-Security"]
+
+
+@pytest.mark.unit
+def test_admin_cache_headers_snapshot() -> None:
+    headers = admin_cache_headers()
+    assert headers == {"Cache-Control": ADMIN_CACHE_CONTROL}
+
+
+@pytest.mark.unit
+def test_apply_admin_cache_headers_replaces_weaker_directive() -> None:
+    response = Response(
+        content=b"ok",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+    apply_admin_cache_headers(response)
+    assert response.headers["Cache-Control"] == ADMIN_CACHE_CONTROL
+    assert len(response.headers.getlist("Cache-Control")) == 1
 
 
 @pytest.mark.unit

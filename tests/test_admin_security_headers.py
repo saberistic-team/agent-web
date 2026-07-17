@@ -11,11 +11,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from argon2 import PasswordHasher
+from fastapi.responses import HTMLResponse
 from fastapi.testclient import TestClient
 
 from app import admin_auth, db
 from app.admin_auth import SESSION_COOKIE_NAME
 from app.admin_response_policy import (
+    ADMIN_CACHE_CONTROL,
     parse_csp_directives,
     validate_admin_csp,
 )
@@ -51,8 +53,16 @@ def _header_values(headers: Any, name: str) -> list[str]:
     return [value for value in raw if value is not None]
 
 
+def _assert_admin_cache_headers(response: Any) -> None:
+    """Assert the authoritative admin cache-isolation policy."""
+    values = _header_values(response.headers, "cache-control")
+    assert len(values) == 1, f"cache-control must appear once, got {values}"
+    assert values[0] == ADMIN_CACHE_CONTROL
+
+
 def _assert_admin_security_headers(response: Any) -> str:
     """Assert required admin headers and return the CSP policy string."""
+    _assert_admin_cache_headers(response)
     for header_name in (
         "content-security-policy",
         "x-content-type-options",
@@ -296,6 +306,113 @@ def test_public_home_has_no_admin_csp() -> None:
     response = client.get("/")
     assert response.status_code == 200
     assert "content-security-policy" not in response.headers
+    assert "cache-control" not in response.headers
+
+
+@pytest.mark.integration
+def test_static_assets_do_not_inherit_admin_cache_policy() -> None:
+    response = client.get("/assets/admin.css")
+    assert response.status_code == 200
+    cache_values = _header_values(response.headers, "cache-control")
+    assert cache_values == [] or cache_values[0] != ADMIN_CACHE_CONTROL
+
+
+@pytest.mark.integration
+def test_admin_unconfigured_503_has_cache_headers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ADMIN_USERNAME", raising=False)
+    response = client.get("/admin/login")
+    assert response.status_code == 503
+    _assert_admin_cache_headers(response)
+
+
+@pytest.mark.integration
+def test_admin_500_has_cache_headers(preview_mode: None) -> None:
+    original_html_response = HTMLResponse
+
+    def _server_error_html_response(content: str, **kwargs: Any) -> HTMLResponse:
+        kwargs["status_code"] = 500
+        return original_html_response(content, **kwargs)
+
+    with patch(
+        "app.admin_routes.HTMLResponse",
+        side_effect=_server_error_html_response,
+    ):
+        response = client.get("/admin")
+    assert response.status_code == 500
+    _assert_admin_cache_headers(response)
+
+
+@pytest.mark.integration
+def test_admin_cache_policy_replaces_weaker_downstream_directive(
+    preview_mode: None,
+) -> None:
+    original_html_response = HTMLResponse
+
+    def _weak_cache_html_response(content: str, **kwargs: Any) -> HTMLResponse:
+        response = original_html_response(content, **kwargs)
+        response.headers["Cache-Control"] = "public, max-age=3600"
+        return response
+
+    with patch(
+        "app.admin_routes.HTMLResponse",
+        side_effect=_weak_cache_html_response,
+    ):
+        response = client.get("/admin/login")
+    assert response.status_code == 200
+    _assert_admin_cache_headers(response)
+
+
+@pytest.mark.integration
+def test_login_success_redirect_has_cache_headers() -> None:
+    from tests.test_admin_auth import (
+        FakeRateLimitStore,
+        LOGIN_FLOW_COOKIE_NAME,
+        shared_rate_limiter,
+        _extract_csrf_token,
+    )
+
+    store = FakeRateLimitStore()
+    with shared_rate_limiter(store):
+        with mock_db_connection():
+            form = client.get("/admin/login")
+            assert form.status_code == 200
+            csrf_token = _extract_csrf_token(form.text)
+            cookies: dict[str, str] = {}
+            flow_cookie = form.cookies.get(LOGIN_FLOW_COOKIE_NAME)
+            if flow_cookie:
+                cookies[LOGIN_FLOW_COOKIE_NAME] = flow_cookie
+            login = client.post(
+                "/admin/login",
+                data={
+                    "username": TEST_USERNAME,
+                    "password": TEST_PASSWORD,
+                    "csrf_token": csrf_token,
+                },
+                cookies=cookies,
+            )
+    assert login.status_code == 303
+    _assert_admin_cache_headers(login)
+
+
+@pytest.mark.integration
+def test_logout_redirect_has_cache_headers(authenticated_admin: dict[str, str]) -> None:
+    with mock_db_connection():
+        with patch("app.admin_routes.db.revoke_admin_session", return_value=True):
+            dashboard = client.get("/admin", cookies=authenticated_admin)
+    assert dashboard.status_code == 200
+    match = re.search(r'name="csrf_token"\s+value="([^"]+)"', dashboard.text)
+    assert match
+    with mock_db_connection():
+        with patch("app.admin_routes.db.revoke_admin_session", return_value=True):
+            logout = client.post(
+                "/admin/logout",
+                data={"csrf_token": match.group(1)},
+                cookies=authenticated_admin,
+            )
+    assert logout.status_code == 303
+    _assert_admin_cache_headers(logout)
 
 
 @pytest.mark.integration
@@ -357,6 +474,7 @@ def test_admin_headers_appear_once_on_login(preview_mode: None) -> None:
     names = [name.lower() for name, _ in response.headers.multi_items()]
     counts = Counter(names)
     for header in (
+        "cache-control",
         "content-security-policy",
         "x-content-type-options",
         "referrer-policy",

@@ -296,3 +296,55 @@ def test_camera_geolocation_microphone_unavailable(
         assert "geo:denied" in denied
     finally:
         context.close()
+
+
+def test_logout_back_navigation_respects_admin_no_store_cache_policy(
+    live_admin_server: LiveAdminServer, browser: Any
+) -> None:
+    """Logout plus reload must not reuse an HTTP-cached authenticated admin page."""
+    context, page = _authenticated_page(live_admin_server, browser)
+    admin_cache_controls: list[str] = []
+
+    def _on_response(response: Any) -> None:
+        if "/admin" in response.url:
+            cache_control = response.headers.get("cache-control", "")
+            if cache_control:
+                admin_cache_controls.append(cache_control)
+
+    page.on("response", _on_response)
+    try:
+        page.goto(f"{live_admin_server.base_url}/admin")
+        page.wait_for_selector(".admin-main")
+        page.locator(".admin-signout-form button[type='submit']").click()
+        page.wait_for_url("**/admin/login**")
+
+        assert admin_cache_controls
+        assert all(
+            "no-store" in value and "private" in value for value in admin_cache_controls
+        )
+
+        # Back may restore an in-memory UI snapshot; reload must refetch from origin.
+        page.go_back()
+        page.reload()
+        page.wait_for_selector("form.admin-form--compact")
+        assert page.locator(".admin-main").count() == 0
+
+        fetch_result = page.evaluate(
+            """async () => {
+              const resp = await fetch('/admin', {
+                cache: 'reload',
+                credentials: 'include',
+                redirect: 'manual',
+              });
+              return {
+                status: resp.status,
+                cacheControl: resp.headers.get('cache-control') || '',
+                location: resp.headers.get('location') || '',
+              };
+            }"""
+        )
+        assert fetch_result["status"] in {303, 307}
+        assert "/admin/login" in fetch_result["location"]
+        assert "no-store" in fetch_result["cacheControl"]
+    finally:
+        context.close()

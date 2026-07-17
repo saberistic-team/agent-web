@@ -1,8 +1,4 @@
-"""Central admin response security-header and CSP policy (#308).
-
-Admin cache isolation (``Cache-Control: no-store, private``) is owned by issue
-#337 — this module must not emit cache directives.
-"""
+"""Central admin response security-header, CSP, and cache policy (#308, #337)."""
 
 from __future__ import annotations
 
@@ -55,6 +51,10 @@ _PERMISSIONS_POLICY = (
 # after automated browser verification (see docs/ADMIN_SECURITY_HEADERS.md).
 CSP_ENFORCEMENT_OWNER = "agent-web maintainers"
 CSP_ENFORCEMENT_DEADLINE = "2026-08-01"
+
+# Authoritative admin cache isolation (#337). ``no-store`` prevents storage/reuse;
+# ``private`` documents user-specific content and blocks shared-cache retention.
+ADMIN_CACHE_CONTROL = "no-store, private"
 
 
 def is_admin_path(path: str) -> bool:
@@ -156,6 +156,16 @@ def apply_response_headers(
         if name in response.headers:
             del response.headers[name]
         response.headers[name] = value
+
+
+def admin_cache_headers() -> dict[str, str]:
+    """Return the admin cache-isolation header set (single value per name)."""
+    return {"Cache-Control": ADMIN_CACHE_CONTROL}
+
+
+def apply_admin_cache_headers(response: Response) -> None:
+    """Attach admin cache isolation, replacing any weaker downstream directive."""
+    apply_response_headers(response, admin_cache_headers())
 
 
 def apply_admin_security_headers(

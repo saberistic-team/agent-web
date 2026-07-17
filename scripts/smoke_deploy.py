@@ -9,12 +9,32 @@ import sys
 import urllib.error
 import urllib.request
 
-from app.admin_cache_policy import ADMIN_CACHE_CONTROL
+ADMIN_CACHE_CONTROL = "no-store, private"
 
 
 def get_json(url: str) -> dict:
     with urllib.request.urlopen(url, timeout=30) as resp:
         return json.loads(resp.read().decode())
+
+
+def fetch_response_headers(url: str) -> dict[str, str]:
+    """Return response headers without reading or logging body content."""
+    request = urllib.request.Request(url, method="HEAD")
+    try:
+        with urllib.request.urlopen(request, timeout=30) as resp:
+            return {key.lower(): value for key, value in resp.headers.items()}
+    except urllib.error.HTTPError as exc:
+        return {key.lower(): value for key, value in exc.headers.items()}
+
+
+def verify_admin_cache_control(base_url: str) -> bool:
+    """Return True when /admin/login emits the authoritative cache policy."""
+    origin = base_url.rstrip("/")
+    if not (origin.endswith("saberistic.com") or "onrender.com" in origin):
+        return True
+
+    headers = fetch_response_headers(f"{origin}/admin/login")
+    return headers.get("cache-control") == ADMIN_CACHE_CONTROL
 
 
 def verify_admin_login_source_trust(health_payload: dict, base_url: str) -> bool:
@@ -30,20 +50,6 @@ def verify_admin_login_source_trust(health_payload: dict, base_url: str) -> bool
     if not isinstance(trust, dict):
         return False
     return bool(trust.get("enabled")) and int(trust.get("trusted_proxy_entry_count", 0)) > 0
-
-
-def verify_admin_login_cache_policy(base_url: str) -> tuple[bool, str]:
-    """Return (ok, detail) after a headers-only GET to /admin/login."""
-    url = f"{base_url.rstrip('/')}/admin/login"
-    req = urllib.request.Request(url, method="GET")
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            cache_control = resp.headers.get("Cache-Control", "")
-    except (urllib.error.URLError, TimeoutError) as exc:
-        return False, f"{url}: {exc}"
-    if cache_control != ADMIN_CACHE_CONTROL:
-        return False, f"{url}: Cache-Control={cache_control!r}, expected {ADMIN_CACHE_CONTROL!r}"
-    return True, f"{url} → Cache-Control: {cache_control}"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -88,11 +94,21 @@ def main(argv: list[str] | None = None) -> int:
     if base.endswith("saberistic.com") or "onrender.com" in base:
         print(f"PASS {health_url} → admin_proxy_trust boundary active")
 
-    cache_ok, cache_detail = verify_admin_login_cache_policy(base)
-    if not cache_ok:
-        print(f"FAIL {cache_detail}", file=sys.stderr)
+    admin_login_url = f"{base}/admin/login"
+    try:
+        admin_headers = fetch_response_headers(admin_login_url)
+    except (urllib.error.URLError, TimeoutError) as exc:
+        print(f"FAIL {admin_login_url}: {exc}", file=sys.stderr)
         return 1
-    print(f"PASS admin cache → {cache_detail}")
+    cache_control = admin_headers.get("cache-control", "")
+    if cache_control != ADMIN_CACHE_CONTROL:
+        print(
+            f"FAIL {admin_login_url}: Cache-Control={cache_control!r}, "
+            f"expected {ADMIN_CACHE_CONTROL!r}",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"PASS {admin_login_url} → Cache-Control: {cache_control}")
     return 0
 
 

@@ -21,7 +21,6 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import case_studies, db, email_service, insights, page_service, server_analytics, stripe_service
 from app.admin_auth import AdminLoginRequired, login_redirect_url
-from app.admin_cache_policy import admin_no_store_cache_policy
 from app.admin_pipeline_routes import router as admin_pipeline_router
 from app.admin_routes import router as admin_router
 from app.actor_context import CORRELATION_HEADER
@@ -37,6 +36,7 @@ from app.admin_preview_guard import (
     validate_admin_preview_config,
 )
 from app.admin_response_policy import (
+    apply_admin_cache_headers,
     apply_admin_security_headers,
     apply_static_asset_headers,
     csp_nonce_from_request,
@@ -313,18 +313,14 @@ async def redirect_www_to_apex(request: Request, call_next):
 
 
 @app.middleware("http")
-async def enforce_admin_no_store_cache(request: Request, call_next):
-    return await admin_no_store_cache_policy(request, call_next)
-
-
-@app.middleware("http")
 async def admin_response_security_policy(request: Request, call_next):
-    """Attach admin CSP and supporting headers; nosniff on static assets."""
+    """Attach admin cache isolation, CSP, and supporting headers; nosniff on static assets."""
     path = request.url.path
     if is_admin_path(path):
         request.state.csp_nonce = generate_csp_nonce()
     response = await call_next(request)
     if is_admin_path(path):
+        apply_admin_cache_headers(response)
         apply_admin_security_headers(
             response,
             get_settings(),

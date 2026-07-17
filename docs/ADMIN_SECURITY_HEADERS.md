@@ -1,6 +1,7 @@
 # Admin security headers and CSP
 
-Parent issue: [#308](https://github.com/saberistic-team/agent-web/issues/308).
+Parent issues: [#308](https://github.com/saberistic-team/agent-web/issues/308),
+[#337](https://github.com/saberistic-team/agent-web/issues/337).
 
 ## Overview
 
@@ -8,14 +9,11 @@ All `/admin` and `/admin/*` responses receive a centrally composed browser
 security-header policy from `app/admin_response_policy.py`, applied by the
 `admin_response_security_policy` middleware in `app/main.py`.
 
-Admin cache isolation (`Cache-Control: no-store, private`) is owned separately
-by [#337](https://github.com/saberistic-team/agent-web/issues/337). This
-module must not emit cache directives.
-
 ## Enforced headers
 
 | Header | Admin value | Notes |
 |--------|-------------|-------|
+| `Cache-Control` | `no-store, private` | Prevents HTTP cache storage/reuse of CRM, brief, audit, CSRF, and login-flow data (#337) |
 | `Content-Security-Policy` | Explicit directive set (see below) | Enforced, not report-only |
 | `X-Content-Type-Options` | `nosniff` | Also on `/assets/*` |
 | `Referrer-Policy` | `no-referrer` | Admin has no justified cross-origin referrer workflow |
@@ -23,6 +21,22 @@ module must not emit cache directives.
 | `X-Frame-Options` | `DENY` | Legacy complement to CSP `frame-ancestors 'none'` |
 | `X-XSS-Protection` | `0` | Legacy auditor disabled; CSP is authoritative |
 | `Strict-Transport-Security` | `max-age=31536000` | **Only** when `BASE_URL` is `https://…` |
+
+### Cache isolation (#337)
+
+Every `/admin` response — login GET/POST, authenticated HTML/JSON, redirects,
+4xx/5xx, throttling, and temporary failures — receives exactly one
+`Cache-Control: no-store, private` value from middleware. The directive uses
+`no-store` (not `no-cache`) so browsers and shared caches must not retain the
+representation for reuse.
+
+**Limits:** HTTP cache controls reduce storage and reuse but are **not** a
+secure erasure guarantee. They do not remove data from malicious intermediaries,
+screenshots, OS swap, in-memory back/forward cache (bfcache), or other
+browser UI memory. Do not document or test `no-store` as secure deletion.
+
+Downstream handlers cannot weaken the policy: `apply_admin_cache_headers`
+replaces any prior `Cache-Control` value with the authoritative directive.
 
 ## Content Security Policy inventory
 
@@ -73,13 +87,21 @@ in `app/main.py` (single module + one middleware registration).
 After deploy with `BASE_URL=https://saberistic.com`:
 
 ```bash
+# Security headers (no response body; safe for CI logs)
 curl -sI https://saberistic.com/admin/login | grep -Ei \
-  'content-security-policy|x-content-type-options|x-frame-options|referrer-policy|permissions-policy|strict-transport-security'
+  'cache-control|content-security-policy|x-content-type-options|x-frame-options|referrer-policy|permissions-policy|strict-transport-security'
 ```
 
-Expect CSP with `frame-ancestors 'none'`, `nosniff`, `DENY`, `no-referrer`,
-disabled Permissions-Policy features, and HSTS `max-age=31536000` without
-`includeSubDomains` or `preload`.
+Expect `Cache-Control: no-store, private`, CSP with `frame-ancestors 'none'`,
+`nosniff`, `DENY`, `no-referrer`, disabled Permissions-Policy features, and HSTS
+`max-age=31536000` without `includeSubDomains` or `preload`.
+
+The deploy smoke script also records admin cache headers without logging cookies
+or page content:
+
+```bash
+python scripts/smoke_deploy.py --base-url https://saberistic.com
+```
 
 Local HTTP (`BASE_URL=http://localhost:8000`) must **not** emit HSTS.
 
@@ -87,5 +109,5 @@ Local HTTP (`BASE_URL=http://localhost:8000`) must **not** emit HSTS.
 
 `admin_response_security_policy` is registered outermost (after
 `redirect_www_to_apex`) so redirects, exception-handler output, JSON errors,
-and validation failures retain headers. Coordinate with #337 by calling both
-policies from the same middleware entry point when cache isolation lands.
+and validation failures retain headers. Cache isolation runs before CSP and
+supporting headers on every `/admin` path.
