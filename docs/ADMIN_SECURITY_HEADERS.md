@@ -8,9 +8,9 @@ All `/admin` and `/admin/*` responses receive a centrally composed browser
 security-header policy from `app/admin_response_policy.py`, applied by the
 `admin_response_security_policy` middleware in `app/main.py`.
 
-Admin cache isolation (`Cache-Control: no-store, private`) is documented in
-[ADMIN_CACHE_POLICY.md](ADMIN_CACHE_POLICY.md) ([#337](https://github.com/saberistic-team/agent-web/issues/337)).
-This module must not emit cache directives.
+Admin cache isolation (`Cache-Control: no-store, private`) is owned separately
+by [#337](https://github.com/saberistic-team/agent-web/issues/337). This
+module must not emit cache directives.
 
 ## Enforced headers
 
@@ -23,9 +23,6 @@ This module must not emit cache directives.
 | `X-Frame-Options` | `DENY` | Legacy complement to CSP `frame-ancestors 'none'` |
 | `X-XSS-Protection` | `0` | Legacy auditor disabled; CSP is authoritative |
 | `Strict-Transport-Security` | `max-age=31536000` | **Only** when `BASE_URL` is `https://…` |
-
-Admin cache isolation (`Cache-Control: no-store, private`) is enforced by the
-same middleware; see [ADMIN_CACHE_POLICY.md](ADMIN_CACHE_POLICY.md).
 
 ## Content Security Policy inventory
 
@@ -77,12 +74,12 @@ After deploy with `BASE_URL=https://saberistic.com`:
 
 ```bash
 curl -sI https://saberistic.com/admin/login | grep -Ei \
-  'content-security-policy|x-content-type-options|x-frame-options|referrer-policy|permissions-policy|strict-transport-security|cache-control'
+  'content-security-policy|x-content-type-options|x-frame-options|referrer-policy|permissions-policy|strict-transport-security'
 ```
 
 Expect CSP with `frame-ancestors 'none'`, `nosniff`, `DENY`, `no-referrer`,
-disabled Permissions-Policy features, `Cache-Control: no-store, private`, and HSTS
-`max-age=31536000` without `includeSubDomains` or `preload`.
+disabled Permissions-Policy features, and HSTS `max-age=31536000` without
+`includeSubDomains` or `preload`.
 
 Local HTTP (`BASE_URL=http://localhost:8000`) must **not** emit HSTS.
 
@@ -90,6 +87,6 @@ Local HTTP (`BASE_URL=http://localhost:8000`) must **not** emit HSTS.
 
 `admin_response_security_policy` is registered outermost (after
 `redirect_www_to_apex`) so redirects, exception-handler output, JSON errors,
-and validation failures retain headers. Cache isolation ([#337](https://github.com/saberistic-team/agent-web/issues/337))
-and security headers ([#308](https://github.com/saberistic-team/agent-web/issues/308))
-are both applied from this middleware entry point.
+and validation failures retain headers. Cache isolation
+(`Cache-Control: no-store, private`, issue #337) is applied from the same
+middleware entry point — see `docs/ADMIN_CACHE_POLICY.md`.

@@ -323,15 +323,15 @@ async def admin_response_security_policy(request: Request, call_next):
     except Exception:
         if not is_admin_path(path):
             raise
-        logger.exception("Unhandled error on admin path %s", path)
-        response = PlainTextResponse("Internal Server Error", status_code=500)
+        logger.exception("Unhandled admin request failure")
+        response = JSONResponse({"detail": "Internal Server Error"}, status_code=500)
     if is_admin_path(path):
+        apply_admin_cache_headers(response)
         apply_admin_security_headers(
             response,
             get_settings(),
             nonce=csp_nonce_from_request(request),
         )
-        apply_admin_cache_headers(response)
     elif path.startswith("/assets/"):
         apply_static_asset_headers(response)
     return response

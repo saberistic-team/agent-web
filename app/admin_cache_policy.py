@@ -1,13 +1,11 @@
 """Central admin cache isolation policy (#337).
 
-``Cache-Control: no-store, private`` prevents browsers and shared caches from
-storing or reusing admin and authentication responses. This reduces the risk
-that CRM data, brief contents, audit records, session CSRF values, or login-flow
-state are replayed from HTTP caches after logout or session expiry.
+Every ``/admin`` response must carry ``Cache-Control: no-store, private`` so
+browser and intermediary HTTP caches do not store or reuse CRM data, brief
+contents, audit records, session-derived CSRF values, or login-flow state.
 
-HTTP cache directives are not a secure erasure guarantee: back-forward cache,
-in-memory tab state, screenshots, and compromised intermediaries may still
-retain sensitive content outside the scope of this policy.
+HTTP cache directives reduce storage and reuse; they are not a secure erasure
+guarantee for browser UI memory, screenshots, or malicious intermediaries.
 """
 
 from __future__ import annotations
@@ -20,10 +18,10 @@ ADMIN_CACHE_CONTROL = "no-store, private"
 
 
 def admin_cache_headers() -> dict[str, str]:
-    """Return the authoritative admin Cache-Control policy."""
+    """Return the reviewed admin cache-isolation header set."""
     return {"Cache-Control": ADMIN_CACHE_CONTROL}
 
 
 def apply_admin_cache_headers(response: Response) -> None:
-    """Attach no-store cache isolation to an admin response."""
+    """Attach the admin no-store cache policy, replacing weaker directives."""
     apply_response_headers(response, admin_cache_headers())
