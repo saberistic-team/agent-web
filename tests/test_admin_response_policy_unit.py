@@ -21,9 +21,9 @@ from app.admin_response_policy import (
     parse_csp_directives,
     validate_admin_csp,
 )
+from starlette.responses import Response
 from app.app_environment import AppEnvironment
 from app.config import Settings
-from starlette.responses import Response
 
 
 def _settings(*, base_url: str = "http://localhost:8000") -> Settings:
@@ -137,16 +137,21 @@ def test_csp_enforcement_plan_is_bounded() -> None:
 
 
 @pytest.mark.unit
-def test_admin_cache_headers_constant() -> None:
-    headers = admin_cache_headers()
-    assert headers == {"Cache-Control": ADMIN_CACHE_CONTROL}
-    assert headers["Cache-Control"] == "no-store, private"
+def test_admin_cache_headers_value() -> None:
+    assert admin_cache_headers() == {"Cache-Control": ADMIN_CACHE_CONTROL}
+    assert ADMIN_CACHE_CONTROL == "no-store, private"
 
 
 @pytest.mark.unit
 def test_apply_admin_cache_headers_replaces_weaker_directive() -> None:
-    response = Response(content="ok", status_code=200)
-    response.headers["Cache-Control"] = "public, max-age=3600"
+    response = Response(content="x", headers={"Cache-Control": "public, max-age=3600"})
     apply_admin_cache_headers(response)
     assert response.headers["Cache-Control"] == ADMIN_CACHE_CONTROL
     assert len(list(response.headers.getlist("Cache-Control"))) == 1
+
+
+@pytest.mark.unit
+def test_admin_security_headers_exclude_cache_directive() -> None:
+    nonce = generate_csp_nonce()
+    headers = admin_security_headers(_settings(), nonce=nonce)
+    assert "Cache-Control" not in headers

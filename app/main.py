@@ -316,10 +316,18 @@ async def redirect_www_to_apex(request: Request, call_next):
 async def admin_response_security_policy(request: Request, call_next):
     """Attach admin CSP, cache isolation, and supporting headers; nosniff on static assets."""
     path = request.url.path
-    if is_admin_path(path):
+    admin_request = is_admin_path(path)
+    if admin_request:
         request.state.csp_nonce = generate_csp_nonce()
-    response = await call_next(request)
-    if is_admin_path(path):
+    try:
+        response = await call_next(request)
+    except Exception:
+        if admin_request:
+            logger.exception("Unhandled admin request failed")
+            response = PlainTextResponse("Internal Server Error", status_code=500)
+        else:
+            raise
+    if admin_request:
         apply_admin_security_headers(
             response,
             get_settings(),

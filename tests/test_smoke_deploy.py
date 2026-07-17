@@ -6,8 +6,8 @@ from unittest.mock import patch
 
 import pytest
 
-from app.admin_cache_policy import ADMIN_CACHE_CONTROL
 from scripts.smoke_deploy import (
+    ADMIN_CACHE_CONTROL,
     verify_admin_login_cache_headers,
     verify_admin_login_source_trust,
 )
@@ -36,20 +36,26 @@ def test_verify_admin_login_source_trust_skips_non_production_origin() -> None:
 
 
 @pytest.mark.unit
-def test_verify_admin_login_cache_headers_accepts_no_store_policy() -> None:
-    with patch(
-        "scripts.smoke_deploy.fetch_response_headers",
-        return_value={"cache-control": ADMIN_CACHE_CONTROL},
-    ):
-        assert verify_admin_login_cache_headers("https://saberistic.com")
+def test_verify_admin_login_cache_headers_accepts_no_store() -> None:
+    headers = {"cache-control": ADMIN_CACHE_CONTROL}
+    with patch("scripts.smoke_deploy.head_response_headers", return_value=headers):
+        ok, detail = verify_admin_login_cache_headers("https://saberistic.com")
+    assert ok is True
+    assert detail == ADMIN_CACHE_CONTROL
 
 
 @pytest.mark.unit
-def test_verify_admin_login_cache_headers_rejects_missing_header() -> None:
-    with patch("scripts.smoke_deploy.fetch_response_headers", return_value={}):
-        assert not verify_admin_login_cache_headers("https://saberistic.com")
+def test_verify_admin_login_cache_headers_rejects_missing() -> None:
+    with patch("scripts.smoke_deploy.head_response_headers", return_value={}):
+        ok, detail = verify_admin_login_cache_headers("https://saberistic.com")
+    assert ok is False
+    assert "cache-control=''" in detail
 
 
 @pytest.mark.unit
-def test_verify_admin_login_cache_headers_skips_non_production_origin() -> None:
-    assert verify_admin_login_cache_headers("http://localhost:8000")
+def test_verify_admin_login_cache_headers_rejects_weaker_policy() -> None:
+    headers = {"cache-control": "no-cache"}
+    with patch("scripts.smoke_deploy.head_response_headers", return_value=headers):
+        ok, detail = verify_admin_login_cache_headers("https://saberistic.com")
+    assert ok is False
+    assert "no-cache" in detail

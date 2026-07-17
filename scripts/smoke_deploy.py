@@ -9,9 +9,7 @@ import sys
 import urllib.error
 import urllib.request
 
-from app.admin_cache_policy import ADMIN_CACHE_CONTROL
-
-ADMIN_LOGIN_CACHE_PATH = "/admin/login"
+ADMIN_CACHE_CONTROL = "no-store, private"
 
 
 def get_json(url: str) -> dict:
@@ -19,10 +17,24 @@ def get_json(url: str) -> dict:
         return json.loads(resp.read().decode())
 
 
-def fetch_response_headers(url: str) -> dict[str, str]:
+def head_response_headers(url: str) -> dict[str, str]:
+    """Return response headers from a HEAD request (no body read)."""
     request = urllib.request.Request(url, method="HEAD")
     with urllib.request.urlopen(request, timeout=30) as resp:
         return {key.lower(): value for key, value in resp.headers.items()}
+
+
+def verify_admin_login_cache_headers(base_url: str) -> tuple[bool, str]:
+    """Verify /admin/login emits the enforced cache isolation policy."""
+    origin = base_url.rstrip("/")
+    try:
+        headers = head_response_headers(f"{origin}/admin/login")
+    except (urllib.error.URLError, TimeoutError) as exc:
+        return False, str(exc)
+    cache_control = headers.get("cache-control", "")
+    if cache_control != ADMIN_CACHE_CONTROL:
+        return False, f"cache-control={cache_control!r}, expected {ADMIN_CACHE_CONTROL!r}"
+    return True, cache_control
 
 
 def verify_admin_login_source_trust(health_payload: dict, base_url: str) -> bool:
@@ -38,31 +50,6 @@ def verify_admin_login_source_trust(health_payload: dict, base_url: str) -> bool
     if not isinstance(trust, dict):
         return False
     return bool(trust.get("enabled")) and int(trust.get("trusted_proxy_entry_count", 0)) > 0
-
-
-def verify_admin_login_cache_headers(base_url: str) -> bool:
-    """Return True when /admin/login emits the required no-store cache policy."""
-    origin = base_url.rstrip("/")
-    if not (origin.endswith("saberistic.com") or "onrender.com" in origin):
-        return True
-
-    url = f"{origin}{ADMIN_LOGIN_CACHE_PATH}"
-    try:
-        headers = fetch_response_headers(url)
-    except (urllib.error.URLError, TimeoutError) as exc:
-        print(f"FAIL {url}: {exc}", file=sys.stderr)
-        return False
-
-    cache_control = headers.get("cache-control")
-    if cache_control != ADMIN_CACHE_CONTROL:
-        print(
-            f"FAIL {url}: expected Cache-Control={ADMIN_CACHE_CONTROL!r}, "
-            f"got {cache_control!r}",
-            file=sys.stderr,
-        )
-        return False
-    print(f"PASS {url} → Cache-Control: {cache_control}")
-    return True
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -107,8 +94,14 @@ def main(argv: list[str] | None = None) -> int:
     if base.endswith("saberistic.com") or "onrender.com" in base:
         print(f"PASS {health_url} → admin_proxy_trust boundary active")
 
-    if not verify_admin_login_cache_headers(base):
+    cache_ok, cache_detail = verify_admin_login_cache_headers(base)
+    if not cache_ok:
+        print(
+            f"FAIL {base}/admin/login Cache-Control: {cache_detail}",
+            file=sys.stderr,
+        )
         return 1
+    print(f"PASS {base}/admin/login → Cache-Control: {cache_detail}")
     return 0
 
 

@@ -1,9 +1,4 @@
-"""Central admin response security-header, CSP, and cache policy (#308, #337).
-
-Security headers (CSP, nosniff, frame denial, etc.) satisfy #308. Admin cache
-isolation (``Cache-Control: no-store, private``) satisfies #337 — both are
-applied from the same middleware entry point in ``app/main.py``.
-"""
+"""Central admin response security-header, CSP, and cache policy (#308, #337)."""
 
 from __future__ import annotations
 
@@ -56,10 +51,6 @@ _PERMISSIONS_POLICY = (
 # after automated browser verification (see docs/ADMIN_SECURITY_HEADERS.md).
 CSP_ENFORCEMENT_OWNER = "agent-web maintainers"
 CSP_ENFORCEMENT_DEADLINE = "2026-08-01"
-
-# Authoritative admin cache directive (#337). ``no-store`` prevents storage and
-# reuse; ``private`` documents user-specific content for shared caches.
-ADMIN_CACHE_CONTROL = "no-store, private"
 
 
 def is_admin_path(path: str) -> bool:
@@ -152,6 +143,20 @@ def static_asset_security_headers() -> dict[str, str]:
     return {"X-Content-Type-Options": "nosniff"}
 
 
+# RFC 9111 no-store prevents storage/reuse; private documents user-specific data.
+ADMIN_CACHE_CONTROL = "no-store, private"
+
+
+def admin_cache_headers() -> dict[str, str]:
+    """Return the enforced admin cache isolation header set."""
+    return {"Cache-Control": ADMIN_CACHE_CONTROL}
+
+
+def apply_admin_cache_headers(response: Response) -> None:
+    """Attach no-store cache isolation, replacing any weaker downstream directive."""
+    apply_response_headers(response, admin_cache_headers())
+
+
 def apply_response_headers(
     response: Response,
     headers: Mapping[str, str],
@@ -163,11 +168,6 @@ def apply_response_headers(
         response.headers[name] = value
 
 
-def admin_cache_headers() -> dict[str, str]:
-    """Return the enforced admin cache-isolation header set."""
-    return {"Cache-Control": ADMIN_CACHE_CONTROL}
-
-
 def apply_admin_security_headers(
     response: Response,
     settings: Settings,
@@ -176,11 +176,6 @@ def apply_admin_security_headers(
 ) -> None:
     """Attach the full admin security header policy to a response."""
     apply_response_headers(response, admin_security_headers(settings, nonce=nonce))
-
-
-def apply_admin_cache_headers(response: Response) -> None:
-    """Attach no-store cache isolation, replacing any weaker downstream value."""
-    apply_response_headers(response, admin_cache_headers())
 
 
 def apply_static_asset_headers(response: Response) -> None:
