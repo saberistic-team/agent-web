@@ -470,16 +470,67 @@ resets automatically. Restore database connectivity to resume shared enforcement
 
 ### Manual cleanup
 
-To prune stale limiter rows manually:
+To prune stale limiter rows manually (repeat until no rows are deleted, or raise
+``LIMIT`` only for controlled maintenance windows):
 
 ```sql
 DELETE FROM admin_login_rate_limits
-WHERE updated_at < NOW() - INTERVAL '30 minutes'
-  AND (locked_until IS NULL OR locked_until < NOW());
+WHERE limiter_key IN (
+    SELECT limiter_key
+    FROM admin_login_rate_limits
+    WHERE updated_at < NOW() - INTERVAL '30 minutes'
+      AND (locked_until IS NULL OR locked_until < NOW())
+    ORDER BY updated_at, limiter_key
+    FOR UPDATE SKIP LOCKED
+    LIMIT 100
+);
 ```
 
-Expired rows are also removed opportunistically after admitted attempts (retention is
-``2 × max(window, lockout)``).
+### Rate-limit row retention
+
+Limiter rows accumulate from source-wide and candidate-wide buckets (including
+arbitrary submitted usernames during credential guessing). Without cleanup,
+eligible rows would grow without bound.
+
+| State | Removed when | Rationale |
+|-------|--------------|-----------|
+| **Active** (recent ``updated_at``) | Never | Required for in-flight protection |
+| **Inside retention** (``updated_at`` within ``2 × max(window, lockout)``) | Never | Matches rolling window / lockout overlap |
+| **Locked** (``locked_until > now``) | Never | Active lockout must persist |
+| **Eligible** (past retention, lockout elapsed or unset) | Opportunistic bounded cleanup | Drains stale digests without blocking login |
+
+Retention: ``2 × max(ADMIN_LOGIN_RATE_WINDOW_SECONDS, ADMIN_LOGIN_LOCKOUT_SECONDS)``
+(default **1800** seconds with 900-second window and lockout).
+
+### Automatic cleanup
+
+After each **admitted** login attempt (reservation before Argon2), the app deletes
+up to **100** eligible rows per request
+(``LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE``). Deletion uses the composite
+``admin_login_rate_limits_cleanup_idx`` index on ``(updated_at, limiter_key)``
+for ordered batch selection; the ``SELECT … FOR UPDATE SKIP LOCKED`` subquery
+lets multiple instances claim disjoint batches without an application mutex
+or long table locks.
+
+| Constant | Value | Meaning |
+|----------|-------|---------|
+| ``LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE`` | 100 | Maximum rows deleted per cleanup call |
+| Retention | ``2 × max(window, lockout)`` | Eligibility cutoff on ``updated_at`` |
+| Ordering | ``updated_at``, ``limiter_key`` | Oldest eligible rows first (deterministic) |
+| Concurrency | ``FOR UPDATE SKIP LOCKED`` | Instances skip rows locked by peers |
+
+One admitted login performs **at most one** cleanup batch; login latency does not
+scale with total expired-row cardinality. Throttled (denied) attempts do not run
+cleanup. Repeated admitted logins eventually drain the backlog.
+
+If cleanup fails (database error), the failure is logged with aggregate fields only
+(``batch_size``, ``deleted_count``, ``duration_ms``, ``likely_backlog_remaining``,
+or error category on failure). Cleanup errors do not affect the admission decision,
+corrupt active lockouts, or force the conservative in-memory fallback — restore
+database connectivity and rely on subsequent admitted logins to resume draining.
+
+Current- and previous-secret HMAC rows share the same retention rule; cleanup does
+not need limiter secret material.
 
 ## Login flow retention
 

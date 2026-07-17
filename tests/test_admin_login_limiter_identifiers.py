@@ -319,6 +319,7 @@ def test_expired_previous_key_rows_are_eligible_for_cleanup(pg_conn: psycopg.Con
         now=now,
         window_seconds=900,
         lockout_seconds=900,
+        batch_size=admin_auth.LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE,
     )
     assert deleted == 1
 

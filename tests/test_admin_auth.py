@@ -185,16 +185,17 @@ class FakeRateLimitStore:
         *,
         window_seconds: int,
         lockout_seconds: int,
+        batch_size: int,
     ) -> int:
         with self._lock:
             retention = max(window_seconds, lockout_seconds) * 2
             cutoff = now - timedelta(seconds=retention)
-            expired = [
+            expired = sorted(
                 key
                 for key, row in self.rows.items()
                 if row["updated_at"] < cutoff
                 and (row["locked_until"] is None or row["locked_until"] < now)
-            ]
+            )[:batch_size]
             for key in expired:
                 del self.rows[key]
             return len(expired)
@@ -249,11 +250,13 @@ def shared_rate_limiter(store: FakeRateLimitStore) -> Generator[None, None, None
         now: datetime,
         window_seconds: int,
         lockout_seconds: int,
+        batch_size: int,
     ) -> int:
         return store.cleanup(
             now,
             window_seconds=window_seconds,
             lockout_seconds=lockout_seconds,
+            batch_size=batch_size,
         )
 
     with (
