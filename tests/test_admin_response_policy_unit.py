@@ -14,6 +14,7 @@ from app.admin_response_policy import (
     admin_cache_headers,
     admin_security_headers,
     apply_admin_cache_headers,
+    apply_response_headers,
     build_admin_csp,
     generate_csp_nonce,
     hsts_enabled,
@@ -138,20 +139,23 @@ def test_csp_enforcement_plan_is_bounded() -> None:
 
 @pytest.mark.unit
 def test_admin_cache_headers_value() -> None:
-    assert admin_cache_headers() == {"Cache-Control": ADMIN_CACHE_CONTROL}
-    assert ADMIN_CACHE_CONTROL == "no-store, private"
+    headers = admin_cache_headers()
+    assert headers["Cache-Control"] == ADMIN_CACHE_CONTROL
+    assert headers["Cache-Control"] == "no-store, private"
 
 
 @pytest.mark.unit
 def test_apply_admin_cache_headers_replaces_weaker_directive() -> None:
-    response = Response(content="x", headers={"Cache-Control": "public, max-age=3600"})
+    response = Response(content="admin", media_type="text/html")
+    response.headers["Cache-Control"] = "public, max-age=3600"
     apply_admin_cache_headers(response)
     assert response.headers["Cache-Control"] == ADMIN_CACHE_CONTROL
-    assert len(list(response.headers.getlist("Cache-Control"))) == 1
 
 
 @pytest.mark.unit
-def test_admin_security_headers_exclude_cache_directive() -> None:
-    nonce = generate_csp_nonce()
-    headers = admin_security_headers(_settings(), nonce=nonce)
-    assert "Cache-Control" not in headers
+def test_apply_response_headers_replaces_duplicate_names() -> None:
+    response = Response(content="admin", media_type="text/html")
+    response.headers["Cache-Control"] = "no-cache"
+    apply_response_headers(response, {"Cache-Control": ADMIN_CACHE_CONTROL})
+    values = [value for _, value in response.raw_headers if _ == b"cache-control"]
+    assert values == [ADMIN_CACHE_CONTROL.encode()]

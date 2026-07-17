@@ -9,8 +9,35 @@ security-header policy from `app/admin_response_policy.py`, applied by the
 `admin_response_security_policy` middleware in `app/main.py`.
 
 Admin cache isolation (`Cache-Control: no-store, private`) is implemented in the
-same middleware entry point — see
-[ADMIN_CACHE_POLICY.md](./ADMIN_CACHE_POLICY.md) ([#337](https://github.com/saberistic-team/agent-web/issues/337)).
+same module and middleware as the security headers ([#337](https://github.com/saberistic-team/agent-web/issues/337)).
+
+## Cache isolation (#337)
+
+Every `/admin` and `/admin/*` response — including login, logout redirects,
+validation failures, throttling, temporary errors, and framework-generated
+failures — receives exactly one:
+
+```http
+Cache-Control: no-store, private
+```
+
+| Directive | Purpose |
+|-----------|---------|
+| `no-store` | Prevents browsers and intermediaries from storing or reusing the response |
+| `private` | Documents user-specific content; blocks shared-cache storage if policy changes |
+
+The middleware replaces weaker downstream `Cache-Control` values so routes cannot
+weaken the policy. Fingerprinted static assets under `/assets/*` are **not**
+given `no-store`; they keep their existing cache behavior (currently no explicit
+`Cache-Control` from the app).
+
+### Browser-history limitations
+
+`no-store` reduces HTTP cache retention and reuse but is **not** a secure erasure
+guarantee. Back/forward cache (bfcache), in-memory tab state, screenshots, and
+malicious intermediaries may still retain prior page content outside HTTP cache
+semantics. Logout revokes server-side session state; cache headers limit how
+long a prior representation can be replayed from HTTP caches.
 
 ## Enforced headers
 
@@ -23,6 +50,7 @@ same middleware entry point — see
 | `X-Frame-Options` | `DENY` | Legacy complement to CSP `frame-ancestors 'none'` |
 | `X-XSS-Protection` | `0` | Legacy auditor disabled; CSP is authoritative |
 | `Strict-Transport-Security` | `max-age=31536000` | **Only** when `BASE_URL` is `https://…` |
+| `Cache-Control` | `no-store, private` | All `/admin/*` responses (#337) |
 
 ## Content Security Policy inventory
 
@@ -62,7 +90,7 @@ only. They do not inherit the admin document CSP.
 | Mode | **Enforced** `Content-Security-Policy` (no permanent report-only) |
 | Owner | `agent-web` maintainers |
 | Enforcement deadline | 2026-08-01 |
-| Verification | `tests/test_admin_security_headers.py`, `tests/test_admin_security_headers_browser.py`, Playwright imports suite |
+| Verification | `tests/test_admin_security_headers.py`, `tests/test_admin_security_headers_browser.py`, `tests/test_admin_cache_headers.py`, `tests/test_admin_cache_headers_browser.py`, Playwright imports suite |
 | Violation handling | CSP reports are **not** collected in-app; triage via CI browser tests |
 
 Rollback: revert `app/admin_response_policy.py` and remove the middleware hook
@@ -73,13 +101,23 @@ in `app/main.py` (single module + one middleware registration).
 After deploy with `BASE_URL=https://saberistic.com`:
 
 ```bash
+# Security headers (no cookies, no response body)
 curl -sI https://saberistic.com/admin/login | grep -Ei \
-  'content-security-policy|cache-control|x-content-type-options|x-frame-options|referrer-policy|permissions-policy|strict-transport-security'
+  'content-security-policy|x-content-type-options|x-frame-options|referrer-policy|permissions-policy|strict-transport-security|cache-control'
 ```
 
-Expect CSP with `frame-ancestors 'none'`, `Cache-Control: no-store, private`,
-`nosniff`, `DENY`, `no-referrer`, disabled Permissions-Policy features, and HSTS
-`max-age=31536000` without `includeSubDomains` or `preload`.
+Expect CSP with `frame-ancestors 'none'`, `nosniff`, `DENY`, `no-referrer`,
+disabled Permissions-Policy features, HSTS `max-age=31536000` without
+`includeSubDomains` or `preload`, and `Cache-Control: no-store, private`.
+
+Confirm static assets are unchanged (no admin `no-store` on assets):
+
+```bash
+curl -sI https://saberistic.com/assets/admin.css | grep -Ei \
+  'cache-control|x-content-type-options'
+```
+
+Expect `nosniff` only; `Cache-Control` must not be `no-store, private`.
 
 Local HTTP (`BASE_URL=http://localhost:8000`) must **not** emit HSTS.
 
@@ -87,5 +125,8 @@ Local HTTP (`BASE_URL=http://localhost:8000`) must **not** emit HSTS.
 
 `admin_response_security_policy` is registered outermost (after
 `redirect_www_to_apex`) so redirects, exception-handler output, JSON errors,
-and validation failures retain headers. Cache isolation (#337) and CSP (#308)
-are both applied from this middleware entry point.
+and validation failures retain headers. Security headers and cache isolation
+(`apply_admin_security_headers`, `apply_admin_cache_headers`) are applied from
+the same middleware entry point. Unhandled exceptions on admin paths are
+converted to a 500 JSON response inside this middleware so cache isolation still
+applies when framework error middleware does not return a response object.
