@@ -1,23 +1,22 @@
 #!/usr/bin/env python3
-"""After deploy: capture post screenshots and ask Cursor (preferred) / OpenAI
-whether the issue change is visible.
+"""After deploy: capture post-deploy screenshots and record deploy health.
+
+Screenshots and health are posted as evidence for a human to review — this
+script no longer runs an automated visual pass/fail check (see #372-class
+conflicts and false negatives on non-visual changes; verification is now a
+manual admin step).
 """
 
 from __future__ import annotations
 
 import argparse
-import base64
 import json
 import os
 import re
 import sys
-import urllib.error
-import urllib.parse
-import urllib.request
 from pathlib import Path
 from typing import Any
 
-from cursor_model import DEFAULT_CURSOR_MODEL, cursor_model_dict, cursor_model_selection
 from github_api import (
     GitHubError,
     api,
@@ -38,8 +37,6 @@ from screenshot_deploy import (
     wait_healthy,
     comment_markdown,
 )
-
-DEFAULT_OPENAI_MODEL = "gpt-4.1-mini"
 
 RECORD_COMMIT_PREFIX = "deploy: record post-deploy artifacts"
 
@@ -153,16 +150,6 @@ def record_health(
     return {"path": f"{prefix}/deploy-health.json", "url": raw_url, "json": json.dumps(slim)}
 
 
-def cursor_api_key() -> str | None:
-    value = os.environ.get("CURSOR_API_KEY")
-    return value.strip() if value and value.strip() else None
-
-
-def openai_key() -> str | None:
-    value = os.environ.get("OPENAI_API_KEY")
-    return value.strip() if value and value.strip() else None
-
-
 def find_issue_number(message: str) -> int | None:
     # Prefer explicit closes / (#N) from PR merges
     for pattern in (
@@ -219,247 +206,6 @@ def list_branch_pre_urls(repo: str, ref: str, pr: int | None) -> list[str]:
                 f"https://raw.githubusercontent.com/{owner}/{name}/{ref}/{path}"
             )
     return urls
-
-
-def _parse_visual_json(text: str, *, model: str, provider: str) -> dict:
-    text = (text or "").strip()
-    fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
-    if fence:
-        text = fence.group(1).strip()
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        start, end = text.find("{"), text.rfind("}")
-        if start < 0 or end <= start:
-            raise GitHubError(f"{provider} visual did not return JSON: {text[:400]!r}")
-        data = json.loads(text[start : end + 1])
-    if not isinstance(data, dict):
-        raise GitHubError(f"{provider} visual JSON root must be object")
-    decision = str(data.get("decision") or "fail").lower()
-    if decision not in {"pass", "fail", "skip"}:
-        decision = "fail"
-    return {
-        "visible": data.get("visible"),
-        "summary": str(data.get("summary") or text[:500]),
-        "decision": decision,
-        "model": model,
-        "provider": provider,
-    }
-
-
-def _visual_prompt(
-    issue_title: str,
-    issue_body: str,
-    pre_paths: list[Path],
-    post_paths: list[Path],
-) -> str:
-    pre_list = "\n".join(f"- {p.resolve()}" for p in pre_paths) or "- (none)"
-    post_list = "\n".join(f"- {p.resolve()}" for p in post_paths) or "- (none)"
-    return (
-        "READ-ONLY VISUAL CHECK. Do not create, edit, delete, or move any files. "
-        "Do not run mutating shell/git commands. Do not open PRs.\n"
-        "Open the screenshot PNG paths below (Read tool) and compare before vs after.\n"
-        "Respond with JSON only (no prose outside JSON):\n"
-        '{"visible": boolean, "summary": "string", "decision": "pass"|"fail"}\n'
-        "pass if the post screenshots clearly show the issue change; "
-        "fail if unchanged or unrelated.\n\n"
-        f"Issue title: {issue_title}\n"
-        f"Issue body:\n{(issue_body or '')[:4000]}\n\n"
-        f"BEFORE screenshot paths:\n{pre_list}\n\n"
-        f"AFTER screenshot paths:\n{post_list}\n"
-    )
-
-
-def visual_ai_check_cursor(
-    *,
-    issue_title: str,
-    issue_body: str,
-    pre_paths: list[Path],
-    post_paths: list[Path],
-) -> dict:
-    key = cursor_api_key()
-    if not key:
-        raise GitHubError("missing CURSOR_API_KEY")
-    model = os.environ.get("CURSOR_MODEL") or DEFAULT_CURSOR_MODEL
-    try:
-        from cursor_sdk import Agent, AgentOptions, LocalAgentOptions
-        from cursor_sdk_patch import patch_callback_auth_tokens
-
-        patch_callback_auth_tokens()
-    except ImportError as exc:
-        raise GitHubError(
-            "cursor-sdk is not installed; pip install -r requirements-agents.txt"
-        ) from exc
-
-    prompt = _visual_prompt(issue_title, issue_body, pre_paths, post_paths)
-    try:
-        result = Agent.prompt(
-            prompt,
-            AgentOptions(
-                model=cursor_model_selection(model),
-                api_key=key,
-                name="post-deploy-visual",
-                mode="plan",
-                local=LocalAgentOptions(cwd=os.getcwd()),
-            ),
-        )
-    except TypeError:
-        try:
-            result = Agent.prompt(
-                prompt,
-                {
-                    "model": cursor_model_dict(model),
-                    "apiKey": key,
-                    "name": "post-deploy-visual",
-                    "mode": "plan",
-                    "local": {"cwd": os.getcwd()},
-                },
-            )
-        except Exception as exc:
-            raise GitHubError(f"Cursor visual failed: {exc}") from exc
-    except Exception as exc:
-        raise GitHubError(f"Cursor visual failed: {exc}") from exc
-
-    status = getattr(result, "status", None)
-    text = (getattr(result, "result", None) or "").strip()
-    if status != "finished":
-        raise GitHubError(
-            f"Cursor visual run status={status!r} "
-            f"agent_id={getattr(result, 'agent_id', '')} "
-            f"result={text[:400]!r}"
-        )
-    if not text:
-        raise GitHubError("Cursor visual returned empty content")
-    return _parse_visual_json(text, model=model, provider="cursor")
-
-
-def visual_ai_check_openai(
-    *,
-    issue_title: str,
-    issue_body: str,
-    pre_paths: list[Path],
-    post_paths: list[Path],
-) -> dict:
-    """OpenAI vision backup when Cursor is unavailable."""
-    key = openai_key()
-    if not key:
-        raise GitHubError("missing OPENAI_API_KEY")
-    model = os.environ.get("OPENAI_MODEL") or DEFAULT_OPENAI_MODEL
-    content: list[dict] = [
-        {
-            "type": "text",
-            "text": (
-                "You compare before/after screenshots of a deployed website.\n"
-                "Return ONLY JSON: "
-                '{"visible": boolean, "summary": "string", "decision": "pass"|"fail"}.\n'
-                "pass if the post screenshots clearly show the issue change; "
-                "fail if unchanged or unrelated.\n\n"
-                f"Issue title: {issue_title}\n"
-                f"Issue body:\n{(issue_body or '')[:4000]}\n"
-            ),
-        }
-    ]
-    for label, paths in (("BEFORE", pre_paths), ("AFTER", post_paths)):
-        content.append({"type": "text", "text": f"\n{label} screenshots follow."})
-        for p in paths:
-            b64 = base64.b64encode(p.read_bytes()).decode("ascii")
-            content.append(
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/png;base64,{b64}"},
-                }
-            )
-    payload = {
-        "model": model,
-        "temperature": 0.1,
-        "response_format": {"type": "json_object"},
-        "messages": [{"role": "user", "content": content}],
-    }
-    req = urllib.request.Request(
-        "https://api.openai.com/v1/chat/completions",
-        data=json.dumps(payload).encode("utf-8"),
-        method="POST",
-        headers={
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-            "User-Agent": "agent-web-visual",
-        },
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=180) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise GitHubError(f"OpenAI visual -> {exc.code}: {detail}") from exc
-    choices = body.get("choices") or []
-    out_text = ""
-    if choices:
-        out_text = str((choices[0].get("message") or {}).get("content") or "").strip()
-    return _parse_visual_json(out_text, model=model, provider="openai")
-
-
-def visual_ai_check(
-    *,
-    issue_title: str,
-    issue_body: str,
-    pre_paths: list[Path],
-    post_paths: list[Path],
-) -> dict:
-    """Compare before/after screenshots: Cursor preferred, OpenAI backup."""
-    force = (os.environ.get("VISUAL_PROVIDER") or "").strip().lower()
-    errors: list[str] = []
-
-    def _try_cursor() -> dict | None:
-        if not cursor_api_key():
-            return None
-        try:
-            return visual_ai_check_cursor(
-                issue_title=issue_title,
-                issue_body=issue_body,
-                pre_paths=pre_paths,
-                post_paths=post_paths,
-            )
-        except Exception as exc:
-            errors.append(f"cursor: {exc}")
-            return None
-
-    def _try_openai() -> dict | None:
-        if not openai_key():
-            return None
-        try:
-            return visual_ai_check_openai(
-                issue_title=issue_title,
-                issue_body=issue_body,
-                pre_paths=pre_paths,
-                post_paths=post_paths,
-            )
-        except Exception as exc:
-            errors.append(f"openai: {exc}")
-            return None
-
-    if force in {"cursor", "cursor-sdk", "composer"}:
-        order = ["cursor", "openai"]
-    elif force in {"openai", "chatgpt"}:
-        order = ["openai", "cursor"]
-    else:
-        order = ["cursor", "openai"]
-
-    for name in order:
-        got = _try_cursor() if name == "cursor" else _try_openai()
-        if got is not None:
-            return got
-
-    if not cursor_api_key() and not openai_key():
-        return {
-            "visible": None,
-            "summary": "CURSOR_API_KEY and OPENAI_API_KEY missing; skipped visual AI check",
-            "decision": "skip",
-            "model": "",
-            "provider": "none",
-        }
-    raise GitHubError(
-        "visual AI check failed: " + " | ".join(errors or ["no providers"])
-    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -570,8 +316,6 @@ def main(argv: list[str] | None = None) -> int:
             print(f"record_pr={record_pr['url']}")
             return 0
 
-        issue = api("GET", f"/repos/{owner}/{name}/issues/{issue_num}")
-
         # Before shots are PR-branch previews (no saberistic.com pre-merge).
         pre_files = sorted(
             p
@@ -590,13 +334,6 @@ def main(argv: list[str] | None = None) -> int:
             )
 
         if not post_files and changed is not None:
-            visual = {
-                "visible": None,
-                "summary": "No public pages affected by merge; visual check skipped",
-                "decision": "skip",
-                "model": "",
-                "provider": "none",
-            }
             body = (
                 "### deploy_visual_check\n"
                 f"- deploy: `{base_url}`\n"
@@ -605,27 +342,17 @@ def main(argv: list[str] | None = None) -> int:
                 f"{health_line}\n"
                 "- routes (public, PR-affected): (none)\n"
                 "- note: no public pages affected; screenshots skipped\n"
-                f"- visual_decision: `{visual['decision']}`\n"
-                f"- visual_summary: {visual['summary']}\n"
             )
             notify_deploy(args.repo, issue_num, record_pr["number"], body)
         else:
-            visual = visual_ai_check(
-                issue_title=issue.get("title") or "",
-                issue_body=issue.get("body") or "",
-                pre_paths=pre_files,
-                post_paths=post_files,
-            )
-
+            # No automated pass/fail here — an admin reviews the linked
+            # screenshots manually (see #372-class evidence-PR conflicts and
+            # false negatives on non-visual/backend-only changes).
             extra = [
                 "- phase: `post-deploy`",
                 f"- issue: #{issue_num}",
                 health_line,
-                f"- visual_provider: `{visual.get('provider')}`",
-                f"- visual_decision: `{visual.get('decision')}`",
-                f"- visual_visible: `{visual.get('visible')}`",
-                f"- visual_model: `{visual.get('model')}`",
-                f"- visual_summary: {visual.get('summary')}",
+                "- note: visual verification is manual — review the screenshots below.",
             ]
             if routes and changed is not None:
                 extra.insert(
@@ -669,20 +396,10 @@ def main(argv: list[str] | None = None) -> int:
                 f"- all_done: `false`\n- note: refresh failed (`{acc_exc}`)\n",
             )
 
-        if visual.get("decision") == "fail":
-            post_issue_comment(
-                args.repo,
-                issue_num,
-                "@human-review Post-deploy visual check failed — change may not be visible on production.\n",
-            )
-            print(f"record_pr={record_pr['url']}", file=sys.stderr)
-            print("visual check failed", file=sys.stderr)
-            return 1
         print(
             json.dumps(
                 {
                     "issue": issue_num,
-                    "visual": visual,
                     "post": post_urls,
                     "record_pr": record_pr["url"],
                 }

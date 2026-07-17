@@ -166,8 +166,20 @@ until merged.
 
 1. Polls `/health` as JSON; records under `.agent/deploy/<sha>/`
 2. Captures `post-*.png` of **public** PR-affected routes on **saberistic.com**
-3. Comments `### deploy_visual_check` on the linked issue
-4. Compares against pre-merge **branch** shots when available (not production `pre-*`)
+3. Comments `### deploy_visual_check` on the linked issue, including any
+   pre-merge **branch** shots available for side-by-side comparison
+4. **No automated pass/fail** — verification is a manual admin step (see
+   "Post-deploy visual verification" below). Screenshots and health are
+   evidence only.
+
+### Post-deploy visual verification
+
+`scripts/post_deploy_visual.py` used to ask Cursor/OpenAI to compare
+before/after screenshots and gate the CI job on a `pass`/`fail` decision.
+That was removed: many post-deploy changes are backend/security-only with no
+visible public-page diff, which produced routine false-negative failures
+(the AI correctly reporting "nothing to see" and failing the job over it).
+An admin now reviews the posted screenshots directly instead.
 
 Health JSON and screenshot uploads land on a deterministic
 `deploy/screenshots-<sha>` branch and a PR against `main` with auto-merge
@@ -205,7 +217,7 @@ merges.
 | `DEPLOY_BASE_URL` | variable | default `https://saberistic.com` (post-deploy) |
 | `COVERAGE_ROOT` / `PR_HEAD_ROOT` | env | PR checkout root for branch screenshots |
 | `SCREENSHOTS_REQUIRED` | variable | default true for Reviewer when pages are affected |
-| `CURSOR_API_KEY` | secret | Preferred visual / review |
+| `CURSOR_API_KEY` | secret | Preferred model for Reviewer / acceptance checks |
 | `RENDER_DEPLOY_HOOK_URL` | secret | deploy trigger |
 | `RENDER_API_KEY` | secret | poll deploy status until live/failed |
 | `RENDER_SERVICE_ID` | secret | optional `srv-…` if not parseable from the hook URL |
@@ -213,6 +225,6 @@ merges.
 ## Scripts / workflows
 
 - `scripts/screenshot_deploy.py` — discovery, PR filter, preview capture, upload
-- `scripts/post_deploy_visual.py` — production capture + visual check
+- `scripts/post_deploy_visual.py` — production capture + health recording (manual visual review, no automated gate)
 - `.github/workflows/reviewer.yml` — pre-merge Playwright
 - `.github/workflows/ci.yml` — `post-deploy-visual` job
