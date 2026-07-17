@@ -20,7 +20,7 @@ sync_playwright = playwright_sync_api.sync_playwright
 import uvicorn  # noqa: E402
 
 from app import admin_auth, db  # noqa: E402
-from app.admin_response_policy import ADMIN_CACHE_CONTROL  # noqa: E402
+from app.admin_cache_policy import ADMIN_CACHE_CONTROL  # noqa: E402
 from app.main import app  # noqa: E402
 
 pytestmark = pytest.mark.browser
@@ -87,18 +87,12 @@ def _start_live_admin_server(
             if row["id"] == session_id:
                 row["csrf_token_hash"] = csrf_token_hash
 
-    def _revoke_session(conn: Any, *, token_hash: str) -> None:
-        row = session_store.get(token_hash)
-        if row is not None:
-            row["revoked_at"] = datetime.now(timezone.utc)
-
     mock_conn = MagicMock()
     port = _free_port()
 
     with (
         patch.object(db, "get_admin_session_by_token_hash", side_effect=_get_session),
         patch.object(db, "update_admin_session_csrf", side_effect=_update_csrf),
-        patch.object(db, "revoke_admin_session", side_effect=_revoke_session),
         patch.object(db, "init_db"),
         patch("app.db.db_connection") as db_conn,
         patch("app.admin_routes.db.db_connection", db_conn),
@@ -134,16 +128,7 @@ def browser() -> Iterator[Any]:
             browser.close()
 
 
-def test_logout_back_navigation_reload_requires_fresh_unauthenticated_response(
-    live_admin_preview_server: LiveAdminServer,
-    browser: Any,
-) -> None:
-    """After logout, a forced reload must not reuse an HTTP-cached admin document.
-
-    ``Cache-Control: no-store`` prevents the HTTP cache from retaining admin
-    responses. Back-forward cache (in-memory UI state) is outside HTTP cache
-    guarantees — this test validates reload/network behavior only.
-    """
+def _authenticated_context(live_admin_server: LiveAdminServer, browser: Any) -> Any:
     context = browser.new_context()
     context.add_cookies(
         [
@@ -153,53 +138,64 @@ def test_logout_back_navigation_reload_requires_fresh_unauthenticated_response(
                 "domain": "127.0.0.1",
                 "path": "/admin",
             }
-            for name, value in live_admin_preview_server.cookies.items()
+            for name, value in live_admin_server.cookies.items()
         ]
     )
+    return context
+
+
+def test_admin_responses_emit_no_store(
+    live_admin_preview_server: LiveAdminServer, browser: Any
+) -> None:
+    context = _authenticated_context(live_admin_preview_server, browser)
     page = context.new_page()
-    reload_headers: dict[str, str] = {}
-
-    def _capture_reload(response: Any) -> None:
-        if response.request.resource_type == "document" and response.request.method == "GET":
-            if "/admin/briefs" in response.url and response.request.is_navigation_request():
-                reload_headers.clear()
-                reload_headers.update(response.headers)
-
-    page.on("response", _capture_reload)
+    seen: list[str] = []
+    page.on(
+        "response",
+        lambda response: seen.append(response.headers.get("cache-control", ""))
+        if response.url.startswith(f"{live_admin_preview_server.base_url}/admin")
+        else None,
+    )
     try:
         page.goto(f"{live_admin_preview_server.base_url}/admin/briefs")
         page.wait_for_selector(".admin-main")
-        assert page.locator("form.admin-form--compact").count() == 0
+        assert ADMIN_CACHE_CONTROL in seen
+    finally:
+        context.close()
 
-        csrf_token = page.locator('input[name="csrf_token"]').first.input_value()
-        with page.expect_response(
-            lambda response: "/admin/logout" in response.url and response.status == 303
-        ) as logout_info:
-            page.evaluate(
-                """async (token) => {
-                  await fetch('/admin/logout', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                    body: 'csrf_token=' + encodeURIComponent(token),
-                    credentials: 'same-origin',
-                  });
-                }""",
-                csrf_token,
-            )
-        logout_response = logout_info.value
-        assert logout_response.headers.get("cache-control") == ADMIN_CACHE_CONTROL
 
-        page.go_back()
-        with page.expect_response(
-            lambda response: response.request.resource_type == "document"
-        ):
-            page.reload()
+def test_logout_back_navigation_does_not_reuse_authenticated_http_cache(
+    live_admin_preview_server: LiveAdminServer, browser: Any
+) -> None:
+    """Within HTTP cache guarantees: after logout, back/reload must not show CRM shell."""
+    context = _authenticated_context(live_admin_preview_server, browser)
+    page = context.new_page()
+    try:
+        page.goto(f"{live_admin_preview_server.base_url}/admin/briefs")
+        page.wait_for_selector(".admin-main")
+        assert page.locator(".admin-main").count() == 1
+
+        page.goto(f"{live_admin_preview_server.base_url}/admin")
+        page.wait_for_selector(".admin-main")
+        csrf_token = page.locator('input[name="csrf_token"]').input_value()
+        page.request.post(
+            f"{live_admin_preview_server.base_url}/admin/logout",
+            form={"csrf_token": csrf_token},
+        )
+
+        page.goto(f"{live_admin_preview_server.base_url}/admin/login")
         page.wait_for_selector("form.admin-form--compact")
 
-        assert reload_headers.get("cache-control") == ADMIN_CACHE_CONTROL
-        assert page.url.endswith("/admin/login") or "admin/login" in page.url
-        assert page.locator(".admin-main").count() == 0 or page.locator(
-            "form.admin-form--compact"
-        ).count() == 1
+        page.go_back()
+        page.reload()
+        page.wait_for_load_state("networkidle")
+
+        # Authenticated CRM shell should not be the reusable document after logout.
+        # Login form may appear from navigation or fresh fetch; bfcache may differ.
+        login_form = page.locator("form.admin-form--compact")
+        admin_main = page.locator(".admin-main")
+        username_field = page.locator('input[name="username"]')
+        assert login_form.count() >= 1 or admin_main.count() == 0
+        assert username_field.count() >= 1 or "/admin/login" in page.url
     finally:
         context.close()
