@@ -282,6 +282,8 @@ def test_admin_500_exception_handler_has_no_store(authenticated_admin: dict[str,
 def test_admin_503_database_unavailable_has_no_store(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
+    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    monkeypatch.setenv("SERVER_BIND_HOST", "127.0.0.1")
     response = client.get(
         "/admin/briefs/503",
         cookies={SESSION_COOKIE_NAME: PREVIEW_SESSION_TOKEN},
@@ -325,6 +327,8 @@ def test_middleware_overrides_weaker_downstream_cache_header() -> None:
 def test_preview_admin_html_has_no_store(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
+    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    monkeypatch.setenv("SERVER_BIND_HOST", "127.0.0.1")
     response = client.get(
         "/admin/briefs",
         cookies={SESSION_COOKIE_NAME: PREVIEW_SESSION_TOKEN},
