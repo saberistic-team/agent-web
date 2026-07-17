@@ -184,7 +184,7 @@ jobs:
         with:
           app-id: ${{ secrets.BUILDER_APP_ID }}
           private-key: ${{ secrets.BUILDER_PRIVATE_KEY }}
-      - name: Capture post screenshots + visual check
+      - name: Capture post-deploy screenshots + record health
         env:
           GITHUB_TOKEN: ${{ steps.builder.outputs.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -192,7 +192,6 @@ jobs:
           CURSOR_MODEL: ${{ vars.CURSOR_MODEL }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
-          VISUAL_PROVIDER: ${{ vars.VISUAL_PROVIDER }}
           DEPLOY_BASE_URL: ${{ vars.DEPLOY_BASE_URL }}
           # Passed via env, not interpolated straight into the run: string —
           # a commit message containing a `"` (e.g. quoting a 422 error
