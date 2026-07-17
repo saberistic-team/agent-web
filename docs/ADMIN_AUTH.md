@@ -9,6 +9,8 @@ Parent issue: [#101](https://github.com/saberistic-team/agent-web/issues/101).
 
 - Browser security headers and CSP for `/admin` are documented in
   [ADMIN_SECURITY_HEADERS.md](ADMIN_SECURITY_HEADERS.md) ([#308](https://github.com/saberistic-team/agent-web/issues/308)).
+- Admin HTTP cache isolation (`Cache-Control: no-store, private`) is documented in
+  [ADMIN_CACHE_POLICY.md](ADMIN_CACHE_POLICY.md) ([#337](https://github.com/saberistic-team/agent-web/issues/337)).
 - No public registration, signup, or password-reset routes exist.
 - Admin credentials are configured only through Render environment variables.
 - Successful login creates a new server-side session and sets a `Secure`,
@@ -391,36 +393,6 @@ curl -sS https://saberistic.com/health | jq '.admin_client_source_policy'
 curl -sS https://saberistic.com/health | jq '.admin_proxy_trust'
 # Expect {"enabled": true, "trusted_proxy_entry_count": <non-zero>}.
 # scripts/smoke_deploy.py checks this block on every production/Render deploy.
-```
-
-### Cache isolation (#337)
-
-Every `/admin` response — login, authenticated HTML/JSON, redirects, validation
-failures, throttling, and temporary errors — carries a single
-`Cache-Control: no-store, private` header enforced by centralized middleware
-(``app/admin_cache_policy.py``). Handlers cannot weaken this policy with a
-conflicting downstream directive.
-
-| Scope | Policy |
-|-------|--------|
-| `/admin` and `/admin/*` | `no-store, private` (always, regardless of auth state) |
-| Public pages (`/`, `/about`, …) | Unchanged by #337 |
-| Fingerprinted static assets (`/assets/*`) | Unchanged — not forced no-store by admin cookies or referrer |
-
-**What no-store guarantees:** compliant browsers and shared HTTP caches should
-not store or reuse the response representation for back/forward navigation or
-offline reuse.
-
-**What no-store does not guarantee:** secure erasure from browser UI memory,
-screenshots, swap, malicious intermediaries, or caches that ignore standards.
-Operators should still sign out on shared devices and treat cached-looking UI as
-untrusted until re-authenticated.
-
-Production header smoke (headers only — no cookies or response bodies logged):
-
-```bash
-python scripts/smoke_deploy.py --base-url https://saberistic.com
-# PASS admin cache → Cache-Control: no-store, private on GET /admin/login
 ```
 
 #### Rollback / recovery

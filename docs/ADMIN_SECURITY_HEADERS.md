@@ -2,19 +2,20 @@
 
 Parent issue: [#308](https://github.com/saberistic-team/agent-web/issues/308).
 
-Cache isolation: [#337](https://github.com/saberistic-team/agent-web/issues/337).
-
 ## Overview
 
 All `/admin` and `/admin/*` responses receive a centrally composed browser
-security-header policy from `app/admin_response_policy.py`, applied by
-`AdminResponsePolicyMiddleware` wrapping the FastAPI app in `app/main.py`.
+security-header policy from `app/admin_response_policy.py`, applied by the
+`admin_response_security_policy` middleware in `app/main.py`.
+
+Admin cache isolation (`Cache-Control: no-store, private`) is documented in
+[ADMIN_CACHE_POLICY.md](ADMIN_CACHE_POLICY.md) ([#337](https://github.com/saberistic-team/agent-web/issues/337)).
+This module must not emit cache directives.
 
 ## Enforced headers
 
 | Header | Admin value | Notes |
 |--------|-------------|-------|
-| `Cache-Control` | `no-store, private` | Every admin response; see [Cache isolation](#cache-isolation) |
 | `Content-Security-Policy` | Explicit directive set (see below) | Enforced, not report-only |
 | `X-Content-Type-Options` | `nosniff` | Also on `/assets/*` |
 | `Referrer-Policy` | `no-referrer` | Admin has no justified cross-origin referrer workflow |
@@ -23,30 +24,8 @@ security-header policy from `app/admin_response_policy.py`, applied by
 | `X-XSS-Protection` | `0` | Legacy auditor disabled; CSP is authoritative |
 | `Strict-Transport-Security` | `max-age=31536000` | **Only** when `BASE_URL` is `https://…` |
 
-## Cache isolation
-
-Every `/admin` response — login GET/POST, authenticated HTML/JSON, redirects,
-4xx/5xx shells, session/CSRF failures, and framework validation errors — carries
-exactly one `Cache-Control: no-store, private` value from the same middleware
-entry point as CSP.
-
-| Directive | Purpose |
-|-----------|---------|
-| `no-store` | Authoritative: prevents storage and reuse in browser or intermediary caches |
-| `private` | Documents user-specific content; blocks shared-cache storage if policy is adjusted later |
-
-Do **not** substitute `no-cache` (permits storage, requires revalidation). The
-middleware replaces any weaker downstream `Cache-Control` so handlers cannot
-weaken the policy.
-
-**Limits:** HTTP cache controls reduce storage/reuse but are **not** secure
-erasure. They do not remove data from browser history UI, back-forward cache
-(bfcache), screenshots, OS swap, or malicious caches. Logout still revokes
-server-side session state; `no-store` prevents a cached HTTP representation from
-being reused after revocation.
-
-Fingerprinted files under `/assets/*` keep their intentional cache behavior and
-are not forced to `no-store` because an admin page references them.
+Admin cache isolation (`Cache-Control: no-store, private`) is enforced by the
+same middleware; see [ADMIN_CACHE_POLICY.md](ADMIN_CACHE_POLICY.md).
 
 ## Content Security Policy inventory
 
@@ -89,37 +68,28 @@ only. They do not inherit the admin document CSP.
 | Verification | `tests/test_admin_security_headers.py`, `tests/test_admin_security_headers_browser.py`, Playwright imports suite |
 | Violation handling | CSP reports are **not** collected in-app; triage via CI browser tests |
 
-Rollback: revert `app/admin_response_policy.py` and remove the ASGI wrapper
-assignment at the bottom of `app/main.py`.
+Rollback: revert `app/admin_response_policy.py` and remove the middleware hook
+in `app/main.py` (single module + one middleware registration).
 
 ## Production verification
 
 After deploy with `BASE_URL=https://saberistic.com`:
 
 ```bash
-# Security headers (no cookies or response bodies logged)
 curl -sI https://saberistic.com/admin/login | grep -Ei \
-  'cache-control|content-security-policy|x-content-type-options|x-frame-options|referrer-policy|permissions-policy|strict-transport-security'
+  'content-security-policy|x-content-type-options|x-frame-options|referrer-policy|permissions-policy|strict-transport-security|cache-control'
 ```
 
-Expect `Cache-Control: no-store, private`, CSP with `frame-ancestors 'none'`,
-`nosniff`, `DENY`, `no-referrer`, disabled Permissions-Policy features, and
-HSTS `max-age=31536000` without `includeSubDomains` or `preload`.
-
-Repeat for an authenticated path only when you have a valid session cookie in
-your shell environment; otherwise login and redirect responses above are
-sufficient smoke coverage for cache isolation.
+Expect CSP with `frame-ancestors 'none'`, `nosniff`, `DENY`, `no-referrer`,
+disabled Permissions-Policy features, `Cache-Control: no-store, private`, and HSTS
+`max-age=31536000` without `includeSubDomains` or `preload`.
 
 Local HTTP (`BASE_URL=http://localhost:8000`) must **not** emit HSTS.
 
 ## Middleware ordering
 
-`AdminResponsePolicyMiddleware` wraps the entire FastAPI application (including
-Starlette's outermost `ServerErrorMiddleware`) so redirects, exception-handler
-output, JSON errors, validation failures, unhandled 500 responses, and cache
-isolation all retain headers. Security and cache policies are applied on
-`http.response.start`, replacing any weaker downstream `Cache-Control` value.
-
-Inner HTTP middleware (`attach_correlation_id`, `redirect_www_to_apex`,
-`AdminPreviewReadOnlyMiddleware`) runs before the response is sent; the ASGI
-wrapper is the last line of defense for header enforcement.
+`admin_response_security_policy` is registered outermost (after
+`redirect_www_to_apex`) so redirects, exception-handler output, JSON errors,
+and validation failures retain headers. Cache isolation ([#337](https://github.com/saberistic-team/agent-web/issues/337))
+and security headers ([#308](https://github.com/saberistic-team/agent-web/issues/308))
+are both applied from this middleware entry point.

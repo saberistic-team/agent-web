@@ -1,38 +1,29 @@
-"""Central no-store cache policy for every /admin response (#337).
+"""Central admin cache isolation policy (#337).
 
-HTTP ``Cache-Control: no-store, private`` prevents browsers and shared caches
-from storing or reusing admin HTML, JSON, login-flow state, and session-bound
-CSRF values. This reduces accidental exposure via the HTTP cache and back/forward
-navigation, but it is **not** a secure erasure guarantee — browser memory,
-screenshots, and malicious intermediaries may still retain data.
+``Cache-Control: no-store, private`` prevents browsers and shared caches from
+storing or reusing admin and authentication responses. This reduces the risk
+that CRM data, brief contents, audit records, session CSRF values, or login-flow
+state are replayed from HTTP caches after logout or session expiry.
 
-Broader security headers (CSP, HSTS, etc.) are owned by issue #308.
+HTTP cache directives are not a secure erasure guarantee: back-forward cache,
+in-memory tab state, screenshots, and compromised intermediaries may still
+retain sensitive content outside the scope of this policy.
 """
 
 from __future__ import annotations
 
-from starlette.requests import Request
 from starlette.responses import Response
+
+from app.admin_response_policy import apply_response_headers
 
 ADMIN_CACHE_CONTROL = "no-store, private"
 
 
-def is_admin_path(path: str) -> bool:
-    """Return True when the request path is under the admin surface."""
-    return path == "/admin" or path.startswith("/admin/")
+def admin_cache_headers() -> dict[str, str]:
+    """Return the authoritative admin Cache-Control policy."""
+    return {"Cache-Control": ADMIN_CACHE_CONTROL}
 
 
 def apply_admin_cache_headers(response: Response) -> None:
-    """Replace any existing Cache-Control with the admin no-store policy."""
-    if "cache-control" in response.headers:
-        del response.headers["cache-control"]
-    response.headers["Cache-Control"] = ADMIN_CACHE_CONTROL
-
-
-async def admin_no_store_cache_policy(request: Request, call_next):
-    """Middleware: enforce no-store on every /admin response."""
-    path = request.url.path
-    response = await call_next(request)
-    if is_admin_path(path):
-        apply_admin_cache_headers(response)
-    return response
+    """Attach no-store cache isolation to an admin response."""
+    apply_response_headers(response, admin_cache_headers())
