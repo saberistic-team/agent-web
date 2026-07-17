@@ -28,7 +28,8 @@ Before approving you must:
    open-mobile-nav evidence routes when the PR-head script defines them) for
    **PR-affected pages on the PR head only** (local uvicorn with
    `ADMIN_PREVIEW_MODE` so admin pages can be captured without login). Do **not**
-   screenshot saberistic.com pre-merge — production shots are post-deploy:
+   screenshot saberistic.com — production is never screenshotted (pre-merge or
+   post-deploy; post-deploy only records `/health` JSON):
    - **PR branch** — `branch-*.png` (public + all admin nav pages when affected)
    Post on the PR and issue — not Copilot / MCP browsers. Skip capture when
    the PR touches no visual pages (tests/docs only). Upload all PNGs in

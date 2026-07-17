@@ -62,7 +62,7 @@ def test_digest_includes_issues_prs_features_screenshots() -> None:
     assert "merged by Gate" in md
     assert "### Screenshots & visual evidence" in md
     assert "pre-merge screenshots (PR branch)" in md
-    assert "post-deploy screenshots (production)" in md
+    assert "post-deploy health record (no screenshots)" in md
     assert "ADMIN_PREVIEW_MODE" in md
     assert "Issues with screenshot evidence" in md
     assert "**1**" in md or "1" in md  # features / screenshot counts present

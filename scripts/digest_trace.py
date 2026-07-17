@@ -155,7 +155,7 @@ def _issue_work(rows: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
             and ("merge" in action or action == "gate:review-approved")
         ):
             bucket["merged"] = True
-            bucket["screenshotish"] = True  # post-deploy visual follows merge
+            bucket["screenshotish"] = True  # pre-merge screenshots already posted by review
     return by_issue
 
 
@@ -310,9 +310,9 @@ def render_digest(rows: list[dict[str, Any]], *, since: datetime, until: datetim
     lines.extend(["", "### Screenshots & visual evidence", ""])
     lines.append(
         "Pre-merge Reviewer captures **PR branch** only (local uvicorn, "
-        "`ADMIN_PREVIEW_MODE` for `/admin`); post-deploy CI captures "
-        "**saberistic.com** public pages only "
-        "([docs/SCREENSHOTS.md](../docs/SCREENSHOTS.md))."
+        "`ADMIN_PREVIEW_MODE` for `/admin`); this is the only screenshot "
+        "evidence — post-deploy CI records `/health` JSON only, no "
+        "screenshots ([docs/SCREENSHOTS.md](../docs/SCREENSHOTS.md))."
     )
     lines.append("")
     if not screenshot_issues:
@@ -331,7 +331,7 @@ def render_digest(rows: list[dict[str, Any]], *, since: datetime, until: datetim
             ):
                 parts.append("pre-merge screenshots (PR branch)")
             if meta["merged"]:
-                parts.append("post-deploy screenshots (production)")
+                parts.append("post-deploy health record (no screenshots)")
             if not parts:
                 parts.append("review / visual gate activity")
             lines.append(f"| #{issue} | {'; '.join(parts)} |")

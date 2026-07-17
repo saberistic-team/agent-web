@@ -886,7 +886,8 @@ def capture_pre_dual(
 ) -> PreCaptureResult:
     """Pre-merge: screenshot PR branch only (local uvicorn + ADMIN_PREVIEW_MODE).
 
-    Does **not** capture saberistic.com — production shots are post-deploy only.
+    Does **not** capture saberistic.com — production is never screenshotted;
+    post-deploy only records `/health` JSON (see docs/SCREENSHOTS.md).
     ``prod_*`` fields stay empty for API compatibility with older callers.
     When ``changed_files`` is provided, only affected public + admin routes
     are captured. Admin pages require the preview server's ADMIN_PREVIEW_MODE.
@@ -1565,8 +1566,8 @@ def comment_markdown_pre_dual(
     routes: list[str | ScreenshotTarget] | None = None,
     targets: list[ScreenshotTarget] | None = None,
 ) -> str:
-    """PR review comment: branch preview shots only (no saberistic.com pre)."""
-    del prod_url, prod_urls  # production screenshots are post-deploy only
+    """PR review comment: branch preview shots only (no saberistic.com ever)."""
+    del prod_url, prod_urls  # production is never screenshotted (docs/SCREENSHOTS.md)
     resolved_targets = targets
     if resolved_targets is None and routes is not None:
         if routes and all(isinstance(item, str) for item in routes):
@@ -1576,7 +1577,7 @@ def comment_markdown_pre_dual(
     lines = [
         "### reviewer_screenshots_pre",
         f"- branch (PR head local, ADMIN_PREVIEW_MODE): `{branch_url}`",
-        "- production: skipped pre-merge (saberistic.com shots are post-deploy only)",
+        "- production: never screenshotted (saberistic.com; post-deploy only records `/health`)",
     ]
     if resolved_targets is not None:
         lines.append(
@@ -1672,8 +1673,8 @@ def main(argv: list[str] | None = None) -> int:
             if not routes:
                 body = (
                     "### reviewer_screenshots_pre\n"
-                    "- production: skipped pre-merge "
-                    "(saberistic.com shots are post-deploy only)\n"
+                    "- production: never screenshotted "
+                    "(saberistic.com; post-deploy only records `/health`)\n"
                     "- routes (PR-affected): (none)\n"
                     "- note: no pages affected by this PR "
                     "(tests/docs/scripts only); screenshots skipped\n"

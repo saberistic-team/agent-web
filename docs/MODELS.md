@@ -2,9 +2,10 @@
 
 **Builder codegen** and **Reviewer AI** (PR review + acceptance) prefer the
 **Cursor Agent SDK** when `CURSOR_API_KEY` is set. OpenAI and GitHub Models
-are backups (OpenAI quota is often exhausted). Post-deploy screenshots are
-captured as evidence only — verification is a manual admin step, not an
-AI-gated check (see [SCREENSHOTS.md](SCREENSHOTS.md)).
+are backups (OpenAI quota is often exhausted). There is no post-deploy
+screenshot capture or AI-gated visual check — post-deploy only records
+`/health` JSON; production verification is a manual admin step (see
+[SCREENSHOTS.md](SCREENSHOTS.md)).
 Every Cursor SDK call defaults to Claude **Sonnet with Max Mode enabled**
 (`scripts/cursor_model.py`) — override with `CURSOR_MODEL` / `CURSOR_MAX_MODE`.
 

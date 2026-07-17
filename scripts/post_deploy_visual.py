@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
-"""After deploy: capture post-deploy screenshots and record deploy health.
+"""After deploy: record deploy health.
 
-Screenshots and health are posted as evidence for a human to review — this
-script no longer runs an automated visual pass/fail check (see #372-class
-conflicts and false negatives on non-visual changes; verification is now a
-manual admin step).
+This used to also capture and upload post-deploy production screenshots
+under ``.agent/screenshots/issue-<n>/post/``, but re-running the same deploy
+sha (retries, manual reruns) recaptured non-deterministic screenshots at the
+same paths, and the record-PR branch is force-reset to the latest ``main``
+each run — combined, that produced unresolvable binary "added in both"
+conflicts on the auto-merge record PR (e.g. #372). Screenshot capture is now
+Reviewer's job pre-merge only (``docs/SCREENSHOTS.md``); post-deploy just
+confirms the app is healthy.
 """
 
 from __future__ import annotations
@@ -27,16 +31,7 @@ from github_api import (
     post_issue_comment,
     split_repo,
 )
-from screenshot_deploy import (
-    PRE_BRANCH_PHASE,
-    capture,
-    fetch_pr_changed_paths,
-    resolve_base_url,
-    resolve_screenshot_routes,
-    upload_to_branch,
-    wait_healthy,
-    comment_markdown,
-)
+from screenshot_deploy import resolve_base_url, upload_to_branch, wait_healthy
 
 RECORD_COMMIT_PREFIX = "deploy: record post-deploy artifacts"
 
@@ -46,7 +41,7 @@ def record_branch_name(sha: str) -> str:
     one branch/PR instead of opening a duplicate (mirrors
     ``freeze_shipped_migrations.freeze_branch_name``)."""
     short = (sha or "local")[:12] or "local"
-    return f"deploy/screenshots-{short}"
+    return f"deploy/health-{short}"
 
 
 def record_pr_body(short: str, base_url: str) -> str:
@@ -55,8 +50,8 @@ def record_pr_body(short: str, base_url: str) -> str:
         f"- deploy: `{base_url}`\n"
         f"- sha: `{short}`\n"
         "- Automated, evidence-only change: records this deploy's `/health` "
-        "snapshot and screenshot uploads under `.agent/`. No application "
-        "code, migration, or test changes.\n"
+        "snapshot under `.agent/`. No application code, migration, or test "
+        "changes.\n"
         "- Opened as a PR (not a direct push) because the workflow-governance "
         "ruleset requires every change to `main` go through review — see "
         "`docs/WORKFLOW_GOVERNANCE.md`. Auto-merge is enabled: approving this "
@@ -99,8 +94,8 @@ def open_or_reuse_record_pr(
 
 def notify_deploy(repo: str, issue_num: int | None, record_pr_number: int, body: str) -> None:
     """Post deploy evidence to the record PR (its CODEOWNER reviewer should
-    see the same before/after screenshots inline, not just a generic PR body
-    or a raw file diff) and, when present, to the linked issue."""
+    see the same health record, not just a generic PR body) and, when
+    present, to the linked issue."""
     post_issue_comment(repo, record_pr_number, body)
     if issue_num:
         post_issue_comment(repo, issue_num, body)
@@ -182,32 +177,6 @@ def find_issue_from_commit(repo: str, sha: str) -> int | None:
     return None
 
 
-def list_branch_pre_urls(repo: str, ref: str, pr: int | None) -> list[str]:
-    """Return PR-branch pre-merge preview shot URLs (``branch-*.png``)."""
-    owner, name = split_repo(repo)
-    if not pr:
-        return []
-    prefix = f".agent/screenshots/pr-{pr}"
-    try:
-        nodes = api("GET", f"/repos/{owner}/{name}/contents/{prefix}?ref={ref}") or []
-    except GitHubError:
-        return []
-    if not isinstance(nodes, list):
-        return []
-    urls = []
-    for node in nodes:
-        path = node.get("path") or ""
-        name_part = path.rsplit("/", 1)[-1]
-        if name_part.startswith(f"{PRE_BRANCH_PHASE}-") and name_part.endswith(".png"):
-            # Prefer desktop public shots for visual compare; skip admin on prod compare.
-            if "-admin" in name_part:
-                continue
-            urls.append(
-                f"https://raw.githubusercontent.com/{owner}/{name}/{ref}/{path}"
-            )
-    return urls
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", required=True)
@@ -245,47 +214,6 @@ def main(argv: list[str] | None = None) -> int:
             health=health,
         )
 
-        out = Path("trace/screenshots-post")
-        changed: list[str] | None = None
-        if args.pr:
-            changed = fetch_pr_changed_paths(args.repo, args.pr)
-        elif args.sha:
-            # Resolve merged PR(s) for this deploy SHA and union their files.
-            try:
-                prs = api("GET", f"/repos/{owner}/{name}/commits/{args.sha}/pulls") or []
-            except GitHubError:
-                prs = []
-            paths: list[str] = []
-            for pr in prs if isinstance(prs, list) else []:
-                num = pr.get("number")
-                if num:
-                    paths.extend(fetch_pr_changed_paths(args.repo, int(num)))
-            changed = paths or None
-        routes = resolve_screenshot_routes(
-            changed_files=changed, include_admin=False
-        )
-        if not routes and changed is not None:
-            post_files: list = []
-            post_urls: list[str] = []
-        else:
-            post_files = capture(
-                base_url,
-                out,
-                phase="post",
-                routes=routes if changed is not None else None,
-                allow_admin=False,
-            ).paths
-            prefix = (
-                f".agent/screenshots/issue-{issue_num}/post"
-                if issue_num
-                else f".agent/screenshots/deploy-{short}/post"
-            )
-            post_urls = (
-                upload_to_branch(args.repo, record_branch, post_files, prefix)
-                if post_files
-                else []
-            )
-
         health_line = (
             f"- health: `{json.dumps(health_slim, separators=(',', ':'))}`"
             + (f" ([recorded]({health_rec['url']}))" if health_rec.get("url") else "")
@@ -295,85 +223,25 @@ def main(argv: list[str] | None = None) -> int:
             args.repo, record_branch, default, short=short, base_url=base_url
         )
 
+        body_lines = [
+            "### deploy_record",
+            f"- deploy: `{base_url}`",
+            f"- sha: `{short}`",
+        ]
+        if issue_num:
+            body_lines.append(f"- issue: #{issue_num}")
+        body_lines.append(health_line)
+        notify_deploy(args.repo, issue_num, record_pr["number"], "\n".join(body_lines) + "\n")
+
         if not issue_num:
-            # No linked issue to comment on — post the evidence to the
-            # record PR itself so its CODEOWNER reviewer sees the screenshots
-            # (not just a generic PR body) before approving auto-merge.
-            notify_deploy(
-                args.repo,
-                None,
-                record_pr["number"],
-                comment_markdown("### deploy_record", base_url, post_urls, extra=[health_line]),
-            )
-            print(
-                "No issue number in commit message / linked PR; "
-                f"uploaded post screenshots: {post_urls}; {health_line}"
-            )
+            # No linked issue to comment on beyond the record PR above.
+            print(f"No issue number in commit message / linked PR; {health_line}")
             print(
                 "Tip: include `Closes #N` or `(#N)` in the commit/PR body "
-                "so Reviewer gets deploy_visual_check on the issue."
+                "so the acceptance checklist refreshes on the issue."
             )
             print(f"record_pr={record_pr['url']}")
             return 0
-
-        # Before shots are PR-branch previews (no saberistic.com pre-merge).
-        pre_files = sorted(
-            p
-            for p in Path("trace/screenshots").glob("branch-*.png")
-            if "-admin" not in p.name
-        )
-        pre_urls = (
-            list_branch_pre_urls(args.repo, default, args.pr) if not pre_files else []
-        )
-        if pre_files:
-            pre_urls = upload_to_branch(
-                args.repo,
-                record_branch,
-                pre_files,
-                f".agent/screenshots/issue-{issue_num}/pre",
-            )
-
-        if not post_files and changed is not None:
-            body = (
-                "### deploy_visual_check\n"
-                f"- deploy: `{base_url}`\n"
-                "- phase: `post-deploy`\n"
-                f"- issue: #{issue_num}\n"
-                f"{health_line}\n"
-                "- routes (public, PR-affected): (none)\n"
-                "- note: no public pages affected; screenshots skipped\n"
-            )
-            notify_deploy(args.repo, issue_num, record_pr["number"], body)
-        else:
-            # No automated pass/fail here — an admin reviews the linked
-            # screenshots manually (see #372-class evidence-PR conflicts and
-            # false negatives on non-visual/backend-only changes).
-            extra = [
-                "- phase: `post-deploy`",
-                f"- issue: #{issue_num}",
-                health_line,
-                "- note: visual verification is manual — review the screenshots below.",
-            ]
-            if routes and changed is not None:
-                extra.insert(
-                    2,
-                    "- routes (public, PR-affected): "
-                    + ", ".join(f"`{r}`" for r in routes),
-                )
-            body = comment_markdown(
-                "### deploy_visual_check",
-                base_url,
-                post_urls,
-                extra=extra,
-            )
-            if pre_urls:
-                pre_lines = ["\n#### Pre-merge branch screenshots"]
-                for u in pre_urls:
-                    name = u.rsplit("/", 1)[-1]
-                    pre_lines.append(f"- **{name}**")
-                    pre_lines.append(f"  ![]({u})")
-                body += "\n".join(pre_lines) + "\n"
-            notify_deploy(args.repo, issue_num, record_pr["number"], body)
 
         try:
             from acceptance import (
@@ -400,7 +268,6 @@ def main(argv: list[str] | None = None) -> int:
             json.dumps(
                 {
                     "issue": issue_num,
-                    "post": post_urls,
                     "record_pr": record_pr["url"],
                 }
             )

@@ -1394,7 +1394,8 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
         coverage_note = "- coverage: skipped (PR does not touch app/*.py)\n"
 
     # Pre-merge screenshots: PR-head only (incl. admin via ADMIN_PREVIEW_MODE).
-    # saberistic.com shots are post-deploy only. Docs reviews skip capture.
+    # saberistic.com is never screenshotted; post-deploy only records
+    # `/health`. Docs reviews skip capture.
     screenshot_note = ""
     if is_docs_issue:
         body_shots = (
@@ -1432,8 +1433,8 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
             if not routes:
                 body_shots = (
                     "### reviewer_screenshots_pre\n"
-                    "- production: skipped pre-merge "
-                    "(saberistic.com shots are post-deploy only)\n"
+                    "- production: never screenshotted "
+                    "(saberistic.com; post-deploy only records `/health`)\n"
                     "- routes (PR-affected): (none)\n"
                     "- note: no pages affected by this PR "
                     "(tests/docs/scripts only); screenshots skipped\n"
