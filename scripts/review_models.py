@@ -396,8 +396,9 @@ def ai_review(repo: str, issue: int, pr_number: int) -> dict[str, Any]:
         "shells (“no … yet”, empty tables, placeholder milestone copy) — Builder "
         "must ship randomized mock rows in app/admin_preview.py for screenshots.\n"
         "Screenshot policy (docs/SCREENSHOTS.md) — do NOT request changes for:\n"
-        "- missing saberistic.com / production `pre-*.png` on the PR (pre-merge captures "
-        "PR-head `branch-*.png` only; production shots are post-deploy)\n"
+        "- missing saberistic.com / production screenshots on the PR (pre-merge captures "
+        "PR-head `branch-*.png` only; production is never screenshotted — post-deploy "
+        "records `/health` JSON only, no screenshots)\n"
         "- missing `/admin` screenshots when Reviewer evidence already includes "
         "`branch-admin*.png` under ADMIN_PREVIEW_MODE, OR when the PR is admin-only "
         "and posted a skip/branch note — admin is never shot on saberistic.com\n"
@@ -480,7 +481,7 @@ def ai_review(repo: str, issue: int, pr_number: int) -> dict[str, Any]:
             decision = "approved"
             reasons = [
                 "Screenshot policy: admin uses ADMIN_PREVIEW_MODE on PR branch; "
-                "saberistic.com shots are post-deploy only"
+                "saberistic.com is never screenshotted"
             ] + policy_hits
     return {
         "decision": decision,

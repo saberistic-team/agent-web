@@ -17,8 +17,8 @@ from post_deploy_visual import (
 
 
 def test_record_branch_name_is_deterministic() -> None:
-    assert record_branch_name("abc123def456extra") == "deploy/screenshots-abc123def456"
-    assert record_branch_name("") == "deploy/screenshots-local"
+    assert record_branch_name("abc123def456extra") == "deploy/health-abc123def456"
+    assert record_branch_name("") == "deploy/health-local"
 
 
 def test_record_pr_body_mentions_sha_and_auto_merge() -> None:
@@ -41,17 +41,17 @@ def test_open_or_reuse_record_pr_opens_with_auto_merge_when_absent() -> None:
     ):
         result = open_or_reuse_record_pr(
             "o/r",
-            "deploy/screenshots-abc123def456",
+            "deploy/health-abc123def456",
             "main",
             short="abc123def456",
             base_url="https://saberistic.com",
         )
 
     assert result == {"number": 11, "url": "https://x/11"}
-    find_pr.assert_called_once_with("o/r", "deploy/screenshots-abc123def456")
+    find_pr.assert_called_once_with("o/r", "deploy/health-abc123def456")
     open_pr.assert_called_once_with(
         "o/r",
-        head="deploy/screenshots-abc123def456",
+        head="deploy/health-abc123def456",
         base="main",
         title="deploy: record post-deploy artifacts (abc123def456)",
         body=record_pr_body("abc123def456", "https://saberistic.com"),
@@ -70,7 +70,7 @@ def test_open_or_reuse_record_pr_reuses_existing_open_pr() -> None:
     ):
         result = open_or_reuse_record_pr(
             "o/r",
-            "deploy/screenshots-abc123def456",
+            "deploy/health-abc123def456",
             "main",
             short="abc123def456",
             base_url="https://saberistic.com",

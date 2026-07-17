@@ -472,9 +472,10 @@ def ai_check_remaining(
         "CSS/layout guardrail tests may satisfy sizing criteria when present shots "
         "+ tests agree and AI review approved; do not mark not_done solely because "
         "an older 58-shot run lacked extras that the PR-head screenshot script now "
-        "defines (learned from #167). saberistic.com shots are post-deploy only. "
-        "Do NOT mark criteria not_done solely for missing production `pre-*` "
-        "PNGs or missing `/admin` shots on saberistic.com.\n"
+        "defines (learned from #167). saberistic.com is never screenshotted "
+        "(pre-merge or post-deploy). Do NOT mark criteria not_done solely for "
+        "missing production `pre-*`/`post-*` PNGs or missing `/admin` shots "
+        "on saberistic.com.\n"
         "If evidence is missing, status must be not_done.\n"
     )
     slim = {

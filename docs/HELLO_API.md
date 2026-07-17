@@ -62,7 +62,7 @@ On every push/merge to `main`, [`.github/workflows/ci.yml`](../.github/workflows
    the Render deploy `update_failed` and fails this CI job. After live, CI also
    requires `/health` `schema_version` to match the latest migration in the tree.
 4. `Freeze shipped migrations` and `post-deploy-visual` run after a successful
-   deploy (screenshots + digest freeze)
+   deploy (health record + digest freeze; no screenshots)
 
 CI skips push jobs whose commit message starts with `review: record` or
 `deploy: record` / `deploy: freeze` (screenshot/health/migration-freeze recorder commits).

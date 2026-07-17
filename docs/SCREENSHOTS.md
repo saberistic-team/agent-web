@@ -1,18 +1,21 @@
-# Deploy screenshots (pre-merge + post-deploy)
+# Deploy screenshots (pre-merge only)
 
 Visual evidence for the agent loop. **Only** GitHub Actions + headless
 Chromium via Playwright (`scripts/screenshot_deploy.py`). Do **not** use
 Copilot, Playwright MCP, or any IDE browser agent for gate evidence.
+
+Screenshot capture is **pre-merge only** (Reviewer, on the PR head). There is
+no post-deploy production screenshot capture — post-deploy only records
+`/health` JSON evidence; see "Post-deploy" below.
 
 ## Which routes are captured
 
 | Phase | Host | Routes |
 |-------|------|--------|
 | **Pre-merge (Reviewer)** | PR-head local uvicorn | PR-affected **public** pages **and** all admin nav pages + `/admin/login` when admin files change |
-| **Post-deploy** | [saberistic.com](https://saberistic.com) | PR-affected **public** pages only — **never** `/admin/*` |
 
-Pre-merge does **not** screenshot saberistic.com. Production shots are
-post-deploy only.
+Pre-merge does **not** screenshot saberistic.com — and production is never
+screenshotted at all (see "Post-deploy" below).
 
 ### `ADMIN_PREVIEW_MODE`
 
@@ -111,21 +114,21 @@ when the configured route does not match the expected status.
 |------------|----------|----------|
 | **Admin (pre-merge)** | `/admin`, `/admin/companies`, …, `/admin/login` | Captured on PR head under `ADMIN_PREVIEW_MODE` when affected |
 | **Admin error fixtures (pre-merge)** | `/admin/briefs/503` (HTTP 503) | Declared expected status; must render HTML under preview auth |
-| **Admin (post-deploy)** | `/admin/*` | **Never** screenshotted on saberistic.com |
-| **Health** | `/health` | Polled as **JSON evidence only** (never a PNG) |
+| **Anything on saberistic.com** | Any route | **Never** screenshotted — production has no screenshot capture |
+| **Health** | `/health` | Polled post-deploy as **JSON evidence only** (never a PNG) |
 | **JSON APIs** | `/hello`, `/api/*`, `/webhooks/*` | Skipped |
 | **Meta / static** | `/robots.txt`, `/sitemap.xml`, `/assets/*`, OpenAPI docs | Skipped |
 | **Legacy redirects** | `/what-we-do.html`, … | Skipped |
 | **Unaffected pages** | Routes not implied by the PR diff | Skipped |
 
-### How “affected” is decided
+### How “affected” is decided (pre-merge)
 
-| Changed paths | Pre-merge routes | Post-deploy routes |
-|---------------|------------------|--------------------|
-| `site/about.html`, … | That public page | Same |
-| `site/assets/*`, shared layout | All public (+ all admin pre-merge) | All public |
-| `app/admin_*` | All admin nav pages + `/admin/login` | None (skip) |
-| `tests/` / `docs/` / `scripts/` only | None | None |
+| Changed paths | Pre-merge routes |
+|---------------|------------------|
+| `site/about.html`, … | That public page |
+| `site/assets/*`, shared layout | All public (+ all admin pre-merge) |
+| `app/admin_*` | All admin nav pages + `/admin/login` |
+| `tests/` / `docs/` / `scripts/` only | None |
 
 ## Which script Reviewer runs
 
@@ -164,47 +167,42 @@ until merged.
 
 ## Post-deploy (after merge to `main`)
 
-1. Polls `/health` as JSON; records under `.agent/deploy/<sha>/`
-2. Captures `post-*.png` of **public** PR-affected routes on **saberistic.com**
-3. Comments `### deploy_visual_check` on the linked issue, including any
-   pre-merge **branch** shots available for side-by-side comparison
-4. **No automated pass/fail** — verification is a manual admin step (see
-   "Post-deploy visual verification" below). Screenshots and health are
-   evidence only.
+**No screenshots.** Post-deploy only polls `/health` as JSON and records it
+under `.agent/deploy/<sha>/`, then comments `### deploy_record` on the linked
+issue. Production screenshot capture and the AI visual pass/fail decision
+that used to run here have both been removed:
 
-### Post-deploy visual verification
+- The AI decision routinely false-negatived on backend/security-only changes
+  with no visible public-page diff, failing the CI job and posting an
+  `@human-review` escalation over nothing.
+- Retries/reruns of the same deploy sha recaptured non-deterministic
+  screenshots at the same evidence-branch paths, producing unresolvable
+  binary "added in both" conflicts on the auto-merge record PR (e.g. #372).
 
-`scripts/post_deploy_visual.py` used to ask Cursor/OpenAI to compare
-before/after screenshots and gate the CI job on a `pass`/`fail` decision.
-That was removed: many post-deploy changes are backend/security-only with no
-visible public-page diff, which produced routine false-negative failures
-(the AI correctly reporting "nothing to see" and failing the job over it).
-An admin now reviews the posted screenshots directly instead.
+Visual evidence is now **pre-merge only** (Reviewer's `branch-*.png`, above);
+verifying a specific change is actually live on production is a manual admin
+step (e.g. opening the page yourself).
 
-Health JSON and screenshot uploads land on a deterministic
-`deploy/screenshots-<sha>` branch and a PR against `main` with auto-merge
-enabled — **not** a direct push. The workflow-governance ruleset
-(`docs/WORKFLOW_GOVERNANCE.md`) rejects bot pushes straight to a protected
-branch, the same reason `freeze_shipped_migrations.py` opens a
-`deploy/freeze-*` PR instead of pushing (issue #362/#366). One human
-CODEOWNER approval merges it; reruns for the same deploy sha reuse the
-existing open PR (`find_open_pr_for_branch`) instead of opening a duplicate.
+Health JSON lands on a deterministic `deploy/health-<sha>` branch and a PR
+against `main` with auto-merge enabled — **not** a direct push. The
+workflow-governance ruleset (`docs/WORKFLOW_GOVERNANCE.md`) rejects bot
+pushes straight to a protected branch, the same reason
+`freeze_shipped_migrations.py` opens a `deploy/freeze-*` PR instead of
+pushing (issue #362/#366). One human CODEOWNER approval merges it; reruns for
+the same deploy sha reuse the existing open PR (`find_open_pr_for_branch`)
+instead of opening a duplicate.
 
-The same `### deploy_visual_check` (or `### deploy_record` when no issue is
-linked) comment — screenshots and all — is posted on **both** the linked
-issue and the `deploy/screenshots-<sha>` record PR itself
+The same `### deploy_record` comment is posted on **both** the linked issue
+and the `deploy/health-<sha>` record PR itself
 (`post_deploy_visual.notify_deploy`), so the CODEOWNER reviewing that PR sees
-the before/after evidence inline before approving auto-merge, instead of
-having to open the linked issue or inspect the raw PNG diff. The screenshot
-links point at the raw content on that branch, so they render before the PR
-merges.
+the health record inline, not just a generic PR body.
 
 ## Source matrix
 
 | Phase | Source | Filenames |
 |-------|--------|-----------|
 | Pre-merge | PR head (local uvicorn + `ADMIN_PREVIEW_MODE`) | `branch-home.png`, `branch-admin.png`, `branch-admin-companies.png`, … |
-| Post-deploy | Production (`saberistic.com`) | `post-*.png` (public only) |
+| Post-deploy | Production (`saberistic.com`) | none — `/health` JSON only |
 
 ## Config
 
@@ -214,7 +212,7 @@ merges.
 | `APP_ENV` | env | `development` on PR preview server (script sets this) |
 | `SERVER_BIND_HOST` | env | `127.0.0.1` on PR preview server (loopback bind; script sets this) |
 | `BASE_URL` | env | `http://127.0.0.1:<port>` on PR preview server (script sets this) |
-| `DEPLOY_BASE_URL` | variable | default `https://saberistic.com` (post-deploy) |
+| `DEPLOY_BASE_URL` | variable | default `https://saberistic.com` (post-deploy health check) |
 | `COVERAGE_ROOT` / `PR_HEAD_ROOT` | env | PR checkout root for branch screenshots |
 | `SCREENSHOTS_REQUIRED` | variable | default true for Reviewer when pages are affected |
 | `CURSOR_API_KEY` | secret | Preferred model for Reviewer / acceptance checks |
@@ -224,7 +222,7 @@ merges.
 
 ## Scripts / workflows
 
-- `scripts/screenshot_deploy.py` — discovery, PR filter, preview capture, upload
-- `scripts/post_deploy_visual.py` — production capture + health recording (manual visual review, no automated gate)
+- `scripts/screenshot_deploy.py` — discovery, PR filter, preview capture, upload (pre-merge only)
+- `scripts/post_deploy_visual.py` — post-deploy `/health` recording only (no screenshots, no automated gate)
 - `.github/workflows/reviewer.yml` — pre-merge Playwright
 - `.github/workflows/ci.yml` — `post-deploy-visual` job
