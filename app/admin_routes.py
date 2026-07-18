@@ -40,6 +40,7 @@ from app.actor_context import (
     correlation_id_from_request,
 )
 from app.admin_layout import ADMIN_NAV_LINKS, render_admin_shell
+from app.admin_response import admin_html_response
 from app.admin_response_policy import csp_nonce_from_request
 from app.admin_preview import (
     PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR,
@@ -1758,33 +1759,39 @@ def admin_audit_list(request: Request, page: int = 1) -> HTMLResponse:
     session = require_admin_session(request)
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
+    safe_page = max(page, 1)
+    per_page = settings.audit_page_size
+    db_error = False
     if settings.admin_preview_enabled:
         from app.admin_preview import build_preview_audit_events
 
         all_events = build_preview_audit_events()
         total = len(all_events)
-        safe_page = max(page, 1)
-        per_page = settings.audit_page_size
         start = (safe_page - 1) * per_page
         events = all_events[start : start + per_page]
-        page = safe_page
     elif not settings.database_url:
         events, total = [], 0
     else:
-        with db.db_connection(settings.database_url) as conn:
-            events, total = audit_service.list_events(
-                conn,
-                page=page,
-                per_page=settings.audit_page_size,
-            )
-    return HTMLResponse(
+        try:
+            with db.db_connection(settings.database_url) as conn:
+                events, total = audit_service.list_events(
+                    conn,
+                    page=safe_page,
+                    per_page=per_page,
+                )
+        except Exception:
+            logger.exception("Failed to load audit events")
+            events, total = [], 0
+            db_error = True
+    return admin_html_response(
         admin_pages.render_admin_audit_page(
             admin_username=session.admin_username,
             events=events,
-            page=max(page, 1),
-            per_page=settings.audit_page_size,
+            page=safe_page,
+            per_page=per_page,
             total=total,
             csrf_token=csrf_token,
+            db_error=db_error,
         )
     )
 
@@ -1946,42 +1953,6 @@ async def admin_linkedin_import_commit(request: Request) -> JSONResponse:
             "summary_counts": result.get("summary_counts"),
             "checksum": batch.get("checksum"),
         }
-    )
-
-
-@router.get("/audit", response_class=HTMLResponse)
-def admin_audit_list(request: Request, page: int = 1) -> HTMLResponse:
-    session = require_admin_session(request)
-    settings = get_settings()
-    csrf_token = _session_csrf_for_forms(request, settings)
-    if settings.admin_preview_enabled:
-        from app.admin_preview import build_preview_audit_events
-
-        all_events = build_preview_audit_events()
-        total = len(all_events)
-        safe_page = max(page, 1)
-        per_page = settings.audit_page_size
-        start = (safe_page - 1) * per_page
-        events = all_events[start : start + per_page]
-        page = safe_page
-    elif not settings.database_url:
-        events, total = [], 0
-    else:
-        with db.db_connection(settings.database_url) as conn:
-            events, total = audit_service.list_events(
-                conn,
-                page=page,
-                per_page=settings.audit_page_size,
-            )
-    return HTMLResponse(
-        admin_pages.render_admin_audit_page(
-            admin_username=session.admin_username,
-            events=events,
-            page=max(page, 1),
-            per_page=settings.audit_page_size,
-            total=total,
-            csrf_token=csrf_token,
-        )
     )
 
 

@@ -1033,6 +1033,7 @@ def render_admin_audit_page(
     per_page: int,
     total: int,
     csrf_token: str = "",
+    db_error: bool = False,
 ) -> str:
     rows: list[str] = []
     for event in events:
@@ -1068,6 +1069,14 @@ def render_admin_audit_page(
     if page < total_pages:
         next_link = f'<a class="audit-pager-link" href="/admin/audit?page={page + 1}">Next</a>'
 
+    error_banner = ""
+    if db_error:
+        error_banner = (
+            '          <p class="admin-error" role="alert">'
+            "Audit log temporarily unavailable. Try again shortly."
+            "</p>\n"
+        )
+
     main = f"""        <section class="admin-panel" aria-labelledby="admin-audit-title">
           <p class="admin-eyebrow">Audit trail</p>
           <h1 class="admin-title" id="admin-audit-title">Immutable audit log</h1>
@@ -1075,7 +1084,7 @@ def render_admin_audit_page(
             Append-only record of security-sensitive admin mutations. Secrets and raw
             message bodies are never stored.
           </p>
-          <div class="audit-meta">
+{error_banner}          <div class="audit-meta">
             <span>{total} events</span>
             <span>Page {page} of {total_pages}</span>
           </div>
