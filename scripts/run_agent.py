@@ -1262,12 +1262,15 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
     # failed Project board ``sync`` runs on the same SHA alongside later
     # successes; treating any historical failure as a hard-fail loops Builder
     # for non-product reasons (#338 / PR #350).
+    # Use check_name — not ``name`` — so we do not clobber the repo name from
+    # ``split_repo`` above. The CI job is literally named ``test``; shadowing
+    # turned later calls into ``/repos/{owner}/test/pulls/...`` (#280 / PR #351).
     latest_by_name: dict[str, dict] = {}
     for run in checks.get("check_runs") or []:
-        name = run.get("name") or ""
-        prev = latest_by_name.get(name)
+        check_name = run.get("name") or ""
+        prev = latest_by_name.get(check_name)
         if prev is None or (run.get("started_at") or "") > (prev.get("started_at") or ""):
-            latest_by_name[name] = run
+            latest_by_name[check_name] = run
     # Non-gating orchestration: project-sync.yml job is named ``sync``.
     _IGNORE_CHECK_NAMES = frozenset({"sync"})
     for run in latest_by_name.values():
