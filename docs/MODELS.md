@@ -120,6 +120,7 @@ Docs: [Cursor Python SDK](https://cursor.com/docs/sdk/python)
 | Path | Limit | Notes |
 |------|-------|--------|
 | Cursor local (`CURSOR_MAX_FILES`) | **60** (was 30) | Override via env; soft overruns requeue Builder (`waiting`), do not `status:blocked` |
+| Cursor / OpenAI / Models per-file chars (`MAX_FILE_CHARS`) | **120_000** (was 80_000) | Hard reject after edit; must stay above large modules such as `app/admin_routes.py` or Builder escalates to `status:blocked` (see [#333](https://github.com/saberistic-team/agent-web/issues/333)) |
 | Cursor local attempts (`CURSOR_LOCAL_ATTEMPTS`) | **3** | Retries `is_retryable` Bridge / read timeouts before failing |
 | OpenAI / Models JSON | 12 files | Prefer plain JSON `content` strings (not brittle `content_b64`) |
 

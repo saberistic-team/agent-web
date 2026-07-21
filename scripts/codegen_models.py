@@ -22,7 +22,10 @@ DEFAULT_OPENAI_MODEL = "gpt-4.1-mini"
 MODELS_URL = "https://models.github.ai/inference/chat/completions"
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 MAX_FILES = 12
-MAX_FILE_CHARS = 80_000
+# Hard post-edit ceiling for Cursor/OpenAI/Models codegen. Keep above the largest
+# legitimate product modules (notably app/admin_routes.py, already ~80k) so Builder
+# surgical edits do not false-escalate to status:blocked (see issue #333).
+MAX_FILE_CHARS = 120_000
 CONTEXT_FILES = (
     "README.md",
     "requirements.txt",
