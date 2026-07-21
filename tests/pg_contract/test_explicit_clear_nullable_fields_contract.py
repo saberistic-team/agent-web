@@ -166,6 +166,27 @@ def _audit_field_value(summary: dict[str, Any] | None, field: str) -> Any:
     return value
 
 
+def _expected_audit_field_value(field: str, raw_value: Any) -> Any:
+    if field in {"website", "funding_summary", "notes", "profile_url", "email"}:
+        if raw_value is None or raw_value == "":
+            return False
+        return True
+    if field == "company_id" and raw_value is not None:
+        return str(raw_value)
+    return raw_value
+
+
+def _audit_summary_field_name(field: str) -> str:
+    mapping = {
+        "website": "has_website",
+        "funding_summary": "has_funding_summary",
+        "notes": "has_notes",
+        "profile_url": "has_profile_url",
+        "email": "has_email",
+    }
+    return mapping.get(field, field)
+
+
 # --------------------------------------------------------------------------- #
 # Company — omit / replace / clear with fresh-connection reads                #
 # --------------------------------------------------------------------------- #
@@ -468,10 +489,10 @@ def test_company_update_audit_distinguishes_clear_replace_unchanged(
     assert event["entity_type"] == "company"
     before = event["summary_before"]
     after = event["summary_after"]
-    assert before["notes"] == "Keep me"
-    assert after["notes"] == "Keep me"  # omitted → unchanged in audit
-    assert before["funding_summary"] == "Clear me"
-    assert after["funding_summary"] is None  # explicit clear
+    assert "notes" not in before
+    assert "notes" not in after
+    assert before["has_funding_summary"] is True
+    assert after["has_funding_summary"] is False
 
     service.update_company(
         migrated_conn,
@@ -482,8 +503,8 @@ def test_company_update_audit_distinguishes_clear_replace_unchanged(
     migrated_conn.commit()
 
     event = _latest_audit(connect, action=audit_service.ACTION_COMPANY_UPDATE)
-    assert event["summary_before"]["notes"] == "Keep me"
-    assert event["summary_after"]["notes"] == "Replaced"
+    assert event["summary_before"]["has_notes"] is True
+    assert event["summary_after"]["has_notes"] is True
     assert "email" not in (event["summary_before"] or {})
     assert "email" not in (event["summary_after"] or {})
 
@@ -518,11 +539,10 @@ def test_contact_update_audit_distinguishes_clear_replace_unchanged(
     assert event["entity_type"] == "contact"
     before = event["summary_before"]
     after = event["summary_after"]
-    assert before["title"] == "Keep me"
-    assert after["title"] == "Keep me"
-    assert before["notes"] == "Clear me"
-    assert after["notes"] is None
-    # Email must not appear in audit snapshots.
+    assert "title" not in before
+    assert "title" not in after
+    assert before["has_notes"] is True
+    assert after["has_notes"] is False
     assert "email" not in before
     assert "email" not in after
 
@@ -848,9 +868,13 @@ def test_company_audit_summary_tracks_nullable_fields(
     before = company_audit_summary({"name": "Acme", field: seed_value})
     after_clear = company_audit_summary({"name": "Acme", field: None})
     after_replace = company_audit_summary({"name": "Acme", field: replacement})
-    assert _audit_field_value(before, field) == seed_value
-    assert _audit_field_value(after_clear, field) is None
-    assert _audit_field_value(after_replace, field) == replacement
+    summary_field = _audit_summary_field_name(field)
+    assert _audit_field_value(before, summary_field) == _expected_audit_field_value(field, seed_value)
+    if field in {"website", "funding_summary", "notes", "profile_url", "email"}:
+        assert _audit_field_value(after_clear, summary_field) is False
+    else:
+        assert _audit_field_value(after_clear, summary_field) is None
+    assert _audit_field_value(after_replace, summary_field) == _expected_audit_field_value(field, replacement)
 
 
 @pytest.mark.parametrize("field,seed_value,replacement", CONTACT_NULLABLE_FIELDS)
@@ -866,12 +890,11 @@ def test_contact_audit_summary_omits_email(
         "email": "secret@example.com",
     }
     summary = contact_audit_summary(payload)
-    assert "email" not in summary
-    if field in summary:
-        actual = _audit_field_value(summary, field)
-        expected = seed_value
-        if field == "company_id" and expected is not None:
-            expected = str(expected)
+    assert summary.get("has_email") in (False, True)
+    summary_field = _audit_summary_field_name(field)
+    if summary_field in summary or field in {"website", "funding_summary", "notes", "profile_url", "email"}:
+        actual = _audit_field_value(summary, summary_field)
+        expected = _expected_audit_field_value(field, seed_value)
         assert actual == expected
 
 

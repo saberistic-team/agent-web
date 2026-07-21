@@ -143,8 +143,13 @@ legacy rows.
 | `export.request` | Export requests via `CrmService.request_export` |
 | `research_record.create` | Research evidence append via `CrmService.attach_research_record` |
 | `pipeline_activity.create` | Pipeline activity creation via `CrmService.record_pipeline_activity` |
+| `company.create` | Company creation via `CrmService.create_company` |
 | `company.update` | Company field updates via `CrmService.update_company` |
+| `company.archive` | Company archive via `CrmService.archive_company` |
+| `company.restore` | Company restore via `CrmService.restore_company` |
+| `contact.create` | Contact creation via `CrmService.create_contact` |
 | `contact.update` | Contact field updates via `CrmService.update_contact` |
+| `contact.archive` | Contact archive via `CrmService.archive_contact` |
 | `contact.restore` | Contact restore via `CrmService.restore_contact` |
 | `brief.convert` | Brief-to-CRM conversion via `CrmService.convert_project_brief` |
 
@@ -158,6 +163,16 @@ Immutable audit rows for research evidence and pipeline activities store **bound
 - **Pipeline activity (`pipeline_activity.create`):** activity ID, company ID, optional contact ID, allowlisted activity type, and server timestamp. The canonical `activities` row holds the free-form summary and metadata.
 
 Do not copy research bodies, activity summaries, raw source URLs/query strings, or arbitrary metadata into `audit_events`.
+
+### Company and contact lifecycle audit payloads
+
+Immutable audit rows for company and contact lifecycle mutations store **bounded metadata only**:
+
+- **Create (`company.create`, `contact.create`):** entity ID, display label (`name` / `full_name`), normalized registry fields (category, stage, target status, buying roles), and presence flags for free-form or sensitive columns (notes, funding text, website, profile URL, email). Canonical rows hold the full values.
+- **Update (`company.update`, `contact.update`):** only fields that actually changed appear in `summary_before` / `summary_after`. No-op submissions (unchanged values) emit **no** audit event. Sensitive columns use `[present]` / `null` presence semantics — never raw email, profile URLs, notes, or funding text.
+- **Archive / restore (`company.archive`, `company.restore`, `contact.archive`, `contact.restore`):** lifecycle transition on `archived_at` plus the bounded display label. These events record logical archive/restore — not physical deletion.
+
+All eight lifecycle service methods require authenticated `ActorContext` and append audit events inside the same `crm_transaction` as the business mutation.
 
 ## Admin UI
 
@@ -203,7 +218,13 @@ Review destructive changes in a period:
 ```sql
 SELECT created_at, actor, action, entity_type, entity_id, summary_before
 FROM audit_events
-WHERE action IN ('entity.delete', 'pipeline.update', 'scoring_rule.update')
+WHERE action IN (
+  'entity.delete',
+  'company.archive',
+  'contact.archive',
+  'pipeline.update',
+  'scoring_rule.update'
+)
   AND created_at BETWEEN $1 AND $2
 ORDER BY created_at DESC;
 ```

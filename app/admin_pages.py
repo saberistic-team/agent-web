@@ -24,8 +24,13 @@ AUDIT_ACTION_LABELS: dict[str, str] = {
     audit_service.ACTION_IMPORT_BATCH: "Import batch",
     audit_service.ACTION_IMPORT_BATCH_ROLLBACK: "Import rollback",
     audit_service.ACTION_ENTITY_DELETE: "Entity delete",
+    audit_service.ACTION_COMPANY_CREATE: "Company create",
     audit_service.ACTION_COMPANY_UPDATE: "Company update",
+    audit_service.ACTION_COMPANY_ARCHIVE: "Company archive",
+    audit_service.ACTION_COMPANY_RESTORE: "Company restore",
+    audit_service.ACTION_CONTACT_CREATE: "Contact create",
     audit_service.ACTION_CONTACT_UPDATE: "Contact update",
+    audit_service.ACTION_CONTACT_ARCHIVE: "Contact archive",
     audit_service.ACTION_PIPELINE_UPDATE: "Pipeline update",
     audit_service.ACTION_SCORING_RULE_UPDATE: "Scoring rule update",
     audit_service.ACTION_ANALYTICS_CONFIG_UPDATE: "Analytics config update",
@@ -76,6 +81,36 @@ def _format_bounded_audit_summary(action: str, summary: Any) -> str:
         if summary.get("created_at"):
             parts.append(f"at={html.escape(str(summary['created_at']))}")
         return f'<code class="audit-json">{", ".join(parts)}</code>'
+    if action in {
+        audit_service.ACTION_COMPANY_CREATE,
+        audit_service.ACTION_CONTACT_CREATE,
+    }:
+        label_key = "name" if action == audit_service.ACTION_COMPANY_CREATE else "full_name"
+        parts = [f"{label_key}={html.escape(str(summary.get(label_key, '')))}"]
+        for field in ("domain", "category", "stage", "target_status", "company_id"):
+            if summary.get(field):
+                parts.append(f"{field}={html.escape(str(summary[field]))}")
+        return f'<code class="audit-json">{", ".join(parts)}</code>'
+    if action in {
+        audit_service.ACTION_COMPANY_ARCHIVE,
+        audit_service.ACTION_COMPANY_RESTORE,
+        audit_service.ACTION_CONTACT_ARCHIVE,
+        audit_service.ACTION_CONTACT_RESTORE,
+    }:
+        label_key = (
+            "name"
+            if action.startswith("company.")
+            else "full_name"
+        )
+        parts = []
+        if summary.get(label_key):
+            parts.append(f"{label_key}={html.escape(str(summary[label_key]))}")
+        if "archived_at" in summary:
+            archived = summary.get("archived_at")
+            parts.append(
+                f"archived_at={html.escape(str(archived) if archived is not None else 'cleared')}"
+            )
+        return f'<code class="audit-json">{", ".join(parts) if parts else "—"}</code>'
     return _format_json_blob(summary)
 
 

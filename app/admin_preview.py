@@ -1407,6 +1407,14 @@ AUDIT_ACTIONS = (
     "auth.logout",
     "import.batch",
     "entity.delete",
+    "company.create",
+    "company.update",
+    "company.archive",
+    "company.restore",
+    "contact.create",
+    "contact.update",
+    "contact.archive",
+    "contact.restore",
     "pipeline.update",
     "brief.convert",
     "research_record.create",
@@ -1458,6 +1466,44 @@ def build_preview_audit_events(
                 "activity_type": "outreach",
                 "created_at": created.isoformat(),
             }
+        elif action == "company.create":
+            entity_type = "company"
+            entity_id = str(rng.randint(10, 99))
+            summary_after = {
+                "name": company,
+                "domain": f"{company.lower().replace(' ', '-')}.example",
+                "category": rng.choice(["fintech", "ai_infrastructure"]),
+                "stage": rng.choice(["seed", "series_a"]),
+            }
+        elif action == "contact.create":
+            entity_type = "contact"
+            entity_id = str(rng.randint(100, 999))
+            summary_after = {
+                "full_name": f"{rng.choice(CONTACT_FIRST)} {rng.choice(CONTACT_LAST)}",
+                "company_id": str(rng.randint(10, 99)),
+                "buying_roles": ["founder"],
+            }
+        elif action in {"company.archive", "contact.archive"}:
+            entity_type = "company" if action.startswith("company.") else "contact"
+            entity_id = str(rng.randint(10, 99))
+            label_key = "name" if entity_type == "company" else "full_name"
+            summary_before = {label_key: company, "archived_at": None}
+            summary_after = {
+                label_key: company,
+                "archived_at": created.isoformat(),
+            }
+        elif action in {"company.restore", "contact.restore"}:
+            entity_type = "company" if action.startswith("company.") else "contact"
+            entity_id = str(rng.randint(10, 99))
+            label_key = "name" if entity_type == "company" else "full_name"
+            summary_before = {label_key: company, "archived_at": created.isoformat()}
+            summary_after = {label_key: company, "archived_at": None}
+        elif action in {"company.update", "contact.update"}:
+            entity_type = "company" if action.startswith("company.") else "contact"
+            entity_id = str(rng.randint(10, 99))
+            label_key = "name" if entity_type == "company" else "full_name"
+            summary_before = {label_key: company, "stage": "seed"}
+            summary_after = {label_key: company, "stage": "series_a"}
         elif "delete" in action:
             entity_type = "company"
             entity_id = str(rng.randint(10, 99))
