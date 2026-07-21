@@ -336,33 +336,14 @@ def test_admin_preview_briefs_list_and_detail_have_mock_data(
 
 @pytest.mark.unit
 def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytest.MonkeyPatch) -> None:
-    import random
-
-    from argon2 import PasswordHasher
-
     from app.admin_preview import (
         PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID,
         preview_contact_restore_conflict,
     )
 
-    from app.preview_context import PreviewContext
-
-    enable_admin_preview_env(monkeypatch)
-    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "7")
-    monkeypatch.setenv(
-        "ADMIN_PREVIEW_REFERENCE_TIME",
-        "2026-07-14T12:00:00+00:00",
-    )
-    monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
-    monkeypatch.setenv(
-        "ADMIN_PASSWORD_HASH",
-        PasswordHasher().hash("preview"),
-    )
-    monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "preview-limiter-secret-32chars-minimum!!")
+    enable_admin_preview_env(monkeypatch, preview_seed="7")
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    ctx = PreviewContext.from_values(7, datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc))
-    preview = preview_contact_restore_conflict(rng=ctx.rng_for("contact_restore_conflict"))
+    preview = preview_contact_restore_conflict()
     client = TestClient(app, follow_redirects=False)
     response = client.get(
         f"/admin/contacts/{PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID}/restore-conflict"
@@ -380,14 +361,9 @@ def test_preview_company_detail_archive_and_restore_actions(
     from argon2 import PasswordHasher
 
     from app.admin_auth import SESSION_COOKIE_NAME
-    from app.preview_context import PreviewContext
+    from app.admin_preview_context import reset_preview_context_cache
 
-    enable_admin_preview_env(monkeypatch)
-    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "11")
-    monkeypatch.setenv(
-        "ADMIN_PREVIEW_REFERENCE_TIME",
-        "2026-07-14T12:00:00+00:00",
-    )
+    enable_admin_preview_env(monkeypatch, preview_seed="11")
     monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
     monkeypatch.setenv(
         "ADMIN_PASSWORD_HASH",
@@ -396,14 +372,12 @@ def test_preview_company_detail_archive_and_restore_actions(
     monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
     monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "preview-limiter-secret-32chars-minimum!!")
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    ctx = PreviewContext.from_values(11, datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc))
+    reset_preview_context_cache()
     company, _contacts, _records = build_preview_company_detail(
         PREVIEW_COMPANY_DETAIL_ARCHIVE_ID,
-        rng=ctx.rng_for("company_detail"),
     )
     archived_company, _contacts2, _records2 = build_preview_company_detail(
         PREVIEW_COMPANY_DETAIL_RESTORE_ID,
-        rng=ctx.rng_for("company_detail"),
     )
     client = TestClient(app, follow_redirects=False)
     cookies = {SESSION_COOKIE_NAME: "preview-screenshot-session"}
@@ -436,14 +410,9 @@ def test_preview_contact_detail_and_edit_archive_restore_actions(
     from argon2 import PasswordHasher
 
     from app.admin_auth import SESSION_COOKIE_NAME
-    from app.preview_context import PreviewContext
+    from app.admin_preview_context import reset_preview_context_cache
 
-    enable_admin_preview_env(monkeypatch)
-    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "12")
-    monkeypatch.setenv(
-        "ADMIN_PREVIEW_REFERENCE_TIME",
-        "2026-07-14T12:00:00+00:00",
-    )
+    enable_admin_preview_env(monkeypatch, preview_seed="12")
     monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
     monkeypatch.setenv(
         "ADMIN_PASSWORD_HASH",
@@ -452,14 +421,12 @@ def test_preview_contact_detail_and_edit_archive_restore_actions(
     monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
     monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "preview-limiter-secret-32chars-minimum!!")
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    ctx = PreviewContext.from_values(12, datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc))
+    reset_preview_context_cache()
     contact, _company, _records = build_preview_contact_detail(
         PREVIEW_CONTACT_DETAIL_ARCHIVE_ID,
-        rng=ctx.rng_for("contact_detail"),
     )
     archived_contact, _company2, _records2 = build_preview_contact_detail(
         PREVIEW_CONTACT_DETAIL_RESTORE_ID,
-        rng=ctx.rng_for("contact_detail"),
     )
     client = TestClient(app, follow_redirects=False)
     cookies = {SESSION_COOKIE_NAME: "preview-screenshot-session"}
