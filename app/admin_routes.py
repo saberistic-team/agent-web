@@ -851,14 +851,11 @@ def admin_company_archive(request: Request, company_id: UUID, csrf_token: str = 
     session = require_admin_session(request)
     _verify_session_csrf(request, session, csrf_token)
     with db.db_connection(get_settings().database_url) as conn:
-        if (
-            _crm.archive_company(
-                conn,
-                company_id,
-                actor_context=actor_context_from_request(request, actor=session.admin_username),
-            )
-            is None
-        ):
+        if _crm.archive_company(
+            conn,
+            company_id,
+            actor_context=actor_context_from_request(request, actor=session.admin_username),
+        ) is None:
             raise HTTPException(status_code=404, detail="Company not found")
     return RedirectResponse(url="/admin/companies", status_code=303)
 
@@ -868,14 +865,11 @@ def admin_company_restore(request: Request, company_id: UUID, csrf_token: str = 
     session = require_admin_session(request)
     _verify_session_csrf(request, session, csrf_token)
     with db.db_connection(get_settings().database_url) as conn:
-        if (
-            _crm.restore_company(
-                conn,
-                company_id,
-                actor_context=actor_context_from_request(request, actor=session.admin_username),
-            )
-            is None
-        ):
+        if _crm.restore_company(
+            conn,
+            company_id,
+            actor_context=actor_context_from_request(request, actor=session.admin_username),
+        ) is None:
             raise HTTPException(status_code=404, detail="Company not found")
     return RedirectResponse(url=f"/admin/companies/{company_id}", status_code=303)
 
@@ -1179,14 +1173,11 @@ def admin_contact_archive(request: Request, contact_id: UUID, csrf_token: str = 
     session = require_admin_session(request)
     _verify_session_csrf(request, session, csrf_token)
     with db.db_connection(get_settings().database_url) as conn:
-        if (
-            _crm.archive_contact(
-                conn,
-                contact_id,
-                actor_context=actor_context_from_request(request, actor=session.admin_username),
-            )
-            is None
-        ):
+        if _crm.archive_contact(
+            conn,
+            contact_id,
+            actor_context=actor_context_from_request(request, actor=session.admin_username),
+        ) is None:
             raise HTTPException(status_code=404, detail="Contact not found")
     return RedirectResponse(url="/admin/contacts", status_code=303)
 

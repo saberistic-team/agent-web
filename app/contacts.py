@@ -173,27 +173,36 @@ class ContactCreate(BaseModel):
 
 
 def contact_audit_summary(contact: dict[str, Any]) -> dict[str, Any]:
-    """Bounded contact snapshot for immutable audit events.
+    """Compact contact snapshot for audit events.
 
-    Raw email, profile URLs, and free-form notes are tracked as presence flags
-    only — never copied into the append-only ledger.
+    Email, profile URLs, and free-form notes are omitted; presence flags and
+    normalized registry fields are stored instead.
     """
-    from app.crm_audit import _iso_or_none, _presence_flag
-
     company_id = contact.get("company_id")
+    last_interaction = contact.get("last_interaction_at")
+    archived_at = contact.get("archived_at")
     buying_roles = contact.get("buying_roles") or []
+    profile_url = contact.get("profile_url")
+    notes = contact.get("notes")
     return {
         "full_name": contact.get("full_name"),
         "title": contact.get("title"),
         "email_permission": contact.get("email_permission"),
         "company_id": str(company_id) if company_id else None,
-        "last_interaction_at": _iso_or_none(contact.get("last_interaction_at")),
+        "last_interaction_at": (
+            last_interaction.isoformat()
+            if hasattr(last_interaction, "isoformat")
+            else last_interaction
+        ),
         "relationship_strength": contact.get("relationship_strength"),
         "buying_roles": list(buying_roles),
-        "archived_at": _iso_or_none(contact.get("archived_at")),
-        "has_profile_url": _presence_flag(contact.get("profile_url")) == "[present]",
-        "has_email": _presence_flag(contact.get("email")) == "[present]",
-        "has_notes": _presence_flag(contact.get("notes")) == "[present]",
+        "archived_at": (
+            archived_at.isoformat()
+            if hasattr(archived_at, "isoformat")
+            else archived_at
+        ),
+        "has_profile_url": bool(profile_url and str(profile_url).strip()),
+        "has_notes": bool(notes and str(notes).strip()),
     }
 
 

@@ -35,10 +35,9 @@ from app.crm_service import CrmService, _is_contact_email_unique_violation
 from app.migrations.runner import apply_migrations
 from app.repositories.postgres import PostgresContactRepository
 
-ACTOR = ActorContext(actor="operator", correlation_id="corr-email-identity")
-
 _REQUIRED = (os.environ.get("REQUIRE_TEST_DATABASE") or "").strip() in {"1", "true", "yes"}
 _DATABASE_URL = (os.environ.get("TEST_DATABASE_URL") or "").strip()
+ACTOR = ActorContext(actor="operator", correlation_id="corr-contact-email-pg")
 
 
 def _require_database_url() -> str:

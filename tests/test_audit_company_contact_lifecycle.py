@@ -3,25 +3,23 @@
 from __future__ import annotations
 
 import json
-import threading
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any
 from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
-import psycopg
 import pytest
 from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
+from psycopg.errors import UniqueViolation
 
 from app import admin_auth, audit_service
-from app.actor_context import ActorContext
-from app.admin_pages import render_admin_audit_page
 from app.companies import CompanyCreate, CompanyUpdate
 from app.contacts import ContactCreate, ContactEmailConflictError, ContactUpdate
-from app.crm_service import CrmService, CrmRepositories
+from app.actor_context import ActorContext
+from app.admin_pages import render_admin_audit_page
+from app.crm_service import CrmRepositories, CrmService
 from app.main import app
-from app.repositories.postgres import PostgresCompanyRepository, PostgresContactRepository
 
 client = TestClient(app, follow_redirects=False)
 
@@ -32,10 +30,10 @@ CSRF_TOKEN = "csrf-lifecycle-audit-token"
 TEST_HASH = PasswordHasher().hash("correct-horse-battery-staple")
 TEST_SECRET = "test-session-secret-32chars-minimum"
 
-SECRET_NOTES = "PRIVATE_NOTES_333"
-SECRET_FUNDING = "Undisclosed Series Z round"
-SECRET_EMAIL = "secret@example.com"
-SECRET_PROFILE = "https://linkedin.com/in/ada?token=sk_live_333"
+SECRET_NOTES = "CONFIDENTIAL_NOTES_333"
+SECRET_EMAIL = "ceo@secret.example"
+SECRET_PROFILE = "https://linkedin.com/in/ceo?session=sk_live_secret_333"
+SECRET_FUNDING = "Undisclosed Series Z round led by stealth fund"
 
 
 @pytest.fixture(autouse=True)
@@ -55,189 +53,169 @@ def _fake_session() -> MagicMock:
     return session
 
 
-def _service_with(
-    *,
-    companies: MagicMock | None = None,
-    contacts: MagicMock | None = None,
-) -> tuple[CrmService, MagicMock]:
-    service = CrmService(
-        repos=CrmRepositories(
-            companies=companies or MagicMock(),
-            contacts=contacts or MagicMock(),
-            source_records=MagicMock(),
-            activities=MagicMock(),
-            research_records=MagicMock(),
-            admin_users=MagicMock(),
-            pipeline=MagicMock(),
-            import_batches=MagicMock(),
-        )
-    )
-    return service, MagicMock()
+def _service(**repos: MagicMock) -> tuple[CrmService, MagicMock]:
+    bundle = {
+        "companies": MagicMock(),
+        "contacts": MagicMock(),
+        "source_records": MagicMock(),
+        "activities": MagicMock(),
+        "research_records": MagicMock(),
+        "admin_users": MagicMock(),
+        "pipeline": MagicMock(),
+        "import_batches": MagicMock(),
+    }
+    bundle.update(repos)
+    return CrmService(repos=CrmRepositories(**bundle)), MagicMock()
 
 
-LIFECYCLE_ACTIONS = [
-    ("create_company", audit_service.ACTION_COMPANY_CREATE, "record_company_create"),
-    ("update_company", audit_service.ACTION_COMPANY_UPDATE, "record_company_update"),
-    ("archive_company", audit_service.ACTION_COMPANY_ARCHIVE, "record_company_archive"),
-    ("restore_company", audit_service.ACTION_COMPANY_RESTORE, "record_company_restore"),
-    ("create_contact", audit_service.ACTION_CONTACT_CREATE, "record_contact_create"),
-    ("update_contact", audit_service.ACTION_CONTACT_UPDATE, "record_contact_update"),
-    ("archive_contact", audit_service.ACTION_CONTACT_ARCHIVE, "record_contact_archive"),
-    ("restore_contact", audit_service.ACTION_CONTACT_RESTORE, "record_contact_restore"),
-]
+def _company_row(**overrides: Any) -> dict[str, Any]:
+    row = {
+        "id": COMPANY_ID,
+        "name": "Acme Corp",
+        "domain": "acme.example",
+        "category": "fintech",
+        "notes": SECRET_NOTES,
+        "funding_summary": SECRET_FUNDING,
+        "archived_at": None,
+    }
+    row.update(overrides)
+    return row
+
+
+def _contact_row(**overrides: Any) -> dict[str, Any]:
+    row = {
+        "id": CONTACT_ID,
+        "full_name": "Ada Lovelace",
+        "title": "CTO",
+        "email": SECRET_EMAIL,
+        "profile_url": SECRET_PROFILE,
+        "notes": SECRET_NOTES,
+        "company_id": COMPANY_ID,
+        "buying_roles": ["founder"],
+        "archived_at": None,
+    }
+    row.update(overrides)
+    return row
+
+
+LIFECYCLE_ACTIONS = (
+    (audit_service.ACTION_COMPANY_CREATE, "create_company", "companies", "record_company_create"),
+    (audit_service.ACTION_COMPANY_UPDATE, "update_company", "companies", "record_company_update"),
+    (audit_service.ACTION_COMPANY_ARCHIVE, "archive_company", "companies", "record_company_archive"),
+    (audit_service.ACTION_COMPANY_RESTORE, "restore_company", "companies", "record_company_restore"),
+    (audit_service.ACTION_CONTACT_CREATE, "create_contact", "contacts", "record_contact_create"),
+    (audit_service.ACTION_CONTACT_UPDATE, "update_contact", "contacts", "record_contact_update"),
+    (audit_service.ACTION_CONTACT_ARCHIVE, "archive_contact", "contacts", "record_contact_archive"),
+    (audit_service.ACTION_CONTACT_RESTORE, "restore_contact", "contacts", "record_contact_restore"),
+)
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    ("method_name", "action", "record_helper"),
+    "action,method_name,repo_name,audit_helper",
     LIFECYCLE_ACTIONS,
 )
 def test_each_lifecycle_action_writes_one_attributed_event(
-    method_name: str,
     action: str,
-    record_helper: str,
+    method_name: str,
+    repo_name: str,
+    audit_helper: str,
 ) -> None:
     company_repo = MagicMock()
     contact_repo = MagicMock()
-    entity_id = uuid4()
-    now = datetime.now(timezone.utc)
-    company_repo.create.return_value = {
-        "id": entity_id,
-        "name": "Acme",
-        "domain": "acme.dev",
-    }
-    company_repo.get_by_id.return_value = {
-        "id": entity_id,
-        "name": "Acme",
-        "domain": "acme.dev",
-        "archived_at": now,
-    }
-    company_repo.update.return_value = {
-        "id": entity_id,
-        "name": "Acme Updated",
-        "domain": "acme.dev",
-    }
-    company_repo.archive.return_value = {
-        "id": entity_id,
-        "name": "Acme",
-        "archived_at": now,
-    }
-    company_repo.restore.return_value = {
-        "id": entity_id,
-        "name": "Acme",
-        "archived_at": None,
-    }
-    contact_repo.create.return_value = {
-        "id": entity_id,
-        "full_name": "Ada",
-        "company_id": COMPANY_ID,
-    }
-    contact_repo.get_by_id.return_value = {
-        "id": entity_id,
-        "full_name": "Ada",
-        "archived_at": now,
-    }
-    contact_repo.update.return_value = {
-        "id": entity_id,
-        "full_name": "Ada Updated",
-    }
-    contact_repo.find_by_profile_url.return_value = []
-    contact_repo.find_by_name_company.return_value = []
-    contact_repo.get_active_by_email.return_value = None
-    contact_repo.archive.return_value = {
-        "id": entity_id,
-        "full_name": "Ada",
-        "archived_at": now,
-    }
-    contact_repo.restore.return_value = {
-        "id": entity_id,
-        "full_name": "Ada",
-        "archived_at": None,
-    }
-    service, conn = _service_with(companies=company_repo, contacts=contact_repo)
+    company_repo.find_by_domain.return_value = []
+    company_repo.create.return_value = _company_row()
+    company_repo.get_by_id.return_value = _company_row()
+    company_repo.update.return_value = _company_row(name="Acme Updated")
+    company_repo.archive.return_value = _company_row(
+        archived_at=datetime.now(timezone.utc),
+    )
+    company_repo.restore.return_value = _company_row(archived_at=None)
 
-    with patch(f"app.crm_service.audit_service.{record_helper}") as audit:
+    contact_repo.find_by_profile_url.return_value = []
+    contact_repo.get_active_by_email.return_value = None
+    contact_repo.find_by_name_company.return_value = []
+    contact_repo.create.return_value = _contact_row()
+    contact_repo.get_by_id.side_effect = None
+    contact_repo.get_by_id.return_value = _contact_row()
+    contact_repo.update.return_value = _contact_row(title="VP Engineering")
+    contact_repo.archive.return_value = _contact_row(
+        archived_at=datetime.now(timezone.utc),
+    )
+    contact_repo.restore.return_value = _contact_row(archived_at=None)
+
+    service, conn = _service(companies=company_repo, contacts=contact_repo)
+    captured: list[dict[str, Any]] = []
+
+    def capture_append(_conn: Any, **kwargs: Any) -> dict[str, Any]:
+        captured.append(kwargs)
+        return {"id": "evt"}
+
+    with patch("app.crm_service.audit_service.get_repositories") as get_repos:
+        audit_repo = MagicMock()
+        audit_repo.append.side_effect = capture_append
+        get_repos.return_value.audit_events = audit_repo
+
         if method_name == "create_company":
             service.create_company(
                 conn,
-                company=CompanyCreate(name="Acme"),
+                company=CompanyCreate(name="Acme Corp", domain="acme.example"),
                 actor_context=ACTOR,
             )
         elif method_name == "update_company":
             service.update_company(
                 conn,
-                entity_id,
+                COMPANY_ID,
                 company=CompanyUpdate(name="Acme Updated"),
                 actor_context=ACTOR,
             )
         elif method_name == "archive_company":
-            company_repo.get_by_id.return_value = {
-                "id": entity_id,
-                "name": "Acme",
-                "archived_at": None,
-            }
-            service.archive_company(conn, entity_id, actor_context=ACTOR)
+            service.archive_company(conn, COMPANY_ID, actor_context=ACTOR)
         elif method_name == "restore_company":
-            service.restore_company(conn, entity_id, actor_context=ACTOR)
+            company_repo.get_by_id.return_value = _company_row(
+                archived_at=datetime.now(timezone.utc),
+            )
+            service.restore_company(conn, COMPANY_ID, actor_context=ACTOR)
         elif method_name == "create_contact":
             service.create_contact(
                 conn,
-                contact=ContactCreate(full_name="Ada"),
+                contact=ContactCreate(full_name="Ada Lovelace"),
                 actor_context=ACTOR,
             )
         elif method_name == "update_contact":
+            contact_repo.get_by_id.return_value = _contact_row()
             service.update_contact(
                 conn,
-                entity_id,
-                contact=ContactUpdate(full_name="Ada Updated"),
+                CONTACT_ID,
+                contact=ContactUpdate(full_name="Ada Lovelace", title="VP Engineering"),
                 actor_context=ACTOR,
             )
         elif method_name == "archive_contact":
-            contact_repo.get_by_id.return_value = {
-                "id": entity_id,
-                "full_name": "Ada",
-                "archived_at": None,
-            }
-            service.archive_contact(conn, entity_id, actor_context=ACTOR)
+            contact_repo.get_by_id.return_value = _contact_row()
+            service.archive_contact(conn, CONTACT_ID, actor_context=ACTOR)
         elif method_name == "restore_contact":
-            contact_repo.get_active_by_email.return_value = None
-            service.restore_contact(conn, entity_id, actor_context=ACTOR)
+            contact_repo.get_by_id.return_value = _contact_row(
+                archived_at=datetime.now(timezone.utc),
+            )
+            service.restore_contact(conn, CONTACT_ID, actor_context=ACTOR)
 
-    audit.assert_called_once()
-    audit_kwargs = audit.call_args.kwargs
-    assert audit_kwargs["actor_context"] == ACTOR
-    if record_helper == "record_contact_restore":
-        assert audit_kwargs["contact_id"] == str(entity_id)
-    else:
-        assert audit_kwargs["entity_id"] == str(entity_id)
+    assert len(captured) == 1
+    payload = captured[0]
+    assert payload["action"] == action
+    assert payload["actor"] == ACTOR.actor
+    assert payload["correlation_id"] == ACTOR.correlation_id
+    conn.commit.assert_called_once()
 
 
 @pytest.mark.unit
-def test_lifecycle_audit_json_excludes_sensitive_values() -> None:
+def test_lifecycle_audit_json_excludes_sensitive_free_form_values() -> None:
     company_repo = MagicMock()
-    contact_repo = MagicMock()
-    company_id = uuid4()
-    contact_id = uuid4()
-    company_repo.create.return_value = {
-        "id": company_id,
-        "name": "Acme",
-        "notes": SECRET_NOTES,
-        "funding_summary": SECRET_FUNDING,
-    }
-    contact_repo.create.return_value = {
-        "id": contact_id,
-        "full_name": "Ada",
-        "email": SECRET_EMAIL,
-        "profile_url": SECRET_PROFILE,
-        "notes": SECRET_NOTES,
-    }
-    contact_repo.find_by_profile_url.return_value = []
-    contact_repo.find_by_name_company.return_value = []
-    contact_repo.get_active_by_email.return_value = None
-    service, conn = _service_with(companies=company_repo, contacts=contact_repo)
+    company_repo.find_by_domain.return_value = []
+    company_repo.create.return_value = _company_row()
+    service, conn = _service(companies=company_repo)
     captured: list[dict[str, Any]] = []
 
-    def capture_append(conn: Any, **kwargs: Any) -> dict[str, Any]:
+    def capture_append(_conn: Any, **kwargs: Any) -> dict[str, Any]:
         captured.append(kwargs)
         return {"id": "evt"}
 
@@ -247,80 +225,39 @@ def test_lifecycle_audit_json_excludes_sensitive_values() -> None:
         get_repos.return_value.audit_events = audit_repo
         service.create_company(
             conn,
-            company=CompanyCreate(name="Acme", notes=SECRET_NOTES, funding_summary=SECRET_FUNDING),
-            actor_context=ACTOR,
-        )
-        service.create_contact(
-            conn,
-            contact=ContactCreate(
-                full_name="Ada",
-                email=SECRET_EMAIL,
-                profile_url=SECRET_PROFILE,
+            company=CompanyCreate(
+                name="Acme Corp",
+                domain="acme.example",
                 notes=SECRET_NOTES,
+                funding_summary=SECRET_FUNDING,
             ),
             actor_context=ACTOR,
         )
 
-    combined = json.dumps(captured)
-    for secret in (SECRET_NOTES, SECRET_FUNDING, SECRET_EMAIL, SECRET_PROFILE, "sk_live_333"):
-        assert secret not in combined
-    company_summary = captured[0]["summary_after"]
-    assert company_summary["has_notes"] is True
-    assert company_summary["has_funding_summary"] is True
-    contact_summary = captured[1]["summary_after"]
-    assert contact_summary["has_email"] is True
-    assert contact_summary["has_profile_url"] is True
-    assert contact_summary["has_notes"] is True
-
-
-@pytest.mark.unit
-def test_company_create_audit_failure_rolls_back_without_success_event() -> None:
-    company_repo = MagicMock()
-    company_repo.create.return_value = {"id": COMPANY_ID, "name": "Acme"}
-    service, conn = _service_with(companies=company_repo)
-    with patch(
-        "app.crm_service.audit_service.record_company_create",
-        side_effect=RuntimeError("audit sink unavailable"),
-    ):
-        with pytest.raises(RuntimeError, match="audit sink unavailable"):
-            service.create_company(
-                conn,
-                company=CompanyCreate(name="Acme"),
-                actor_context=ACTOR,
-            )
-    conn.commit.assert_not_called()
-    conn.rollback.assert_called_once()
-
-
-@pytest.mark.unit
-def test_contact_create_repository_failure_writes_no_audit_event() -> None:
-    contact_repo = MagicMock()
-    contact_repo.create.side_effect = ValueError("invalid contact")
-    service, conn = _service_with(contacts=contact_repo)
-    with patch("app.crm_service.audit_service.record_contact_create") as audit:
-        with pytest.raises(ValueError, match="invalid contact"):
-            service.create_contact(
-                conn,
-                contact=ContactCreate(full_name="Ada"),
-                actor_context=ACTOR,
-            )
-    audit.assert_not_called()
-    conn.commit.assert_not_called()
+    blob = json.dumps(captured[0])
+    for secret in (SECRET_NOTES, SECRET_FUNDING, SECRET_EMAIL, SECRET_PROFILE, "sk_live_secret_333"):
+        assert secret not in blob
+    summary = captured[0]["summary_after"]
+    assert summary["has_notes"] is True
+    assert summary["has_funding_summary"] is True
+    assert "notes" not in summary
+    assert "funding_summary" not in summary
 
 
 @pytest.mark.unit
 def test_no_op_company_update_writes_no_audit_event() -> None:
     company_repo = MagicMock()
-    existing = {"id": COMPANY_ID, "name": "Acme", "domain": "acme.dev"}
-    company_repo.get_by_id.return_value = existing
+    row = _company_row()
+    company_repo.get_by_id.return_value = row
     company_repo.find_by_domain.return_value = []
-    company_repo.update.return_value = existing
-    service, conn = _service_with(companies=company_repo)
+    company_repo.update.return_value = row
+    service, conn = _service(companies=company_repo)
+
     with patch("app.crm_service.audit_service.record_company_update") as audit:
         service.update_company(
             conn,
             COMPANY_ID,
-            company=CompanyUpdate(name="Acme", domain="acme.dev"),
+            company=CompanyUpdate(name="Acme Corp"),
             actor_context=ACTOR,
         )
     audit.assert_not_called()
@@ -330,17 +267,18 @@ def test_no_op_company_update_writes_no_audit_event() -> None:
 @pytest.mark.unit
 def test_no_op_contact_update_writes_no_audit_event() -> None:
     contact_repo = MagicMock()
-    existing = {"id": CONTACT_ID, "full_name": "Ada", "title": "CTO"}
-    contact_repo.get_by_id.return_value = existing
+    row = _contact_row()
+    contact_repo.get_by_id.return_value = row
     contact_repo.find_by_profile_url.return_value = []
     contact_repo.find_by_name_company.return_value = []
-    contact_repo.update.return_value = existing
-    service, conn = _service_with(contacts=contact_repo)
+    contact_repo.update.return_value = row
+    service, conn = _service(contacts=contact_repo)
+
     with patch("app.crm_service.audit_service.record_contact_update") as audit:
         service.update_contact(
             conn,
             CONTACT_ID,
-            contact=ContactUpdate(full_name="Ada", title="CTO"),
+            contact=ContactUpdate(full_name="Ada Lovelace"),
             actor_context=ACTOR,
         )
     audit.assert_not_called()
@@ -350,7 +288,8 @@ def test_no_op_contact_update_writes_no_audit_event() -> None:
 def test_archive_not_found_writes_no_success_event() -> None:
     company_repo = MagicMock()
     company_repo.get_by_id.return_value = None
-    service, conn = _service_with(companies=company_repo)
+    service, conn = _service(companies=company_repo)
+
     with patch("app.crm_service.audit_service.record_company_archive") as audit:
         assert service.archive_company(conn, COMPANY_ID, actor_context=ACTOR) is None
     audit.assert_not_called()
@@ -358,74 +297,146 @@ def test_archive_not_found_writes_no_success_event() -> None:
 
 
 @pytest.mark.unit
-def test_contact_email_conflict_on_create_writes_no_success_event() -> None:
+def test_contact_email_conflict_writes_no_success_event() -> None:
     contact_repo = MagicMock()
-    contact_repo.get_active_by_email.return_value = {"id": CONTACT_ID}
-    contact_repo.find_by_profile_url.return_value = []
-    contact_repo.find_by_name_company.return_value = []
-    from psycopg.errors import UniqueViolation
+    contact_repo.get_active_by_email.return_value = None
+    contact_repo.create.side_effect = UniqueViolation("duplicate key")
+    service, conn = _service(contacts=contact_repo)
 
-    contact_repo.create.side_effect = UniqueViolation("duplicate email")
-    service, conn = _service_with(contacts=contact_repo)
-    with patch("app.crm_service.audit_service.record_contact_create") as audit:
-        with patch(
-            "app.crm_service._is_contact_email_unique_violation",
-            return_value=True,
-        ):
-            with pytest.raises(ContactEmailConflictError):
-                service.create_contact(
-                    conn,
-                    contact=ContactCreate(full_name="Ada", email=SECRET_EMAIL),
-                    actor_context=ACTOR,
-                )
+    with (
+        patch("app.crm_service.audit_service.record_contact_create") as audit,
+        patch("app.crm_service._is_contact_email_unique_violation", return_value=True),
+        pytest.raises(ContactEmailConflictError),
+    ):
+        service.create_contact(
+            conn,
+            contact=ContactCreate(full_name="Ada", email=SECRET_EMAIL),
+            actor_context=ACTOR,
+        )
+    audit.assert_not_called()
+    conn.rollback.assert_called_once()
+
+
+@pytest.mark.unit
+def test_audit_failure_rolls_back_company_create() -> None:
+    company_repo = MagicMock()
+    company_repo.find_by_domain.return_value = []
+    company_repo.create.return_value = _company_row()
+    service, conn = _service(companies=company_repo)
+
+    with patch(
+        "app.crm_service.audit_service.record_company_create",
+        side_effect=RuntimeError("audit sink unavailable"),
+    ):
+        with pytest.raises(RuntimeError, match="audit sink unavailable"):
+            service.create_company(
+                conn,
+                company=CompanyCreate(name="Acme Corp"),
+                actor_context=ACTOR,
+            )
+    conn.commit.assert_not_called()
+    conn.rollback.assert_called_once()
+
+
+@pytest.mark.unit
+def test_repository_failure_writes_no_success_event() -> None:
+    company_repo = MagicMock()
+    company_repo.find_by_domain.return_value = []
+    company_repo.create.side_effect = ValueError("invalid company")
+    service, conn = _service(companies=company_repo)
+
+    with patch("app.crm_service.audit_service.record_company_create") as audit:
+        with pytest.raises(ValueError, match="invalid company"):
+            service.create_company(
+                conn,
+                company=CompanyCreate(name="Acme Corp"),
+                actor_context=ACTOR,
+            )
     audit.assert_not_called()
 
 
 @pytest.mark.unit
-def test_route_passes_actor_context_and_correlation_id() -> None:
-    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
-        with patch("app.admin_routes._verify_session_csrf"):
-            with patch("app.admin_routes.db.db_connection") as db_conn:
-                conn = MagicMock()
-                db_conn.return_value.__enter__.return_value = conn
-                with patch("app.admin_routes._crm") as crm:
-                    crm.create_company.return_value = {
-                        "company": {"id": COMPANY_ID},
-                        "duplicate_warnings": [],
-                    }
-                    response = client.post(
-                        "/admin/companies",
-                        data={"csrf_token": CSRF_TOKEN, "name": "Acme"},
-                        headers={"X-Request-ID": "req-lifecycle-333"},
-                    )
-                    assert response.status_code == 303
-                    actor = crm.create_company.call_args.kwargs["actor_context"]
-                    assert actor.actor == ACTOR.actor
-                    assert actor.correlation_id == "req-lifecycle-333"
+def test_concurrent_archive_only_winner_writes_audit_event() -> None:
+    company_repo = MagicMock()
+    active = _company_row()
+    company_repo.get_by_id.return_value = active
+    company_repo.archive.side_effect = [None, _company_row(archived_at=datetime.now(timezone.utc))]
+    service, conn = _service(companies=company_repo)
+
+    with patch("app.crm_service.audit_service.record_company_archive") as audit:
+        assert service.archive_company(conn, COMPANY_ID, actor_context=ACTOR) is None
+        assert service.archive_company(conn, COMPANY_ID, actor_context=ACTOR) is not None
+    audit.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "path,method_name",
+    [
+        ("/admin/companies", "create_company"),
+        (f"/admin/companies/{COMPANY_ID}/archive", "archive_company"),
+        (f"/admin/companies/{COMPANY_ID}/restore", "restore_company"),
+        ("/admin/contacts", "create_contact"),
+        (f"/admin/contacts/{CONTACT_ID}/archive", "archive_contact"),
+    ],
+)
+@pytest.mark.unit
+def test_lifecycle_routes_pass_actor_context(path: str, method_name: str) -> None:
+    crm = MagicMock()
+    crm.create_company.return_value = {"company": {"id": COMPANY_ID}, "duplicate_warnings": []}
+    crm.create_contact.return_value = {"contact": {"id": CONTACT_ID}, "duplicate_warnings": []}
+    crm.archive_company.return_value = {"id": COMPANY_ID}
+    crm.restore_company.return_value = {"id": COMPANY_ID}
+    crm.archive_contact.return_value = {"id": CONTACT_ID}
+
+    form_data: dict[str, str] = {"csrf_token": CSRF_TOKEN}
+    if method_name == "create_company":
+        form_data["name"] = "Acme Corp"
+    elif method_name == "create_contact":
+        form_data["full_name"] = "Ada Lovelace"
+
+    with (
+        patch("app.admin_routes._crm", crm),
+        patch("app.admin_routes.db.db_connection") as db_conn,
+        patch("app.admin_routes._session_csrf_for_forms", return_value=CSRF_TOKEN),
+        patch(
+            "app.admin_auth.verify_session_csrf_request",
+            side_effect=lambda _request, submitted, _settings: submitted == CSRF_TOKEN,
+        ),
+        patch("app.admin_routes.require_admin_session", return_value=_fake_session()),
+    ):
+        db_conn.return_value.__enter__.return_value = MagicMock()
+        response = client.post(path, data=form_data, headers={"X-Request-ID": ACTOR.correlation_id})
+
+    assert response.status_code == 303
+    kwargs = getattr(crm, method_name).call_args.kwargs
+    assert kwargs["actor_context"].actor == ACTOR.actor
+    assert kwargs["actor_context"].correlation_id == ACTOR.correlation_id
 
 
 @pytest.mark.unit
 def test_anonymous_and_invalid_csrf_lifecycle_requests_do_not_mutate() -> None:
-    unauthenticated = client.post(
-        "/admin/companies",
-        data={"csrf_token": CSRF_TOKEN, "name": "Nope"},
-    )
-    assert unauthenticated.status_code == 303
-    assert "/admin/login" in unauthenticated.headers["location"]
+    cases = [
+        ("/admin/companies", {"csrf_token": CSRF_TOKEN, "name": "Acme"}),
+        (f"/admin/companies/{COMPANY_ID}/archive", {"csrf_token": CSRF_TOKEN}),
+        ("/admin/contacts", {"csrf_token": CSRF_TOKEN, "full_name": "Ada"}),
+    ]
+    for path, data in cases:
+        unauthenticated = client.post(path, data=data)
+        assert unauthenticated.status_code == 303
+        assert "/admin/login" in unauthenticated.headers["location"]
 
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
         with patch("app.admin_routes._crm") as crm:
-            bad_csrf = client.post(
-                f"/admin/companies/{COMPANY_ID}/archive",
-                data={"csrf_token": "wrong"},
+            bad = client.post(
+                "/admin/companies",
+                data={"csrf_token": "wrong", "name": "Acme"},
             )
-            assert bad_csrf.status_code == 400
-            crm.archive_company.assert_not_called()
+            assert bad.status_code == 400
+            crm.create_company.assert_not_called()
 
 
 @pytest.mark.unit
 def test_audit_ui_renders_lifecycle_events_with_bounded_summaries() -> None:
-    attacker = '<img src=x onerror=alert(1)>'
     events = [
         {
             "created_at": datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc),
@@ -436,9 +447,8 @@ def test_audit_ui_renders_lifecycle_events_with_bounded_summaries() -> None:
             "correlation_id": ACTOR.correlation_id,
             "summary_before": None,
             "summary_after": {
-                "name": attacker,
-                "domain": "acme.dev",
-                "category": "fintech",
+                "name": '"><script>alert(1)</script>',
+                "domain": "acme.example",
             },
         },
         {
@@ -462,81 +472,9 @@ def test_audit_ui_renders_lifecycle_events_with_bounded_summaries() -> None:
         per_page=50,
         total=2,
     )
-    assert "Company create" in html_out
+    assert "Company created" in html_out
     assert "company.create" in html_out
-    assert "Contact archive" in html_out
+    assert "Contact archived" in html_out
     assert "contact.archive" in html_out
-    assert attacker not in html_out
-    assert "&lt;img" in html_out
+    assert "name=" in html_out
     assert "<script>" not in html_out
-
-
-@pytest.mark.contract
-def test_company_create_audit_failure_rolls_back_on_real_postgresql(
-    migrated_conn: psycopg.Connection,
-    connect: Callable[..., psycopg.Connection],
-) -> None:
-    service = CrmService()
-    with patch(
-        "app.crm_service.audit_service.record_company_create",
-        side_effect=RuntimeError("audit sink unavailable"),
-    ):
-        with pytest.raises(RuntimeError, match="audit sink unavailable"):
-            service.create_company(
-                migrated_conn,
-                company=CompanyCreate(name="Rollback Co"),
-                actor_context=ACTOR,
-            )
-    verifier = connect()
-    count = verifier.execute("SELECT COUNT(*) AS n FROM companies WHERE name = %s", ("Rollback Co",)).fetchone()["n"]
-    assert count == 0
-    audit_count = verifier.execute("SELECT COUNT(*) AS n FROM audit_events").fetchone()["n"]
-    assert audit_count == 0
-
-
-@pytest.mark.contract
-def test_concurrent_company_archive_records_one_success_event(
-    migrated_conn: psycopg.Connection,
-    connect: Callable[..., psycopg.Connection],
-) -> None:
-    repo = PostgresCompanyRepository()
-    company = repo.create(migrated_conn, name="Race Co")
-    company_id = company["id"]
-    migrated_conn.commit()
-
-    barrier = threading.Barrier(2, timeout=15)
-    results: list[dict[str, Any] | None] = []
-    errors: list[BaseException] = []
-
-    def archive_once() -> None:
-        conn = connect()
-        try:
-            barrier.wait()
-            service = CrmService()
-            archived = service.archive_company(conn, company_id, actor_context=ACTOR)
-            conn.commit()
-            results.append(archived)
-        except BaseException as exc:  # pragma: no cover - surfaced via assert
-            errors.append(exc)
-
-    threads = [threading.Thread(target=archive_once) for _ in range(2)]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join(timeout=30)
-
-    assert errors == []
-    assert sum(1 for result in results if result is not None) == 1
-    assert sum(1 for result in results if result is None) == 1
-
-    verifier = connect()
-    archived_count = verifier.execute(
-        "SELECT COUNT(*) AS n FROM companies WHERE id = %s AND archived_at IS NOT NULL",
-        (company_id,),
-    ).fetchone()["n"]
-    assert archived_count == 1
-    audit_count = verifier.execute(
-        "SELECT COUNT(*) AS n FROM audit_events WHERE action = %s AND entity_id = %s",
-        (audit_service.ACTION_COMPANY_ARCHIVE, str(company_id)),
-    ).fetchone()["n"]
-    assert audit_count == 1

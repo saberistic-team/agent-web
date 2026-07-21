@@ -103,6 +103,19 @@ def redact_value(value: Any) -> Any:
     return str(value)
 
 
+def audit_changed_fields(
+    summary_before: dict[str, Any] | None,
+    summary_after: dict[str, Any] | None,
+) -> list[str]:
+    """Return sorted field names whose bounded audit values differ."""
+    if summary_before is None and summary_after is None:
+        return []
+    before = summary_before or {}
+    after = summary_after or {}
+    keys = set(before.keys()) | set(after.keys())
+    return sorted(key for key in keys if before.get(key) != after.get(key))
+
+
 def redact_summary(data: dict[str, Any] | None) -> dict[str, Any] | None:
     """Strip secrets and oversized values from before/after summaries."""
     if data is None:
@@ -311,7 +324,7 @@ def record_company_create(
     *,
     actor_context: ActorContext,
     entity_id: str,
-    summary_after: dict[str, Any],
+    summary_after: dict[str, Any] | None = None,
     repository: AuditEventRepository | None = None,
 ) -> dict[str, Any] | None:
     return record_event(
@@ -332,6 +345,7 @@ def record_company_update(
     entity_id: str,
     summary_before: dict[str, Any] | None = None,
     summary_after: dict[str, Any] | None = None,
+    metadata: dict[str, Any] | None = None,
     repository: AuditEventRepository | None = None,
 ) -> dict[str, Any] | None:
     return record_event(
@@ -342,6 +356,7 @@ def record_company_update(
         entity_id=entity_id,
         summary_before=summary_before,
         summary_after=summary_after,
+        metadata=metadata,
         repository=repository,
     )
 
@@ -351,8 +366,8 @@ def record_company_archive(
     *,
     actor_context: ActorContext,
     entity_id: str,
-    summary_before: dict[str, Any],
-    summary_after: dict[str, Any],
+    summary_before: dict[str, Any] | None = None,
+    summary_after: dict[str, Any] | None = None,
     repository: AuditEventRepository | None = None,
 ) -> dict[str, Any] | None:
     return record_event(
@@ -372,8 +387,8 @@ def record_company_restore(
     *,
     actor_context: ActorContext,
     entity_id: str,
-    summary_before: dict[str, Any],
-    summary_after: dict[str, Any],
+    summary_before: dict[str, Any] | None = None,
+    summary_after: dict[str, Any] | None = None,
     repository: AuditEventRepository | None = None,
 ) -> dict[str, Any] | None:
     return record_event(
@@ -393,7 +408,7 @@ def record_contact_create(
     *,
     actor_context: ActorContext,
     entity_id: str,
-    summary_after: dict[str, Any],
+    summary_after: dict[str, Any] | None = None,
     repository: AuditEventRepository | None = None,
 ) -> dict[str, Any] | None:
     return record_event(
@@ -414,12 +429,35 @@ def record_contact_update(
     entity_id: str,
     summary_before: dict[str, Any] | None = None,
     summary_after: dict[str, Any] | None = None,
+    metadata: dict[str, Any] | None = None,
     repository: AuditEventRepository | None = None,
 ) -> dict[str, Any] | None:
     return record_event(
         conn,
         actor_context=actor_context,
         action=ACTION_CONTACT_UPDATE,
+        entity_type="contact",
+        entity_id=entity_id,
+        summary_before=summary_before,
+        summary_after=summary_after,
+        metadata=metadata,
+        repository=repository,
+    )
+
+
+def record_contact_archive(
+    conn: psycopg.Connection,
+    *,
+    actor_context: ActorContext,
+    entity_id: str,
+    summary_before: dict[str, Any] | None = None,
+    summary_after: dict[str, Any] | None = None,
+    repository: AuditEventRepository | None = None,
+) -> dict[str, Any] | None:
+    return record_event(
+        conn,
+        actor_context=actor_context,
+        action=ACTION_CONTACT_ARCHIVE,
         entity_type="contact",
         entity_id=entity_id,
         summary_before=summary_before,
@@ -524,27 +562,6 @@ def record_brief_convert(
         action=ACTION_BRIEF_CONVERT,
         entity_type="project_brief",
         entity_id=brief_id,
-        summary_after=summary_after,
-        repository=repository,
-    )
-
-
-def record_contact_archive(
-    conn: psycopg.Connection,
-    *,
-    actor_context: ActorContext,
-    entity_id: str,
-    summary_before: dict[str, Any],
-    summary_after: dict[str, Any],
-    repository: AuditEventRepository | None = None,
-) -> dict[str, Any] | None:
-    return record_event(
-        conn,
-        actor_context=actor_context,
-        action=ACTION_CONTACT_ARCHIVE,
-        entity_type="contact",
-        entity_id=entity_id,
-        summary_before=summary_before,
         summary_after=summary_after,
         repository=repository,
     )

@@ -29,17 +29,6 @@ from app.brief_conversion import (
     safe_conversion_payload,
 )
 from app.brief_conversion_lock import acquire_brief_conversion_lock
-from app.crm_audit import (
-    COMPANY_PRESENCE_FIELDS,
-    COMPANY_PRESENCE_SUMMARY_KEYS,
-    CONTACT_PRESENCE_FIELDS,
-    CONTACT_PRESENCE_SUMMARY_KEYS,
-    changed_audit_summaries,
-    company_archive_audit_summaries,
-    company_restore_audit_summaries,
-    contact_archive_audit_summaries,
-    contact_restore_audit_summaries,
-)
 from app.companies import (
     CompanyCreate,
     CompanyUpdate,
@@ -765,6 +754,7 @@ class CrmService:
             existing = self._repos.companies.get_by_id(conn, company_id)
             if existing is None:
                 return None
+            summary_before = company_audit_summary(existing)
             duplicates = (
                 self._repos.companies.find_by_domain(
                     conn, company.domain, exclude_company_id=company_id
@@ -777,20 +767,18 @@ class CrmService:
             )
             if updated is None:
                 return None
-            summary_before, summary_after = changed_audit_summaries(
-                existing,
-                updated,
-                summarize=company_audit_summary,
-                presence_fields=COMPANY_PRESENCE_FIELDS,
-                presence_summary_keys=COMPANY_PRESENCE_SUMMARY_KEYS,
+            summary_after = company_audit_summary(updated)
+            changed_fields = audit_service.audit_changed_fields(
+                summary_before, summary_after
             )
-            if summary_before is not None and summary_after is not None:
+            if changed_fields:
                 audit_service.record_company_update(
                     conn,
                     actor_context=actor_context,
                     entity_id=str(company_id),
                     summary_before=summary_before,
                     summary_after=summary_after,
+                    metadata={"changed_fields": changed_fields},
                 )
         return {
             "company": updated,
@@ -809,19 +797,17 @@ class CrmService:
         existing = self._repos.companies.get_by_id(conn, company_id)
         if existing is None or existing.get("archived_at") is not None:
             return None
+        summary_before = company_audit_summary(existing)
         with crm_transaction(conn):
             archived = self._repos.companies.archive(conn, company_id)
             if archived is None:
                 return None
-            summary_before, summary_after = company_archive_audit_summaries(
-                existing, archived
-            )
             audit_service.record_company_archive(
                 conn,
                 actor_context=actor_context,
                 entity_id=str(company_id),
                 summary_before=summary_before,
-                summary_after=summary_after,
+                summary_after=company_audit_summary(archived),
             )
             return archived
 
@@ -832,22 +818,19 @@ class CrmService:
         *,
         actor_context: ActorContext,
     ) -> dict[str, Any] | None:
-        archived = self._repos.companies.get_by_id(conn, company_id)
-        if archived is None or archived.get("archived_at") is None:
+        existing = self._repos.companies.get_by_id(conn, company_id)
+        if existing is None or existing.get("archived_at") is None:
             return None
         with crm_transaction(conn):
             restored = self._repos.companies.restore(conn, company_id)
             if restored is None:
                 return None
-            summary_before, summary_after = company_restore_audit_summaries(
-                archived, restored
-            )
             audit_service.record_company_restore(
                 conn,
                 actor_context=actor_context,
                 entity_id=str(company_id),
-                summary_before=summary_before,
-                summary_after=summary_after,
+                summary_before=company_audit_summary(existing),
+                summary_after=company_audit_summary(restored),
             )
             return restored
 
@@ -952,6 +935,7 @@ class CrmService:
             existing = self._repos.contacts.get_by_id(conn, contact_id)
             if existing is None:
                 return None
+            summary_before = contact_audit_summary(existing)
             profile_matches = (
                 self._repos.contacts.find_by_profile_url(
                     conn, contact.profile_url, exclude_contact_id=contact_id
@@ -986,20 +970,18 @@ class CrmService:
                 raise ContactEmailConflictError(contact.email) from exc
             if updated is None:
                 return None
-            summary_before, summary_after = changed_audit_summaries(
-                existing,
-                updated,
-                summarize=contact_audit_summary,
-                presence_fields=CONTACT_PRESENCE_FIELDS,
-                presence_summary_keys=CONTACT_PRESENCE_SUMMARY_KEYS,
+            summary_after = contact_audit_summary(updated)
+            changed_fields = audit_service.audit_changed_fields(
+                summary_before, summary_after
             )
-            if summary_before is not None and summary_after is not None:
+            if changed_fields:
                 audit_service.record_contact_update(
                     conn,
                     actor_context=actor_context,
                     entity_id=str(contact_id),
                     summary_before=summary_before,
                     summary_after=summary_after,
+                    metadata={"changed_fields": changed_fields},
                 )
         duplicate_warnings = [
             *find_profile_url_duplicate_warnings(
@@ -1031,19 +1013,17 @@ class CrmService:
         existing = self._repos.contacts.get_by_id(conn, contact_id)
         if existing is None or existing.get("archived_at") is not None:
             return None
+        summary_before = contact_audit_summary(existing)
         with crm_transaction(conn):
             archived = self._repos.contacts.archive(conn, contact_id)
             if archived is None:
                 return None
-            summary_before, summary_after = contact_archive_audit_summaries(
-                existing, archived
-            )
             audit_service.record_contact_archive(
                 conn,
                 actor_context=actor_context,
                 entity_id=str(contact_id),
                 summary_before=summary_before,
-                summary_after=summary_after,
+                summary_after=contact_audit_summary(archived),
             )
             return archived
 
@@ -1075,15 +1055,12 @@ class CrmService:
                 restored = self._repos.contacts.restore(conn, contact_id)
                 if restored is None:
                     return ContactRestoreResult(outcome="not_found")
-                summary_before, summary_after = contact_restore_audit_summaries(
-                    archived, restored
-                )
                 audit_service.record_contact_restore(
                     conn,
                     actor_context=actor_context,
                     contact_id=str(contact_id),
-                    summary_before=summary_before,
-                    summary_after=summary_after,
+                    summary_before=contact_audit_summary(archived),
+                    summary_after=contact_audit_summary(restored),
                 )
                 return ContactRestoreResult(outcome="success", contact=restored)
         except pg_errors.UniqueViolation as exc:

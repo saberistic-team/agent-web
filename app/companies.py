@@ -123,15 +123,15 @@ class CompanyCreate(BaseModel):
 
 
 def company_audit_summary(company: dict[str, Any]) -> dict[str, Any]:
-    """Bounded company snapshot for immutable audit events.
+    """Compact company snapshot for audit events.
 
-    Free-form notes, funding text, and website URLs are tracked as presence
-    flags only — never copied into the append-only ledger.
+    Free-form notes, funding text, and website URLs are omitted; presence flags
+    and normalized registry fields are stored instead.
     """
-    from app.crm_audit import _presence_flag
-
     last_verified = company.get("last_verified_at")
     archived_at = company.get("archived_at")
+    notes = company.get("notes")
+    funding_summary = company.get("funding_summary")
     return {
         "name": company.get("name"),
         "domain": company.get("domain"),
@@ -140,16 +140,19 @@ def company_audit_summary(company: dict[str, Any]) -> dict[str, Any]:
         "headcount_estimate": company.get("headcount_estimate"),
         "target_status": company.get("target_status"),
         "last_verified_at": (
-            last_verified.isoformat() if last_verified is not None else None
+            last_verified.isoformat()
+            if hasattr(last_verified, "isoformat")
+            else last_verified
         ),
         "archived_at": (
             archived_at.isoformat()
-            if archived_at is not None and hasattr(archived_at, "isoformat")
+            if hasattr(archived_at, "isoformat")
             else archived_at
         ),
-        "has_website": _presence_flag(company.get("website")) == "[present]",
-        "has_funding_summary": _presence_flag(company.get("funding_summary")) == "[present]",
-        "has_notes": _presence_flag(company.get("notes")) == "[present]",
+        "has_notes": bool(notes and str(notes).strip()),
+        "has_funding_summary": bool(
+            funding_summary and str(funding_summary).strip()
+        ),
     }
 
 
