@@ -334,13 +334,16 @@ def test_record_contact_restore_redacts_email() -> None:
     assert payload["summary_before"]["email"] == audit_service.REDACTED_VALUE
 
 
-def test_preview_contact_restore_conflict_stable_with_seed() -> None:
-    import random
-
+def test_preview_contact_restore_conflict_stable_with_seed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from app.admin_preview import preview_contact_restore_conflict
 
-    a = preview_contact_restore_conflict(rng=random.Random(42))
-    b = preview_contact_restore_conflict(rng=random.Random(42))
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
+    monkeypatch.setenv("ADMIN_PREVIEW_REFERENCE_TIME", "2026-07-15T12:00:00+00:00")
+    a = preview_contact_restore_conflict()
+    b = preview_contact_restore_conflict()
     assert a == b
     assert a["archived_contact"]["email"]
     assert a["conflicting_contact"]["full_name"]
