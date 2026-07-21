@@ -205,8 +205,10 @@ def test_company_update_writes_audit_event_on_real_change(
     migrated_conn.commit()
 
     event = _latest_audit(connect, action=audit_service.ACTION_COMPANY_UPDATE)
-    assert event["summary_before"]["notes"] == "Before"
-    assert event["summary_after"]["notes"] == "After"
+    assert event["summary_before"] == {"has_notes": True}
+    assert event["summary_after"] == {"has_notes": True}
+    assert "notes" not in event["summary_before"]
+    assert "notes" not in event["summary_after"]
 
 
 @pytest.mark.contract

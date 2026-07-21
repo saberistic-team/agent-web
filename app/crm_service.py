@@ -32,7 +32,6 @@ from app.brief_conversion_lock import acquire_brief_conversion_lock
 from app.companies import (
     CompanyCreate,
     CompanyUpdate,
-    company_audit_summary,
     find_domain_duplicate_warnings,
     normalize_domain,
 )
@@ -40,7 +39,6 @@ from app.contacts import (
     ContactCreate,
     ContactEmailConflictError,
     ContactUpdate,
-    contact_audit_summary,
     find_email_duplicate_warnings,
     find_name_company_duplicate_warnings,
     find_profile_url_duplicate_warnings,
@@ -761,7 +759,6 @@ class CrmService:
             existing = self._repos.companies.get_by_id(conn, company_id)
             if existing is None:
                 return None
-            summary_before = company_audit_summary(existing)
             duplicates = (
                 self._repos.companies.find_by_domain(
                     conn, company.domain, exclude_company_id=company_id
@@ -778,8 +775,8 @@ class CrmService:
                 conn,
                 actor_context=actor_context,
                 entity_id=str(company_id),
-                summary_before=summary_before,
-                summary_after=company_audit_summary(updated),
+                before_row=existing,
+                after_row=updated,
             )
         return {
             "company": updated,
@@ -935,7 +932,6 @@ class CrmService:
             existing = self._repos.contacts.get_by_id(conn, contact_id)
             if existing is None:
                 return None
-            summary_before = contact_audit_summary(existing)
             profile_matches = (
                 self._repos.contacts.find_by_profile_url(
                     conn, contact.profile_url, exclude_contact_id=contact_id
@@ -974,8 +970,8 @@ class CrmService:
                 conn,
                 actor_context=actor_context,
                 entity_id=str(contact_id),
-                summary_before=summary_before,
-                summary_after=contact_audit_summary(updated),
+                before_row=existing,
+                after_row=updated,
             )
         duplicate_warnings = [
             *find_profile_url_duplicate_warnings(

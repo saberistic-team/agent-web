@@ -10,6 +10,13 @@ from app import audit_service
 from app.actor_context import ActorContext
 from app.companies import company_audit_summary
 from app.contacts import contact_audit_summary
+from app.crm_audit import (
+    COMPANY_PRESENCE_FIELDS,
+    COMPANY_PRESENCE_SUMMARY_KEYS,
+    CONTACT_PRESENCE_FIELDS,
+    CONTACT_PRESENCE_SUMMARY_KEYS,
+    changed_audit_summaries,
+)
 
 
 def _format_archived_at(value: Any) -> Any:
@@ -41,11 +48,23 @@ def record_company_update_if_changed(
     *,
     actor_context: ActorContext,
     entity_id: str,
-    summary_before: dict[str, Any],
-    summary_after: dict[str, Any],
+    before_row: dict[str, Any],
+    after_row: dict[str, Any],
 ) -> dict[str, Any] | None:
-    """Write ``company.update`` only when audit summaries differ (no-op skip)."""
-    if audit_service.audit_summaries_equal(summary_before, summary_after):
+    """Write ``company.update`` only when audit-visible fields differ (no-op skip).
+
+    Uses :func:`changed_audit_summaries` so redacted content replacements
+    (notes / website / funding text) still produce an event without storing
+    the free-form values.
+    """
+    summary_before, summary_after = changed_audit_summaries(
+        before_row,
+        after_row,
+        summarize=company_audit_summary,
+        presence_fields=COMPANY_PRESENCE_FIELDS,
+        presence_summary_keys=COMPANY_PRESENCE_SUMMARY_KEYS,
+    )
+    if summary_before is None or summary_after is None:
         return None
     return audit_service.record_company_update(
         conn,
@@ -61,11 +80,18 @@ def record_contact_update_if_changed(
     *,
     actor_context: ActorContext,
     entity_id: str,
-    summary_before: dict[str, Any],
-    summary_after: dict[str, Any],
+    before_row: dict[str, Any],
+    after_row: dict[str, Any],
 ) -> dict[str, Any] | None:
-    """Write ``contact.update`` only when audit summaries differ (no-op skip)."""
-    if audit_service.audit_summaries_equal(summary_before, summary_after):
+    """Write ``contact.update`` only when audit-visible fields differ (no-op skip)."""
+    summary_before, summary_after = changed_audit_summaries(
+        before_row,
+        after_row,
+        summarize=contact_audit_summary,
+        presence_fields=CONTACT_PRESENCE_FIELDS,
+        presence_summary_keys=CONTACT_PRESENCE_SUMMARY_KEYS,
+    )
+    if summary_before is None or summary_after is None:
         return None
     return audit_service.record_contact_update(
         conn,

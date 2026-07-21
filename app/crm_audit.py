@@ -34,12 +34,20 @@ def _presence_flag(value: Any) -> str | None:
     return "[present]"
 
 
+def _normalize_presence_value(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
 def _presence_field_changed(before: Any, after: Any) -> bool:
-    before_empty = before is None or before == ""
-    after_empty = after is None or after == ""
-    if before_empty != after_empty:
+    before_norm = _normalize_presence_value(before)
+    after_norm = _normalize_presence_value(after)
+    if not before_norm and not after_norm:
+        return False
+    if bool(before_norm) != bool(after_norm):
         return True
-    return not before_empty and before != after
+    return before_norm != after_norm
 
 
 def changed_audit_summaries(
