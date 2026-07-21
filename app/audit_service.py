@@ -116,6 +116,52 @@ def audit_changed_fields(
     return sorted(key for key in keys if before.get(key) != after.get(key))
 
 
+# Redacted CRM fields omitted from summaries as raw values. Presence flips are
+# recorded via ``has_*`` keys; content-only replaces still need a field-name
+# signal so updates are audited and share the mutation transaction.
+COMPANY_REDACTED_CONTENT_FIELDS = ("notes", "funding_summary", "website")
+CONTACT_REDACTED_CONTENT_FIELDS = ("notes", "profile_url", "email")
+
+
+def _normalize_redacted_content(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def audit_lifecycle_changed_fields(
+    summary_before: dict[str, Any] | None,
+    summary_after: dict[str, Any] | None,
+    *,
+    before_row: dict[str, Any],
+    after_row: dict[str, Any],
+    content_fields: tuple[str, ...],
+) -> list[str]:
+    """Diff bounded summaries, plus content-only changes on redacted fields.
+
+    When a redacted field's text changes but its ``has_*`` flag does not (both
+    non-empty, or both empty), include the bare field name in ``changed_fields``
+    without storing the sensitive value in the ledger.
+    """
+    changed = audit_changed_fields(summary_before, summary_after)
+    changed_set = set(changed)
+    before_summary = summary_before or {}
+    after_summary = summary_after or {}
+    for field in content_fields:
+        if _normalize_redacted_content(before_row.get(field)) == _normalize_redacted_content(
+            after_row.get(field)
+        ):
+            continue
+        has_key = f"has_{field}"
+        if has_key in before_summary or has_key in after_summary:
+            if has_key in changed_set:
+                continue
+        if field not in changed_set:
+            changed.append(field)
+            changed_set.add(field)
+    return sorted(changed)
+
+
 def redact_summary(data: dict[str, Any] | None) -> dict[str, Any] | None:
     """Strip secrets and oversized values from before/after summaries."""
     if data is None:

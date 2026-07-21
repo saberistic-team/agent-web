@@ -768,8 +768,12 @@ class CrmService:
             if updated is None:
                 return None
             summary_after = company_audit_summary(updated)
-            changed_fields = audit_service.audit_changed_fields(
-                summary_before, summary_after
+            changed_fields = audit_service.audit_lifecycle_changed_fields(
+                summary_before,
+                summary_after,
+                before_row=existing,
+                after_row=updated,
+                content_fields=audit_service.COMPANY_REDACTED_CONTENT_FIELDS,
             )
             if changed_fields:
                 audit_service.record_company_update(
@@ -971,8 +975,12 @@ class CrmService:
             if updated is None:
                 return None
             summary_after = contact_audit_summary(updated)
-            changed_fields = audit_service.audit_changed_fields(
-                summary_before, summary_after
+            changed_fields = audit_service.audit_lifecycle_changed_fields(
+                summary_before,
+                summary_after,
+                before_row=existing,
+                after_row=updated,
+                content_fields=audit_service.CONTACT_REDACTED_CONTENT_FIELDS,
             )
             if changed_fields:
                 audit_service.record_contact_update(

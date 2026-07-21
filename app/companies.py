@@ -132,6 +132,7 @@ def company_audit_summary(company: dict[str, Any]) -> dict[str, Any]:
     archived_at = company.get("archived_at")
     notes = company.get("notes")
     funding_summary = company.get("funding_summary")
+    website = company.get("website")
     return {
         "name": company.get("name"),
         "domain": company.get("domain"),
@@ -149,6 +150,7 @@ def company_audit_summary(company: dict[str, Any]) -> dict[str, Any]:
             if hasattr(archived_at, "isoformat")
             else archived_at
         ),
+        "has_website": bool(website and str(website).strip()),
         "has_notes": bool(notes and str(notes).strip()),
         "has_funding_summary": bool(
             funding_summary and str(funding_summary).strip()

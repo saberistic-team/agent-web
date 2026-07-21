@@ -476,14 +476,17 @@ def test_company_audit_summary_uses_bounded_presence_flags() -> None:
     summary = company_audit_summary(
         {
             "name": "Acme",
+            "website": "https://acme.example",
             "notes": "Warm intro",
             "funding_summary": "Seed round",
             "last_verified_at": date(2025, 1, 15),
         }
     )
+    assert summary["has_website"] is True
     assert summary["has_notes"] is True
     assert summary["has_funding_summary"] is True
     assert summary["last_verified_at"] == "2025-01-15"
+    assert "website" not in summary
     assert "notes" not in summary
     assert "funding_summary" not in summary
     assert "email" not in summary
@@ -503,6 +506,7 @@ def test_contact_audit_summary_omits_email_and_profile_url() -> None:
     )
     assert "email" not in summary
     assert "profile_url" not in summary
+    assert summary["has_email"] is True
     assert summary["has_profile_url"] is True
     assert summary["title"] == "CTO"
     assert summary["company_id"] == str(COMPANY_ID)

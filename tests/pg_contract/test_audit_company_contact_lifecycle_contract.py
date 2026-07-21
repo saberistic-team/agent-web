@@ -151,7 +151,7 @@ def test_contact_create_excludes_email_and_profile_url_from_audit(
     migrated_conn.commit()
 
     row = _audit_rows(migrated_conn)[0]
-    blob = json.dumps(row)
+    blob = json.dumps(row, default=str)
     assert SECRET_EMAIL not in blob
     assert SECRET_PROFILE not in blob
     assert SECRET_NOTES not in blob

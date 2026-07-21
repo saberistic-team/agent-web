@@ -50,6 +50,13 @@ COMPANY_NULLABLE_FIELDS: list[tuple[str, Any, Any]] = [
     ("notes", "Warm intro path", "Updated notes"),
 ]
 
+# Raw free-form / URL values are omitted from audit summaries; only presence flags.
+COMPANY_AUDIT_PRESENCE_FIELDS = {
+    "website": "has_website",
+    "funding_summary": "has_funding_summary",
+    "notes": "has_notes",
+}
+
 CONTACT_NULLABLE_FIELDS: list[tuple[str, Any, Any]] = [
     ("title", "CTO", "VP Engineering"),
     ("profile_url", "https://linkedin.com/in/seed", "https://linkedin.com/in/new"),
@@ -61,6 +68,12 @@ CONTACT_NULLABLE_FIELDS: list[tuple[str, Any, Any]] = [
     ("notes", "Met at conference", "Follow-up scheduled"),
     ("buying_roles", ["founder"], ["technical_buyer"]),
 ]
+
+CONTACT_AUDIT_PRESENCE_FIELDS = {
+    "profile_url": "has_profile_url",
+    "email": "has_email",
+    "notes": "has_notes",
+}
 
 PIPELINE_NULLABLE_FIELDS: list[tuple[str, Any, Any, str]] = [
     # field, seed, replacement, patch style: "next_action" | "fields" | "clear_flag"
@@ -495,6 +508,7 @@ def test_company_update_audit_distinguishes_clear_replace_unchanged(
     event = _latest_audit(connect, action=audit_service.ACTION_COMPANY_UPDATE)
     assert event["summary_before"]["has_notes"] is True
     assert event["summary_after"]["has_notes"] is True
+    assert event["metadata"]["changed_fields"] == ["notes"]
     assert "notes" not in (event["summary_before"] or {})
     assert "email" not in (event["summary_before"] or {})
     assert "email" not in (event["summary_after"] or {})
@@ -861,6 +875,13 @@ def test_company_audit_summary_tracks_nullable_fields(
     before = company_audit_summary({"name": "Acme", field: seed_value})
     after_clear = company_audit_summary({"name": "Acme", field: None})
     after_replace = company_audit_summary({"name": "Acme", field: replacement})
+    presence = COMPANY_AUDIT_PRESENCE_FIELDS.get(field)
+    if presence is not None:
+        assert field not in before
+        assert before[presence] is True
+        assert after_clear[presence] is False
+        assert after_replace[presence] is True
+        return
     assert _audit_field_value(before, field) == seed_value
     assert _audit_field_value(after_clear, field) is None
     assert _audit_field_value(after_replace, field) == replacement
@@ -880,6 +901,11 @@ def test_contact_audit_summary_omits_email(
     }
     summary = contact_audit_summary(payload)
     assert "email" not in summary
+    presence = CONTACT_AUDIT_PRESENCE_FIELDS.get(field)
+    if presence is not None:
+        assert field not in summary
+        assert summary[presence] is True
+        return
     if field in summary:
         actual = _audit_field_value(summary, field)
         expected = seed_value

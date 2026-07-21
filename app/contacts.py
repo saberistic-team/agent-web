@@ -184,6 +184,7 @@ def contact_audit_summary(contact: dict[str, Any]) -> dict[str, Any]:
     buying_roles = contact.get("buying_roles") or []
     profile_url = contact.get("profile_url")
     notes = contact.get("notes")
+    email = contact.get("email")
     return {
         "full_name": contact.get("full_name"),
         "title": contact.get("title"),
@@ -201,6 +202,7 @@ def contact_audit_summary(contact: dict[str, Any]) -> dict[str, Any]:
             if hasattr(archived_at, "isoformat")
             else archived_at
         ),
+        "has_email": bool(email and str(email).strip()),
         "has_profile_url": bool(profile_url and str(profile_url).strip()),
         "has_notes": bool(notes and str(notes).strip()),
     }
