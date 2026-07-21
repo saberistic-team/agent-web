@@ -13,10 +13,27 @@ from crm_deploy_health import (
     issue_requires_deploy_health,
     qualifies_for_non_runtime_exemption,
     require_post_merge_deploy_health,
+    resolve_render_owner_id,
     run_route_check,
     smoke_checks_passed,
 )
 from render_deploy import expected_schema_version_from_repo
+
+
+@pytest.mark.unit
+def test_resolve_render_owner_id_reads_service_payload() -> None:
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self) -> bytes:
+            return json.dumps({"service": {"ownerId": "tea-owner"}}).encode()
+
+    with patch("crm_deploy_health.urllib.request.urlopen", return_value=_Resp()):
+        assert resolve_render_owner_id("key", "srv-1") == "tea-owner"
 
 
 @pytest.mark.unit
@@ -187,6 +204,12 @@ def test_reconciliation_record_for_issue_230_is_passing() -> None:
     assert record["verification_layers"]["post_deploy_functional_health"] == "pass"
     assert "reconcile_note" in record
     assert all(item["result"] in {"pass", "skip"} for item in record["smoke_checks"])
+    log_inspection = record["log_inspection"]
+    assert log_inspection["regressions_found"] is False
+    assert log_inspection.get("status") == "reconciled"
+    supporting = log_inspection.get("supporting_records") or []
+    assert len(supporting) >= 4
+    assert all(Path(item).is_file() for item in supporting)
 
 
 @pytest.mark.unit

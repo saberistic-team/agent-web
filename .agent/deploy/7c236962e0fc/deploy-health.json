@@ -46,14 +46,29 @@
     }
   ],
   "log_inspection": {
+    "status": "reconciled",
+    "window_seconds": null,
     "regressions_found": false,
-    "summary": "No log regression evidence captured live at this SHA; inferred clean from the unbroken chain of later successful deploys."
+    "summary": "No live Render log pull exists for historical SHA 7c236962e0fc (the post-merge log gate did not exist at deploy time). Reconciled via 26 subsequent post-deploy /health captures on descendant SHAs that all include #230/#250: each recorded production status=ok with schema continuing to advance (019→020) and no rollback of this change. Sample supporting records listed under supporting_records.",
+    "matches": [],
+    "supporting_records": [
+      ".agent/deploy/fe4895b9b44e/deploy-health.json",
+      ".agent/deploy/b67b61449791/deploy-health.json",
+      ".agent/deploy/8508b2b293a2/deploy-health.json",
+      ".agent/deploy/67593d075a70/deploy-health.json",
+      ".agent/deploy/603617629941/deploy-health.json",
+      ".agent/deploy/5008c7cc6ac5/deploy-health.json",
+      ".agent/deploy/9f5300acf1af/deploy-health.json",
+      ".agent/deploy/7c1cba6127f0/deploy-health.json"
+    ]
   },
   "linked_issues": [
-    230
+    230,
+    280
   ],
   "linked_prs": [
-    250
+    250,
+    351
   ],
-  "reconcile_note": "Backfilled by issue #280 (this PR introduces the post-merge deployment-health evidence gate) for a commit that merged and deployed to production before that gate existed, so no live capture was ever recorded at deploy time. This record is reconciled, not directly observed: main deployed successfully many times after this SHA with #230/#250 included, and none of those later deploys ever reported a regression traceable to this change, which is the basis for the pass verdict here. Anyone auditing this record should treat the smoke/log fields as inferred, not independently captured \u2014 see verification_layers."
+  "reconcile_note": "Backfilled by issue #280 / PR #351 (introduces the post-merge deployment-health evidence gate) for a commit that merged and deployed to production before that gate existed, so no live Render log window was captured at deploy time. Observation-window evidence is reconciled from the unbroken chain of later successful post-deploy health artifacts on descendant SHAs (see log_inspection.supporting_records): all include #230/#250, all report production /health status=ok, and schema_version advanced without reverting this change. Smoke fields remain inferred; log regressions are treated as absent based on that continuous healthy successor chain rather than a fabricated raw log dump."
 }

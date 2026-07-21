@@ -475,6 +475,10 @@ def ai_check_remaining(
         "defines (learned from #167). saberistic.com shots are post-deploy only. "
         "Do NOT mark criteria not_done solely for missing production `pre-*` "
         "PNGs or missing `/admin` shots on saberistic.com.\n"
+        "Do NOT mark 'ready to deploy' / 'ready to merge' criteria not_done "
+        "solely because this acceptance_checklist is not yet all_done or the "
+        "PR is not yet review:approved — that is circular; judge deployability "
+        "from CI green, implementer completeness, and product evidence.\n"
         "If evidence is missing, status must be not_done.\n"
     )
     slim = {

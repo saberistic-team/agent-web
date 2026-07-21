@@ -495,6 +495,36 @@ def smoke_checks_passed(results: list[dict[str, Any]]) -> bool:
     return all(item.get("result") in {"pass", "skip"} for item in results)
 
 
+def resolve_render_owner_id(api_key: str, service_id: str) -> str | None:
+    """Resolve Render ownerId from the service when RENDER_OWNER_ID is unset."""
+    url = f"https://api.render.com/v1/services/{service_id}"
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Accept": "application/json",
+            "User-Agent": "agent-web-crm-deploy-health",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            body = json.loads(resp.read().decode("utf-8", errors="replace"))
+    except Exception:  # noqa: BLE001
+        return None
+    service = body.get("service") if isinstance(body, dict) else None
+    if not isinstance(service, dict):
+        service = body if isinstance(body, dict) else {}
+    for key in ("ownerId", "owner_id", "owner"):
+        value = service.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        if isinstance(value, dict):
+            nested = value.get("id") or value.get("ownerId")
+            if isinstance(nested, str) and nested.strip():
+                return nested.strip()
+    return None
+
+
 def inspect_render_logs(
     *,
     api_key: str,
@@ -868,6 +898,8 @@ def run_verification(
         (os.environ.get("RENDER_SERVICE_ID") or "").strip()
         or ((deployment or {}).get("service_id") or "")
     )
+    if api_key and service_id and not owner_id:
+        owner_id = resolve_render_owner_id(api_key, service_id) or ""
     if api_key and owner_id and service_id:
         log_inspection = inspect_render_logs(
             api_key=api_key,
@@ -875,11 +907,23 @@ def run_verification(
             service_id=service_id,
         )
     else:
+        missing = [
+            name
+            for name, value in (
+                ("RENDER_API_KEY", api_key),
+                ("RENDER_SERVICE_ID", service_id),
+                ("RENDER_OWNER_ID", owner_id),
+            )
+            if not value
+        ]
         log_inspection = {
             "status": "skipped",
             "window_seconds": 900,
             "regressions_found": False,
-            "summary": "RENDER_API_KEY/RENDER_OWNER_ID/RENDER_SERVICE_ID not set",
+            "summary": (
+                "log inspection skipped; missing "
+                + (", ".join(missing) if missing else "Render credentials")
+            ),
             "matches": [],
         }
 

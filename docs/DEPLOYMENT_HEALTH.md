@@ -34,6 +34,10 @@ Each record includes:
 
 CI also uploads `trace/deploy-health.json` as a workflow artifact.
 
+Bounded log inspection uses `RENDER_API_KEY` + `RENDER_SERVICE_ID` (and optional
+`RENDER_OWNER_ID`). When owner id is unset, `crm_deploy_health.py` resolves it
+from the Render service API before scanning logs.
+
 ## CRM smoke checks (safe production)
 
 `scripts/crm_deploy_health.py` runs read-only probes:
