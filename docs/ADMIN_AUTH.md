@@ -111,6 +111,23 @@ browser context.
    during login rotation (new session cookie → new derived token). The stored hash
    is cleared indirectly via session revocation/expiry.
 
+#### Transport
+
+| Surface | CSRF transport | Notes |
+|---------|----------------|-------|
+| HTML forms | Hidden `csrf_token` form field | Embedded by protected GET handlers |
+| `POST /admin/api/imports/linkedin/commit` | `X-CSRF-Token` request header | Required **before** JSON parsing; never cookie-only |
+| Login | Hidden `csrf_token` + `admin_login_flow` cookie | Flow-bound pre-authentication synchronizer |
+
+JSON admin mutations reject duplicate CSRF transports (for example a header **and**
+a `csrf_token` JSON field). Missing, malformed, oversized, cross-session, and
+revoked-session tokens fail with HTTP 400 *Invalid request* without revealing which
+check failed. Wrong or missing `Content-Type: application/json` on the LinkedIn
+commit API fails with HTTP 415 before the body is parsed.
+
+Defense in depth: `SameSite=strict` session cookies and optional Origin/Referer
+checks are not treated as the primary CSRF control for authenticated mutations.
+
 #### Lifetime and storage
 
 | Item | Value |

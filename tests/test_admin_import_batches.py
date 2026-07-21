@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from app import admin_auth, db
 from app.admin_auth import SESSION_COOKIE_NAME
 from app.admin_preview import PREVIEW_IMPORT_BATCH_IDS, build_preview_import_batch_detail
+from app.config import get_settings
 from app.main import app
 from tests.conftest import enable_admin_preview_env
 
@@ -26,6 +27,17 @@ TEST_SECRET = "test-session-secret-32chars-minimum"
 TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!!"
 
 _session_store: dict[str, dict[str, Any]] = {}
+
+
+def _session_csrf_for_cookies(cookies: dict[str, str]) -> str:
+    return admin_auth.derive_session_csrf_token(cookies[SESSION_COOKIE_NAME], get_settings())
+
+
+def _linkedin_commit_headers(cookies: dict[str, str]) -> dict[str, str]:
+    return {
+        admin_auth.CSRF_HEADER_NAME: _session_csrf_for_cookies(cookies),
+        "Content-Type": "application/json",
+    }
 
 
 @pytest.fixture(autouse=True)
@@ -241,6 +253,7 @@ def test_linkedin_commit_api_persists_batch(
         response = client.post(
             "/admin/api/imports/linkedin/commit",
             cookies=authenticated_admin,
+            headers=_linkedin_commit_headers(authenticated_admin),
             json={
                 "export_date": "2026-01-15",
                 "connections": [
@@ -266,6 +279,7 @@ def test_linkedin_commit_api_rejects_bad_payload(
     response = client.post(
         "/admin/api/imports/linkedin/commit",
         cookies=authenticated_admin,
+        headers=_linkedin_commit_headers(authenticated_admin),
         json={"connections": "not-a-list"},
     )
     assert response.status_code == 400

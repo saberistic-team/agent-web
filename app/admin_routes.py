@@ -1938,15 +1938,34 @@ def admin_import_batch_rollback(
 async def admin_linkedin_import_commit(request: Request) -> JSONResponse:
     session = require_admin_session(request)
     settings = get_settings()
+    from app.admin_json_request import (
+        read_bounded_json_object,
+        read_session_csrf_header,
+        reject_duplicate_csrf_field,
+        verify_session_csrf_header_or_reject,
+    )
+    from app.admin_linkedin_commit import (
+        LINKEDIN_COMMIT_MAX_BODY_BYTES,
+        LINKEDIN_COMMIT_MAX_CONNECTIONS,
+    )
+
+    verify_session_csrf_header_or_reject(
+        request,
+        settings,
+        submitted_csrf_token=read_session_csrf_header(request),
+    )
     if not settings.database_url:
         raise HTTPException(status_code=503, detail="Database unavailable")
-    try:
-        payload = await request.json()
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
+    payload = await read_bounded_json_object(
+        request,
+        max_body_bytes=LINKEDIN_COMMIT_MAX_BODY_BYTES,
+    )
+    reject_duplicate_csrf_field(payload)
     connections = payload.get("connections")
     if not isinstance(connections, list):
         raise HTTPException(status_code=400, detail="connections must be a list")
+    if len(connections) > LINKEDIN_COMMIT_MAX_CONNECTIONS:
+        raise HTTPException(status_code=400, detail="connections list too large")
     with db.db_connection(settings.database_url) as conn:
         result = _crm.commit_linkedin_import(
             conn,
