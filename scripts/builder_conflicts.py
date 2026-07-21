@@ -150,6 +150,9 @@ def _smoke_env(cwd: Path, *, for_import: bool = False) -> dict[str, str]:
     if for_import:
         # Import-only: preview unlocks admin wiring without requiring secrets.
         env.setdefault("ADMIN_PREVIEW_MODE", "1")
+        env.setdefault("APP_ENV", "development")
+        env.setdefault("SERVER_BIND_HOST", "127.0.0.1")
+        env.setdefault("BASE_URL", "http://127.0.0.1:8000")
     else:
         # Full pytest must match CI. Preview mode short-circuits auth and breaks
         # login redirects / authenticated fixtures across the admin suite.
@@ -612,7 +615,7 @@ def default_resolve_file(
         "Never drop imports, router wiring (`admin_router`), Protocol/repository "
         "exports, cookie/session symbol names, or migration catalog entries that "
         "either side defines — union both sides when unsure. Prefer keeping "
-        "main's auth/session APIs when they conflict with obsolete Basic-auth tests. Never create circular imports between `app.admin_routes` and feature routers (`admin_pipeline_routes`, etc.): mount feature routers from `app.main` only — do not `include_router` them at the bottom of admin_routes."
+        "main's auth/session APIs when they conflict with obsolete Basic-auth tests. Never create circular imports between `app.admin_routes` and feature routers (`admin_pipeline_routes`, etc.): mount feature routers from `app.main` only — do not `include_router` them at the bottom of admin_routes. Prefer keeping code nimble: do not collapse split modules back into mega-files when both sides are coherent."
     )
     user = (
         f"{brief}\n\n"

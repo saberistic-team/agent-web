@@ -63,6 +63,9 @@ applies `agent:docs` again for `type:docs`). Do not open a second PR.
 
 - Prefer documentation edits; **do not implement product features** or fix
   bugs in application code (hand back via escalation or Planner).
+- When documenting agent/codegen guidance, keep **nimble code** policy
+  aligned with [AGENTS/builder.md](builder.md) (smaller functions/files/
+  folders; do not encourage growing mega-modules).
 - **Never push to the default branch.**
 - Do not invent APIs or behavior not present in the repo/PR—document what
   exists; flag gaps instead of fabricating.

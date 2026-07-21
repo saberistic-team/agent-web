@@ -66,8 +66,9 @@ view** that Reviewer will screenshot, you **must** also ship
 
 Follow the pattern in ``app/admin_preview.py``:
 
-1. Builders like ``build_preview_*`` use ``_preview_rng()`` /
-   ``ADMIN_PREVIEW_SEED`` so content is random across runs but stable in tests.
+1. Builders like ``build_preview_*`` use namespace-scoped RNG from
+   ``app/admin_preview_context`` (root ``ADMIN_PREVIEW_SEED`` + frozen
+   ``ADMIN_PREVIEW_REFERENCE_TIME``) so screenshot runs are deterministic.
 2. Wire the route: when ``settings.admin_preview_enabled``, return mock rows —
    **never** an empty shell that says “no records yet” for brand-new surfaces.
 3. Cover representative states needed by acceptance (populated +
@@ -262,6 +263,25 @@ shared file. Preserve unless the issue explicitly requires removing them:
 Regressing those surfaces creates screenshot 404/500s and Builder↔Reviewer
 loops on unrelated PRs (learned from #109 / #180 and #110 / #181). Prefer
 surgical edits over rewriting whole `admin_routes.py` / migration files.
+
+## Keep code nimble and readable
+
+Prefer small, readable units over growing mega-modules. When the issue
+touches a large file (or your change would push one further over the
+codegen per-file ceiling — see [docs/MODELS.md](../docs/MODELS.md)), take
+chances to:
+
+1. **Break functions into smaller pieces** with clear names and one job each.
+2. **Split large files into multiple files** (feature routers like
+   `admin_pipeline_routes.py`, helpers, page modules) instead of appending
+   to already-huge shared files.
+3. **Split large folders into subfolders** when a package is becoming a
+   dumping ground — keep imports mountable from `app.main` without cycles.
+
+Stay in issue scope: split only what you are already editing or what
+unblocks a safe surgical change. Do not drive-by-refactor unrelated trees.
+Mount feature routers from `app.main` only — never
+`include_router` back into `admin_routes` (#107).
 
 ## Contaminated PR heads (anti-loop)
 

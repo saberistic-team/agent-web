@@ -1,23 +1,32 @@
 #!/usr/bin/env python3
-"""After deploy: capture post screenshots and ask Cursor (preferred) / OpenAI
-whether the issue change is visible.
+"""After deploy: capture post-deploy screenshots and record deploy health.
+
+Screenshots and health are posted as evidence for a human to review — this
+script no longer runs an automated visual pass/fail check (see #372-class
+conflicts and false negatives on non-visual changes; verification is now a
+manual admin step).
 """
 
 from __future__ import annotations
 
 import argparse
-import base64
 import json
 import os
 import re
 import sys
-import urllib.error
-import urllib.parse
-import urllib.request
 from pathlib import Path
+from typing import Any
 
-from cursor_model import DEFAULT_CURSOR_MODEL, cursor_model_dict, cursor_model_selection
-from github_api import GitHubError, api, post_issue_comment, split_repo
+from github_api import (
+    GitHubError,
+    api,
+    create_branch,
+    enable_auto_merge,
+    find_open_pr_for_branch,
+    open_pull_request,
+    post_issue_comment,
+    split_repo,
+)
 from screenshot_deploy import (
     PRE_BRANCH_PHASE,
     capture,
@@ -29,7 +38,72 @@ from screenshot_deploy import (
     comment_markdown,
 )
 
-DEFAULT_OPENAI_MODEL = "gpt-4.1-mini"
+RECORD_COMMIT_PREFIX = "deploy: record post-deploy artifacts"
+
+
+def record_branch_name(sha: str) -> str:
+    """Deterministic per-deploy branch so a rerun for the same deploy reuses
+    one branch/PR instead of opening a duplicate (mirrors
+    ``freeze_shipped_migrations.freeze_branch_name``)."""
+    short = (sha or "local")[:12] or "local"
+    return f"deploy/screenshots-{short}"
+
+
+def record_pr_body(short: str, base_url: str) -> str:
+    return (
+        "### deploy_record\n"
+        f"- deploy: `{base_url}`\n"
+        f"- sha: `{short}`\n"
+        "- Automated, evidence-only change: records this deploy's `/health` "
+        "snapshot and screenshot uploads under `.agent/`. No application "
+        "code, migration, or test changes.\n"
+        "- Opened as a PR (not a direct push) because the workflow-governance "
+        "ruleset requires every change to `main` go through review — see "
+        "`docs/WORKFLOW_GOVERNANCE.md`. Auto-merge is enabled: approving this "
+        "PR is sufficient, no separate merge click needed.\n"
+    )
+
+
+def open_or_reuse_record_pr(
+    repo: str,
+    head_branch: str,
+    base_branch: str,
+    *,
+    short: str,
+    base_url: str,
+) -> dict[str, Any]:
+    """Open (or reuse) the auto-merge PR that lands this deploy's recorded
+    evidence on ``base_branch``.
+
+    Same pattern as ``freeze_shipped_migrations.maybe_commit_freeze``: a
+    direct push to a protected branch is rejected by the workflow-governance
+    ruleset (issue #362), so evidence commits land on a dedicated branch and
+    merge themselves via GitHub's native auto-merge the instant a human
+    CODEOWNER approves. Reruns against the same deploy sha reuse the existing
+    open PR instead of opening a duplicate.
+    """
+    existing = find_open_pr_for_branch(repo, head_branch)
+    if existing is not None:
+        return {"number": existing["number"], "url": existing["html_url"]}
+    title = f"{RECORD_COMMIT_PREFIX} ({short})"
+    pr = open_pull_request(
+        repo,
+        head=head_branch,
+        base=base_branch,
+        title=title,
+        body=record_pr_body(short, base_url),
+    )
+    enable_auto_merge(repo, pr["node_id"])
+    return {"number": pr["number"], "url": pr["html_url"]}
+
+
+def notify_deploy(repo: str, issue_num: int | None, record_pr_number: int, body: str) -> None:
+    """Post deploy evidence to the record PR (its CODEOWNER reviewer should
+    see the same before/after screenshots inline, not just a generic PR body
+    or a raw file diff) and, when present, to the linked issue."""
+    post_issue_comment(repo, record_pr_number, body)
+    if issue_num:
+        post_issue_comment(repo, issue_num, body)
 
 
 def record_health(
@@ -39,33 +113,44 @@ def record_health(
     sha: str,
     base_url: str,
     health: dict,
+    issue: int | None = None,
+    pr_number: int | None = None,
 ) -> dict[str, str]:
-    """Persist /health JSON after every deploy (file on branch + optional summary)."""
-    short = (sha or "local")[:12] or "local"
-    slim = {k: v for k, v in health.items() if not str(k).startswith("_")}
-    payload = {
-        "sha": sha or short,
-        "base_url": base_url,
-        "health_url": health.get("_health_url") or f"{base_url.rstrip('/')}/health",
-        "health": slim,
-    }
-    out = Path("trace/deploy-health.json")
-    out.parent.mkdir(parents=True, exist_ok=True)
-    text = json.dumps(payload, indent=2) + "\n"
-    out.write_text(text, encoding="utf-8")
+    """Persist post-merge deployment-health evidence (#280)."""
+    from crm_deploy_health import run_verification
 
-    prefix = f".agent/deploy/{short}"
-    urls = upload_to_branch(
-        repo, branch, [out], prefix, message=f"deploy: record health ({short})"
+    result = run_verification(
+        repo=repo,
+        sha=sha or "local",
+        base_url=base_url,
+        branch=branch,
+        issue=issue,
+        pr_number=pr_number,
+        deployment={
+            "api_result": "pass",
+            "service_id": (os.environ.get("RENDER_SERVICE_ID") or "").strip() or None,
+        },
+        persist=True,
+        post_comment=False,
     )
-    raw_url = urls[0] if urls else ""
+    record = result["record"]
+    artifact = result.get("artifact") or {}
+    slim = record.get("application_health") or {
+        k: v for k, v in health.items() if not str(k).startswith("_")
+    }
+    raw_url = artifact.get("url") or ""
 
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a", encoding="utf-8") as fh:
             fh.write("### Deploy health\n\n")
             fh.write(f"- base: `{base_url}`\n")
-            fh.write(f"- sha: `{sha or short}`\n")
+            fh.write(f"- sha: `{record.get('sha')}`\n")
+            fh.write(f"- result: `{record.get('result')}`\n")
+            fh.write(
+                "- post_deploy_functional_health: "
+                f"`{record.get('verification_layers', {}).get('post_deploy_functional_health')}`\n"
+            )
             fh.write(f"- value: `{json.dumps(slim, separators=(',', ':'))}`\n")
             if raw_url:
                 fh.write(f"- recorded: {raw_url}\n")
@@ -73,17 +158,13 @@ def record_health(
     print(f"deploy_health={json.dumps(slim, separators=(',', ':'))}")
     if raw_url:
         print(f"deploy_health_url={raw_url}")
-    return {"path": f"{prefix}/deploy-health.json", "url": raw_url, "json": json.dumps(slim)}
-
-
-def cursor_api_key() -> str | None:
-    value = os.environ.get("CURSOR_API_KEY")
-    return value.strip() if value and value.strip() else None
-
-
-def openai_key() -> str | None:
-    value = os.environ.get("OPENAI_API_KEY")
-    return value.strip() if value and value.strip() else None
+    return {
+        "path": artifact.get("path") or f".agent/deploy/{(sha or 'local')[:12]}/deploy-health.json",
+        "url": raw_url,
+        "json": json.dumps(slim),
+        "record": record,
+        "ok": bool(result.get("ok")),
+    }
 
 
 def find_issue_number(message: str) -> int | None:
@@ -144,247 +225,6 @@ def list_branch_pre_urls(repo: str, ref: str, pr: int | None) -> list[str]:
     return urls
 
 
-def _parse_visual_json(text: str, *, model: str, provider: str) -> dict:
-    text = (text or "").strip()
-    fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
-    if fence:
-        text = fence.group(1).strip()
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        start, end = text.find("{"), text.rfind("}")
-        if start < 0 or end <= start:
-            raise GitHubError(f"{provider} visual did not return JSON: {text[:400]!r}")
-        data = json.loads(text[start : end + 1])
-    if not isinstance(data, dict):
-        raise GitHubError(f"{provider} visual JSON root must be object")
-    decision = str(data.get("decision") or "fail").lower()
-    if decision not in {"pass", "fail", "skip"}:
-        decision = "fail"
-    return {
-        "visible": data.get("visible"),
-        "summary": str(data.get("summary") or text[:500]),
-        "decision": decision,
-        "model": model,
-        "provider": provider,
-    }
-
-
-def _visual_prompt(
-    issue_title: str,
-    issue_body: str,
-    pre_paths: list[Path],
-    post_paths: list[Path],
-) -> str:
-    pre_list = "\n".join(f"- {p.resolve()}" for p in pre_paths) or "- (none)"
-    post_list = "\n".join(f"- {p.resolve()}" for p in post_paths) or "- (none)"
-    return (
-        "READ-ONLY VISUAL CHECK. Do not create, edit, delete, or move any files. "
-        "Do not run mutating shell/git commands. Do not open PRs.\n"
-        "Open the screenshot PNG paths below (Read tool) and compare before vs after.\n"
-        "Respond with JSON only (no prose outside JSON):\n"
-        '{"visible": boolean, "summary": "string", "decision": "pass"|"fail"}\n'
-        "pass if the post screenshots clearly show the issue change; "
-        "fail if unchanged or unrelated.\n\n"
-        f"Issue title: {issue_title}\n"
-        f"Issue body:\n{(issue_body or '')[:4000]}\n\n"
-        f"BEFORE screenshot paths:\n{pre_list}\n\n"
-        f"AFTER screenshot paths:\n{post_list}\n"
-    )
-
-
-def visual_ai_check_cursor(
-    *,
-    issue_title: str,
-    issue_body: str,
-    pre_paths: list[Path],
-    post_paths: list[Path],
-) -> dict:
-    key = cursor_api_key()
-    if not key:
-        raise GitHubError("missing CURSOR_API_KEY")
-    model = os.environ.get("CURSOR_MODEL") or DEFAULT_CURSOR_MODEL
-    try:
-        from cursor_sdk import Agent, AgentOptions, LocalAgentOptions
-        from cursor_sdk_patch import patch_callback_auth_tokens
-
-        patch_callback_auth_tokens()
-    except ImportError as exc:
-        raise GitHubError(
-            "cursor-sdk is not installed; pip install -r requirements-agents.txt"
-        ) from exc
-
-    prompt = _visual_prompt(issue_title, issue_body, pre_paths, post_paths)
-    try:
-        result = Agent.prompt(
-            prompt,
-            AgentOptions(
-                model=cursor_model_selection(model),
-                api_key=key,
-                name="post-deploy-visual",
-                mode="plan",
-                local=LocalAgentOptions(cwd=os.getcwd()),
-            ),
-        )
-    except TypeError:
-        try:
-            result = Agent.prompt(
-                prompt,
-                {
-                    "model": cursor_model_dict(model),
-                    "apiKey": key,
-                    "name": "post-deploy-visual",
-                    "mode": "plan",
-                    "local": {"cwd": os.getcwd()},
-                },
-            )
-        except Exception as exc:
-            raise GitHubError(f"Cursor visual failed: {exc}") from exc
-    except Exception as exc:
-        raise GitHubError(f"Cursor visual failed: {exc}") from exc
-
-    status = getattr(result, "status", None)
-    text = (getattr(result, "result", None) or "").strip()
-    if status != "finished":
-        raise GitHubError(
-            f"Cursor visual run status={status!r} "
-            f"agent_id={getattr(result, 'agent_id', '')} "
-            f"result={text[:400]!r}"
-        )
-    if not text:
-        raise GitHubError("Cursor visual returned empty content")
-    return _parse_visual_json(text, model=model, provider="cursor")
-
-
-def visual_ai_check_openai(
-    *,
-    issue_title: str,
-    issue_body: str,
-    pre_paths: list[Path],
-    post_paths: list[Path],
-) -> dict:
-    """OpenAI vision backup when Cursor is unavailable."""
-    key = openai_key()
-    if not key:
-        raise GitHubError("missing OPENAI_API_KEY")
-    model = os.environ.get("OPENAI_MODEL") or DEFAULT_OPENAI_MODEL
-    content: list[dict] = [
-        {
-            "type": "text",
-            "text": (
-                "You compare before/after screenshots of a deployed website.\n"
-                "Return ONLY JSON: "
-                '{"visible": boolean, "summary": "string", "decision": "pass"|"fail"}.\n'
-                "pass if the post screenshots clearly show the issue change; "
-                "fail if unchanged or unrelated.\n\n"
-                f"Issue title: {issue_title}\n"
-                f"Issue body:\n{(issue_body or '')[:4000]}\n"
-            ),
-        }
-    ]
-    for label, paths in (("BEFORE", pre_paths), ("AFTER", post_paths)):
-        content.append({"type": "text", "text": f"\n{label} screenshots follow."})
-        for p in paths:
-            b64 = base64.b64encode(p.read_bytes()).decode("ascii")
-            content.append(
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/png;base64,{b64}"},
-                }
-            )
-    payload = {
-        "model": model,
-        "temperature": 0.1,
-        "response_format": {"type": "json_object"},
-        "messages": [{"role": "user", "content": content}],
-    }
-    req = urllib.request.Request(
-        "https://api.openai.com/v1/chat/completions",
-        data=json.dumps(payload).encode("utf-8"),
-        method="POST",
-        headers={
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-            "User-Agent": "agent-web-visual",
-        },
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=180) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise GitHubError(f"OpenAI visual -> {exc.code}: {detail}") from exc
-    choices = body.get("choices") or []
-    out_text = ""
-    if choices:
-        out_text = str((choices[0].get("message") or {}).get("content") or "").strip()
-    return _parse_visual_json(out_text, model=model, provider="openai")
-
-
-def visual_ai_check(
-    *,
-    issue_title: str,
-    issue_body: str,
-    pre_paths: list[Path],
-    post_paths: list[Path],
-) -> dict:
-    """Compare before/after screenshots: Cursor preferred, OpenAI backup."""
-    force = (os.environ.get("VISUAL_PROVIDER") or "").strip().lower()
-    errors: list[str] = []
-
-    def _try_cursor() -> dict | None:
-        if not cursor_api_key():
-            return None
-        try:
-            return visual_ai_check_cursor(
-                issue_title=issue_title,
-                issue_body=issue_body,
-                pre_paths=pre_paths,
-                post_paths=post_paths,
-            )
-        except Exception as exc:
-            errors.append(f"cursor: {exc}")
-            return None
-
-    def _try_openai() -> dict | None:
-        if not openai_key():
-            return None
-        try:
-            return visual_ai_check_openai(
-                issue_title=issue_title,
-                issue_body=issue_body,
-                pre_paths=pre_paths,
-                post_paths=post_paths,
-            )
-        except Exception as exc:
-            errors.append(f"openai: {exc}")
-            return None
-
-    if force in {"cursor", "cursor-sdk", "composer"}:
-        order = ["cursor", "openai"]
-    elif force in {"openai", "chatgpt"}:
-        order = ["openai", "cursor"]
-    else:
-        order = ["cursor", "openai"]
-
-    for name in order:
-        got = _try_cursor() if name == "cursor" else _try_openai()
-        if got is not None:
-            return got
-
-    if not cursor_api_key() and not openai_key():
-        return {
-            "visible": None,
-            "summary": "CURSOR_API_KEY and OPENAI_API_KEY missing; skipped visual AI check",
-            "decision": "skip",
-            "model": "",
-            "provider": "none",
-        }
-    raise GitHubError(
-        "visual AI check failed: " + " | ".join(errors or ["no providers"])
-    )
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", required=True)
@@ -403,19 +243,43 @@ def main(argv: list[str] | None = None) -> int:
             or find_issue_from_commit(args.repo, args.sha)
         )
         default = api("GET", f"/repos/{owner}/{name}").get("default_branch") or "main"
+        short = (args.sha or "local")[:12] or "local"
+        # Record evidence on a dedicated branch + auto-merge PR rather than
+        # pushing straight to the default branch — same reason and pattern as
+        # freeze_shipped_migrations.py's maybe_commit_freeze (issue #362): the
+        # workflow-governance ruleset rejects direct bot pushes to a
+        # protected branch with a 422.
+        record_branch = record_branch_name(args.sha)
+        create_branch(args.repo, record_branch, base_branch=default)
         base_url = resolve_base_url(args.base_url)
         health = wait_healthy(base_url)
         health_slim = {k: v for k, v in health.items() if not str(k).startswith("_")}
         health_rec = record_health(
             args.repo,
-            default,
+            record_branch,
             sha=args.sha,
             base_url=base_url,
             health=health,
+            issue=issue_num or None,
+            pr_number=args.pr or None,
         )
+        if not health_rec.get("ok", True):
+            if issue_num:
+                post_issue_comment(
+                    args.repo,
+                    issue_num,
+                    (
+                        "### deploy_health_check\n"
+                        f"- result: `fail`\n"
+                        f"- sha: `{args.sha}`\n"
+                        "- note: post-deploy CRM smoke checks failed; "
+                        "completion blocked until healthy or rolled back.\n"
+                    ),
+                )
+            print("deploy health checks failed", file=sys.stderr)
+            return 1
 
         out = Path("trace/screenshots-post")
-        short = (args.sha or "local")[:12]
         changed: list[str] | None = None
         if args.pr:
             changed = fetch_pr_changed_paths(args.repo, args.pr)
@@ -451,7 +315,7 @@ def main(argv: list[str] | None = None) -> int:
                 else f".agent/screenshots/deploy-{short}/post"
             )
             post_urls = (
-                upload_to_branch(args.repo, default, post_files, prefix)
+                upload_to_branch(args.repo, record_branch, post_files, prefix)
                 if post_files
                 else []
             )
@@ -461,7 +325,20 @@ def main(argv: list[str] | None = None) -> int:
             + (f" ([recorded]({health_rec['url']}))" if health_rec.get("url") else "")
         )
 
+        record_pr = open_or_reuse_record_pr(
+            args.repo, record_branch, default, short=short, base_url=base_url
+        )
+
         if not issue_num:
+            # No linked issue to comment on — post the evidence to the
+            # record PR itself so its CODEOWNER reviewer sees the screenshots
+            # (not just a generic PR body) before approving auto-merge.
+            notify_deploy(
+                args.repo,
+                None,
+                record_pr["number"],
+                comment_markdown("### deploy_record", base_url, post_urls, extra=[health_line]),
+            )
             print(
                 "No issue number in commit message / linked PR; "
                 f"uploaded post screenshots: {post_urls}; {health_line}"
@@ -470,9 +347,8 @@ def main(argv: list[str] | None = None) -> int:
                 "Tip: include `Closes #N` or `(#N)` in the commit/PR body "
                 "so Reviewer gets deploy_visual_check on the issue."
             )
+            print(f"record_pr={record_pr['url']}")
             return 0
-
-        issue = api("GET", f"/repos/{owner}/{name}/issues/{issue_num}")
 
         # Before shots are PR-branch previews (no saberistic.com pre-merge).
         pre_files = sorted(
@@ -486,19 +362,12 @@ def main(argv: list[str] | None = None) -> int:
         if pre_files:
             pre_urls = upload_to_branch(
                 args.repo,
-                default,
+                record_branch,
                 pre_files,
                 f".agent/screenshots/issue-{issue_num}/pre",
             )
 
         if not post_files and changed is not None:
-            visual = {
-                "visible": None,
-                "summary": "No public pages affected by merge; visual check skipped",
-                "decision": "skip",
-                "model": "",
-                "provider": "none",
-            }
             body = (
                 "### deploy_visual_check\n"
                 f"- deploy: `{base_url}`\n"
@@ -507,27 +376,17 @@ def main(argv: list[str] | None = None) -> int:
                 f"{health_line}\n"
                 "- routes (public, PR-affected): (none)\n"
                 "- note: no public pages affected; screenshots skipped\n"
-                f"- visual_decision: `{visual['decision']}`\n"
-                f"- visual_summary: {visual['summary']}\n"
             )
-            post_issue_comment(args.repo, issue_num, body)
+            notify_deploy(args.repo, issue_num, record_pr["number"], body)
         else:
-            visual = visual_ai_check(
-                issue_title=issue.get("title") or "",
-                issue_body=issue.get("body") or "",
-                pre_paths=pre_files,
-                post_paths=post_files,
-            )
-
+            # No automated pass/fail here — an admin reviews the linked
+            # screenshots manually (see #372-class evidence-PR conflicts and
+            # false negatives on non-visual/backend-only changes).
             extra = [
                 "- phase: `post-deploy`",
                 f"- issue: #{issue_num}",
                 health_line,
-                f"- visual_provider: `{visual.get('provider')}`",
-                f"- visual_decision: `{visual.get('decision')}`",
-                f"- visual_visible: `{visual.get('visible')}`",
-                f"- visual_model: `{visual.get('model')}`",
-                f"- visual_summary: {visual.get('summary')}",
+                "- note: visual verification is manual — review the screenshots below.",
             ]
             if routes and changed is not None:
                 extra.insert(
@@ -548,7 +407,7 @@ def main(argv: list[str] | None = None) -> int:
                     pre_lines.append(f"- **{name}**")
                     pre_lines.append(f"  ![]({u})")
                 body += "\n".join(pre_lines) + "\n"
-            post_issue_comment(args.repo, issue_num, body)
+            notify_deploy(args.repo, issue_num, record_pr["number"], body)
 
         try:
             from acceptance import (
@@ -571,15 +430,15 @@ def main(argv: list[str] | None = None) -> int:
                 f"- all_done: `false`\n- note: refresh failed (`{acc_exc}`)\n",
             )
 
-        if visual.get("decision") == "fail":
-            post_issue_comment(
-                args.repo,
-                issue_num,
-                "@human-review Post-deploy visual check failed — change may not be visible on production.\n",
+        print(
+            json.dumps(
+                {
+                    "issue": issue_num,
+                    "post": post_urls,
+                    "record_pr": record_pr["url"],
+                }
             )
-            print("visual check failed", file=sys.stderr)
-            return 1
-        print(json.dumps({"issue": issue_num, "visual": visual, "post": post_urls}))
+        )
         return 0
     except Exception as exc:
         print(f"FAIL: {exc}", file=sys.stderr)

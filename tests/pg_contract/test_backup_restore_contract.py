@@ -16,7 +16,7 @@ from scripts.crm_backup import (
     verify_restore,
 )
 
-# Migration 019 seeds the default Saberistic ICP version and ten rules.
+# Migration 021 seeds the default Saberistic ICP version and ten rules.
 MIGRATION_SEEDED_TABLE_COUNTS: dict[str, int] = {
     "icp_scoring_versions": 1,
     "icp_scoring_rules": 10,

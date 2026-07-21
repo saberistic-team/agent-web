@@ -17,6 +17,7 @@ from app.admin_auth import SESSION_COOKIE_NAME
 from app.admin_preview import PREVIEW_PIPELINE_COMPANY_IDS
 from app.icp_scoring import default_icp_rules
 from app.main import app
+from tests.conftest import enable_admin_preview_env
 
 client = TestClient(app, follow_redirects=False)
 
@@ -217,7 +218,7 @@ def test_icp_scores_preview_mode_renders_mock_rows(
     authenticated_admin: dict[str, Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch)
     response = client.get("/admin/signals", cookies=authenticated_admin["cookies"])
     assert response.status_code == 200
     assert "Preview data" in response.text
@@ -230,7 +231,7 @@ def test_icp_rules_preview_mode_renders_defaults(
     authenticated_admin: dict[str, Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch)
     response = client.get("/admin/signals/rules", cookies=authenticated_admin["cookies"])
     assert response.status_code == 200
     assert "vertical_fit" in response.text
@@ -245,7 +246,7 @@ def test_icp_detail_preview_mode_renders_override(
 ) -> None:
     from app.admin_preview import PREVIEW_PIPELINE_COMPANY_IDS
 
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch)
     response = client.get(
         f"/admin/signals/{PREVIEW_PIPELINE_COMPANY_IDS[1]}",
         cookies=authenticated_admin["cookies"],
