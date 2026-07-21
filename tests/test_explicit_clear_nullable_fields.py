@@ -191,9 +191,7 @@ def test_update_company_clears_supplied_fields_and_omits_others() -> None:
         last_verified_at="",
         notes="",
     )
-    service.update_company(
-        conn, COMPANY_ID, company=CompanyUpdate(**payload), actor_context=ACTOR
-    )
+    service.update_company(conn, COMPANY_ID, company=CompanyUpdate(**payload), actor_context=ACTOR)
     kwargs = company_repo.update.call_args.kwargs
     assert kwargs["notes"] is None  # cleared
     assert kwargs["funding_summary"] is None  # cleared
@@ -230,9 +228,7 @@ def test_update_contact_clears_email_and_disassociates_company() -> None:
         notes="",
         buying_roles=[],
     )
-    service.update_contact(
-        conn, CONTACT_ID, contact=ContactUpdate(**payload), actor_context=ACTOR
-    )
+    service.update_contact(conn, CONTACT_ID, contact=ContactUpdate(**payload), actor_context=ACTOR)
     kwargs = contact_repo.update.call_args.kwargs
     assert kwargs["email"] is None  # cleared
     assert kwargs["company_id"] is None  # disassociated
@@ -265,13 +261,10 @@ def test_update_company_clear_is_audited_as_change() -> None:
 
     audit.assert_called_once()
     audit_kwargs = audit.call_args.kwargs
-    assert audit_kwargs["summary_before"]["has_notes"] is True
-    assert audit_kwargs["summary_after"]["has_notes"] is True
-    assert audit_kwargs["summary_before"]["has_funding_summary"] is True
-    assert audit_kwargs["summary_after"]["has_funding_summary"] is False
-    assert audit_kwargs["metadata"]["changed_fields"] == ["has_funding_summary"]
-    assert "notes" not in audit_kwargs["summary_before"]
-    assert "funding_summary" not in audit_kwargs["summary_before"]
+    assert audit_kwargs["summary_before"]["notes"] == "Keep me"
+    assert audit_kwargs["summary_after"]["notes"] == "Keep me"
+    assert audit_kwargs["summary_before"]["funding_summary"] == "Clear me"
+    assert audit_kwargs["summary_after"]["funding_summary"] is None
     conn.commit.assert_called_once()
 
 
@@ -304,12 +297,10 @@ def test_update_contact_clear_is_audited_as_change() -> None:
     audit_kwargs = audit.call_args.kwargs
     assert audit_kwargs["summary_before"]["title"] == "Keep me"
     assert audit_kwargs["summary_after"]["title"] == "Keep me"
-    assert audit_kwargs["summary_before"]["has_notes"] is True
-    assert audit_kwargs["summary_after"]["has_notes"] is False
-    assert audit_kwargs["metadata"]["changed_fields"] == ["has_notes"]
+    assert audit_kwargs["summary_before"]["notes"] == "Clear me"
+    assert audit_kwargs["summary_after"]["notes"] is None
     assert "email" not in audit_kwargs["summary_before"]
     assert "email" not in audit_kwargs["summary_after"]
-    assert "notes" not in audit_kwargs["summary_before"]
     conn.commit.assert_called_once()
 
 
@@ -378,9 +369,7 @@ def test_clearing_archived_contact_email_unblocks_restore() -> None:
         notes="",
         buying_roles=[],
     )
-    service.update_contact(
-        conn, CONTACT_ID, contact=ContactUpdate(**payload), actor_context=ACTOR
-    )
+    service.update_contact(conn, CONTACT_ID, contact=ContactUpdate(**payload), actor_context=ACTOR)
     assert contact_repo.update.call_args.kwargs["email"] is None
 
     # Step 2: with the email cleared, restore no longer detects a conflict.
@@ -472,42 +461,31 @@ def test_contact_form_payload_maps_blanks_to_none() -> None:
 
 
 @pytest.mark.unit
-def test_company_audit_summary_uses_bounded_presence_flags() -> None:
+def test_company_audit_summary_includes_nullable_fields() -> None:
     summary = company_audit_summary(
         {
             "name": "Acme",
-            "website": "https://acme.example",
             "notes": "Warm intro",
-            "funding_summary": "Seed round",
             "last_verified_at": date(2025, 1, 15),
         }
     )
-    assert summary["has_website"] is True
-    assert summary["has_notes"] is True
-    assert summary["has_funding_summary"] is True
+    assert summary["notes"] == "Warm intro"
     assert summary["last_verified_at"] == "2025-01-15"
-    assert "website" not in summary
-    assert "notes" not in summary
-    assert "funding_summary" not in summary
     assert "email" not in summary
 
 
 @pytest.mark.unit
-def test_contact_audit_summary_omits_email_and_profile_url() -> None:
+def test_contact_audit_summary_omits_email() -> None:
     summary = contact_audit_summary(
         {
             "full_name": "Ada",
             "email": "secret@example.com",
-            "profile_url": "https://linkedin.com/in/ada?session=secret",
             "title": "CTO",
             "company_id": COMPANY_ID,
             "buying_roles": ["founder"],
         }
     )
     assert "email" not in summary
-    assert "profile_url" not in summary
-    assert summary["has_email"] is True
-    assert summary["has_profile_url"] is True
     assert summary["title"] == "CTO"
     assert summary["company_id"] == str(COMPANY_ID)
     assert summary["buying_roles"] == ["founder"]

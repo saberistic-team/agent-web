@@ -49,6 +49,14 @@ from app.contacts import (
     contact_safe_summary,
     normalize_email,
 )
+from app.crm_lifecycle_audit import (
+    company_transition_summary,
+    contact_transition_summary,
+    record_company_create,
+    record_company_update_if_changed,
+    record_contact_create,
+    record_contact_update_if_changed,
+)
 from app.crm_uow import crm_transaction
 from app.patch import UNSET
 from app.linkedin_import import (
@@ -729,11 +737,10 @@ class CrmService:
         with crm_transaction(conn):
             duplicates = self._repos.companies.find_by_domain(conn, company.domain) if company.domain else []
             created = self._repos.companies.create(conn, **company.model_dump())
-            audit_service.record_company_create(
+            record_company_create(
                 conn,
                 actor_context=actor_context,
-                entity_id=str(created["id"]),
-                summary_after=company_audit_summary(created),
+                company=created,
             )
         return {
             "company": created,
@@ -767,23 +774,13 @@ class CrmService:
             )
             if updated is None:
                 return None
-            summary_after = company_audit_summary(updated)
-            changed_fields = audit_service.audit_lifecycle_changed_fields(
-                summary_before,
-                summary_after,
-                before_row=existing,
-                after_row=updated,
-                content_fields=audit_service.COMPANY_REDACTED_CONTENT_FIELDS,
+            record_company_update_if_changed(
+                conn,
+                actor_context=actor_context,
+                entity_id=str(company_id),
+                summary_before=summary_before,
+                summary_after=company_audit_summary(updated),
             )
-            if changed_fields:
-                audit_service.record_company_update(
-                    conn,
-                    actor_context=actor_context,
-                    entity_id=str(company_id),
-                    summary_before=summary_before,
-                    summary_after=summary_after,
-                    metadata={"changed_fields": changed_fields},
-                )
         return {
             "company": updated,
             "duplicate_warnings": find_domain_duplicate_warnings(
@@ -798,11 +795,11 @@ class CrmService:
         *,
         actor_context: ActorContext,
     ) -> dict[str, Any] | None:
-        existing = self._repos.companies.get_by_id(conn, company_id)
-        if existing is None or existing.get("archived_at") is not None:
-            return None
-        summary_before = company_audit_summary(existing)
         with crm_transaction(conn):
+            existing = self._repos.companies.get_by_id(conn, company_id)
+            if existing is None or existing.get("archived_at") is not None:
+                return None
+            summary_before = company_transition_summary(existing)
             archived = self._repos.companies.archive(conn, company_id)
             if archived is None:
                 return None
@@ -811,7 +808,7 @@ class CrmService:
                 actor_context=actor_context,
                 entity_id=str(company_id),
                 summary_before=summary_before,
-                summary_after=company_audit_summary(archived),
+                summary_after=company_transition_summary(archived),
             )
             return archived
 
@@ -822,8 +819,8 @@ class CrmService:
         *,
         actor_context: ActorContext,
     ) -> dict[str, Any] | None:
-        existing = self._repos.companies.get_by_id(conn, company_id)
-        if existing is None or existing.get("archived_at") is None:
+        archived = self._repos.companies.get_by_id(conn, company_id)
+        if archived is None or archived.get("archived_at") is None:
             return None
         with crm_transaction(conn):
             restored = self._repos.companies.restore(conn, company_id)
@@ -833,8 +830,8 @@ class CrmService:
                 conn,
                 actor_context=actor_context,
                 entity_id=str(company_id),
-                summary_before=company_audit_summary(existing),
-                summary_after=company_audit_summary(restored),
+                summary_before=company_transition_summary(archived),
+                summary_after=company_transition_summary(restored),
             )
             return restored
 
@@ -910,11 +907,10 @@ class CrmService:
                 if not _is_contact_email_unique_violation(exc):
                     raise
                 raise ContactEmailConflictError(contact.email) from exc
-            audit_service.record_contact_create(
+            record_contact_create(
                 conn,
                 actor_context=actor_context,
-                entity_id=str(created["id"]),
-                summary_after=contact_audit_summary(created),
+                contact=created,
             )
         duplicate_warnings = [
             *find_profile_url_duplicate_warnings(profile_matches, profile_url=contact.profile_url),
@@ -974,23 +970,13 @@ class CrmService:
                 raise ContactEmailConflictError(contact.email) from exc
             if updated is None:
                 return None
-            summary_after = contact_audit_summary(updated)
-            changed_fields = audit_service.audit_lifecycle_changed_fields(
-                summary_before,
-                summary_after,
-                before_row=existing,
-                after_row=updated,
-                content_fields=audit_service.CONTACT_REDACTED_CONTENT_FIELDS,
+            record_contact_update_if_changed(
+                conn,
+                actor_context=actor_context,
+                entity_id=str(contact_id),
+                summary_before=summary_before,
+                summary_after=contact_audit_summary(updated),
             )
-            if changed_fields:
-                audit_service.record_contact_update(
-                    conn,
-                    actor_context=actor_context,
-                    entity_id=str(contact_id),
-                    summary_before=summary_before,
-                    summary_after=summary_after,
-                    metadata={"changed_fields": changed_fields},
-                )
         duplicate_warnings = [
             *find_profile_url_duplicate_warnings(
                 profile_matches, profile_url=contact.profile_url, exclude_contact_id=contact_id
@@ -1018,11 +1004,11 @@ class CrmService:
         *,
         actor_context: ActorContext,
     ) -> dict[str, Any] | None:
-        existing = self._repos.contacts.get_by_id(conn, contact_id)
-        if existing is None or existing.get("archived_at") is not None:
-            return None
-        summary_before = contact_audit_summary(existing)
         with crm_transaction(conn):
+            existing = self._repos.contacts.get_by_id(conn, contact_id)
+            if existing is None or existing.get("archived_at") is not None:
+                return None
+            summary_before = contact_transition_summary(existing)
             archived = self._repos.contacts.archive(conn, contact_id)
             if archived is None:
                 return None
@@ -1031,7 +1017,7 @@ class CrmService:
                 actor_context=actor_context,
                 entity_id=str(contact_id),
                 summary_before=summary_before,
-                summary_after=contact_audit_summary(archived),
+                summary_after=contact_transition_summary(archived),
             )
             return archived
 
@@ -1067,8 +1053,8 @@ class CrmService:
                     conn,
                     actor_context=actor_context,
                     contact_id=str(contact_id),
-                    summary_before=contact_audit_summary(archived),
-                    summary_after=contact_audit_summary(restored),
+                    summary_before=contact_transition_summary(archived),
+                    summary_after=contact_transition_summary(restored),
                 )
                 return ContactRestoreResult(outcome="success", contact=restored)
         except pg_errors.UniqueViolation as exc:

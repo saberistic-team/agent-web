@@ -81,39 +81,29 @@ def _format_bounded_audit_summary(action: str, summary: Any) -> str:
         if summary.get("created_at"):
             parts.append(f"at={html.escape(str(summary['created_at']))}")
         return f'<code class="audit-json">{", ".join(parts)}</code>'
-    if action in {
-        audit_service.ACTION_COMPANY_CREATE,
-        audit_service.ACTION_COMPANY_UPDATE,
+    if action in (
         audit_service.ACTION_COMPANY_ARCHIVE,
         audit_service.ACTION_COMPANY_RESTORE,
-    }:
-        parts = [f"name={html.escape(str(summary.get('name', '')))}"]
-        if summary.get("domain"):
-            parts.append(f"domain={html.escape(str(summary['domain']))}")
-        if summary.get("archived_at"):
-            parts.append(f"archived={html.escape(str(summary['archived_at']))}")
-        elif summary.get("archived_at") is None and action in {
-            audit_service.ACTION_COMPANY_RESTORE,
-            audit_service.ACTION_COMPANY_ARCHIVE,
-        }:
-            parts.append("archived=—")
-        return f'<code class="audit-json">{", ".join(parts)}</code>'
-    if action in {
-        audit_service.ACTION_CONTACT_CREATE,
-        audit_service.ACTION_CONTACT_UPDATE,
         audit_service.ACTION_CONTACT_ARCHIVE,
         audit_service.ACTION_CONTACT_RESTORE,
-    }:
-        parts = [f"name={html.escape(str(summary.get('full_name', '')))}"]
+    ):
+        label = "name" if action.startswith("company.") else "full_name"
+        parts = [f"{label}={html.escape(str(summary.get(label, '')))}"]
+        if summary.get("archived_at") is not None:
+            parts.append(f"archived_at={html.escape(str(summary['archived_at']))}")
+        else:
+            parts.append("archived_at=—")
+        return f'<code class="audit-json">{", ".join(parts)}</code>'
+    if action in (
+        audit_service.ACTION_COMPANY_CREATE,
+        audit_service.ACTION_CONTACT_CREATE,
+    ):
+        label = "name" if action == audit_service.ACTION_COMPANY_CREATE else "full_name"
+        parts = [f"{label}={html.escape(str(summary.get(label, '')))}"]
+        if summary.get("domain"):
+            parts.append(f"domain={html.escape(str(summary['domain']))}")
         if summary.get("company_id"):
             parts.append(f"company={html.escape(str(summary['company_id']))}")
-        if summary.get("archived_at"):
-            parts.append(f"archived={html.escape(str(summary['archived_at']))}")
-        elif summary.get("archived_at") is None and action in {
-            audit_service.ACTION_CONTACT_RESTORE,
-            audit_service.ACTION_CONTACT_ARCHIVE,
-        }:
-            parts.append("archived=—")
         return f'<code class="audit-json">{", ".join(parts)}</code>'
     return _format_json_blob(summary)
 

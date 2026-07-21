@@ -145,11 +145,11 @@ legacy rows.
 | `pipeline_activity.create` | Pipeline activity creation via `CrmService.record_pipeline_activity` |
 | `company.create` | Company creation via `CrmService.create_company` |
 | `company.update` | Company field updates via `CrmService.update_company` |
-| `company.archive` | Company logical delete via `CrmService.archive_company` |
+| `company.archive` | Company archive (logical delete) via `CrmService.archive_company` |
 | `company.restore` | Company restore via `CrmService.restore_company` |
 | `contact.create` | Contact creation via `CrmService.create_contact` |
 | `contact.update` | Contact field updates via `CrmService.update_contact` |
-| `contact.archive` | Contact logical delete via `CrmService.archive_contact` |
+| `contact.archive` | Contact archive (logical delete) via `CrmService.archive_contact` |
 | `contact.restore` | Contact restore via `CrmService.restore_contact` |
 | `brief.convert` | Brief-to-CRM conversion via `CrmService.convert_project_brief` |
 
@@ -166,13 +166,13 @@ Do not copy research bodies, activity summaries, raw source URLs/query strings, 
 
 ### Company and contact lifecycle audit payloads
 
-Immutable audit rows for company and contact lifecycle mutations store **bounded metadata only**:
+Immutable audit rows for company/contact lifecycle mutations store **bounded metadata only**:
 
-- **Create (`company.create`, `contact.create`):** entity ID, normalized registry fields (name, domain/category/stage for companies; full name, title, company link for contacts), and boolean presence flags (`has_notes`, `has_funding_summary`, `has_profile_url`). No free-form notes, funding text, profile URLs, or email addresses.
-- **Update (`company.update`, `contact.update`):** bounded before/after snapshots plus `metadata.changed_fields` listing which fields changed. **No-op updates** (no bounded field changes) write **no audit event**.
-- **Archive / restore (`company.archive`, `company.restore`, `contact.archive`, `contact.restore`):** `archived_at` state transition plus bounded identity fields. Archive is a logical delete — events never claim physical removal.
+- **Create (`company.create`, `contact.create`):** after-state summary using the same field allowlist as updates (`company_audit_summary` / `contact_audit_summary`). Contact email is never stored.
+- **Update (`company.update`, `contact.update`):** before/after snapshots using the same allowlists. When redacted before/after summaries are identical, **no event is written** (documented no-op behavior).
+- **Archive / restore (`company.archive`, `company.restore`, `contact.archive`, `contact.restore`):** transition metadata only — entity display label (`name` or `full_name`) and `archived_at` before/after. Archive/restore events never claim physical deletion.
 
-All lifecycle mutations require authenticated `ActorContext` (actor + correlation id) and share one service-owned transaction with the business write.
+Do not copy free-form notes, raw email addresses, profile URLs, complete funding text, session/CSRF values, or request bodies into lifecycle audit rows.
 
 ## Admin UI
 
@@ -218,13 +218,7 @@ Review destructive changes in a period:
 ```sql
 SELECT created_at, actor, action, entity_type, entity_id, summary_before
 FROM audit_events
-WHERE action IN (
-  'entity.delete',
-  'company.archive',
-  'contact.archive',
-  'pipeline.update',
-  'scoring_rule.update'
-)
+WHERE action IN ('entity.delete', 'pipeline.update', 'scoring_rule.update')
   AND created_at BETWEEN $1 AND $2
 ORDER BY created_at DESC;
 ```

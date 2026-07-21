@@ -103,65 +103,6 @@ def redact_value(value: Any) -> Any:
     return str(value)
 
 
-def audit_changed_fields(
-    summary_before: dict[str, Any] | None,
-    summary_after: dict[str, Any] | None,
-) -> list[str]:
-    """Return sorted field names whose bounded audit values differ."""
-    if summary_before is None and summary_after is None:
-        return []
-    before = summary_before or {}
-    after = summary_after or {}
-    keys = set(before.keys()) | set(after.keys())
-    return sorted(key for key in keys if before.get(key) != after.get(key))
-
-
-# Redacted CRM fields omitted from summaries as raw values. Presence flips are
-# recorded via ``has_*`` keys; content-only replaces still need a field-name
-# signal so updates are audited and share the mutation transaction.
-COMPANY_REDACTED_CONTENT_FIELDS = ("notes", "funding_summary", "website")
-CONTACT_REDACTED_CONTENT_FIELDS = ("notes", "profile_url", "email")
-
-
-def _normalize_redacted_content(value: Any) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-def audit_lifecycle_changed_fields(
-    summary_before: dict[str, Any] | None,
-    summary_after: dict[str, Any] | None,
-    *,
-    before_row: dict[str, Any],
-    after_row: dict[str, Any],
-    content_fields: tuple[str, ...],
-) -> list[str]:
-    """Diff bounded summaries, plus content-only changes on redacted fields.
-
-    When a redacted field's text changes but its ``has_*`` flag does not (both
-    non-empty, or both empty), include the bare field name in ``changed_fields``
-    without storing the sensitive value in the ledger.
-    """
-    changed = audit_changed_fields(summary_before, summary_after)
-    changed_set = set(changed)
-    before_summary = summary_before or {}
-    after_summary = summary_after or {}
-    for field in content_fields:
-        if _normalize_redacted_content(before_row.get(field)) == _normalize_redacted_content(
-            after_row.get(field)
-        ):
-            continue
-        has_key = f"has_{field}"
-        if has_key in before_summary or has_key in after_summary:
-            if has_key in changed_set:
-                continue
-        if field not in changed_set:
-            changed.append(field)
-            changed_set.add(field)
-    return sorted(changed)
-
-
 def redact_summary(data: dict[str, Any] | None) -> dict[str, Any] | None:
     """Strip secrets and oversized values from before/after summaries."""
     if data is None:
@@ -174,6 +115,14 @@ def redact_summary(data: dict[str, Any] | None) -> dict[str, Any] | None:
         else:
             safe[key] = redact_value(value)
     return safe
+
+
+def audit_summaries_equal(
+    before: dict[str, Any] | None,
+    after: dict[str, Any] | None,
+) -> bool:
+    """Return True when redacted before/after snapshots are identical."""
+    return redact_summary(before) == redact_summary(after)
 
 
 def record_event(
@@ -391,7 +340,6 @@ def record_company_update(
     entity_id: str,
     summary_before: dict[str, Any] | None = None,
     summary_after: dict[str, Any] | None = None,
-    metadata: dict[str, Any] | None = None,
     repository: AuditEventRepository | None = None,
 ) -> dict[str, Any] | None:
     return record_event(
@@ -402,7 +350,6 @@ def record_company_update(
         entity_id=entity_id,
         summary_before=summary_before,
         summary_after=summary_after,
-        metadata=metadata,
         repository=repository,
     )
 
@@ -475,35 +422,12 @@ def record_contact_update(
     entity_id: str,
     summary_before: dict[str, Any] | None = None,
     summary_after: dict[str, Any] | None = None,
-    metadata: dict[str, Any] | None = None,
     repository: AuditEventRepository | None = None,
 ) -> dict[str, Any] | None:
     return record_event(
         conn,
         actor_context=actor_context,
         action=ACTION_CONTACT_UPDATE,
-        entity_type="contact",
-        entity_id=entity_id,
-        summary_before=summary_before,
-        summary_after=summary_after,
-        metadata=metadata,
-        repository=repository,
-    )
-
-
-def record_contact_archive(
-    conn: psycopg.Connection,
-    *,
-    actor_context: ActorContext,
-    entity_id: str,
-    summary_before: dict[str, Any] | None = None,
-    summary_after: dict[str, Any] | None = None,
-    repository: AuditEventRepository | None = None,
-) -> dict[str, Any] | None:
-    return record_event(
-        conn,
-        actor_context=actor_context,
-        action=ACTION_CONTACT_ARCHIVE,
         entity_type="contact",
         entity_id=entity_id,
         summary_before=summary_before,
@@ -608,6 +532,27 @@ def record_brief_convert(
         action=ACTION_BRIEF_CONVERT,
         entity_type="project_brief",
         entity_id=brief_id,
+        summary_after=summary_after,
+        repository=repository,
+    )
+
+
+def record_contact_archive(
+    conn: psycopg.Connection,
+    *,
+    actor_context: ActorContext,
+    entity_id: str,
+    summary_before: dict[str, Any] | None = None,
+    summary_after: dict[str, Any] | None = None,
+    repository: AuditEventRepository | None = None,
+) -> dict[str, Any] | None:
+    return record_event(
+        conn,
+        actor_context=actor_context,
+        action=ACTION_CONTACT_ARCHIVE,
+        entity_type="contact",
+        entity_id=entity_id,
+        summary_before=summary_before,
         summary_after=summary_after,
         repository=repository,
     )
