@@ -21,6 +21,7 @@ from app.acquisition_pipeline import (
 )
 from app.actor_context import ActorContext
 from app.brief_conversion import (
+    ARCHIVED_CONTACT_ACK_REQUIRED_MESSAGE,
     BriefConversionError,
     BriefConversionIdempotencyRace,
     BriefConversionValidationError,
@@ -56,12 +57,18 @@ from app.linkedin_import import (
     SOURCE_TYPE_LINKEDIN,
     compute_import_checksum,
     contact_matches_snapshot,
-    contact_needs_update,
     empty_summary_counts,
     increment_summary,
     normalize_connection_row,
     parse_export_date,
     snapshot_contact,
+)
+from app.linkedin_reconcile import (
+    MatchResolution,
+    compute_importable_updates,
+    preview_connection_row,
+    resolve_company_id,
+    resolve_connection_match,
 )
 from app.pipeline_stages import (
     initial_pipeline_stage_for_brief_status,
@@ -259,6 +266,7 @@ class CrmService:
         contact_choice: str,
         selected_company_id: UUID | None = None,
         selected_contact_id: UUID | None = None,
+        acknowledge_archived_identity: bool = False,
     ) -> dict[str, Any]:
         """Create or link CRM records and pipeline state for one project brief."""
         brief_id = int(brief["id"])
@@ -277,11 +285,18 @@ class CrmService:
             else []
         )
         contact_match = self._repos.contacts.get_active_by_email(conn, email)
+        archived_match = (
+            None
+            if contact_match
+            else self._repos.contacts.get_archived_by_email(conn, email)
+        )
         self._validate_conversion_choices(
             company_choice=company_choice,
             contact_choice=contact_choice,
             company_matches=company_matches,
             contact_match=contact_match,
+            archived_match=archived_match,
+            acknowledge_archived_identity=acknowledge_archived_identity,
             selected_company_id=selected_company_id,
             selected_contact_id=selected_contact_id,
         )
@@ -609,6 +624,8 @@ class CrmService:
         contact_choice: str,
         company_matches: list[dict[str, Any]],
         contact_match: dict[str, Any] | None,
+        archived_match: dict[str, Any] | None = None,
+        acknowledge_archived_identity: bool = False,
         selected_company_id: UUID | None,
         selected_contact_id: UUID | None,
     ) -> None:
@@ -616,6 +633,10 @@ class CrmService:
             raise BriefConversionValidationError("Choose whether to create or link a company.")
         if contact_choice not in {"new", "existing"}:
             raise BriefConversionValidationError("Choose whether to create or link a contact.")
+
+        if archived_match is not None and contact_choice == "new":
+            if not acknowledge_archived_identity:
+                raise BriefConversionValidationError(ARCHIVED_CONTACT_ACK_REQUIRED_MESSAGE)
 
         if company_matches and company_choice == "existing":
             if selected_company_id is None:
@@ -1062,6 +1083,7 @@ class CrmService:
         self,
         conn: psycopg.Connection,
         *,
+        actor_context: ActorContext,
         record_type: str,
         company_id: UUID,
         body: str,
@@ -1091,6 +1113,24 @@ class CrmService:
                 review_at=review_at,
                 expires_at=expires_at,
                 metadata=metadata,
+            )
+            audit_service.record_research_record_create(
+                conn,
+                actor_context=actor_context,
+                research_record_id=str(record["id"]),
+                summary_after=audit_service.research_record_audit_summary(
+                    research_record_id=str(record["id"]),
+                    company_id=str(company_id),
+                    contact_id=str(contact_id) if contact_id is not None else None,
+                    record_type=record_type,
+                    source_name=source_name,
+                    source_url=source_url,
+                    observed_value=observed_value,
+                    observed_at=observed_at,
+                    confidence=confidence,
+                    review_at=review_at,
+                    expires_at=expires_at,
+                ),
             )
         return record
 
@@ -1124,6 +1164,117 @@ class CrmService:
             )
         return {"batch_id": batch_id, "created": created, "record_count": len(created)}
 
+    def _resolve_linkedin_match(
+        self,
+        conn: psycopg.Connection,
+        identity: dict[str, Any],
+    ) -> tuple[MatchResolution, UUID | None]:
+        profile_url = identity.get("profile_url")
+        profile_matches: list[dict[str, Any]] = []
+        if profile_url:
+            profile_matches = self._repos.contacts.find_by_profile_url(conn, profile_url)
+
+        email_match: dict[str, Any] | None = None
+        import_email = identity.get("email")
+        if import_email:
+            email_match = self._repos.contacts.get_active_by_email(conn, import_email)
+
+        company_id: UUID | None = None
+        company_ambiguity: list[dict[str, Any]] = []
+        name_company_matches: list[dict[str, Any]] = []
+        company_name = identity.get("company_name")
+        if company_name:
+            company_matches = self._repos.companies.find_by_exact_name(conn, company_name)
+            company_id, company_ambiguity = resolve_company_id(
+                company_name,
+                companies_by_name={
+                    company_name.strip().lower(): company_matches,
+                },
+            )
+            if company_id is not None and identity.get("full_name"):
+                name_company_matches = self._repos.contacts.find_by_name_company(
+                    conn,
+                    full_name=str(identity["full_name"]),
+                    company_id=company_id,
+                )
+
+        match = resolve_connection_match(
+            identity,
+            profile_matches=profile_matches,
+            email_match=email_match,
+            name_company_matches=name_company_matches,
+            company_ambiguity=company_ambiguity,
+        )
+        return match, company_id
+
+    def preview_linkedin_reconcile(
+        self,
+        conn: psycopg.Connection,
+        *,
+        connections: list[dict[str, Any]],
+        batch_id: str = "preview",
+    ) -> dict[str, Any]:
+        """Dry-run incremental reconciliation for a LinkedIn connections export."""
+        existing_count = self._repos.contacts.count_active(conn)
+        rows: list[dict[str, Any]] = []
+        summary = {
+            "insert": 0,
+            "update": 0,
+            "unchanged": 0,
+            "conflict": 0,
+            "skipped": 0,
+        }
+
+        for index, raw_row in enumerate(connections):
+            identity = normalize_connection_row(raw_row)
+            match, company_id = self._resolve_linkedin_match(conn, identity)
+            preview_row = preview_connection_row(
+                row_index=index,
+                raw_row=raw_row,
+                match=match,
+                company_id=company_id,
+                batch_id=batch_id,
+            )
+            rows.append(
+                {
+                    "row_index": preview_row.row_index,
+                    "outcome": preview_row.outcome,
+                    "identity": preview_row.identity,
+                    "match_tier": preview_row.match_tier,
+                    "contact_id": preview_row.contact_id,
+                    "contact_label": preview_row.contact_label,
+                    "field_changes": [
+                        {"field": change.field, "before": change.before, "after": change.after}
+                        for change in preview_row.field_changes
+                    ],
+                    "conflict_reason": preview_row.conflict_reason,
+                    "conflict_candidates": [
+                        {
+                            "contact_id": candidate.contact_id,
+                            "full_name": candidate.full_name,
+                            "title": candidate.title,
+                            "company_name": candidate.company_name,
+                            "profile_url": candidate.profile_url,
+                            "email": candidate.email,
+                        }
+                        for candidate in preview_row.conflict_candidates
+                    ],
+                    "detail": preview_row.detail,
+                }
+            )
+            summary[preview_row.outcome] += 1
+
+        touched_ids = {
+            row["contact_id"]
+            for row in rows
+            if row.get("contact_id") and row["outcome"] in {"update", "unchanged"}
+        }
+        return {
+            "rows": rows,
+            "summary_counts": summary,
+            "absent_preserved": max(existing_count - len(touched_ids), 0),
+        }
+
     def commit_linkedin_import(
         self,
         conn: psycopg.Connection,
@@ -1133,7 +1284,7 @@ class CrmService:
         export_date: Any | None = None,
         checksum: str | None = None,
     ) -> dict[str, Any]:
-        """Persist an approved LinkedIn export preview as an auditable import batch."""
+        """Merge LinkedIn connections incrementally without deleting absent records."""
         resolved_checksum = checksum or compute_import_checksum(connections)
         existing = self._repos.import_batches.get_committed_by_checksum(conn, resolved_checksum)
         if existing is not None:
@@ -1149,6 +1300,7 @@ class CrmService:
 
         summary = empty_summary_counts()
         row_records: list[dict[str, Any]] = []
+        seen_at = datetime.now(timezone.utc)
 
         with crm_transaction(conn):
             batch = self._repos.import_batches.create(
@@ -1163,11 +1315,21 @@ class CrmService:
                 summary_counts=summary,
             )
             batch_uuid = UUID(str(batch["id"]))
+            batch_id_str = str(batch_uuid)
 
             for index, raw_row in enumerate(connections):
                 identity = normalize_connection_row(raw_row)
-                profile_url = identity.get("profile_url")
-                if not profile_url:
+                match, company_id = self._resolve_linkedin_match(conn, identity)
+                preview_row = preview_connection_row(
+                    row_index=index,
+                    raw_row=raw_row,
+                    match=match,
+                    company_id=company_id,
+                    batch_id=batch_id_str,
+                    seen_at=seen_at,
+                )
+
+                if preview_row.outcome == "skipped":
                     increment_summary(summary, "skipped")
                     row_records.append(
                         {
@@ -1175,13 +1337,12 @@ class CrmService:
                             "source_kind": SOURCE_KIND_CONNECTION,
                             "source_identity": identity,
                             "outcome": "skipped",
-                            "detail": "Missing or invalid profile URL",
+                            "detail": preview_row.detail,
                         }
                     )
                     continue
 
-                matches = self._repos.contacts.find_by_profile_url(conn, profile_url)
-                if len(matches) > 1:
+                if preview_row.outcome == "conflict":
                     increment_summary(summary, "conflicted")
                     row_records.append(
                         {
@@ -1189,17 +1350,31 @@ class CrmService:
                             "source_kind": SOURCE_KIND_CONNECTION,
                             "source_identity": identity,
                             "outcome": "conflicted",
-                            "detail": "Multiple contacts share this profile URL",
+                            "detail": preview_row.conflict_reason,
                         }
                     )
                     continue
 
-                if not matches:
+                if preview_row.outcome == "insert":
+                    updates, field_sources, _ = compute_importable_updates(
+                        None,
+                        identity,
+                        company_id=company_id,
+                        batch_id=batch_id_str,
+                        seen_at=seen_at,
+                    )
                     contact = self._repos.contacts.create(
                         conn,
-                        full_name=identity.get("full_name") or profile_url.rsplit("/", 1)[-1],
-                        title=identity.get("title"),
-                        profile_url=profile_url,
+                        full_name=updates.get("full_name")
+                        or identity.get("full_name")
+                        or str(identity.get("profile_url") or "Unknown"),
+                        title=updates.get("title"),
+                        profile_url=updates.get("profile_url"),
+                        email=updates.get("email"),
+                        email_permission=updates.get("email_permission"),
+                        company_id=updates.get("company_id"),
+                        last_interaction_at=updates.get("last_interaction_at"),
+                        field_sources=field_sources,
                     )
                     applied = snapshot_contact(contact)
                     increment_summary(summary, "inserted")
@@ -1224,8 +1399,21 @@ class CrmService:
                     )
                     continue
 
-                contact = matches[0]
-                if not contact_needs_update(contact, identity):
+                contact = match.contact
+                if contact is None:
+                    increment_summary(summary, "skipped")
+                    row_records.append(
+                        {
+                            "row_index": index,
+                            "source_kind": SOURCE_KIND_CONNECTION,
+                            "source_identity": identity,
+                            "outcome": "skipped",
+                            "detail": "Match resolution missing contact",
+                        }
+                    )
+                    continue
+
+                if preview_row.outcome == "unchanged":
                     increment_summary(summary, "unchanged")
                     row_records.append(
                         {
@@ -1242,12 +1430,24 @@ class CrmService:
                     continue
 
                 prior = snapshot_contact(contact)
+                updates, field_sources, _ = compute_importable_updates(
+                    contact,
+                    identity,
+                    company_id=company_id,
+                    batch_id=batch_id_str,
+                    seen_at=seen_at,
+                )
                 updated = self._repos.contacts.update(
                     conn,
                     UUID(str(contact["id"])),
-                    full_name=identity.get("full_name") or contact.get("full_name"),
-                    title=identity.get("title") or contact.get("title"),
-                    profile_url=profile_url,
+                    full_name=updates.get("full_name"),
+                    title=updates.get("title"),
+                    profile_url=updates.get("profile_url"),
+                    email=updates.get("email"),
+                    email_permission=updates.get("email_permission"),
+                    company_id=updates.get("company_id"),
+                    last_interaction_at=updates.get("last_interaction_at"),
+                    field_sources=field_sources,
                 )
                 if updated is None:
                     increment_summary(summary, "conflicted")
@@ -1405,9 +1605,11 @@ class CrmService:
                         full_name=prior.get("full_name"),
                         title=prior.get("title"),
                         profile_url=prior.get("profile_url"),
+                        email=prior.get("email"),
                         company_id=UUID(str(prior["company_id"]))
                         if prior.get("company_id")
                         else None,
+                        field_sources=prior.get("field_sources"),
                     )
                     if restored is not None:
                         rollback_summary["reverted_updates"] += 1
@@ -1434,6 +1636,36 @@ class CrmService:
             "batch": updated_batch,
             "rollback_summary": rollback_summary,
         }
+
+    def list_import_conflicts(
+        self,
+        conn: psycopg.Connection,
+        *,
+        batch_id: UUID | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Return unresolved conflict rows from import batches."""
+        if batch_id is not None:
+            return self._repos.import_batches.list_rows_for_batch(
+                conn,
+                batch_id,
+                outcome="conflicted",
+                limit=limit,
+            )
+        batches, _ = self._repos.import_batches.list_page(conn, page=1, per_page=20)
+        conflicts: list[dict[str, Any]] = []
+        for batch in batches:
+            rows = self._repos.import_batches.list_rows_for_batch(
+                conn,
+                UUID(str(batch["id"])),
+                outcome="conflicted",
+                limit=limit,
+            )
+            conflicts.extend(rows)
+            if len(conflicts) >= limit:
+                break
+        return conflicts[:limit]
+
 
     def delete_entity(
         self,
@@ -1641,6 +1873,7 @@ class CrmService:
         self,
         conn: psycopg.Connection,
         *,
+        actor_context: ActorContext,
         company_id: UUID,
         activity: PipelineActivityCreate,
     ) -> dict[str, Any]:
@@ -1653,6 +1886,18 @@ class CrmService:
                 company_id=company_id,
                 contact_id=contact_id,
                 metadata=activity.metadata,
+            )
+            audit_service.record_pipeline_activity_create(
+                conn,
+                actor_context=actor_context,
+                activity_id=str(created["id"]),
+                summary_after=audit_service.pipeline_activity_audit_summary(
+                    activity_id=str(created["id"]),
+                    company_id=str(company_id),
+                    contact_id=str(contact_id) if contact_id is not None else None,
+                    activity_type=activity.activity_type,
+                    created_at=created.get("created_at"),
+                ),
             )
         return created
 

@@ -332,7 +332,7 @@ Stores hashed limiter keys only — no raw usernames or client IPs.
 | `locked_until` | `TIMESTAMPTZ` | Lockout expiry when limit exceeded |
 | `updated_at` | `TIMESTAMPTZ` | Last mutation; used for cleanup |
 
-Indexes: `locked_until`, `updated_at`. See [ADMIN_AUTH.md](ADMIN_AUTH.md).
+Indexes: `locked_until`, `updated_at`, cleanup index on `(updated_at, limiter_key)` (migration `019`). See [ADMIN_AUTH.md](ADMIN_AUTH.md).
 
 ## Migrations
 
@@ -405,6 +405,8 @@ Migrations are **forward-only**. There is no automatic down migration:
 
 1. **Preferred:** ship a new forward migration that reverses or replaces schema/data.
 2. **Emergency:** restore from Render Postgres backup or run manual SQL with DBA review.
+   See [BACKUP_RESTORE.md](BACKUP_RESTORE.md) for provider retention, the redacted
+   application export (`scripts/crm_backup.py`), and the restore runbook.
 
 Never delete rows from `schema_migrations` in production; that would re-run guarded
 steps on restart.

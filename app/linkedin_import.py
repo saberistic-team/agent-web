@@ -1,4 +1,4 @@
-"""LinkedIn export import batch helpers — checksums, identity, and snapshots."""
+"""LinkedIn export import helpers — normalization, checksums, and snapshots."""
 
 from __future__ import annotations
 
@@ -7,21 +7,26 @@ import json
 from datetime import date
 from typing import Any
 
-from app.contacts import normalize_contact_name, normalize_profile_url
+from app.contacts import normalize_contact_name, normalize_email, normalize_profile_url
 
 LINKEDIN_IMPORT_SCHEMA_VERSION = "linkedin_export_v1"
 SOURCE_TYPE_LINKEDIN = "linkedin"
 SOURCE_KIND_CONNECTION = "linkedin_connection"
+SOURCE_MANUAL = "manual"
+SOURCE_LINKEDIN = "linkedin"
 
 IMPORT_OUTCOMES = frozenset({"inserted", "updated", "unchanged", "skipped", "conflicted"})
+PREVIEW_OUTCOMES = frozenset({"insert", "update", "unchanged", "conflict", "skipped"})
 BATCH_STATUSES = frozenset({"committed", "failed", "rolled_back"})
 
 _CONTACT_SNAPSHOT_FIELDS = (
     "full_name",
     "title",
     "profile_url",
+    "email",
     "company_id",
     "archived_at",
+    "field_sources",
 )
 
 
@@ -49,12 +54,20 @@ def normalize_connection_row(row: dict[str, Any]) -> dict[str, Any]:
             profile_url = normalize_profile_url(str(raw_url))
         except ValueError:
             profile_url = None
+    email: str | None = None
+    raw_email = row.get("email") or row.get("Email") or row.get("Email Address")
+    if raw_email:
+        try:
+            email = normalize_email(str(raw_email))
+        except ValueError:
+            email = None
     return {
         "source_kind": SOURCE_KIND_CONNECTION,
         "profile_url": profile_url,
         "full_name": full_name,
         "title": title,
         "company_name": company_name,
+        "email": email,
         "connected_on": connected_on,
     }
 
@@ -82,8 +95,15 @@ def empty_summary_counts() -> dict[str, int]:
 
 
 def increment_summary(summary: dict[str, int], outcome: str) -> None:
-    if outcome in summary:
-        summary[outcome] += 1
+    key = outcome
+    if outcome == "insert":
+        key = "inserted"
+    elif outcome == "update":
+        key = "updated"
+    elif outcome == "conflict":
+        key = "conflicted"
+    if key in summary:
+        summary[key] += 1
 
 
 def snapshot_contact(contact: dict[str, Any]) -> dict[str, Any]:
@@ -137,4 +157,6 @@ def _json_safe(value: Any) -> Any:
         return None
     if hasattr(value, "isoformat"):
         return value.isoformat()
+    if isinstance(value, dict):
+        return value
     return str(value)

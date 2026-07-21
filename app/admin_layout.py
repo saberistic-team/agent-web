@@ -91,6 +91,9 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4",
     "/admin/briefs/4/convert",
     "/admin/briefs/4/convert?error=validation",
+    "/admin/briefs/5/convert",
+    "/admin/briefs/6/convert",
+    "/admin/briefs/7/convert",
     "/admin/briefs/503",
     "/admin/companies/dddddddd-dddd-dddd-dddd-dddddddddd01",
     "/admin/companies/dddddddd-dddd-dddd-dddd-dddddddddd02",
@@ -114,6 +117,7 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbc/edit",
     # Pipeline detail (Next action, Change stage, Log activity, timeline).
     "/admin/pipeline/11111111-1111-1111-1111-111111111111",
+    "/admin/pipeline/11111111-1111-1111-1111-111111111111?error=validation&focus=expected_value_cents",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).

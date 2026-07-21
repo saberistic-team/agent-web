@@ -123,12 +123,10 @@ def test_create_brief_records_lead_and_checkout_events() -> None:
                     "app.main.stripe_service.create_checkout_session",
                     return_value=fake_session,
                 ):
-                    with patch("app.main.analytics_service.track_lead_persisted"):
-                        with patch("app.main.analytics_service.track_checkout_opened"):
-                            with patch(
-                                "app.main.server_analytics.record_server_event",
-                                side_effect=_capture,
-                            ):
+                    with patch(
+                        "app.main.server_analytics.record_server_event",
+                        side_effect=_capture,
+                    ):
                                 response = client.post(
                                     "/api/briefs",
                                     json={
@@ -166,12 +164,10 @@ def test_abandoned_checkout_records_lead_and_checkout_without_payment() -> None:
                     "app.main.stripe_service.create_checkout_session",
                     return_value=fake_session,
                 ):
-                    with patch("app.main.analytics_service.track_lead_persisted"):
-                        with patch("app.main.analytics_service.track_checkout_opened"):
-                            with patch(
-                                "app.main.server_analytics.record_server_event",
-                                side_effect=_capture,
-                            ):
+                    with patch(
+                        "app.main.server_analytics.record_server_event",
+                        side_effect=_capture,
+                    ):
                                 with patch("app.main.db.mark_brief_paid") as mark_paid:
                                     response = client.post("/api/briefs", json=SAMPLE_BRIEF)
                                     mark_paid.assert_not_called()
@@ -219,11 +215,10 @@ def test_stripe_webhook_records_payment_from_verified_state() -> None:
             return_value=fake_event,
         ):
             with patch("app.main.db.mark_brief_paid", return_value=FAKE_PAID_BRIEF):
-                with patch("app.main.analytics_service.track_payment_completed"):
-                    with patch(
-                        "app.main.server_analytics.record_server_event",
-                        side_effect=_capture,
-                    ):
+                with patch(
+                    "app.main.server_analytics.record_server_event",
+                    side_effect=_capture,
+                ):
                         with patch("app.main.email_service.notify_team_of_paid_brief"):
                             with patch("app.main.email_service.notify_customer_of_paid_brief"):
                                 response = client.post(
@@ -263,10 +258,9 @@ def test_repeated_webhook_is_idempotent_for_payment_event() -> None:
             return_value=fake_event,
         ):
             with patch("app.main.db.mark_brief_paid", return_value=None):
-                with patch("app.main.analytics_service.track_payment_completed") as track_payment:
-                    with patch(
-                        "app.main.server_analytics.record_payment_completed"
-                    ) as record_payment:
+                with patch(
+                    "app.main.server_analytics.record_payment_completed"
+                ) as record_payment:
                         response = client.post(
                             "/webhooks/stripe",
                             content=b"{}",
@@ -274,7 +268,6 @@ def test_repeated_webhook_is_idempotent_for_payment_event() -> None:
                         )
 
     assert response.status_code == 200
-    track_payment.assert_not_called()
     record_payment.assert_not_called()
 
 
@@ -301,14 +294,12 @@ def test_brief_submit_without_analytics_context_uses_unlinked_session() -> None:
                     "app.main.stripe_service.create_checkout_session",
                     return_value=fake_session,
                 ):
-                    with patch("app.main.analytics_service.track_lead_persisted"):
-                        with patch("app.main.analytics_service.track_checkout_opened"):
-                            with patch(
-                                "app.main.server_analytics.record_lead_persisted",
-                                side_effect=_capture_lead,
-                            ):
-                                with patch("app.main.server_analytics.record_checkout_opened"):
-                                    response = client.post("/api/briefs", json=SAMPLE_BRIEF)
+                    with patch(
+                        "app.main.server_analytics.record_lead_persisted",
+                        side_effect=_capture_lead,
+                    ):
+                        with patch("app.main.server_analytics.record_checkout_opened"):
+                            response = client.post("/api/briefs", json=SAMPLE_BRIEF)
 
     assert response.status_code == 200
     assert captured_session_ids == [None]
@@ -348,24 +339,22 @@ def test_email_failure_records_notification_outcome_without_blocking_flow() -> N
                     "app.main.stripe_service.create_checkout_session",
                     return_value=fake_session,
                 ):
-                    with patch("app.main.analytics_service.track_lead_persisted"):
-                        with patch("app.main.analytics_service.track_checkout_opened"):
-                            with patch("app.main.server_analytics.record_lead_persisted"):
-                                with patch("app.main.server_analytics.record_checkout_opened"):
+                    with patch("app.main.server_analytics.record_lead_persisted"):
+                        with patch("app.main.server_analytics.record_checkout_opened"):
+                            with patch(
+                                "app.main.email_service.notify_team_of_new_brief",
+                                side_effect=RuntimeError("smtp down"),
+                            ):
+                                with patch(
+                                    "app.main.email_service.notify_customer_of_brief_received"
+                                ):
                                     with patch(
-                                        "app.main.email_service.notify_team_of_new_brief",
-                                        side_effect=RuntimeError("smtp down"),
+                                        "app.main.server_analytics.record_notification_outcome",
+                                        side_effect=_capture_notification,
                                     ):
-                                        with patch(
-                                            "app.main.email_service.notify_customer_of_brief_received"
-                                        ):
-                                            with patch(
-                                                "app.main.server_analytics.record_notification_outcome",
-                                                side_effect=_capture_notification,
-                                            ):
-                                                response = client.post(
-                                                    "/api/briefs", json=SAMPLE_BRIEF
-                                                )
+                                        response = client.post(
+                                            "/api/briefs", json=SAMPLE_BRIEF
+                                        )
 
     assert response.status_code == 200
     assert ("lead_team", "failed") in notification_outcomes
@@ -387,20 +376,18 @@ def test_first_party_disabled_skips_server_event_persistence(
                     "app.main.stripe_service.create_checkout_session",
                     return_value=fake_session,
                 ):
-                    with patch("app.main.analytics_service.track_lead_persisted"):
-                        with patch("app.main.analytics_service.track_checkout_opened"):
+                    with patch(
+                        "app.main.email_service.notify_team_of_new_brief"
+                    ):
+                        with patch(
+                            "app.main.email_service.notify_customer_of_brief_received"
+                        ):
                             with patch(
-                                "app.main.email_service.notify_team_of_new_brief"
-                            ):
-                                with patch(
-                                    "app.main.email_service.notify_customer_of_brief_received"
-                                ):
-                                    with patch(
-                                        "app.server_analytics.persist_analytics_event"
-                                    ) as persist_event:
-                                        response = client.post(
-                                            "/api/briefs", json=SAMPLE_BRIEF
-                                        )
+                                "app.server_analytics.persist_analytics_event"
+                            ) as persist_event:
+                                response = client.post(
+                                    "/api/briefs", json=SAMPLE_BRIEF
+                                )
 
     assert response.status_code == 200
     persist_event.assert_not_called()

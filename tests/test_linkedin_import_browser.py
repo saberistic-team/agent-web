@@ -342,40 +342,32 @@ def upload_zip(page: Any, tmp_path: Path, zip_bytes: bytes, *, name: str = "expo
     zip_path = tmp_path / name
     zip_path.write_bytes(zip_bytes)
     page.set_input_files("#linkedin-export-zip", str(zip_path))
-    page.wait_for_function(
-        "() => document.getElementById('linkedin-import-status').textContent.trim().length > 0"
-        " && !document.getElementById('linkedin-import-status').textContent.includes('Parsing export locally')"
-    )
+    # Admin CSP blocks unsafe-eval; Playwright wait_for_function polls via eval.
+    page.locator("#linkedin-import-status").wait_for(state="attached", timeout=5000)
+    page.locator(
+        "#linkedin-import-status:not(:empty):not(:has-text('Parsing export locally'))"
+    ).wait_for(state="visible", timeout=30000)
 
 
 def status_text(page: Any) -> str:
-    return page.eval_on_selector("#linkedin-import-status", "el => el.textContent")
+    return page.locator("#linkedin-import-status").inner_text()
 
 
 def preview_text(page: Any) -> str:
-    return page.eval_on_selector("#linkedin-import-preview", "el => el.textContent")
+    return page.locator("#linkedin-import-preview").inner_text()
 
 
 def connection_count(page: Any) -> int:
-    return int(
-        page.eval_on_selector(
-            ".linkedin-import-stats",
-            """el => {
-              const items = el.querySelectorAll('div');
-              for (const item of items) {
-                const dt = item.querySelector('dt');
-                if (dt && dt.textContent.trim() === 'Connections') {
-                  return parseInt(item.querySelector('dd').textContent, 10);
-                }
-              }
-              return -1;
-            }""",
-        )
+    row = page.locator(".linkedin-import-stats div").filter(
+        has=page.locator("dt", has_text="Connections")
     )
+    if row.count() == 0:
+        return -1
+    return int(row.first.locator("dd").inner_text())
 
 
 def is_error(page: Any) -> bool:
-    cls = page.eval_on_selector("#linkedin-import-status", "el => el.className")
+    cls = page.locator("#linkedin-import-status").get_attribute("class") or ""
     return "linkedin-import-status--error" in cls
 
 

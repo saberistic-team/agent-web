@@ -138,6 +138,27 @@ def test_admin_screenshot_session_cookie() -> None:
     assert cookie["value"] == "preview-screenshot-session"
 
 
+def test_build_preview_child_env_isolated_from_parent_secrets() -> None:
+    from screenshot_deploy import PREVIEW_CLEARED_SECRETS, build_preview_child_env
+
+    parent = {
+        "PATH": "/usr/bin",
+        "DATABASE_URL": "postgresql://parent/db",
+        "STRIPE_SECRET_KEY": "sk_parent",
+        "RESEND_API_KEY": "re_parent",
+        "GITHUB_TOKEN": "ghp_parent",
+    }
+    env = build_preview_child_env(port=8765, parent_environ=parent)
+    assert env["BASE_URL"] == "http://127.0.0.1:8765"
+    assert env["ADMIN_PREVIEW_MODE"] == "1"
+    assert env["ADMIN_PREVIEW_SEED"] == "33842"
+    assert env["ADMIN_PREVIEW_REFERENCE_TIME"] == "2026-07-14T12:00:00+00:00"
+    for key in PREVIEW_CLEARED_SECRETS:
+        assert env.get(key) == ""
+    assert "GITHUB_TOKEN" not in env
+    assert "ghp_parent" not in env.values()
+
+
 def test_discover_screenshot_routes_public_by_default() -> None:
     routes = discover_screenshot_routes()
     assert "/" in routes
@@ -206,6 +227,11 @@ def test_admin_screenshot_paths_contain_crm_detail_editor_targets() -> None:
     assert "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/edit" in paths
     assert "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbc/edit" in paths
     assert "/admin/pipeline/11111111-1111-1111-1111-111111111111" in paths
+    assert (
+        "/admin/pipeline/11111111-1111-1111-1111-111111111111"
+        "?error=validation&focus=expected_value_cents"
+        in paths
+    )
 
 
 def test_screenshot_basename_encodes_multipart_query() -> None:
@@ -216,6 +242,15 @@ def test_screenshot_basename_encodes_multipart_query() -> None:
     ) == (
         "branch-admin-companies-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa-edit"
         "-error-validation-focus-name.png"
+    )
+    assert screenshot_basename(
+        "branch",
+        "/admin/pipeline/11111111-1111-1111-1111-111111111111"
+        "?error=validation&focus=expected_value_cents",
+        "desktop",
+    ) == (
+        "branch-admin-pipeline-11111111-1111-1111-1111-111111111111"
+        "-error-validation-focus-expected_value_cents.png"
     )
 
 
@@ -228,6 +263,12 @@ def test_focus_field_from_route_parses_query() -> None:
             "/admin/companies/x/edit?error=validation&focus=name"
         )
         == "name"
+    )
+    assert (
+        _focus_field_from_route(
+            "/admin/pipeline/x?error=validation&focus=expected_value_cents"
+        )
+        == "expected_value_cents"
     )
     assert _focus_field_from_route("/admin/companies/x/edit") is None
 

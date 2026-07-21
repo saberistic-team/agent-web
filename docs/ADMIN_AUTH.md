@@ -7,6 +7,10 @@ Parent issue: [#101](https://github.com/saberistic-team/agent-web/issues/101).
 
 ## Overview
 
+- Browser security headers and CSP for `/admin` are documented in
+  [ADMIN_SECURITY_HEADERS.md](ADMIN_SECURITY_HEADERS.md) ([#308](https://github.com/saberistic-team/agent-web/issues/308)).
+- Admin cache isolation (`Cache-Control: no-store, private`) is documented in
+  [ADMIN_CACHE_POLICY.md](ADMIN_CACHE_POLICY.md) ([#337](https://github.com/saberistic-team/agent-web/issues/337)).
 - No public registration, signup, or password-reset routes exist.
 - Admin credentials are configured only through Render environment variables.
 - Successful login creates a new server-side session and sets a `Secure`,
@@ -174,9 +178,13 @@ access logs or metrics for operational visibility if needed.
 | `ADMIN_TRUSTED_PROXY_CIDRS` | Production | Comma-separated trusted proxy CIDRs/IPs for the immediate peer and in-chain hops (Render load balancer / private networks on Render; empty locally) |
 | `ADMIN_TRUSTED_EDGE_CIDRS` | Production | Comma-separated public edge CIDRs (Cloudflare) stripped from the right of `X-Forwarded-For` before selecting the client |
 | `ADMIN_TRUST_PROXY_HEADERS` | **Deprecated** | Legacy boolean; ignored for source resolution unless paired with explicit CIDR settings above. Remove after migration. |
-| `ADMIN_PREVIEW_MODE` | Optional | **CI / local only.** When `1`/`true`, protected `/admin` GET pages render without login and admin pages fill with **randomized mock data** for Playwright screenshots. Hard-disabled if `BASE_URL` contains `saberistic.com`. Never set on production Render. |
-| `ADMIN_PREVIEW_SEED` | Optional | Seed for mock admin randomization (stable screenshots/tests). |
-| `BASE_URL` | Yes | Public site URL; `https://…` enables `Secure` session cookies |
+| `ADMIN_PREVIEW_MODE` | Optional | **CI / local only.** When `1`/`true`, protected `/admin` GET pages render without login and admin pages fill with **randomized mock data** for Playwright screenshots. Requires `APP_ENV=development` (or `preview`), a **positively validated loopback** `BASE_URL` (`localhost` or loopback IP literals only), and `SERVER_BIND_HOST` bound to a loopback interface. Startup fails if preview is combined with staging/production, a public bind address, production proxy CIDRs, `DATABASE_URL`, or production provider secrets. While active, `app/admin_preview_guard.py` denies every unsafe `/admin` method (`POST`, `PUT`, `PATCH`, `DELETE`, …) with `405` before handlers run. Never set on production Render. |
+| `ADMIN_PREVIEW_SEED` | Optional override | Root seed for mock admin randomization (CI default `33842`). |
+| `ADMIN_PREVIEW_REFERENCE_TIME` | Optional override | Frozen UTC timestamp for preview date fields (CI default `2026-07-14T12:00:00+00:00`). |
+| `ADMIN_PREVIEW_FIXTURE_VERSION` | Optional override | Preview fixture schema version (default `1`). |
+| `APP_ENV` | Optional | Explicit application environment: `development`, `preview`, `staging`, or `production`. Defaults to `ANALYTICS_ENV` or `development`. Admin preview bypass is allowed only in `development` / `preview`. |
+| `SERVER_BIND_HOST` | Preview | Loopback bind address for the preview/uvicorn process (`127.0.0.1`, `::1`, or `localhost`). Required when `ADMIN_PREVIEW_MODE` is enabled; public binds (`0.0.0.0`, `::`) fail startup. |
+| `BASE_URL` | Yes | Public site URL; `https://…` enables `Secure` session cookies. For admin preview, must be a validated loopback HTTP origin — not a production hostname, lookalike, or DNS name that merely resolves to loopback. |
 
 Set secrets in the Render dashboard (or locally via `.env` — never commit).
 
@@ -251,6 +259,33 @@ Bounded overlap (recommended):
 4. After `2 × max(window, lockout)` seconds, remove
    `ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET` and redeploy again. Expired rows under
    the previous key are eligible for opportunistic cleanup.
+
+**Overlap semantics.** Previous-secret rows are *guards only*: the new instance
+reads their ``locked_until`` inside the same PostgreSQL transaction that admits
+current-secret counters, but never increments or extends previous-key rows.
+Non-locked failure counts under the previous secret **do not** carry forward to
+the new secret namespace — only an **active** ``locked_until`` on a previous-key
+row blocks admission during overlap.
+
+**Mixed-version race.** During a rolling deploy, an old instance may still
+increment previous-secret rows while a new instance evaluates those rows as
+guards. Admission locks the union of current and guard rows in ascending
+``limiter_key`` order, evaluates guard lockouts after acquiring the row lock, and
+commits once. If an old-instance lockout commits before the new admission
+decision completes, the new request is denied without Argon2 verification. If
+the new admission commits first while the guard row is not yet locked, the
+attempt is permitted; a subsequent old-instance lockout does not retroactively
+revoke that admission.
+
+**Retirement.** Remove ``ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET`` once the overlap
+window has elapsed and no active lockouts remain on previous-key rows. Stale
+previous-key rows are then eligible for bounded cleanup only.
+
+**Rollback.** To abort a rotation in flight, restore the prior
+``ADMIN_LOGIN_LIMITER_SECRET``, clear ``ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET``,
+and redeploy. Current-secret counters written under the aborted ``NEW_SECRET``
+become unreachable (same as a hard reset); restore operational lockout state
+manually if needed.
 
 Hard reset (acceptable when no active lockouts matter):
 
@@ -376,11 +411,14 @@ the correct trust boundary is confirmed.
 ``POST /admin/login`` calls :func:`try_admit_login_attempt` **before** Argon2
 verification. The helper executes one PostgreSQL transaction that:
 
-1. Ensures limiter rows exist for the relevant bucket(s).
-2. Locks those rows with ``SELECT … FOR UPDATE`` in deterministic key order.
-3. Denies admission when any bucket is actively locked (no counter increment).
-4. Otherwise increments failure counters and sets ``locked_until`` when the threshold
-   is reached.
+1. Ensures limiter rows exist for the relevant current-key bucket(s).
+2. Locks the union of current and rotation-guard rows with ``SELECT … FOR UPDATE``
+   in ascending ``limiter_key`` order (deterministic across instances).
+3. Evaluates previous-secret guard ``locked_until`` values after the row lock.
+4. Denies admission when any current or guard bucket is actively locked (no
+   current-key counter increment).
+5. Otherwise increments current-key failure counters and sets ``locked_until``
+   when the threshold is reached.
 
 With limit ``N``, at most ``N`` requests per bucket set can reach password verification
 during a synchronized burst across connections and instances.
@@ -436,16 +474,67 @@ resets automatically. Restore database connectivity to resume shared enforcement
 
 ### Manual cleanup
 
-To prune stale limiter rows manually:
+To prune stale limiter rows manually (repeat until no rows are deleted, or raise
+``LIMIT`` only for controlled maintenance windows):
 
 ```sql
 DELETE FROM admin_login_rate_limits
-WHERE updated_at < NOW() - INTERVAL '30 minutes'
-  AND (locked_until IS NULL OR locked_until < NOW());
+WHERE limiter_key IN (
+    SELECT limiter_key
+    FROM admin_login_rate_limits
+    WHERE updated_at < NOW() - INTERVAL '30 minutes'
+      AND (locked_until IS NULL OR locked_until < NOW())
+    ORDER BY updated_at, limiter_key
+    FOR UPDATE SKIP LOCKED
+    LIMIT 100
+);
 ```
 
-Expired rows are also removed opportunistically after admitted attempts (retention is
-``2 × max(window, lockout)``).
+### Rate-limit row retention
+
+Limiter rows accumulate from source-wide and candidate-wide buckets (including
+arbitrary submitted usernames during credential guessing). Without cleanup,
+eligible rows would grow without bound.
+
+| State | Removed when | Rationale |
+|-------|--------------|-----------|
+| **Active** (recent ``updated_at``) | Never | Required for in-flight protection |
+| **Inside retention** (``updated_at`` within ``2 × max(window, lockout)``) | Never | Matches rolling window / lockout overlap |
+| **Locked** (``locked_until > now``) | Never | Active lockout must persist |
+| **Eligible** (past retention, lockout elapsed or unset) | Opportunistic bounded cleanup | Drains stale digests without blocking login |
+
+Retention: ``2 × max(ADMIN_LOGIN_RATE_WINDOW_SECONDS, ADMIN_LOGIN_LOCKOUT_SECONDS)``
+(default **1800** seconds with 900-second window and lockout).
+
+### Automatic cleanup
+
+After each **admitted** login attempt (reservation before Argon2), the app deletes
+up to **100** eligible rows per request
+(``LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE``). Deletion uses the composite
+``admin_login_rate_limits_cleanup_idx`` index on ``(updated_at, limiter_key)``
+for ordered batch selection; the ``SELECT … FOR UPDATE SKIP LOCKED`` subquery
+lets multiple instances claim disjoint batches without an application mutex
+or long table locks.
+
+| Constant | Value | Meaning |
+|----------|-------|---------|
+| ``LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE`` | 100 | Maximum rows deleted per cleanup call |
+| Retention | ``2 × max(window, lockout)`` | Eligibility cutoff on ``updated_at`` |
+| Ordering | ``updated_at``, ``limiter_key`` | Oldest eligible rows first (deterministic) |
+| Concurrency | ``FOR UPDATE SKIP LOCKED`` | Instances skip rows locked by peers |
+
+One admitted login performs **at most one** cleanup batch; login latency does not
+scale with total expired-row cardinality. Throttled (denied) attempts do not run
+cleanup. Repeated admitted logins eventually drain the backlog.
+
+If cleanup fails (database error), the failure is logged with aggregate fields only
+(``batch_size``, ``deleted_count``, ``duration_ms``, ``likely_backlog_remaining``,
+or error category on failure). Cleanup errors do not affect the admission decision,
+corrupt active lockouts, or force the conservative in-memory fallback — restore
+database connectivity and rely on subsequent admitted logins to resume draining.
+
+Current- and previous-secret HMAC rows share the same retention rule; cleanup does
+not need limiter secret material.
 
 ## Login flow retention
 

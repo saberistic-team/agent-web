@@ -20,6 +20,7 @@ from app.admin_pipeline_pages import render_pipeline_detail_page
 from app.admin_preview import PREVIEW_BRIEF_CONVERT_MATCHES_ID, PREVIEW_PIPELINE_COMPANY_IDS
 from app.brief_service import BriefListFilters
 from app.main import app
+from tests.conftest import enable_admin_preview_env
 
 SITE_CSS = Path(__file__).resolve().parents[1] / "site/assets/site.css"
 ADMIN_CSS = Path(__file__).resolve().parents[1] / "site/assets/admin.css"
@@ -161,6 +162,7 @@ def test_brief_convert_fieldset_and_choice_classes_themed() -> None:
     assert "cursor: pointer" in choice_block
     assert "accent-color: var(--accent)" in css
     assert ".brief-convert-match" in css
+    assert ".brief-convert-archived" in css
     assert ".admin-checkbox" in css
 
 
@@ -376,7 +378,7 @@ def test_research_forms_render_source_url_and_confidence_inputs() -> None:
 def test_preview_pipeline_detail_includes_themed_text_like_inputs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch)
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     response = client.get(
@@ -479,7 +481,7 @@ def test_brief_convert_page_renders_themed_selection_markup() -> None:
 def test_preview_brief_convert_includes_native_selection_controls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch)
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     response = client.get(

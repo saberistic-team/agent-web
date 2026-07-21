@@ -757,6 +757,37 @@ body.admin-app {
   cursor: not-allowed;
 }
 
+.brief-convert-archived {
+  margin-top: 1rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  background: color-mix(in srgb, var(--surface) 40%, transparent);
+}
+
+.brief-convert-archived-title {
+  margin: 0 0 0.5rem;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.brief-convert-archived-note {
+  margin: 0 0 0.85rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.brief-convert-archived-dl {
+  margin: 0 0 0.85rem;
+}
+
+.brief-convert-archived-ack {
+  margin-top: 0.75rem;
+}
+
 .research-evidence-fields {
   border: 1px solid var(--line);
   padding: 1rem 1.25rem;

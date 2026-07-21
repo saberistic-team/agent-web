@@ -44,6 +44,20 @@ Optional overrides:
   Reusable fixtures/helpers live in `tests/pg_contract/conftest.py`. Without
   `TEST_DATABASE_URL` the suite skips locally; CI sets `REQUIRE_TEST_DATABASE=1`
   so it fails closed instead.
+- **Backup / restore (#128):** `scripts/crm_backup.py` exports a redacted CRM
+  manifest and verifies restored databases (table counts, migration noop). See
+  [BACKUP_RESTORE.md](BACKUP_RESTORE.md). Unit tests: `tests/test_crm_backup.py`;
+  live Postgres: `tests/pg_contract/test_backup_restore_contract.py`.
+- **Acquisition lifecycle e2e (#130):** `tests/pg_contract/test_acquisition_lifecycle_e2e.py`
+  walks login → CRM → evidence → import commit/replay → discovery review → scoring
+  → pipeline → analytics → export against live Postgres with deterministic fixtures.
+  Recovery: `tests/pg_contract/test_acquisition_recovery_e2e.py` (failed import or
+  migration must not destroy prior valid state). Both use the `contract` marker and
+  run only in `.github/workflows/pg-contract.yml` — never in the fast CI job.
+- **Live / external discovery:** YC and HTTP adapter tests use fixture loaders
+  (`tests/test_discovery_adapters.py`, `tests/test_discovery_yc_adapter.py`) and
+  stay in the fast `pytest -m "not contract"` job. Do not add live-network discovery
+  calls to the pg_contract e2e suite.
 - **Browser (Playwright, `tests/test_linkedin_import_browser.py`):** drives a
   real Chromium browser against the actual authenticated `/admin/imports`
   page to exercise the client-side ZIP parser
@@ -91,9 +105,14 @@ Any Postgres 16 reachable via `TEST_DATABASE_URL` works (a local cluster, a
 throwaway container, or a managed instance). Each test rebuilds the `public`
 schema, so point it only at a disposable database.
 - **Migration digest freeze:** after a healthy production deploy, the CI job
-  **Freeze shipped migrations** runs `scripts/freeze_shipped_migrations.py` and
-  commits any unfrozen digests with `deploy: freeze …` (skipped by Deploy so
-  Render is not retriggered).
+  **Freeze shipped migrations** runs `scripts/freeze_shipped_migrations.py`,
+  which opens a `deploy/freeze-*` PR (title `deploy: freeze …`, skipped by
+  Deploy so Render is not retriggered when it lands) with any unfrozen
+  digests and enables GitHub auto-merge. Direct pushes to `main` are rejected
+  by the workflow-governance ruleset (issue #359/#362), so this never pushes
+  straight to the branch — a single human CODEOWNER approval is enough; no
+  extra merge click needed. Re-runs against the same missing versions reuse
+  the existing branch/PR.
 - Agent/orchestration scripts under `scripts/` are **not** measured by these
   gates (they have their own tests without `app/` coverage requirements).
 
