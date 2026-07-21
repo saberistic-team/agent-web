@@ -211,6 +211,10 @@ def test_acquisition_lifecycle_end_to_end(lifecycle_env: dict[str, Any]) -> None
     api_response = client.post(
         "/admin/api/imports/linkedin/commit",
         cookies=session_cookies,
+        headers={
+            admin_auth.CSRF_HEADER_NAME: csrf,
+            "Content-Type": "application/json",
+        },
         json={"connections": connections, "checksum": checksum},
     )
     assert api_response.status_code == 200

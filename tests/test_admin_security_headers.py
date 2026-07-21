@@ -177,13 +177,37 @@ def test_admin_login_required_exception_redirect_has_headers() -> None:
 
 @pytest.mark.integration
 def test_admin_json_commit_has_security_headers(authenticated_admin: dict[str, str]) -> None:
-    with mock_db_connection():
+    csrf = admin_auth.derive_session_csrf_token(
+        authenticated_admin[SESSION_COOKIE_NAME],
+        get_settings(),
+    )
+    with mock_db_connection(), patch("app.admin_routes._crm.commit_linkedin_import") as commit:
+        commit.return_value = {
+            "batch": {
+                "id": "11111111-1111-1111-1111-111111111111",
+                "status": "committed",
+                "checksum": "abc123",
+            },
+            "idempotent": False,
+            "summary_counts": {},
+        }
         response = client.post(
             "/admin/api/imports/linkedin/commit",
             cookies=authenticated_admin,
-            json={"batch_label": "test", "rows": []},
+            headers={
+                admin_auth.CSRF_HEADER_NAME: csrf,
+                "Content-Type": "application/json",
+            },
+            json={
+                "connections": [
+                    {
+                        "profile_url": "https://linkedin.com/in/ada-lovelace",
+                        "full_name": "Ada Lovelace",
+                    }
+                ]
+            },
         )
-    assert response.status_code in {400, 422, 503}
+    assert response.status_code == 200
     _assert_admin_security_headers(response)
 
 
