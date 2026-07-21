@@ -143,8 +143,13 @@ legacy rows.
 | `export.request` | Export requests via `CrmService.request_export` |
 | `research_record.create` | Research evidence append via `CrmService.attach_research_record` |
 | `pipeline_activity.create` | Pipeline activity creation via `CrmService.record_pipeline_activity` |
+| `company.create` | Company creation via `CrmService.create_company` |
 | `company.update` | Company field updates via `CrmService.update_company` |
+| `company.archive` | Company archive (logical delete) via `CrmService.archive_company` |
+| `company.restore` | Company restore via `CrmService.restore_company` |
+| `contact.create` | Contact creation via `CrmService.create_contact` |
 | `contact.update` | Contact field updates via `CrmService.update_contact` |
+| `contact.archive` | Contact archive (logical delete) via `CrmService.archive_contact` |
 | `contact.restore` | Contact restore via `CrmService.restore_contact` |
 | `brief.convert` | Brief-to-CRM conversion via `CrmService.convert_project_brief` |
 
@@ -158,6 +163,16 @@ Immutable audit rows for research evidence and pipeline activities store **bound
 - **Pipeline activity (`pipeline_activity.create`):** activity ID, company ID, optional contact ID, allowlisted activity type, and server timestamp. The canonical `activities` row holds the free-form summary and metadata.
 
 Do not copy research bodies, activity summaries, raw source URLs/query strings, or arbitrary metadata into `audit_events`.
+
+### Company and contact lifecycle audit payloads
+
+Immutable audit rows for company/contact lifecycle mutations store **bounded metadata only**:
+
+- **Create (`company.create`, `contact.create`):** after-state summary using the same field allowlist as updates (`company_audit_summary` / `contact_audit_summary`). Contact email is never stored.
+- **Update (`company.update`, `contact.update`):** before/after snapshots using the same allowlists. When redacted before/after summaries are identical, **no event is written** (documented no-op behavior).
+- **Archive / restore (`company.archive`, `company.restore`, `contact.archive`, `contact.restore`):** transition metadata only — entity display label (`name` or `full_name`) and `archived_at` before/after. Archive/restore events never claim physical deletion.
+
+Do not copy free-form notes, raw email addresses, profile URLs, complete funding text, session/CSRF values, or request bodies into lifecycle audit rows.
 
 ## Admin UI
 

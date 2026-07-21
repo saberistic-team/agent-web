@@ -47,6 +47,7 @@ def _seed_valid_crm_state(conn: psycopg.Connection, crm: CrmService) -> dict[str
             domain="prior-valid.example",
             website="https://prior-valid.example",
         ),
+        actor_context=ACTOR,
     )
     company = company_result["company"]
     company_id = UUID(str(company["id"]))
@@ -58,6 +59,7 @@ def _seed_valid_crm_state(conn: psycopg.Connection, crm: CrmService) -> dict[str
             email="prior@prior-valid.example",
             company_id=company_id,
         ),
+        actor_context=ACTOR,
     )
     contact = contact_result["contact"]
     contact_id = UUID(str(contact["id"]))

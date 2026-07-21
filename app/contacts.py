@@ -175,24 +175,36 @@ class ContactCreate(BaseModel):
 def contact_audit_summary(contact: dict[str, Any]) -> dict[str, Any]:
     """Compact contact snapshot for audit events.
 
-    Email is intentionally omitted — it is sensitive and not required to
-    distinguish clear/replace/unchanged semantics for the other patch fields.
+    Email, profile URLs, and free-form notes are omitted; presence flags and
+    normalized registry fields are stored instead.
     """
     company_id = contact.get("company_id")
     last_interaction = contact.get("last_interaction_at")
+    archived_at = contact.get("archived_at")
     buying_roles = contact.get("buying_roles") or []
+    profile_url = contact.get("profile_url")
+    notes = contact.get("notes")
+    email = contact.get("email")
     return {
         "full_name": contact.get("full_name"),
         "title": contact.get("title"),
-        "profile_url": contact.get("profile_url"),
         "email_permission": contact.get("email_permission"),
         "company_id": str(company_id) if company_id else None,
         "last_interaction_at": (
-            last_interaction.isoformat() if last_interaction is not None else None
+            last_interaction.isoformat()
+            if hasattr(last_interaction, "isoformat")
+            else last_interaction
         ),
         "relationship_strength": contact.get("relationship_strength"),
-        "notes": contact.get("notes"),
         "buying_roles": list(buying_roles),
+        "archived_at": (
+            archived_at.isoformat()
+            if hasattr(archived_at, "isoformat")
+            else archived_at
+        ),
+        "has_email": bool(email and str(email).strip()),
+        "has_profile_url": bool(profile_url and str(profile_url).strip()),
+        "has_notes": bool(notes and str(notes).strip()),
     }
 
 
