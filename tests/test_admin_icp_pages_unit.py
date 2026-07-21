@@ -14,6 +14,8 @@ from app.admin_icp_pages import (
 )
 from app.icp_scoring import default_icp_rules
 
+pytestmark = [pytest.mark.unit, pytest.mark.integration]
+
 
 @pytest.mark.unit
 def test_render_icp_scores_list_page_includes_rows_and_preview_banner() -> None:

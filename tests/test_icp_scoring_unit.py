@@ -23,6 +23,8 @@ from app.icp_scoring import (
     validate_rule_ids,
 )
 
+pytestmark = [pytest.mark.unit, pytest.mark.integration]
+
 REFERENCE = datetime(2026, 7, 15, 12, 0, tzinfo=timezone.utc)
 
 
