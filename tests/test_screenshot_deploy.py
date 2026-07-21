@@ -151,12 +151,12 @@ def test_build_preview_child_env_isolated_from_parent_secrets() -> None:
     env = build_preview_child_env(port=8765, parent_environ=parent)
     assert env["BASE_URL"] == "http://127.0.0.1:8765"
     assert env["ADMIN_PREVIEW_MODE"] == "1"
-    assert env["ADMIN_PREVIEW_SEED"] == "33842"
-    assert env["ADMIN_PREVIEW_REFERENCE_TIME"] == "2026-07-14T12:00:00+00:00"
     for key in PREVIEW_CLEARED_SECRETS:
         assert env.get(key) == ""
     assert "GITHUB_TOKEN" not in env
     assert "ghp_parent" not in env.values()
+    assert env["ADMIN_PREVIEW_SEED"] == str(338001)
+    assert env["ADMIN_PREVIEW_REFERENCE_TIME"] == "2026-07-14T12:00:00+00:00"
 
 
 def test_discover_screenshot_routes_public_by_default() -> None:

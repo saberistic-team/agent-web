@@ -28,6 +28,10 @@ from app.admin_preview_security import (
 from app.admin_routes import PREVIEW_SESSION_TOKEN
 from app.config import get_settings
 from app.main import app
+from app.preview_context import (
+    DEFAULT_PREVIEW_REFERENCE_TIME,
+    PREVIEW_FIXTURE_VERSION,
+)
 from screenshot_deploy import (
     PREVIEW_CLEARED_SECRETS,
     build_preview_child_env,
@@ -103,6 +107,8 @@ def test_build_preview_child_env_clears_parent_secrets() -> None:
     assert env["ADMIN_PREVIEW_MODE"] == "1"
     assert env["PATH"] == "/usr/bin"
     assert env["ADMIN_PREVIEW_SEED"] == "99"
+    assert env["ADMIN_PREVIEW_REFERENCE_TIME"] == DEFAULT_PREVIEW_REFERENCE_TIME.isoformat()
+    assert env["ADMIN_PREVIEW_FIXTURE_VERSION"] == str(PREVIEW_FIXTURE_VERSION)
     for key in PREVIEW_CLEARED_SECRETS:
         assert env.get(key) == ""
     assert "sk_live_prod" not in env.values()
