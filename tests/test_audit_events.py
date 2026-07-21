@@ -17,11 +17,14 @@ from fastapi.testclient import TestClient
 from app import admin_auth, audit_service, db
 from app.actor_context import ActorContext
 from app.admin_auth import SESSION_COOKIE_NAME
+from app.admin_response import ADMIN_BROWSER_SECURITY_HEADERS
+from app.admin_response_policy import ADMIN_CACHE_CONTROL
 from app.audit_service import REDACTED_VALUE
 from app.config import get_settings
 from app.crm_service import CrmRepositories, CrmService
 from app.crm_uow import crm_transaction
 from app.main import app
+from tests.conftest import enable_admin_preview_env
 from app.migrations.definitions import MIGRATIONS
 from app.migrations.runner import pending_migrations
 from app.repositories.postgres import PostgresAuditEventRepository
@@ -91,8 +94,8 @@ def test_audit_migration_present_and_ordered() -> None:
 @pytest.mark.unit
 def test_pending_migrations_includes_audit_after_sessions() -> None:
     pending = pending_migrations(applied_versions={"001", "002", "003", "004", "005", "006"})
-    assert len(pending) == 13
-    assert [m.version for m in pending] == ["007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018", "019"]
+    assert len(pending) == 14
+    assert [m.version for m in pending] == ["007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018", "019", "020"]
 
 
 @pytest.mark.unit
@@ -686,7 +689,7 @@ def test_render_admin_section_empty_state() -> None:
 def test_render_admin_page_preview_dashboard(monkeypatch: pytest.MonkeyPatch) -> None:
     from app import admin
 
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch)
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
     html_out = admin.render_admin_page("/admin", admin_username=TEST_USERNAME)
     assert "Today&apos;s attention" in html_out
@@ -740,3 +743,116 @@ def test_audit_migration_triggers_reject_mutations_at_runtime() -> None:
     assert "BEFORE UPDATE ON audit_events" in sql
     assert "BEFORE DELETE ON audit_events" in sql
     assert "RAISE EXCEPTION 'audit_events records are append-only'" in sql
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_anonymous_audit_request_redirects_before_repository_access() -> None:
+    with patch("app.admin_routes.audit_service.list_events") as list_events:
+        response = client.get("/admin/audit")
+    assert response.status_code == 303
+    assert "/admin/login" in response.headers["location"]
+    list_events.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_admin_audit_response_retains_no_store_and_security_headers() -> None:
+    token_hash = admin_auth.hash_session_token("audit-headers-session")
+    row = _session_row(token_hash=token_hash)
+    with mock_db_connection() as conn:
+        with patch("app.admin_routes.db.get_admin_session_by_token_hash", return_value=row):
+            with patch(
+                "app.admin_routes.audit_service.list_events",
+                return_value=([], 0),
+            ):
+                response = client.get(
+                    "/admin/audit",
+                    cookies={SESSION_COOKIE_NAME: "audit-headers-session"},
+                )
+    assert response.status_code == 200
+    assert response.headers.get("cache-control") == ADMIN_CACHE_CONTROL
+    for header, value in ADMIN_BROWSER_SECURITY_HEADERS.items():
+        assert response.headers.get(header.lower()) == value
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_admin_audit_repository_error_is_handled_safely() -> None:
+    token_hash = admin_auth.hash_session_token("audit-db-error-session")
+    row = _session_row(token_hash=token_hash)
+    with mock_db_connection() as conn:
+        with patch("app.admin_routes.db.get_admin_session_by_token_hash", return_value=row):
+            with patch(
+                "app.admin_routes.audit_service.list_events",
+                side_effect=RuntimeError("db unavailable"),
+            ):
+                response = client.get(
+                    "/admin/audit",
+                    cookies={SESSION_COOKIE_NAME: "audit-db-error-session"},
+                )
+    assert response.status_code == 200
+    assert "Audit log temporarily unavailable" in response.text
+    assert response.headers.get("cache-control") == ADMIN_CACHE_CONTROL
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_admin_audit_page_clamps_invalid_page_query() -> None:
+    token_hash = admin_auth.hash_session_token("audit-page-session")
+    row = _session_row(token_hash=token_hash)
+    with mock_db_connection():
+        with patch("app.admin_routes.db.get_admin_session_by_token_hash", return_value=row):
+            with patch(
+                "app.admin_routes.audit_service.list_events",
+                return_value=([], 0),
+            ) as list_events:
+                response = client.get(
+                    "/admin/audit?page=0",
+                    cookies={SESSION_COOKIE_NAME: "audit-page-session"},
+                )
+    assert response.status_code == 200
+    list_events.assert_called_once()
+    assert list_events.call_args.kwargs["page"] == 1
+
+
+@pytest.mark.unit
+def test_render_admin_audit_page_escapes_untrusted_fields() -> None:
+    from app.admin_pages import render_admin_audit_page
+
+    html_out = render_admin_audit_page(
+        admin_username=TEST_USERNAME,
+        events=[
+            {
+                "created_at": datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc),
+                "actor": "<script>alert(1)</script>",
+                "action": "entity<script>",
+                "entity_type": "company",
+                "entity_id": "1",
+                "correlation_id": "corr<script>",
+                "summary_before": None,
+                "summary_after": None,
+            }
+        ],
+        page=1,
+        per_page=50,
+        total=1,
+    )
+    assert "<script>alert(1)</script>" not in html_out
+    assert "&lt;script&gt;" in html_out
+
+
+@pytest.mark.unit
+def test_render_admin_audit_page_db_error_banner() -> None:
+    from app.admin_pages import render_admin_audit_page
+
+    html_out = render_admin_audit_page(
+        admin_username=TEST_USERNAME,
+        events=[],
+        page=1,
+        per_page=50,
+        total=0,
+        db_error=True,
+    )
+    assert "Audit log temporarily unavailable" in html_out
+

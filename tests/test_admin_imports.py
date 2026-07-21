@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from app import admin_auth, db
 from app.admin_auth import SESSION_COOKIE_NAME
 from app.main import app
+from tests.conftest import enable_admin_preview_env
 
 client = TestClient(app, follow_redirects=False)
 
@@ -98,9 +99,8 @@ def test_imports_preview_mode_shows_mock_preview(
     authenticated_admin: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch, base_url="http://localhost:8000")
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
-    monkeypatch.setenv("BASE_URL", "http://localhost:8000")
 
     response = client.get("/admin/imports", cookies=authenticated_admin)
     assert response.status_code == 200
@@ -132,9 +132,8 @@ def test_imports_reconcile_preview_in_preview_mode(
     authenticated_admin: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch, base_url="http://localhost:8000")
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
-    monkeypatch.setenv("BASE_URL", "http://localhost:8000")
 
     response = client.post(
         "/admin/imports/reconcile-preview",

@@ -64,6 +64,7 @@ def _seed_valid_crm_state(conn: psycopg.Connection, crm: CrmService) -> dict[str
 
     evidence = crm.attach_research_record(
         conn,
+        actor_context=ACTOR,
         record_type="verified_fact",
         company_id=company_id,
         body="Existing evidence before failed import",

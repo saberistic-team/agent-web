@@ -35,6 +35,8 @@ services:
         value: "true"
       - key: ANALYTICS_ENV
         value: production
+      - key: APP_ENV
+        value: production
       - key: ADMIN_USERNAME
         sync: false
       - key: ADMIN_PASSWORD_HASH
