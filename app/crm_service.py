@@ -81,17 +81,25 @@ from app.pipeline_stages import (
     pipeline_stage_label,
     validate_stage,
 )
+from app.icp_scoring import (
+    IcpScoringRule,
+    calculate_icp_score,
+    default_icp_rules,
+    rule_from_row,
+)
 from app.repositories import (
     ActivityRepository,
     AdminUserRepository,
     CompanyRepository,
     ContactRepository,
+    IcpScoringRepository,
     ImportBatchRepository,
     PipelineRepository,
     PostgresActivityRepository,
     PostgresAdminUserRepository,
     PostgresCompanyRepository,
     PostgresContactRepository,
+    PostgresIcpScoringRepository,
     PostgresImportBatchRepository,
     PostgresPipelineRepository,
     PostgresResearchRecordRepository,
@@ -111,6 +119,7 @@ class CrmRepositories:
     admin_users: AdminUserRepository
     pipeline: PipelineRepository
     import_batches: ImportBatchRepository
+    icp_scoring: IcpScoringRepository
 
 
 def default_crm_repositories() -> CrmRepositories:
@@ -123,6 +132,7 @@ def default_crm_repositories() -> CrmRepositories:
         admin_users=PostgresAdminUserRepository(),
         pipeline=PostgresPipelineRepository(),
         import_batches=PostgresImportBatchRepository(),
+        icp_scoring=PostgresIcpScoringRepository(),
     )
 
 
@@ -1992,6 +2002,195 @@ class CrmService:
                 summary_after=summary_after,
             )
         return {"rule_id": rule_id, "summary_after": summary_after}
+
+    def list_active_icp_rules(self, conn: psycopg.Connection) -> list[dict[str, Any]]:
+        version = self._repos.icp_scoring.get_active_version(conn)
+        if version is None:
+            return []
+        return self._repos.icp_scoring.list_rules_for_version(conn, version["id"])
+
+    def get_active_icp_version(self, conn: psycopg.Connection) -> dict[str, Any] | None:
+        return self._repos.icp_scoring.get_active_version(conn)
+
+    def publish_icp_rule_version(
+        self,
+        conn: psycopg.Connection,
+        *,
+        actor_context: ActorContext,
+        rules: list[IcpScoringRule],
+        label: str | None = None,
+    ) -> dict[str, Any]:
+        active = self._repos.icp_scoring.get_active_version(conn)
+        if active is None:
+            raise ValueError("No active ICP scoring version configured.")
+        current_rules = [
+            rule_from_row(row)
+            for row in self._repos.icp_scoring.list_rules_for_version(conn, active["id"])
+        ]
+        current_by_id = {rule.id: rule for rule in current_rules}
+        next_number = int(active["version_number"]) + 1
+        version_label = label or f"ICP rules v{next_number}"
+
+        with crm_transaction(conn):
+            self._repos.icp_scoring.deactivate_all_versions(conn)
+            created_version = self._repos.icp_scoring.create_version(
+                conn,
+                version_number=next_number,
+                label=version_label,
+                created_by=actor_context.actor,
+                activate=True,
+            )
+            stored_rules: list[dict[str, Any]] = []
+            for rule in sorted(rules, key=lambda item: (item.sort_order, item.id)):
+                stored = self._repos.icp_scoring.insert_rule(
+                    conn,
+                    version_id=created_version["id"],
+                    rule_id=rule.id,
+                    dimension=rule.dimension,
+                    label=rule.label,
+                    weight=rule.weight,
+                    threshold=rule.threshold.model_dump(),
+                    enabled=rule.enabled,
+                    accept_hypothesis=rule.accept_hypothesis,
+                    sort_order=rule.sort_order,
+                )
+                stored_rules.append(stored)
+                prior = current_by_id.get(rule.id)
+                if prior is None or prior.model_dump() != rule.model_dump():
+                    audit_service.record_scoring_rule_update(
+                        conn,
+                        actor_context=actor_context,
+                        rule_id=rule.id,
+                        summary_before=prior.model_dump() if prior else None,
+                        summary_after=rule.model_dump(),
+                    )
+        return {"version": created_version, "rules": stored_rules}
+
+    def calculate_company_icp_score(
+        self,
+        conn: psycopg.Connection,
+        *,
+        actor_context: ActorContext,
+        company_id: UUID,
+        calculated_at: datetime | None = None,
+    ) -> dict[str, Any]:
+        company = self._repos.companies.get_by_id(conn, company_id)
+        if company is None:
+            raise ValueError("Company not found.")
+        version = self._repos.icp_scoring.get_active_version(conn)
+        if version is None:
+            raise ValueError("No active ICP scoring version configured.")
+        rules = [
+            rule_from_row(row)
+            for row in self._repos.icp_scoring.list_rules_for_version(conn, version["id"])
+        ]
+        contacts = self._repos.contacts.list_for_company(conn, company_id)
+        research_records = self._repos.research_records.list_for_company(conn, company_id)
+        result = calculate_icp_score(
+            company=company,
+            contacts=contacts,
+            research_records=research_records,
+            rules=rules,
+            version_number=int(version["version_number"]),
+            calculated_at=calculated_at,
+        )
+        with crm_transaction(conn):
+            snapshot = self._repos.icp_scoring.insert_snapshot(
+                conn,
+                company_id=company_id,
+                version_id=version["id"],
+                version_number=result.version_number,
+                total_score=result.total_score,
+                computed_score=result.computed_score,
+                breakdown=[item.model_dump() for item in result.breakdown],
+                missing_inputs=result.missing_inputs,
+                calculated_at=result.calculated_at,
+            )
+        return {"company": company, "result": result, "snapshot": snapshot}
+
+    def override_company_icp_score(
+        self,
+        conn: psycopg.Connection,
+        *,
+        actor_context: ActorContext,
+        company_id: UUID,
+        override_score: float,
+        reason: str,
+        calculated_at: datetime | None = None,
+    ) -> dict[str, Any]:
+        stripped_reason = reason.strip()
+        if not stripped_reason:
+            raise ValueError("Override reason is required.")
+        if override_score < 0 or override_score > 10:
+            raise ValueError("Override score must be between 0 and 10.")
+        company = self._repos.companies.get_by_id(conn, company_id)
+        if company is None:
+            raise ValueError("Company not found.")
+        version = self._repos.icp_scoring.get_active_version(conn)
+        if version is None:
+            raise ValueError("No active ICP scoring version configured.")
+        rules = [
+            rule_from_row(row)
+            for row in self._repos.icp_scoring.list_rules_for_version(conn, version["id"])
+        ]
+        contacts = self._repos.contacts.list_for_company(conn, company_id)
+        research_records = self._repos.research_records.list_for_company(conn, company_id)
+        result = calculate_icp_score(
+            company=company,
+            contacts=contacts,
+            research_records=research_records,
+            rules=rules,
+            version_number=int(version["version_number"]),
+            calculated_at=calculated_at,
+            is_override=True,
+            override_reason=stripped_reason,
+            override_by=actor_context.actor,
+            override_score=override_score,
+        )
+        with crm_transaction(conn):
+            snapshot = self._repos.icp_scoring.insert_snapshot(
+                conn,
+                company_id=company_id,
+                version_id=version["id"],
+                version_number=result.version_number,
+                total_score=result.total_score,
+                computed_score=result.computed_score,
+                breakdown=[item.model_dump() for item in result.breakdown],
+                missing_inputs=result.missing_inputs,
+                calculated_at=result.calculated_at,
+                is_override=True,
+                override_reason=stripped_reason,
+                override_by=actor_context.actor,
+            )
+        return {"company": company, "result": result, "snapshot": snapshot}
+
+    def get_company_icp_score_detail(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+    ) -> dict[str, Any] | None:
+        company = self._repos.companies.get_by_id(conn, company_id)
+        if company is None:
+            return None
+        snapshot = self._repos.icp_scoring.get_latest_snapshot_for_company(conn, company_id)
+        version = self._repos.icp_scoring.get_active_version(conn)
+        rules = []
+        if version is not None:
+            rules = self._repos.icp_scoring.list_rules_for_version(conn, version["id"])
+        return {
+            "company": company,
+            "snapshot": snapshot,
+            "active_version": version,
+            "active_rules": rules,
+        }
+
+    def list_company_icp_scores(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        return self._repos.icp_scoring.list_latest_snapshots(conn, limit=limit)
 
     def update_analytics_config(
         self,

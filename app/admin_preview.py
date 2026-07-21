@@ -26,6 +26,7 @@ from app.acquisition_dashboard import (
 )
 from app.pipeline_stages import PIPELINE_STAGES
 from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES, TARGET_STATUSES
+from app.icp_scoring import default_icp_rules
 
 
 COMPANY_NAMES = (
@@ -146,7 +147,7 @@ PREVIEW_PIPELINE_EXPECTED_VALUE_ERROR = (
 _SECTION_COLUMNS: dict[str, tuple[str, ...]] = {
     "/admin/companies": ("Company", "Category", "Stage", "Target", "Verified"),
     "/admin/contacts": ("Name", "Roles", "Company", "Email", "Last touch"),
-    "/admin/signals": ("Signal", "Company", "Score", "Source", "Seen"),
+    "/admin/signals": ("Company", "Score", "Version", "Type", "Calculated"),
     "/admin/pipeline": ("Deal", "Company", "Stage", "Value", "Next step"),
     "/admin/imports": ("Job", "Rows", "Status", "Source", "Started"),
     "/admin/discovery": ("List", "Prospects", "Filter", "Owner", "Refreshed"),
@@ -1816,6 +1817,96 @@ def render_preview_section_main(
             </table>
           </div>
         </section>"""
+
+
+def build_preview_icp_version() -> dict[str, object]:
+    return {
+        "id": UUID("99999999-9999-9999-9999-999999999901"),
+        "version_number": 1,
+        "label": "Default Saberistic ICP",
+        "is_active": True,
+        "created_by": "preview",
+    }
+
+
+def build_preview_icp_rules() -> list[dict[str, object]]:
+    return [rule.model_dump() for rule in default_icp_rules()]
+
+
+def build_preview_icp_score_rows(
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> list[dict[str, object]]:
+    score_rng = rng if rng is not None else _preview_rng("icp_score_rows")
+    now = _resolve_now(now)
+    rows: list[dict[str, object]] = []
+    for index, company_id in enumerate(PREVIEW_PIPELINE_COMPANY_IDS):
+        company = build_preview_company(company_id, now=now)
+        rows.append(
+            {
+                "company_id": company_id,
+                "company_name": company["name"],
+                "total_score": round(score_rng.uniform(3.0, 9.5), 1),
+                "computed_score": round(score_rng.uniform(3.0, 9.5), 1),
+                "version_number": 1,
+                "is_override": index == 1,
+                "calculated_at": now - timedelta(days=index),
+            }
+        )
+    return rows
+
+
+def build_preview_icp_score_detail(
+    company_id: UUID,
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> dict[str, object] | None:
+    _ = rng  # detail fixtures are deterministic; keep param for call-site compatibility
+    now = _resolve_now(now)
+    if company_id not in PREVIEW_PIPELINE_COMPANY_IDS:
+        return None
+    company = build_preview_company(company_id, now=now)
+    rules = default_icp_rules()
+    breakdown = []
+    for index, rule in enumerate(rules):
+        scored = index % 3 != 0
+        breakdown.append(
+            {
+                "rule_id": rule.id,
+                "dimension": rule.dimension,
+                "label": rule.label,
+                "weight": rule.weight,
+                "points_awarded": rule.weight if scored else 0.0,
+                "status": "scored" if scored else "missing_data",
+                "evidence": (
+                    [{"kind": "company_field", "field": "category", "value": "fintech"}]
+                    if scored
+                    else []
+                ),
+                "missing_inputs": [] if scored else ["company.stage"],
+            }
+        )
+    is_override = company_id == PREVIEW_PIPELINE_COMPANY_IDS[1]
+    computed_score = round(sum(item["points_awarded"] for item in breakdown), 1)
+    total_score = 8.5 if is_override else computed_score
+    return {
+        "company": company,
+        "active_version": build_preview_icp_version(),
+        "snapshot": {
+            "company_id": company_id,
+            "version_number": 1,
+            "total_score": total_score,
+            "computed_score": computed_score,
+            "breakdown": breakdown,
+            "missing_inputs": ["company.stage", "research_records"],
+            "calculated_at": now,
+            "is_override": is_override,
+            "override_reason": "Partner intro confirmed offline" if is_override else None,
+            "override_by": "preview-operator" if is_override else None,
+        },
+    }
 
 
 def build_preview_linkedin_reconcile(

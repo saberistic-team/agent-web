@@ -439,6 +439,73 @@ class ProjectBriefRepository(Protocol):
     ) -> dict[str, Any] | None: ...
 
 
+class IcpScoringRepository(Protocol):
+    def get_active_version(self, conn: psycopg.Connection) -> dict[str, Any] | None: ...
+
+    def get_version_by_number(
+        self, conn: psycopg.Connection, version_number: int
+    ) -> dict[str, Any] | None: ...
+
+    def list_rules_for_version(
+        self, conn: psycopg.Connection, version_id: UUID
+    ) -> list[dict[str, Any]]: ...
+
+    def create_version(
+        self,
+        conn: psycopg.Connection,
+        *,
+        version_number: int,
+        label: str,
+        created_by: str,
+        activate: bool,
+    ) -> dict[str, Any]: ...
+
+    def deactivate_all_versions(self, conn: psycopg.Connection) -> None: ...
+
+    def insert_rule(
+        self,
+        conn: psycopg.Connection,
+        *,
+        version_id: UUID,
+        rule_id: str,
+        dimension: str,
+        label: str,
+        weight: float,
+        threshold: dict[str, Any],
+        enabled: bool,
+        accept_hypothesis: bool,
+        sort_order: int,
+    ) -> dict[str, Any]: ...
+
+    def insert_snapshot(
+        self,
+        conn: psycopg.Connection,
+        *,
+        company_id: UUID,
+        version_id: UUID,
+        version_number: int,
+        total_score: float,
+        computed_score: float,
+        breakdown: list[dict[str, Any]],
+        missing_inputs: list[str],
+        calculated_at: datetime,
+        is_override: bool = False,
+        override_reason: str | None = None,
+        override_by: str | None = None,
+    ) -> dict[str, Any]: ...
+
+    def get_latest_snapshot_for_company(
+        self, conn: psycopg.Connection, company_id: UUID
+    ) -> dict[str, Any] | None: ...
+
+    def list_latest_snapshots(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]: ...
+
+
 class AuditEventRepository(Protocol):
     def append(
         self,

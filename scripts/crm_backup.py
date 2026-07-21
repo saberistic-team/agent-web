@@ -54,6 +54,9 @@ CRM_BACKUP_TABLES: tuple[str, ...] = (
     "analytics_events",
     "analytics_sessions",
     "analytics_event_rate_limits",
+    "icp_scoring_versions",
+    "icp_scoring_rules",
+    "company_icp_score_snapshots",
 )
 
 # Distribution queries: (key, sql) — aggregates only, no row-level PII.

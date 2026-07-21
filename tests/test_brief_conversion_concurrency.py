@@ -480,6 +480,7 @@ def _conversion_service(shared_db: _SharedBriefConversionDatabase) -> CrmService
             admin_users=MagicMock(),
             pipeline=_InMemoryPipelineRepo(shared_db),
             import_batches=MagicMock(),
+            icp_scoring=MagicMock(),
         )
     )
 
@@ -624,6 +625,7 @@ def test_unique_violation_race_returns_winner_without_partial_writes() -> None:
             admin_users=MagicMock(),
             pipeline=_InMemoryPipelineRepo(shared_db),
             import_batches=MagicMock(),
+            icp_scoring=MagicMock(),
         )
     )
     conn = _make_conn(shared_db)
