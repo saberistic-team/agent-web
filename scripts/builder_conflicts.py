@@ -615,7 +615,7 @@ def default_resolve_file(
         "Never drop imports, router wiring (`admin_router`), Protocol/repository "
         "exports, cookie/session symbol names, or migration catalog entries that "
         "either side defines — union both sides when unsure. Prefer keeping "
-        "main's auth/session APIs when they conflict with obsolete Basic-auth tests. Never create circular imports between `app.admin_routes` and feature routers (`admin_pipeline_routes`, etc.): mount feature routers from `app.main` only — do not `include_router` them at the bottom of admin_routes."
+        "main's auth/session APIs when they conflict with obsolete Basic-auth tests. Never create circular imports between `app.admin_routes` and feature routers (`admin_pipeline_routes`, etc.): mount feature routers from `app.main` only — do not `include_router` them at the bottom of admin_routes. Prefer keeping code nimble: do not collapse split modules back into mega-files when both sides are coherent."
     )
     user = (
         f"{brief}\n\n"
