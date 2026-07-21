@@ -192,11 +192,11 @@ def test_author_self_approval_is_rejected() -> None:
 
 def test_stale_approval_after_material_change_is_rejected() -> None:
     ok, reason = independent_codeowner_approval_satisfied(
-        pr_author="saberistic",
+        pr_author="builder-bot",
         head_sha="new-head",
         reviews=[
             PullRequestReview(
-                author_login="mehdidehdar",
+                author_login="saberistic",
                 state="APPROVED",
                 commit_oid="old-head",
             )
@@ -208,11 +208,11 @@ def test_stale_approval_after_material_change_is_rejected() -> None:
 
 def test_independent_human_codeowner_approval_succeeds() -> None:
     ok, reason = independent_codeowner_approval_satisfied(
-        pr_author="saberistic",
+        pr_author="builder-bot",
         head_sha="abc123",
         reviews=[
             PullRequestReview(
-                author_login="mehdidehdar",
+                author_login="saberistic",
                 state="APPROVED",
                 commit_oid="abc123",
             )
