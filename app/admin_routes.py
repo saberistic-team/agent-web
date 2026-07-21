@@ -754,7 +754,9 @@ def admin_company_research(
         company = _crm.get_company(conn, company_id)
         if company is None:
             raise HTTPException(status_code=404, detail="Company not found")
-        contacts = _crm.list_contacts_for_company(conn, company_id)
+        contacts = _crm.list_contacts_for_company(
+            conn, company_id, include_archived=True
+        )
         records = _crm.list_research_for_company(conn, company_id)
     return HTMLResponse(
         admin_research_pages.render_admin_company_research_page(

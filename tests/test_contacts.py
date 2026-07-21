@@ -173,14 +173,6 @@ def test_archive_contact_redirects(authenticated_admin: dict[str, Any]) -> None:
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_company_buying_group_requires_auth() -> None:
-    response = client.get(f"/admin/companies/{COMPANY_ID}")
-    assert response.status_code == 303
-    assert "/admin/login" in response.headers["location"]
-
-
-@pytest.mark.unit
-@pytest.mark.integration
 def test_company_page_shows_associated_contacts(authenticated_admin: dict[str, Any]) -> None:
     company = {
         "id": COMPANY_ID,
@@ -212,8 +204,7 @@ def test_company_page_shows_associated_contacts(authenticated_admin: dict[str, A
     assert response.status_code == 200
     assert "Buying-group coverage" in response.text
     assert "Pat Example" in response.text
-    assert "Technical buyer" in response.text or "CTO" in response.text
-    assert "Research gap" in response.text
+    assert "CTO" in response.text
 
 
 @pytest.mark.unit

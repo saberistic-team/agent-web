@@ -879,8 +879,8 @@ def build_preview_company_contacts(
     """Contacts linked to a preview company detail page."""
     if company_id != PREVIEW_COMPANY_POPULATED_ID:
         return []
-    rng = rng or _preview_rng()
-    now = now or datetime.now(timezone.utc)
+    rng = _resolve_rng(rng, "company_contacts:populated")
+    now = _resolve_now(now)
     populated = build_preview_contact(PREVIEW_CONTACT_POPULATED_ID, rng=rng, now=now)
     assert populated is not None
     first = rng.choice(CONTACT_FIRST)

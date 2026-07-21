@@ -7,7 +7,6 @@ from typing import Any
 
 from app.buying_group import (
     COVERAGE_STATUS_LABELS,
-    BuyingGroupView,
     WarmIntroPath,
     build_buying_group_view,
     safe_profile_link,
