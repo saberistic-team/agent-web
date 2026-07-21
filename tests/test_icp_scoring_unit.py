@@ -23,9 +23,6 @@ from app.icp_scoring import (
     validate_rule_ids,
 )
 
-# Dual-marked so Reviewer's integration coverage gate counts the ICP engine.
-pytestmark = pytest.mark.integration
-
 REFERENCE = datetime(2026, 7, 15, 12, 0, tzinfo=timezone.utc)
 
 
