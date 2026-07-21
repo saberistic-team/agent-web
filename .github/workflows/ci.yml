@@ -193,6 +193,11 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
           DEPLOY_BASE_URL: ${{ vars.DEPLOY_BASE_URL }}
+          # Bounded post-deploy log inspection (#280). Owner id is optional —
+          # crm_deploy_health resolves it from the service when unset.
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          RENDER_OWNER_ID: ${{ secrets.RENDER_OWNER_ID }}
           # Passed via env, not interpolated straight into the run: string —
           # a commit message containing a `"` (e.g. quoting a 422 error
           # message) previously closed the --commit-message string early and

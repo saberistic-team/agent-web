@@ -475,6 +475,10 @@ def ai_check_remaining(
         "defines (learned from #167). saberistic.com shots are post-deploy only. "
         "Do NOT mark criteria not_done solely for missing production `pre-*` "
         "PNGs or missing `/admin` shots on saberistic.com.\n"
+        "Do NOT mark 'ready to deploy' / 'ready to merge' criteria not_done "
+        "solely because this acceptance_checklist is not yet all_done or the "
+        "PR is not yet review:approved — that is circular; judge deployability "
+        "from CI green, implementer completeness, and product evidence.\n"
         "If evidence is missing, status must be not_done.\n"
     )
     slim = {
@@ -721,6 +725,29 @@ def close_issue_if_accepted(
 ) -> None:
     """Close only when acceptance checklist is complete; comment with evidence."""
     latest = require_checklist_complete(repo, issue)
+    if merge_sha:
+        from crm_deploy_health import require_post_merge_deploy_health
+
+        health_gate = require_post_merge_deploy_health(
+            repo,
+            issue,
+            merge_sha,
+            pr_number=pr_number,
+        )
+        if health_gate.get("required"):
+            record = health_gate.get("record") or {}
+            post_issue_comment(
+                repo,
+                issue,
+                (
+                    "### deploy_health_gate\n"
+                    "- result: `pass`\n"
+                    f"- sha: `{merge_sha}`\n"
+                    f"- record: `{health_gate.get('path')}`\n"
+                    f"- post_deploy_functional_health: "
+                    f"`{(record.get('verification_layers') or {}).get('post_deploy_functional_health')}`\n"
+                ),
+            )
     owner, name = split_repo(repo)
     bits = [
         "### acceptance_close",
