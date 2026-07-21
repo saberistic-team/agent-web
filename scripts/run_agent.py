@@ -1451,7 +1451,7 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
                     branch_url=dual.branch_url,
                     branch_urls=branch_urls,
                     targets=routes,
-                    reproducibility_manifest=dual.reproducibility_manifest,
+                    reproducibility=dual.reproducibility,
                 )
                 comment_on_issue_or_pr(repo, pr_number, body_shots)
                 comment_on_issue_or_pr(repo, issue, body_shots)
