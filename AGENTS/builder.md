@@ -264,6 +264,25 @@ Regressing those surfaces creates screenshot 404/500s and Builder↔Reviewer
 loops on unrelated PRs (learned from #109 / #180 and #110 / #181). Prefer
 surgical edits over rewriting whole `admin_routes.py` / migration files.
 
+## Keep code nimble and readable
+
+Prefer small, readable units over growing mega-modules. When the issue
+touches a large file (or your change would push one further over the
+codegen per-file ceiling — see [docs/MODELS.md](../docs/MODELS.md)), take
+chances to:
+
+1. **Break functions into smaller pieces** with clear names and one job each.
+2. **Split large files into multiple files** (feature routers like
+   `admin_pipeline_routes.py`, helpers, page modules) instead of appending
+   to already-huge shared files.
+3. **Split large folders into subfolders** when a package is becoming a
+   dumping ground — keep imports mountable from `app.main` without cycles.
+
+Stay in issue scope: split only what you are already editing or what
+unblocks a safe surgical change. Do not drive-by-refactor unrelated trees.
+Mount feature routers from `app.main` only — never
+`include_router` back into `admin_routes` (#107).
+
 ## Contaminated PR heads (anti-loop)
 
 When `builder_conflicts` repeatedly returns `broken_after_resolve` after
