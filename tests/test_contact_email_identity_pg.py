@@ -29,10 +29,13 @@ import pytest
 from psycopg import errors as pg_errors
 from psycopg.rows import dict_row
 
+from app.actor_context import ActorContext
 from app.contacts import ContactCreate, ContactEmailConflictError, ContactUpdate
 from app.crm_service import CrmService, _is_contact_email_unique_violation
 from app.migrations.runner import apply_migrations
 from app.repositories.postgres import PostgresContactRepository
+
+ACTOR = ActorContext(actor="operator", correlation_id="corr-email-identity")
 
 _REQUIRED = (os.environ.get("REQUIRE_TEST_DATABASE") or "").strip() in {"1", "true", "yes"}
 _DATABASE_URL = (os.environ.get("TEST_DATABASE_URL") or "").strip()
@@ -192,13 +195,18 @@ def test_create_contact_duplicate_active_email_raises_conflict(
 ) -> None:
     """Service create path surfaces ContactEmailConflictError from a real UniqueViolation."""
     service = CrmService()
-    service.create_contact(pg_conn, contact=ContactCreate(full_name="First", email="dup@example.com"))
+    service.create_contact(
+        pg_conn,
+        contact=ContactCreate(full_name="First", email="dup@example.com"),
+        actor_context=ACTOR,
+    )
 
     with pytest.raises(ContactEmailConflictError) as exc_info:
         service.create_contact(
             pg_conn,
             # Different case + name; the active partial index must still reject it.
             contact=ContactCreate(full_name="Second", email="DUP@example.com"),
+            actor_context=ACTOR,
         )
     assert exc_info.value.email == "dup@example.com"
     assert isinstance(exc_info.value.__cause__, pg_errors.UniqueViolation)
@@ -218,10 +226,15 @@ def test_update_contact_to_duplicate_active_email_raises_conflict(
 ) -> None:
     """Service update path surfaces ContactEmailConflictError from a real UniqueViolation."""
     service = CrmService()
-    service.create_contact(pg_conn, contact=ContactCreate(full_name="Owner", email="owner@example.com"))
+    service.create_contact(
+        pg_conn,
+        contact=ContactCreate(full_name="Owner", email="owner@example.com"),
+        actor_context=ACTOR,
+    )
     mover = service.create_contact(
         pg_conn,
         contact=ContactCreate(full_name="Mover", email="mover@example.com"),
+        actor_context=ACTOR,
     )
     mover_id = UUID(str(mover["contact"]["id"]))
 
@@ -230,6 +243,7 @@ def test_update_contact_to_duplicate_active_email_raises_conflict(
             pg_conn,
             mover_id,
             contact=ContactUpdate(full_name="Mover", email="OWNER@example.com"),
+            actor_context=ACTOR,
         )
     assert exc_info.value.email == "owner@example.com"
     assert isinstance(exc_info.value.__cause__, pg_errors.UniqueViolation)

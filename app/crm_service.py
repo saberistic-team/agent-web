@@ -32,7 +32,6 @@ from app.brief_conversion_lock import acquire_brief_conversion_lock
 from app.companies import (
     CompanyCreate,
     CompanyUpdate,
-    company_audit_summary,
     find_domain_duplicate_warnings,
     normalize_domain,
 )
@@ -40,7 +39,6 @@ from app.contacts import (
     ContactCreate,
     ContactEmailConflictError,
     ContactUpdate,
-    contact_audit_summary,
     find_email_duplicate_warnings,
     find_name_company_duplicate_warnings,
     find_profile_url_duplicate_warnings,
@@ -48,6 +46,14 @@ from app.contacts import (
     ContactSafeSummary,
     contact_safe_summary,
     normalize_email,
+)
+from app.crm_lifecycle_audit import (
+    company_transition_summary,
+    contact_transition_summary,
+    record_company_create,
+    record_company_update_if_changed,
+    record_contact_create,
+    record_contact_update_if_changed,
 )
 from app.crm_uow import crm_transaction
 from app.patch import UNSET
@@ -734,10 +740,16 @@ class CrmService:
         conn: psycopg.Connection,
         *,
         company: CompanyCreate,
+        actor_context: ActorContext,
     ) -> dict[str, Any]:
         with crm_transaction(conn):
             duplicates = self._repos.companies.find_by_domain(conn, company.domain) if company.domain else []
             created = self._repos.companies.create(conn, **company.model_dump())
+            record_company_create(
+                conn,
+                actor_context=actor_context,
+                company=created,
+            )
         return {
             "company": created,
             "duplicate_warnings": find_domain_duplicate_warnings(
@@ -751,15 +763,12 @@ class CrmService:
         company_id: UUID,
         *,
         company: CompanyUpdate,
-        actor_context: ActorContext | None = None,
+        actor_context: ActorContext,
     ) -> dict[str, Any] | None:
         with crm_transaction(conn):
             existing = self._repos.companies.get_by_id(conn, company_id)
             if existing is None:
                 return None
-            summary_before = (
-                company_audit_summary(existing) if actor_context is not None else None
-            )
             duplicates = (
                 self._repos.companies.find_by_domain(
                     conn, company.domain, exclude_company_id=company_id
@@ -772,14 +781,13 @@ class CrmService:
             )
             if updated is None:
                 return None
-            if actor_context is not None:
-                audit_service.record_company_update(
-                    conn,
-                    actor_context=actor_context,
-                    entity_id=str(company_id),
-                    summary_before=summary_before,
-                    summary_after=company_audit_summary(updated),
-                )
+            record_company_update_if_changed(
+                conn,
+                actor_context=actor_context,
+                entity_id=str(company_id),
+                before_row=existing,
+                after_row=updated,
+            )
         return {
             "company": updated,
             "duplicate_warnings": find_domain_duplicate_warnings(
@@ -788,16 +796,51 @@ class CrmService:
         }
 
     def archive_company(
-        self, conn: psycopg.Connection, company_id: UUID
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        actor_context: ActorContext,
     ) -> dict[str, Any] | None:
         with crm_transaction(conn):
-            return self._repos.companies.archive(conn, company_id)
+            existing = self._repos.companies.get_by_id(conn, company_id)
+            if existing is None or existing.get("archived_at") is not None:
+                return None
+            summary_before = company_transition_summary(existing)
+            archived = self._repos.companies.archive(conn, company_id)
+            if archived is None:
+                return None
+            audit_service.record_company_archive(
+                conn,
+                actor_context=actor_context,
+                entity_id=str(company_id),
+                summary_before=summary_before,
+                summary_after=company_transition_summary(archived),
+            )
+            return archived
 
     def restore_company(
-        self, conn: psycopg.Connection, company_id: UUID
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        actor_context: ActorContext,
     ) -> dict[str, Any] | None:
+        archived = self._repos.companies.get_by_id(conn, company_id)
+        if archived is None or archived.get("archived_at") is None:
+            return None
         with crm_transaction(conn):
-            return self._repos.companies.restore(conn, company_id)
+            restored = self._repos.companies.restore(conn, company_id)
+            if restored is None:
+                return None
+            audit_service.record_company_restore(
+                conn,
+                actor_context=actor_context,
+                entity_id=str(company_id),
+                summary_before=company_transition_summary(archived),
+                summary_after=company_transition_summary(restored),
+            )
+            return restored
 
     def list_contacts_for_company(
         self,
@@ -842,6 +885,7 @@ class CrmService:
         conn: psycopg.Connection,
         *,
         contact: ContactCreate,
+        actor_context: ActorContext,
     ) -> dict[str, Any]:
         with crm_transaction(conn):
             profile_matches = (
@@ -870,6 +914,11 @@ class CrmService:
                 if not _is_contact_email_unique_violation(exc):
                     raise
                 raise ContactEmailConflictError(contact.email) from exc
+            record_contact_create(
+                conn,
+                actor_context=actor_context,
+                contact=created,
+            )
         duplicate_warnings = [
             *find_profile_url_duplicate_warnings(profile_matches, profile_url=contact.profile_url),
             *find_email_duplicate_warnings(email_matches, email=contact.email),
@@ -887,15 +936,12 @@ class CrmService:
         contact_id: UUID,
         *,
         contact: ContactUpdate,
-        actor_context: ActorContext | None = None,
+        actor_context: ActorContext,
     ) -> dict[str, Any] | None:
         with crm_transaction(conn):
             existing = self._repos.contacts.get_by_id(conn, contact_id)
             if existing is None:
                 return None
-            summary_before = (
-                contact_audit_summary(existing) if actor_context is not None else None
-            )
             profile_matches = (
                 self._repos.contacts.find_by_profile_url(
                     conn, contact.profile_url, exclude_contact_id=contact_id
@@ -930,14 +976,13 @@ class CrmService:
                 raise ContactEmailConflictError(contact.email) from exc
             if updated is None:
                 return None
-            if actor_context is not None:
-                audit_service.record_contact_update(
-                    conn,
-                    actor_context=actor_context,
-                    entity_id=str(contact_id),
-                    summary_before=summary_before,
-                    summary_after=contact_audit_summary(updated),
-                )
+            record_contact_update_if_changed(
+                conn,
+                actor_context=actor_context,
+                entity_id=str(contact_id),
+                before_row=existing,
+                after_row=updated,
+            )
         duplicate_warnings = [
             *find_profile_url_duplicate_warnings(
                 profile_matches, profile_url=contact.profile_url, exclude_contact_id=contact_id
@@ -959,10 +1004,28 @@ class CrmService:
         return self.list_contacts(*args, **kwargs)
 
     def archive_contact(
-        self, conn: psycopg.Connection, contact_id: UUID
+        self,
+        conn: psycopg.Connection,
+        contact_id: UUID,
+        *,
+        actor_context: ActorContext,
     ) -> dict[str, Any] | None:
         with crm_transaction(conn):
-            return self._repos.contacts.archive(conn, contact_id)
+            existing = self._repos.contacts.get_by_id(conn, contact_id)
+            if existing is None or existing.get("archived_at") is not None:
+                return None
+            summary_before = contact_transition_summary(existing)
+            archived = self._repos.contacts.archive(conn, contact_id)
+            if archived is None:
+                return None
+            audit_service.record_contact_archive(
+                conn,
+                actor_context=actor_context,
+                entity_id=str(contact_id),
+                summary_before=summary_before,
+                summary_after=contact_transition_summary(archived),
+            )
+            return archived
 
     def restore_contact(
         self,
@@ -996,14 +1059,8 @@ class CrmService:
                     conn,
                     actor_context=actor_context,
                     contact_id=str(contact_id),
-                    summary_before={
-                        "archived_at": archived.get("archived_at"),
-                        "full_name": archived.get("full_name"),
-                    },
-                    summary_after={
-                        "archived_at": None,
-                        "full_name": restored.get("full_name"),
-                    },
+                    summary_before=contact_transition_summary(archived),
+                    summary_after=contact_transition_summary(restored),
                 )
                 return ContactRestoreResult(outcome="success", contact=restored)
         except pg_errors.UniqueViolation as exc:

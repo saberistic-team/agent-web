@@ -192,7 +192,7 @@ def test_update_company_clears_supplied_fields_and_omits_others() -> None:
         last_verified_at="",
         notes="",
     )
-    service.update_company(conn, COMPANY_ID, company=CompanyUpdate(**payload))
+    service.update_company(conn, COMPANY_ID, company=CompanyUpdate(**payload), actor_context=ACTOR)
     kwargs = company_repo.update.call_args.kwargs
     assert kwargs["notes"] is None  # cleared
     assert kwargs["funding_summary"] is None  # cleared
@@ -200,7 +200,9 @@ def test_update_company_clears_supplied_fields_and_omits_others() -> None:
 
     # Partial programmatic update omits everything but name.
     company_repo.update.reset_mock()
-    service.update_company(conn, COMPANY_ID, company=CompanyUpdate(name="Acme Renamed"))
+    service.update_company(
+        conn, COMPANY_ID, company=CompanyUpdate(name="Acme Renamed"), actor_context=ACTOR
+    )
     partial_kwargs = company_repo.update.call_args.kwargs
     assert partial_kwargs == {"name": "Acme Renamed"}
     assert "notes" not in partial_kwargs  # omitted -> UNSET default -> unchanged
@@ -227,7 +229,7 @@ def test_update_contact_clears_email_and_disassociates_company() -> None:
         notes="",
         buying_roles=[],
     )
-    service.update_contact(conn, CONTACT_ID, contact=ContactUpdate(**payload))
+    service.update_contact(conn, CONTACT_ID, contact=ContactUpdate(**payload), actor_context=ACTOR)
     kwargs = contact_repo.update.call_args.kwargs
     assert kwargs["email"] is None  # cleared
     assert kwargs["company_id"] is None  # disassociated
@@ -250,7 +252,7 @@ def test_update_company_clear_is_audited_as_change() -> None:
     company_repo.update.return_value = after
     service, conn = _service_with(companies=company_repo)
 
-    with patch("app.crm_service.audit_service.record_company_update") as audit:
+    with patch("app.crm_lifecycle_audit.audit_service.record_company_update") as audit:
         service.update_company(
             conn,
             COMPANY_ID,
@@ -260,10 +262,11 @@ def test_update_company_clear_is_audited_as_change() -> None:
 
     audit.assert_called_once()
     audit_kwargs = audit.call_args.kwargs
-    assert audit_kwargs["summary_before"]["notes"] == "Keep me"
-    assert audit_kwargs["summary_after"]["notes"] == "Keep me"
-    assert audit_kwargs["summary_before"]["funding_summary"] == "Clear me"
-    assert audit_kwargs["summary_after"]["funding_summary"] is None
+    # Only changed fields are stored; free-form values stay out of the ledger.
+    assert audit_kwargs["summary_before"] == {"has_funding_summary": True}
+    assert audit_kwargs["summary_after"] == {"has_funding_summary": False}
+    assert "notes" not in audit_kwargs["summary_before"]
+    assert "funding_summary" not in audit_kwargs["summary_before"]
     conn.commit.assert_called_once()
 
 
@@ -284,7 +287,7 @@ def test_update_contact_clear_is_audited_as_change() -> None:
     contact_repo.update.return_value = after
     service, conn = _service_with(contacts=contact_repo)
 
-    with patch("app.crm_service.audit_service.record_contact_update") as audit:
+    with patch("app.crm_lifecycle_audit.audit_service.record_contact_update") as audit:
         service.update_contact(
             conn,
             CONTACT_ID,
@@ -294,10 +297,9 @@ def test_update_contact_clear_is_audited_as_change() -> None:
 
     audit.assert_called_once()
     audit_kwargs = audit.call_args.kwargs
-    assert audit_kwargs["summary_before"]["title"] == "Keep me"
-    assert audit_kwargs["summary_after"]["title"] == "Keep me"
-    assert audit_kwargs["summary_before"]["notes"] == "Clear me"
-    assert audit_kwargs["summary_after"]["notes"] is None
+    assert audit_kwargs["summary_before"] == {"has_notes": True}
+    assert audit_kwargs["summary_after"] == {"has_notes": False}
+    assert "notes" not in audit_kwargs["summary_before"]
     assert "email" not in audit_kwargs["summary_before"]
     assert "email" not in audit_kwargs["summary_after"]
     conn.commit.assert_called_once()
@@ -368,7 +370,7 @@ def test_clearing_archived_contact_email_unblocks_restore() -> None:
         notes="",
         buying_roles=[],
     )
-    service.update_contact(conn, CONTACT_ID, contact=ContactUpdate(**payload))
+    service.update_contact(conn, CONTACT_ID, contact=ContactUpdate(**payload), actor_context=ACTOR)
     assert contact_repo.update.call_args.kwargs["email"] is None
 
     # Step 2: with the email cleared, restore no longer detects a conflict.
@@ -464,12 +466,19 @@ def test_company_audit_summary_includes_nullable_fields() -> None:
     summary = company_audit_summary(
         {
             "name": "Acme",
+            "website": "https://acme.example",
             "notes": "Warm intro",
+            "funding_summary": "Seed round",
             "last_verified_at": date(2025, 1, 15),
         }
     )
-    assert summary["notes"] == "Warm intro"
+    assert summary["has_website"] is True
+    assert summary["has_notes"] is True
+    assert summary["has_funding_summary"] is True
     assert summary["last_verified_at"] == "2025-01-15"
+    assert "website" not in summary
+    assert "notes" not in summary
+    assert "funding_summary" not in summary
     assert "email" not in summary
 
 
@@ -479,12 +488,16 @@ def test_contact_audit_summary_omits_email() -> None:
         {
             "full_name": "Ada",
             "email": "secret@example.com",
+            "profile_url": "https://linkedin.com/in/ada",
             "title": "CTO",
             "company_id": COMPANY_ID,
             "buying_roles": ["founder"],
         }
     )
     assert "email" not in summary
+    assert "profile_url" not in summary
+    assert summary["has_email"] is True
+    assert summary["has_profile_url"] is True
     assert summary["title"] == "CTO"
     assert summary["company_id"] == str(COMPANY_ID)
     assert summary["buying_roles"] == ["founder"]

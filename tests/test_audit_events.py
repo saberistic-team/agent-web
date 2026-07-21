@@ -161,6 +161,13 @@ def test_representative_mutation_helpers_call_record_event() -> None:
         summary_before={"name": "Acme", "email": "hidden@example.com"},
         repository=repo,
     )
+    audit_service.record_company_create(
+        conn,
+        actor_context=actor,
+        entity_id="co-1",
+        summary_after={"name": "Acme"},
+        repository=repo,
+    )
     audit_service.record_company_update(
         conn,
         actor_context=actor,
@@ -213,6 +220,7 @@ def test_representative_mutation_helpers_call_record_event() -> None:
     assert actions == [
         audit_service.ACTION_IMPORT_BATCH,
         audit_service.ACTION_ENTITY_DELETE,
+        audit_service.ACTION_COMPANY_CREATE,
         audit_service.ACTION_COMPANY_UPDATE,
         audit_service.ACTION_CONTACT_UPDATE,
         audit_service.ACTION_PIPELINE_UPDATE,

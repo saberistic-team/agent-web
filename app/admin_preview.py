@@ -1408,6 +1408,14 @@ AUDIT_ACTIONS = (
     "auth.logout",
     "import.batch",
     "entity.delete",
+    "company.create",
+    "company.update",
+    "company.archive",
+    "company.restore",
+    "contact.create",
+    "contact.update",
+    "contact.archive",
+    "contact.restore",
     "pipeline.update",
     "brief.convert",
     "research_record.create",
@@ -1458,6 +1466,44 @@ def build_preview_audit_events(
                 "company_id": str(rng.randint(10, 99)),
                 "activity_type": "outreach",
                 "created_at": created.isoformat(),
+            }
+        elif action == "company.create":
+            entity_type = "company"
+            entity_id = str(rng.randint(10, 99))
+            summary_after = {
+                "name": company,
+                "domain": f"{company.lower().replace(' ', '-')}.example",
+                "category": "fintech",
+                "has_notes": True,
+            }
+        elif action == "company.archive":
+            entity_type = "company"
+            entity_id = str(rng.randint(10, 99))
+            summary_before = {"name": company, "archived_at": None}
+            summary_after = {
+                "name": company,
+                "archived_at": created.isoformat(),
+            }
+        elif action == "contact.create":
+            entity_type = "contact"
+            entity_id = str(rng.randint(100, 999))
+            first = rng.choice(CONTACT_FIRST)
+            last = rng.choice(CONTACT_LAST)
+            summary_after = {
+                "full_name": f"{first} {last}",
+                "title": "CTO",
+                "has_profile_url": True,
+            }
+        elif action == "contact.restore":
+            entity_type = "contact"
+            entity_id = str(rng.randint(100, 999))
+            summary_before = {
+                "full_name": f"{rng.choice(CONTACT_FIRST)} {rng.choice(CONTACT_LAST)}",
+                "archived_at": (created - timedelta(days=3)).isoformat(),
+            }
+            summary_after = {
+                "full_name": summary_before["full_name"],
+                "archived_at": None,
             }
         elif "delete" in action:
             entity_type = "company"
