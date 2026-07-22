@@ -2,7 +2,7 @@
   "schema_version": "worldgraph-research-corpus-v1",
   "research_only": true,
   "not_for_automatic_publication": true,
-  "qualification_rules_ref": "docs/worldgraph/MANIFEST_V0.md#issue-199-criteria",
+  "qualification_rules_ref": "docs/worldgraph/WORLD_DEFINITION.md",
   "description": "Source-backed research corpus for WorldGraph product definition (issue #200). Not production content. Not automatically published.",
   "last_updated": "2026-07-22",
   "candidate_count": 30,

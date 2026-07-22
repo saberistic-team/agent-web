@@ -5,13 +5,14 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any, Generator
 from unittest.mock import MagicMock, patch
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 
 from app import admin_auth
+from app.actor_context import ActorContext
 from app.crm_service import CrmRepositories, CrmService
 from app.main import app
 from app.repositories.postgres import PostgresResearchRecordRepository
@@ -23,6 +24,7 @@ TEST_USERNAME = "operator"
 TEST_PASSWORD = "correct-horse-battery-staple"
 TEST_HASH = PasswordHasher().hash(TEST_PASSWORD)
 TEST_SECRET = "test-session-secret-32chars-minimum"
+TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!!"
 COMPANY_ID = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 CONTACT_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
 CSRF_TOKEN = "csrf-integration"
@@ -44,6 +46,7 @@ def _admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_USERNAME", TEST_USERNAME)
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_HASH)
     monkeypatch.setenv("ADMIN_SESSION_SECRET", TEST_SECRET)
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
     monkeypatch.setenv("BASE_URL", "http://testserver")
     admin_auth.reset_login_rate_limiter()
 
@@ -87,6 +90,7 @@ def test_research_record_repository_round_trip_with_mock_conn() -> None:
 def test_crm_service_attach_research_record_commits() -> None:
     research_repo = MagicMock()
     research_repo.create.return_value = {
+        "id": uuid4(),
         "record_type": "outreach_angle",
         "body": "Lead with platform migration",
     }
@@ -99,15 +103,21 @@ def test_crm_service_attach_research_record_commits() -> None:
             research_records=research_repo,
             admin_users=MagicMock(),
             pipeline=MagicMock(),
+            import_batches=MagicMock(),
+            icp_scoring=MagicMock(),
+            qualification=MagicMock(),
         )
     )
     conn = MagicMock()
-    record = service.attach_research_record(
-        conn,
-        record_type="outreach_angle",
-        company_id=COMPANY_ID,
-        body="Lead with platform migration",
-    )
+    actor = ActorContext(actor="admin", correlation_id="test")
+    with patch("app.crm_service.audit_service.record_research_record_create"):
+        record = service.attach_research_record(
+            conn,
+            actor_context=actor,
+            record_type="outreach_angle",
+            company_id=COMPANY_ID,
+            body="Lead with platform migration",
+        )
     assert record["record_type"] == "outreach_angle"
     conn.commit.assert_called_once()
 

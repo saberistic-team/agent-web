@@ -10,7 +10,8 @@ JSON-codegen backup.
 ### Cursor (preferred)
 
 1. Repo secret: `CURSOR_API_KEY`
-2. Optional: `CODEGEN_PROVIDER=cursor`, `CURSOR_MODEL=composer-2.5`,
+2. Optional: `CODEGEN_PROVIDER=cursor`, `CURSOR_MODEL=sonnet-4.5` (defaults to
+   Sonnet with Max Mode on; `CURSOR_MAX_MODE=false` disables it),
    `CURSOR_RUNTIME=local`
 3. See [MODELS.md](MODELS.md)
 

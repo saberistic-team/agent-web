@@ -17,11 +17,14 @@ from fastapi.testclient import TestClient
 from app import admin_auth, audit_service, db
 from app.actor_context import ActorContext
 from app.admin_auth import SESSION_COOKIE_NAME
+from app.admin_response import ADMIN_BROWSER_SECURITY_HEADERS
+from app.admin_response_policy import ADMIN_CACHE_CONTROL
 from app.audit_service import REDACTED_VALUE
 from app.config import get_settings
 from app.crm_service import CrmRepositories, CrmService
 from app.crm_uow import crm_transaction
 from app.main import app
+from tests.conftest import enable_admin_preview_env
 from app.migrations.definitions import MIGRATIONS
 from app.migrations.runner import pending_migrations
 from app.repositories.postgres import PostgresAuditEventRepository
@@ -47,7 +50,10 @@ def admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
 @contextmanager
 def mock_db_connection() -> Generator[MagicMock, None, None]:
     conn = MagicMock()
-    with patch("app.admin_routes.db.db_connection") as admin_conn:
+    with (
+        patch("app.admin_routes.db.db_connection") as admin_conn,
+        patch("app.admin_routes.db.revoke_admin_session", return_value=True),
+    ):
         admin_conn.return_value.__enter__.return_value = conn
         admin_conn.return_value.__exit__.return_value = None
         yield conn
@@ -88,8 +94,10 @@ def test_audit_migration_present_and_ordered() -> None:
 @pytest.mark.unit
 def test_pending_migrations_includes_audit_after_sessions() -> None:
     pending = pending_migrations(applied_versions={"001", "002", "003", "004", "005", "006"})
-    assert len(pending) == 7
-    assert [m.version for m in pending] == ["007", "008", "009", "010", "011", "012", "013"]
+    assert len(pending) == 17
+    assert [m.version for m in pending] == [
+        "007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021", "022", "023",
+    ]
 
 
 @pytest.mark.unit
@@ -153,6 +161,29 @@ def test_representative_mutation_helpers_call_record_event() -> None:
         summary_before={"name": "Acme", "email": "hidden@example.com"},
         repository=repo,
     )
+    audit_service.record_company_create(
+        conn,
+        actor_context=actor,
+        entity_id="co-1",
+        summary_after={"name": "Acme"},
+        repository=repo,
+    )
+    audit_service.record_company_update(
+        conn,
+        actor_context=actor,
+        entity_id="co-9",
+        summary_before={"notes": "Before"},
+        summary_after={"notes": None},
+        repository=repo,
+    )
+    audit_service.record_contact_update(
+        conn,
+        actor_context=actor,
+        entity_id="ct-1",
+        summary_before={"title": "Before"},
+        summary_after={"title": None},
+        repository=repo,
+    )
     audit_service.record_pipeline_update(
         conn,
         actor_context=actor,
@@ -189,6 +220,9 @@ def test_representative_mutation_helpers_call_record_event() -> None:
     assert actions == [
         audit_service.ACTION_IMPORT_BATCH,
         audit_service.ACTION_ENTITY_DELETE,
+        audit_service.ACTION_COMPANY_CREATE,
+        audit_service.ACTION_COMPANY_UPDATE,
+        audit_service.ACTION_CONTACT_UPDATE,
         audit_service.ACTION_PIPELINE_UPDATE,
         audit_service.ACTION_SCORING_RULE_UPDATE,
         audit_service.ACTION_ANALYTICS_CONFIG_UPDATE,
@@ -241,6 +275,9 @@ def test_crm_service_audited_mutations_record_events() -> None:
             research_records=MagicMock(),
             admin_users=MagicMock(),
             pipeline=MagicMock(),
+            import_batches=MagicMock(),
+            icp_scoring=MagicMock(),
+            qualification=MagicMock(),
         )
     )
 
@@ -355,7 +392,8 @@ def test_authenticated_logout_audit_is_required() -> None:
 
 
 @pytest.mark.unit
-def test_anonymous_logout_audit_is_best_effort() -> None:
+def test_anonymous_logout_service_call_is_best_effort_only() -> None:
+    """Direct service calls with no session id remain best-effort; routes do not invoke them."""
     conn = MagicMock()
     repo = MagicMock()
     repo.append.side_effect = RuntimeError("audit down")
@@ -372,71 +410,69 @@ def test_anonymous_logout_audit_is_best_effort() -> None:
 @pytest.mark.integration
 def test_login_success_uses_single_transaction_for_session_and_audit() -> None:
     with mock_db_connection() as conn:
-        with patch("app.admin_routes._verify_login_flow_csrf", return_value=True):
-            with patch("app.admin_routes._consume_login_flow"):
-                with patch("app.admin_routes.crm_transaction", wraps=crm_transaction) as tx:
-                    with patch(
-                        "app.admin_routes.db.create_admin_session", return_value=42
-                    ) as create_session:
-                        with patch(
-                            "app.admin_routes.audit_service.record_login_success"
-                        ) as success_audit:
-                            login = client.post(
-                                "/admin/login",
-                                data={
-                                    "username": TEST_USERNAME,
-                                    "password": TEST_PASSWORD,
-                                    "csrf_token": "flow-csrf",
-                                },
-                            )
-                            assert login.status_code == 303
-                            tx.assert_called_once()
-                            create_session.assert_called_once()
-                            success_audit.assert_called_once()
-
-
-@pytest.mark.unit
-@pytest.mark.integration
-def test_login_success_and_failure_create_audit_events() -> None:
-    with mock_db_connection() as conn:
-        with patch("app.admin_routes._verify_login_flow_csrf", return_value=True):
-            with patch("app.admin_routes._consume_login_flow"):
+        with patch("app.admin_routes._try_claim_login_flow", return_value=True):
+            with patch("app.admin_routes.crm_transaction", wraps=crm_transaction) as tx:
                 with patch(
                     "app.admin_routes.db.create_admin_session", return_value=42
                 ) as create_session:
                     with patch(
                         "app.admin_routes.audit_service.record_login_success"
                     ) as success_audit:
-                        with patch(
-                            "app.admin_routes.audit_service.record_login_failure"
-                        ) as failure_audit:
-                            login = client.post(
-                                "/admin/login",
-                                data={
-                                    "username": TEST_USERNAME,
-                                    "password": TEST_PASSWORD,
-                                    "csrf_token": "flow-csrf",
-                                },
-                            )
-                            assert login.status_code == 303
-                            create_session.assert_called_once()
-                            success_audit.assert_called_once()
-                            assert success_audit.call_args.kwargs["session_id"] == 42
+                        login = client.post(
+                            "/admin/login",
+                            data={
+                                "username": TEST_USERNAME,
+                                "password": TEST_PASSWORD,
+                                "csrf_token": "flow-csrf",
+                            },
+                        )
+                        assert login.status_code == 303
+                        tx.assert_called_once()
+                        create_session.assert_called_once()
+                        success_audit.assert_called_once()
 
-                            bad_login = client.post(
-                                "/admin/login",
-                                data={
-                                    "username": TEST_USERNAME,
-                                    "password": "wrong-password",
-                                    "csrf_token": "flow-csrf",
-                                },
-                            )
-                            assert bad_login.status_code == 401
-                            failure_audit.assert_called_once()
-                            assert (
-                                failure_audit.call_args.kwargs["reason"]
-                                == "invalid_credentials"
-                            )
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_login_success_and_failure_create_audit_events() -> None:
+    with mock_db_connection() as conn:
+        with patch("app.admin_routes._try_claim_login_flow", return_value=True):
+            with patch(
+                "app.admin_routes.db.create_admin_session", return_value=42
+            ) as create_session:
+                with patch(
+                    "app.admin_routes.audit_service.record_login_success"
+                ) as success_audit:
+                    with patch(
+                        "app.admin_routes.audit_service.record_login_failure"
+                    ) as failure_audit:
+                        login = client.post(
+                            "/admin/login",
+                            data={
+                                "username": TEST_USERNAME,
+                                "password": TEST_PASSWORD,
+                                "csrf_token": "flow-csrf",
+                            },
+                        )
+                        assert login.status_code == 303
+                        create_session.assert_called_once()
+                        success_audit.assert_called_once()
+                        assert success_audit.call_args.kwargs["session_id"] == 42
+
+                        bad_login = client.post(
+                            "/admin/login",
+                            data={
+                                "username": TEST_USERNAME,
+                                "password": "wrong-password",
+                                "csrf_token": "flow-csrf",
+                            },
+                        )
+                        assert bad_login.status_code == 401
+                        failure_audit.assert_called_once()
+                        assert (
+                            failure_audit.call_args.kwargs["reason"]
+                            == "invalid_credentials"
+                        )
 
 
 @pytest.mark.unit
@@ -541,7 +577,6 @@ def test_audit_login_and_logout_helpers() -> None:
         conn,
         actor_context=actor,
         reason="invalid_credentials",
-        attempted_username="ghost",
         repository=repo,
     )
     audit_service.record_logout(conn, actor_context=actor, session_id=9, repository=repo)
@@ -604,6 +639,11 @@ def test_postgres_audit_repository_list_page() -> None:
 
 @pytest.mark.unit
 def test_db_session_helpers() -> None:
+    import importlib
+
+    import app.db as db_module
+
+    importlib.reload(db_module)
     conn = MagicMock()
     cursor = MagicMock()
     conn.cursor.return_value.__enter__.return_value = cursor
@@ -611,8 +651,9 @@ def test_db_session_helpers() -> None:
         {"id": 7},
         {"id": 7, "admin_username": TEST_USERNAME, "revoked_at": None},
     ]
+    cursor.rowcount = 1
 
-    session_id = db.create_admin_session(
+    session_id = db_module.create_admin_session(
         conn,
         token_hash="hash",
         admin_username=TEST_USERNAME,
@@ -620,10 +661,11 @@ def test_db_session_helpers() -> None:
     )
     assert session_id == 7
 
-    row = db.get_admin_session_by_token_hash(conn, "hash")
+    row = db_module.get_admin_session_by_token_hash(conn, "hash")
     assert row["id"] == 7
 
-    db.revoke_admin_session(conn, token_hash="hash")
+    revoked = db.revoke_admin_session(conn, token_hash="hash")
+    assert revoked is True
     conn.commit.assert_not_called()
     conn.rollback.assert_not_called()
 
@@ -659,7 +701,7 @@ def test_render_admin_section_empty_state() -> None:
 def test_render_admin_page_preview_dashboard(monkeypatch: pytest.MonkeyPatch) -> None:
     from app import admin
 
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch)
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
     html_out = admin.render_admin_page("/admin", admin_username=TEST_USERNAME)
     assert "Today&apos;s attention" in html_out
@@ -713,3 +755,116 @@ def test_audit_migration_triggers_reject_mutations_at_runtime() -> None:
     assert "BEFORE UPDATE ON audit_events" in sql
     assert "BEFORE DELETE ON audit_events" in sql
     assert "RAISE EXCEPTION 'audit_events records are append-only'" in sql
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_anonymous_audit_request_redirects_before_repository_access() -> None:
+    with patch("app.admin_routes.audit_service.list_events") as list_events:
+        response = client.get("/admin/audit")
+    assert response.status_code == 303
+    assert "/admin/login" in response.headers["location"]
+    list_events.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_admin_audit_response_retains_no_store_and_security_headers() -> None:
+    token_hash = admin_auth.hash_session_token("audit-headers-session")
+    row = _session_row(token_hash=token_hash)
+    with mock_db_connection() as conn:
+        with patch("app.admin_routes.db.get_admin_session_by_token_hash", return_value=row):
+            with patch(
+                "app.admin_routes.audit_service.list_events",
+                return_value=([], 0),
+            ):
+                response = client.get(
+                    "/admin/audit",
+                    cookies={SESSION_COOKIE_NAME: "audit-headers-session"},
+                )
+    assert response.status_code == 200
+    assert response.headers.get("cache-control") == ADMIN_CACHE_CONTROL
+    for header, value in ADMIN_BROWSER_SECURITY_HEADERS.items():
+        assert response.headers.get(header.lower()) == value
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_admin_audit_repository_error_is_handled_safely() -> None:
+    token_hash = admin_auth.hash_session_token("audit-db-error-session")
+    row = _session_row(token_hash=token_hash)
+    with mock_db_connection() as conn:
+        with patch("app.admin_routes.db.get_admin_session_by_token_hash", return_value=row):
+            with patch(
+                "app.admin_routes.audit_service.list_events",
+                side_effect=RuntimeError("db unavailable"),
+            ):
+                response = client.get(
+                    "/admin/audit",
+                    cookies={SESSION_COOKIE_NAME: "audit-db-error-session"},
+                )
+    assert response.status_code == 200
+    assert "Audit log temporarily unavailable" in response.text
+    assert response.headers.get("cache-control") == ADMIN_CACHE_CONTROL
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_admin_audit_page_clamps_invalid_page_query() -> None:
+    token_hash = admin_auth.hash_session_token("audit-page-session")
+    row = _session_row(token_hash=token_hash)
+    with mock_db_connection():
+        with patch("app.admin_routes.db.get_admin_session_by_token_hash", return_value=row):
+            with patch(
+                "app.admin_routes.audit_service.list_events",
+                return_value=([], 0),
+            ) as list_events:
+                response = client.get(
+                    "/admin/audit?page=0",
+                    cookies={SESSION_COOKIE_NAME: "audit-page-session"},
+                )
+    assert response.status_code == 200
+    list_events.assert_called_once()
+    assert list_events.call_args.kwargs["page"] == 1
+
+
+@pytest.mark.unit
+def test_render_admin_audit_page_escapes_untrusted_fields() -> None:
+    from app.admin_pages import render_admin_audit_page
+
+    html_out = render_admin_audit_page(
+        admin_username=TEST_USERNAME,
+        events=[
+            {
+                "created_at": datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc),
+                "actor": "<script>alert(1)</script>",
+                "action": "entity<script>",
+                "entity_type": "company",
+                "entity_id": "1",
+                "correlation_id": "corr<script>",
+                "summary_before": None,
+                "summary_after": None,
+            }
+        ],
+        page=1,
+        per_page=50,
+        total=1,
+    )
+    assert "<script>alert(1)</script>" not in html_out
+    assert "&lt;script&gt;" in html_out
+
+
+@pytest.mark.unit
+def test_render_admin_audit_page_db_error_banner() -> None:
+    from app.admin_pages import render_admin_audit_page
+
+    html_out = render_admin_audit_page(
+        admin_username=TEST_USERNAME,
+        events=[],
+        page=1,
+        per_page=50,
+        total=0,
+        db_error=True,
+    )
+    assert "Audit log temporarily unavailable" in html_out
+

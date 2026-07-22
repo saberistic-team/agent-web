@@ -17,6 +17,7 @@ from app.actor_context import ActorContext
 from app.contacts import ContactRestoreResult, ContactSafeSummary
 from app.crm_service import CrmService, CrmRepositories
 from app.main import app
+from tests.conftest import enable_admin_preview_env
 
 pytestmark = pytest.mark.unit
 
@@ -26,6 +27,7 @@ TEST_USERNAME = "operator"
 TEST_PASSWORD = "correct-horse-battery-staple"
 TEST_HASH = PasswordHasher().hash(TEST_PASSWORD)
 TEST_SECRET = "test-session-secret-32chars-minimum"
+TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!!"
 CSRF_TOKEN = "csrf-test-token"
 
 ARCHIVED_ID = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
@@ -75,6 +77,9 @@ def _service_with_contact_repo(contact_repo: MagicMock) -> tuple[CrmService, Mag
             research_records=MagicMock(),
             admin_users=MagicMock(),
             pipeline=MagicMock(),
+            import_batches=MagicMock(),
+            icp_scoring=MagicMock(),
+            qualification=MagicMock(),
         )
     )
     return service, MagicMock()
@@ -86,6 +91,7 @@ def _admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_USERNAME", TEST_USERNAME)
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_HASH)
     monkeypatch.setenv("ADMIN_SESSION_SECRET", TEST_SECRET)
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
     monkeypatch.setenv("BASE_URL", "http://testserver")
     admin_auth.reset_login_rate_limiter()
 
@@ -330,20 +336,23 @@ def test_record_contact_restore_redacts_email() -> None:
     assert payload["summary_before"]["email"] == audit_service.REDACTED_VALUE
 
 
-def test_preview_contact_restore_conflict_stable_with_seed() -> None:
-    import random
-
+def test_preview_contact_restore_conflict_stable_with_seed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from app.admin_preview import preview_contact_restore_conflict
 
-    a = preview_contact_restore_conflict(rng=random.Random(42))
-    b = preview_contact_restore_conflict(rng=random.Random(42))
+    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
+    monkeypatch.setenv("ADMIN_PREVIEW_REFERENCE_TIME", "2026-07-15T12:00:00+00:00")
+    a = preview_contact_restore_conflict()
+    b = preview_contact_restore_conflict()
     assert a == b
     assert a["archived_contact"]["email"]
     assert a["conflicting_contact"]["full_name"]
 
 
 def test_preview_restore_conflict_route_renders_mock_data(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch)
     from app.admin_preview import PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID
 
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):

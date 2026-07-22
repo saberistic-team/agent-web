@@ -34,6 +34,10 @@ RELATIONSHIP_STRENGTHS: dict[str, str] = {
     "strong": "Strong",
     "champion": "Champion",
 }
+CRM_CONTEXT_TAGS: dict[str, str] = {
+    "former_colleague": "Former colleague",
+    "warm_introducer": "Warm introducer",
+}
 EMAIL_PERMISSIONS: dict[str, str] = {
     "unknown": "Unknown",
     "inferred": "Inferred from public source",
@@ -52,6 +56,11 @@ def normalize_contact_name(value: str | None) -> str | None:
 
 
 def normalize_email(value: str | None) -> str | None:
+    """The single email-normalization policy for CRM contacts (issue #226).
+
+    Used identically for create, edit, restore, active/archived lookup, and brief
+    conversion so identity comparison is always case-insensitive and trimmed.
+    """
     if value is None:
         return None
     text = value.strip()
@@ -61,6 +70,20 @@ def normalize_email(value: str | None) -> str | None:
     if "@" not in email or email.startswith("@") or email.endswith("@"):
         raise ValueError("email must be a valid address")
     return email
+
+
+class ContactEmailConflictError(Exception):
+    """An active contact already owns this email address.
+
+    Raised by the service layer when a create/update would collide with the
+    partial unique index ``idx_contacts_email_unique`` so callers return a safe
+    validation/domain error instead of a bare HTTP 500 (issue #226).
+    """
+
+    def __init__(self, email: str | None = None) -> None:
+        self.email = email
+        message = "A contact with this email already exists."
+        super().__init__(message)
 
 
 def normalize_profile_url(value: str | None) -> str | None:
@@ -102,6 +125,20 @@ def _validate_buying_roles(values: list[str] | None) -> list[str]:
     return normalized
 
 
+def _validate_crm_context_tags(values: list[str] | None) -> list[str]:
+    if not values:
+        return []
+    normalized: list[str] = []
+    for value in values:
+        if not value or not value.strip():
+            continue
+        if value not in CRM_CONTEXT_TAGS:
+            raise ValueError(f"unknown CRM context tag: {value}")
+        if value not in normalized:
+            normalized.append(value)
+    return normalized
+
+
 class ContactCreate(BaseModel):
     full_name: str = Field(min_length=1, max_length=500)
     title: str | None = Field(default=None, max_length=500)
@@ -113,6 +150,7 @@ class ContactCreate(BaseModel):
     relationship_strength: str | None = None
     notes: str | None = Field(default=None, max_length=10000)
     buying_roles: list[str] = Field(default_factory=list)
+    crm_context_tags: list[str] = Field(default_factory=list)
 
     @field_validator("full_name")
     @classmethod
@@ -151,6 +189,47 @@ class ContactCreate(BaseModel):
     @classmethod
     def validate_roles(cls, value: list[str] | None) -> list[str]:
         return _validate_buying_roles(value)
+
+    @field_validator("crm_context_tags")
+    @classmethod
+    def validate_crm_context_tags(cls, value: list[str] | None) -> list[str]:
+        return _validate_crm_context_tags(value)
+
+
+def contact_audit_summary(contact: dict[str, Any]) -> dict[str, Any]:
+    """Compact contact snapshot for audit events.
+
+    Email, profile URLs, and free-form notes are omitted; presence flags and
+    normalized registry fields are stored instead.
+    """
+    company_id = contact.get("company_id")
+    last_interaction = contact.get("last_interaction_at")
+    archived_at = contact.get("archived_at")
+    buying_roles = contact.get("buying_roles") or []
+    profile_url = contact.get("profile_url")
+    notes = contact.get("notes")
+    email = contact.get("email")
+    return {
+        "full_name": contact.get("full_name"),
+        "title": contact.get("title"),
+        "email_permission": contact.get("email_permission"),
+        "company_id": str(company_id) if company_id else None,
+        "last_interaction_at": (
+            last_interaction.isoformat()
+            if hasattr(last_interaction, "isoformat")
+            else last_interaction
+        ),
+        "relationship_strength": contact.get("relationship_strength"),
+        "buying_roles": list(buying_roles),
+        "archived_at": (
+            archived_at.isoformat()
+            if hasattr(archived_at, "isoformat")
+            else archived_at
+        ),
+        "has_email": bool(email and str(email).strip()),
+        "has_profile_url": bool(profile_url and str(profile_url).strip()),
+        "has_notes": bool(notes and str(notes).strip()),
+    }
 
 
 class ContactUpdate(ContactCreate):
@@ -294,3 +373,9 @@ def format_buying_roles(values: list[str] | None) -> str:
     if not values:
         return "—"
     return ", ".join(BUYING_ROLES.get(role, role) for role in values)
+
+
+def format_crm_context_tags(values: list[str] | None) -> str:
+    if not values:
+        return "—"
+    return ", ".join(CRM_CONTEXT_TAGS.get(tag, tag) for tag in values)

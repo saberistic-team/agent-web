@@ -1,0 +1,10 @@
+{
+  "name": "UGC Arena",
+  "world_type": "ai_game",
+  "entry_point": "https://example-worlds.test/game/ugc-arena/join",
+  "interaction_model": "user_generated_rooms_with_ai_moderation",
+  "persistence_model": "room_state_snapshots",
+  "ai_role": "runtime moderation and NPC fill-ins for empty slots",
+  "platforms": ["web", "mobile"],
+  "creator": "Arena Operators Guild"
+}

@@ -23,6 +23,7 @@ TEST_USERNAME = "operator"
 TEST_PASSWORD = "correct-horse-battery-staple"
 TEST_HASH = PasswordHasher().hash(TEST_PASSWORD)
 TEST_SECRET = "test-session-secret-32chars-minimum"
+TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!!"
 
 COMPANY_ID = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 CONTACT_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
@@ -55,6 +56,7 @@ def _admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_USERNAME", TEST_USERNAME)
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_HASH)
     monkeypatch.setenv("ADMIN_SESSION_SECRET", TEST_SECRET)
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
     monkeypatch.setenv("BASE_URL", "http://testserver")
     admin_auth.reset_login_rate_limiter()
 
@@ -92,6 +94,13 @@ def _mock_crm() -> Generator[MagicMock, None, None]:
 @pytest.mark.unit
 def test_contacts_route_requires_authentication() -> None:
     response = client.get("/admin/contacts")
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/admin/login")
+
+
+@pytest.mark.unit
+def test_company_research_page_requires_authentication() -> None:
+    response = client.get(f"/admin/companies/{COMPANY_ID}")
     assert response.status_code == 303
     assert response.headers["location"].startswith("/admin/login")
 
@@ -189,6 +198,46 @@ def test_contact_new_edit_restore_and_invalid_fields_are_handled() -> None:
 
 
 @pytest.mark.unit
+def test_contact_create_email_conflict_redirects_without_500() -> None:
+    from app.contacts import ContactEmailConflictError
+
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        with patch("app.admin_routes._crm") as crm:
+            crm.create_contact.side_effect = ContactEmailConflictError("ada@acme.dev")
+            response = client.post(
+                "/admin/contacts",
+                data={
+                    "csrf_token": CSRF_TOKEN,
+                    "full_name": "Ada Lovelace",
+                    "company_id": str(COMPANY_ID),
+                    "email": "ada@acme.dev",
+                },
+            )
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/admin/contacts/new?error=")
+
+
+@pytest.mark.unit
+def test_contact_update_email_conflict_redirects_without_500() -> None:
+    from app.contacts import ContactEmailConflictError
+
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        with patch("app.admin_routes._crm") as crm:
+            crm.update_contact.side_effect = ContactEmailConflictError("ada@acme.dev")
+            response = client.post(
+                f"/admin/contacts/{CONTACT_ID}/edit",
+                data={
+                    "csrf_token": CSRF_TOKEN,
+                    "full_name": "Ada Lovelace",
+                    "company_id": str(COMPANY_ID),
+                    "email": "ada@acme.dev",
+                },
+            )
+    assert response.status_code == 303
+    assert f"/admin/contacts/{CONTACT_ID}/edit?error=" in response.headers["location"]
+
+
+@pytest.mark.unit
 def test_contact_edit_requires_existing_contact() -> None:
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
         with patch("app.admin_routes._crm") as crm:
@@ -203,4 +252,5 @@ def test_company_research_page_shows_associated_contacts() -> None:
         response = client.get(f"/admin/companies/{COMPANY_ID}")
     assert response.status_code == 200
     assert "Ada Lovelace" in response.text
-    assert "Technical buyer" in response.text
+    assert "Buying-group coverage" in response.text
+    assert "CTO" in response.text

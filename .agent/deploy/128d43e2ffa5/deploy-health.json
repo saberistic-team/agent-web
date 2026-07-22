@@ -1,0 +1,19 @@
+{
+  "sha": "128d43e2ffa5db546af12301fc5b73f3299aae7a",
+  "base_url": "https://saberistic.com",
+  "health_url": "https://saberistic.com/health",
+  "health": {
+    "status": "ok",
+    "admin_client_source_policy": {
+      "mode": "trusted_proxy_cidrs",
+      "trusted_proxy_network_count": 5,
+      "trusted_edge_network_count": 22,
+      "legacy_admin_trust_proxy_headers": false
+    },
+    "admin_proxy_trust": {
+      "enabled": true,
+      "trusted_proxy_entry_count": 27
+    },
+    "schema_version": "016"
+  }
+}

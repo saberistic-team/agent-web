@@ -346,8 +346,17 @@ class _InMemoryContactRepo:
     def __init__(self, db: _SharedBriefConversionDatabase) -> None:
         self._db = db
 
-    def get_by_email(self, conn: MagicMock, email: str) -> dict[str, Any] | None:
+    def get_active_by_email(
+        self,
+        conn: MagicMock,
+        email: str,
+        *,
+        exclude_contact_id: UUID | None = None,
+    ) -> dict[str, Any] | None:
         return self._db.get_contact_by_email(conn, email)
+
+    def get_archived_by_email(self, conn: MagicMock, email: str) -> dict[str, Any] | None:
+        return None
 
     def get_by_id(self, conn: MagicMock, contact_id: UUID) -> dict[str, Any] | None:
         return self._db.get_contact(conn, contact_id)
@@ -470,6 +479,9 @@ def _conversion_service(shared_db: _SharedBriefConversionDatabase) -> CrmService
             research_records=MagicMock(),
             admin_users=MagicMock(),
             pipeline=_InMemoryPipelineRepo(shared_db),
+            import_batches=MagicMock(),
+            icp_scoring=MagicMock(),
+            qualification=MagicMock(),
         )
     )
 
@@ -613,6 +625,9 @@ def test_unique_violation_race_returns_winner_without_partial_writes() -> None:
             research_records=MagicMock(),
             admin_users=MagicMock(),
             pipeline=_InMemoryPipelineRepo(shared_db),
+            import_batches=MagicMock(),
+            icp_scoring=MagicMock(),
+            qualification=MagicMock(),
         )
     )
     conn = _make_conn(shared_db)

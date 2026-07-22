@@ -23,10 +23,15 @@ _FIXABLE_RE = re.compile(
     r"overflow|clipped|pytest|test_|"
     r"admin preview empty data|empty shell|mock rows|ADMIN_PREVIEW|"
     r"admin desktop nav invisible|admin-nav-desktop|admin-nav-link|"
-    r"merge conflict|mergeable|mergeability|return to Builder",
+    r"merge conflict|mergeable|mergeability|return to Builder|"
+    r"return to Docs|agent-updates stub|docs PR|type:docs PR",
     re.I,
 )
-_TERMINAL_RE = re.compile(r"terminal:\s*true|worklog-only", re.I)
+_TERMINAL_RE = re.compile(
+    r"terminal:\s*true|worklog-only|open dependencies|unstructured dependencies|"
+    r"machine-readable",
+    re.I,
+)
 
 
 def is_fixable_changes_requested(body: str) -> bool:
@@ -62,14 +67,10 @@ def resolve_decision(
 
 
 def linked_open_prs(repo: str, issue: int) -> list[dict]:
+    from github_api import linked_open_prs as _linked_open_prs
+
+    linked = list(_linked_open_prs(repo, issue))
     owner, name = split_repo(repo)
-    prs = api("GET", f"/repos/{owner}/{name}/pulls?state=open&per_page=100") or []
-    needle = f"#{issue}"
-    linked = [
-        pr
-        for pr in prs
-        if needle in (pr.get("title") or "") or needle in (pr.get("body") or "")
-    ]
     issue_data = api("GET", f"/repos/{owner}/{name}/issues/{issue}")
     if issue_data.get("pull_request"):
         pr_num = int(issue_data["number"])

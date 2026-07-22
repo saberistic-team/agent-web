@@ -1149,7 +1149,7 @@ def main() -> None:
         "schema_version": "worldgraph-research-corpus-v1",
         "research_only": True,
         "not_for_automatic_publication": True,
-        "qualification_rules_ref": "docs/worldgraph/MANIFEST_V0.md#issue-199-criteria",
+        "qualification_rules_ref": "docs/worldgraph/WORLD_DEFINITION.md",
         "description": (
             "Source-backed research corpus for WorldGraph product definition (issue #200). "
             "Not production content. Not automatically published."

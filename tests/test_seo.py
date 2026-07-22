@@ -204,7 +204,7 @@ def test_json_accept_on_unknown_path_returns_json_404() -> None:
 
 @pytest.mark.unit
 def test_health_and_hello_remain_json() -> None:
-    assert client.get("/health").json() == {"status": "ok"}
+    assert client.get("/health").json()["status"] == "ok"
     assert client.get("/hello").json() == {"message": "hello world"}
 
 

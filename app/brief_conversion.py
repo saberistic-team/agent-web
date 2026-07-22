@@ -6,6 +6,7 @@ from typing import Any
 
 from app.companies import normalize_domain
 from app.config import Settings
+from app.contacts import normalize_email
 from app.pipeline_stages import initial_pipeline_stage_for_brief_status, pipeline_stage_label
 
 
@@ -25,8 +26,24 @@ class BriefConversionValidationError(BriefConversionError):
     """Raised when operator input fails validation."""
 
 
+ARCHIVED_CONTACT_ACK_REQUIRED_MESSAGE = (
+    "Confirm that you want a new active contact while an archived identity exists."
+)
+
+
 def normalize_brief_email(value: str) -> str:
-    return value.strip().lower()
+    """Apply the shared contact-email normalization policy (issue #226).
+
+    Delegates to ``app.contacts.normalize_email`` so brief conversion, create,
+    edit, restore, and lookup all compare identities identically. Brief contact
+    values are not guaranteed to be email addresses, so a non-email value
+    degrades to a trimmed/lowercased string (for display/lookup) instead of
+    raising — a genuine active contact is only ever matched by a valid address.
+    """
+    try:
+        return normalize_email(value) or ""
+    except ValueError:
+        return value.strip().lower()
 
 
 def derive_company_name(*, website: str, domain: str | None = None) -> str:
@@ -42,6 +59,18 @@ def pipeline_capabilities_available(settings: Settings) -> bool:
     return bool(settings.database_url)
 
 
+def effective_brief_price_cents(
+    brief: dict[str, Any],
+    *,
+    list_price_cents: int,
+) -> int:
+    """Paid amount from Stripe when stored; otherwise configured list price."""
+    paid_amount = brief.get("payment_amount_cents")
+    if paid_amount is not None:
+        return int(paid_amount)
+    return list_price_cents
+
+
 def build_conversion_proposal(
     brief: dict[str, Any],
     *,
@@ -54,7 +83,8 @@ def build_conversion_proposal(
     pipeline_stage = initial_pipeline_stage_for_brief_status(brief_status)
     expected_value: float | None = None
     if brief_status == "paid":
-        expected_value = round(price_cents / 100, 2)
+        paid_cents = effective_brief_price_cents(brief, list_price_cents=price_cents)
+        expected_value = round(paid_cents / 100, 2)
     return {
         "company_name": derive_company_name(website=str(brief.get("website", "")), domain=domain),
         "website": str(brief.get("website", "")),

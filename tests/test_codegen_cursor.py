@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from codegen_cursor import _pr_number_from_url, build_prompt
+from codegen_cursor import _commit_subject, _pr_number_from_url, build_prompt
 
 
 def test_pr_number_from_url() -> None:
@@ -28,6 +28,31 @@ def test_build_prompt_includes_issue(tmp_path) -> None:
     assert "do NOT git commit" in text
     assert "User flow" in text
     assert "Be minimal." in text
+
+
+def test_commit_subject_uses_agent_summary() -> None:
+    subject = _commit_subject(
+        242, "Add pricing page", "Added a new pricing page with three tiers.\n\nMore details..."
+    )
+    assert subject == "builder(#242): Added a new pricing page with three tiers."
+
+
+def test_commit_subject_strips_filler_prefix() -> None:
+    subject = _commit_subject(242, "Add pricing page", "Summary: added the pricing page.")
+    assert subject == "builder(#242): added the pricing page."
+
+
+def test_commit_subject_falls_back_to_title() -> None:
+    subject = _commit_subject(242, "Add pricing page", "")
+    assert subject == "builder(#242): Add pricing page"
+
+
+def test_commit_subject_truncates_long_lines() -> None:
+    long_summary = "x" * 100
+    subject = _commit_subject(242, "Add pricing page", long_summary)
+    assert subject.startswith("builder(#242): ")
+    assert len(subject) <= 72
+    assert subject.endswith("…")
 
 
 def test_cursor_runtime_defaults_local(monkeypatch) -> None:

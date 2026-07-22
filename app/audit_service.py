@@ -45,8 +45,9 @@ SENSITIVE_FIELD_NAMES = frozenset(
         "admin_session",
         "admin_password_hash",
         "admin_session_secret",
+        "admin_login_limiter_secret",
+        "admin_login_limiter_previous_secret",
         "resend_api_key",
-        "plausible_api_key",
     }
 )
 
@@ -59,16 +60,23 @@ ACTION_AUTH_LOGIN_SUCCESS = "auth.login.success"
 ACTION_AUTH_LOGIN_FAILURE = "auth.login.failure"
 ACTION_AUTH_LOGOUT = "auth.logout"
 ACTION_IMPORT_BATCH = "import.batch"
+ACTION_IMPORT_BATCH_ROLLBACK = "import.batch.rollback"
 ACTION_ENTITY_DELETE = "entity.delete"
+ACTION_COMPANY_CREATE = "company.create"
+ACTION_COMPANY_UPDATE = "company.update"
+ACTION_COMPANY_ARCHIVE = "company.archive"
+ACTION_COMPANY_RESTORE = "company.restore"
+ACTION_CONTACT_CREATE = "contact.create"
+ACTION_CONTACT_UPDATE = "contact.update"
+ACTION_CONTACT_ARCHIVE = "contact.archive"
 ACTION_PIPELINE_UPDATE = "pipeline.update"
-ACTION_PIPELINE_STAGE_CHANGE = "pipeline.stage_change"
-ACTION_PIPELINE_ACTIVITY = "pipeline.activity_recorded"
-ACTION_PIPELINE_NEXT_ACTION = "pipeline.next_action_updated"
 ACTION_SCORING_RULE_UPDATE = "scoring_rule.update"
 ACTION_ANALYTICS_CONFIG_UPDATE = "analytics.config.update"
 ACTION_EXPORT_REQUEST = "export.request"
 ACTION_BRIEF_CONVERT = "brief.convert"
 ACTION_CONTACT_RESTORE = "contact.restore"
+ACTION_RESEARCH_RECORD_CREATE = "research_record.create"
+ACTION_PIPELINE_ACTIVITY_CREATE = "pipeline_activity.create"
 
 
 def _is_sensitive_key(key: str) -> bool:
@@ -107,6 +115,14 @@ def redact_summary(data: dict[str, Any] | None) -> dict[str, Any] | None:
         else:
             safe[key] = redact_value(value)
     return safe
+
+
+def audit_summaries_equal(
+    before: dict[str, Any] | None,
+    after: dict[str, Any] | None,
+) -> bool:
+    """Return True when redacted before/after snapshots are identical."""
+    return redact_summary(before) == redact_summary(after)
 
 
 def record_event(
@@ -185,12 +201,9 @@ def record_login_failure(
     *,
     actor_context: ActorContext,
     reason: str,
-    attempted_username: str | None = None,
     repository: AuditEventRepository | None = None,
 ) -> dict[str, Any] | None:
     metadata: dict[str, Any] = {"reason": reason}
-    if attempted_username:
-        metadata["attempted_username"] = attempted_username
     return record_event(
         conn,
         actor_context=actor_context,
@@ -229,18 +242,54 @@ def record_import_batch(
     batch_id: str,
     source_type: str,
     record_count: int,
+    schema_version: str | None = None,
+    checksum: str | None = None,
+    export_date: Any | None = None,
+    summary_counts: dict[str, Any] | None = None,
     repository: AuditEventRepository | None = None,
 ) -> dict[str, Any] | None:
+    summary_after: dict[str, Any] = {
+        "source_type": source_type,
+        "record_count": record_count,
+    }
+    if schema_version is not None:
+        summary_after["schema_version"] = schema_version
+    if checksum is not None:
+        summary_after["checksum"] = checksum
+    if export_date is not None:
+        summary_after["export_date"] = (
+            export_date.isoformat() if hasattr(export_date, "isoformat") else str(export_date)
+        )
+    if summary_counts is not None:
+        summary_after["summary_counts"] = summary_counts
     return record_event(
         conn,
         actor_context=actor_context,
         action=ACTION_IMPORT_BATCH,
         entity_type="import_batch",
         entity_id=batch_id,
-        summary_after={
-            "source_type": source_type,
-            "record_count": record_count,
-        },
+        summary_after=summary_after,
+        repository=repository,
+    )
+
+
+def record_import_batch_rollback(
+    conn: psycopg.Connection,
+    *,
+    actor_context: ActorContext,
+    batch_id: str,
+    summary_before: dict[str, Any] | None = None,
+    summary_after: dict[str, Any] | None = None,
+    repository: AuditEventRepository | None = None,
+) -> dict[str, Any] | None:
+    return record_event(
+        conn,
+        actor_context=actor_context,
+        action=ACTION_IMPORT_BATCH_ROLLBACK,
+        entity_type="import_batch",
+        entity_id=batch_id,
+        summary_before=summary_before,
+        summary_after=summary_after,
         repository=repository,
     )
 
@@ -265,6 +314,128 @@ def record_entity_delete(
     )
 
 
+def record_company_create(
+    conn: psycopg.Connection,
+    *,
+    actor_context: ActorContext,
+    entity_id: str,
+    summary_after: dict[str, Any] | None = None,
+    repository: AuditEventRepository | None = None,
+) -> dict[str, Any] | None:
+    return record_event(
+        conn,
+        actor_context=actor_context,
+        action=ACTION_COMPANY_CREATE,
+        entity_type="company",
+        entity_id=entity_id,
+        summary_after=summary_after,
+        repository=repository,
+    )
+
+
+def record_company_update(
+    conn: psycopg.Connection,
+    *,
+    actor_context: ActorContext,
+    entity_id: str,
+    summary_before: dict[str, Any] | None = None,
+    summary_after: dict[str, Any] | None = None,
+    repository: AuditEventRepository | None = None,
+) -> dict[str, Any] | None:
+    return record_event(
+        conn,
+        actor_context=actor_context,
+        action=ACTION_COMPANY_UPDATE,
+        entity_type="company",
+        entity_id=entity_id,
+        summary_before=summary_before,
+        summary_after=summary_after,
+        repository=repository,
+    )
+
+
+def record_company_archive(
+    conn: psycopg.Connection,
+    *,
+    actor_context: ActorContext,
+    entity_id: str,
+    summary_before: dict[str, Any] | None = None,
+    summary_after: dict[str, Any] | None = None,
+    repository: AuditEventRepository | None = None,
+) -> dict[str, Any] | None:
+    return record_event(
+        conn,
+        actor_context=actor_context,
+        action=ACTION_COMPANY_ARCHIVE,
+        entity_type="company",
+        entity_id=entity_id,
+        summary_before=summary_before,
+        summary_after=summary_after,
+        repository=repository,
+    )
+
+
+def record_company_restore(
+    conn: psycopg.Connection,
+    *,
+    actor_context: ActorContext,
+    entity_id: str,
+    summary_before: dict[str, Any] | None = None,
+    summary_after: dict[str, Any] | None = None,
+    repository: AuditEventRepository | None = None,
+) -> dict[str, Any] | None:
+    return record_event(
+        conn,
+        actor_context=actor_context,
+        action=ACTION_COMPANY_RESTORE,
+        entity_type="company",
+        entity_id=entity_id,
+        summary_before=summary_before,
+        summary_after=summary_after,
+        repository=repository,
+    )
+
+
+def record_contact_create(
+    conn: psycopg.Connection,
+    *,
+    actor_context: ActorContext,
+    entity_id: str,
+    summary_after: dict[str, Any] | None = None,
+    repository: AuditEventRepository | None = None,
+) -> dict[str, Any] | None:
+    return record_event(
+        conn,
+        actor_context=actor_context,
+        action=ACTION_CONTACT_CREATE,
+        entity_type="contact",
+        entity_id=entity_id,
+        summary_after=summary_after,
+        repository=repository,
+    )
+
+
+def record_contact_update(
+    conn: psycopg.Connection,
+    *,
+    actor_context: ActorContext,
+    entity_id: str,
+    summary_before: dict[str, Any] | None = None,
+    summary_after: dict[str, Any] | None = None,
+    repository: AuditEventRepository | None = None,
+) -> dict[str, Any] | None:
+    return record_event(
+        conn,
+        actor_context=actor_context,
+        action=ACTION_CONTACT_UPDATE,
+        entity_type="contact",
+        entity_id=entity_id,
+        summary_before=summary_before,
+        summary_after=summary_after,
+        repository=repository,
+    )
+
+
 def record_pipeline_update(
     conn: psycopg.Connection,
     *,
@@ -280,71 +451,6 @@ def record_pipeline_update(
         action=ACTION_PIPELINE_UPDATE,
         entity_type="pipeline",
         entity_id=entity_id,
-        summary_before=summary_before,
-        summary_after=summary_after,
-        repository=repository,
-    )
-
-
-def record_pipeline_stage_change(
-    conn: psycopg.Connection,
-    *,
-    actor_context: ActorContext,
-    company_id: str,
-    summary_before: dict[str, Any] | None = None,
-    summary_after: dict[str, Any] | None = None,
-    metadata: dict[str, Any] | None = None,
-    repository: AuditEventRepository | None = None,
-) -> dict[str, Any] | None:
-    return record_event(
-        conn,
-        actor_context=actor_context,
-        action=ACTION_PIPELINE_STAGE_CHANGE,
-        entity_type="company",
-        entity_id=company_id,
-        summary_before=summary_before,
-        summary_after=summary_after,
-        metadata=metadata,
-        repository=repository,
-    )
-
-
-def record_pipeline_activity(
-    conn: psycopg.Connection,
-    *,
-    actor_context: ActorContext,
-    company_id: str,
-    summary_after: dict[str, Any] | None = None,
-    metadata: dict[str, Any] | None = None,
-    repository: AuditEventRepository | None = None,
-) -> dict[str, Any] | None:
-    return record_event(
-        conn,
-        actor_context=actor_context,
-        action=ACTION_PIPELINE_ACTIVITY,
-        entity_type="company",
-        entity_id=company_id,
-        summary_after=summary_after,
-        metadata=metadata,
-        repository=repository,
-    )
-
-
-def record_pipeline_next_action_update(
-    conn: psycopg.Connection,
-    *,
-    actor_context: ActorContext,
-    company_id: str,
-    summary_before: dict[str, Any] | None = None,
-    summary_after: dict[str, Any] | None = None,
-    repository: AuditEventRepository | None = None,
-) -> dict[str, Any] | None:
-    return record_event(
-        conn,
-        actor_context=actor_context,
-        action=ACTION_PIPELINE_NEXT_ACTION,
-        entity_type="company",
-        entity_id=company_id,
         summary_before=summary_before,
         summary_after=summary_after,
         repository=repository,
@@ -431,6 +537,27 @@ def record_brief_convert(
     )
 
 
+def record_contact_archive(
+    conn: psycopg.Connection,
+    *,
+    actor_context: ActorContext,
+    entity_id: str,
+    summary_before: dict[str, Any] | None = None,
+    summary_after: dict[str, Any] | None = None,
+    repository: AuditEventRepository | None = None,
+) -> dict[str, Any] | None:
+    return record_event(
+        conn,
+        actor_context=actor_context,
+        action=ACTION_CONTACT_ARCHIVE,
+        entity_type="contact",
+        entity_id=entity_id,
+        summary_before=summary_before,
+        summary_after=summary_after,
+        repository=repository,
+    )
+
+
 def record_contact_restore(
     conn: psycopg.Connection,
     *,
@@ -447,6 +574,97 @@ def record_contact_restore(
         entity_type="contact",
         entity_id=contact_id,
         summary_before=summary_before,
+        summary_after=summary_after,
+        repository=repository,
+    )
+
+
+def research_record_audit_summary(
+    *,
+    research_record_id: str,
+    company_id: str,
+    contact_id: str | None,
+    record_type: str,
+    source_name: str | None = None,
+    source_url: str | None = None,
+    observed_value: str | None = None,
+    observed_at: Any | None = None,
+    confidence: float | None = None,
+    review_at: Any | None = None,
+    expires_at: Any | None = None,
+) -> dict[str, Any]:
+    """Bounded audit metadata for research evidence — no body, URLs, or values."""
+    return {
+        "research_record_id": research_record_id,
+        "company_id": company_id,
+        "contact_id": contact_id,
+        "record_type": record_type,
+        "has_source_name": bool(source_name and str(source_name).strip()),
+        "has_source_url": bool(source_url and str(source_url).strip()),
+        "has_observed_value": bool(observed_value and str(observed_value).strip()),
+        "has_observed_at": observed_at is not None,
+        "has_confidence": confidence is not None,
+        "has_review_at": review_at is not None,
+        "has_expires_at": expires_at is not None,
+    }
+
+
+def record_research_record_create(
+    conn: psycopg.Connection,
+    *,
+    actor_context: ActorContext,
+    research_record_id: str,
+    summary_after: dict[str, Any],
+    repository: AuditEventRepository | None = None,
+) -> dict[str, Any] | None:
+    return record_event(
+        conn,
+        actor_context=actor_context,
+        action=ACTION_RESEARCH_RECORD_CREATE,
+        entity_type="research_record",
+        entity_id=research_record_id,
+        summary_after=summary_after,
+        repository=repository,
+    )
+
+
+def pipeline_activity_audit_summary(
+    *,
+    activity_id: str,
+    company_id: str,
+    contact_id: str | None,
+    activity_type: str,
+    created_at: Any,
+) -> dict[str, Any]:
+    """Bounded audit metadata for pipeline activity — no summary or metadata."""
+    created = (
+        created_at.isoformat()
+        if hasattr(created_at, "isoformat")
+        else str(created_at)
+    )
+    return {
+        "activity_id": activity_id,
+        "company_id": company_id,
+        "contact_id": contact_id,
+        "activity_type": activity_type,
+        "created_at": created,
+    }
+
+
+def record_pipeline_activity_create(
+    conn: psycopg.Connection,
+    *,
+    actor_context: ActorContext,
+    activity_id: str,
+    summary_after: dict[str, Any],
+    repository: AuditEventRepository | None = None,
+) -> dict[str, Any] | None:
+    return record_event(
+        conn,
+        actor_context=actor_context,
+        action=ACTION_PIPELINE_ACTIVITY_CREATE,
+        entity_type="pipeline_activity",
+        entity_id=activity_id,
         summary_after=summary_after,
         repository=repository,
     )

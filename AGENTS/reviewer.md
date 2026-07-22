@@ -7,15 +7,27 @@ You run when an issue is labeled `agent:reviewer` (usually with
 **GitHub pull request review APIs** (approve or request changes), then
 record the orchestration decision.
 
+**Route by issue `type:*`:** `type:docs` uses the **Docs review** path below
+(objectives / acceptance only). Other types use the **Builder / product**
+path (screenshots, coverage, visual gates). Both still validate against the
+issue’s original acceptance criteria before `review:approved`.
+
 Before approving you must:
 
-1. Confirm the linked PR **merges cleanly** into its base (`mergeable` /
+1. Confirm **dependencies are met** (`scripts/issue_deps.py`): no open
+   GitHub `blockedBy`, no open `Depends on: #N` targets, and no prose-only
+   `## Dependencies` section. If unmet, request changes with
+   `terminal: true` / open-dependencies wording so orchestration sets
+   `status:blocked` — **do not** requeue Builder/Docs and **do not** approve
+   (learned from [#204](https://github.com/saberistic-team/agent-web/issues/204)).
+2. Confirm the linked PR **merges cleanly** into its base (`mergeable` /
    `mergeable_state` not dirty). If GitHub reports conflicts (e.g. another
-   branch merged after Builder handed off), **request changes immediately** and
-   return the issue to Builder — do not approve or spend the rest of the review
-   budget on a conflicted PR. Merge conflicts are always Builder work on the
-   same PR head.
-2. Capture **headless Chromium screenshots** via Actions Playwright
+   branch merged after Builder/Docs handed off), **request changes immediately**
+   and return the issue to the implementing agent (`agent:builder` or
+   `agent:docs` via the priority queue — dispatcher uses `type:*`) — do not
+   approve or spend the rest of the review budget on a conflicted PR. Merge
+   conflicts are always implementing-agent work on the same PR head.
+3. Capture **headless Chromium screenshots** via Actions Playwright
    (`scripts/screenshot_deploy.py`, preferring the **PR-head** copy under
    `COVERAGE_ROOT` when present — see [docs/SCREENSHOTS.md](../docs/SCREENSHOTS.md))
    at **desktop and mobile** viewports (plus admin tablet / narrow-desktop /
@@ -28,18 +40,18 @@ Before approving you must:
    the PR touches no visual pages (tests/docs only). Upload all PNGs in
    **one** commit via `upload_to_branch` (never one Contents API commit per
    image — that storms CI and can dirty the PR mid-review).
-3. Check **visual readability** on the **PR branch** screenshots / live
+4. Check **visual readability** on the **PR branch** screenshots / live
    capture: hero and primary copy must stay inside the viewport (no horizontal
    overflow / text out of frame on mobile). New admin/data tables under
    ``ADMIN_PREVIEW_MODE`` must show **randomized mock rows** (not an empty
    “no records yet” shell) unless the issue is explicitly about empty states.
-4. Run **Cursor / OpenAI / Models AI review** ([docs/MODELS.md](../docs/MODELS.md),
+5. Run **Cursor / OpenAI / Models AI review** ([docs/MODELS.md](../docs/MODELS.md),
    [docs/DESIGN.md](../docs/DESIGN.md), [docs/TESTING.md](../docs/TESTING.md))
    — prefers Cursor when `CURSOR_API_KEY` is set. Do **not** request changes
    for missing saberistic.com pre shots or for `/admin` evidence that was
    already captured (or correctly skipped) under `ADMIN_PREVIEW_MODE`.
-5. Enforce **service coverage** on `app/`: unit ≥90%, integration ≥70%
-6. Post an **`### acceptance_checklist`** that marks each acceptance criterion
+6. Enforce **service coverage** on `app/`: unit ≥90%, integration ≥70%
+7. Post an **`### acceptance_checklist`** that marks each acceptance criterion
    done/not_done with links to evidence (PR, commits, files, screenshots).
    **Pre-merge “published” criteria** (e.g. launch articles live on `/insights`)
    are satisfied by **PR-head evidence** — code routes, `LAUNCH_REVIEW.md` /
@@ -52,7 +64,42 @@ refs for the same issue number (ghost branches are not in scope). If Builder
 appears to be committing off-PR, request changes citing the wrong branch rather
 than reviewing stale ghost commits.
 
+## Docs review (`type:docs`)
+
+Docs PRs still go through Reviewer + Gate. Skip product evidence that does
+not apply; **do** enforce objectives.
+
+**Do (required):**
+
+1. Mergeability + CI green (same as product PRs).
+2. Run AI review + post `### acceptance_checklist` against the issue body —
+   every acceptance criterion and named deliverable path must be evidenceable
+   on the PR head (commits / files), not only the issue prose.
+3. Reject stub-only heads: if the PR is only `docs/agent-updates/<n>.md` (or
+   equivalent placeholder) without the deliverable files the issue required,
+   `REQUEST_CHANGES` citing “return to Docs”.
+4. Reject product-scoped changes on a docs issue (`app/`, `site/`, routes via
+   those trees, DB migrations, public marketing surfaces) — `REQUEST_CHANGES` /
+   escalate to Planner unless the issue explicitly allowed them. Supporting
+   WorldGraph research code under `spike/` (and `docs/` / `tests/` / `scripts/`
+   / `AGENTS/`) is in scope for docs issues when it keeps schema fixtures
+   honest; do not hard-fail solely for `spike/` edits.
+5. Reject invented APIs or behavior that the repo does not implement when the
+   issue asked to document current/research decisions only.
+
+**Skip for docs (do not hard-fail):**
+
+- Deploy / PR-branch screenshots and visual readability
+- Admin preview mock-data / nav visibility
+- Service coverage gates and “code change without tests”
+- Builder scaffold-sync heuristics aimed at product implementation PRs
+
+On `changes-requested`, labels return to `status:queued`; dispatcher applies
+`agent:docs` for `type:docs` (not Builder). Preserve `priority:*`.
+
 ## Definition of done
+
+### Product / Builder PRs
 
 - Desktop + mobile **PR-branch** screenshots for **PR-affected** pages
   (public + all admin nav pages under `ADMIN_PREVIEW_MODE` when admin files
@@ -63,14 +110,19 @@ than reviewing stale ghost commits.
   mobile out-of-frame overflow)
 - Admin preview data pages show **mock rows** when capture ran (no empty
   “no records yet” / placeholder shells under `ADMIN_PREVIEW_MODE`)
+
+### All PRs (including docs)
+
 - AI review is recorded in the PR review body
 - `### acceptance_checklist` is posted with `all_done: true` and evidence links
+  (criteria map to the **original issue objectives**)
 - Matching issue-body checkboxes are flipped to `[x]` when verified
 - You submitted a GitHub PR review (approve **or** request changes)
 - Labels then move to either:
   - `review:approved` (gate merges + closes only if checklist complete), or
   - `review:changes-requested` + `status:queued` (dispatcher re-applies
-    `agent:builder` by `priority:*`; preserve existing priority)
+    `agent:builder` or `agent:docs` from `type:*` by `priority:*`; preserve
+    existing priority)
 - Project board Status / Review fields track those labels automatically
   ([docs/LABELS.md](../docs/LABELS.md) — Project board)
 - The linked PR’s mirror labels stay in sync: `review:approved` or
@@ -83,15 +135,29 @@ Any of these is an automatic request-changes — do not approve:
 
 - **Merge conflicts** with the PR base (`mergeable: false` /
   `mergeable_state: dirty`) — including races where other PRs merged after
-  Builder handed off
+  Builder/Docs handed off
 - Failing required tests / CI
+- AI reviewer says acceptance criteria are unmet
+- Acceptance checklist incomplete (`all_done: false` or missing) when criteria
+  are product- or docs-failed. **Exception:** acceptance AI infra/parse failures
+  (`method: ai-error`, e.g. Cursor returned prose instead of JSON) are **not**
+  implementing-agent work when the AI PR review already `approved` — defer to
+  that verdict and do not `REQUEST_CHANGES` solely for the checklist transport
+  glitch.
+- **Docs stub-only** (`type:docs`): PR lacks the issue’s required deliverable
+  files (only `docs/agent-updates/` placeholder) — return to Docs
+- **Docs out-of-scope product code** (`type:docs`): unexpected `app/` / `site/` /
+  migration changes (or other executable code outside `docs/`, `AGENTS/`,
+  `scripts/`, `tests/`, and `spike/`) — return to Docs or escalate
+
+### Product / Builder-only hard fails
+
 - **Service coverage below gates** on `app/`: unit **≥90%**, integration **≥70%**
   ([docs/TESTING.md](../docs/TESTING.md), `scripts/check_coverage.py`)
 - Failing security audits or high/critical findings introduced by the PR
 - Behavior change with **missing tests** that should cover it
 - Builder **scaffold sync** PRs (`builder(#N): sync …` only) that do not
   implement the issue
-- AI reviewer says acceptance criteria are unmet
 - Required deploy screenshots failed (when `SCREENSHOTS_REQUIRED=true`)
 - **Visual readability fail:** text clipped or overflowing the mobile viewport
   (out of frame) on any **captured** PR-branch screenshot (`h1`, `.lede`,
@@ -104,16 +170,12 @@ Any of these is an automatic request-changes — do not approve:
   `.admin-nav-link` nodes exist but none are visible (common when nav links live
   inside a closed `<details>` without a separate desktop list) — Builder must
   keep the desktop list **outside** `<details>` (`format_admin_nav_hard_fail`)
-- Acceptance checklist incomplete (`all_done: false` or missing) when criteria
-  are product-failed. **Exception:** acceptance AI infra/parse failures
-  (`method: ai-error`, e.g. Cursor returned prose instead of JSON) are **not**
-  Builder work when the AI PR review already `approved` — defer to that verdict
-  and do not `REQUEST_CHANGES` solely for the checklist transport glitch.
 
 Coverage gaps, missing tests, CI assertion failures, visual overflow, empty
-preview shells, invisible desktop admin nav, and **merge conflicts** are
-**Builder work** — request changes so dispatcher requeues `agent:builder`
-(Builder resolves on the same PR head).
+preview shells, invisible desktop admin nav, docs deliverable gaps, and
+**merge conflicts** are **implementing-agent work** — request changes so
+dispatcher requeues `agent:builder` or `agent:docs` from `type:*` (resolve
+on the same PR head).
 Do **not** treat them as terminal `@human-review` / `status:blocked` (see
 `scripts/review_decision.py`). Do **not** resolve conflicts yourself.
 
@@ -140,6 +202,12 @@ If the PR deletes brief-convert routes, pipeline repositories, or session CSRF
 helpers while implementing an unrelated feature, request changes for
 **regression of landed CRM** — Builder must restore those surfaces on the same
 PR head, not “fix forward” by inventing replacements.
+
+**Anti-loop (false PR↔issue link via bare `#N`, learned from #109/#181):**
+If Builder commits for issue A appear on issue B’s PR because B’s body casually
+mentions `#A`, request changes citing the linking bug — permanent fix is
+intentional-only `linked_open_prs` (`Closes`/`(#N)`/`builder/{N}-`), not more
+codegen on the wrong head.
 
 **Anti-loop (screenshot filenames with `?`, learned from #182 / #183):**
 `screenshot_basename` must strip query strings (e.g.

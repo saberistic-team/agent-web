@@ -8,6 +8,8 @@ from uuid import UUID
 
 import psycopg
 
+from app.patch import UNSET, MaybeUnset
+
 
 class CompanyRepository(Protocol):
     def create(
@@ -46,22 +48,30 @@ class CompanyRepository(Protocol):
         self, conn: psycopg.Connection, domain: str, *, exclude_company_id: UUID | None = None
     ) -> list[dict[str, Any]]: ...
 
+    def find_by_exact_name(
+        self,
+        conn: psycopg.Connection,
+        name: str,
+        *,
+        exclude_company_id: UUID | None = None,
+    ) -> list[dict[str, Any]]: ...
+
     def update(
         self,
         conn: psycopg.Connection,
         company_id: UUID,
         *,
-        name: str | None = None,
-        website: str | None = None,
-        status: str | None = None,
-        domain: str | None = None,
-        category: str | None = None,
-        stage: str | None = None,
-        headcount_estimate: int | None = None,
-        funding_summary: str | None = None,
-        target_status: str | None = None,
-        last_verified_at: date | None = None,
-        notes: str | None = None,
+        name: MaybeUnset[str] = UNSET,
+        website: MaybeUnset[str] = UNSET,
+        status: MaybeUnset[str] = UNSET,
+        domain: MaybeUnset[str] = UNSET,
+        category: MaybeUnset[str] = UNSET,
+        stage: MaybeUnset[str] = UNSET,
+        headcount_estimate: MaybeUnset[int] = UNSET,
+        funding_summary: MaybeUnset[str] = UNSET,
+        target_status: MaybeUnset[str] = UNSET,
+        last_verified_at: MaybeUnset[date] = UNSET,
+        notes: MaybeUnset[str] = UNSET,
     ) -> dict[str, Any] | None: ...
 
     def archive(self, conn: psycopg.Connection, company_id: UUID) -> dict[str, Any] | None: ...
@@ -84,11 +94,20 @@ class ContactRepository(Protocol):
         relationship_strength: str | None = None,
         notes: str | None = None,
         buying_roles: list[str] | None = None,
+        field_sources: dict[str, Any] | None = None,
+        relationship_metrics: dict[str, Any] | None = None,
+        crm_context_tags: list[str] | None = None,
     ) -> dict[str, Any]: ...
 
     def get_by_id(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None: ...
 
-    def get_by_email(self, conn: psycopg.Connection, email: str) -> dict[str, Any] | None: ...
+    def get_active_by_id_for_update(
+        self,
+        conn: psycopg.Connection,
+        contact_id: UUID,
+    ) -> dict[str, Any] | None:
+        """Active contact row locked for update inside a conversion transaction."""
+        ...
 
     def get_active_by_email(
         self,
@@ -96,7 +115,17 @@ class ContactRepository(Protocol):
         email: str,
         *,
         exclude_contact_id: UUID | None = None,
-    ) -> dict[str, Any] | None: ...
+    ) -> dict[str, Any] | None:
+        """Active-contact identity lookup — excludes archived rows (#226)."""
+        ...
+
+    def get_archived_by_email(
+        self,
+        conn: psycopg.Connection,
+        email: str,
+    ) -> dict[str, Any] | None:
+        """Archived-contact lookup — separate op for restore/review only (#226)."""
+        ...
 
     def find_by_profile_url(
         self,
@@ -140,17 +169,22 @@ class ContactRepository(Protocol):
         conn: psycopg.Connection,
         contact_id: UUID,
         *,
-        full_name: str | None = None,
-        email: str | None = None,
-        title: str | None = None,
-        profile_url: str | None = None,
-        email_permission: str | None = None,
-        company_id: UUID | None = None,
-        last_interaction_at: date | None = None,
-        relationship_strength: str | None = None,
-        notes: str | None = None,
-        buying_roles: list[str] | None = None,
+        full_name: MaybeUnset[str] = UNSET,
+        email: MaybeUnset[str] = UNSET,
+        title: MaybeUnset[str] = UNSET,
+        profile_url: MaybeUnset[str] = UNSET,
+        email_permission: MaybeUnset[str] = UNSET,
+        company_id: MaybeUnset[UUID] = UNSET,
+        last_interaction_at: MaybeUnset[date] = UNSET,
+        relationship_strength: MaybeUnset[str] = UNSET,
+        notes: MaybeUnset[str] = UNSET,
+        buying_roles: MaybeUnset[list[str]] = UNSET,
+        field_sources: MaybeUnset[dict[str, Any]] = UNSET,
+        relationship_metrics: MaybeUnset[dict[str, Any]] = UNSET,
+        crm_context_tags: MaybeUnset[list[str]] = UNSET,
     ) -> dict[str, Any] | None: ...
+
+    def count_active(self, conn: psycopg.Connection) -> int: ...
 
     def archive(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None: ...
 
@@ -270,13 +304,13 @@ class PipelineRepository(Protocol):
         conn: psycopg.Connection,
         company_id: UUID,
         *,
-        pipeline_stage: str | None = None,
-        next_action: str | None = None,
-        next_action_due_at: datetime | None = None,
-        pipeline_owner: str | None = None,
-        expected_value_cents: int | None = None,
-        pipeline_loss_reason: str | None = None,
-        pipeline_nurture_reason: str | None = None,
+        pipeline_stage: MaybeUnset[str] = UNSET,
+        next_action: MaybeUnset[str] = UNSET,
+        next_action_due_at: MaybeUnset[datetime] = UNSET,
+        pipeline_owner: MaybeUnset[str] = UNSET,
+        expected_value_cents: MaybeUnset[int] = UNSET,
+        pipeline_loss_reason: MaybeUnset[str] = UNSET,
+        pipeline_nurture_reason: MaybeUnset[str] = UNSET,
         clear_loss_reason: bool = False,
         clear_nurture_reason: bool = False,
     ) -> dict[str, Any] | None: ...
@@ -389,6 +423,56 @@ class AcquisitionDashboardRepository(Protocol):
     ) -> list[dict[str, Any]]: ...
 
 
+class ActionQueueRepository(Protocol):
+    def list_overdue_next_actions(
+        self,
+        conn: psycopg.Connection,
+        *,
+        reference: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]: ...
+
+    def list_due_today_next_actions(
+        self,
+        conn: psycopg.Connection,
+        *,
+        day_start: datetime,
+        day_end: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]: ...
+
+    def list_recently_qualified_tier_a(
+        self,
+        conn: psycopg.Connection,
+        *,
+        since: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]: ...
+
+    def list_warm_introduction_opportunities(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int,
+    ) -> list[dict[str, Any]]: ...
+
+    def list_stale_high_value_evidence(
+        self,
+        conn: psycopg.Connection,
+        *,
+        reference: datetime,
+        min_value_cents: int,
+        limit: int,
+    ) -> list[dict[str, Any]]: ...
+
+    def list_export_candidates(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int,
+    ) -> list[dict[str, Any]]: ...
+
+
 class ProjectBriefRepository(Protocol):
     def list_page(
         self,
@@ -407,6 +491,131 @@ class ProjectBriefRepository(Protocol):
         conn: psycopg.Connection,
         brief_id: int,
     ) -> dict[str, Any] | None: ...
+
+
+class IcpScoringRepository(Protocol):
+    def get_active_version(self, conn: psycopg.Connection) -> dict[str, Any] | None: ...
+
+    def get_version_by_number(
+        self, conn: psycopg.Connection, version_number: int
+    ) -> dict[str, Any] | None: ...
+
+    def list_rules_for_version(
+        self, conn: psycopg.Connection, version_id: UUID
+    ) -> list[dict[str, Any]]: ...
+
+    def create_version(
+        self,
+        conn: psycopg.Connection,
+        *,
+        version_number: int,
+        label: str,
+        created_by: str,
+        activate: bool,
+    ) -> dict[str, Any]: ...
+
+    def deactivate_all_versions(self, conn: psycopg.Connection) -> None: ...
+
+    def insert_rule(
+        self,
+        conn: psycopg.Connection,
+        *,
+        version_id: UUID,
+        rule_id: str,
+        dimension: str,
+        label: str,
+        weight: float,
+        threshold: dict[str, Any],
+        enabled: bool,
+        accept_hypothesis: bool,
+        sort_order: int,
+    ) -> dict[str, Any]: ...
+
+    def insert_snapshot(
+        self,
+        conn: psycopg.Connection,
+        *,
+        company_id: UUID,
+        version_id: UUID,
+        version_number: int,
+        total_score: float,
+        computed_score: float,
+        breakdown: list[dict[str, Any]],
+        missing_inputs: list[str],
+        calculated_at: datetime,
+        is_override: bool = False,
+        override_reason: str | None = None,
+        override_by: str | None = None,
+    ) -> dict[str, Any]: ...
+
+    def get_latest_snapshot_for_company(
+        self, conn: psycopg.Connection, company_id: UUID
+    ) -> dict[str, Any] | None: ...
+
+    def list_latest_snapshots(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]: ...
+
+
+class QualificationRepository(Protocol):
+    def list_active_companies(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]: ...
+
+    def get_latest_tier_for_company(
+        self, conn: psycopg.Connection, company_id: UUID
+    ) -> str | None: ...
+
+    def record_tier_change(
+        self,
+        conn: psycopg.Connection,
+        *,
+        company_id: UUID,
+        from_tier: str | None,
+        to_tier: str,
+        score: float,
+        changed_by: str,
+        snapshot_id: UUID | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]: ...
+
+    def list_tier_history(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]: ...
+
+    def create_working_list(
+        self,
+        conn: psycopg.Connection,
+        *,
+        name: str,
+        owner: str,
+        company_ids: list[UUID],
+        max_items: int,
+    ) -> dict[str, Any]: ...
+
+    def list_working_lists_for_owner(
+        self,
+        conn: psycopg.Connection,
+        *,
+        owner: str,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]: ...
+
+    def get_working_list_items(
+        self,
+        conn: psycopg.Connection,
+        list_id: UUID,
+    ) -> list[dict[str, Any]]: ...
 
 
 class AuditEventRepository(Protocol):
@@ -431,3 +640,68 @@ class AuditEventRepository(Protocol):
         page: int = 1,
         per_page: int = 50,
     ) -> tuple[list[dict[str, Any]], int]: ...
+
+class ImportBatchRepository(Protocol):
+    def create(
+        self,
+        conn: psycopg.Connection,
+        *,
+        source_type: str,
+        schema_version: str,
+        checksum: str,
+        actor: str,
+        status: str,
+        correlation_id: str,
+        export_date: date | None = None,
+        summary_counts: dict[str, Any] | None = None,
+        error_message: str | None = None,
+    ) -> dict[str, Any]: ...
+
+    def get_by_id(self, conn: psycopg.Connection, batch_id: UUID) -> dict[str, Any] | None: ...
+
+    def get_committed_by_checksum(
+        self, conn: psycopg.Connection, checksum: str
+    ) -> dict[str, Any] | None: ...
+
+    def list_page(
+        self,
+        conn: psycopg.Connection,
+        *,
+        page: int = 1,
+        per_page: int = 50,
+    ) -> tuple[list[dict[str, Any]], int]: ...
+
+    def update_status(
+        self,
+        conn: psycopg.Connection,
+        batch_id: UUID,
+        *,
+        status: str,
+        summary_counts: dict[str, Any] | None = None,
+        error_message: str | None = None,
+    ) -> dict[str, Any] | None: ...
+
+    def create_row(
+        self,
+        conn: psycopg.Connection,
+        *,
+        batch_id: UUID,
+        row_index: int,
+        source_kind: str,
+        source_identity: dict[str, Any],
+        outcome: str,
+        entity_type: str | None = None,
+        entity_id: UUID | None = None,
+        prior_snapshot: dict[str, Any] | None = None,
+        applied_snapshot: dict[str, Any] | None = None,
+        detail: str | None = None,
+    ) -> dict[str, Any]: ...
+
+    def list_rows_for_batch(
+        self,
+        conn: psycopg.Connection,
+        batch_id: UUID,
+        *,
+        outcome: str | None = None,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]: ...

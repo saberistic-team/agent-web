@@ -24,6 +24,9 @@ and posted evidence.
 
 3. **Post-deploy** (optional refresh):
    - May re-verify live deploy evidence and post an updated checklist
+   - **CRM runtime issues** also require a passing post-merge record at
+     `.agent/deploy/{short_sha}/deploy-health.json` before Gate may close the
+     issue (see [DEPLOYMENT_HEALTH.md](DEPLOYMENT_HEALTH.md))
 
 ## Checklist comment shape
 

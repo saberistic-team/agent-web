@@ -3,7 +3,8 @@
 **Issue:** [#200](https://github.com/saberistic-team/agent-web/issues/200)  
 **Status:** Research-only product-definition dataset. **Not production content. Not automatically published.**  
 **Last updated:** 2026-07-22  
-**Qualification rules:** Issue [#199](https://github.com/saberistic-team/agent-web/issues/199) criteria (also summarized in [MANIFEST_V0.md](./MANIFEST_V0.md))  
+**Qualification rules:** Issue [#199](https://github.com/saberistic-team/agent-web/issues/199) criteria in [WORLD_DEFINITION.md](./WORLD_DEFINITION.md) / [WORLD_MANIFEST_V0.md](./WORLD_MANIFEST_V0.md)  
+
 **Corpus artifact:** [corpus/candidates.json](./corpus/candidates.json)  
 **Schema validation output:** [corpus/validation_results.json](./corpus/validation_results.json)
 
@@ -226,7 +227,7 @@ Add top-level `linked_entities[]` with `{ "entity_type", "name", "url" }` for en
 
 ### P2 — Field requirement tiers
 
-Document in MANIFEST_V0.md (not JSON Schema enum): `indexing_required[]` vs `verification_required[]` vs `optional[]` per analysis §3 above.
+Document in WORLD_MANIFEST_V0.md (not JSON Schema enum): `indexing_required[]` vs `verification_required[]` vs `optional[]` per analysis §3 above.
 
 ### P3 — Safety and license partial disclosure
 
@@ -260,7 +261,7 @@ Optional 0–1 confidence that AI is material to the experience, separate from t
 | [corpus/candidates.json](./corpus/candidates.json) | Authoritative 30-entry research corpus |
 | [corpus/manifests/](./corpus/manifests/) | Manifest v0 snapshot per qualifying world |
 | [corpus/validation_results.json](./corpus/validation_results.json) | Schema validation output |
-| [MANIFEST_V0.md](./MANIFEST_V0.md) | Manifest v0 field spec |
+| [WORLD_MANIFEST_V0.md](./WORLD_MANIFEST_V0.md) | Manifest v0 field spec |
 | [world-manifest-v0.schema.json](./world-manifest-v0.schema.json) | JSON Schema |
 | [TECHNICAL_SPIKE.md](./TECHNICAL_SPIKE.md) | Ingestion/extraction architecture evidence |
 | [tests/test_worldgraph_corpus.py](../../tests/test_worldgraph_corpus.py) | Corpus structure + Manifest v0 validation tests |

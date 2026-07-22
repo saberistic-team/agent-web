@@ -1,28 +1,30 @@
 # Conversion funnel analytics
 
 Parent issues: [#66](https://github.com/saberistic-team/agent-web/issues/66),
-[#86](https://github.com/saberistic-team/agent-web/issues/86).
+[#86](https://github.com/saberistic-team/agent-web/issues/86),
+[#117](https://github.com/saberistic-team/agent-web/issues/117) (Plausible cutover).
 
 Privacy-conscious funnel instrumentation for [saberistic.com](https://saberistic.com)
-using [Plausible Analytics](https://plausible.io/) — no cookies, no third-party
-tracking pixels, and no consent banner required for the default configuration.
+using first-party Postgres storage — no third-party analytics scripts, no cookies
+beyond an opaque analytics session mirror, and DNT/GPC honored on the client.
+
+Historical Plausible measurement and cutover decisions:
+[ANALYTICS_PARITY_REPORT.md](ANALYTICS_PARITY_REPORT.md).
 
 ## Page engagement events (non-funnel)
 
-These measure content interest. They do **not** carry `funnel_step`.
+These measure content interest. They do **not** carry `funnel_step` (except
+`Landing Viewed` at step 1).
 
 | Event name | Route | Properties |
 |------------|-------|--------------|
-| `Landing Viewed` | `/` | `page` |
+| `Landing Viewed` | `/` | `page`, `funnel_step: 1` |
 | `About Viewed` | `/about` | `page` |
 | `Services Viewed` | `/services` | `page` |
 | `Case Studies Viewed` | `/case-studies` | `page` |
 | `Case Study Viewed` | `/work/{slug}` | `page`, `case_study_slug` |
 | `Insights Viewed` | `/insights` | `page` |
 | `Insight Viewed` | `/insights/{slug}` | `page`, `article_slug` |
-
-`Landing Viewed` also sets `funnel_step: 1` as the top of the diagnostic
-conversion path. Other page events above omit `funnel_step`.
 
 Slugs (`case_study_slug`, `article_slug`) are injected by the server from known
 internal route metadata only — never parsed from arbitrary user-controlled paths
@@ -66,28 +68,31 @@ Nav click events (no `funnel_step`; engagement only):
 
 ## Event properties (allowlist)
 
-Only these properties may be sent to Plausible:
+Only these properties may appear on stored events:
 
 | Property | Type | Used on |
 |----------|------|---------|
 | `funnel_step` | int (1–8) | Conversion funnel events |
 | `brief_id` | int | Server events (steps 5–7) |
 | `price_cents` | int | `Checkout Opened`, `Payment Completed` |
+| `discount_cents` | int | `Payment Completed` (when discounted) |
 | `environment` | string | Server events (`production`, `staging`, `development`) |
-| `utm_source` | string | All events when present |
-| `utm_medium` | string | All events when present |
-| `utm_campaign` | string | All events when present |
-| `utm_content` | string | All events when present |
-| `utm_term` | string | All events when present |
+| `linkage_source` | string | Server CRM-linked events |
+| `utm_source` | string | Attribution / all events when present |
+| `utm_medium` | string | Attribution |
+| `utm_campaign` | string | Attribution |
+| `utm_content` | string | Attribution |
+| `utm_term` | string | Attribution |
 | `page` | string | Client events (pathname, trailing slash stripped) |
 | `contact_channel` | string | `Contact Initiated` (e.g. `linkedin`) |
 | `case_study_slug` | string | `Case Study Viewed` (server-known slug) |
 | `article_slug` | string | `Insight Viewed` (server-known slug) |
+| `nav_destination` | string | Nav click events (internal path only) |
 
 ## Sensitive fields — never collected
 
-The following are **explicitly blocked** in `app/analytics_service.py` and are
-never included in client payloads:
+The following are **explicitly blocked** in `app/analytics_service.py` and
+rejected at `POST /api/events`:
 
 - Brief text (`brief`)
 - Email (`email`, `contact_value`)
@@ -103,11 +108,12 @@ Lead PII lives in Postgres and email only.
 
 ## UTM attribution
 
-1. Client (`site/assets/analytics.js`) captures `utm_*` query params on any page
+1. Client (`site/assets/first_party_analytics.js`) captures `utm_*` query params on any page
    load and stores them in `sessionStorage` (`saberistic_utm`).
 2. Brief form submit includes UTM fields in `POST /api/briefs` (optional).
 3. UTM columns on `project_briefs` persist attribution with the lead.
-4. Server events attach the same UTM properties from the request or stored row.
+4. Server events attach the same UTM fields in the `attribution` object from the
+   request or stored row.
 
 Typical sources: LinkedIn posts (`utm_source=linkedin`), newsletter
 (`utm_medium=email`), content links (`utm_campaign=…`).
@@ -116,13 +122,13 @@ Typical sources: LinkedIn posts (`utm_source=linkedin`), newsletter
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `ANALYTICS_ENABLED` | Production | Set `true` to enable emission (default off) |
-| `PLAUSIBLE_DOMAIN` | When enabled | Site domain in Plausible (e.g. `saberistic.com`) |
-| `PLAUSIBLE_API_KEY` | Recommended | Plausible Stats API key for server-side events |
+| `FIRST_PARTY_ANALYTICS_ENABLED` | Production | Set `true` to enable client script + server persistence |
+| `ANALYTICS_ENABLED` | Legacy alias | Still honored if `FIRST_PARTY_ANALYTICS_ENABLED` unset |
 | `ANALYTICS_ENV` | Optional | `production`, `staging`, or `development` (default `development`) |
+| `DATABASE_URL` | Production | Postgres (`analytics_events`, `analytics_sessions`) |
 
-Test and local traffic stays excluded unless `ANALYTICS_ENABLED=true` is set
-explicitly. CI and pytest never enable analytics.
+Test and local traffic stays excluded unless `FIRST_PARTY_ANALYTICS_ENABLED=true`
+is set explicitly. CI and pytest never enable analytics.
 
 ## Non-blocking guarantee
 
@@ -133,22 +139,24 @@ Analytics errors cannot block form submit, Stripe checkout, webhooks, or email.
 
 Run every Monday for the prior 7 days.
 
-### A. Plausible dashboard (traffic + client funnel)
+### A. First-party engagement (`analytics_events`)
 
-1. Open [Plausible](https://plausible.io/) → `saberistic.com`.
-2. Set date range to **Last 7 days**.
-3. Record from **Top pages**:
-   - `/` views → qualified landing visits
-   - `/about` views → credibility / biography interest
-   - `/services` views → commercial service intent
-   - `/case-studies` and `/work/*` → proof engagement
-   - `/insights` and `/insights/*` → authority content engagement
-   - `/brief` views → brief page visits
-4. Open **Goal conversions** (custom events) and record counts:
-   - `Brief Form Started`
-   - `Contact Initiated`
-   - `Services Viewed`, `Case Study Viewed`, `Insight Viewed` (as needed)
-5. Filter by `utm_source` / `utm_medium` props where present.
+```sql
+-- Page / engagement events (7-day window)
+SELECT event_name, COUNT(*) AS events
+FROM analytics_events
+WHERE occurred_at >= NOW() - INTERVAL '7 days'
+  AND event_name IN (
+    'Landing Viewed', 'About Viewed', 'Services Viewed',
+    'Case Studies Viewed', 'Case Study Viewed', 'Insights Viewed',
+    'Insight Viewed', 'Brief Viewed', 'Brief Form Started',
+    'Contact Initiated'
+  )
+GROUP BY 1
+ORDER BY events DESC;
+```
+
+Filter by `attribution->>'utm_source'` for campaign breakdowns.
 
 ### B. Postgres authoritative funnel (leads + payments)
 
@@ -183,6 +191,15 @@ FROM window;
 ```
 
 ```sql
+-- Server funnel events vs CRM (7-day window)
+SELECT event_name, COUNT(*) AS events
+FROM analytics_events
+WHERE occurred_at >= NOW() - INTERVAL '7 days'
+  AND event_name IN ('Lead Persisted', 'Checkout Opened', 'Payment Completed')
+GROUP BY 1;
+```
+
+```sql
 -- Checkout abandonment (pending_payment with session, not paid)
 SELECT COUNT(*) AS abandoned_checkouts
 FROM project_briefs
@@ -195,35 +212,40 @@ WHERE status = 'pending_payment'
 
 | Metric | Source | This week |
 |--------|--------|-----------|
-| Landing visits | Plausible `/` | |
-| About views | Plausible `/about` | |
-| Services views | Plausible `/services` | |
-| Case study views | Plausible `Case Study Viewed` | |
-| Insight views | Plausible `Insight Viewed` | |
-| Brief views | Plausible `/brief` | |
-| Form starts | Plausible `Brief Form Started` | |
+| Landing visits | `analytics_events` `Landing Viewed` | |
+| About views | `analytics_events` `About Viewed` | |
+| Services views | `analytics_events` `Services Viewed` | |
+| Case study views | `analytics_events` `Case Study Viewed` | |
+| Insight views | `analytics_events` `Insight Viewed` | |
+| Brief views | `analytics_events` `Brief Viewed` | |
+| Form starts | `analytics_events` `Brief Form Started` | |
 | Leads persisted | Postgres `created_at` count | |
 | Checkouts opened | Postgres rows with `stripe_session_id` | |
 | Payments completed | Postgres `status = 'paid'` | |
 | Lead → payment % | Postgres query | |
 | Top `utm_source` | Postgres group-by | |
-| LinkedIn contacts | Plausible `Contact Initiated` | |
+| LinkedIn contacts | `analytics_events` `Contact Initiated` | |
 
 ## Implementation map
 
 | Component | Path |
 |-----------|------|
-| Server events + sanitization | `app/analytics_service.py` |
+| Event schema contract (v1) | `app/analytics_event_schema.py`, [ANALYTICS_EVENT_SCHEMA.md](ANALYTICS_EVENT_SCHEMA.md) |
+| Property sanitization | `app/analytics_service.py` |
+| Server events (authoritative) | `app/server_analytics.py` |
+| Browser ingest + abuse controls | `app/analytics_ingest.py`, [ANALYTICS_INGEST.md](ANALYTICS_INGEST.md) |
 | Page injection (meta + script) | `app/page_service.py` |
-| Client funnel + UTM capture | `site/assets/analytics.js` |
+| Client funnel + UTM capture | `site/assets/first_party_analytics.js` |
 | Lead UTM persistence | `app/db.py`, `app/models.py` |
-| Hook points | `app/main.py` (`create_brief`, `stripe_webhook`) |
+| Hook points | `app/main.py` (`create_brief`, `stripe_webhook`, `POST /api/events`) |
+| Cutover / parity | [ANALYTICS_PARITY_REPORT.md](ANALYTICS_PARITY_REPORT.md) |
 
 ## Tests
 
 ```bash
-pytest tests/test_analytics.py -q
+pytest tests/test_analytics.py tests/test_analytics_ingest.py -q
 ```
 
-Validates property sanitization, server event emission, non-blocking failures,
-route-to-event mapping, server-injected slugs, and sensitive-field exclusion.
+Validates property sanitization, server event persistence, non-blocking failures,
+route-to-event mapping, server-injected slugs, sensitive-field exclusion, and
+no remaining Plausible references.

@@ -16,10 +16,10 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from cursor_model import DEFAULT_CURSOR_MODEL, cursor_model_selection
 from github_api import GitHubError, api, post_issue_comment, split_repo
 from pr_labels import apply_pr_mirror
 
-DEFAULT_CURSOR_MODEL = "composer-2.5"
 SKIP_PATH_PREFIXES = (
     ".git/",
     ".venv/",
@@ -96,6 +96,9 @@ def build_prompt(
             "- Never delete landed CRM surfaces unless the issue requires it: "
             "brief convert routes, admin_pipeline_routes / PostgresPipelineRepository, "
             "session CSRF helpers — surgical edits only on shared admin files\n"
+            "- Keep code nimble and readable: prefer smaller functions; when "
+            "editing a large module, split into new files/subfolders rather "
+            "than growing mega-files (mount feature routers from app.main only)\n"
             "- Follow brutal-minimalist brand rules below for any UI work\n"
             "- Live site reference: https://saberistic.com/\n"
             "- Do not modify .github/workflows agent orchestration unless required\n"
@@ -119,6 +122,9 @@ def build_prompt(
             "- Never delete landed CRM surfaces unless the issue requires it: "
             "brief convert routes, admin_pipeline_routes / PostgresPipelineRepository, "
             "session CSRF helpers — surgical edits only on shared admin files\n"
+            "- Keep code nimble and readable: prefer smaller functions; when "
+            "editing a large module, split into new files/subfolders rather "
+            "than growing mega-files (mount feature routers from app.main only)\n"
             "- Follow brutal-minimalist brand rules below for any UI work\n"
             "- Live site reference: https://saberistic.com/\n"
             "- Binary assets (PNG/JPEG/WebP) must remain valid binary files\n"
@@ -244,6 +250,28 @@ def _slugify(text: str, limit: int = 40) -> str:
     return (slug or "work")[:limit]
 
 
+def _commit_subject(issue: int, title: str, summary: str) -> str:
+    """Build a `builder(#N): …` subject that describes the change, not the tool.
+
+    Prefers the agent's own one-line summary of what it did; falls back to the
+    issue title when the agent returned no usable summary.
+    """
+    prefix = f"builder(#{issue}): "
+    first_line = next(
+        (line.strip() for line in (summary or "").splitlines() if line.strip()),
+        "",
+    )
+    # Strip common leading filler ("I implemented...", "Summary:", markdown bullets).
+    first_line = re.sub(r"^[#*\-\s]+", "", first_line)
+    first_line = re.sub(r"^(summary|done|result)\s*:\s*", "", first_line, flags=re.I)
+    subject = first_line or title.strip() or "implement change"
+    subject = re.sub(r"\s+", " ", subject).strip()
+    max_len = 72 - len(prefix)
+    if len(subject) > max_len:
+        subject = subject[: max_len - 1].rstrip() + "…"
+    return f"{prefix}{subject}"
+
+
 def _build_local(
     repo: str,
     issue: int,
@@ -273,7 +301,7 @@ def _build_local(
     for attempt in range(1, attempts + 1):
         try:
             with Agent.create(
-                model=model,
+                model=cursor_model_selection(model),
                 api_key=key,
                 name=f"builder-{issue}",
                 local=LocalAgentOptions(cwd=str(root)),
@@ -316,7 +344,7 @@ def _build_local(
 
     branch, existing_pr = resolve_builder_branch(repo, issue, title)
     ensure_branch(repo, branch, base_sha)
-    commit_message = f"builder(#{issue}): implement via Cursor SDK"
+    commit_message = _commit_subject(issue, title, getattr(result, "result", "") or "")
     put_file_batch(repo, branch, files, commit_message)
 
     if existing_pr:
@@ -417,7 +445,7 @@ def _build_cloud(
     run_id = ""
     try:
         with Agent.create(
-            model=model,
+            model=cursor_model_selection(model),
             api_key=key,
             name=f"builder-{issue}",
             cloud=CloudAgentOptions(

@@ -13,7 +13,7 @@ import argparse
 import sys
 from typing import Any, Iterable
 
-from github_api import add_labels, api, delete_label, split_repo
+from github_api import add_labels, api, delete_label, linked_open_prs, split_repo
 from milestones import assign_milestone, issue_milestone_number
 
 # Axes that may appear on PRs (mirrors of the linked issue).
@@ -48,17 +48,6 @@ def mirror_pr_milestone(repo: str, issue: int, pr: int) -> int | None:
         return None
     assign_milestone(repo, pr, number)
     return number
-
-
-def linked_open_prs(repo: str, issue: int) -> list[dict]:
-    owner, name = split_repo(repo)
-    prs = api("GET", f"/repos/{owner}/{name}/pulls?state=open&per_page=100") or []
-    needle = f"#{issue}"
-    return [
-        pr
-        for pr in prs
-        if needle in (pr.get("title") or "") or needle in (pr.get("body") or "")
-    ]
 
 
 def _axis_label(labels: Iterable[str], prefix: str) -> str | None:

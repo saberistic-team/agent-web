@@ -25,9 +25,12 @@ from github_api import (
     add_labels,
     api,
     delete_label,
+    list_issue_comments,
+    list_pr_files,
     post_issue_comment,
     split_repo,
 )
+from issue_deps import dependency_block_reason
 from milestones import (
     ensure_open_milestone,
     issue_milestone_number,
@@ -43,6 +46,7 @@ from priority import (
 
 HANDOFF_DIR = Path("trace")
 BUILDER_HANDOFF = HANDOFF_DIR / "builder-handoff.txt"
+DOCS_HANDOFF = HANDOFF_DIR / "docs-handoff.txt"
 
 
 def load_screenshot_deploy() -> ModuleType:
@@ -118,14 +122,10 @@ def slugify(text: str, limit: int = 40) -> str:
 
 
 def linked_open_prs(repo: str, issue: int) -> list[dict]:
-    owner, name = split_repo(repo)
-    prs = api("GET", f"/repos/{owner}/{name}/pulls?state=open&per_page=100") or []
-    needle = f"#{issue}"
-    return [
-        pr
-        for pr in prs
-        if needle in (pr.get("title") or "") or needle in (pr.get("body") or "")
-    ]
+    """Delegate to shared intentional-link matcher (anti-loop #109/#181)."""
+    from github_api import linked_open_prs as _linked_open_prs
+
+    return _linked_open_prs(repo, issue)
 
 
 def escalate(repo: str, issue: int, reason: str, assignee_hint: str | None = None) -> None:
@@ -136,6 +136,134 @@ def escalate(repo: str, issue: int, reason: str, assignee_hint: str | None = Non
         f"@human-review\n\n{reason}{hint}\n\nAdding `status:blocked` and stopping.",
     )
     replace_status(repo, issue, "status:blocked")
+
+
+# Merge-conflict resolution is expected to need a few passes (a dirty PR is
+# unfinished Builder work, not a failure) — see AGENTS/builder.md "Merge
+# conflicts". But retrying is only useful when each pass makes progress.
+# Requeuing forever on an *identical* smoke failure means Builder's own
+# codegen is reproducing a bug across cycles, not converging (learned from
+# #242: a module split between `app/admin_security.py` / `app/admin_secrets.py`
+# left five test files importing a symbol from the wrong module; the same
+# `ImportError` repeated 54+ times over 7+ hours because nothing counted
+# consecutive identical failures). Escalate once the same signature repeats.
+REPEATED_CONFLICT_FAILURE_LIMIT = 3
+
+_IMPORT_ERROR_MODULE_RE = re.compile(
+    r"cannot import name '[^']*' from '([^']+)'|No module named '([^']+)'"
+)
+# ``post_issue_comment`` bodies get truncated to the last N characters
+# (``_truncate_pytest_detail`` keeps the *tail*), which frequently slices off
+# the "cannot import name ... from '<module>'" prefix while leaving the
+# trailing "(/tmp/.../repo/app/<module>.py)" file-path fragment intact — that
+# fragment survives truncation far more reliably, so try it first.
+_IMPORT_ERROR_FILEPATH_RE = re.compile(r"/(app/[a-zA-Z_][a-zA-Z0-9_/]*)\.py\)")
+_CARET_LINE_RE = re.compile(r"^\^+$")
+
+
+def _smoke_error_signature(smoke_error: str) -> str:
+    """Normalize one ``smoke_error`` blob to a stable cross-cycle signature.
+
+    Import failures embed a random per-run temp directory in the file path
+    (``/tmp/builder-conflict-XXXXXXXX/repo/...``), and — as on #242 — codegen
+    often rewrites the same broken module's public API differently each
+    cycle, so the *specific* missing symbol also changes cycle to cycle even
+    though the same module is at fault. Key on the module path so "the same
+    orphan module still doesn't export what tests expect" is recognized
+    across cycles despite the symbol/temp-path noise. Also skip leading bare
+    ``^^^^`` caret-underline traceback markers, which pytest sometimes prints
+    before the real message and would otherwise become a useless "first
+    line" signature that never matches (this hid the #242 loop from the
+    naive first-line version of this check).
+    """
+    path_match = _IMPORT_ERROR_FILEPATH_RE.search(smoke_error)
+    if path_match:
+        return f"import-error:{path_match.group(1).replace('/', '.')}"
+    match = _IMPORT_ERROR_MODULE_RE.search(smoke_error)
+    if match:
+        module = match.group(1) or match.group(2)
+        return f"import-error:{module}"
+    for line in smoke_error.strip().splitlines():
+        stripped = line.strip()
+        if stripped and not _CARET_LINE_RE.match(stripped):
+            return stripped[:200]
+    return smoke_error.strip()[:200]
+
+
+def repeated_conflict_smoke_signature(
+    repo: str, issue: int, *, threshold: int = REPEATED_CONFLICT_FAILURE_LIMIT
+) -> str | None:
+    """Return the shared smoke-error signature when the last ``threshold``
+    ``builder_conflict_result`` comments all failed with the same error.
+
+    Only the detailed comment posted by ``maybe_resolve_pr_conflicts`` (with a
+    ``smoke_error`` field) counts; the generic duplicate posted right after by
+    ``handoff_builder_when_mergeable`` is skipped so it cannot dilute the
+    signature. Any non-``broken_after_resolve`` status (progress, or a
+    different failure mode) resets the streak.
+    """
+    comments = list_issue_comments(repo, issue)
+    signatures: list[str] = []
+    for comment in reversed(comments):
+        body = comment.get("body") or ""
+        if "### builder_conflict_result" not in body:
+            continue
+        status_match = re.search(r"- status: `([a-z_]+)`", body)
+        if not status_match:
+            continue
+        if status_match.group(1) != "broken_after_resolve":
+            break
+        error_match = re.search(r"- smoke_error: `(.+)", body, re.S)
+        if not error_match:
+            # Generic follow-up comment with no smoke_error field; skip it
+            # without breaking the streak (it belongs to the same cycle as
+            # the detailed comment already counted, or preceded it).
+            continue
+        signatures.append(_smoke_error_signature(error_match.group(1)))
+        if len(signatures) >= threshold:
+            break
+    if len(signatures) < threshold:
+        return None
+    return signatures[0] if len(set(signatures)) == 1 else None
+
+
+def repeated_smoke_result_signature(
+    repo: str, issue: int, *, threshold: int = REPEATED_CONFLICT_FAILURE_LIMIT
+) -> str | None:
+    """Return the shared smoke-error signature when the last ``threshold``
+    ``builder_smoke_result`` comments all failed with the same error.
+
+    Mirrors ``repeated_conflict_smoke_signature`` for the *other* smoke gate:
+    ``handoff_builder_when_mergeable``'s direct pre-handoff ``smoke_pr_head``
+    call, which runs even on a mergeable/clean PR (no conflict to resolve).
+    That path had no repeat counter at all — a `smoke_failed` result just
+    requeued unconditionally forever. On #115 / PR #265, three consecutive
+    Builder dispatches reproduced the identical `test_codegen_provider`
+    failure (an environment leak into the smoke subprocess, fixed separately
+    in ``builder_conflicts._smoke_env``) with nothing counting the repeats,
+    the same failure mode that #242 already taught us to catch on the
+    conflict-resolution smoke path. Escalate here too instead of looping.
+    """
+    comments = list_issue_comments(repo, issue)
+    signatures: list[str] = []
+    for comment in reversed(comments):
+        body = comment.get("body") or ""
+        if "### builder_smoke_result" not in body:
+            continue
+        status_match = re.search(r"- status: `([a-z_]+)`", body)
+        if not status_match:
+            continue
+        if status_match.group(1) != "smoke_failed":
+            break
+        error_match = re.search(r"- smoke_error: `(.+)", body, re.S)
+        if not error_match:
+            break
+        signatures.append(_smoke_error_signature(error_match.group(1)))
+        if len(signatures) >= threshold:
+            break
+    if len(signatures) < threshold:
+        return None
+    return signatures[0] if len(set(signatures)) == 1 else None
 
 
 def is_retryable_codegen_failure(exc: BaseException) -> bool:
@@ -173,12 +301,98 @@ def is_retryable_codegen_failure(exc: BaseException) -> bool:
     return any(marker in text for marker in markers)
 
 
+def is_github_app_write_permission_failure(exc: BaseException) -> bool:
+    """True when the Builder App cannot write git contents (common 403).
+
+    Often means the App lacks ``contents: write``, or a concurrent human/local
+    push already owns the branch. With an open linked PR this must not become
+    ``status:blocked`` (#210 / PR #218).
+    """
+    text = str(exc).lower()
+    if "resource not accessible by integration" in text:
+        return True
+    if "403" in text and (
+        "git/trees" in text
+        or "git/refs" in text
+        or "/contents/" in text
+        or "create a tree" in text
+    ):
+        return True
+    return False
+
+
+def recover_builder_after_codegen_failure(
+    repo: str,
+    issue: int,
+    exc: BaseException,
+    *,
+    detail: str,
+) -> str:
+    """Classify a codegen failure into handoff mode: waiting | reviewer | blocked.
+
+    Returns the handoff mode written (caller should return immediately).
+    """
+    if is_retryable_codegen_failure(exc):
+        post_issue_comment(
+            repo,
+            issue,
+            (
+                "### builder_codegen_retry\n"
+                "- result: `waiting`\n"
+                "- reason: transient / soft codegen failure (do not `status:blocked`)\n\n"
+                f"{detail}\n"
+            ),
+        )
+        write_builder_handoff("waiting")
+        return "waiting"
+
+    existing = linked_open_prs(repo, issue)
+    if existing:
+        pr_number = int(existing[0]["number"])
+        permission_note = ""
+        if is_github_app_write_permission_failure(exc):
+            permission_note = (
+                "- note: GitHub App write denied, but an intentional linked PR "
+                "already exists — handing that head to Reviewer instead of "
+                "`status:blocked` (learned from #210).\n"
+            )
+        else:
+            permission_note = (
+                "- note: codegen failed, but an intentional linked PR already "
+                "exists — consolidate on that head instead of `status:blocked`.\n"
+            )
+        post_issue_comment(
+            repo,
+            issue,
+            (
+                "### builder_codegen_existing_pr\n"
+                f"- pr: #{pr_number}\n"
+                f"{permission_note}\n"
+                f"{detail}\n"
+            ),
+        )
+        handoff_builder_when_mergeable(repo, issue)
+        return "reviewer"
+
+    escalate(repo, issue, detail)
+    write_builder_handoff("blocked")
+    return "blocked"
+
+
 def write_builder_handoff(mode: str) -> None:
     """Tell builder.yml how to advance labels: reviewer | done | blocked | waiting."""
     if mode not in {"reviewer", "done", "blocked", "waiting"}:
         raise GitHubError(f"invalid builder handoff mode: {mode!r}")
     HANDOFF_DIR.mkdir(parents=True, exist_ok=True)
     BUILDER_HANDOFF.write_text(mode + "\n", encoding="utf-8")
+
+
+def write_docs_handoff(mode: str) -> None:
+    """Tell docs.yml how to advance labels: reviewer | blocked | waiting."""
+    if mode not in {"reviewer", "blocked", "waiting"}:
+        raise GitHubError(f"invalid docs handoff mode: {mode!r}")
+    HANDOFF_DIR.mkdir(parents=True, exist_ok=True)
+    DOCS_HANDOFF.write_text(mode + "\n", encoding="utf-8")
 
 
 def handoff_builder_when_mergeable(repo: str, issue: int) -> None:
@@ -219,6 +433,24 @@ def handoff_builder_when_mergeable(repo: str, issue: int) -> None:
                     "re-entering `status:queued` (not handing off to Reviewer).\n"
                 ),
             )
+            if conflict_status == "broken_after_resolve":
+                signature = repeated_conflict_smoke_signature(repo, issue)
+                if signature:
+                    escalate(
+                        repo,
+                        issue,
+                        (
+                            f"Merge-conflict resolution on PR #{conflict.get('pr')} has "
+                            f"failed `{REPEATED_CONFLICT_FAILURE_LIMIT}` consecutive times "
+                            "with the identical smoke error below — Builder's own codegen "
+                            "is reproducing the same bug each cycle instead of converging. "
+                            "Stopping automatic retries; see AGENTS/builder.md "
+                            "'Contaminated PR heads (anti-loop)' for the reset playbook.\n\n"
+                            f"```\n{signature}\n```"
+                        ),
+                    )
+                    write_builder_handoff("blocked")
+                    return
             write_builder_handoff("waiting")
             return
     except Exception as conflict_exc:
@@ -294,6 +526,24 @@ def handoff_builder_when_mergeable(repo: str, issue: int) -> None:
                     "`pytest --collect-only`, and full `pytest -q` succeed.\n"
                 ),
             )
+            signature = repeated_smoke_result_signature(repo, issue)
+            if signature:
+                escalate(
+                    repo,
+                    issue,
+                    (
+                        f"Pre-handoff smoke on PR #{smoke.get('pr')} has failed "
+                        f"`{REPEATED_CONFLICT_FAILURE_LIMIT}` consecutive times with the "
+                        "identical error below. Re-running codegen cannot fix this — it "
+                        "isn't caused by this PR's diff (likely a Builder-runtime "
+                        "environment leak into the smoke subprocess, or another "
+                        "pre-existing/unrelated failure). Stopping automatic retries; "
+                        "see AGENTS/builder.md 'Pre-handoff smoke loop' for the fix.\n\n"
+                        f"```\n{signature}\n```"
+                    ),
+                )
+                write_builder_handoff("blocked")
+                return
             write_builder_handoff("waiting")
             return
         if smoke_status == "smoke_repaired":
@@ -313,10 +563,32 @@ def handoff_builder_when_mergeable(repo: str, issue: int) -> None:
 
 
 def is_verify_deploy_issue(title: str, body: str) -> bool:
-    text = f"{title}\n{body}".lower()
-    if not re.search(r"\bverify\b|\bsmoke\b", text):
+    """True only for ops smoke checks against a live deploy.
+
+    Must not match product issues that merely say "verify …" or "ready to
+    deploy" in acceptance criteria (learned from #210).
+    """
+    title_l = (title or "").lower()
+    body_l = (body or "").lower()
+    text = f"{title_l}\n{body_l}"
+
+    # Explicit smoke script is an unambiguous ops signal.
+    if re.search(r"smoke_deploy\.py", text):
+        return True
+
+    # Require the *title* to be about verifying/smoking a deploy — not AC
+    # bullets that say "Verify X" while also mentioning deploy readiness.
+    title_is_verify_deploy = bool(
+        re.search(r"\b(verify|smoke)\b", title_l)
+        and re.search(r"\b(deploy|render|production)\b", title_l)
+    )
+    if not title_is_verify_deploy:
         return False
-    return bool(re.search(r"\brender\b|\bdeploy\b|onrender\.com|/health|/hello", text))
+
+    return bool(
+        re.search(r"onrender\.com", text)
+        or (re.search(r"/health", text) and re.search(r"/hello", text))
+    )
 
 
 def close_linked_open_prs(repo: str, issue: int, reason: str) -> None:
@@ -452,6 +724,19 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
     body = data.get("body") or ""
     labels = {label["name"] for label in data.get("labels") or []}
 
+    # Fail closed on open / unstructured dependencies before queue (#204).
+    dep_reason = dependency_block_reason(repo, issue, body=body)
+    if dep_reason:
+        escalate(
+            repo,
+            issue,
+            (
+                "Cannot queue until dependencies are machine-readable and closed.\n\n"
+                f"{dep_reason}"
+            ),
+        )
+        return
+
     type_label = next((l for l in labels if l.startswith("type:")), None)
     if type_label is None:
         if re.search(r"\bdocs?\b", title + "\n" + body, re.I):
@@ -581,10 +866,38 @@ def is_landing_issue(title: str, body: str) -> bool:
     )
 
 
+def docs_out_of_scope_product_paths(filenames: list[str]) -> list[str]:
+    """Return paths that a ``type:docs`` PR must not change.
+
+    Docs issues may ship markdown/specs plus supporting research fixtures under
+    ``docs/``, agent briefs, orchestration ``scripts/``, tests, and WorldGraph
+    ``spike/`` helpers that keep schema fixtures honest. Product surfaces
+    (``app/``, ``site/``, ``migrations/``) and other unexpected executable code
+    remain hard fails.
+    """
+    allowed_prefixes = ("docs/", "AGENTS/", "scripts/", "tests/", "spike/")
+    return [
+        name
+        for name in filenames
+        if name.startswith(("app/", "site/", "migrations/"))
+        or (
+            name.endswith((".py", ".ts", ".js"))
+            and not name.startswith(allowed_prefixes)
+        )
+    ]
+
+
 def role_builder(repo: str, issue: int, brief: Path) -> None:
     data = get_issue(repo, issue)
     title = data.get("title") or f"issue-{issue}"
     body = data.get("body") or ""
+
+    # Do not invent stand-in schemas while upstream issues are still open (#204).
+    dep_reason = dependency_block_reason(repo, issue, body=body)
+    if dep_reason:
+        escalate(repo, issue, dep_reason)
+        write_builder_handoff("blocked")
+        return
 
     # Ops / verify issues: run smoke against production; no stub PR (avoids
     # reviewer↔builder loops on worklog-only PRs).
@@ -692,7 +1005,7 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
                     "body": (
                         f"Closes #{issue}\n\n"
                         "Screenshot infra: pre-merge Reviewer captures + post-deploy "
-                        "visual check (see docs/SCREENSHOTS.md).\n"
+                        "evidence capture (see docs/SCREENSHOTS.md).\n"
                     ),
                 },
             )
@@ -753,28 +1066,27 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
             "If `git/refs` returns 403 for the Builder App, grant the App "
             "`contents: write` on this repository."
         )
-        if is_retryable_codegen_failure(exc):
-            post_issue_comment(
-                repo,
-                issue,
-                (
-                    "### builder_codegen_retry\n"
-                    "- result: `waiting`\n"
-                    "- reason: transient / soft codegen failure (do not `status:blocked`)\n\n"
-                    f"{detail}\n"
-                ),
-            )
-            write_builder_handoff("waiting")
-            return
-        escalate(repo, issue, detail)
-        write_builder_handoff("blocked")
+        recover_builder_after_codegen_failure(repo, issue, exc, detail=detail)
 
 
 def role_docs(repo: str, issue: int, brief: Path) -> None:
     data = get_issue(repo, issue)
     title = data.get("title") or f"issue-{issue}"
     body = data.get("body") or ""
-    branch = f"docs/{issue}-{slugify(title)}"
+
+    dep_reason = dependency_block_reason(repo, issue, body=body)
+    if dep_reason:
+        escalate(repo, issue, dep_reason)
+        write_docs_handoff("blocked")
+        return
+
+    # Prefer existing linked PR head (including after review:changes-requested).
+    prs = linked_open_prs(repo, issue)
+    if prs:
+        head = ((prs[0].get("head") or {}).get("ref") or "").strip()
+        branch = head or f"docs/{issue}-{slugify(title)}"
+    else:
+        branch = f"docs/{issue}-{slugify(title)}"
     owner, name = split_repo(repo)
     default = api("GET", f"/repos/{owner}/{name}").get("default_branch") or "main"
     ref = api("GET", f"/repos/{owner}/{name}/git/ref/heads/{default}")
@@ -832,8 +1144,9 @@ def role_docs(repo: str, issue: int, brief: Path) -> None:
             },
         )
         pr_number = int(pr["number"])
-        # Docs skips Reviewer; mirror type/priority only (no review:*).
-        apply_pr_mirror(repo, issue, pr_number, default_review=None)
+        apply_pr_mirror(
+            repo, issue, pr_number, default_review="review:needs-review"
+        )
         post_issue_comment(
             repo,
             issue,
@@ -841,12 +1154,61 @@ def role_docs(repo: str, issue: int, brief: Path) -> None:
         )
     else:
         pr_number = int(prs[0]["number"])
-        apply_pr_mirror(repo, issue, pr_number, default_review=None)
+        apply_pr_mirror(
+            repo, issue, pr_number, default_review="review:needs-review"
+        )
         post_issue_comment(
             repo,
             issue,
             f"### docs_result\n- branch: `{branch}`\n- existing_pr: #{pr_number}\n",
         )
+
+    # Authoritative docs via codegen on the same head, then hand off to Reviewer.
+    try:
+        from codegen_models import build_with_models
+
+        result = build_with_models(
+            repo,
+            issue,
+            title=title,
+            body=body,
+            brief=brief,
+        )
+        HANDOFF_DIR.mkdir(parents=True, exist_ok=True)
+        (HANDOFF_DIR / "docs-model.txt").write_text(
+            f"{result.get('provider')}:{result.get('model')}\n",
+            encoding="utf-8",
+        )
+        apply_pr_mirror(
+            repo,
+            issue,
+            int(result.get("pr") or pr_number),
+            default_review="review:needs-review",
+        )
+        write_docs_handoff("reviewer")
+    except Exception as exc:
+        detail = (
+            "Docs codegen failed (Cursor SDK / OpenAI / GitHub Models).\n\n"
+            f"`{exc}`\n\n"
+            "Preferred: Cursor Agent SDK via `CURSOR_API_KEY` "
+            "(`CODEGEN_PROVIDER=cursor`). See docs/MODELS.md."
+        )
+        if is_retryable_codegen_failure(exc):
+            post_issue_comment(
+                repo,
+                issue,
+                (
+                    "### docs_codegen_retry\n"
+                    "- result: `waiting`\n"
+                    "- reason: transient / soft codegen failure "
+                    "(do not `status:blocked`)\n\n"
+                    f"{detail}\n"
+                ),
+            )
+            write_docs_handoff("waiting")
+            return
+        escalate(repo, issue, detail)
+        write_docs_handoff("blocked")
 
 
 def role_reviewer(repo: str, issue: int, brief: Path) -> None:
@@ -859,8 +1221,39 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
     pr_number = pr["number"]
 
     hard_fail_reasons: list[str] = []
+    issue_data_early = api("GET", f"/repos/{owner}/{name}/issues/{issue}") or {}
+    issue_labels = {
+        label["name"] for label in (issue_data_early.get("labels") or [])
+    }
+    is_docs_issue = "type:docs" in issue_labels
+    implementer = "Docs" if is_docs_issue else "Builder"
 
-    # Merge conflicts first — return to Builder; skip the rest of the budget.
+    # Open / unstructured dependencies: terminal block, do not requeue Builder (#204).
+    dep_reason = dependency_block_reason(
+        repo, issue, body=issue_data_early.get("body") or ""
+    )
+    if dep_reason:
+        body = (
+            "### reviewer_decision\n"
+            "- decision: `blocked`\n"
+            "- terminal: true\n"
+            f"- brief: `{brief}`\n"
+            "- hard_fails:\n"
+            f"  - open dependencies: {dep_reason}\n"
+        )
+        api(
+            "POST",
+            f"/repos/{owner}/{name}/pulls/{pr_number}/reviews",
+            body={
+                "commit_id": pr["head"]["sha"],
+                "event": "REQUEST_CHANGES",
+                "body": body,
+            },
+        )
+        post_issue_comment(repo, issue, body)
+        return
+
+    # Merge conflicts first — return to implementing agent; skip the rest.
     try:
         from builder_conflicts import (
             format_merge_conflict_hard_fail,
@@ -869,14 +1262,18 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
 
         conflict_status = linked_pr_conflict_status(repo, issue)
         if conflict_status.get("status") == "dirty":
-            hard_fail_reasons.append(format_merge_conflict_hard_fail(conflict_status))
+            hard_fail_reasons.append(
+                format_merge_conflict_hard_fail(
+                    conflict_status, implementer=implementer
+                )
+            )
         elif conflict_status.get("pr_payload"):
             pr = conflict_status["pr_payload"]
             pr_number = int(pr["number"])
     except Exception as conflict_exc:
         hard_fail_reasons.append(
             f"mergeability check failed: {conflict_exc} — "
-            "treat as conflict and return to Builder"
+            f"treat as conflict and return to {implementer}"
         )
 
     if hard_fail_reasons:
@@ -935,16 +1332,36 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
         "GET",
         f"/repos/{owner}/{name}/commits/{sha}/check-runs",
     )
+    # Dedupe to the latest run per check name. Label churn can leave older
+    # failed Project board ``sync`` runs on the same SHA alongside later
+    # successes; treating any historical failure as a hard-fail loops Builder
+    # for non-product reasons (#338 / PR #350).
+    # Use check_name — not ``name`` — so we do not clobber the repo name from
+    # ``split_repo`` above. The CI job is literally named ``test``; shadowing
+    # turned later calls into ``/repos/{owner}/test/pulls/...`` (#280 / PR #351).
+    latest_by_name: dict[str, dict] = {}
     for run in checks.get("check_runs") or []:
+        check_name = run.get("name") or ""
+        prev = latest_by_name.get(check_name)
+        if prev is None or (run.get("started_at") or "") > (prev.get("started_at") or ""):
+            latest_by_name[check_name] = run
+    # Non-gating orchestration: project-sync.yml job is named ``sync``.
+    _IGNORE_CHECK_NAMES = frozenset({"sync"})
+    for run in latest_by_name.values():
         conclusion = (run.get("conclusion") or "").lower()
         name_l = (run.get("name") or "").lower()
+        if name_l in _IGNORE_CHECK_NAMES:
+            continue
         if conclusion in {"failure", "timed_out", "cancelled"}:
             hard_fail_reasons.append(f"check `{run.get('name')}` → {conclusion}")
         if "security" in name_l and conclusion == "failure":
             hard_fail_reasons.append(f"security check failed: {run.get('name')}")
 
     # Missing tests / stub-only / scaffold-sync heuristics
-    files = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}/files") or []
+    # Use the paginated helper (not raw `api()`): the default PR-files page
+    # is only 30 items, which silently dropped tests/ on PRs with >30 changed
+    # files and caused a false "no test file updates" hard-fail loop (#206).
+    files = list_pr_files(repo, pr_number)
     filenames = [f["filename"] for f in files]
     only_worklog = filenames and all(
         name.startswith(".agent/worklogs/") or name.endswith(".md")
@@ -958,12 +1375,27 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
 
     commits = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}/commits") or []
     commit_msgs = [c.get("commit", {}).get("message", "") for c in commits]
-    issue_data = api("GET", f"/repos/{owner}/{name}/issues/{issue}")
+    issue_data = issue_data_early
     issue_blob = f"{issue_data.get('title')}\n{issue_data.get('body')}".lower()
     infra_issue = bool(
         re.search(r"screenshot|headless|playwright|visual (check|evidence)", issue_blob)
     )
-    if (
+    if is_docs_issue:
+        stub_only = bool(filenames) and all(
+            name.startswith("docs/agent-updates/") for name in filenames
+        )
+        if stub_only or not filenames:
+            hard_fail_reasons.append(
+                "docs PR is agent-updates stub only — required deliverable "
+                "files missing; return to Docs"
+            )
+        product_paths = docs_out_of_scope_product_paths(filenames)
+        if product_paths:
+            hard_fail_reasons.append(
+                "type:docs PR includes product code paths "
+                f"({', '.join(product_paths[:8])}); return to Docs or escalate"
+            )
+    elif (
         commit_msgs
         and all(re.search(r"\bsync\b", m or "", re.I) for m in commit_msgs)
         and not infra_issue
@@ -982,30 +1414,37 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
         "test" in f["filename"].lower() or f["filename"].startswith("tests/")
         for f in files
     )
-    if code_touched and not tests_touched and any(
-        f["filename"].endswith((".py", ".ts", ".js", ".go", ".rs")) for f in files
+    if (
+        not is_docs_issue
+        and code_touched
+        and not tests_touched
+        and any(
+            f["filename"].endswith((".py", ".ts", ".js", ".go", ".rs")) for f in files
+        )
     ):
         hard_fail_reasons.append("behavior/code change without test file updates")
 
     # Service coverage gates: unit ≥90% / integration ≥70% of app/
+    # Docs reviews skip coverage hard-fails (objectives checklist is enough).
     coverage_note = ""
     app_touched = any(
         f["filename"].startswith("app/") and f["filename"].endswith(".py")
         for f in files
     )
-    for run in checks.get("check_runs") or []:
-        name_l = (run.get("name") or "").lower()
-        conclusion = (run.get("conclusion") or "").lower()
-        if "coverage" in name_l and conclusion in {
-            "failure",
-            "timed_out",
-            "cancelled",
-        }:
-            hard_fail_reasons.append(
-                "service coverage check failed "
-                "(unit ≥90% / integration ≥70% of app/ required)"
-            )
-    if app_touched:
+    if not is_docs_issue:
+        for run in checks.get("check_runs") or []:
+            name_l = (run.get("name") or "").lower()
+            conclusion = (run.get("conclusion") or "").lower()
+            if "coverage" in name_l and conclusion in {
+                "failure",
+                "timed_out",
+                "cancelled",
+            }:
+                hard_fail_reasons.append(
+                    "service coverage check failed "
+                    "(unit ≥90% / integration ≥70% of app/ required)"
+                )
+    if app_touched and not is_docs_issue:
         cov_root = (os.environ.get("COVERAGE_ROOT") or "").strip()
         cov_cmd = [sys.executable, "scripts/check_coverage.py"]
         if cov_root:
@@ -1032,96 +1471,120 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
         except Exception as exc:
             hard_fail_reasons.append(f"service coverage check failed to run: {exc}")
             coverage_note = f"- coverage: failed (`{exc}`)\n"
+    elif is_docs_issue:
+        coverage_note = "- coverage: skipped (docs review)\n"
     else:
         coverage_note = "- coverage: skipped (PR does not touch app/*.py)\n"
 
     # Pre-merge screenshots: PR-head only (incl. admin via ADMIN_PREVIEW_MODE).
-    # saberistic.com shots are post-deploy only.
+    # saberistic.com shots are post-deploy only. Docs reviews skip capture.
     screenshot_note = ""
-    try:
-        screenshot_deploy = load_screenshot_deploy()
-        comment_markdown_pre_dual = screenshot_deploy.comment_markdown_pre_dual
-        comment_on_issue_or_pr = screenshot_deploy.comment_on_issue_or_pr
-        capture_pre_dual = screenshot_deploy.capture_pre_dual
-        fetch_pr_changed_paths = screenshot_deploy.fetch_pr_changed_paths
-        format_admin_nav_hard_fail = screenshot_deploy.format_admin_nav_hard_fail
-        format_empty_data_hard_fail = screenshot_deploy.format_empty_data_hard_fail
-        format_overflow_hard_fail = screenshot_deploy.format_overflow_hard_fail
-        resolve_screenshot_routes = screenshot_deploy.resolve_screenshot_routes
-        format_screenshot_targets = screenshot_deploy.format_screenshot_targets
-        upload_to_branch = screenshot_deploy.upload_to_branch
-
-        out_dir = Path("trace/screenshots")
-        changed = fetch_pr_changed_paths(repo, pr_number)
-        routes = resolve_screenshot_routes(
-            changed_files=changed, include_admin=True
+    if is_docs_issue:
+        body_shots = (
+            "### reviewer_screenshots_pre\n"
+            "- note: docs review — screenshots skipped; "
+            "acceptance checklist validates issue objectives\n"
         )
-        branch = pr["head"]["ref"]
-        prefix = f".agent/screenshots/pr-{pr_number}"
-        if not routes:
-            body_shots = (
-                "### reviewer_screenshots_pre\n"
-                "- production: skipped pre-merge "
-                "(saberistic.com shots are post-deploy only)\n"
-                "- routes (PR-affected): (none)\n"
-                "- note: no pages affected by this PR "
-                "(tests/docs/scripts only); screenshots skipped\n"
+        post_issue_comment(repo, issue, body_shots)
+        post_issue_comment(repo, pr_number, body_shots)
+        screenshot_note = (
+            "- screenshots_pre: skipped (docs review)\n"
+            "- visual_readability: `n/a`\n"
+        )
+    else:
+        try:
+            screenshot_deploy = load_screenshot_deploy()
+            comment_markdown_pre_dual = screenshot_deploy.comment_markdown_pre_dual
+            comment_on_issue_or_pr = screenshot_deploy.comment_on_issue_or_pr
+            capture_pre_dual = screenshot_deploy.capture_pre_dual
+            fetch_pr_changed_paths = screenshot_deploy.fetch_pr_changed_paths
+            format_admin_nav_hard_fail = screenshot_deploy.format_admin_nav_hard_fail
+            format_empty_data_hard_fail = screenshot_deploy.format_empty_data_hard_fail
+            format_overflow_hard_fail = screenshot_deploy.format_overflow_hard_fail
+            resolve_screenshot_routes = screenshot_deploy.resolve_screenshot_routes
+            format_screenshot_targets = screenshot_deploy.format_screenshot_targets
+            upload_to_branch = screenshot_deploy.upload_to_branch
+
+            out_dir = Path("trace/screenshots")
+            changed = fetch_pr_changed_paths(repo, pr_number)
+            routes = resolve_screenshot_routes(
+                changed_files=changed, include_admin=True
             )
-            comment_on_issue_or_pr(repo, pr_number, body_shots)
-            comment_on_issue_or_pr(repo, issue, body_shots)
-            screenshot_note = (
-                "- screenshots_pre: skipped (no pages affected)\n"
-                "- visual_readability: `n/a`\n"
-            )
-        else:
-            dual = capture_pre_dual(out_dir, routes=routes)
-            branch_urls = upload_to_branch(repo, branch, dual.branch_paths, prefix)
-            body_shots = comment_markdown_pre_dual(
-                branch_url=dual.branch_url,
-                branch_urls=branch_urls,
-                targets=routes,
-            )
-            comment_on_issue_or_pr(repo, pr_number, body_shots)
-            comment_on_issue_or_pr(repo, issue, body_shots)
-            screenshot_note = (
-                f"- screenshots_pre: {len(branch_urls)} branch posted on PR + issue "
-                "(no saberistic.com pre-merge shots)\n"
-                f"- screenshots_routes: {format_screenshot_targets(routes)}\n"
-                f"- screenshots_branch: `{dual.branch_url}`\n"
-            )
-            overflow_fail = format_overflow_hard_fail(dual.overflows)
-            if overflow_fail:
-                hard_fail_reasons.append(overflow_fail)
-                screenshot_note += (
-                    f"- visual_readability: `fail` ({len(dual.overflows)} overflow(s) "
-                    "on PR branch)\n"
+            branch = pr["head"]["ref"]
+            prefix = f".agent/screenshots/pr-{pr_number}"
+            if not routes:
+                body_shots = (
+                    "### reviewer_screenshots_pre\n"
+                    "- production: skipped pre-merge "
+                    "(saberistic.com shots are post-deploy only)\n"
+                    "- routes (PR-affected): (none)\n"
+                    "- note: no pages affected by this PR "
+                    "(tests/docs/scripts only); screenshots skipped\n"
+                )
+                comment_on_issue_or_pr(repo, pr_number, body_shots)
+                comment_on_issue_or_pr(repo, issue, body_shots)
+                screenshot_note = (
+                    "- screenshots_pre: skipped (no pages affected)\n"
+                    "- visual_readability: `n/a`\n"
                 )
             else:
-                screenshot_note += "- visual_readability: `ok` (PR branch)\n"
-            empty_fail = format_empty_data_hard_fail(dual.empty_pages)
-            if empty_fail:
-                hard_fail_reasons.append(empty_fail)
-                screenshot_note += (
-                    f"- preview_mock_data: `fail` ({len(dual.empty_pages)} empty "
-                    "shell finding(s) on PR branch)\n"
+                dual = capture_pre_dual(out_dir, routes=routes)
+                branch_urls = upload_to_branch(repo, branch, dual.branch_paths, prefix)
+                body_shots = comment_markdown_pre_dual(
+                    branch_url=dual.branch_url,
+                    branch_urls=branch_urls,
+                    targets=routes,
+                    reproducibility=dual.reproducibility,
                 )
-            else:
-                screenshot_note += "- preview_mock_data: `ok` (PR branch)\n"
-            nav_fail = format_admin_nav_hard_fail(dual.nav_failures)
-            if nav_fail:
-                hard_fail_reasons.append(nav_fail)
-                screenshot_note += (
-                    f"- admin_nav_visible: `fail` ({len(dual.nav_failures)} "
-                    "desktop finding(s) on PR branch)\n"
+                comment_on_issue_or_pr(repo, pr_number, body_shots)
+                comment_on_issue_or_pr(repo, issue, body_shots)
+                screenshot_note = (
+                    f"- screenshots_pre: {len(branch_urls)} branch posted on PR + issue "
+                    "(no saberistic.com pre-merge shots)\n"
+                    f"- screenshots_routes: {format_screenshot_targets(routes)}\n"
+                    f"- screenshots_branch: `{dual.branch_url}`\n"
                 )
-            else:
-                screenshot_note += "- admin_nav_visible: `ok` (PR branch)\n"
-        pr = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}")
-        sha = pr["head"]["sha"]
-    except Exception as exc:
-        screenshot_note = f"- screenshots_pre: failed (`{exc}`)\n"
-        if os.environ.get("SCREENSHOTS_REQUIRED", "true").lower() in {"1", "true", "yes"}:
-            hard_fail_reasons.append(f"required deploy screenshots failed: {exc}")
+                overflow_fail = format_overflow_hard_fail(dual.overflows)
+                if overflow_fail:
+                    hard_fail_reasons.append(overflow_fail)
+                    screenshot_note += (
+                        f"- visual_readability: `fail` "
+                        f"({len(dual.overflows)} overflow(s) on PR branch)\n"
+                    )
+                else:
+                    screenshot_note += "- visual_readability: `ok` (PR branch)\n"
+                empty_fail = format_empty_data_hard_fail(dual.empty_pages)
+                if empty_fail:
+                    hard_fail_reasons.append(empty_fail)
+                    screenshot_note += (
+                        f"- preview_mock_data: `fail` "
+                        f"({len(dual.empty_pages)} empty shell finding(s) "
+                        "on PR branch)\n"
+                    )
+                else:
+                    screenshot_note += "- preview_mock_data: `ok` (PR branch)\n"
+                nav_fail = format_admin_nav_hard_fail(dual.nav_failures)
+                if nav_fail:
+                    hard_fail_reasons.append(nav_fail)
+                    screenshot_note += (
+                        f"- admin_nav_visible: `fail` "
+                        f"({len(dual.nav_failures)} desktop finding(s) "
+                        "on PR branch)\n"
+                    )
+                else:
+                    screenshot_note += "- admin_nav_visible: `ok` (PR branch)\n"
+            pr = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}")
+            sha = pr["head"]["sha"]
+        except Exception as exc:
+            screenshot_note = f"- screenshots_pre: failed (`{exc}`)\n"
+            if os.environ.get("SCREENSHOTS_REQUIRED", "true").lower() in {
+                "1",
+                "true",
+                "yes",
+            }:
+                hard_fail_reasons.append(
+                    f"required deploy screenshots failed: {exc}"
+                )
 
     # OpenAI / Models AI review (required for approve path).
     # Transport/parse glitches (Cursor returning prose) must not start a

@@ -73,6 +73,24 @@ def test_fixable_includes_merge_conflicts() -> None:
     )
 
 
+def test_fixable_includes_docs_stub_gaps() -> None:
+    body = (
+        "### reviewer_decision\n"
+        "- hard_fails:\n"
+        "  - docs PR is agent-updates stub only — required deliverable "
+        "files missing; return to Docs\n"
+    )
+    assert is_fixable_changes_requested(body)
+    assert (
+        resolve_decision(
+            latest_state="CHANGES_REQUESTED",
+            latest_body=body,
+            prior_changes_requested=4,
+        )
+        == "changes-requested"
+    )
+
+
 def test_terminal_worklog_not_fixable() -> None:
     body = "PR is builder worklog-only (terminal: true — do not requeue builder)"
     assert not is_fixable_changes_requested(body)
@@ -101,6 +119,25 @@ def test_resolve_blocks_terminal_marker() -> None:
             latest_state="CHANGES_REQUESTED",
             latest_body="worklog-only (terminal: true)",
             prior_changes_requested=1,
+        )
+        == "blocked"
+    )
+
+
+def test_resolve_blocks_open_dependencies() -> None:
+    body = (
+        "### reviewer_decision\n"
+        "- decision: `blocked`\n"
+        "- terminal: true\n"
+        "- hard_fails:\n"
+        "  - open dependencies: #204 is blocked by open dependencies: #199\n"
+    )
+    assert not is_fixable_changes_requested(body)
+    assert (
+        resolve_decision(
+            latest_state="CHANGES_REQUESTED",
+            latest_body=body,
+            prior_changes_requested=0,
         )
         == "blocked"
     )

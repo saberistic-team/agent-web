@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 
 
@@ -17,6 +18,43 @@ class Migration:
     version: str
     name: str
     up_sql: str
+
+
+def migration_content_digest(migration: Migration) -> str:
+    """Stable SHA-256 of version, name, and SQL for immutability checks."""
+    payload = f"{migration.version}\0{migration.name}\0{migration.up_sql}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+# Digests for versions that must never be silently redefined (#210).
+# When adding a new migration, leave prior entries unchanged. The CI job
+# "Freeze shipped migrations" (scripts/freeze_shipped_migrations.py) freezes
+# new versions after a healthy production deploy — do not hand-edit shipped digests.
+FROZEN_MIGRATION_DIGESTS: dict[str, str] = {
+    "001": "b25d23a80d13aca9fab1449d4ce7b50513b747a6bd6d00e234ea0ff21c0877f6",
+    "002": "a74155b616b65ecb04f14cae1f2f33cf4e6a316d23c9452a6e4e3ac1161d6ed6",
+    "003": "a110b52188674dea75d952f21f571da4b5d9da8ec4f0c7694cd84b4c7298c6dd",
+    "004": "ca86d87534358f7c471241cb25ab1944dbe36fe749fc2c2212d47b2565c42545",
+    "005": "959da61312e032d7f7a1a8ebd962d5e172f9c8e9a2406c56fe1924c4f0c91145",
+    "006": "0792501de05c6c48f7cdf8613b87ad9a163fb9b624565558ab0144925d98cf3c",
+    "007": "da82d83d66b0a4af2371a644394fdda464c5866cfa99ab9e8f71674315e4f760",
+    "008": "375b45ea4df7ec8edc820be10507a63ea166d5a22767342cc94e243bb13ba91d",
+    "009": "14d8f3e5f4f8e7080877ff60c0a86d377aed024218912e27fa3803eb9db9e33b",
+    "010": "c748ec5abeb291273c31c719c32c4c0609b5c28d1e64b20be09ff2f1084ea99b",
+    "011": "af4326258e2c3b005421f9894caf7059e75b46047581b4caa150d149fcfc906b",
+    "012": "256322500ee7ac616de8f575a6b0a7c652c78924b9b1a3ca1007897626e88ef7",
+    "013": "677757b25f70e5e1b8dea6aa244d458b276ddad8e751a837c9bceb84cd9b6308",
+    "014": "9bb2a99e936e5ab77f75d1f94556715667cb97bff7dc185007ccdfe32f28f050",
+    "015": "014080f78e50242cb2e5518567634f7522f844bd55d7c4dcba4c970df73d07b0",
+    "016": "91e3cc23c9f19bb17834385bcfad6cbc61d484c1b0f6097583e40d67780c95b9",
+    "017": "6fa2fe024a8d854ee329205cb3e9475a6e1527a1576df534611df99d6910e2f6",
+    "018": "6650d3d092a41d904f2ab02f1e072876e905612a9d19d86bd605ec0db35b14b8",
+    "019": "18c21301f9c206ebf5df5f02bcf8ffbad2372c8a8b18907e426bf014fd16ae77",
+    "020": "b9d23f5ebd8293f3f2afb9a8f3241c8e94a0a8e0c8febce33816ec361a29948c",
+    "021": "e8e9cd2b5478733ca421e5848442392459a8edf88a9e6ec8899ef431bca68469",
+    "022": "bcb6a85dc0c8e7070fa3a380030a587bdedcc2f83a9e50d037c998625d0b513e",
+    "023": "c078a2897d27642bd565413a84e7b6feaf2fbfb8b8d2f9d21b46155df6415a42",
+}
 
 
 MIGRATIONS: tuple[Migration, ...] = (
@@ -410,4 +448,409 @@ ALTER TABLE activities ADD CONSTRAINT activities_activity_type_check
 """,
     ),
 
+
+    Migration(
+        version="014",
+        name="import_batches",
+        up_sql="""
+CREATE TABLE IF NOT EXISTS import_batches (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    source_type TEXT NOT NULL
+        CHECK (source_type IN ('linkedin')),
+    export_date DATE,
+    schema_version TEXT NOT NULL,
+    checksum TEXT NOT NULL,
+    actor TEXT NOT NULL,
+    status TEXT NOT NULL
+        CHECK (status IN ('committed', 'failed', 'rolled_back')),
+    summary_counts JSONB NOT NULL DEFAULT '{}'::jsonb,
+    error_message TEXT,
+    correlation_id TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_import_batches_checksum_committed
+    ON import_batches (checksum)
+    WHERE status = 'committed';
+
+CREATE INDEX IF NOT EXISTS idx_import_batches_created_at
+    ON import_batches (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_import_batches_status
+    ON import_batches (status);
+CREATE INDEX IF NOT EXISTS idx_import_batches_actor
+    ON import_batches (actor);
+
+CREATE TABLE IF NOT EXISTS import_batch_rows (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    batch_id UUID NOT NULL REFERENCES import_batches (id) ON DELETE CASCADE,
+    row_index INTEGER NOT NULL,
+    source_kind TEXT NOT NULL,
+    source_identity JSONB NOT NULL,
+    outcome TEXT NOT NULL
+        CHECK (outcome IN ('inserted', 'updated', 'unchanged', 'skipped', 'conflicted')),
+    entity_type TEXT,
+    entity_id UUID,
+    prior_snapshot JSONB,
+    applied_snapshot JSONB,
+    detail TEXT,
+    CONSTRAINT import_batch_rows_batch_index_unique UNIQUE (batch_id, row_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_import_batch_rows_batch_id
+    ON import_batch_rows (batch_id);
+CREATE INDEX IF NOT EXISTS idx_import_batch_rows_outcome
+    ON import_batch_rows (outcome);
+CREATE INDEX IF NOT EXISTS idx_import_batch_rows_entity_id
+    ON import_batch_rows (entity_id)
+    WHERE entity_id IS NOT NULL;
+""",
+    ),
+    Migration(
+        version="015",
+        name="reconcile_acquisition_pipeline_schema",
+        up_sql="""
+-- Reconcile databases that applied the earlier incompatible form of migration
+-- 013 (legacy owner/expected_value/stage_reason + company_stage_history) with
+-- the canonical pipeline schema. Idempotent on fresh installs that already
+-- applied the current 013. Legacy columns and company_stage_history are retained.
+
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS pipeline_owner TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS expected_value_cents INTEGER;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS pipeline_loss_reason TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS pipeline_nurture_reason TEXT;
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'companies'
+          AND column_name = 'owner'
+    ) THEN
+        UPDATE companies
+        SET pipeline_owner = owner
+        WHERE pipeline_owner IS NULL
+          AND owner IS NOT NULL
+          AND BTRIM(owner) <> '';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'companies'
+          AND column_name = 'expected_value'
+    ) THEN
+        UPDATE companies
+        SET expected_value_cents = ROUND(expected_value * 100)::integer
+        WHERE expected_value_cents IS NULL
+          AND expected_value IS NOT NULL;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'companies'
+          AND column_name = 'stage_reason'
+    ) THEN
+        UPDATE companies
+        SET pipeline_loss_reason = stage_reason
+        WHERE pipeline_stage = 'lost'
+          AND pipeline_loss_reason IS NULL
+          AND stage_reason IS NOT NULL
+          AND BTRIM(stage_reason) <> '';
+
+        UPDATE companies
+        SET pipeline_nurture_reason = stage_reason
+        WHERE pipeline_stage = 'nurture'
+          AND pipeline_nurture_reason IS NULL
+          AND stage_reason IS NOT NULL
+          AND BTRIM(stage_reason) <> '';
+    END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS pipeline_stage_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID NOT NULL REFERENCES companies (id) ON DELETE CASCADE,
+    from_stage TEXT,
+    to_stage TEXT NOT NULL,
+    changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    changed_by TEXT NOT NULL,
+    metadata JSONB
+);
+
+DO $$
+BEGIN
+    IF to_regclass('public.company_stage_history') IS NOT NULL THEN
+        INSERT INTO pipeline_stage_history (
+            id, company_id, from_stage, to_stage, changed_at, changed_by, metadata
+        )
+        SELECT
+            h.id,
+            h.company_id,
+            h.from_stage,
+            h.to_stage,
+            h.changed_at,
+            h.changed_by,
+            CASE
+                WHEN h.reason IS NULL OR BTRIM(h.reason) = '' THEN h.metadata
+                WHEN h.metadata IS NULL THEN jsonb_build_object('legacy_reason', h.reason)
+                ELSE h.metadata || jsonb_build_object('legacy_reason', h.reason)
+            END
+        FROM company_stage_history AS h
+        ON CONFLICT (id) DO NOTHING;
+    END IF;
+END $$;
+
+-- Rebuild named indexes so an earlier non-canonical definition cannot linger.
+DROP INDEX IF EXISTS idx_companies_pipeline_stage;
+CREATE INDEX IF NOT EXISTS idx_companies_pipeline_stage
+    ON companies (pipeline_stage)
+    WHERE pipeline_stage IS NOT NULL;
+
+DROP INDEX IF EXISTS idx_companies_next_action_due_at;
+CREATE INDEX IF NOT EXISTS idx_companies_next_action_due_at
+    ON companies (next_action_due_at)
+    WHERE next_action_due_at IS NOT NULL AND archived_at IS NULL;
+
+DROP INDEX IF EXISTS idx_pipeline_stage_history_company_id;
+CREATE INDEX IF NOT EXISTS idx_pipeline_stage_history_company_id
+    ON pipeline_stage_history (company_id, changed_at DESC);
+""",
+    ),
+    Migration(
+        version="016",
+        name="project_brief_payment_details",
+        up_sql="""
+ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS payment_subtotal_cents INTEGER;
+ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS payment_discount_cents INTEGER;
+ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS payment_amount_cents INTEGER;
+ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS payment_currency TEXT;
+ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS stripe_promotion_code_id TEXT;
+ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS stripe_coupon_id TEXT;
+""",
+    ),
+    Migration(
+        version="017",
+        name="first_party_analytics_events",
+        up_sql="""
+CREATE TABLE IF NOT EXISTS analytics_events (
+    id BIGSERIAL PRIMARY KEY,
+    idempotency_key TEXT NOT NULL,
+    event_name TEXT NOT NULL,
+    schema_version TEXT NOT NULL,
+    occurred_at TIMESTAMPTZ NOT NULL,
+    received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    anonymous_session_id UUID NOT NULL,
+    path_class TEXT NOT NULL,
+    referrer_class TEXT NOT NULL,
+    attribution JSONB NOT NULL DEFAULT '{}'::jsonb,
+    properties JSONB NOT NULL DEFAULT '{}'::jsonb,
+    consent_state TEXT NOT NULL,
+    linkage_state TEXT NOT NULL,
+    CONSTRAINT analytics_events_idempotency_key_unique UNIQUE (idempotency_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_analytics_events_occurred_at
+    ON analytics_events (occurred_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_analytics_events_session_id
+    ON analytics_events (anonymous_session_id, occurred_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_analytics_events_event_name
+    ON analytics_events (event_name, occurred_at DESC);
+
+CREATE TABLE IF NOT EXISTS analytics_sessions (
+    session_id UUID PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_analytics_sessions_expires_at
+    ON analytics_sessions (expires_at);
+
+CREATE TABLE IF NOT EXISTS analytics_event_rate_limits (
+    limiter_key TEXT PRIMARY KEY,
+    event_count INTEGER NOT NULL DEFAULT 0,
+    window_started_at TIMESTAMPTZ NOT NULL,
+    locked_until TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL
+);
+""",
+    ),
+    Migration(
+        version="018",
+        name="project_brief_analytics_session",
+        up_sql="""
+ALTER TABLE project_briefs ADD COLUMN IF NOT EXISTS analytics_session_id UUID;
+""",
+    ),
+    Migration(
+        version="019",
+        name="contact_field_sources",
+        up_sql="""
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS field_sources JSONB NOT NULL DEFAULT '{}'::jsonb;
+""",
+    ),
+    Migration(
+        version="020",
+        name="admin_login_rate_limits_cleanup_idx",
+        up_sql="""
+CREATE INDEX IF NOT EXISTS admin_login_rate_limits_cleanup_idx
+    ON admin_login_rate_limits (updated_at, limiter_key);
+""",
+    ),
+    Migration(
+        version="021",
+        name="icp_scoring",
+        up_sql="""
+CREATE TABLE IF NOT EXISTS icp_scoring_versions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    version_number INTEGER NOT NULL UNIQUE,
+    label TEXT NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_by TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS icp_scoring_rules (
+    id TEXT NOT NULL,
+    version_id UUID NOT NULL REFERENCES icp_scoring_versions (id) ON DELETE CASCADE,
+    dimension TEXT NOT NULL,
+    label TEXT NOT NULL,
+    weight NUMERIC(4, 2) NOT NULL DEFAULT 1.0,
+    threshold JSONB NOT NULL DEFAULT '{}'::jsonb,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    accept_hypothesis BOOLEAN NOT NULL DEFAULT FALSE,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (version_id, id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_icp_scoring_rules_version_sort
+    ON icp_scoring_rules (version_id, sort_order, id);
+
+CREATE TABLE IF NOT EXISTS company_icp_score_snapshots (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID NOT NULL REFERENCES companies (id) ON DELETE CASCADE,
+    version_id UUID NOT NULL REFERENCES icp_scoring_versions (id),
+    version_number INTEGER NOT NULL,
+    total_score NUMERIC(5, 2) NOT NULL,
+    computed_score NUMERIC(5, 2) NOT NULL,
+    breakdown JSONB NOT NULL,
+    missing_inputs JSONB NOT NULL DEFAULT '[]'::jsonb,
+    calculated_at TIMESTAMPTZ NOT NULL,
+    is_override BOOLEAN NOT NULL DEFAULT FALSE,
+    override_reason TEXT,
+    override_by TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_company_icp_score_snapshots_company
+    ON company_icp_score_snapshots (company_id, calculated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_company_icp_score_snapshots_version
+    ON company_icp_score_snapshots (version_id, calculated_at DESC);
+
+INSERT INTO icp_scoring_versions (version_number, label, is_active, created_by)
+SELECT 1, 'Default Saberistic ICP', TRUE, 'system'
+WHERE NOT EXISTS (SELECT 1 FROM icp_scoring_versions);
+
+INSERT INTO icp_scoring_rules (
+    id, version_id, dimension, label, weight, threshold, enabled, accept_hypothesis, sort_order
+)
+SELECT
+    seed.id,
+    active_version.id,
+    seed.dimension,
+    seed.label,
+    seed.weight,
+    seed.threshold::jsonb,
+    TRUE,
+    seed.accept_hypothesis,
+    seed.sort_order
+FROM (
+    VALUES
+        ('vertical_fit', 'vertical', 'Target vertical', 1.0,
+         '{"categories":["fintech","ai_infrastructure","digital_assets"]}', FALSE, 1),
+        ('stage_fit', 'stage', 'Funding stage fit', 1.0,
+         '{"stages":["pre_seed","seed","series_a"]}', FALSE, 2),
+        ('funding_recency', 'funding_recency', 'Recent funding signal', 1.0,
+         '{"keywords":["funding","raised","series","seed round","investment","venture"],"record_types":["verified_fact","public_signal"],"max_days":180}', FALSE, 3),
+        ('hiring_growth', 'hiring_growth', 'Hiring / growth signal', 1.0,
+         '{"keywords":["hiring","headcount","open role","job posting","recruiting","growth"],"record_types":["verified_fact","public_signal"],"min_headcount":10,"max_headcount":250}', FALSE, 4),
+        ('technical_trigger', 'technical_trigger', 'Technical trigger', 1.0,
+         '{"keywords":["api","platform","infrastructure","migration","integration","kubernetes","cloud","data pipeline","mlops","fintech stack"],"record_types":["verified_fact","public_signal"]}', FALSE, 5),
+        ('warm_path', 'warm_path', 'Warm introduction path', 1.0,
+         '{"buying_roles":["introducer"],"record_types":["relationship_context"]}', FALSE, 6),
+        ('decision_maker', 'warm_path', 'Qualifying decision-maker', 1.0,
+         '{"buying_roles":["executive_buyer","founder","technical_buyer"]}', FALSE, 7),
+        ('target_disposition', 'vertical', 'Target disposition', 1.0,
+         '{"target_status":"target"}', FALSE, 8),
+        ('pipeline_progress', 'stage', 'Pipeline engagement', 1.0,
+         '{"pipeline_stages":["qualified","ready_for_outreach","contacted","replied","discovery_scheduled","diagnostic_proposed","diagnostic_paid","larger_engagement","won"]}', FALSE, 9),
+        ('fresh_evidence', 'technical_trigger', 'Fresh verified evidence', 1.0,
+         '{"record_types":["verified_fact","public_signal"],"max_days":90}', FALSE, 10)
+) AS seed(id, dimension, label, weight, threshold, accept_hypothesis, sort_order)
+CROSS JOIN (
+    SELECT id FROM icp_scoring_versions WHERE version_number = 1 LIMIT 1
+) AS active_version
+ON CONFLICT (version_id, id) DO NOTHING;
+""",
+    ),
+    Migration(
+        version="022",
+        name="contact_relationship_metrics",
+        up_sql="""
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS relationship_metrics JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS crm_context_tags TEXT[] NOT NULL DEFAULT '{}';
+CREATE INDEX IF NOT EXISTS idx_contacts_crm_context_tags
+    ON contacts USING GIN (crm_context_tags);
+""",
+    ),
+    Migration(
+        version="023",
+        name="qualification_targets",
+        up_sql="""
+CREATE TABLE IF NOT EXISTS qualification_tier_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID NOT NULL REFERENCES companies (id) ON DELETE CASCADE,
+    from_tier TEXT,
+    to_tier TEXT NOT NULL,
+    score NUMERIC(5, 2) NOT NULL,
+    changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    changed_by TEXT NOT NULL,
+    snapshot_id UUID REFERENCES company_icp_score_snapshots (id) ON DELETE SET NULL,
+    metadata JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_qualification_tier_history_company
+    ON qualification_tier_history (company_id, changed_at DESC);
+
+CREATE TABLE IF NOT EXISTS qualification_working_lists (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    owner TEXT NOT NULL,
+    max_items INTEGER NOT NULL DEFAULT 50
+        CHECK (max_items > 0 AND max_items <= 100),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_qualification_working_lists_owner
+    ON qualification_working_lists (owner, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS qualification_working_list_items (
+    list_id UUID NOT NULL REFERENCES qualification_working_lists (id) ON DELETE CASCADE,
+    company_id UUID NOT NULL REFERENCES companies (id) ON DELETE CASCADE,
+    position INTEGER NOT NULL DEFAULT 0,
+    added_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (list_id, company_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_qualification_working_list_items_list
+    ON qualification_working_list_items (list_id, position ASC);
+""",
+    ),
 )

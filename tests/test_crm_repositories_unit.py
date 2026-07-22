@@ -12,6 +12,8 @@ from app.repositories.postgres import (
     PostgresAdminUserRepository,
     PostgresCompanyRepository,
     PostgresContactRepository,
+    PostgresIcpScoringRepository,
+    PostgresQualificationRepository,
     PostgresResearchRecordRepository,
     PostgresSourceRecordRepository,
 )
@@ -88,13 +90,34 @@ def test_contact_repository_create_and_lookup() -> None:
     assert created["email"] == "lead@example.com"
     conn.commit.assert_not_called()
 
-    conn2 = _mock_conn(row)
-    assert repo.get_by_email(conn2, "lead@example.com")["id"] == CONTACT_ID
-
     conn3 = _mock_conn(row)
     assert repo.get_active_by_email(conn3, "lead@example.com")["id"] == CONTACT_ID
     active_sql = str(conn3.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
-    assert "archived_at IS NULL" in active_sql
+    assert "c.archived_at IS NULL" in active_sql
+    assert "LOWER(c.email)" in active_sql
+    assert "ORDER BY c.id ASC" in active_sql
+    assert "LIMIT 1" in active_sql
+
+    conn3b = _mock_conn(row)
+    assert (
+        repo.get_active_by_email(conn3b, "lead@example.com", exclude_contact_id=CONTACT_ID)["id"]
+        == CONTACT_ID
+    )
+    active_excl_sql = str(conn3b.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    assert "id <> %s" in active_excl_sql
+
+    # Archived lookup is a separate, explicit operation (#226).
+    # The real-Postgres proofs #226 requires — that the partial unique index
+    # `idx_contacts_email_unique` permits an active row to coexist with an
+    # archived row sharing the same email while blocking two active rows, and
+    # that get_active_by_email / get_archived_by_email return the right rows
+    # against real data — live in tests/test_contact_email_identity_pg.py. The
+    # broader migration/concurrency contract suite is tracked in #228.
+    conn3c = _mock_conn(row)
+    assert repo.get_archived_by_email(conn3c, "lead@example.com")["id"] == CONTACT_ID
+    archived_sql = str(conn3c.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    assert "archived_at IS NOT NULL" in archived_sql
+    assert "LIMIT 1" in archived_sql
 
     conn4 = _mock_conn([row])
     contacts = repo.list_for_company(conn4, COMPANY_ID, limit=10)
@@ -232,3 +255,208 @@ def test_research_record_repository_create_and_list() -> None:
     conn3 = _mock_conn([row])
     contact_records = repo.list_for_contact(conn3, CONTACT_ID, limit=10)
     assert len(contact_records) == 1
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_qualification_repository_tier_history_and_working_lists() -> None:
+    repo = PostgresQualificationRepository()
+    list_id = UUID("77777777-7777-7777-7777-777777777777")
+
+    conn = _mock_conn([{"id": COMPANY_ID, "name": "Acme"}])
+    companies = repo.list_active_companies(conn, limit=5)
+    assert companies[0]["name"] == "Acme"
+
+    conn2 = _mock_conn({"to_tier": "A"})
+    assert repo.get_latest_tier_for_company(conn2, COMPANY_ID) == "A"
+
+    conn3 = _mock_conn({"id": 1, "to_tier": "A"})
+    change = repo.record_tier_change(
+        conn3,
+        company_id=COMPANY_ID,
+        from_tier="B",
+        to_tier="A",
+        score=8.0,
+        changed_by="operator",
+    )
+    assert change["to_tier"] == "A"
+
+    conn4 = _mock_conn([{"changed_at": None, "to_tier": "A", "company_name": "Acme"}])
+    history = repo.list_tier_history(conn4, COMPANY_ID)
+    assert history[0]["to_tier"] == "A"
+
+    conn5 = _mock_conn({"id": list_id, "name": "Shortlist", "owner": "operator", "max_items": 50})
+    created = repo.create_working_list(
+        conn5,
+        name="Shortlist",
+        owner="operator",
+        company_ids=[COMPANY_ID],
+        max_items=50,
+    )
+    assert created["name"] == "Shortlist"
+    assert conn5.cursor.return_value.__enter__.return_value.execute.call_count >= 2
+
+    conn6 = _mock_conn([{"name": "Shortlist", "item_count": 1, "updated_at": None}])
+    lists = repo.list_working_lists_for_owner(conn6, owner="operator")
+    assert lists[0]["item_count"] == 1
+
+    conn7 = _mock_conn([{"company_id": COMPANY_ID, "position": 0, "company_name": "Acme"}])
+    items = repo.get_working_list_items(conn7, list_id)
+    assert items[0]["company_name"] == "Acme"
+
+
+VERSION_ID = UUID("99999999-9999-9999-9999-999999999901")
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_icp_scoring_repository_version_queries() -> None:
+    repo = PostgresIcpScoringRepository()
+    version_row = {
+        "id": VERSION_ID,
+        "version_number": 1,
+        "label": "Default Saberistic ICP",
+        "is_active": True,
+        "created_at": None,
+        "created_by": "migration",
+    }
+
+    conn_active = _mock_conn(version_row)
+    active = repo.get_active_version(conn_active)
+    assert active is not None
+    assert active["version_number"] == 1
+    active_sql = str(conn_active.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    assert "icp_scoring_versions" in active_sql
+    assert "is_active = TRUE" in active_sql
+
+    conn_by_number = _mock_conn(version_row)
+    by_number = repo.get_version_by_number(conn_by_number, 1)
+    assert by_number is not None
+    assert by_number["id"] == VERSION_ID
+
+    conn_missing = _mock_conn(None)
+    conn_missing.cursor.return_value.__enter__.return_value.fetchone.return_value = None
+    assert repo.get_active_version(conn_missing) is None
+    assert repo.get_version_by_number(conn_missing, 99) is None
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_icp_scoring_repository_rules_and_versions() -> None:
+    repo = PostgresIcpScoringRepository()
+    rule_row = {
+        "id": "vertical_fit",
+        "version_id": VERSION_ID,
+        "dimension": "vertical",
+        "label": "Target vertical",
+        "weight": 1.0,
+        "threshold": {"categories": ["fintech"]},
+        "enabled": True,
+        "accept_hypothesis": False,
+        "sort_order": 1,
+    }
+    version_row = {
+        "id": VERSION_ID,
+        "version_number": 2,
+        "label": "ICP rules v2",
+        "is_active": True,
+        "created_at": None,
+        "created_by": "operator",
+    }
+
+    conn_rules = _mock_conn([rule_row])
+    rules = repo.list_rules_for_version(conn_rules, VERSION_ID)
+    assert len(rules) == 1
+    rules_sql = str(conn_rules.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    assert "icp_scoring_rules" in rules_sql
+    assert "ORDER BY sort_order ASC" in rules_sql
+
+    conn_create = _mock_conn(version_row)
+    created = repo.create_version(
+        conn_create,
+        version_number=2,
+        label="ICP rules v2",
+        created_by="operator",
+        activate=True,
+    )
+    assert created["version_number"] == 2
+    create_sql = str(conn_create.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    assert "INSERT INTO icp_scoring_versions" in create_sql
+
+    conn_deactivate = _mock_conn(None)
+    repo.deactivate_all_versions(conn_deactivate)
+    deactivate_sql = str(
+        conn_deactivate.cursor.return_value.__enter__.return_value.execute.call_args.args[0]
+    )
+    assert "UPDATE icp_scoring_versions SET is_active = FALSE" in deactivate_sql
+
+    conn_insert_rule = _mock_conn(rule_row)
+    inserted = repo.insert_rule(
+        conn_insert_rule,
+        version_id=VERSION_ID,
+        rule_id="vertical_fit",
+        dimension="vertical",
+        label="Target vertical",
+        weight=1.0,
+        threshold={"categories": ["fintech"]},
+        enabled=True,
+        accept_hypothesis=False,
+        sort_order=1,
+    )
+    assert inserted["id"] == "vertical_fit"
+    insert_sql = str(conn_insert_rule.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    assert "INSERT INTO icp_scoring_rules" in insert_sql
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_icp_scoring_repository_snapshots() -> None:
+    from datetime import datetime, timezone
+
+    repo = PostgresIcpScoringRepository()
+    calculated_at = datetime(2026, 7, 15, 12, 0, tzinfo=timezone.utc)
+    snapshot_row = {
+        "id": UUID("88888888-8888-8888-8888-888888888881"),
+        "company_id": COMPANY_ID,
+        "version_id": VERSION_ID,
+        "version_number": 1,
+        "total_score": 7.0,
+        "computed_score": 6.5,
+        "breakdown": [],
+        "missing_inputs": [],
+        "calculated_at": calculated_at,
+        "is_override": False,
+        "override_reason": None,
+        "override_by": None,
+    }
+    list_row = {**snapshot_row, "company_name": "Acme"}
+
+    conn_insert = _mock_conn(snapshot_row)
+    inserted = repo.insert_snapshot(
+        conn_insert,
+        company_id=COMPANY_ID,
+        version_id=VERSION_ID,
+        version_number=1,
+        total_score=7.0,
+        computed_score=6.5,
+        breakdown=[{"rule_id": "vertical_fit", "points_awarded": 1.0}],
+        missing_inputs=["company.stage"],
+        calculated_at=calculated_at,
+    )
+    assert inserted["total_score"] == 7.0
+    insert_sql = str(conn_insert.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    assert "INSERT INTO company_icp_score_snapshots" in insert_sql
+
+    conn_latest = _mock_conn(snapshot_row)
+    latest = repo.get_latest_snapshot_for_company(conn_latest, COMPANY_ID)
+    assert latest is not None
+    latest_sql = str(conn_latest.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    assert "ORDER BY calculated_at DESC" in latest_sql
+
+    conn_list = _mock_conn([list_row])
+    rows = repo.list_latest_snapshots(conn_list, limit=25)
+    assert len(rows) == 1
+    assert rows[0]["company_name"] == "Acme"
+    list_sql = str(conn_list.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    assert "DISTINCT ON (s.company_id)" in list_sql
+    assert conn_list.cursor.return_value.__enter__.return_value.execute.call_args.args[1] == (25,)

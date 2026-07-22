@@ -1,0 +1,59 @@
+name: Browser LinkedIn Import Suite
+
+# Playwright-driven browser coverage for the client-side LinkedIn export ZIP
+# parser (see site/assets/linkedin-import.js and tests/test_linkedin_import_browser.py,
+# issue #224). Isolated from the fast unit/integration job (which has no
+# Chromium/Playwright install) so it only runs when the LinkedIn import surfaces
+# change, and always runs on pushes to main that touch those paths.
+#
+# Deliberately does NOT path-trigger on requirements.txt: dependency bumps
+# (e.g. docs PRs adding jsonschema) must not pull in unrelated admin browser
+# suites. The job also runs only test_linkedin_import_browser.py — not every
+# test marked `browser`.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/assets/linkedin-import.js"
+      - "app/linkedin_export_parser.py"
+      - "app/admin_imports.py"
+      - "tests/test_linkedin_import_browser.py"
+      - "pytest.ini"
+      - ".github/workflows/browser-linkedin-import.yml"
+  pull_request:
+    paths:
+      - "site/assets/linkedin-import.js"
+      - "app/linkedin_export_parser.py"
+      - "app/admin_imports.py"
+      - "tests/test_linkedin_import_browser.py"
+      - "pytest.ini"
+      - ".github/workflows/browser-linkedin-import.yml"
+
+jobs:
+  browser:
+    name: LinkedIn import browser suite
+    # Meta commits from screenshot/health recorders never touch the paths
+    # above, but guard anyway so a rare match cannot re-enter CI.
+    if: >-
+      github.event_name != 'push' ||
+      (
+        !startsWith(github.event.head_commit.message, 'review: record') &&
+        !startsWith(github.event.head_commit.message, 'deploy: record') &&
+        !startsWith(github.event.head_commit.message, 'deploy: freeze')
+      )
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install playwright==1.49.1
+          python -m playwright install --with-deps chromium
+      - name: Run LinkedIn import browser suite
+        run: >-
+          pytest -q -m browser -ra --tb=short -p no:cacheprovider
+          tests/test_linkedin_import_browser.py
