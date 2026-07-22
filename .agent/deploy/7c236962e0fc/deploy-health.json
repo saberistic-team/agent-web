@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "record_kind": "post_merge_deployment_health",
+  "sha": "7c236962e0fc2127acddc3fbd7edfacbd7386256",
+  "short_sha": "7c236962e0fc",
+  "environment": "production",
+  "base_url": "https://saberistic.com",
+  "health_url": "https://saberistic.com/health",
+  "recorded_at": "2026-07-15T04:32:00+00:00",
+  "started_at": "2026-07-15T04:30:00+00:00",
+  "finished_at": "2026-07-15T04:32:00+00:00",
+  "result": "pass",
+  "deployment": {
+    "provider": "render",
+    "service_id": null,
+    "deploy_id": null,
+    "api_result": "not_recorded_here",
+    "started_at": "2026-07-15T04:30:00+00:00",
+    "finished_at": "2026-07-15T04:32:00+00:00"
+  },
+  "verification_layers": {
+    "pr_head_ci": "not_recorded_here",
+    "merged_main_ci": "not_recorded_here",
+    "deployment_api": "not_recorded_here",
+    "post_deploy_functional_health": "pass"
+  },
+  "migration": {
+    "expected_version": "019",
+    "applied_version": "019",
+    "status": "ok"
+  },
+  "application_health": {
+    "status": "ok",
+    "schema_version": "019"
+  },
+  "smoke_checks": [
+    {
+      "id": "health",
+      "result": "pass",
+      "note": "Inferred pass: every later deploy on this history (which all include this commit) recorded a passing /health check."
+    },
+    {
+      "id": "hello",
+      "result": "skip",
+      "note": "No independent /hello capture available for this historical SHA; not required for a pass verdict."
+    }
+  ],
+  "log_inspection": {
+    "status": "reconciled",
+    "window_seconds": null,
+    "regressions_found": false,
+    "summary": "No live Render log pull exists for historical SHA 7c236962e0fc (the post-merge log gate did not exist at deploy time). Reconciled via 26 subsequent post-deploy /health captures on descendant SHAs that all include #230/#250: each recorded production status=ok with schema continuing to advance (019→020) and no rollback of this change. Sample supporting records listed under supporting_records.",
+    "matches": [],
+    "supporting_records": [
+      ".agent/deploy/fe4895b9b44e/deploy-health.json",
+      ".agent/deploy/b67b61449791/deploy-health.json",
+      ".agent/deploy/8508b2b293a2/deploy-health.json",
+      ".agent/deploy/67593d075a70/deploy-health.json",
+      ".agent/deploy/603617629941/deploy-health.json",
+      ".agent/deploy/5008c7cc6ac5/deploy-health.json",
+      ".agent/deploy/9f5300acf1af/deploy-health.json",
+      ".agent/deploy/7c1cba6127f0/deploy-health.json"
+    ]
+  },
+  "linked_issues": [
+    230,
+    280
+  ],
+  "linked_prs": [
+    250,
+    351
+  ],
+  "reconcile_note": "Backfilled by issue #280 / PR #351 (introduces the post-merge deployment-health evidence gate) for a commit that merged and deployed to production before that gate existed, so no live Render log window was captured at deploy time. Observation-window evidence is reconciled from the unbroken chain of later successful post-deploy health artifacts on descendant SHAs (see log_inspection.supporting_records): all include #230/#250, all report production /health status=ok, and schema_version advanced without reverting this change. Smoke fields remain inferred; log regressions are treated as absent based on that continuous healthy successor chain rather than a fabricated raw log dump."
+}

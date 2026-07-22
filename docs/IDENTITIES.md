@@ -50,9 +50,9 @@ Unrelated org install (not part of the agent loop): `digitalocean` (installation
 
 Builder also uses:
 
-- Secret `CURSOR_API_KEY` for Builder coding + Reviewer + post-deploy visual
-  ([MODELS.md](MODELS.md))
-- Optional `OPENAI_API_KEY` backup for review / acceptance / visual / codegen
+- Secret `CURSOR_API_KEY` for Builder coding + Reviewer + post-deploy
+  acceptance checks ([MODELS.md](MODELS.md))
+- Optional `OPENAI_API_KEY` backup for review / acceptance / codegen
 - Optional `MODELS_TOKEN` for GitHub Models backup
 - Builder App must keep `contents: write` so `git/refs` branch creation works
 
@@ -79,6 +79,7 @@ Every agent action must produce a **visible GitHub event** under the role bot:
 | `### agent_start` / `### agent_finish` / `### agent_failed` | Issue comment |
 | `### planner_plan` / `### planner_release` | Issue comment (required before queue) |
 | `### dispatcher_dispatch` | Issue comment when the priority queue applies `agent:builder` / `agent:docs` |
+| `### dispatcher_skip` | Issue comment when queued work is skipped for open / unstructured dependencies (`scripts/issue_deps.py`) |
 | `### permission_check` | Issue comment (pass **and** fail) |
 | `### gate_release_plan` / `### gate_merge` | Issue comment |
 | Builder/Docs commits + PRs | Commits/PRs as Builder/Docs App |

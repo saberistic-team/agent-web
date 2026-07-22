@@ -65,14 +65,10 @@ _NAMEERROR_RE = re.compile(
 
 
 def linked_open_prs(repo: str, issue: int) -> list[dict[str, Any]]:
-    owner, name = split_repo(repo)
-    prs = api("GET", f"/repos/{owner}/{name}/pulls?state=open&per_page=100") or []
-    needle = f"#{issue}"
-    return [
-        pr
-        for pr in prs
-        if needle in (pr.get("title") or "") or needle in (pr.get("body") or "")
-    ]
+    """Delegate to shared intentional-link matcher (anti-loop #109/#181)."""
+    from github_api import linked_open_prs as _linked_open_prs
+
+    return _linked_open_prs(repo, issue)
 
 
 def repair_main_wiring(text: str) -> tuple[str, list[str]]:
@@ -125,11 +121,52 @@ def try_repair_main_after_smoke(
     return True, f"added imports for: {', '.join(added)}"
 
 
-def _smoke_env(cwd: Path) -> dict[str, str]:
+# Builder's *own* codegen provider/model selection (how Builder itself talks
+# to Cursor/OpenAI/GitHub Models) is configured via these repo vars/secrets in
+# builder.yml. None of them are set in ci.yml's `test` job, so real CI always
+# exercises tests/test_codegen_provider.py's *default* resolution behavior.
+# `_smoke_env` used to inherit the full parent environment, which leaked
+# Builder's own `CURSOR_MODEL` (e.g. a non-default `composer-2.5` override)
+# into the cloned-PR-head pytest subprocess — failing
+# `test_select_provider_prefers_cursor_when_key_set` /
+# `test_select_provider_force_cursor` (which assert the *default* model
+# contains "sonnet") every single smoke run, on every issue, regardless of
+# the PR's diff. Re-running codegen can never fix an environment mismatch, so
+# this looped Builder forever (#115 / PR #265). Strip them so the smoke gate
+# matches what `pytest -q -m "not contract"` actually sees in ci.yml.
+_CODEGEN_SELECTION_ENV_VARS = (
+    "CURSOR_MODEL",
+    "CURSOR_MAX_MODE",
+    "CODEGEN_PROVIDER",
+    "OPENAI_MODEL",
+    "GITHUB_MODELS_MODEL",
+)
+
+
+def _smoke_env(cwd: Path, *, for_import: bool = False) -> dict[str, str]:
     env = {**os.environ, "PYTHONPATH": str(cwd)}
-    # Preview/auth settings are optional for import; avoid requiring secrets.
-    env.setdefault("ADMIN_PREVIEW_MODE", "1")
+    for var in _CODEGEN_SELECTION_ENV_VARS:
+        env.pop(var, None)
+    if for_import:
+        # Import-only: preview unlocks admin wiring without requiring secrets.
+        env.setdefault("ADMIN_PREVIEW_MODE", "1")
+        env.setdefault("APP_ENV", "development")
+        env.setdefault("SERVER_BIND_HOST", "127.0.0.1")
+        env.setdefault("BASE_URL", "http://127.0.0.1:8000")
+    else:
+        # Full pytest must match CI. Preview mode short-circuits auth and breaks
+        # login redirects / authenticated fixtures across the admin suite.
+        env.pop("ADMIN_PREVIEW_MODE", None)
     return env
+
+
+def _truncate_pytest_detail(detail: str, *, limit: int) -> str:
+    """Keep the failure summary when truncating long pytest output."""
+    detail = detail.strip()
+    if len(detail) <= limit:
+        return detail
+    # Progress dots are at the start; FAILURES / short summary are at the end.
+    return detail[-limit:]
 
 
 def smoke_import_app(cwd: Path) -> tuple[bool, str]:
@@ -140,7 +177,7 @@ def smoke_import_app(cwd: Path) -> tuple[bool, str]:
             cwd=cwd,
             capture_output=True,
             text=True,
-            env=_smoke_env(cwd),
+            env=_smoke_env(cwd, for_import=True),
             timeout=SMOKE_TIMEOUT_SEC,
             check=False,
         )
@@ -172,7 +209,7 @@ def smoke_pytest_collect(cwd: Path) -> tuple[bool, str]:
         )
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout or "").strip() or f"exit {proc.returncode}"
-        return False, detail[:1200]
+        return False, _truncate_pytest_detail(detail, limit=1200)
     return True, "ok"
 
 
@@ -200,7 +237,7 @@ def smoke_pytest_run(cwd: Path) -> tuple[bool, str]:
         )
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout or "").strip() or f"exit {proc.returncode}"
-        return False, detail[:1600]
+        return False, _truncate_pytest_detail(detail, limit=1600)
     return True, "ok"
 
 
@@ -359,13 +396,16 @@ def linked_pr_conflict_status(repo: str, issue: int) -> dict[str, Any]:
     }
 
 
-def format_merge_conflict_hard_fail(status: dict[str, Any]) -> str:
+def format_merge_conflict_hard_fail(
+    status: dict[str, Any], *, implementer: str = "Builder"
+) -> str:
     """Reviewer hard-fail line for a conflicted linked PR."""
+    who = implementer if implementer in {"Builder", "Docs"} else "Builder"
     return (
         "PR has merge conflicts with base "
         f"(mergeable=`{status.get('mergeable')}`, "
         f"mergeable_state=`{status.get('mergeable_state')}`) — "
-        "return to Builder to resolve on the same PR head"
+        f"return to {who} to resolve on the same PR head"
     )
 
 
@@ -575,7 +615,7 @@ def default_resolve_file(
         "Never drop imports, router wiring (`admin_router`), Protocol/repository "
         "exports, cookie/session symbol names, or migration catalog entries that "
         "either side defines — union both sides when unsure. Prefer keeping "
-        "main's auth/session APIs when they conflict with obsolete Basic-auth tests. Never create circular imports between `app.admin_routes` and feature routers (`admin_pipeline_routes`, etc.): mount feature routers from `app.main` only — do not `include_router` them at the bottom of admin_routes."
+        "main's auth/session APIs when they conflict with obsolete Basic-auth tests. Never create circular imports between `app.admin_routes` and feature routers (`admin_pipeline_routes`, etc.): mount feature routers from `app.main` only — do not `include_router` them at the bottom of admin_routes. Prefer keeping code nimble: do not collapse split modules back into mega-files when both sides are coherent."
     )
     user = (
         f"{brief}\n\n"

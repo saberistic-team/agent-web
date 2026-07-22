@@ -1,4 +1,5 @@
 .venv/
+.venv*/
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -10,3 +11,7 @@ build/
 .coverage
 htmlcov/
 .coverage.*
+.venv2/
+crm-backup-*.json
+backups/
+*.dump

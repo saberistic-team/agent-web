@@ -1,0 +1,6 @@
+{
+  "name": "Lumen Grove",
+  "description": "Canonical manifest published at the well-known path for domain-controlled worlds.",
+  "url": "https://lumen-grove.example.io/play",
+  "runtime_types": ["web-embed", "discord-bot"]
+}

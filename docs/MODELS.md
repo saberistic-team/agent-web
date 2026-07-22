@@ -1,8 +1,12 @@
-# Builder / Reviewer / visual model providers
+# Builder / Reviewer model providers
 
-**Builder codegen**, **Reviewer AI** (PR review + acceptance), and
-**post-deploy visual** prefer the **Cursor Agent SDK** when `CURSOR_API_KEY`
-is set. OpenAI and GitHub Models are backups (OpenAI quota is often exhausted).
+**Builder codegen** and **Reviewer AI** (PR review + acceptance) prefer the
+**Cursor Agent SDK** when `CURSOR_API_KEY` is set. OpenAI and GitHub Models
+are backups (OpenAI quota is often exhausted). Post-deploy screenshots are
+captured as evidence only — verification is a manual admin step, not an
+AI-gated check (see [SCREENSHOTS.md](SCREENSHOTS.md)).
+Every Cursor SDK call defaults to Claude **Sonnet with Max Mode enabled**
+(`scripts/cursor_model.py`) — override with `CURSOR_MODEL` / `CURSOR_MAX_MODE`.
 
 ## Builder flow
 
@@ -31,6 +35,10 @@ is set. OpenAI and GitHub Models are backups (OpenAI quota is often exhausted).
    **Also smoke mergeable/clean PR heads** before handoff; an already-broken
    remote head can be `mergeable: true` while `admin_router` /
    `CORRELATION_HEADER` are undefined, collection fails, or CI assertions fail.
+   **Pitfall:** after a contaminated head is force-reset to `main`, Builder
+   must still implement the issue (empty PR ≠ done). Repeated
+   `broken_after_resolve` after cross-issue thrash → reset same PR head to
+   `main` and re-implement; do not keep merging the corrupted tip.
    **Pitfall:** Cursor local bridge rejects callback tokens that start with `-`
    (`Missing value for --tool-callback-auth-token`). SDK may mark
    `retryable=False`, but Builder must treat it as `waiting` and patch token
@@ -53,6 +61,11 @@ Builder must keep **one open PR and one head branch per issue**.
 | No open linked PR | Create `builder/{issue}-{slugify(title)}` and open the PR |
 | Re-queue after changes-requested | Same PR head — never a second `builder/{issue}-…` from a retitled slug |
 
+`linked_open_prs()` only counts **intentional** links: `Closes`/`Fixes`/
+`Resolves #N`, title `(#N)`, or head `builder/{N}-…`. A casual body mention
+like “preview #109” on a dependent PR is **not** a link — that false match
+pushed #109 commits onto PR #181 and alternated Builders (#109/#110).
+
 Title-only slugs drift (e.g. `P1 — …` vs bare title) and previously forked
 Reviewer onto a ghost branch while the real PR stayed stale. See
 [AGENTS/builder.md](../AGENTS/builder.md) — **Branch and PR reuse**.
@@ -66,23 +79,17 @@ commit per file, which storms CI and races merges).
 
 1. Issue gets `agent:reviewer`
 2. `scripts/review_models.py` → Cursor (`mode=plan`, read-only) → OpenAI → Models
-3. Acceptance AI uses the same `chat()` stack
+3. Acceptance AI uses the same `chat()` stack (including the post-deploy
+   acceptance-checklist refresh in `scripts/post_deploy_visual.py`)
 4. Force with `REVIEW_PROVIDER=cursor|openai|github-models`
-
-## Post-deploy visual flow
-
-1. CI `post-deploy-visual` after Render deploy
-2. `scripts/post_deploy_visual.py` → Cursor (`mode=plan`, read local PNGs) →
-   OpenAI vision backup
-3. Force with `VISUAL_PROVIDER=cursor|openai`
 
 ## Auth
 
 | Token | Purpose |
 |-------|---------|
 | Builder / Reviewer App tokens | Comments, labels, commits, PRs, reviews |
-| `CURSOR_API_KEY` | **Preferred** Cursor SDK for Builder + Reviewer + visual |
-| `OPENAI_API_KEY` | Optional backup for review / acceptance / visual |
+| `CURSOR_API_KEY` | **Preferred** Cursor SDK for Builder + Reviewer + acceptance |
+| `OPENAI_API_KEY` | Optional backup for review / acceptance |
 | `MODELS_TOKEN` (optional) | GitHub Models last-resort backup |
 
 ## Variables
@@ -91,19 +98,19 @@ commit per file, which storms CI and races merges).
 |----------|---------|
 | `CODEGEN_PROVIDER` | unset → Cursor if key present, else OpenAI, else Models |
 | `REVIEW_PROVIDER` | unset → Cursor if key present, else OpenAI, else Models |
-| `VISUAL_PROVIDER` | unset → Cursor if key present, else OpenAI |
-| `CURSOR_MODEL` | `composer-2.5` |
+| `CURSOR_MODEL` | `sonnet-4.5` |
+| `CURSOR_MAX_MODE` | `true` (Max Mode on for every Cursor SDK call; set `false` to disable) |
 | `CURSOR_RUNTIME` | `local` in Actions (Builder); set `cloud` only when needed |
-| `OPENAI_MODEL` | Path-specific defaults when unset: codegen / post-deploy visual → `gpt-4.1-mini`; Reviewer / acceptance / conflict helpers → `gpt-4o-mini` |
+| `OPENAI_MODEL` | Path-specific defaults when unset: codegen → `gpt-4.1-mini`; Reviewer / acceptance / conflict helpers → `gpt-4o-mini` |
 | `GITHUB_MODELS_MODEL` | `openai/gpt-4o-mini` |
 
 ## Cursor setup
 
 1. Create a Cursor API key (user or team service account)
 2. Repo secret: `CURSOR_API_KEY`
-3. Repo variables: `CODEGEN_PROVIDER=cursor`, optionally `REVIEW_PROVIDER=cursor`,
-   `VISUAL_PROVIDER=cursor`
-4. Optional: `CURSOR_MODEL=composer-2.5`, `CURSOR_RUNTIME=local`
+3. Repo variables: `CODEGEN_PROVIDER=cursor`, optionally `REVIEW_PROVIDER=cursor`
+4. Optional: `CURSOR_MODEL=sonnet-4.5` (defaults to Sonnet with Max Mode on;
+   `CURSOR_MAX_MODE=false` disables Max Mode), `CURSOR_RUNTIME=local`
 5. For Builder **cloud** only: connect GitHub so Cursor can clone/open PRs
 
 Docs: [Cursor Python SDK](https://cursor.com/docs/sdk/python)
@@ -113,6 +120,7 @@ Docs: [Cursor Python SDK](https://cursor.com/docs/sdk/python)
 | Path | Limit | Notes |
 |------|-------|--------|
 | Cursor local (`CURSOR_MAX_FILES`) | **60** (was 30) | Override via env; soft overruns requeue Builder (`waiting`), do not `status:blocked` |
+| Cursor / OpenAI / Models per-file chars (`MAX_FILE_CHARS`) | **120_000** (was 80_000) | Hard reject after edit; must stay above large modules such as `app/admin_routes.py` or Builder escalates to `status:blocked` (see [#333](https://github.com/saberistic-team/agent-web/issues/333)). Prefer splitting large modules rather than relying on a higher ceiling — [AGENTS/builder.md](../AGENTS/builder.md) |
 | Cursor local attempts (`CURSOR_LOCAL_ATTEMPTS`) | **3** | Retries `is_retryable` Bridge / read timeouts before failing |
 | OpenAI / Models JSON | 12 files | Prefer plain JSON `content` strings (not brittle `content_b64`) |
 

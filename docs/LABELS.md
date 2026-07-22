@@ -88,7 +88,7 @@ while the issue is in the orchestration pipeline.
 | `status:new` | **Entry point only.** Fresh work that has not been claimed by any agent. Humans (or intake automation) may apply this; **only the Planner may move an issue out of `status:new`.** |
 | `status:queued` | Accepted by the Planner and waiting in the **priority queue**. The dispatcher applies `agent:builder` or `agent:docs` when that agent is free, highest priority first. |
 | `status:in-progress` | An agent is actively working the issue. |
-| `status:blocked` | Work cannot proceed until an **external** dependency or decision is resolved. Do **not** use for transient Cursor SDK timeouts, soft file-budget overruns, coverage gaps, or merge conflicts — those re-enter `status:queued` (`waiting` handoff). |
+| `status:blocked` | Work cannot proceed until an **external** dependency or decision is resolved — including open `Depends on: #N` / GitHub `blockedBy` targets, or a prose-only `## Dependencies` section that Planner must rewrite. Do **not** use for transient Cursor SDK timeouts, soft file-budget overruns, coverage gaps, or merge conflicts — those re-enter `status:queued` (`waiting` handoff). |
 | `status:needs-review` | Implementation is ready for review (pairs with the `review` axis). |
 | `status:done` | Work is complete and accepted; Gate sets this only after a complete `### acceptance_checklist` and close. |
 | `status:failed` | The run failed or was aborted; needs human or Planner intervention. |
@@ -111,8 +111,12 @@ while the issue is in the orchestration pipeline.
   issues on an **open** GitHub milestone (see Milestones below), then sort by
   earliest milestone due date, then priority, then issue number, and apply at
   most one run per agent while that agent already has `status:in-progress`
-  work. The dispatch workflow also runs on a `*/10 * * * *` cron so queued
-  work is drained without waiting for a new label event.
+  work. Issues with **open** or **unstructured** dependencies
+  (`scripts/issue_deps.py` — GitHub `blockedBy`, `Depends on: #N`, or a
+  prose-only `## Dependencies` section) are skipped with
+  `### dispatcher_skip` until blockers close (learned from #204). The
+  dispatch workflow also runs on a `*/10 * * * *` cron so queued work is
+  drained without waiting for a new label event.
 
 ---
 
@@ -144,6 +148,21 @@ not filter by milestone (avoids a stuck queue). Prefer keeping exactly one
 current open milestone in normal operation; use due dates when multiple are
 open so agents drain earlier phases first.
 
+### Issue dependencies
+
+Cross-issue blockers must be **machine-readable** before Planner queues and
+before Dispatcher starts Builder/Docs:
+
+| Form | Example |
+|------|---------|
+| GitHub blockedBy | Issue A “blocked by” issue B in the GitHub UI |
+| Body line | `Depends on: #199, #200` |
+| Section | `## Dependencies` containing `#199` refs, or `None` / `N/A` |
+
+A `## Dependencies` section with narrative prose and **no** `#N` refs is
+unstructured — Planner sets `status:blocked`; Dispatcher skips; Gate refuses
+merge (`scripts/issue_deps.py`, learned from #204).
+
 ---
 
 ## Axis: `priority`
@@ -170,11 +189,11 @@ at intake; otherwise the Planner infers or defaults to `priority:normal`.
 - Within the same priority, older issue numbers run first (FIFO).
 - Reviewer `changes-requested` re-enters `status:queued` (same priority) and
   waits for the dispatcher — it does not skip the queue by re-applying
-  `agent:builder` immediately. Merge conflicts are always Builder-fixable
-  (including when another PR merges after handoff).
-- Builder that cannot leave a clean PR (still `mergeable_state: dirty` after
-  conflict resolution) uses the `waiting` handoff → `status:queued` and does
-  **not** apply `agent:reviewer` until the PR merges cleanly.
+  `agent:builder` / `agent:docs` immediately. Merge conflicts are always
+  implementing-agent fixable (including when another PR merges after handoff).
+- Builder/Docs that cannot leave a clean PR (still `mergeable_state: dirty`
+  after conflict resolution) use the `waiting` handoff → `status:queued` and
+  do **not** apply `agent:reviewer` until the PR merges cleanly.
 - Manual `agent:builder` / `agent:docs` still starts a run immediately
   (emergency override); prefer the queue for normal work.
 
@@ -218,7 +237,7 @@ typically used when `status:needs-review` (or after a review cycle).
 |-------|---------|
 | `review:needs-review` | Awaiting a review decision. |
 | `review:approved` | Review passed; ready to merge or mark done. |
-| `review:changes-requested` | Review found required changes; return to builder via the priority queue. |
+| `review:changes-requested` | Review found required changes; return to the implementing agent (`agent:builder` or `agent:docs` from `type:*`) via the priority queue. |
 
 ---
 
@@ -232,13 +251,13 @@ PRs — those are issue ownership / pipeline state and runtime triggers.
 |-----------|--------|-------|
 | `type:*` | Copied from the linked issue | Set when Builder/Docs open (or refresh) the PR |
 | `priority:*` | Copied from the linked issue | Preserved across review cycles |
-| `review:*` | Kept in sync with the issue review axis | Builder → `needs-review`; Reviewer/Gate update on decision/merge |
+| `review:*` | Kept in sync with the issue review axis | Builder/Docs → `needs-review`; Reviewer/Gate update on decision/merge |
 | Milestone | Copied from the linked issue | Same GitHub milestone as the issue when set; skipped for critical/no-milestone work |
 | `agent:*` | **Never on PRs** | Issue-only |
 | `status:*` | **Never on PRs** | Issue-only |
 
-Implementation: `scripts/pr_labels.py` (also invoked from Builder / Reviewer /
-Gate workflows). Label mutations use the Issues Labels API
+Implementation: `scripts/pr_labels.py` (also invoked from Builder / Docs /
+Reviewer / Gate workflows). Label mutations use the Issues Labels API
 (`POST/DELETE .../issues/{number}/labels`), which works for PR numbers.
 Milestone assignment uses `PATCH .../issues/{number}` with `milestone` (also
 works for PR numbers).
@@ -249,7 +268,7 @@ works for PR numbers).
 |------|------------------|
 | **Planner** | None. Labels the **issue** only (`type:*`, `priority:*`, `status:queued`) and sets an open milestone. No `pull_requests` scope; no PR exists yet for new work. |
 | **Builder** | On create/reuse of a code PR: mirror `type:*` + `priority:*`, set `review:needs-review`, and copy the issue milestone onto the PR. On handoff to Reviewer, workflows re-apply the same mirror. |
-| **Docs** | On create/reuse: mirror `type:*` + `priority:*` and the issue milestone (Docs usually skips Reviewer, so no `review:*`). |
+| **Docs** | On create/reuse: mirror `type:*` + `priority:*`, set `review:needs-review`, and copy the issue milestone onto the PR (same review handoff as Builder; Reviewer uses the docs checklist). |
 | **Reviewer** | After the PR review API decision, set the matching `review:*` on the PR (`approved` / `changes-requested`) while updating the issue. |
 | **Gate** | On squash merge (`review-approved`): ensure the PR has `review:approved`. Issue still receives `status:done` + `review:approved`. |
 

@@ -28,6 +28,7 @@ TEST_USERNAME = "operator"
 TEST_PASSWORD = "correct-horse-battery-staple"
 TEST_HASH = PasswordHasher().hash(TEST_PASSWORD)
 TEST_SECRET = "test-session-secret-32chars-minimum"
+TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!!"
 
 
 @pytest.fixture(autouse=True)
@@ -36,6 +37,7 @@ def admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_USERNAME", TEST_USERNAME)
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_HASH)
     monkeypatch.setenv("ADMIN_SESSION_SECRET", TEST_SECRET)
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
     monkeypatch.setenv("BASE_URL", "http://testserver")
     admin_auth.reset_login_rate_limiter()
 
@@ -158,6 +160,7 @@ def test_postgres_project_brief_repository_get_by_id_selects_detail_columns() ->
     assert row == {"id": 3, "brief": "text"}
     sql = cursor.execute.call_args[0][0]
     assert "stripe_session_id" in sql
+    assert "payment_amount_cents" in sql
     assert "utm_term" in sql
     assert "WHERE id = %s" in sql
 

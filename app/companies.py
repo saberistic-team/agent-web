@@ -122,8 +122,55 @@ class CompanyCreate(BaseModel):
         return self
 
 
+def company_audit_summary(company: dict[str, Any]) -> dict[str, Any]:
+    """Compact company snapshot for audit events.
+
+    Free-form notes, funding text, and website URLs are omitted; presence flags
+    and normalized registry fields are stored instead.
+    """
+    last_verified = company.get("last_verified_at")
+    archived_at = company.get("archived_at")
+    notes = company.get("notes")
+    funding_summary = company.get("funding_summary")
+    website = company.get("website")
+    return {
+        "name": company.get("name"),
+        "domain": company.get("domain"),
+        "category": company.get("category"),
+        "stage": company.get("stage"),
+        "headcount_estimate": company.get("headcount_estimate"),
+        "target_status": company.get("target_status"),
+        "last_verified_at": (
+            last_verified.isoformat()
+            if hasattr(last_verified, "isoformat")
+            else last_verified
+        ),
+        "archived_at": (
+            archived_at.isoformat()
+            if hasattr(archived_at, "isoformat")
+            else archived_at
+        ),
+        "has_website": bool(website and str(website).strip()),
+        "has_notes": bool(notes and str(notes).strip()),
+        "has_funding_summary": bool(
+            funding_summary and str(funding_summary).strip()
+        ),
+    }
+
+
 class CompanyUpdate(CompanyCreate):
-    pass
+    """Partial company patch.
+
+    Unlike :class:`CompanyCreate`, domain is only derived from the website when
+    the ``domain`` field was omitted entirely. When an edit form submits a blank
+    ``domain`` it is an explicit clear and must not be silently re-derived.
+    """
+
+    @model_validator(mode="after")
+    def derive_domain_from_website(self) -> "CompanyUpdate":
+        if "domain" not in self.model_fields_set and self.website:
+            self.domain = normalize_domain(self.website)
+        return self
 
 
 @dataclass(frozen=True)

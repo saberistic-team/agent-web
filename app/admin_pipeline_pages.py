@@ -78,7 +78,7 @@ def render_pipeline_list_page(
           <p class="admin-lede">Move qualified companies from research through paid engagements.</p>
         </div>
       </div>
-      <form class="admin-form" method="get" action="/admin/pipeline">
+      <form class="admin-form admin-form--compact" method="get" action="/admin/pipeline">
         <div class="field"><label for="stage-filter">Stage</label><select id="stage-filter" name="stage">{_stage_options(stage_filter)}</select></div>
         <button class="cta admin-submit" type="submit">Filter</button>
       </form>
@@ -106,6 +106,7 @@ def render_pipeline_detail_page(
     csrf_token: str,
     admin_username: str,
     error_message: str | None = None,
+    expected_value_cents_error: str | None = None,
     preview_banner: str | None = None,
 ) -> str:
     banner_html = ""
@@ -140,6 +141,18 @@ def render_pipeline_detail_page(
     raw_due = company.get("next_action_due_at")
     if isinstance(raw_due, datetime):
         due_value = raw_due.strftime("%Y-%m-%dT%H:%M")
+    elif isinstance(raw_due, str):
+        due_value = raw_due
+    expected_value_attrs = ""
+    expected_value_error_html = ""
+    if expected_value_cents_error:
+        expected_value_attrs = (
+            ' aria-invalid="true" aria-describedby="expected_value_cents-error"'
+        )
+        expected_value_error_html = (
+            f'<p class="form-error" id="expected_value_cents-error" role="alert">'
+            f"{_esc(expected_value_cents_error)}</p>"
+        )
     main = f"""<section class="admin-section" aria-labelledby="pipeline-detail-title">
       {banner_html}
       <p class="admin-breadcrumb"><a href="/admin/pipeline">Pipeline</a></p>
@@ -148,18 +161,18 @@ def render_pipeline_detail_page(
       {'<p class="form-error" role="alert">' + _esc(error_message) + '</p>' if error_message else ''}
       <div class="dashboard-panel">
         <h2 class="admin-section-title">Next action</h2>
-        <form class="admin-form" method="post" action="/admin/pipeline/{_esc(company["id"])}/next-action">
+        <form class="admin-form admin-form--editor" method="post" action="/admin/pipeline/{_esc(company["id"])}/next-action">
           <input type="hidden" name="csrf_token" value="{_esc(csrf_token)}" />
           <div class="field"><label for="next_action">Action</label><textarea id="next_action" name="next_action" rows="3" maxlength="2000">{_esc(company.get("next_action"))}</textarea></div>
           <div class="field"><label for="next_action_due_at">Due</label><input id="next_action_due_at" name="next_action_due_at" type="datetime-local" value="{_esc(due_value)}" /></div>
           <div class="field"><label for="pipeline_owner">Owner</label><input id="pipeline_owner" name="pipeline_owner" maxlength="200" value="{_esc(company.get("pipeline_owner"))}" /></div>
-          <div class="field"><label for="expected_value_cents">Expected value (cents)</label><input id="expected_value_cents" name="expected_value_cents" type="number" min="0" value="{_esc(company.get("expected_value_cents"))}" /></div>
+          <div class="field"><label for="expected_value_cents">Expected value (cents)</label><input id="expected_value_cents" name="expected_value_cents" type="number" min="0" value="{_esc(company.get("expected_value_cents"))}"{expected_value_attrs} />{expected_value_error_html}</div>
           <button class="cta admin-submit" type="submit">Save next action</button>
         </form>
       </div>
       <div class="dashboard-panel">
         <h2 class="admin-section-title">Change stage</h2>
-        <form class="admin-form" method="post" action="/admin/pipeline/{_esc(company["id"])}/stage">
+        <form class="admin-form admin-form--editor" method="post" action="/admin/pipeline/{_esc(company["id"])}/stage">
           <input type="hidden" name="csrf_token" value="{_esc(csrf_token)}" />
           <div class="field"><label for="to_stage">New stage</label><select id="to_stage" name="to_stage" required>{stage_transition_options}</select></div>
           <div class="field"><label for="loss_reason">Loss reason</label><input id="loss_reason" name="loss_reason" maxlength="2000" placeholder="Required when moving to Lost" /></div>
@@ -170,7 +183,7 @@ def render_pipeline_detail_page(
       </div>
       <div class="dashboard-panel">
         <h2 class="admin-section-title">Log activity</h2>
-        <form class="admin-form" method="post" action="/admin/pipeline/{_esc(company["id"])}/activities">
+        <form class="admin-form admin-form--editor" method="post" action="/admin/pipeline/{_esc(company["id"])}/activities">
           <input type="hidden" name="csrf_token" value="{_esc(csrf_token)}" />
           <div class="field"><label for="activity_type">Type</label><select id="activity_type" name="activity_type" required>{_activity_type_options()}</select></div>
           <div class="field"><label for="summary">Summary</label><textarea id="summary" name="summary" rows="3" required maxlength="5000"></textarea></div>

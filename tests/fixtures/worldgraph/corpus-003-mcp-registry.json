@@ -1,0 +1,7 @@
+{
+  "name": "Orbit Sanctuary",
+  "description": "Verified registry entry for a multi-agent sanctuary world with public API hooks.",
+  "homepage": "https://orbit-sanctuary.example.com/",
+  "capabilities": ["mcp-server", "rest-api"],
+  "runtime_types": ["mcp-server"]
+}

@@ -7,6 +7,10 @@ Parent issue: [#101](https://github.com/saberistic-team/agent-web/issues/101).
 
 ## Overview
 
+- Browser security headers and CSP for `/admin` are documented in
+  [ADMIN_SECURITY_HEADERS.md](ADMIN_SECURITY_HEADERS.md) ([#308](https://github.com/saberistic-team/agent-web/issues/308)).
+- Admin cache isolation (`Cache-Control: no-store, private`) is documented in
+  [ADMIN_CACHE_POLICY.md](ADMIN_CACHE_POLICY.md) ([#337](https://github.com/saberistic-team/agent-web/issues/337)).
 - No public registration, signup, or password-reset routes exist.
 - Admin credentials are configured only through Render environment variables.
 - Successful login creates a new server-side session and sets a `Secure`,
@@ -15,9 +19,12 @@ Parent issue: [#101](https://github.com/saberistic-team/agent-web/issues/101).
   pre-authentication browser flow stored server-side.
 - Authenticated state-changing requests (e.g. logout) require a CSRF token bound
   to the active server-side session.
-- Login POST requests are rate limited per username-and-source key in shared
-  Postgres storage (consistent across instances).
-- Logout revokes the active session server-side and clears the cookie.
+- Login POST requests are rate limited using source-wide and account-wide buckets in
+  shared Postgres storage with atomic admission (consistent across instances).
+- Logout revokes the active session server-side, records one `auth.logout` audit
+  event in the same transaction, and clears the cookie. Missing, invalid,
+  expired, or already-revoked sessions receive idempotent cookie cleanup with
+  no audit write.
 - Anonymous requests to protected `/admin` routes receive a safe redirect to
   `/admin/login`.
 
@@ -27,7 +34,7 @@ Parent issue: [#101](https://github.com/saberistic-team/agent-web/issues/101).
 |-------|------|---------|
 | `GET /admin/login` | Public | Sign-in form; mints pre-auth flow + CSRF |
 | `POST /admin/login` | Public | Authenticate; flow-bound CSRF + rate limit enforced |
-| `POST /admin/logout` | Session optional | Revoke session; session-bound CSRF when signed in |
+| `POST /admin/logout` | Session optional | Revoke live session + audit when signed in with valid CSRF; otherwise idempotent cookie clear |
 | `GET /admin` | Required | Authenticated operator landing (stub) |
 | Other `GET /admin/*` | Required | Redirect to login when anonymous |
 
@@ -42,11 +49,46 @@ server-side; raw tokens appear in HTML forms only and are never logged.
    `flow_token_hash` and `csrf_token_hash`, then sets an `admin_login_flow`
    cookie (`HttpOnly`, `SameSite=strict`, path `/admin`, 15-minute TTL).
 2. The login form embeds the raw CSRF token in a hidden field.
-3. `POST /admin/login` requires both the flow cookie and matching CSRF field.
-   The flow row is consumed (one-time use) on every POST attempt.
-4. On failure or throttle, a fresh flow and CSRF token are issued.
-5. On success, the flow cookie is cleared and a new authenticated session is
+3. `POST /admin/login` atomically **claims** the flow row in one conditional
+   `UPDATE … RETURNING` that matches the browser flow cookie digest, submitted
+   CSRF digest, `consumed_at IS NULL`, and `expires_at > now`. Exactly one
+   concurrent submission can succeed; a zero-row update is a failed security
+   claim.
+4. **Consumption point** — the flow is marked consumed at successful claim,
+   *before* password verification. This closes the time-of-check/time-of-use
+   race: concurrent replays cannot both reach credential checks. A successful
+   claim with invalid credentials still receives a replacement flow (`#153`);
+   the operator retries with the new form, not the consumed row.
+5. Failed claims (missing cookie, wrong CSRF, expired, already consumed, or
+   concurrent loss) burn the flow cookie when it is still valid but CSRF did not
+   match, then return the same generic failure message without running password
+   verification or session mutation.
+6. On failure or throttle, a fresh flow and CSRF token are issued.
+7. On success, the flow cookie is cleared and a new authenticated session is
    minted (session fixation resistance).
+
+#### Verified PostgreSQL concurrency (#243)
+
+Integration tests in
+``tests/test_admin_login_flow_claim_pg_integration.py`` race **independent**
+``psycopg`` connections (separate transactions, no Python lock around the
+claim) against one ``admin_login_flows`` row. PostgreSQL row locking and the
+conditional ``UPDATE … RETURNING`` determine the outcome:
+
+| Scenario | PostgreSQL behavior |
+|----------|---------------------|
+| Two or more concurrent valid claims | Exactly one ``RETURNING`` row; all others zero-row |
+| Loser at the route layer | Failed security claim (HTTP 400); no password verify, session, or ``auth.login.success`` audit |
+| Winner with invalid credentials | One password verify and one replacement flow; loser cannot consume the replacement |
+| Uncommitted winning ``UPDATE`` rolled back | Row remains claimable; a later transaction may claim |
+| Claim at ``expires_at`` | Zero-row update (``expires_at > now`` is strict) |
+| Cleanup vs in-flight claim | Cleanup never deletes active (unexpired, unconsumed) rows |
+
+CI sets ``REQUIRE_TEST_DATABASE=1`` so these tests fail closed when
+``TEST_DATABASE_URL`` is missing. Fast mocked unit tests in
+``tests/test_admin_login_flow_claim_concurrency.py`` and
+``tests/test_admin_login_flow_concurrency.py`` remain supplemental branch
+coverage.
 
 Stale flows are removed opportunistically when minting a new flow
 (see [Login flow retention](#login-flow-retention)). Only hashed tokens are
@@ -68,6 +110,23 @@ browser context.
 4. Tokens are invalidated when the session expires, is revoked, or is replaced
    during login rotation (new session cookie → new derived token). The stored hash
    is cleared indirectly via session revocation/expiry.
+
+#### Transport
+
+| Surface | CSRF transport | Notes |
+|---------|----------------|-------|
+| HTML forms | Hidden `csrf_token` form field | Embedded by protected GET handlers |
+| `POST /admin/api/imports/linkedin/commit` | `X-CSRF-Token` request header | Required **before** JSON parsing; never cookie-only |
+| Login | Hidden `csrf_token` + `admin_login_flow` cookie | Flow-bound pre-authentication synchronizer |
+
+JSON admin mutations reject duplicate CSRF transports (for example a header **and**
+a `csrf_token` JSON field). Missing, malformed, oversized, cross-session, and
+revoked-session tokens fail with HTTP 400 *Invalid request* without revealing which
+check failed. Wrong or missing `Content-Type: application/json` on the LinkedIn
+commit API fails with HTTP 415 before the body is parsed.
+
+Defense in depth: `SameSite=strict` session cookies and optional Origin/Referer
+checks are not treated as the primary CSRF control for authenticated mutations.
 
 #### Lifetime and storage
 
@@ -103,6 +162,22 @@ authenticated forms). No token values or validation internals are exposed.
 cross-site cookie delivery; it is **not** the sole CSRF defense. Origin/Referer
 checks are likewise not relied upon for CSRF protection.
 
+### Logout audit policy
+
+`POST /admin/logout` records an immutable `auth.logout` audit event only when a
+**live** authenticated session is revoked in the same database transaction.
+Session-bound CSRF is required for that path.
+
+| Request shape | Audit row | Operator experience |
+|---------------|-----------|---------------------|
+| Valid session + valid CSRF | One `auth.logout` linked to the session id | Session revoked; cookie cleared; redirect to login |
+| Valid session + missing/invalid/cross-session CSRF | None | Session stays active; HTTP 400 *Invalid request* |
+| No cookie, malformed cookie, expired session, or revoked session | None | Idempotent cookie clear + redirect to login |
+
+Repeat logout after revocation does not append additional audit events. Anonymous
+or cross-site-shaped logout traffic is not written to `audit_events`; use HTTP
+access logs or metrics for operational visibility if needed.
+
 ## Environment variables
 
 | Variable | Required | Description |
@@ -111,14 +186,22 @@ checks are likewise not relied upon for CSRF protection.
 | `ADMIN_USERNAME` | Yes | Operator username (plain text identifier) |
 | `ADMIN_PASSWORD_HASH` | Yes | Argon2id hash of the operator password |
 | `ADMIN_SESSION_SECRET` | Yes | Retained for configuration parity (≥ 32 random bytes); CSRF is session-bound, not HMAC-signed with this secret |
+| `ADMIN_LOGIN_LIMITER_SECRET` | Yes | Dedicated HMAC key for login rate-limiter identifiers (≥ 32 bytes; environment-specific) |
+| `ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET` | Optional | Previous limiter secret during a bounded rotation window; active lockouts under the old key still block admission |
 | `ADMIN_SESSION_TTL_SECONDS` | Optional | Session lifetime in seconds (default `86400`) |
 | `ADMIN_LOGIN_RATE_LIMIT` | Optional | Failed login attempts allowed per window (default `5`) |
 | `ADMIN_LOGIN_RATE_WINDOW_SECONDS` | Optional | Rate-limit counting window in seconds (default `900`) |
 | `ADMIN_LOGIN_LOCKOUT_SECONDS` | Optional | Lockout duration after limit exceeded (default `900`) |
-| `ADMIN_TRUST_PROXY_HEADERS` | Optional | Trust `X-Forwarded-For` for client source (default off; set `true` on Render) |
-| `ADMIN_PREVIEW_MODE` | Optional | **CI / local only.** When `1`/`true`, protected `/admin` GET pages render without login and admin pages fill with **randomized mock data** for Playwright screenshots. Hard-disabled if `BASE_URL` contains `saberistic.com`. Never set on production Render. |
-| `ADMIN_PREVIEW_SEED` | Optional | Seed for mock admin randomization (stable screenshots/tests). |
-| `BASE_URL` | Yes | Public site URL; `https://…` enables `Secure` session cookies |
+| `ADMIN_TRUSTED_PROXY_CIDRS` | Production | Comma-separated trusted proxy CIDRs/IPs for the immediate peer and in-chain hops (Render load balancer / private networks on Render; empty locally) |
+| `ADMIN_TRUSTED_EDGE_CIDRS` | Production | Comma-separated public edge CIDRs (Cloudflare) stripped from the right of `X-Forwarded-For` before selecting the client |
+| `ADMIN_TRUST_PROXY_HEADERS` | **Deprecated** | Legacy boolean; ignored for source resolution unless paired with explicit CIDR settings above. Remove after migration. |
+| `ADMIN_PREVIEW_MODE` | Optional | **CI / local only.** When `1`/`true`, protected `/admin` GET pages render without login and admin pages fill with **randomized mock data** for Playwright screenshots. Requires `APP_ENV=development` (or `preview`), a **positively validated loopback** `BASE_URL` (`localhost` or loopback IP literals only), and `SERVER_BIND_HOST` bound to a loopback interface. Startup fails if preview is combined with staging/production, a public bind address, production proxy CIDRs, `DATABASE_URL`, or production provider secrets. While active, `app/admin_preview_guard.py` denies every unsafe `/admin` method (`POST`, `PUT`, `PATCH`, `DELETE`, …) with `405` before handlers run. Never set on production Render. |
+| `ADMIN_PREVIEW_SEED` | Optional override | Root seed for mock admin randomization (CI default `33842`). |
+| `ADMIN_PREVIEW_REFERENCE_TIME` | Optional override | Frozen UTC timestamp for preview date fields (CI default `2026-07-14T12:00:00+00:00`). |
+| `ADMIN_PREVIEW_FIXTURE_VERSION` | Optional override | Preview fixture schema version (default `1`). |
+| `APP_ENV` | Optional | Explicit application environment: `development`, `preview`, `staging`, or `production`. Defaults to `ANALYTICS_ENV` or `development`. Admin preview bypass is allowed only in `development` / `preview`. |
+| `SERVER_BIND_HOST` | Preview | Loopback bind address for the preview/uvicorn process (`127.0.0.1`, `::1`, or `localhost`). Required when `ADMIN_PREVIEW_MODE` is enabled; public binds (`0.0.0.0`, `::`) fail startup. |
+| `BASE_URL` | Yes | Public site URL; `https://…` enables `Secure` session cookies. For admin preview, must be a validated loopback HTTP origin — not a production hostname, lookalike, or DNS name that merely resolves to loopback. |
 
 Set secrets in the Render dashboard (or locally via `.env` — never commit).
 
@@ -142,11 +225,21 @@ print(secrets.token_urlsafe(48))
 PY
 ```
 
+Generate a login limiter secret (independent from `ADMIN_SESSION_SECRET`):
+
+```bash
+python - <<'PY'
+import secrets
+print(secrets.token_urlsafe(48))
+PY
+```
+
 On Render, add:
 
 1. `ADMIN_USERNAME` — e.g. `operator`
 2. `ADMIN_PASSWORD_HASH` — output from the Argon2 command
 3. `ADMIN_SESSION_SECRET` — output from the secrets command
+4. `ADMIN_LOGIN_LIMITER_SECRET` — output from a separate secrets command
 
 Redeploy after changing any of the above.
 
@@ -166,6 +259,59 @@ Redeploy after changing any of the above.
 2. Update the variable in Render and redeploy.
 3. CSRF tokens are session- and flow-bound; rotating this secret does not
    invalidate active sessions or in-flight login flows.
+
+### Login limiter secret rotation
+
+Limiter identifiers are HMAC-SHA256 digests keyed by `ADMIN_LOGIN_LIMITER_SECRET`.
+Rotating the secret changes every stored `limiter_key`, so existing Postgres rows
+become unreachable and effective rate-limit history resets for new attempts.
+
+Bounded overlap (recommended):
+
+1. Generate `NEW_SECRET` and keep the current value as `OLD_SECRET`.
+2. Set `ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET=OLD_SECRET` and
+   `ADMIN_LOGIN_LIMITER_SECRET=NEW_SECRET`, then redeploy.
+3. During the overlap window, active lockouts recorded under `OLD_SECRET` still
+   block admission; new counters are written only under `NEW_SECRET`.
+4. After `2 × max(window, lockout)` seconds, remove
+   `ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET` and redeploy again. Expired rows under
+   the previous key are eligible for opportunistic cleanup.
+
+**Overlap semantics.** Previous-secret rows are *guards only*: the new instance
+reads their ``locked_until`` inside the same PostgreSQL transaction that admits
+current-secret counters, but never increments or extends previous-key rows.
+Non-locked failure counts under the previous secret **do not** carry forward to
+the new secret namespace — only an **active** ``locked_until`` on a previous-key
+row blocks admission during overlap.
+
+**Mixed-version race.** During a rolling deploy, an old instance may still
+increment previous-secret rows while a new instance evaluates those rows as
+guards. Admission locks the union of current and guard rows in ascending
+``limiter_key`` order, evaluates guard lockouts after acquiring the row lock, and
+commits once. If an old-instance lockout commits before the new admission
+decision completes, the new request is denied without Argon2 verification. If
+the new admission commits first while the guard row is not yet locked, the
+attempt is permitted; a subsequent old-instance lockout does not retroactively
+revoke that admission.
+
+**Retirement.** Remove ``ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET`` once the overlap
+window has elapsed and no active lockouts remain on previous-key rows. Stale
+previous-key rows are then eligible for bounded cleanup only.
+
+**Rollback.** To abort a rotation in flight, restore the prior
+``ADMIN_LOGIN_LIMITER_SECRET``, clear ``ADMIN_LOGIN_LIMITER_PREVIOUS_SECRET``,
+and redeploy. Current-secret counters written under the aborted ``NEW_SECRET``
+become unreachable (same as a hard reset); restore operational lockout state
+manually if needed.
+
+Hard reset (acceptable when no active lockouts matter):
+
+1. Update `ADMIN_LOGIN_LIMITER_SECRET` only and redeploy.
+2. Optionally prune stale rows manually (see [Manual cleanup](#manual-cleanup)).
+
+Use different limiter secrets in test, preview, and production environments.
+The limiter secret is validated at application startup and must never appear in
+logs, responses, audit metadata, or exception strings.
 
 ### Emergency session revocation
 
@@ -189,6 +335,7 @@ export ADMIN_USERNAME=operator
 export ADMIN_PASSWORD_HASH='…'
 export ADMIN_SESSION_SECRET='…'
 export BASE_URL=http://localhost:8000
+# Leave ADMIN_TRUSTED_PROXY_CIDRS unset so spoofed forwarding headers are ignored.
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -201,45 +348,210 @@ limits apply consistently across web processes, instances, and deployments.
 
 ### Limiter key strategy
 
-Each attempt is keyed by a SHA-256 hash of `normalized_username:client_source`:
+Each attempt consults two privacy-preserving HMAC-SHA256 buckets (only the
+digest is stored as ``limiter_key``):
 
-- **Username** — submitted value lowercased and stripped (not stored in the table).
-- **Client source** — resolved IP from :func:`client_ip` (not stored in the table).
+| Bucket | Domain prefix | Key material | Purpose |
+|--------|---------------|--------------|---------|
+| **Source-wide** | ``src`` | normalized client source | Stops username rotation from one client source |
+| **Candidate-wide** | ``cand`` | normalized submitted username | Limits distributed attempts against any candidate equally |
 
-Only the hash (`limiter_key`) is persisted.
+Digests use ``ADMIN_LOGIN_LIMITER_SECRET`` (or the optional previous secret during
+rotation). A database reader without the secret cannot verify guessed IP addresses
+or usernames by hashing them directly. Plain SHA-256 of ``src:…`` or ``cand:…``
+material is never stored.
 
-### Trusted proxy handling
+Every validly normalized submitted username receives the same source plus
+candidate bucket pair regardless of whether it matches the configured
+administrator. Unknown and configured candidates therefore participate in the
+same number and type of limiter decisions, closing cross-source username
+enumeration side channels.
 
-Set `ADMIN_TRUST_PROXY_HEADERS=true` when the app runs behind a trusted reverse
-proxy (e.g. Render) so `X-Forwarded-For` is used for the client source. Leave it
-unset or `false` for local development and direct connections; spoofed forwarding
-headers are ignored and the direct peer address is used instead.
+Candidate buckets are bounded: usernames longer than 256 characters are rejected
+before key generation, each row expires after ``2 × max(window, lockout)`` via
+opportunistic cleanup, and no raw username is stored in limiter, log, metric, or
+audit state.
 
-### Lockout and recovery
+### Client source resolution
 
-- After `ADMIN_LOGIN_RATE_LIMIT` failures within `ADMIN_LOGIN_RATE_WINDOW_SECONDS`,
-  further attempts are blocked until `ADMIN_LOGIN_LOCKOUT_SECONDS` elapse.
-- A successful login deletes the limiter row for that key (and clears any in-memory
-  fallback state).
-- Expired rows are removed opportunistically on failed-login writes (retention is
-  `2 × max(window, lockout)`).
+Resolved client source comes from :func:`resolve_admin_login_client_source`
+(``app/client_source.py``). Production traffic follows **Cloudflare → Render load
+balancer → Uvicorn**; trust is enforced at both Uvicorn (``--proxy-headers`` +
+``--forwarded-allow-ips`` in ``render.yaml``) and the application resolver.
+
+| Environment | Immediate peer | Forwarding headers |
+|-------------|------------------|--------------------|
+| **Production** (via Cloudflare) | Render private/LB address in ``ADMIN_TRUSTED_PROXY_CIDRS`` | ``X-Forwarded-For`` parsed right-to-left; contiguous trusted hops (Render + Cloudflare edge CIDRs) stripped before selecting the client |
+| **Direct Render origin** | Untrusted public peer | Ignored — limiter uses the direct peer only |
+| **Local / tests** | Loopback or test client | Ignored when CIDR lists are empty |
+| **Preview / CI** | Test client | Same as local unless tests set explicit CIDR fixtures |
+
+Rules:
+
+- **IPv4 / IPv6** — normalized (including IPv4-mapped IPv6) and digested; never
+  logged or stored in raw form.
+- **Missing peer** — ``unknown`` (one shared bucket).
+- **Untrusted peer** — direct peer address; ``X-Forwarded-For``, ``Forwarded``,
+  and ``CF-Connecting-IP`` cannot influence the limiter key.
+- **Trusted peer** — walk ``X-Forwarded-For`` from the right, removing trusted
+  proxy hops. Exactly one remaining non-trusted address is the client. Multiple
+  remaining hops (partial trust / sandwich) fail closed to the direct peer.
+- **``CF-Connecting-IP``** — used only when the peer is trusted **and** a
+  Cloudflare-range hop appears in the validated ``X-Forwarded-For`` chain.
+- **Precedence** — ``X-Forwarded-For`` → ``Forwarded`` → ``CF-Connecting-IP``
+  (with edge proof). Conflicting values follow this order.
+- **Telemetry** — structured logs record ``resolution_path`` only (no raw
+  addresses or header chains). Invalid/untrusted forwarding attempts are sampled.
+
+Verify deployed settings after release:
+
+```bash
+curl -sS https://saberistic.com/health | jq '.admin_client_source_policy'
+# Expect mode "trusted_proxy_cidrs" with non-zero network counts in production.
+
+curl -sS https://saberistic.com/health | jq '.admin_proxy_trust'
+# Expect {"enabled": true, "trusted_proxy_entry_count": <non-zero>}.
+# scripts/smoke_deploy.py checks this block on every production/Render deploy.
+```
+
+#### Rollback / recovery
+
+If proxy CIDRs are misconfigured and every request shares one limiter source
+(typically the Render peer address), operators can temporarily clear
+``ADMIN_TRUSTED_PROXY_CIDRS`` and ``ADMIN_TRUSTED_EDGE_CIDRS`` in Render and
+redeploy. The resolver falls back to **direct peer only** (fail closed against
+header spoofing). Restore the version-controlled values in ``render.yaml`` once
+the correct trust boundary is confirmed.
+
+### Atomic admission
+
+``POST /admin/login`` calls :func:`try_admit_login_attempt` **before** Argon2
+verification. The helper executes one PostgreSQL transaction that:
+
+1. Ensures limiter rows exist for the relevant current-key bucket(s).
+2. Locks the union of current and rotation-guard rows with ``SELECT … FOR UPDATE``
+   in ascending ``limiter_key`` order (deterministic across instances).
+3. Evaluates previous-secret guard ``locked_until`` values after the row lock.
+4. Denies admission when any current or guard bucket is actively locked (no
+   current-key counter increment).
+5. Otherwise increments current-key failure counters and sets ``locked_until``
+   when the threshold is reached.
+
+With limit ``N``, at most ``N`` requests per bucket set can reach password verification
+during a synchronized burst across connections and instances.
+
+Successful login clears the submitted candidate bucket and releases the current
+source-wide admission reservation (decrements the source failure counter by one
+without clearing unrelated source history). Other candidate buckets and other
+source-wide counters remain intact and decay via the rolling window and lockout
+expiry.
+
+### Attempt / window / lockout semantics
+
+| Setting | Meaning |
+|---------|---------|
+| ``ADMIN_LOGIN_RATE_LIMIT`` (`N`) | Maximum admitted attempts (each may reach Argon2) per bucket within the active window before lockout |
+| ``ADMIN_LOGIN_RATE_WINDOW_SECONDS`` | Rolling window; expired windows reset counters on the next admitted attempt |
+| ``ADMIN_LOGIN_LOCKOUT_SECONDS`` | After the `N`th admitted attempt in a window, ``locked_until`` blocks further admission until this duration elapses |
+
+Admission is reserved before credential checks. Invalid CSRF and invalid credentials
+still consume an admitted attempt. Throttled requests do **not** run Argon2, do not
+consume the login flow, and do not mint replacement flows.
+
+### Throttled-request durability
+
+While a bucket is locked:
+
+- Repeated denials do not append immutable audit events (one lockout transition event
+  is recorded when the threshold is first reached).
+- Login flows are not consumed solely because the limiter denied the request.
+- Limiter rows are not created per rotated username (source bucket is bounded).
+
+### Input bounds
+
+Before hashing, storage, or verification, login POST fields are capped:
+
+| Field | Max length |
+|-------|------------|
+| Username | 256 |
+| Password | 512 |
+| CSRF token | 256 |
+| Login-flow cookie | 512 |
+| ``next`` | 2048 |
+
+Oversized values receive the same generic *Invalid username or password* response
+without Argon2 work.
 
 ### When Postgres is unavailable
 
 If the shared limiter cannot be reached, the app logs a warning and applies a
-conservative in-memory fallback (2 failures per 60 seconds per key). This fails
+conservative in-memory fallback (2 admissions per 60 seconds per bucket set). This fails
 closed without creating a permanent lockout — the fallback window is short and
 resets automatically. Restore database connectivity to resume shared enforcement.
 
 ### Manual cleanup
 
-To prune stale limiter rows manually:
+To prune stale limiter rows manually (repeat until no rows are deleted, or raise
+``LIMIT`` only for controlled maintenance windows):
 
 ```sql
 DELETE FROM admin_login_rate_limits
-WHERE updated_at < NOW() - INTERVAL '30 minutes'
-  AND (locked_until IS NULL OR locked_until < NOW());
+WHERE limiter_key IN (
+    SELECT limiter_key
+    FROM admin_login_rate_limits
+    WHERE updated_at < NOW() - INTERVAL '30 minutes'
+      AND (locked_until IS NULL OR locked_until < NOW())
+    ORDER BY updated_at, limiter_key
+    FOR UPDATE SKIP LOCKED
+    LIMIT 100
+);
 ```
+
+### Rate-limit row retention
+
+Limiter rows accumulate from source-wide and candidate-wide buckets (including
+arbitrary submitted usernames during credential guessing). Without cleanup,
+eligible rows would grow without bound.
+
+| State | Removed when | Rationale |
+|-------|--------------|-----------|
+| **Active** (recent ``updated_at``) | Never | Required for in-flight protection |
+| **Inside retention** (``updated_at`` within ``2 × max(window, lockout)``) | Never | Matches rolling window / lockout overlap |
+| **Locked** (``locked_until > now``) | Never | Active lockout must persist |
+| **Eligible** (past retention, lockout elapsed or unset) | Opportunistic bounded cleanup | Drains stale digests without blocking login |
+
+Retention: ``2 × max(ADMIN_LOGIN_RATE_WINDOW_SECONDS, ADMIN_LOGIN_LOCKOUT_SECONDS)``
+(default **1800** seconds with 900-second window and lockout).
+
+### Automatic cleanup
+
+After each **admitted** login attempt (reservation before Argon2), the app deletes
+up to **100** eligible rows per request
+(``LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE``). Deletion uses the composite
+``admin_login_rate_limits_cleanup_idx`` index on ``(updated_at, limiter_key)``
+for ordered batch selection; the ``SELECT … FOR UPDATE SKIP LOCKED`` subquery
+lets multiple instances claim disjoint batches without an application mutex
+or long table locks.
+
+| Constant | Value | Meaning |
+|----------|-------|---------|
+| ``LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE`` | 100 | Maximum rows deleted per cleanup call |
+| Retention | ``2 × max(window, lockout)`` | Eligibility cutoff on ``updated_at`` |
+| Ordering | ``updated_at``, ``limiter_key`` | Oldest eligible rows first (deterministic) |
+| Concurrency | ``FOR UPDATE SKIP LOCKED`` | Instances skip rows locked by peers |
+
+One admitted login performs **at most one** cleanup batch; login latency does not
+scale with total expired-row cardinality. Throttled (denied) attempts do not run
+cleanup. Repeated admitted logins eventually drain the backlog.
+
+If cleanup fails (database error), the failure is logged with aggregate fields only
+(``batch_size``, ``deleted_count``, ``duration_ms``, ``likely_backlog_remaining``,
+or error category on failure). Cleanup errors do not affect the admission decision,
+corrupt active lockouts, or force the conservative in-memory fallback — restore
+database connectivity and rely on subsequent admitted logins to resume draining.
+
+Current- and previous-secret HMAC rows share the same retention rule; cleanup does
+not need limiter secret material.
 
 ## Login flow retention
 
@@ -252,7 +564,7 @@ expired and consumed flows would accumulate indefinitely.
 |-------|--------------|-----------|
 | **Active** (unexpired, unconsumed) | Never | Required for in-flight sign-in |
 | **Expired** (past `expires_at`, never consumed) | `expires_at` + **30 minutes** | Allows clock skew; matches `2 ×` flow TTL (15 min) |
-| **Consumed** (one-time POST used) | `consumed_at` + **15 minutes** | Replay is already blocked at consume time; brief grace for concurrent requests |
+| **Consumed** (one-time POST used) | `consumed_at` + **15 minutes** | Claim is atomic at POST time; brief grace for concurrent requests |
 
 Constants: `LOGIN_FLOW_EXPIRED_RETENTION_SECONDS` (1800), `LOGIN_FLOW_CONSUMED_RETENTION_SECONDS` (900), aligned with `CSRF_MAX_AGE_SECONDS` (900).
 
@@ -265,6 +577,9 @@ does not scan the full table. No Redis, cron, or external scheduler is required.
 
 If cleanup fails (database error), the failure is logged and the new flow is
 still created — cleanup errors never expose token values and do not block sign-in.
+Cleanup only targets rows past retention; an in-flight claim holds the row until
+its `UPDATE` commits, so concurrent claims and cleanup do not resurrect or
+double-consume flows.
 
 ### Manual cleanup
 

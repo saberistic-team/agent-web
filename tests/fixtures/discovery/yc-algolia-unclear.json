@@ -1,0 +1,20 @@
+{
+  "hits": [
+    {
+      "id": 999,
+      "name": "Plain Retail Co",
+      "slug": "plain-retail-co",
+      "website": "https://plain-retail.example.com",
+      "all_locations": "Chicago, IL, USA",
+      "one_liner": "Better inventory for neighborhood retailers",
+      "batch": "Winter 2020",
+      "tags": ["Retail", "Marketplace"],
+      "industries": ["Consumer", "Retail"],
+      "objectID": "999"
+    }
+  ],
+  "nbHits": 1,
+  "page": 0,
+  "nbPages": 1,
+  "hitsPerPage": 100
+}

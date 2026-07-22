@@ -182,6 +182,7 @@ def test_admin_research_page_renderers_cover_company_and_contact(
     monkeypatch.setenv("ADMIN_USERNAME", "operator")
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", "hash")
     monkeypatch.setenv("ADMIN_SESSION_SECRET", "secret-secret-secret-secret")
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "test-limiter-secret-32chars-minimum!!")
     monkeypatch.setenv("BASE_URL", "https://saberistic.com")
     from app.admin_research_pages import (
         render_admin_companies_page,
@@ -221,6 +222,7 @@ def test_admin_research_page_renderers_cover_company_and_contact(
     )
     assert "research-type-badge--fact" in company_html
     assert "bad input" in company_html
+    assert 'class="admin-action admin-action--destructive" type="submit">Archive company' in company_html
 
     contact_html = render_admin_contact_research_page(
         contact=contact,
@@ -229,3 +231,15 @@ def test_admin_research_page_renderers_cover_company_and_contact(
         csrf_token="csrf",
     )
     assert "research-type-badge--fact" in contact_html
+    assert 'class="admin-action admin-action--destructive" type="submit">Archive contact' in contact_html
+
+    archived_company_html = render_admin_company_research_page(
+        company={**company, "archived_at": "2026-01-01"},
+        contacts=[contact],
+        records=[record],
+        csrf_token="csrf",
+    )
+    assert (
+        'class="admin-action admin-action--secondary" type="submit">Restore company'
+        in archived_company_html
+    )

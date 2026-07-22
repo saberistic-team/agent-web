@@ -48,13 +48,44 @@ both commit or roll back together.
 | Flow | Owner | Policy |
 |------|-------|--------|
 | CRM import, delete, pipeline, scoring, analytics, export | `CrmService` | Required audit; failure rolls back mutation |
+| Research evidence append | `CrmService.attach_research_record` | Required audit; failure rolls back research row |
+| Pipeline activity creation | `CrmService.record_pipeline_activity` | Required audit; failure rolls back activity row |
 | Brief-to-CRM linkage | `CrmService.link_project_brief_source` | Transactional write; audit ships with future routes |
 | Login success | `admin_routes._issue_session` | Prior-session revocation (if any) + new session + required audit atomically |
-| Logout (authenticated) | `admin_routes.admin_logout` | Revocation + required audit atomically |
-| Login failure / anonymous logout | `admin_routes` | Best-effort audit (`required=False`) |
+| Logout (authenticated) | `admin_routes.admin_logout` | Revocation + required audit atomically when the session row transitions to revoked |
+| Login failure | `admin_routes` | Best-effort audit (`required=False`) |
 
 `record_event(..., required=True)` propagates persistence errors. Security-sensitive
 mutations must not return success when a required audit event could not be stored.
+
+### Admin logout session boundary
+
+`admin_routes.admin_logout` distinguishes authenticated revocation from anonymous
+cleanup:
+
+| Outcome | Audit event | Session mutation |
+|---------|-------------|------------------|
+| Valid session + valid session-bound CSRF | Exactly one `auth.logout` when revocation succeeds | Revoke live session row in the same transaction |
+| Valid session + missing/invalid/cross-session CSRF | None | Session remains active; HTTP 400 |
+| Missing, invalid, expired, or revoked session cookie | None | Idempotent cookie clear + redirect to `/admin/login` |
+
+Authenticated logout opens one `db_connection` and one `crm_transaction`. Inside
+that unit of work:
+
+1. Revoke the session row (`revoked_at` set only when still live).
+2. Append the required `auth.logout` audit event only when step 1 updated a row.
+
+The handler commits once after both steps succeed. Any failure in revocation or
+audit insertion rolls back the transaction, so the operator is not left with a
+revoked session and no audit row (or vice versa). The cookie-clearing redirect is
+emitted only after the transaction exits successfully.
+
+Repeat logout submissions for an already-revoked or unknown session perform
+idempotent browser cleanup only — no additional immutable audit rows.
+
+Anonymous logout traffic is not stored in `audit_events`. Operational visibility,
+if needed, should use bounded HTTP access logs or metrics — never the append-only
+admin audit table.
 
 ### Admin login session boundary
 
@@ -78,18 +109,70 @@ or rolled-back logins never emit a new session cookie.
 |--------|----------------|
 | `auth.login.success` | Valid admin login creates a server-side session |
 | `auth.login.failure` | Invalid credentials, CSRF failure, or rate limiting |
-| `auth.logout` | Session revocation and cookie clear |
-| `import.batch` | Data import batches via `CrmService.import_batch` |
+
+### Unauthenticated login-failure actor policy
+
+Every `auth.login.failure` event recorded **before** successful authentication uses
+the canonical actor `anonymous`. Submitted username candidates, email addresses,
+control characters, or other attacker-chosen identifiers must not appear in:
+
+- the `actor` column
+- `summary_after` / `metadata` JSON
+- server-defined `reason` enums (`invalid_credentials`, `invalid_csrf`, `rate_limited`, …)
+- structured logs, metrics, or exception strings tied to the failure path
+
+Authenticated `auth.login.success`, `auth.logout`, and post-login CRM mutations
+continue to record the live administrator username in `actor`.
+
+#### Historical immutable rows (pre-#242)
+
+Deployments that accepted admin logins before keyed limiter identifiers and the
+anonymous-actor policy shipped may contain legacy `auth.login.failure` rows whose
+`actor` column holds a submitted username candidate. Those rows are append-only;
+application code does not rewrite or delete them. Security reporting should treat
+such values as unauthenticated guesses, not authenticated identities. The forward
+fix in #242 prevents all new occurrences regardless of any archival decision on
+legacy rows.
+| `auth.logout` | Authenticated session revocation (live session → revoked) |
+| `import.batch` | Data import batches via `CrmService.commit_linkedin_import` / `import_batch` |
+| `import.batch.rollback` | Rollback of committed import batches via `CrmService.rollback_import_batch` |
 | `entity.delete` | Hard deletes via `CrmService.delete_entity` |
-| `pipeline.update` | Pipeline field updates via `CrmService.update_pipeline` / `update_pipeline_next_action` / stage transitions |
-| `pipeline.stage_change` | Acquisition stage transitions via `CrmService.transition_pipeline_stage` |
-| `pipeline.activity_recorded` | Pipeline activities via `CrmService.record_pipeline_activity` |
-| `pipeline.next_action_updated` | Next action / due date / owner updates via `CrmService.update_pipeline_next_action` |
+| `pipeline.update` | Pipeline stage changes via `CrmService.update_pipeline` |
 | `scoring_rule.update` | Scoring rule edits via `CrmService.update_scoring_rule` |
 | `analytics.config.update` | Analytics configuration via `CrmService.update_analytics_config` |
 | `export.request` | Export requests via `CrmService.request_export` |
+| `research_record.create` | Research evidence append via `CrmService.attach_research_record` |
+| `pipeline_activity.create` | Pipeline activity creation via `CrmService.record_pipeline_activity` |
+| `company.create` | Company creation via `CrmService.create_company` |
+| `company.update` | Company field updates via `CrmService.update_company` |
+| `company.archive` | Company archive (logical delete) via `CrmService.archive_company` |
+| `company.restore` | Company restore via `CrmService.restore_company` |
+| `contact.create` | Contact creation via `CrmService.create_contact` |
+| `contact.update` | Contact field updates via `CrmService.update_contact` |
+| `contact.archive` | Contact archive (logical delete) via `CrmService.archive_contact` |
+| `contact.restore` | Contact restore via `CrmService.restore_contact` |
+| `brief.convert` | Brief-to-CRM conversion via `CrmService.convert_project_brief` |
 
-Auth events are wired in `app/admin_routes.py`. Acquisition pipeline mutations are exposed at `/admin/pipeline/*` (HTML form routes) and record audit events through `CrmService` methods.
+Auth events are wired in `app/admin_routes.py`. CRM mutations record audit events through `CrmService` methods called by admin routes.
+
+### Research and pipeline activity audit payloads
+
+Immutable audit rows for research evidence and pipeline activities store **bounded metadata only**:
+
+- **Research (`research_record.create`):** record ID, company ID, optional contact ID, server-defined record type, and boolean presence flags for source name/URL, observed value/date, review/expiry dates, and confidence. The canonical `research_records` row holds body text, observed values, URLs, and metadata.
+- **Pipeline activity (`pipeline_activity.create`):** activity ID, company ID, optional contact ID, allowlisted activity type, and server timestamp. The canonical `activities` row holds the free-form summary and metadata.
+
+Do not copy research bodies, activity summaries, raw source URLs/query strings, or arbitrary metadata into `audit_events`.
+
+### Company and contact lifecycle audit payloads
+
+Immutable audit rows for company/contact lifecycle mutations store **bounded metadata only**:
+
+- **Create (`company.create`, `contact.create`):** after-state summary using the same field allowlist as updates (`company_audit_summary` / `contact_audit_summary`). Contact email is never stored.
+- **Update (`company.update`, `contact.update`):** before/after snapshots using the same allowlists. When redacted before/after summaries are identical, **no event is written** (documented no-op behavior).
+- **Archive / restore (`company.archive`, `company.restore`, `contact.archive`, `contact.restore`):** transition metadata only — entity display label (`name` or `full_name`) and `archived_at` before/after. Archive/restore events never claim physical deletion.
+
+Do not copy free-form notes, raw email addresses, profile URLs, complete funding text, session/CSRF values, or request bodies into lifecycle audit rows.
 
 ## Admin UI
 
@@ -107,7 +190,7 @@ Operational expectations:
 - **Long-term:** retain archives for **7 years** to support security and business reviews
 - **Purge:** delete archived objects only after the retention window; never delete hot rows through app code
 
-Adjust windows per compliance needs; document changes in this file.
+**Canonical vs audit storage:** Free-form CRM content (research bodies, activity summaries, brief text) lives in mutable business tables (`research_records`, `activities`, `project_briefs`, …). Immutable audit rows store bounded metadata for attribution and investigation — not a second copy of that content. Adjust windows per compliance needs; document changes in this file.
 
 ## Operational queries
 

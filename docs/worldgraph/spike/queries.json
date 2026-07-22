@@ -1,0 +1,65 @@
+{
+  "schema_version": "worldgraph-spike-queries-v1",
+  "queries": [
+    {
+      "id": "q-interactive-narrative",
+      "text": "interactive AI character world with persistent story choices",
+      "expected_categories": ["interactive_narrative", "hybrid"],
+      "min_relevant": 2
+    },
+    {
+      "id": "q-spatial-explore",
+      "text": "explorable AI generated 3D spatial environment you can walk through",
+      "expected_categories": ["ai_spatial", "hybrid"],
+      "min_relevant": 2
+    },
+    {
+      "id": "q-agent-simulation",
+      "text": "multi-agent simulation world with persistent state and rules",
+      "expected_categories": ["agent_simulation", "open_source"],
+      "min_relevant": 2
+    },
+    {
+      "id": "q-ai-game-npc",
+      "text": "playable game world where AI NPCs affect outcomes",
+      "expected_categories": ["ai_game"],
+      "min_relevant": 1
+    },
+    {
+      "id": "q-social-economy",
+      "text": "persistent social virtual world with player-driven economy",
+      "expected_categories": ["persistent_social"],
+      "min_relevant": 2
+    },
+    {
+      "id": "q-open-source-deploy",
+      "text": "open source AI world you can self-host from GitHub",
+      "expected_categories": ["open_source", "agent_simulation"],
+      "min_relevant": 1
+    },
+    {
+      "id": "q-no-match-engine",
+      "text": "game engine middleware SDK for developers",
+      "expected_categories": ["negative_engine"],
+      "expect_qualifying": false
+    },
+    {
+      "id": "q-no-match-chatbot",
+      "text": "general purpose chat assistant without world context",
+      "expected_categories": ["negative_chatbot"],
+      "expect_qualifying": false
+    },
+    {
+      "id": "q-hybrid-story-spatial",
+      "text": "story-driven world with explorable rooms and AI characters",
+      "expected_categories": ["hybrid", "interactive_narrative", "ai_spatial"],
+      "min_relevant": 1
+    },
+    {
+      "id": "q-research-reproducible",
+      "text": "reproducible AI simulation for research with documented agents",
+      "expected_categories": ["agent_simulation", "open_source"],
+      "min_relevant": 1
+    }
+  ]
+}

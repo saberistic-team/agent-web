@@ -5,9 +5,11 @@ from __future__ import annotations
 import pytest
 
 from app.acquisition_pipeline import (
+    MAX_EXPECTED_VALUE_CENTS,
     PipelineStageChange,
     PipelineTransitionError,
     assess_stage_transition,
+    parse_expected_value_cents_form,
     validate_pipeline_activity_type,
     validate_pipeline_stage,
 )
@@ -123,3 +125,39 @@ def test_pipeline_models_blank_and_summary_validation() -> None:
 
     with pytest.raises(ValidationError):
         PipelineActivityCreate(activity_type="note", summary="   ")
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (None, None),
+        ("", None),
+        ("   ", None),
+        ("0", 0),
+        ("50000", 50_000),
+        ("  75000  ", 75_000),
+        (str(MAX_EXPECTED_VALUE_CENTS), MAX_EXPECTED_VALUE_CENTS),
+    ],
+)
+def test_parse_expected_value_cents_form_accepts_valid_input(
+    raw: str | None, expected: int | None
+) -> None:
+    assert parse_expected_value_cents_form(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "abc",
+        "12.5",
+        "-1",
+        "+5",
+        "1e5",
+        "99 99",
+        str(MAX_EXPECTED_VALUE_CENTS + 1),
+        "999999999999999999999",
+    ],
+)
+def test_parse_expected_value_cents_form_rejects_invalid_input(raw: str) -> None:
+    with pytest.raises(ValueError, match="whole number of cents"):
+        parse_expected_value_cents_form(raw)

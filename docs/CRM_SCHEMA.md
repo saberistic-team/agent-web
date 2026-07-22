@@ -34,12 +34,13 @@ owns the single commit/rollback boundary via `crm_transaction()` in
 | `CrmService.import_batch` | same | Source-record inserts + `import.batch` audit |
 | `CrmService.link_project_brief_source` | same | Brief-to-CRM source linkage (brief conversion) |
 | Admin login success | `crm_transaction` in `admin_routes._issue_session` | Prior-session revocation (if any) + new session row + `auth.login.success` audit |
-| Admin logout (authenticated) | `crm_transaction` in `admin_logout` | Session revocation + `auth.logout` audit |
+| Admin logout (authenticated) | `crm_transaction` in `admin_logout` | Session revocation + `auth.logout` audit when revocation succeeds |
 | Admin login failure | `crm_transaction` in `_record_login_failure` | `auth.login.failure` audit only (best-effort) |
 
 When auditing is **required** for an operation, a failed audit insert propagates
-and rolls back the related business mutation. Login-failure and anonymous-logout
-audits are best-effort (`required=False`) and do not block the operator flow.
+and rolls back the related business mutation. Login-failure audits are
+best-effort (`required=False`) and do not block the operator flow. Anonymous or
+invalid-session logout requests do not append audit rows.
 
 See [AUDIT_EVENTS.md](AUDIT_EVENTS.md) for append-only audit semantics.
 
@@ -110,6 +111,68 @@ Indexes: `company_id`, partial unique on `LOWER(email)`, `profile_url`, `archive
 
 `app/contacts.py` owns buying-role and relationship registries. Duplicate warnings for
 normalized profile URL, email, and name/company combinations are non-blocking.
+
+#### Email identity resolution (active vs archived)
+
+Contact email identity is **active/archive-aware** ([#226](https://github.com/saberistic-team/agent-web/issues/226)).
+Active and archived lookups are separate, explicit repository operations:
+
+| Operation | Filter | Guarantee | Use |
+|-----------|--------|-----------|-----|
+| `ContactRepository.get_active_by_email` | `archived_at IS NULL` | At most one deterministic row (backed by partial unique index `idx_contacts_email_unique`) | The only lookup that drives active create/link/lookup workflows |
+| `ContactRepository.get_archived_by_email` | `archived_at IS NOT NULL` | Most recently archived row | Surface a **restore/review** option only |
+
+Rules:
+
+- **One normalization policy.** `app/contacts.normalize_email` (trim + lowercase +
+  `@` validation) is the single policy for create, edit, restore, active/archived
+  lookup, and brief conversion (`normalize_brief_email` delegates to it). Matching
+  is always case-insensitive.
+- **Archived rows are never silently linked** as an active CRM contact. An archived
+  match is only ever offered for restore/review; active workflows that share an
+  email with an archived row always resolve to the active row.
+- **Safe conflicts, not 500s.** A create/update that would collide with
+  `idx_contacts_email_unique` raises `ContactEmailConflictError`, which route
+  handlers turn into a friendly validation redirect instead of an HTTP 500.
+
+#### Brief conversion contact linking + company-association rule
+
+`CrmService.convert_project_brief` create/link is deterministic and idempotent
+(the `source_records` uniqueness backstop short-circuits repeats):
+
+- No active email match → create one active contact.
+- Active email match → link that active contact (a duplicate `new` choice is a
+  validation error).
+- Archived-only match → surfaced as `archived_contact_match` for restore/review;
+  never auto-linked.
+
+**Company-association rule.** When a brief supplies a company, linking an existing
+active contact only *fills in* a **missing** company association
+(`contacts.company_id IS NULL` → set to the brief's company). A contact that
+already belongs to a company keeps that association and is **never silently
+reassigned**; any selection that pairs the contact with a **different** company
+— whether the target company is newly created or an existing match — is rejected
+as a validation error before durable conversion writes. Enforced in
+`CrmService._validate_contact_company_association` (preview) and
+`CrmService._assert_contact_eligible_for_conversion` (inside the conversion
+transaction).
+
+**In-transaction contact authority (#274).** After the brief-scoped advisory
+lock is acquired, an existing-contact choice re-reads the selected row with
+`SELECT … FOR UPDATE` (`ContactRepository.get_active_by_id_for_update`),
+revalidates active state, normalized email identity, and company association,
+then applies `_associate_contact_company` only when the contact is unassigned
+or already on the target company. Preview-time validation uses the same
+company-association rule but is not authoritative: archive, reassignment, or an
+active-email claim between preview and confirm is caught on this in-transaction
+re-read.
+
+**Cross-brief email concurrency (#274).** Concurrent confirms on *different*
+briefs that share a normalized email and both choose `contact_choice=new` race on
+`idx_contacts_email_unique`. The loser maps the uniqueness violation to a safe
+domain outcome: link the committed active contact when company association
+allows, otherwise raise `BriefConversionValidationError` and roll back — never
+an HTTP 500 or raw SQL detail.
 
 ### `source_records`
 
@@ -189,6 +252,29 @@ and expired evidence can be marked stale without overwriting history.
 Indexes: `company_id`, `contact_id`, `record_type`, `expires_at`, `observed_at`.
 Records are append-only (INSERT) so conflicting observations coexist.
 
+### `import_batches` / `import_batch_rows`
+
+LinkedIn import batch persistence ([#110](https://github.com/saberistic-team/agent-web/issues/110)).
+Each committed export stores checksum, schema version, actor, status, and summary
+counts. Row outcomes (`inserted`, `updated`, `unchanged`, `skipped`, `conflicted`)
+retain normalized source identity without the raw ZIP.
+
+| `import_batches` column | Type | Notes |
+|-------------------------|------|-------|
+| `id` | `UUID` | Batch id |
+| `source_type` | `TEXT` | `linkedin` |
+| `export_date` | `DATE` | Optional export date from client |
+| `schema_version` | `TEXT` | e.g. `linkedin_export_v1` |
+| `checksum` | `TEXT` | SHA-256 of normalized connection identities |
+| `actor` | `TEXT` | Committing admin username |
+| `status` | `TEXT` | `committed`, `failed`, `rolled_back` |
+| `summary_counts` | `JSONB` | Insert/update/unchanged/skipped/conflicted totals |
+| `correlation_id` | `TEXT` | Request correlation id |
+
+Partial unique index on `checksum` where `status = 'committed'` prevents duplicate
+commits of the same export. Rollback marks the batch `rolled_back` and reverts
+batch-owned contact changes when records were not edited later.
+
 ### `admin_users`
 
 | Column | Type | Notes |
@@ -235,18 +321,18 @@ Index: `flow_token_hash`. Partial indexes on `expires_at` (unconsumed) and
 
 ### `admin_login_rate_limits`
 
-Shared login throttling state ([#138](https://github.com/saberistic-team/agent-web/issues/138)).
+Shared login throttling state ([#138](https://github.com/saberistic-team/agent-web/issues/138), hardened in [#215](https://github.com/saberistic-team/agent-web/issues/215)).
 Stores hashed limiter keys only — no raw usernames or client IPs.
 
 | Column | Type | Notes |
 |--------|------|-------|
-| `limiter_key` | `TEXT` | PK; SHA-256 of normalized username + client source |
-| `failure_count` | `INTEGER` | Failures in the current window |
+| `limiter_key` | `TEXT` | PK; HMAC-SHA256 hex digest of domain-prefixed source or account bucket material |
+| `failure_count` | `INTEGER` | Reserved attempts / failures in the current window |
 | `window_started_at` | `TIMESTAMPTZ` | Start of the counting window |
 | `locked_until` | `TIMESTAMPTZ` | Lockout expiry when limit exceeded |
 | `updated_at` | `TIMESTAMPTZ` | Last mutation; used for cleanup |
 
-Indexes: `locked_until`, `updated_at`. See [ADMIN_AUTH.md](ADMIN_AUTH.md).
+Indexes: `locked_until`, `updated_at`, cleanup index on `(updated_at, limiter_key)` (migration `019`). See [ADMIN_AUTH.md](ADMIN_AUTH.md).
 
 ## Migrations
 
@@ -263,7 +349,10 @@ Migrations live in `app/migrations/definitions.py` and are applied at startup vi
 | `006` | `admin_csrf_binding` | Login-flow CSRF rows and session CSRF column |
 | `007` | `research_records` | Typed research records with provenance and expiry |
 | `010` | `company_records` | Company firmographics, normalized domain, and soft archival |
-| `011` | `acquisition_pipeline` | Pipeline stage, next actions, stage history, extended activity types |
+| `011` | `acquisition_dashboard_indexes` | Research-record indexes for the acquisition dashboard |
+| `012` | `contact_records` | Contact roles, relationship context, optional email, soft archival |
+| `013` | `acquisition_pipeline` | Pipeline stages, stage history, expanded activity types |
+| `014` | `import_batches` | LinkedIn import batch metadata and per-row outcomes |
 
 Applied versions are recorded in `schema_migrations`. Steps are **idempotent**
 (`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`) so empty and existing Render Postgres
@@ -316,6 +405,8 @@ Migrations are **forward-only**. There is no automatic down migration:
 
 1. **Preferred:** ship a new forward migration that reverses or replaces schema/data.
 2. **Emergency:** restore from Render Postgres backup or run manual SQL with DBA review.
+   See [BACKUP_RESTORE.md](BACKUP_RESTORE.md) for provider retention, the redacted
+   application export (`scripts/crm_backup.py`), and the restore runbook.
 
 Never delete rows from `schema_migrations` in production; that would re-run guarded
 steps on restart.

@@ -1,0 +1,153 @@
+{
+  "schema_version": 2,
+  "protected_paths": [
+    {
+      "path": ".github/workflows/**",
+      "category": "GitHub Actions workflows"
+    },
+    {
+      "path": "scripts/github_api.py",
+      "category": "control-plane GitHub API"
+    },
+    {
+      "path": "scripts/copilot_agent.py",
+      "category": "agent dispatch adapter"
+    },
+    {
+      "path": "scripts/dispatch_queue.py",
+      "category": "orchestration dispatch"
+    },
+    {
+      "path": "scripts/require_planner_plan.py",
+      "category": "planner gate"
+    },
+    {
+      "path": "scripts/priority.py",
+      "category": "priority routing"
+    },
+    {
+      "path": "scripts/milestones.py",
+      "category": "milestone orchestration"
+    },
+    {
+      "path": "scripts/project_sync.py",
+      "category": "project board sync"
+    },
+    {
+      "path": "scripts/review_*.py",
+      "category": "reviewer automation"
+    },
+    {
+      "path": "scripts/review_decision.py",
+      "category": "reviewer automation"
+    },
+    {
+      "path": "scripts/acceptance.py",
+      "category": "reviewer automation"
+    },
+    {
+      "path": "scripts/check_permission.py",
+      "category": "reviewer automation"
+    },
+    {
+      "path": "scripts/pr_labels.py",
+      "category": "reviewer automation"
+    },
+    {
+      "path": "scripts/run_agent.py",
+      "category": "reviewer and Builder orchestration"
+    },
+    {
+      "path": "scripts/write_trace.py",
+      "category": "reviewer and Builder audit trail"
+    },
+    {
+      "path": "scripts/screenshot_deploy.py",
+      "category": "reviewer evidence automation"
+    },
+    {
+      "path": "scripts/cursor_model.py",
+      "category": "agent model configuration"
+    },
+    {
+      "path": "scripts/codegen_*.py",
+      "category": "Builder configuration"
+    },
+    {
+      "path": "scripts/builder_conflicts.py",
+      "category": "Builder configuration"
+    },
+    {
+      "path": "scripts/cursor_sdk_patch.py",
+      "category": "Builder configuration"
+    },
+    {
+      "path": "scripts/render_deploy.py",
+      "category": "deploy automation"
+    },
+    {
+      "path": "scripts/freeze_shipped_migrations.py",
+      "category": "deploy automation"
+    },
+    {
+      "path": "scripts/post_deploy_visual.py",
+      "category": "deploy automation"
+    },
+    {
+      "path": "scripts/digest_trace.py",
+      "category": "orchestration audit trail"
+    },
+    {
+      "path": "scripts/smoke_deploy.py",
+      "category": "deploy verification"
+    },
+    {
+      "path": "scripts/crm_deploy_health.py",
+      "category": "deploy verification"
+    },
+    {
+      "path": "scripts/check_coverage.py",
+      "category": "gate enforcement"
+    },
+    {
+      "path": "AGENTS/**",
+      "category": "Builder prompts and repository policy"
+    },
+    {
+      "path": ".github/copilot-instructions.md",
+      "category": "Builder prompts and repository policy"
+    },
+    {
+      "path": "docs/WORKFLOW_GOVERNANCE.md",
+      "category": "repository policy"
+    },
+    {
+      "path": "docs/IDENTITIES.md",
+      "category": "repository policy"
+    },
+    {
+      "path": "docs/LABELS.md",
+      "category": "repository policy"
+    },
+    {
+      "path": ".github/CODEOWNERS",
+      "category": "repository policy"
+    },
+    {
+      "path": ".github/workflow-governance-paths.json",
+      "category": "repository policy"
+    },
+    {
+      "path": ".github/rulesets/**",
+      "category": "repository policy"
+    },
+    {
+      "path": "scripts/validate_workflow_governance.py",
+      "category": "repository policy"
+    },
+    {
+      "path": "tests/test_workflow_governance.py",
+      "category": "repository policy"
+    }
+  ]
+}

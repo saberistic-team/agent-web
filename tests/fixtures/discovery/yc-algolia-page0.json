@@ -1,0 +1,42 @@
+{
+  "hits": [
+    {
+      "id": 12345,
+      "name": "LedgerFlow",
+      "slug": "ledgerflow",
+      "website": "https://ledgerflow.example.com",
+      "all_locations": "New York, NY, USA",
+      "one_liner": "Modern payments infrastructure for global fintech teams",
+      "long_description": "LedgerFlow builds API-first payment rails for fintech startups.",
+      "batch": "Winter 2024",
+      "tags": ["Fintech", "Payments", "B2B"],
+      "industries": ["Fintech", "Payments"],
+      "objectID": "12345"
+    },
+    {
+      "id": 12346,
+      "name": "VectorServe",
+      "slug": "vectorserve",
+      "website": "https://vectorserve.example.com",
+      "all_locations": "San Francisco, CA, USA",
+      "one_liner": "GPU orchestration for large language model serving",
+      "batch": "Summer 2023",
+      "tags": ["AI", "Infrastructure", "Developer Tools"],
+      "industries": ["AI", "Infrastructure"],
+      "objectID": "12346"
+    },
+    {
+      "id": 12347,
+      "name": "",
+      "slug": "broken-row",
+      "website": "https://broken.example.com",
+      "batch": "Winter 2022",
+      "tags": ["Consumer"],
+      "objectID": "12347"
+    }
+  ],
+  "nbHits": 4,
+  "page": 0,
+  "nbPages": 2,
+  "hitsPerPage": 100
+}

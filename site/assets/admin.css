@@ -4,8 +4,45 @@ body.admin-app {
   background:
     radial-gradient(900px 480px at 0% -5%, #1a2036 0%, transparent 55%),
     var(--bg);
+  color-scheme: dark;
+  accent-color: var(--accent);
+  /* Belt-and-suspenders against unrelated stray overflow — the top-bar
+     itself must never depend on this to hide clipped controls. See
+     .admin-top-actions / .admin-user / .admin-exit-group for the actual
+     shrink+wrap strategy that keeps Public site and Sign out reachable. */
   overflow-x: clip;
   max-width: 100vw;
+}
+
+/* Native checkbox and radio — accent, focus, and disabled without custom controls. */
+.admin-form input[type="checkbox"],
+.admin-form input[type="radio"] {
+  accent-color: var(--accent);
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.admin-form input[type="checkbox"]:focus-visible,
+.admin-form input[type="radio"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.admin-form input[type="checkbox"]:disabled,
+.admin-form input[type="radio"]:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.admin-form .field > label:has(> input[type="checkbox"]),
+.admin-form .field > label:has(> input[type="radio"]) {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
 }
 
 .admin-top {
@@ -37,14 +74,52 @@ body.admin-app {
   border-radius: 2px;
 }
 
+/*
+ * Single row: identity (shrinkable/wrappable) + exit actions (fixed size).
+ * flex-wrap stays off here so Public site / Sign out never get pushed onto
+ * a separate line by a long identity value — the identity shrinks and
+ * wraps internally instead. `.admin-top` (the parent header) still wraps
+ * this whole block below the brand on narrow widths.
+ */
 .admin-top-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 1rem 1.25rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* Identity: allowed to shrink/wrap so it can never force the fixed-size
+   exit actions out of view. Never rely on ancestor clipping for this. */
+.admin-user {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Exit actions stay together as one unit and never shrink or wrap away. */
+.admin-exit-group {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  flex-shrink: 0;
+  gap: 1rem 1.25rem;
+  white-space: nowrap;
+}
+
+.admin-signout-form {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .admin-exit {
+  flex-shrink: 0;
+  white-space: nowrap;
   font-size: 0.75rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -66,6 +141,72 @@ body.admin-app {
   cursor: pointer;
   font-family: inherit;
   padding: 0;
+}
+
+/* Form action buttons — distinct from link-like .admin-exit top-bar actions. */
+.admin-action {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.5rem 0.85rem;
+  border-radius: 2px;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  color: var(--ink);
+  line-height: 1.2;
+}
+
+.admin-action:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+}
+
+.admin-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.admin-action:active {
+  transform: translateY(1px);
+}
+
+.admin-action:disabled,
+.admin-action[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.admin-action--destructive {
+  border-color: color-mix(in srgb, #e05a5a 55%, var(--line));
+  background: color-mix(in srgb, #e05a5a 14%, var(--surface));
+  color: #ffd0d0;
+}
+
+.admin-action--destructive:hover {
+  border-color: #e05a5a;
+  background: color-mix(in srgb, #e05a5a 24%, var(--surface));
+  color: #ffe8e8;
+}
+
+.admin-action--destructive:focus-visible {
+  outline-color: #e05a5a;
+}
+
+.admin-action--secondary {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  color: var(--ink);
+}
+
+.admin-action--secondary:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  color: var(--ink);
 }
 
 .admin-layout {
@@ -381,6 +522,36 @@ body.admin-app {
   border-radius: 2px;
 }
 
+.admin-form input[type="date"],
+.admin-form input[type="datetime-local"],
+.brief-filter input[type="date"] {
+  color-scheme: dark;
+}
+
+.admin-form input[type="date"]::-webkit-calendar-picker-indicator,
+.admin-form input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+.brief-filter input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
+  cursor: pointer;
+}
+
+.brief-filter input:focus-visible,
+.brief-filter select:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.brief-filter input:disabled,
+.brief-filter select:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.brief-filter input:user-invalid,
+.brief-filter input:invalid:not(:focus):not(:placeholder-shown) {
+  border-color: #e88a6a;
+}
+
 .brief-filter-submit {
   font-family: inherit;
   font-size: 0.72rem;
@@ -494,9 +665,127 @@ body.admin-app {
   word-break: break-all;
 }
 
+/* Admin form width variants (#238) — editor/research use desktop space; compact stays in site.css. */
+.admin-form--editor {
+  max-width: 100%;
+}
+
+.research-record-list {
+  max-width: 100%;
+}
+
+@media (min-width: 48rem) {
+  .admin-form--editor {
+    max-width: min(100%, 72ch);
+  }
+
+  .research-record-list {
+    max-width: min(100%, 72ch);
+  }
+}
+
 .research-form {
-  max-width: 48ch;
   margin-bottom: 2.5rem;
+}
+
+.admin-form fieldset.field,
+.brief-convert-fieldset {
+  border: 1px solid var(--line);
+  padding: 1rem 1.25rem;
+  margin: 0;
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+}
+
+.brief-convert-fieldset legend {
+  padding: 0 0.35rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.brief-convert-choice,
+.brief-convert-match,
+.admin-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.45rem 0.5rem;
+  margin: 0 -0.5rem;
+  color: var(--ink);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background 0.15s ease;
+}
+
+.brief-convert-choice:hover,
+.brief-convert-match:hover,
+.admin-checkbox:hover {
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+}
+
+.brief-convert-choice:has(input:checked),
+.brief-convert-match:has(input:checked),
+.admin-checkbox:has(input:checked) {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.brief-convert-choice:has(input:focus-visible),
+.brief-convert-match:has(input:focus-visible),
+.admin-checkbox:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.brief-convert-choice input,
+.brief-convert-match input,
+.admin-checkbox input {
+  accent-color: var(--accent);
+  width: 1rem;
+  height: 1rem;
+  margin: 0.15rem 0 0;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.brief-convert-choice input:disabled,
+.brief-convert-match input:disabled,
+.admin-checkbox input:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.brief-convert-archived {
+  margin-top: 1rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  background: color-mix(in srgb, var(--surface) 40%, transparent);
+}
+
+.brief-convert-archived-title {
+  margin: 0 0 0.5rem;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.brief-convert-archived-note {
+  margin: 0 0 0.85rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.brief-convert-archived-dl {
+  margin: 0 0 0.85rem;
+}
+
+.brief-convert-archived-ack {
+  margin-top: 0.75rem;
 }
 
 .research-evidence-fields {
@@ -517,7 +806,6 @@ body.admin-app {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  max-width: 56ch;
 }
 
 .research-record {
@@ -612,6 +900,136 @@ body.admin-app {
   word-break: break-all;
 }
 
+.buying-group-grid {
+  display: grid;
+  gap: 1.25rem;
+  margin: 1rem 0 2rem;
+}
+
+.buying-group-slot {
+  border: 1px solid var(--line);
+  padding: 1rem 1.1rem;
+  background: rgba(12, 15, 24, 0.35);
+}
+
+.buying-group-slot-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.buying-group-slot-header .admin-section-heading {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.coverage-badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border: 1px solid var(--line);
+}
+
+.coverage-badge--confirmed {
+  border-color: #4a9fd4;
+  color: #7ec8f0;
+}
+
+.coverage-badge--possible {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.coverage-badge--missing {
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+.coverage-badge--stale_employment {
+  border-color: #e88a6a;
+  color: #e88a6a;
+}
+
+.coverage-entry-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.coverage-entry-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.75rem;
+}
+
+.coverage-note,
+.coverage-gap,
+.coverage-also-roles {
+  margin: 0.35rem 0 0;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.coverage-gap {
+  margin: 0;
+}
+
+.buying-profile-link {
+  color: var(--accent);
+  word-break: break-all;
+}
+
+.warm-intro-list {
+  display: grid;
+  gap: 1rem;
+  margin: 1rem 0 2rem;
+}
+
+.warm-intro-path {
+  border: 1px solid var(--line);
+  padding: 1rem 1.1rem;
+  background: rgba(12, 15, 24, 0.35);
+}
+
+.warm-intro-path-header .admin-section-heading {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.warm-intro-metrics {
+  margin: 0.5rem 0 0;
+  display: grid;
+  gap: 0.5rem;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+}
+
+.warm-intro-metrics div {
+  display: grid;
+  grid-template-columns: 10rem 1fr;
+  gap: 0.5rem;
+}
+
+.warm-intro-metrics dt {
+  margin: 0;
+  color: var(--muted);
+}
+
+.warm-intro-metrics dd {
+  margin: 0;
+  color: var(--ink);
+}
+
 @media (min-width: 769px) {
   .dashboard-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -643,6 +1061,10 @@ body.admin-app {
     gap: 0.65rem 1rem;
     flex: 1 1 100%;
     justify-content: flex-start;
+  }
+
+  .admin-exit-group {
+    gap: 0.65rem 1rem;
   }
 
   .admin-user {
@@ -722,4 +1144,174 @@ body.admin-app {
     grid-template-columns: 1fr;
     gap: 0.25rem;
   }
+}
+
+.linkedin-import-privacy {
+  margin: 0 0 1.5rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+
+.linkedin-import-privacy-grid {
+  display: grid;
+  gap: 0.85rem 1.25rem;
+  margin: 0;
+  padding: 0;
+}
+
+@media (min-width: 48rem) {
+  .linkedin-import-privacy-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.linkedin-import-privacy-grid dt {
+  margin: 0 0 0.25rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.linkedin-import-privacy-grid dd {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--ink);
+}
+
+.linkedin-import-form {
+  margin-bottom: 1rem;
+}
+
+.linkedin-import-status {
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+}
+
+.linkedin-import-status--busy {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
+}
+
+.linkedin-import-status--ok {
+  border-color: color-mix(in srgb, #4caf7d 45%, var(--line));
+}
+
+.linkedin-import-status--error {
+  border-color: color-mix(in srgb, #e05a5a 45%, var(--line));
+  color: #ffb4b4;
+}
+
+.linkedin-import-preview {
+  margin-top: 0.5rem;
+}
+
+.linkedin-import-proposed-list,
+.linkedin-import-warnings,
+.linkedin-import-duplicates,
+.linkedin-import-ignored {
+  margin: 0 0 1rem;
+  padding-left: 1.25rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.linkedin-import-warnings li {
+  color: var(--accent);
+}
+
+.linkedin-import-stats {
+  margin-bottom: 1.25rem;
+}
+
+.icp-score-display {
+  border: 1px solid var(--line);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+  max-width: 18rem;
+}
+
+.icp-score-display--override {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.icp-score-value {
+  font-family: var(--display);
+  font-size: 2.4rem;
+  line-height: 1;
+  margin: 0.25rem 0;
+}
+
+.icp-score-cell--override {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.icp-status {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid var(--line);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.icp-status--scored {
+  border-color: color-mix(in srgb, #4caf7d 45%, var(--line));
+}
+
+.icp-status--expired,
+.icp-status--hypothesis {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+
+.icp-override-note {
+  border-left: 3px solid var(--accent);
+  padding-left: 0.75rem;
+}
+
+.icp-evidence-list {
+  margin: 1rem 0 1.5rem;
+  padding-left: 1.25rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.admin-subtitle {
+  font-family: var(--display);
+  font-size: 1.1rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.contact-metrics-section,
+.contact-judgment-section {
+  margin: 1.5rem 0;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--line);
+}
+
+.contact-metrics-section {
+  border-left: 3px solid var(--accent);
+}
+
+.contact-judgment-section {
+  border-left: 3px solid color-mix(in srgb, var(--muted) 60%, var(--line));
+}
+
+.contact-metrics-pre {
+  margin: 0.75rem 0 0;
+  padding: 0.75rem;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  border: 1px solid var(--line);
+}
+
+.contact-crm-context {
+  margin-top: 1rem;
 }

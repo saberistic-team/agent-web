@@ -14,11 +14,11 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-from github_api import GitHubError, api, split_repo
+from cursor_model import DEFAULT_CURSOR_MODEL, cursor_model_dict, cursor_model_selection
+from github_api import GitHubError, api, list_pr_files, split_repo
 
 DEFAULT_MODEL = "openai/gpt-4o-mini"
 DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
-DEFAULT_CURSOR_MODEL = "composer-2.5"
 MODELS_URL = "https://models.github.ai/inference/chat/completions"
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 
@@ -40,6 +40,27 @@ def cursor_api_key() -> str | None:
     return value.strip() if value and value.strip() else None
 
 
+def reviewer_agent_cwd() -> str:
+    """Filesystem root for the reviewer's Cursor agent tool calls.
+
+    Reviewer Actions checkout ``main`` at ``os.getcwd()`` and the actual PR
+    under review as a sibling git worktree at ``COVERAGE_ROOT`` (``pr-head/``,
+    see reviewer.yml). Rooting the agent's local tools at ``os.getcwd()``
+    (main) left ``./`` (main) and ``./pr-head`` (the PR) both reachable side
+    by side, so the model could — instead of trusting the correct
+    merge-base ``files``/``patch`` payload already in its prompt — diff those
+    two trees directly. Any file added to main *after* a stale branch forked
+    then looks exactly like something "the PR deletes", producing false
+    changes-requested hard-fails and a Builder<->Reviewer loop for any PR that
+    is merely behind main (#342). Root the agent at the PR tree itself so
+    there is no mismatched sibling tree to conflate with the diff.
+    """
+    cov_root = (os.environ.get("COVERAGE_ROOT") or "").strip()
+    if cov_root and os.path.isdir(cov_root):
+        return cov_root
+    return os.getcwd()
+
+
 def chat_cursor(system: str, user: str, model: str | None = None) -> tuple[str, str]:
     """Ask-only Cursor agent turn; must not modify the workspace."""
     key = cursor_api_key()
@@ -56,9 +77,18 @@ def chat_cursor(system: str, user: str, model: str | None = None) -> tuple[str, 
             "cursor-sdk is not installed; pip install -r requirements-agents.txt"
         ) from exc
 
+    agent_cwd = reviewer_agent_cwd()
     prompt = (
         "READ-ONLY REVIEW TASK. Do not create, edit, delete, or move any files. "
         "Do not run mutating shell/git commands. Do not open PRs.\n"
+        "The working directory is the PR branch under review, checked out at "
+        "its own commit — it is NOT `main` and has no sibling copy of `main` "
+        "to compare against. Do not attempt to diff this working directory "
+        "against `main` or any other branch/tree; you cannot see `main` from "
+        "here. Base every claim about added/changed/deleted/reverted files "
+        "strictly on the `files` list in the Context below (already the "
+        "correct PR-vs-base diff) — never infer a deletion or revert from "
+        "your own filesystem exploration.\n"
         "Respond with JSON only (no prose outside JSON).\n\n"
         f"## Instructions\n{system}\n\n"
         f"## Context\n{user}\n"
@@ -67,11 +97,11 @@ def chat_cursor(system: str, user: str, model: str | None = None) -> tuple[str, 
         result = Agent.prompt(
             prompt,
             AgentOptions(
-                model=model,
+                model=cursor_model_selection(model),
                 api_key=key,
                 name="reviewer-ai",
                 mode="plan",
-                local=LocalAgentOptions(cwd=os.getcwd()),
+                local=LocalAgentOptions(cwd=agent_cwd),
             ),
         )
     except TypeError:
@@ -80,11 +110,11 @@ def chat_cursor(system: str, user: str, model: str | None = None) -> tuple[str, 
             result = Agent.prompt(
                 prompt,
                 {
-                    "model": model,
+                    "model": cursor_model_dict(model),
                     "apiKey": key,
                     "name": "reviewer-ai",
                     "mode": "plan",
-                    "local": {"cwd": os.getcwd()},
+                    "local": {"cwd": agent_cwd},
                 },
             )
         except Exception as exc:
@@ -302,14 +332,36 @@ def extract_json(text: str) -> dict[str, Any]:
     return data
 
 
+def _is_screenshot_evidence_path(path: str) -> bool:
+    return path.startswith(".agent/screenshots/")
+
+
 def collect_pr_context(repo: str, issue: int, pr_number: int) -> dict[str, Any]:
     owner, name = split_repo(repo)
     issue_data = api("GET", f"/repos/{owner}/{name}/issues/{issue}")
     pr = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}")
-    files = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}/files") or []
+    # Must paginate (default API page is only 30): PRs that also carry
+    # Reviewer screenshot evidence commonly exceed 100 files, and
+    # `.agent/screenshots/...` sorts alphabetically before `app/`/`docs/`/
+    # `tests/`, so a single unpaginated page can be 100% screenshots with
+    # every real code/test/doc file silently missing from the model's
+    # context — producing a false "screenshot-only diff" changes-requested
+    # verdict no matter how many times Builder re-pushes (mirrors the
+    # pagination bug already fixed for `list_pr_files` callers in #206).
+    files = list_pr_files(repo, pr_number)
     commits = api("GET", f"/repos/{owner}/{name}/pulls/{pr_number}/commits") or []
+    # Even with full pagination, `.agent/screenshots/...` still sorts first
+    # alphabetically, so a plain files[:20] slice can still be 100%
+    # screenshots on evidence-heavy PRs. Prioritize substantive files for
+    # the patches actually shown to the model; screenshots need no patch
+    # (policy already treats them as allowed evidence, not something to
+    # diff), so surface their count instead of crowding out real changes.
+    substantive = [
+        f for f in files if not _is_screenshot_evidence_path(f.get("filename") or "")
+    ]
+    screenshot_count = len(files) - len(substantive)
     patches = []
-    for f in files[:20]:
+    for f in substantive[:20]:
         patch = f.get("patch") or ""
         if len(patch) > 4000:
             patch = patch[:4000] + "\n…[truncated]…"
@@ -329,6 +381,7 @@ def collect_pr_context(repo: str, issue: int, pr_number: int) -> dict[str, Any]:
         "pr_body": (pr.get("body") or "")[:4000],
         "commit_messages": [c.get("commit", {}).get("message", "") for c in commits],
         "files": patches,
+        "screenshot_evidence_file_count": screenshot_count,
     }
 
 
@@ -372,10 +425,20 @@ def ai_review(repo: str, issue: int, pr_number: int) -> dict[str, Any]:
         "`branch-admin*.png` under ADMIN_PREVIEW_MODE, OR when the PR is admin-only "
         "and posted a skip/branch note — admin is never shot on saberistic.com\n"
         "- files under `.agent/screenshots/` (allowed Reviewer evidence)\n"
+        "`files` below excludes `.agent/screenshots/` entries — their count is in "
+        "`screenshot_evidence_file_count` instead. Never claim the diff is "
+        "'screenshot-only' or that no code/test/doc files changed on that basis; "
+        "judge acceptance strictly from the non-screenshot entries in `files`.\n"
         "- noisy/file-by-file commit history (gate squash-merges to main)\n"
         "- wording/style nits when acceptance criteria are met\n"
         "If acceptance criteria are met, set decision=approved and meets_acceptance=true.\n"
         "Be concrete in reasons.\n"
+        "Never claim this PR 'deletes', 'removes', or 'reverts' a file or "
+        "function unless that exact path appears in `files` below with "
+        "status=\"removed\" (or a patch showing the specific lines removed). "
+        "A file that simply doesn't appear in `files` was not touched by this "
+        "PR — it is not evidence of a deletion, even if that file exists on "
+        "main (main may have added it after this branch was created).\n"
     )
     user = json.dumps(ctx, indent=2)
     raw, model = chat(system, user, model=model)

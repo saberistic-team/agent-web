@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Any, Generator
@@ -14,8 +15,9 @@ from fastapi.testclient import TestClient
 
 from app import admin_auth
 from app.admin_auth import SESSION_COOKIE_NAME
-from app.brief_conversion import BriefConversionValidationError
+from app.brief_conversion import ARCHIVED_CONTACT_ACK_REQUIRED_MESSAGE, BriefConversionValidationError
 from app.main import app
+from tests.conftest import enable_admin_preview_env
 
 client = TestClient(app, follow_redirects=False)
 
@@ -23,10 +25,12 @@ TEST_USERNAME = "operator"
 TEST_PASSWORD = "correct-horse-battery-staple"
 TEST_HASH = PasswordHasher().hash(TEST_PASSWORD)
 TEST_SECRET = "test-session-secret-32chars-minimum"
+TEST_LIMITER_SECRET = "test-limiter-secret-32chars-minimum!!"
 CSRF_TOKEN = "csrf-convert-token"
 
 COMPANY_ID = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 CONTACT_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+ARCHIVED_CONTACT_ID = UUID("cccccccc-cccc-cccc-cccc-cccccccccccc")
 
 
 @pytest.fixture(autouse=True)
@@ -35,6 +39,7 @@ def admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_USERNAME", TEST_USERNAME)
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_HASH)
     monkeypatch.setenv("ADMIN_SESSION_SECRET", TEST_SECRET)
+    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", TEST_LIMITER_SECRET)
     monkeypatch.setenv("BASE_URL", "http://testserver")
     admin_auth.reset_login_rate_limiter()
 
@@ -333,7 +338,7 @@ def test_convert_get_renders_matches_for_unconverted_brief() -> None:
 @pytest.mark.unit
 @pytest.mark.integration
 def test_preview_mode_convert_pages_use_mock_data(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch)
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
         with patch("app.admin_routes._session_csrf_for_forms", return_value=CSRF_TOKEN):
             detail = client.get("/admin/briefs/1")
@@ -351,11 +356,353 @@ def test_preview_mode_convert_pages_use_mock_data(monkeypatch: pytest.MonkeyPatc
 
 @pytest.mark.unit
 @pytest.mark.integration
+def test_convert_post_accepts_existing_match_selection() -> None:
+    """Radio groups submit existing-match values the same way keyboard selection would."""
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        with patch("app.admin_routes._verify_session_csrf"):
+            with mock_db_connection():
+                with patch("app.admin_routes.brief_service.get_brief", return_value=_detail_brief()):
+                    with patch("app.admin_routes._crm") as crm:
+                        crm.convert_project_brief.return_value = {"idempotent": False}
+                        response = client.post(
+                            "/admin/briefs/42/convert",
+                            data={
+                                "csrf_token": CSRF_TOKEN,
+                                "company_choice": f"existing:{COMPANY_ID}",
+                                "contact_choice": "new",
+                            },
+                        )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/admin/briefs/42?converted=1"
+    crm.convert_project_brief.assert_called_once()
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_convert_preview_radio_labels_wrap_inputs_for_keyboard() -> None:
+    token_hash = admin_auth.hash_session_token("convert-keyboard")
+    row = _session_row(token_hash=token_hash)
+    preview = {
+        "proposal": {"company_name": "Acme", "pipeline_stage_label": "Diagnostic paid"},
+        "company_matches": [{"id": COMPANY_ID, "name": "Acme Existing", "domain": "acme.example"}],
+        "contact_matches": [{"id": CONTACT_ID, "email": "ops@acme.example"}],
+    }
+    with mock_db_connection():
+        with patch("app.admin_routes.db.get_admin_session_by_token_hash", return_value=row):
+            with patch("app.admin_routes.brief_service.get_brief", return_value=_detail_brief()):
+                with patch("app.admin_routes._crm") as crm:
+                    crm.get_project_brief_source.return_value = None
+                    crm.find_brief_conversion_matches.return_value = preview
+                    with patch(
+                        "app.admin_routes._session_csrf_for_forms",
+                        return_value=CSRF_TOKEN,
+                    ):
+                        response = client.get(
+                            "/admin/briefs/42/convert",
+                            cookies={SESSION_COOKIE_NAME: "convert-keyboard"},
+                        )
+    assert response.status_code == 200
+    body = response.text
+    assert re.search(
+        r'<label class="brief-convert-choice">\s*<input type="radio" name="company_choice"',
+        body,
+    )
+    assert re.search(
+        r'<label class="brief-convert-match">\s*<input type="radio" name="company_choice"',
+        body,
+    )
+    assert re.search(
+        r'<label class="brief-convert-match">\s*<input type="radio" name="contact_choice"',
+        body,
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.integration
 def test_preview_convert_validation_error_renders_alert(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch)
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
         with patch("app.admin_routes._session_csrf_for_forms", return_value=CSRF_TOKEN):
             response = client.get("/admin/briefs/4/convert?error=validation")
     assert response.status_code == 200
     assert "form-error" in response.text
     assert "Select an existing company match" in response.text
+
+
+@pytest.mark.unit
+def test_convert_preview_renders_archived_contact_panel() -> None:
+    from app import admin_pages
+    from app.brief_service import BriefListFilters
+
+    html = admin_pages.render_admin_brief_convert_page(
+        admin_username=TEST_USERNAME,
+        brief={"id": 42, "status": "paid"},
+        back_filters=BriefListFilters(
+            page=1,
+            per_page=25,
+            query=None,
+            status=None,
+            date_from=None,
+            date_to=None,
+            date_from_raw=None,
+            date_to_raw=None,
+        ),
+        preview={
+            "proposal": {
+                "company_name": "Acme",
+                "contact_email": "ops@acme.example",
+                "pipeline_stage_label": "Diagnostic paid",
+            },
+            "company_matches": [],
+            "contact_matches": [],
+            "archived_contact_match": {
+                "id": ARCHIVED_CONTACT_ID,
+                "full_name": "Ops Lead",
+                "email": "ops@acme.example",
+                "company_name": "Acme Corp",
+                "archived_at": "2026-01-15T14:30:00+00:00",
+            },
+        },
+        csrf_token=CSRF_TOKEN,
+    )
+    assert 'class="brief-convert-archived"' in html
+    assert "Archived contact match" in html
+    assert "never linked" in html
+    assert "Ops Lead" in html
+    assert "ops@acme.example" in html
+    assert "Acme Corp" in html
+    assert f'href="/admin/contacts/{ARCHIVED_CONTACT_ID}/edit"' in html
+    assert 'name="acknowledge_archived_identity"' in html
+    assert 'name="contact_choice" value="new" checked' not in html
+
+
+@pytest.mark.unit
+def test_convert_preview_hides_archived_panel_when_active_match_exists() -> None:
+    from app import admin_pages
+    from app.brief_service import BriefListFilters
+
+    html = admin_pages.render_admin_brief_convert_page(
+        admin_username=TEST_USERNAME,
+        brief={"id": 42, "status": "paid"},
+        back_filters=BriefListFilters(
+            page=1,
+            per_page=25,
+            query=None,
+            status=None,
+            date_from=None,
+            date_to=None,
+            date_from_raw=None,
+            date_to_raw=None,
+        ),
+        preview={
+            "proposal": {"company_name": "Acme", "pipeline_stage_label": "Diagnostic paid"},
+            "company_matches": [],
+            "contact_matches": [{"id": CONTACT_ID, "email": "ops@acme.example"}],
+            "archived_contact_match": {
+                "id": ARCHIVED_CONTACT_ID,
+                "full_name": "Ops Lead",
+                "email": "ops@acme.example",
+            },
+        },
+        csrf_token=CSRF_TOKEN,
+    )
+    assert 'class="brief-convert-archived"' not in html
+    assert 'name="acknowledge_archived_identity"' not in html
+    assert 'name="contact_choice" value="new" checked' not in html
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_convert_preview_route_renders_archived_only_match() -> None:
+    preview = {
+        "proposal": {
+            "company_name": "Acme",
+            "contact_email": "ops@acme.example",
+            "pipeline_stage_label": "Diagnostic paid",
+        },
+        "company_matches": [],
+        "contact_matches": [],
+        "archived_contact_match": {
+            "id": ARCHIVED_CONTACT_ID,
+            "full_name": "Ops Lead",
+            "email": "ops@acme.example",
+            "company_name": "Acme Corp",
+            "archived_at": "2026-01-15T14:30:00+00:00",
+        },
+    }
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        with mock_db_connection():
+            with patch("app.admin_routes.brief_service.get_brief", return_value=_detail_brief()):
+                with patch("app.admin_routes._crm") as crm:
+                    crm.get_project_brief_source.return_value = None
+                    crm.find_brief_conversion_matches.return_value = preview
+                    with patch(
+                        "app.admin_routes._session_csrf_for_forms",
+                        return_value=CSRF_TOKEN,
+                    ):
+                        response = client.get("/admin/briefs/42/convert")
+    assert response.status_code == 200
+    assert "Archived contact match" in response.text
+    assert f'href="/admin/contacts/{ARCHIVED_CONTACT_ID}/edit"' in response.text
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_convert_post_requires_archived_acknowledgment() -> None:
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        with patch("app.admin_routes._verify_session_csrf"):
+            with mock_db_connection():
+                with patch("app.admin_routes.brief_service.get_brief", return_value=_detail_brief()):
+                    with patch("app.admin_routes._crm") as crm:
+                        crm.convert_project_brief.side_effect = BriefConversionValidationError(
+                            ARCHIVED_CONTACT_ACK_REQUIRED_MESSAGE
+                        )
+                        response = client.post(
+                            "/admin/briefs/42/convert",
+                            data={
+                                "csrf_token": CSRF_TOKEN,
+                                "company_choice": "new",
+                                "contact_choice": "new",
+                            },
+                        )
+    assert response.status_code == 303
+    from urllib.parse import unquote
+
+    assert ARCHIVED_CONTACT_ACK_REQUIRED_MESSAGE in unquote(response.headers["location"])
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_convert_post_passes_archived_acknowledgment_to_service() -> None:
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        with patch("app.admin_routes._verify_session_csrf"):
+            with mock_db_connection():
+                with patch("app.admin_routes.brief_service.get_brief", return_value=_detail_brief()):
+                    with patch("app.admin_routes._crm") as crm:
+                        crm.convert_project_brief.return_value = {"idempotent": False}
+                        response = client.post(
+                            "/admin/briefs/42/convert",
+                            data={
+                                "csrf_token": CSRF_TOKEN,
+                                "company_choice": "new",
+                                "contact_choice": "new",
+                                "acknowledge_archived_identity": "1",
+                            },
+                        )
+    assert response.status_code == 303
+    crm.convert_project_brief.assert_called_once()
+    assert crm.convert_project_brief.call_args.kwargs["acknowledge_archived_identity"] is True
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_preview_archived_convert_post_denied(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Superseded by the central AdminPreviewReadOnlyMiddleware (#331): preview
+    mode now rejects every unsafe method under /admin with 405 before the
+    route handler runs, instead of exercising the create-choice validation.
+    """
+    enable_admin_preview_env(monkeypatch)
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        with patch("app.admin_routes._verify_session_csrf"):
+            with patch("app.admin_routes._session_csrf_for_forms", return_value=CSRF_TOKEN):
+                response = client.post(
+                    "/admin/briefs/5/convert",
+                    data={
+                        "csrf_token": CSRF_TOKEN,
+                        "company_choice": "new",
+                        "contact_choice": "new",
+                        "acknowledge_archived_identity": "1",
+                    },
+                )
+    assert response.status_code == 405
+    assert response.headers.get("allow") == "GET, HEAD"
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_preview_archived_convert_page_renders_mock_panel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    enable_admin_preview_env(monkeypatch)
+    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        with patch("app.admin_routes._session_csrf_for_forms", return_value=CSRF_TOKEN):
+            response = client.get("/admin/briefs/5/convert")
+    assert response.status_code == 200
+    assert "Archived contact match" in response.text
+    assert "Alex Nguyen (archived)" in response.text
+    assert 'href="/admin/contacts/eeeeeeee-eeee-eeee-eeee-eeeeeeeeee05/edit"' in response.text
+    assert 'class="brief-convert-archived"' in response.text
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_preview_empty_convert_page_renders_placeholders(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Brief with no website/email at all (#276): proposal fields legibly show '—'."""
+    enable_admin_preview_env(monkeypatch)
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        with patch("app.admin_routes._session_csrf_for_forms", return_value=CSRF_TOKEN):
+            response = client.get("/admin/briefs/6/convert")
+    assert response.status_code == 200
+    body = response.text
+    assert "Proposed records" in body
+    assert "Unknown company" in body
+    assert 'class="brief-convert-archived"' not in body
+    assert 'class="brief-convert-match"' not in body
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_preview_no_email_convert_page_renders_company_but_no_email(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Brief with a website but no contact email on file (#276) is legible."""
+    enable_admin_preview_env(monkeypatch)
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        with patch("app.admin_routes._session_csrf_for_forms", return_value=CSRF_TOKEN):
+            response = client.get("/admin/briefs/7/convert")
+    assert response.status_code == 200
+    body = response.text
+    assert "Proposed records" in body
+    assert "Unknown company" not in body
+    assert 'class="brief-convert-archived"' not in body
+    assert 'class="brief-convert-match"' not in body
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_preview_empty_and_no_email_convert_post_denied(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Superseded by the central AdminPreviewReadOnlyMiddleware (#331): preview
+    mode now rejects every unsafe method under /admin with 405 before the
+    route handler runs, instead of exercising the new-record conversion.
+    """
+    enable_admin_preview_env(monkeypatch)
+    with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
+        with patch("app.admin_routes._verify_session_csrf"):
+            with patch("app.admin_routes._session_csrf_for_forms", return_value=CSRF_TOKEN):
+                empty_response = client.post(
+                    "/admin/briefs/6/convert",
+                    data={
+                        "csrf_token": CSRF_TOKEN,
+                        "company_choice": "new",
+                        "contact_choice": "new",
+                    },
+                )
+                no_email_response = client.post(
+                    "/admin/briefs/7/convert",
+                    data={
+                        "csrf_token": CSRF_TOKEN,
+                        "company_choice": "new",
+                        "contact_choice": "new",
+                    },
+                )
+    assert empty_response.status_code == 405
+    assert empty_response.headers.get("allow") == "GET, HEAD"
+    assert no_email_response.status_code == 405
+    assert no_email_response.headers.get("allow") == "GET, HEAD"

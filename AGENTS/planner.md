@@ -23,12 +23,32 @@ Before any issue enters `status:queued`, it must already carry:
 - an **open** GitHub milestone for the current product phase (unless
   `priority:critical` — hotfixes may skip milestones)
 - `status:queued`
+- **machine-readable dependencies** (or an explicit `None` / `N/A`) when the
+  issue depends on other work — see Dependencies below
 
 Do **not** apply `agent:builder` or `agent:docs` when queuing. The dispatcher
 filters to open-milestone work (plus critical), then picks the next issue by
 earliest milestone due date, then `priority:*` (critical → high → medium →
 normal → low), then issue number. Record `intended_agent` and `milestone` in
 `### planner_plan`.
+
+### Dependencies (required when work is blocked on other issues)
+
+Prose-only “start after Manifest / corpus …” is **not** enough (learned from
+[#204](https://github.com/saberistic-team/agent-web/issues/204)). Before
+`status:queued`:
+
+1. Prefer GitHub **blocked by** links on the issue, **and/or**
+2. Add an explicit body line: `Depends on: #199, #200` (or
+   `## Dependencies` containing only those refs / `None` / `N/A`).
+
+If a `## Dependencies` section has narrative text but **no** `#N` refs, do
+**not** queue — rewrite to `Depends on:` or set `status:blocked` with
+`@human-review`. Do not invent stand-in schemas so a later spike can “guess”
+upstream docs.
+
+Dispatcher (`scripts/dispatch_queue.py`) and Builder/Docs/Reviewer/Gate all
+enforce the same rules via `scripts/issue_deps.py`.
 
 Humans open/close milestones to mark the current phase. You assign issues to an
 open milestone (prefer the parent’s open milestone, else the earliest-due open
@@ -76,7 +96,8 @@ without re-planning. The parent is then marked done by the workflow.
   exists. You only label issues.
 - Do not assign `agent:reviewer` as the first owner of new work; route to
   `builder` or `docs` via the dispatcher (keep `agent:planner` only while
-  still planning).
+  still planning). Both Builder and Docs hand off to Reviewer after their
+  PR is ready (`type:docs` uses the docs checklist, not screenshots/coverage).
 - Do not apply `status:queued` until the gate (`release-plan`) has passed
   (single-issue path). Children may be created already queued.
 - Prefer an existing human-set `priority:*` (including `priority:medium`);
@@ -97,3 +118,6 @@ Escalate when:
 - scope is outside any agent role (policy, secrets, billing, legal, etc.)
 - decomposition cannot be decided without a human call
 - a dependency or decision is not resolvable from the issue alone
+- dependencies exist but are not machine-readable (`Depends on: #N` /
+  GitHub blockedBy / explicit `None`), or listed dependency issues are still
+  open — use `status:blocked`, do **not** queue

@@ -1,0 +1,89 @@
+name: PG Contract Suite
+
+# Real-PostgreSQL contract suite for CRM migrations, repositories, transactions,
+# and concurrency (see tests/pg_contract/ and docs/TESTING.md). Isolated from the
+# fast unit/integration job so it only runs when the relevant surfaces change,
+# and always runs on pushes to main to catch drift after merge.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/migrations/**"
+      - "app/repositories/**"
+      - "app/crm_service.py"
+      - "app/crm_uow.py"
+      - "app/brief_conversion.py"
+      - "app/brief_conversion_lock.py"
+      - "app/db.py"
+      - "app/audit_service.py"
+      - "app/contacts.py"
+      - "app/companies.py"
+      - "app/pipeline_stages.py"
+      - "app/acquisition_pipeline.py"
+      - "tests/pg_contract/**"
+      - "pytest.ini"
+      - "requirements.txt"
+      - ".github/workflows/pg-contract.yml"
+  pull_request:
+    paths:
+      - "app/migrations/**"
+      - "app/repositories/**"
+      - "app/crm_service.py"
+      - "app/crm_uow.py"
+      - "app/brief_conversion.py"
+      - "app/brief_conversion_lock.py"
+      - "app/db.py"
+      - "app/audit_service.py"
+      - "app/contacts.py"
+      - "app/companies.py"
+      - "app/pipeline_stages.py"
+      - "app/acquisition_pipeline.py"
+      - "tests/pg_contract/**"
+      - "pytest.ini"
+      - "requirements.txt"
+      - ".github/workflows/pg-contract.yml"
+
+jobs:
+  contract:
+    name: PostgreSQL CRM contract suite
+    # Meta commits from screenshot/health recorders never touch the paths above,
+    # but guard anyway so a rare match cannot re-enter CI.
+    if: >-
+      github.event_name != 'push' ||
+      (
+        !startsWith(github.event.head_commit.message, 'review: record') &&
+        !startsWith(github.event.head_commit.message, 'deploy: record') &&
+        !startsWith(github.event.head_commit.message, 'deploy: freeze')
+      )
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: agent_web_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d agent_web_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://test:test@127.0.0.1:5432/agent_web_test
+      # Fail closed if the database URL is ever missing so the contract suite can
+      # never silently skip in CI.
+      REQUIRE_TEST_DATABASE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run PostgreSQL CRM contract suite
+        # -ra surfaces skip/xfail reasons; --tb=short keeps the failing
+        # migration/query and the raw PostgreSQL error easy to read in logs.
+        run: pytest -q -m contract -ra --tb=short -p no:cacheprovider

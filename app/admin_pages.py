@@ -14,6 +14,98 @@ import json
 from app.brief_service import BriefListFilters
 from app.config import Settings
 from app.pipeline_stages import pipeline_stage_label
+from app import audit_service
+
+
+AUDIT_ACTION_LABELS: dict[str, str] = {
+    audit_service.ACTION_AUTH_LOGIN_SUCCESS: "Login success",
+    audit_service.ACTION_AUTH_LOGIN_FAILURE: "Login failure",
+    audit_service.ACTION_AUTH_LOGOUT: "Logout",
+    audit_service.ACTION_IMPORT_BATCH: "Import batch",
+    audit_service.ACTION_IMPORT_BATCH_ROLLBACK: "Import rollback",
+    audit_service.ACTION_ENTITY_DELETE: "Entity delete",
+    audit_service.ACTION_COMPANY_CREATE: "Company created",
+    audit_service.ACTION_COMPANY_UPDATE: "Company update",
+    audit_service.ACTION_COMPANY_ARCHIVE: "Company archived",
+    audit_service.ACTION_COMPANY_RESTORE: "Company restored",
+    audit_service.ACTION_CONTACT_CREATE: "Contact created",
+    audit_service.ACTION_CONTACT_UPDATE: "Contact update",
+    audit_service.ACTION_CONTACT_ARCHIVE: "Contact archived",
+    audit_service.ACTION_PIPELINE_UPDATE: "Pipeline update",
+    audit_service.ACTION_SCORING_RULE_UPDATE: "Scoring rule update",
+    audit_service.ACTION_ANALYTICS_CONFIG_UPDATE: "Analytics config update",
+    audit_service.ACTION_EXPORT_REQUEST: "Export request",
+    audit_service.ACTION_BRIEF_CONVERT: "Brief convert",
+    audit_service.ACTION_CONTACT_RESTORE: "Contact restore",
+    audit_service.ACTION_RESEARCH_RECORD_CREATE: "Research evidence added",
+    audit_service.ACTION_PIPELINE_ACTIVITY_CREATE: "Pipeline activity logged",
+}
+
+
+def _format_audit_action(action: str) -> str:
+    label = AUDIT_ACTION_LABELS.get(action, action.replace(".", " ").title())
+    return (
+        f'<span class="audit-action-label">{html.escape(label)}</span> '
+        f'<code class="audit-action-code">{html.escape(action)}</code>'
+    )
+
+
+def _format_bounded_audit_summary(action: str, summary: Any) -> str:
+    """Render escaped, bounded summaries for known audit event types."""
+    if summary is None:
+        return '<span class="audit-muted">—</span>'
+    if not isinstance(summary, dict):
+        return _format_json_blob(summary)
+    if action == audit_service.ACTION_RESEARCH_RECORD_CREATE:
+        parts = [
+            f"type={html.escape(str(summary.get('record_type', '')))}",
+            f"company={html.escape(str(summary.get('company_id', '')))}",
+        ]
+        if summary.get("contact_id"):
+            parts.append(f"contact={html.escape(str(summary['contact_id']))}")
+        flags = [
+            name.replace("has_", "")
+            for name, present in summary.items()
+            if name.startswith("has_") and present
+        ]
+        if flags:
+            parts.append(f"fields={html.escape(', '.join(flags))}")
+        return f'<code class="audit-json">{", ".join(parts)}</code>'
+    if action == audit_service.ACTION_PIPELINE_ACTIVITY_CREATE:
+        parts = [
+            f"type={html.escape(str(summary.get('activity_type', '')))}",
+            f"company={html.escape(str(summary.get('company_id', '')))}",
+        ]
+        if summary.get("contact_id"):
+            parts.append(f"contact={html.escape(str(summary['contact_id']))}")
+        if summary.get("created_at"):
+            parts.append(f"at={html.escape(str(summary['created_at']))}")
+        return f'<code class="audit-json">{", ".join(parts)}</code>'
+    if action in (
+        audit_service.ACTION_COMPANY_ARCHIVE,
+        audit_service.ACTION_COMPANY_RESTORE,
+        audit_service.ACTION_CONTACT_ARCHIVE,
+        audit_service.ACTION_CONTACT_RESTORE,
+    ):
+        label = "name" if action.startswith("company.") else "full_name"
+        parts = [f"{label}={html.escape(str(summary.get(label, '')))}"]
+        if summary.get("archived_at") is not None:
+            parts.append(f"archived_at={html.escape(str(summary['archived_at']))}")
+        else:
+            parts.append("archived_at=—")
+        return f'<code class="audit-json">{", ".join(parts)}</code>'
+    if action in (
+        audit_service.ACTION_COMPANY_CREATE,
+        audit_service.ACTION_CONTACT_CREATE,
+    ):
+        label = "name" if action == audit_service.ACTION_COMPANY_CREATE else "full_name"
+        parts = [f"{label}={html.escape(str(summary.get(label, '')))}"]
+        if summary.get("domain"):
+            parts.append(f"domain={html.escape(str(summary['domain']))}")
+        if summary.get("company_id"):
+            parts.append(f"company={html.escape(str(summary['company_id']))}")
+        return f'<code class="audit-json">{", ".join(parts)}</code>'
+    return _format_json_blob(summary)
 
 
 def render_admin_login_page(
@@ -65,7 +157,7 @@ def render_admin_login_page(
       <section class="block admin-page" aria-labelledby="admin-login-title">
         <h1 class="page-title" id="admin-login-title">Admin sign in</h1>
         <p class="admin-lede">Operator access only. No public registration.</p>
-        <form class="admin-form" method="post" action="/admin/login">
+        <form class="admin-form admin-form--compact" method="post" action="/admin/login">
           <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}" />
           {next_field}
           <div class="field">
@@ -193,6 +285,50 @@ def _format_amount(cents: int) -> str:
     return f"${cents / 100:.0f}"
 
 
+def _format_currency_upper(currency: str | None) -> str:
+    return (currency or "usd").upper()
+
+
+def _brief_paid_amount_cents(brief: dict[str, Any], *, list_price_cents: int) -> int:
+    paid_amount = brief.get("payment_amount_cents")
+    if paid_amount is not None:
+        return int(paid_amount)
+    return list_price_cents
+
+
+def _brief_payment_summary_lines(
+    brief: dict[str, Any],
+    *,
+    list_price_cents: int,
+    detailed: bool = False,
+) -> list[str]:
+    """Render paid brief amounts; legacy rows without payment columns use list price."""
+    subtotal = brief.get("payment_subtotal_cents")
+    discount = brief.get("payment_discount_cents")
+    amount = brief.get("payment_amount_cents")
+    currency = _format_currency_upper(brief.get("payment_currency"))
+
+    if amount is None and subtotal is None:
+        return [_format_amount(list_price_cents)]
+
+    final_cents = int(amount) if amount is not None else list_price_cents
+    if not detailed:
+        if discount and subtotal is not None:
+            return [
+                f"{_format_amount(int(subtotal))} − {_format_amount(int(discount))} "
+                f"= {_format_amount(final_cents)} {currency}"
+            ]
+        return [_format_amount(final_cents)]
+
+    lines: list[str] = []
+    if subtotal is not None:
+        lines.append(f"Subtotal: {_format_amount(int(subtotal))} {currency}")
+    if discount:
+        lines.append(f"Discount: −{_format_amount(int(discount))} {currency}")
+    lines.append(f"Total: {_format_amount(final_cents)} {currency}")
+    return lines
+
+
 def _format_utm(source: str | None, campaign: str | None) -> str:
     parts: list[str] = []
     if source:
@@ -250,7 +386,10 @@ def render_admin_briefs_page(
         payment_cell = f'<span class="admin-status admin-status-{status_class}">{html.escape(status_label)}</span>'
         paid_at = brief.get("paid_at")
         if status == "paid":
-            paid_parts = [_format_amount(price_cents)]
+            paid_parts = _brief_payment_summary_lines(
+                brief,
+                list_price_cents=price_cents,
+            )
             if paid_at:
                 paid_parts.append(_format_timestamp(paid_at))
             payment_cell = "<br>".join(paid_parts)
@@ -412,24 +551,32 @@ def _format_stripe_reference(value: str | None) -> str:
     return f'<code class="brief-stripe-ref">{html.escape(str(value))}</code>'
 
 
-def _brief_stripe_references(brief: dict[str, Any]) -> tuple[str, str] | None:
+def _brief_stripe_references(brief: dict[str, Any]) -> tuple[str, str, str, str] | None:
     """Return Stripe reference rows when they help operators reconcile payment state."""
     status = str(brief.get("status", ""))
     session_id = brief.get("stripe_session_id")
     intent_id = brief.get("stripe_payment_intent_id")
-    if status == "paid" and (session_id or intent_id):
+    promotion_code_id = brief.get("stripe_promotion_code_id")
+    coupon_id = brief.get("stripe_coupon_id")
+    if status == "paid" and (session_id or intent_id or promotion_code_id or coupon_id):
         return (
             _format_stripe_reference(session_id),
             _format_stripe_reference(intent_id),
+            _format_stripe_reference(promotion_code_id),
+            _format_stripe_reference(coupon_id),
         )
     if status == "pending_payment" and session_id:
         return (
             _format_stripe_reference(session_id),
             '<span class="audit-muted">—</span>',
+            '<span class="audit-muted">—</span>',
+            '<span class="audit-muted">—</span>',
         )
     if status == "abandoned" and session_id:
         return (
             _format_stripe_reference(session_id),
+            '<span class="audit-muted">—</span>',
+            '<span class="audit-muted">—</span>',
             '<span class="audit-muted">—</span>',
         )
     return None
@@ -527,7 +674,14 @@ def render_admin_brief_detail_page(
     )
     payment_lines = [status_html]
     if status == "paid":
-        payment_lines.append(html.escape(_format_amount(price_cents)))
+        payment_lines.extend(
+            html.escape(line)
+            for line in _brief_payment_summary_lines(
+                brief,
+                list_price_cents=price_cents,
+                detailed=True,
+            )
+        )
         paid_at = brief.get("paid_at")
         if paid_at:
             payment_lines.append(_format_timestamp(paid_at))
@@ -536,7 +690,7 @@ def render_admin_brief_detail_page(
     stripe_refs = _brief_stripe_references(brief)
     stripe_section = ""
     if stripe_refs is not None:
-        session_cell, intent_cell = stripe_refs
+        session_cell, intent_cell, promotion_cell, coupon_cell = stripe_refs
         stripe_section = f"""
           <section class="brief-detail-section" aria-labelledby="brief-stripe-title">
             <h2 class="brief-detail-heading" id="brief-stripe-title">Stripe references</h2>
@@ -549,6 +703,14 @@ def render_admin_brief_detail_page(
               <div class="brief-detail-row">
                 <dt>Payment intent</dt>
                 <dd>{intent_cell}</dd>
+              </div>
+              <div class="brief-detail-row">
+                <dt>Promotion code</dt>
+                <dd>{promotion_cell}</dd>
+              </div>
+              <div class="brief-detail-row">
+                <dt>Coupon</dt>
+                <dd>{coupon_cell}</dd>
               </div>
             </dl>
           </section>"""
@@ -690,6 +852,53 @@ def _format_proposed_value(value: Any) -> str:
     return html.escape(str(value))
 
 
+def _render_archived_contact_panel(*, archived: dict[str, Any]) -> str:
+    contact_id = str(archived.get("id", ""))
+    edit_href = html.escape(f"/admin/contacts/{contact_id}/edit", quote=True)
+    full_name = html.escape(str(archived.get("full_name") or "—"))
+    email = html.escape(str(archived.get("email") or "—"))
+    company_name = archived.get("company_name")
+    company_row = ""
+    if company_name:
+        company_row = (
+            f'<div class="brief-detail-row">'
+            f"<dt>Company</dt>"
+            f"<dd>{html.escape(str(company_name))}</dd>"
+            f"</div>"
+        )
+    archived_at = archived.get("archived_at")
+    archived_display = (
+        _format_timestamp(archived_at)
+        if archived_at
+        else '<span class="audit-muted">—</span>'
+    )
+    return f"""              <section class="brief-convert-archived" aria-labelledby="brief-convert-archived-title">
+                <h3 class="brief-convert-archived-title" id="brief-convert-archived-title">Archived contact match</h3>
+                <p class="brief-convert-archived-note">
+                  This email matches an archived contact. Archived records are never linked
+                  or restored automatically during conversion — review or restore separately.
+                </p>
+                <dl class="brief-detail-dl brief-convert-archived-dl">
+                  <div class="brief-detail-row">
+                    <dt>Name</dt>
+                    <dd>{full_name}</dd>
+                  </div>
+                  <div class="brief-detail-row">
+                    <dt>Email</dt>
+                    <dd>{email}</dd>
+                  </div>
+                  {company_row}
+                  <div class="brief-detail-row">
+                    <dt>Archived</dt>
+                    <dd>{archived_display}</dd>
+                  </div>
+                </dl>
+                <p>
+                  <a class="audit-pager-link" href="{edit_href}">Review or restore archived contact</a>
+                </p>
+              </section>"""
+
+
 def _render_match_radios(
     *,
     choice_name: str,
@@ -731,6 +940,7 @@ def render_admin_brief_convert_page(
     proposal = preview.get("proposal") or {}
     company_matches: list[dict[str, Any]] = list(preview.get("company_matches") or [])
     contact_matches: list[dict[str, Any]] = list(preview.get("contact_matches") or [])
+    archived_contact_match = preview.get("archived_contact_match")
 
     error_html = ""
     if error_message:
@@ -746,9 +956,25 @@ def render_admin_brief_convert_page(
         choice_name="contact_choice",
         matches=contact_matches,
     )
+    archived_panel_html = ""
+    archived_ack_html = ""
+    if archived_contact_match and not contact_matches:
+        archived_panel_html = _render_archived_contact_panel(
+            archived=archived_contact_match,
+        )
+        archived_ack_html = """
+              <label class="admin-checkbox brief-convert-archived-ack">
+                <input type="checkbox" name="acknowledge_archived_identity" value="1" />
+                Create a new active contact — the archived identity will remain separate
+              </label>"""
 
     default_company_choice = "existing" if company_matches else "new"
-    default_contact_choice = "existing" if contact_matches else "new"
+    if contact_matches:
+        default_contact_choice = "existing"
+    elif archived_contact_match:
+        default_contact_choice = ""
+    else:
+        default_contact_choice = "new"
     company_new_checked = " checked" if default_company_choice == "new" else ""
     contact_new_checked = " checked" if default_contact_choice == "new" else ""
 
@@ -797,7 +1023,7 @@ def render_admin_brief_convert_page(
               </div>
             </dl>
           </section>
-          <form class="admin-form brief-convert-form" method="post" action="/admin/briefs/{html.escape(str(brief_id), quote=True)}/convert">
+          <form class="admin-form admin-form--editor brief-convert-form" method="post" action="/admin/briefs/{html.escape(str(brief_id), quote=True)}/convert">
             <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}" />
             <fieldset class="brief-convert-fieldset">
               <legend>Company</legend>
@@ -812,6 +1038,8 @@ def render_admin_brief_convert_page(
                 <input type="radio" name="contact_choice" value="new"{contact_new_checked} /> Create new contact
               </label>
               {contact_match_html}
+              {archived_panel_html}
+              {archived_ack_html}
             </fieldset>
             <button class="cta admin-submit" type="submit">Confirm and add to pipeline</button>
             <p class="admin-note"><a href="{detail_href}">Cancel</a></p>
@@ -834,6 +1062,7 @@ def render_admin_audit_page(
     per_page: int,
     total: int,
     csrf_token: str = "",
+    db_error: bool = False,
 ) -> str:
     rows: list[str] = []
     for event in events:
@@ -846,11 +1075,11 @@ def render_admin_audit_page(
             "<tr>"
             f"<td>{_format_timestamp(event.get('created_at', ''))}</td>"
             f"<td>{html.escape(str(event.get('actor', '')))}</td>"
-            f"<td><code>{html.escape(str(event.get('action', '')))}</code></td>"
+            f"<td>{_format_audit_action(str(event.get('action', '')))}</td>"
             f"<td>{entity_cell}</td>"
             f"<td><code>{html.escape(str(event.get('correlation_id', '')))}</code></td>"
-            f"<td>{_format_json_blob(event.get('summary_before'))}</td>"
-            f"<td>{_format_json_blob(event.get('summary_after'))}</td>"
+            f"<td>{_format_bounded_audit_summary(str(event.get('action', '')), event.get('summary_before'))}</td>"
+            f"<td>{_format_bounded_audit_summary(str(event.get('action', '')), event.get('summary_after'))}</td>"
             "</tr>"
         )
 
@@ -869,6 +1098,14 @@ def render_admin_audit_page(
     if page < total_pages:
         next_link = f'<a class="audit-pager-link" href="/admin/audit?page={page + 1}">Next</a>'
 
+    error_banner = ""
+    if db_error:
+        error_banner = (
+            '          <p class="admin-error" role="alert">'
+            "Audit log temporarily unavailable. Try again shortly."
+            "</p>\n"
+        )
+
     main = f"""        <section class="admin-panel" aria-labelledby="admin-audit-title">
           <p class="admin-eyebrow">Audit trail</p>
           <h1 class="admin-title" id="admin-audit-title">Immutable audit log</h1>
@@ -876,7 +1113,7 @@ def render_admin_audit_page(
             Append-only record of security-sensitive admin mutations. Secrets and raw
             message bodies are never stored.
           </p>
-          <div class="audit-meta">
+{error_banner}          <div class="audit-meta">
             <span>{total} events</span>
             <span>Page {page} of {total_pages}</span>
           </div>

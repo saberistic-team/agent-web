@@ -191,6 +191,8 @@
             utm = {};
           }
 
+          const analyticsSessionId = sessionStorage.getItem("saberistic_analytics_sid");
+
           const payload = {
             website: form.website.value.trim(),
             brief: form.brief.value.trim(),
@@ -201,6 +203,9 @@
             utm_content: utm.utm_content || null,
             utm_term: utm.utm_term || null,
           };
+          if (analyticsSessionId) {
+            payload.analytics_session_id = analyticsSessionId;
+          }
 
           const submitBtn = form.querySelector(".brief-submit");
           submitBtn.disabled = true;
