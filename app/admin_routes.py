@@ -173,6 +173,7 @@ def _contact_form_payload(**values: object) -> dict[str, object]:
         "relationship_strength",
         "notes",
         "buying_roles",
+        "crm_context_tags",
     }
     payload: dict[str, object] = {
         key: value.strip() if isinstance(value, str) else value
@@ -200,6 +201,11 @@ def _contact_form_payload(**values: object) -> dict[str, object]:
         payload["buying_roles"] = []
     elif isinstance(roles, str):
         payload["buying_roles"] = [roles]
+    tags = payload.get("crm_context_tags")
+    if tags is None:
+        payload["crm_context_tags"] = []
+    elif isinstance(tags, str):
+        payload["crm_context_tags"] = [tags]
     return payload
 
 
@@ -758,7 +764,9 @@ def admin_company_research(
         company = _crm.get_company(conn, company_id)
         if company is None:
             raise HTTPException(status_code=404, detail="Company not found")
-        contacts = _crm.list_contacts_for_company(conn, company_id)
+        contacts = _crm.list_contacts_for_company(
+            conn, company_id, include_archived=True
+        )
         records = _crm.list_research_for_company(conn, company_id)
     return HTMLResponse(
         admin_research_pages.render_admin_company_research_page(
@@ -1049,6 +1057,7 @@ def admin_contact_create(
     relationship_strength: str | None = Form(default=None),
     notes: str | None = Form(default=None),
     buying_roles: list[str] = Form(default=[]),
+    crm_context_tags: list[str] = Form(default=[]),
 ) -> Response:
     session = require_admin_session(request)
     _verify_session_csrf(request, session, csrf_token)
@@ -1132,6 +1141,7 @@ def admin_contact_update(
     relationship_strength: str | None = Form(default=None),
     notes: str | None = Form(default=None),
     buying_roles: list[str] = Form(default=[]),
+    crm_context_tags: list[str] = Form(default=[]),
 ) -> Response:
     session = require_admin_session(request)
     _verify_session_csrf(request, session, csrf_token)
@@ -1947,6 +1957,7 @@ async def admin_linkedin_import_commit(request: Request) -> JSONResponse:
     from app.admin_linkedin_commit import (
         LINKEDIN_COMMIT_MAX_BODY_BYTES,
         LINKEDIN_COMMIT_MAX_CONNECTIONS,
+        LINKEDIN_COMMIT_MAX_MESSAGE_METADATA,
     )
 
     verify_session_csrf_header_or_reject(
@@ -1966,6 +1977,15 @@ async def admin_linkedin_import_commit(request: Request) -> JSONResponse:
         raise HTTPException(status_code=400, detail="connections must be a list")
     if len(connections) > LINKEDIN_COMMIT_MAX_CONNECTIONS:
         raise HTTPException(status_code=400, detail="connections list too large")
+    message_metadata = payload.get("message_metadata")
+    if message_metadata is not None:
+        if not isinstance(message_metadata, list):
+            raise HTTPException(status_code=400, detail="message_metadata must be a list")
+        if len(message_metadata) > LINKEDIN_COMMIT_MAX_MESSAGE_METADATA:
+            raise HTTPException(status_code=400, detail="message_metadata list too large")
+    owner_name = payload.get("owner_name")
+    if owner_name is not None and not isinstance(owner_name, str):
+        raise HTTPException(status_code=400, detail="owner_name must be a string")
     with db.db_connection(settings.database_url) as conn:
         result = _crm.commit_linkedin_import(
             conn,
@@ -1973,6 +1993,8 @@ async def admin_linkedin_import_commit(request: Request) -> JSONResponse:
             connections=connections,
             export_date=payload.get("export_date"),
             checksum=payload.get("checksum"),
+            message_metadata=message_metadata,
+            owner_name=owner_name.strip() if isinstance(owner_name, str) and owner_name.strip() else None,
         )
     batch = result["batch"]
     return JSONResponse(
@@ -2044,9 +2066,9 @@ for _link in ADMIN_NAV_LINKS:
         "/admin/companies",
         "/admin/contacts",
         "/admin/imports",
-        "/admin/discovery",
         "/admin/pipeline",
         "/admin/signals",
+        "/admin/discovery",
     }:
         continue
     _section = _link["href"].removeprefix("/admin/")

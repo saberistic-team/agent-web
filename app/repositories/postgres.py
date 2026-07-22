@@ -268,6 +268,8 @@ class PostgresContactRepository:
         notes: str | None = None,
         buying_roles: list[str] | None = None,
         field_sources: dict[str, Any] | None = None,
+        relationship_metrics: dict[str, Any] | None = None,
+        crm_context_tags: list[str] | None = None,
     ) -> dict[str, Any]:
         with conn.cursor() as cur:
             cur.execute(
@@ -275,9 +277,10 @@ class PostgresContactRepository:
                 INSERT INTO contacts (
                     full_name, email, title, profile_url, email_permission,
                     company_id, last_interaction_at, relationship_strength,
-                    notes, buying_roles, field_sources
+                    notes, buying_roles, field_sources, relationship_metrics,
+                    crm_context_tags
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s)
                 RETURNING *
                 """,
                 (
@@ -292,6 +295,8 @@ class PostgresContactRepository:
                     notes,
                     buying_roles or [],
                     json.dumps(field_sources or {}),
+                    json.dumps(relationship_metrics or {}),
+                    crm_context_tags or [],
                 ),
             )
             row = cur.fetchone()
@@ -523,6 +528,8 @@ class PostgresContactRepository:
         notes: MaybeUnset[str] = UNSET,
         buying_roles: MaybeUnset[list[str]] = UNSET,
         field_sources: MaybeUnset[dict[str, Any]] = UNSET,
+        relationship_metrics: MaybeUnset[dict[str, Any]] = UNSET,
+        crm_context_tags: MaybeUnset[list[str]] = UNSET,
     ) -> dict[str, Any] | None:
         """Apply a partial patch.
 
@@ -551,6 +558,12 @@ class PostgresContactRepository:
         if field_sources is not UNSET:
             fields.append("field_sources = %s::jsonb")
             values.append(json.dumps(field_sources))
+        if relationship_metrics is not UNSET:
+            fields.append("relationship_metrics = %s::jsonb")
+            values.append(json.dumps(relationship_metrics))
+        if crm_context_tags is not UNSET:
+            fields.append("crm_context_tags = %s")
+            values.append(crm_context_tags)
         if not fields:
             return self.get_by_id(conn, contact_id)
 

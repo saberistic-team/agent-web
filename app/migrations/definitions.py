@@ -799,6 +799,16 @@ ON CONFLICT (version_id, id) DO NOTHING;
     ),
     Migration(
         version="022",
+        name="contact_relationship_metrics",
+        up_sql="""
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS relationship_metrics JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS crm_context_tags TEXT[] NOT NULL DEFAULT '{}';
+CREATE INDEX IF NOT EXISTS idx_contacts_crm_context_tags
+    ON contacts USING GIN (crm_context_tags);
+""",
+    ),
+    Migration(
+        version="023",
         name="discovery_runs",
         up_sql="""
 CREATE TABLE IF NOT EXISTS discovery_runs (

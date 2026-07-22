@@ -735,4 +735,3 @@ def test_http_fetcher_retries_retryable_status(monkeypatch: pytest.MonkeyPatch) 
     result = fetcher.fetch("https://api.example.com/data", skip_dns_validation=True)
     assert result.status_code == 200
     assert calls["count"] == 2
-
