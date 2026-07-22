@@ -27,6 +27,8 @@ from app.qualification_targets import (
     tier_for_score,
 )
 
+pytestmark = [pytest.mark.unit, pytest.mark.integration]
+
 
 COMPANY_ID = UUID("11111111-1111-1111-1111-111111111111")
 

@@ -258,6 +258,7 @@ def test_research_record_repository_create_and_list() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_qualification_repository_tier_history_and_working_lists() -> None:
     repo = PostgresQualificationRepository()
     list_id = UUID("77777777-7777-7777-7777-777777777777")

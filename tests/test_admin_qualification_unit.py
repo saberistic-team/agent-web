@@ -9,6 +9,7 @@ import pytest
 
 from app.admin_qualification_pages import render_target_detail_page, render_targets_list_page
 
+pytestmark = [pytest.mark.unit, pytest.mark.integration]
 
 COMPANY_ID = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa01")
 

@@ -17,7 +17,7 @@ from app.admin_preview import (
 from app.admin_preview_context import preview_reference_time
 from app.admin_research_pages import render_admin_contact_research_page
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.integration]
 
 
 def test_computed_metrics_panel_labels_source() -> None:

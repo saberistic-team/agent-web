@@ -203,6 +203,7 @@ def test_target_detail_404_for_missing_company(authenticated_admin: dict[str, An
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_save_working_list_requires_csrf(authenticated_admin: dict[str, Any]) -> None:
     response = client.post(
         "/admin/targets/working-list",
@@ -271,6 +272,7 @@ def test_save_working_list_preview_mode_rejects_unsafe_method(
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_targets_list_handles_database_errors(authenticated_admin: dict[str, Any]) -> None:
     crm = MagicMock()
     crm.list_qualification_targets.side_effect = RuntimeError("db down")
@@ -282,6 +284,7 @@ def test_targets_list_handles_database_errors(authenticated_admin: dict[str, Any
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_target_detail_503_without_database(
     authenticated_admin: dict[str, Any],
     monkeypatch: pytest.MonkeyPatch,
@@ -296,6 +299,7 @@ def test_target_detail_503_without_database(
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_save_working_list_invalid_payload_redirects(authenticated_admin: dict[str, Any]) -> None:
     from app.qualification_targets import MAX_WORKING_LIST_ITEMS
 
@@ -314,6 +318,7 @@ def test_save_working_list_invalid_payload_redirects(authenticated_admin: dict[s
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_save_working_list_503_without_database(
     authenticated_admin: dict[str, Any],
     monkeypatch: pytest.MonkeyPatch,
