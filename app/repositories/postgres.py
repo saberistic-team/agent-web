@@ -267,6 +267,9 @@ class PostgresContactRepository:
         notes: str | None = None,
         buying_roles: list[str] | None = None,
         field_sources: dict[str, Any] | None = None,
+        linkedin_metrics: dict[str, Any] | None = None,
+        former_colleague: bool = False,
+        warm_introducer: bool = False,
     ) -> dict[str, Any]:
         with conn.cursor() as cur:
             cur.execute(
@@ -274,9 +277,10 @@ class PostgresContactRepository:
                 INSERT INTO contacts (
                     full_name, email, title, profile_url, email_permission,
                     company_id, last_interaction_at, relationship_strength,
-                    notes, buying_roles, field_sources
+                    notes, buying_roles, field_sources, linkedin_metrics,
+                    former_colleague, warm_introducer
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s)
                 RETURNING *
                 """,
                 (
@@ -291,6 +295,9 @@ class PostgresContactRepository:
                     notes,
                     buying_roles or [],
                     json.dumps(field_sources or {}),
+                    json.dumps(linkedin_metrics or {}),
+                    former_colleague,
+                    warm_introducer,
                 ),
             )
             row = cur.fetchone()
@@ -522,6 +529,9 @@ class PostgresContactRepository:
         notes: MaybeUnset[str] = UNSET,
         buying_roles: MaybeUnset[list[str]] = UNSET,
         field_sources: MaybeUnset[dict[str, Any]] = UNSET,
+        linkedin_metrics: MaybeUnset[dict[str, Any]] = UNSET,
+        former_colleague: MaybeUnset[bool] = UNSET,
+        warm_introducer: MaybeUnset[bool] = UNSET,
     ) -> dict[str, Any] | None:
         """Apply a partial patch.
 
@@ -542,6 +552,8 @@ class PostgresContactRepository:
             ("relationship_strength", relationship_strength),
             ("notes", notes),
             ("buying_roles", buying_roles),
+            ("former_colleague", former_colleague),
+            ("warm_introducer", warm_introducer),
         ):
             if value is UNSET:
                 continue
@@ -550,6 +562,9 @@ class PostgresContactRepository:
         if field_sources is not UNSET:
             fields.append("field_sources = %s::jsonb")
             values.append(json.dumps(field_sources))
+        if linkedin_metrics is not UNSET:
+            fields.append("linkedin_metrics = %s::jsonb")
+            values.append(json.dumps(linkedin_metrics))
         if not fields:
             return self.get_by_id(conn, contact_id)
 

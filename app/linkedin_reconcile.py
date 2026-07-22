@@ -27,7 +27,9 @@ LINKEDIN_IMPORTABLE_FIELDS = (
     "company_id",
     "last_interaction_at",
 )
-USER_PROTECTED_FIELDS = frozenset({"notes", "relationship_strength", "buying_roles"})
+USER_PROTECTED_FIELDS = frozenset(
+    {"notes", "relationship_strength", "buying_roles", "former_colleague", "warm_introducer"}
+)
 
 
 @dataclass(frozen=True)

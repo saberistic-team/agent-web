@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from typing import Any
 from urllib.parse import quote
 from uuid import UUID
 
@@ -173,6 +174,8 @@ def _contact_form_payload(**values: object) -> dict[str, object]:
         "relationship_strength",
         "notes",
         "buying_roles",
+        "former_colleague",
+        "warm_introducer",
     }
     payload: dict[str, object] = {
         key: value.strip() if isinstance(value, str) else value
@@ -200,6 +203,8 @@ def _contact_form_payload(**values: object) -> dict[str, object]:
         payload["buying_roles"] = []
     elif isinstance(roles, str):
         payload["buying_roles"] = [roles]
+    payload["former_colleague"] = str(payload.get("former_colleague") or "") in {"1", "true", "on"}
+    payload["warm_introducer"] = str(payload.get("warm_introducer") or "") in {"1", "true", "on"}
     return payload
 
 
@@ -1049,6 +1054,8 @@ def admin_contact_create(
     relationship_strength: str | None = Form(default=None),
     notes: str | None = Form(default=None),
     buying_roles: list[str] = Form(default=[]),
+    former_colleague: str | None = Form(default=None),
+    warm_introducer: str | None = Form(default=None),
 ) -> Response:
     session = require_admin_session(request)
     _verify_session_csrf(request, session, csrf_token)
@@ -1132,6 +1139,8 @@ def admin_contact_update(
     relationship_strength: str | None = Form(default=None),
     notes: str | None = Form(default=None),
     buying_roles: list[str] = Form(default=[]),
+    former_colleague: str | None = Form(default=None),
+    warm_introducer: str | None = Form(default=None),
 ) -> Response:
     session = require_admin_session(request)
     _verify_session_csrf(request, session, csrf_token)
@@ -1947,7 +1956,9 @@ async def admin_linkedin_import_commit(request: Request) -> JSONResponse:
     from app.admin_linkedin_commit import (
         LINKEDIN_COMMIT_MAX_BODY_BYTES,
         LINKEDIN_COMMIT_MAX_CONNECTIONS,
+        LINKEDIN_COMMIT_MAX_MESSAGE_ROWS,
     )
+    from app.linkedin_relationship_metrics import validate_message_rows_for_commit
 
     verify_session_csrf_header_or_reject(
         request,
@@ -1966,6 +1977,20 @@ async def admin_linkedin_import_commit(request: Request) -> JSONResponse:
         raise HTTPException(status_code=400, detail="connections must be a list")
     if len(connections) > LINKEDIN_COMMIT_MAX_CONNECTIONS:
         raise HTTPException(status_code=400, detail="connections list too large")
+    raw_messages = payload.get("message_rows")
+    message_rows: list[dict[str, Any]] = []
+    if raw_messages is not None:
+        if not isinstance(raw_messages, list):
+            raise HTTPException(status_code=400, detail="message_rows must be a list")
+        if len(raw_messages) > LINKEDIN_COMMIT_MAX_MESSAGE_ROWS:
+            raise HTTPException(status_code=400, detail="message_rows list too large")
+        try:
+            message_rows = validate_message_rows_for_commit(raw_messages)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    owner_name = payload.get("owner_name")
+    if owner_name is not None and not isinstance(owner_name, str):
+        raise HTTPException(status_code=400, detail="owner_name must be a string")
     with db.db_connection(settings.database_url) as conn:
         result = _crm.commit_linkedin_import(
             conn,
@@ -1973,6 +1998,8 @@ async def admin_linkedin_import_commit(request: Request) -> JSONResponse:
             connections=connections,
             export_date=payload.get("export_date"),
             checksum=payload.get("checksum"),
+            message_rows=message_rows,
+            owner_name=owner_name,
         )
     batch = result["batch"]
     return JSONResponse(

@@ -347,3 +347,76 @@ def test_commit_skips_when_match_contact_missing() -> None:
             connections=[{"Email Address": "ada@example.com", "Position": "Mathematician"}],
         )
     assert result["summary_counts"]["skipped"] == 1
+
+
+@pytest.mark.unit
+def test_commit_applies_message_metadata_to_existing_contacts() -> None:
+    import_batches = MagicMock()
+    contacts = MagicMock()
+    import_batches.get_committed_by_checksum.return_value = None
+    import_batches.create.return_value = _batch_row()
+    import_batches.update_status.return_value = _batch_row(
+        summary_counts={"inserted": 0, "updated": 0, "unchanged": 1, "skipped": 0, "conflicted": 0}
+    )
+    import_batches.create_row.side_effect = lambda *args, **kwargs: {"id": "row", **kwargs}
+    contacts.find_by_profile_url.return_value = [
+        {
+            "id": CONTACT_ID,
+            "full_name": "Ada Lovelace",
+            "profile_url": "https://linkedin.com/in/ada-lovelace",
+            "former_colleague": False,
+            "warm_introducer": False,
+            "linkedin_metrics": {},
+            "archived_at": None,
+        }
+    ]
+    contacts.get_active_by_email.return_value = None
+    companies = MagicMock()
+    companies.find_by_exact_name.return_value = []
+
+    service, conn = _service(
+        import_batches=import_batches,
+        contacts=contacts,
+        companies=companies,
+    )
+
+    with pytest.MonkeyPatch.context() as patcher:
+        patcher.setattr("app.crm_service.audit_service.record_import_batch", MagicMock())
+        patcher.setattr(
+            "app.crm_service.preview_connection_row",
+            lambda **kwargs: __import__(
+                "app.linkedin_reconcile", fromlist=["ReconcilePreviewRow"]
+            ).ReconcilePreviewRow(
+                row_index=kwargs["row_index"],
+                outcome="unchanged",
+                identity={"profile_url": "https://linkedin.com/in/ada-lovelace"},
+                match_tier="profile_url",
+                contact_id=str(CONTACT_ID),
+            ),
+        )
+        result = service.commit_linkedin_import(
+            conn,
+            actor_context=ACTOR,
+            connections=CONNECTIONS[:1],
+            message_rows=[
+                {
+                    "conversation_id": "conv-1",
+                    "from_name": "Jordan Owner",
+                    "to_name": "Ada Lovelace",
+                    "sent_at": "2024-03-01T00:00:00+00:00",
+                    "message_key": "abc",
+                }
+            ],
+            owner_name="Jordan Owner",
+        )
+
+    assert result["summary_counts"].get("metrics_updated", 0) == 1
+    linkedin_updates = [
+        call
+        for call in contacts.update.call_args_list
+        if call.kwargs.get("linkedin_metrics") is not None
+    ]
+    assert len(linkedin_updates) == 1
+    metrics = linkedin_updates[0].kwargs["linkedin_metrics"]
+    assert metrics["outbound_count"] == 1
+    assert metrics["schema_version"] == "linkedin_metrics_v1"

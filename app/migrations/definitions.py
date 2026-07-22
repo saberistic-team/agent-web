@@ -797,4 +797,13 @@ CROSS JOIN (
 ON CONFLICT (version_id, id) DO NOTHING;
 """,
     ),
+    Migration(
+        version="022",
+        name="contact_linkedin_metrics",
+        up_sql="""
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS linkedin_metrics JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS former_colleague BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS warm_introducer BOOLEAN NOT NULL DEFAULT FALSE;
+""",
+    ),
 )

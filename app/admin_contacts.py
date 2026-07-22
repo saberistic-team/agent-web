@@ -65,6 +65,10 @@ def _contact_form(
       <div class="field"><label for="email_permission">Email permission</label><select id="email_permission" name="email_permission">{_options(EMAIL_PERMISSIONS, contact.get("email_permission"), empty="Unspecified")}</select></div>
       <div class="field"><label for="company_id">Company</label><select id="company_id" name="company_id">{_company_options(companies, contact.get("company_id"))}</select></div>
       <fieldset class="field"><legend>Buying roles</legend>{_role_checkboxes(roles)}</fieldset>
+      <fieldset class="field linkedin-crm-context"><legend>CRM context</legend>
+        <label class="admin-checkbox"><input type="checkbox" name="former_colleague" value="1"{" checked" if contact.get("former_colleague") else ""} /> Former colleague</label>
+        <label class="admin-checkbox"><input type="checkbox" name="warm_introducer" value="1"{" checked" if contact.get("warm_introducer") else ""} /> Warm introducer</label>
+      </fieldset>
       <div class="field"><label for="last_interaction_at">Last interaction</label><input id="last_interaction_at" name="last_interaction_at" type="date" value="{_esc(contact.get("last_interaction_at"))}" /></div>
       <div class="field"><label for="relationship_strength">Relationship strength</label><select id="relationship_strength" name="relationship_strength">{_options(RELATIONSHIP_STRENGTHS, contact.get("relationship_strength"), empty="Unspecified")}</select></div>
       <div class="field"><label for="notes">Notes</label><textarea id="notes" name="notes" rows="5" maxlength="10000">{_esc(contact.get("notes"))}</textarea></div>

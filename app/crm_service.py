@@ -76,6 +76,12 @@ from app.linkedin_reconcile import (
     resolve_company_id,
     resolve_connection_match,
 )
+from app.linkedin_relationship_metrics import (
+    aggregate_messages_for_connections,
+    build_metrics_for_contact,
+    finalize_stored_metrics,
+    parse_stored_metrics,
+)
 from app.pipeline_stages import (
     initial_pipeline_stage_for_brief_status,
     pipeline_stage_label,
@@ -967,9 +973,21 @@ class CrmService:
                 else []
             )
             try:
-                updated = self._repos.contacts.update(
-                    conn, contact_id, **contact.model_dump(exclude_unset=True)
-                )
+                patch = contact.model_dump(exclude_unset=True)
+                existing_metrics = parse_stored_metrics(existing.get("linkedin_metrics"))
+                if existing_metrics and (
+                    "former_colleague" in patch or "warm_introducer" in patch
+                ):
+                    patch["linkedin_metrics"] = finalize_stored_metrics(
+                        existing_metrics,
+                        former_colleague=bool(
+                            patch.get("former_colleague", existing.get("former_colleague"))
+                        ),
+                        warm_introducer=bool(
+                            patch.get("warm_introducer", existing.get("warm_introducer"))
+                        ),
+                    )
+                updated = self._repos.contacts.update(conn, contact_id, **patch)
             except pg_errors.UniqueViolation as exc:
                 if not _is_contact_email_unique_violation(exc):
                     raise
@@ -1274,6 +1292,47 @@ class CrmService:
         )
         return match, company_id
 
+    def _apply_linkedin_message_metrics(
+        self,
+        conn: psycopg.Connection,
+        *,
+        connections: list[dict[str, Any]],
+        message_rows: list[dict[str, Any]],
+        owner_name: str | None = None,
+        seen_at: datetime | None = None,
+    ) -> int:
+        """Merge privacy-safe message metadata into contact linkedin_metrics."""
+        if not message_rows:
+            return 0
+        aggregates = aggregate_messages_for_connections(
+            message_rows,
+            connections,
+            owner_name=owner_name,
+        )
+        updated_count = 0
+        reference = seen_at or datetime.now(timezone.utc)
+        for profile_url, accumulator in aggregates.items():
+            matches = self._repos.contacts.find_by_profile_url(conn, profile_url)
+            if not matches:
+                continue
+            for contact in matches:
+                merged = build_metrics_for_contact(
+                    accumulator,
+                    existing=parse_stored_metrics(contact.get("linkedin_metrics")),
+                    former_colleague=bool(contact.get("former_colleague")),
+                    warm_introducer=bool(contact.get("warm_introducer")),
+                    reference=reference,
+                )
+                if merged == parse_stored_metrics(contact.get("linkedin_metrics")):
+                    continue
+                self._repos.contacts.update(
+                    conn,
+                    UUID(str(contact["id"])),
+                    linkedin_metrics=merged,
+                )
+                updated_count += 1
+        return updated_count
+
     def preview_linkedin_reconcile(
         self,
         conn: psycopg.Connection,
@@ -1350,6 +1409,8 @@ class CrmService:
         connections: list[dict[str, Any]],
         export_date: Any | None = None,
         checksum: str | None = None,
+        message_rows: list[dict[str, Any]] | None = None,
+        owner_name: str | None = None,
     ) -> dict[str, Any]:
         """Merge LinkedIn connections incrementally without deleting absent records."""
         resolved_checksum = checksum or compute_import_checksum(connections)
@@ -1590,6 +1651,25 @@ class CrmService:
                 export_date=parse_export_date(export_date),
                 summary_counts=summary,
             )
+
+            metrics_updated = 0
+            if message_rows:
+                metrics_updated = self._apply_linkedin_message_metrics(
+                    conn,
+                    connections=connections,
+                    message_rows=message_rows,
+                    owner_name=owner_name,
+                    seen_at=seen_at,
+                )
+            if metrics_updated:
+                summary = dict(summary)
+                summary["metrics_updated"] = metrics_updated
+                batch = self._repos.import_batches.update_status(
+                    conn,
+                    batch_uuid,
+                    status="committed",
+                    summary_counts=summary,
+                ) or batch
 
         return {
             "batch": batch,

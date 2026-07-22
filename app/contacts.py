@@ -132,6 +132,8 @@ class ContactCreate(BaseModel):
     relationship_strength: str | None = None
     notes: str | None = Field(default=None, max_length=10000)
     buying_roles: list[str] = Field(default_factory=list)
+    former_colleague: bool = False
+    warm_introducer: bool = False
 
     @field_validator("full_name")
     @classmethod

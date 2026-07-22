@@ -234,6 +234,15 @@ def test_contact_field_sources_migration_is_idempotent() -> None:
 
 
 @pytest.mark.unit
+def test_contact_linkedin_metrics_migration_is_idempotent() -> None:
+    migration = next(m for m in MIGRATIONS if m.name == "contact_linkedin_metrics")
+    assert migration.version == "022"
+    assert "linkedin_metrics" in migration.up_sql
+    assert "former_colleague" in migration.up_sql
+    assert "warm_introducer" in migration.up_sql
+
+
+@pytest.mark.unit
 def test_migration_rollback_strategy_is_forward_only() -> None:
     for migration in MIGRATIONS:
         assert not hasattr(migration, "down_sql")
