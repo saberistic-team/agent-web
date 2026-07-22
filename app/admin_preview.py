@@ -24,6 +24,16 @@ from app.acquisition_dashboard import (
     EvidenceRow,
     NextActionRow,
 )
+from app.acquisition_action_queue import (
+    QUEUE_CATEGORY_DUE_TODAY,
+    QUEUE_CATEGORY_OVERDUE,
+    QUEUE_CATEGORY_STALE_EVIDENCE,
+    QUEUE_CATEGORY_TIER_A,
+    QUEUE_CATEGORY_WARM_INTRO,
+    ActionQueueData,
+    ActionQueueItem,
+    PRIORITY_RANK,
+)
 from app.pipeline_stages import PIPELINE_STAGES
 from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES, TARGET_STATUSES
 from app.icp_scoring import default_icp_rules
@@ -330,6 +340,155 @@ def build_preview_acquisition_dashboard_data(
         without_next_action=_attention(pipeline_only=True),
         generated_at=now,
     )
+
+
+def build_preview_action_queue_data(
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> ActionQueueData:
+    """Randomized daily action queue for ADMIN_PREVIEW_MODE screenshots."""
+    rng = _resolve_rng(rng, "action_queue")
+    now = _resolve_now(now)
+    companies = list(COMPANY_NAMES)
+    rng.shuffle(companies)
+    stage_keys = list(PIPELINE_STAGES.keys())
+
+    items: list[ActionQueueItem] = []
+
+    items.append(
+        ActionQueueItem(
+            item_key=f"{QUEUE_CATEGORY_OVERDUE}:{_preview_uuid(rng)}",
+            priority_rank=PRIORITY_RANK[QUEUE_CATEGORY_OVERDUE],
+            category=QUEUE_CATEGORY_OVERDUE,
+            reason=f"Overdue next action for {companies[0]} — due {(now - timedelta(days=3)).strftime('%Y-%m-%d %H:%M UTC')}.",
+            company_id=_preview_uuid(rng),
+            company_name=companies[0],
+            next_action=rng.choice(BRIEF_TEXTS)[:100],
+            next_action_due_at=now - timedelta(days=3),
+            pipeline_stage=stage_keys[0],
+            pipeline_owner="alex",
+            expected_value_cents=120_000,
+        )
+    )
+
+    items.append(
+        ActionQueueItem(
+            item_key=f"{QUEUE_CATEGORY_DUE_TODAY}:{_preview_uuid(rng)}",
+            priority_rank=PRIORITY_RANK[QUEUE_CATEGORY_DUE_TODAY],
+            category=QUEUE_CATEGORY_DUE_TODAY,
+            reason=f"Next action due today for {companies[1]}.",
+            company_id=_preview_uuid(rng),
+            company_name=companies[1],
+            next_action="Follow up on intro thread",
+            next_action_due_at=now.replace(hour=17, minute=0),
+            pipeline_stage=stage_keys[1],
+            pipeline_owner="sam",
+            expected_value_cents=80_000,
+        )
+    )
+
+    items.append(
+        ActionQueueItem(
+            item_key=f"{QUEUE_CATEGORY_TIER_A}:{_preview_uuid(rng)}",
+            priority_rank=PRIORITY_RANK[QUEUE_CATEGORY_TIER_A],
+            category=QUEUE_CATEGORY_TIER_A,
+            reason=f"Newly qualified Tier A target {companies[2]} (qualified {(now - timedelta(days=2)).strftime('%Y-%m-%d')}).",
+            company_id=_preview_uuid(rng),
+            company_name=companies[2],
+            pipeline_stage="qualified",
+            pipeline_owner="alex",
+            expected_value_cents=200_000,
+            qualified_at=now - timedelta(days=2),
+        )
+    )
+
+    contact_name = f"{rng.choice(CONTACT_FIRST)} {rng.choice(CONTACT_LAST)}"
+    items.append(
+        ActionQueueItem(
+            item_key=f"{QUEUE_CATEGORY_WARM_INTRO}:{_preview_uuid(rng)}:{_preview_uuid(rng)}",
+            priority_rank=PRIORITY_RANK[QUEUE_CATEGORY_WARM_INTRO],
+            category=QUEUE_CATEGORY_WARM_INTRO,
+            reason=f"Warm introduction path via {contact_name} at {companies[3]} (warm relationship).",
+            company_id=_preview_uuid(rng),
+            company_name=companies[3],
+            contact_id=_preview_uuid(rng),
+            contact_name=contact_name,
+            pipeline_stage=stage_keys[2],
+            expected_value_cents=60_000,
+        )
+    )
+
+    items.append(
+        ActionQueueItem(
+            item_key=f"{QUEUE_CATEGORY_STALE_EVIDENCE}:{_preview_uuid(rng)}:{_preview_uuid(rng)}",
+            priority_rank=PRIORITY_RANK[QUEUE_CATEGORY_STALE_EVIDENCE],
+            category=QUEUE_CATEGORY_STALE_EVIDENCE,
+            reason=f"Stale high-value evidence for {companies[4]} — confidence 85%, needs re-verification.",
+            company_id=_preview_uuid(rng),
+            company_name=companies[4],
+            evidence_record_id=_preview_uuid(rng),
+            evidence_confidence=0.85,
+            evidence_source_url="https://example.com/signal",
+            pipeline_stage=stage_keys[3],
+            expected_value_cents=150_000,
+        )
+    )
+
+    return ActionQueueData(items=tuple(items), generated_at=now)
+
+
+def build_preview_export_csv() -> str:
+    """Deterministic preview CSV with formula-injection sample cells."""
+    import csv
+    import io
+
+    from app.crm_export import EXPORT_COLUMNS, neutralize_csv_cell
+
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=list(EXPORT_COLUMNS))
+    writer.writeheader()
+    writer.writerow(
+        {
+            "company_name": neutralize_csv_cell("=HYPERLINK(\"evil\")"),
+            "company_domain": neutralize_csv_cell("northwind.io"),
+            "pipeline_stage": "qualified",
+            "tier": "A",
+            "target_status": "target",
+            "expected_value_usd": "1200.00",
+            "next_action": neutralize_csv_cell("+cmd|'/c calc'"),
+            "next_action_due_at": "2026-07-16 17:00 UTC",
+            "contact_name": neutralize_csv_cell("Alex Chen"),
+            "contact_title": "Founder",
+            "contact_buying_roles": "founder",
+            "contact_relationship_strength": "warm",
+            "evidence_source_url": "https://example.com/evidence",
+            "evidence_confidence": "0.85",
+            "evidence_type": "verified_fact",
+            "unresolved_fields": "",
+        }
+    )
+    writer.writerow(
+        {
+            "company_name": neutralize_csv_cell("Helios Rail"),
+            "company_domain": "",
+            "pipeline_stage": "researching",
+            "tier": "",
+            "target_status": "watching",
+            "expected_value_usd": "",
+            "next_action": "",
+            "next_action_due_at": "",
+            "contact_name": "",
+            "contact_title": "",
+            "contact_buying_roles": "",
+            "contact_relationship_strength": "",
+            "evidence_source_url": "",
+            "evidence_confidence": "",
+            "evidence_type": "",
+            "unresolved_fields": "next_action; next_action_due_at; decision_maker_contact",
+        }
+    )
+    return buffer.getvalue()
 
 
 def build_preview_dashboard_data(

@@ -359,7 +359,7 @@ def test_legacy_013_upgrades_through_015(pg_conn: psycopg.Connection) -> None:
     assert not _table_exists(pg_conn, "pipeline_stage_history")
 
     upgraded = apply_migrations(pg_conn)
-    assert upgraded == ["014", "015", "016", "017", "018", "019", "020", "021", "022", "023"]
+    assert upgraded == ["014", "015", "016", "017", "018", "019", "020", "021", "022", "023", "024"]
 
     columns = _company_columns(pg_conn)
     for name in (
@@ -484,7 +484,7 @@ def test_fresh_database_applies_001_through_015_idempotently(
 ) -> None:
     first = apply_migrations(pg_conn)
     assert first == [m.version for m in MIGRATIONS]
-    assert first[-1] == "023"
+    assert first[-1] == "024"
 
     columns = _company_columns(pg_conn)
     for name in (
@@ -543,7 +543,7 @@ def _upgrade_legacy_013(conn: psycopg.Connection) -> None:
         ON CONFLICT (version) DO NOTHING
         """
     )
-    assert apply_migrations(conn) == ["014", "015", "016", "017", "018", "019", "020", "021", "022", "023"]
+    assert apply_migrations(conn) == ["014", "015", "016", "017", "018", "019", "020", "021", "022", "023", "024"]
 
 
 def _insert_brief(

@@ -25,7 +25,7 @@ def _mock_conn(
     table_exists: dict[str, bool] | None = None,
     counts: dict[str, int] | None = None,
     schema_version: str | None = "024",
-    migration_name: str = "discovery_runs",
+    migration_name: str = "qualification_targets",
     distribution_rows: dict[str, list[dict[str, Any]]] | None = None,
 ) -> MagicMock:
     exists = table_exists or {table: True for table in CRM_BACKUP_TABLES}

@@ -82,6 +82,7 @@ def _empty_dashboard_for_layout():
 def test_admin_nav_links_include_required_destinations() -> None:
     assert ADMIN_HREFS == (
         "/admin",
+        "/admin/queue",
         "/admin/audit",
         "/admin/briefs",
         "/admin/companies",
@@ -97,6 +98,7 @@ def test_admin_nav_links_include_required_destinations() -> None:
     )
     assert ADMIN_LABELS == (
         "Dashboard",
+        "Queue",
         "Audit",
         "Briefs",
         "Companies",
@@ -475,10 +477,12 @@ def test_admin_active_nav(path: str, heading: str, title_id: str, nav_label: str
             patchers.append(patch("app.admin_qualification_routes._crm.list_qualification_targets", return_value=[]))
             patchers.append(patch("app.admin_qualification_routes._crm.list_qualification_working_lists", return_value=[]))
         if path == "/admin/discovery":
+            service = MagicMock()
+            service.list_runs.return_value = ([], 0)
             patchers.append(
                 patch(
                     "app.admin_discovery_routes.get_discovery_run_service",
-                    return_value=MagicMock(list_runs=MagicMock(return_value=([], 0))),
+                    return_value=service,
                 )
             )
         with patchers[0]:
