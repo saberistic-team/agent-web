@@ -1,201 +1,192 @@
-"""Unit tests for marketing analytics dashboard queries and metrics (#116)."""
+"""Unit tests for first-party marketing analytics dashboard (#116)."""
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
 
 from app.analytics_dashboard import (
+    ATTRIBUTION_LIMIT,
+    CONTENT_ENGAGEMENT_LIMIT,
+    MAX_DATE_RANGE_DAYS,
+    METRIC_ATTRIBUTION,
+    METRIC_CONVERSION_RATE,
+    METRIC_EVENT_VOLUME,
+    METRIC_SERVER_VS_BROWSER,
     AnalyticsDashboardData,
     build_conversion_rates,
-    compute_rate_pct,
-    dashboard_has_data,
+    build_event_volumes,
+    compute_conversion_rate,
+    dashboard_has_activity,
     load_analytics_dashboard,
-    parse_date_range,
+    parse_analytics_date_range,
 )
 from app.analytics_event_schema import (
     EVENT_BRIEF_FORM_STARTED,
-    EVENT_BRIEF_VIEWED,
     EVENT_CHECKOUT_OPENED,
     EVENT_LANDING_VIEWED,
     EVENT_LEAD_PERSISTED,
     EVENT_PAYMENT_COMPLETED,
 )
-from app.repositories.postgres import PostgresAnalyticsDashboardRepository
+from app.analytics_export import render_analytics_export_csv
 
 NOW = datetime(2026, 7, 15, 12, 0, tzinfo=timezone.utc)
 
 
-def _mock_conn(rows: list[dict[str, object]]) -> MagicMock:
+def _mock_conn(fetchall_sequences: list[list[dict]] | None = None) -> MagicMock:
     conn = MagicMock()
-    cursor = MagicMock()
-    cursor.__enter__.return_value = cursor
-    cursor.__exit__.return_value = None
-    cursor.fetchall.return_value = rows
-    conn.cursor.return_value = cursor
+    cur = MagicMock()
+    conn.cursor.return_value.__enter__.return_value = cur
+    if fetchall_sequences is None:
+        fetchall_sequences = [[], [], [], []]
+    cur.fetchall.side_effect = fetchall_sequences
     return conn
 
 
 @pytest.mark.unit
-def test_parse_date_range_defaults_to_seven_days() -> None:
-    parsed = parse_date_range(now=NOW)
-    assert parsed.from_date == date(2026, 7, 9)
-    assert parsed.to_date == date(2026, 7, 15)
-    assert parsed.start == datetime(2026, 7, 9, 0, 0, tzinfo=timezone.utc)
-    assert parsed.end == datetime(2026, 7, 16, 0, 0, tzinfo=timezone.utc)
+def test_metric_definitions_are_explicit() -> None:
+    data = AnalyticsDashboardData(
+        date_from=date(2026, 7, 8),
+        date_to=date(2026, 7, 14),
+        event_volumes=(),
+        conversion_rates=(),
+        attribution_rows=(),
+        case_study_engagement=(),
+        article_engagement=(),
+        generated_at=NOW,
+    )
+    assert "occurred_at" in data.metric_definitions["event_volume"]
+    assert "idempotency_key" in data.metric_definitions["event_volume"]
+    assert "denominator" in METRIC_CONVERSION_RATE.lower()
+    assert "utm_source" in METRIC_ATTRIBUTION
+    assert "server-authoritative" in METRIC_SERVER_VS_BROWSER.lower()
+    assert METRIC_EVENT_VOLUME == data.metric_definitions["event_volume"]
 
 
 @pytest.mark.unit
-def test_parse_date_range_swaps_inverted_bounds() -> None:
-    parsed = parse_date_range(date_from="2026-07-20", date_to="2026-07-10", now=NOW)
-    assert parsed.from_date == date(2026, 7, 10)
-    assert parsed.to_date == date(2026, 7, 20)
+def test_parse_analytics_date_range_defaults_to_seven_days() -> None:
+    start, end, start_day, end_day = parse_analytics_date_range(None, None, now=NOW)
+    assert start_day == date(2026, 7, 9)
+    assert end_day == date(2026, 7, 15)
+    assert end - start == end.replace(hour=0) - start.replace(hour=0)
+    assert start.tzinfo == timezone.utc
 
 
 @pytest.mark.unit
-def test_parse_date_range_caps_at_ninety_days() -> None:
-    parsed = parse_date_range(date_from="2026-01-01", date_to="2026-07-15", now=NOW)
-    assert (parsed.to_date - parsed.from_date).days + 1 == 90
+def test_parse_analytics_date_range_swaps_inverted_bounds() -> None:
+    _, _, start_day, end_day = parse_analytics_date_range("2026-07-20", "2026-07-10", now=NOW)
+    assert start_day == date(2026, 7, 10)
+    assert end_day == date(2026, 7, 20)
 
 
 @pytest.mark.unit
-def test_compute_rate_pct_handles_zero_denominator() -> None:
-    assert compute_rate_pct(5, 0) is None
-    assert compute_rate_pct(3, 10) == 30.0
+def test_parse_analytics_date_range_caps_at_max_days() -> None:
+    _, _, start_day, end_day = parse_analytics_date_range("2026-01-01", "2026-07-15", now=NOW)
+    assert (end_day - start_day).days + 1 == MAX_DATE_RANGE_DAYS
 
 
 @pytest.mark.unit
-def test_build_conversion_rates_includes_explicit_labels() -> None:
+def test_compute_conversion_rate_handles_zero_denominator() -> None:
+    assert compute_conversion_rate(5, 0) is None
+    assert compute_conversion_rate(0, 0) is None
+    assert compute_conversion_rate(1, 4) == 25.0
+
+
+@pytest.mark.unit
+def test_build_conversion_rates_uses_explicit_definitions() -> None:
     counts = {
         EVENT_LANDING_VIEWED: 100,
-        EVENT_BRIEF_VIEWED: 40,
         EVENT_BRIEF_FORM_STARTED: 20,
         EVENT_LEAD_PERSISTED: 10,
         EVENT_CHECKOUT_OPENED: 8,
         EVENT_PAYMENT_COMPLETED: 4,
     }
     rates = build_conversion_rates(counts)
-    brief_to_form = next(row for row in rates if row.key == "brief_to_form")
-    assert brief_to_form.numerator == 20
-    assert brief_to_form.denominator == 40
-    assert brief_to_form.numerator_label == "Brief form started"
-    assert brief_to_form.denominator_label == "Brief viewed"
-    assert brief_to_form.rate_pct == 50.0
+    by_key = {row.key: row for row in rates}
+    assert by_key["landing_to_brief_start"].rate_pct == 20.0
+    assert by_key["checkout_to_paid"].numerator == 4
+    assert by_key["checkout_to_paid"].denominator == 8
+    assert "Lead Persisted (server)" in by_key["lead_to_checkout"].definition
 
 
 @pytest.mark.unit
-def test_count_events_sql_is_bounded_and_indexed() -> None:
-    repo = PostgresAnalyticsDashboardRepository()
-    conn = _mock_conn([{"event_name": EVENT_LANDING_VIEWED, "total": 12}])
-    result = repo.count_events_by_name(
-        conn,
-        start=NOW - timedelta(days=7),
-        end=NOW,
-        event_names=(EVENT_LANDING_VIEWED, EVENT_BRIEF_VIEWED),
-    )
-    sql = str(conn.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
-    assert "occurred_at >= %s" in sql
-    assert "occurred_at < %s" in sql
-    assert "event_name = ANY(%s)" in sql
-    assert result[EVENT_LANDING_VIEWED] == 12
+def test_build_event_volumes_marks_server_events() -> None:
+    counts = {EVENT_LANDING_VIEWED: 3, EVENT_PAYMENT_COMPLETED: 1}
+    rows = build_event_volumes(counts)
+    landing = next(row for row in rows if row.event_name == EVENT_LANDING_VIEWED)
+    paid = next(row for row in rows if row.event_name == EVENT_PAYMENT_COMPLETED)
+    assert landing.source == "browser"
+    assert paid.source == "server"
 
 
 @pytest.mark.unit
-def test_attribution_sql_groups_allowlisted_fields() -> None:
-    repo = PostgresAnalyticsDashboardRepository()
-    conn = _mock_conn([])
-    repo.list_attribution_breakdown(
-        conn,
-        start=NOW - timedelta(days=7),
-        end=NOW,
-        limit=20,
-    )
-    sql = str(conn.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
-    assert "utm_source" in sql
-    assert "utm_medium" in sql
-    assert "utm_campaign" in sql
-    assert "Lead Persisted" in sql
-    assert "LIMIT %s" in sql
-
-
-@pytest.mark.unit
-def test_content_engagement_sql_filters_slug() -> None:
-    repo = PostgresAnalyticsDashboardRepository()
-    conn = _mock_conn([{"slug": "payments-platform", "views": 9}])
-    rows = repo.list_content_engagement(
-        conn,
-        start=NOW - timedelta(days=7),
-        end=NOW,
-        event_name="Case Study Viewed",
-        slug_property="case_study_slug",
-        limit=15,
-    )
-    sql = str(conn.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
-    assert "properties->>" in sql
-    assert "GROUP BY 1" in sql
-    assert rows[0]["slug"] == "payments-platform"
-
-
-@pytest.mark.unit
-def test_content_engagement_rejects_unknown_slug_property() -> None:
-    repo = PostgresAnalyticsDashboardRepository()
-    with pytest.raises(ValueError, match="unsupported slug property"):
-        repo.list_content_engagement(
-            _mock_conn([]),
-            start=NOW,
-            end=NOW,
-            event_name="Case Study Viewed",
-            slug_property="visitor_id",
-            limit=10,
-        )
-
-
-@pytest.mark.unit
-def test_load_analytics_dashboard_maps_repository_rows() -> None:
-    repo = MagicMock()
-    repo.count_events_by_name.return_value = {
-        EVENT_LANDING_VIEWED: 50,
-        EVENT_BRIEF_VIEWED: 10,
-        EVENT_BRIEF_FORM_STARTED: 5,
-        EVENT_LEAD_PERSISTED: 2,
-        EVENT_CHECKOUT_OPENED: 1,
-        EVENT_PAYMENT_COMPLETED: 1,
-    }
-    repo.list_attribution_breakdown.return_value = [
+def test_load_analytics_dashboard_queries_are_bounded() -> None:
+    event_rows = [
+        {"event_name": EVENT_LANDING_VIEWED, "total": 12},
+        {"event_name": EVENT_BRIEF_FORM_STARTED, "total": 3},
+    ]
+    attribution_rows = [
         {
-            "source": "linkedin",
-            "medium": "social",
-            "campaign": "spring-launch",
-            "total_events": 20,
-            "leads": 3,
+            "utm_source": "linkedin",
+            "utm_medium": "social",
+            "utm_campaign": "q3",
+            "landing_views": 8,
+            "brief_starts": 2,
+            "leads": 1,
+            "checkouts": 1,
+            "payments": 0,
         }
     ]
-    repo.list_content_engagement.side_effect = [
-        [{"slug": "edge-migration", "views": 7}],
-        [{"slug": "diagnostic-readiness", "views": 4}],
-    ]
+    case_rows = [{"slug": "atlas-freight", "views": 5}]
+    article_rows = [{"slug": "pipeline-velocity", "views": 4}]
+    conn = _mock_conn([event_rows, attribution_rows, case_rows, article_rows])
 
-    data = load_analytics_dashboard(MagicMock(), repo, now=NOW)
-    assert data.engagement_counts[0].count == 50
-    assert data.server_counts[0].count == 2
-    assert data.attribution[0].source == "linkedin"
-    assert data.case_studies[0].slug == "edge-migration"
-    assert data.articles[0].slug == "diagnostic-readiness"
-    assert data.generated_at == NOW
+    data = load_analytics_dashboard(conn, date_from="2026-07-10", date_to="2026-07-15", now=NOW)
+
+    assert data.date_from == date(2026, 7, 10)
+    assert data.date_to == date(2026, 7, 15)
+    assert dashboard_has_activity(data) is True
+    assert data.attribution_rows[0].utm_source == "linkedin"
+    assert data.case_study_engagement[0].slug == "atlas-freight"
+
+    calls = conn.cursor.return_value.__enter__.return_value.execute.call_args_list
+    event_sql = str(calls[0].args[0])
+    attribution_sql = str(calls[1].args[0])
+    case_sql = str(calls[2].args[0])
+    attribution_limit = calls[1].args[1][-1]
+    case_limit = calls[2].args[1][-1]
+    assert "occurred_at >=" in event_sql
+    assert "event_name = ANY" in event_sql
+    assert "LIMIT %s" in attribution_sql
+    assert "LIMIT %s" in case_sql
+    assert attribution_limit == ATTRIBUTION_LIMIT
+    assert case_limit == CONTENT_ENGAGEMENT_LIMIT
 
 
 @pytest.mark.unit
-def test_dashboard_has_data_false_for_empty_payload() -> None:
-    empty = AnalyticsDashboardData(
-        engagement_counts=(),
-        server_counts=(),
-        conversion_rates=(),
-        attribution=(),
-        case_studies=(),
-        articles=(),
+def test_render_analytics_export_csv_is_aggregated_only() -> None:
+    counts = {
+        EVENT_LANDING_VIEWED: 10,
+        EVENT_BRIEF_FORM_STARTED: 2,
+        EVENT_LEAD_PERSISTED: 1,
+        EVENT_CHECKOUT_OPENED: 1,
+        EVENT_PAYMENT_COMPLETED: 0,
+    }
+    data = AnalyticsDashboardData(
+        date_from=date(2026, 7, 8),
+        date_to=date(2026, 7, 14),
+        event_volumes=build_event_volumes(counts),
+        conversion_rates=build_conversion_rates(counts),
+        attribution_rows=(),
+        case_study_engagement=(),
+        article_engagement=(),
         generated_at=NOW,
-        date_range=parse_date_range(now=NOW),
     )
-    assert dashboard_has_data(empty) is False
+    csv_text = render_analytics_export_csv(data)
+    assert "section,metric,value,source,definition" in csv_text
+    assert "event_volume" in csv_text
+    assert "conversion_rate" in csv_text
+    assert "anonymous_session_id" not in csv_text
+    assert "date_range" in csv_text

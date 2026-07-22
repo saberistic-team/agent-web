@@ -1,7 +1,8 @@
-"""Tests for the marketing analytics admin dashboard (#116)."""
+"""Integration tests for the admin analytics dashboard (#116)."""
 
 from __future__ import annotations
 
+import random
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Any, Generator
@@ -11,17 +12,13 @@ import pytest
 from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 
-from app.admin_analytics_pages import render_analytics_dashboard_csv, render_analytics_dashboard_page
+from app.admin_analytics_pages import render_analytics_dashboard_page
 from app.admin_auth import SESSION_COOKIE_NAME
-from app.analytics_dashboard import (
-    AnalyticsDashboardData,
-    AttributionRow,
-    ContentEngagementRow,
-    ConversionRate,
-    EventCount,
-    parse_date_range,
-)
+from app.admin_preview import build_preview_analytics_dashboard_data
+from app.analytics_dashboard import AnalyticsDashboardData, build_event_volumes, dashboard_has_activity
+from app.analytics_event_schema import EVENT_LANDING_VIEWED
 from app.main import app
+from tests.conftest import enable_admin_preview_env
 
 client = TestClient(app, follow_redirects=False)
 
@@ -63,144 +60,105 @@ def _session_row(*, token_hash: str) -> dict[str, Any]:
     }
 
 
-def _populated_dashboard() -> AnalyticsDashboardData:
-    engagement = (
-        EventCount("Landing Viewed", "Landing viewed", 120, "browser"),
-        EventCount("Services Viewed", "Services viewed", 45, "browser"),
-        EventCount("Case Studies Viewed", "Case studies index viewed", 30, "browser"),
-        EventCount("Case Study Viewed", "Case study viewed", 22, "browser"),
-        EventCount("Insights Viewed", "Insights index viewed", 18, "browser"),
-        EventCount("Insight Viewed", "Insight viewed", 14, "browser"),
-        EventCount("Brief Viewed", "Brief viewed", 36, "browser"),
-        EventCount("Brief Form Started", "Brief form started", 15, "browser"),
-        EventCount("Contact Initiated", "Contact initiated", 6, "browser"),
-    )
-    server = (
-        EventCount("Lead Persisted", "Lead persisted", 10, "server"),
-        EventCount("Checkout Opened", "Checkout opened", 7, "server"),
-        EventCount("Payment Completed", "Payment completed", 4, "server"),
-    )
+def _sample_dashboard() -> AnalyticsDashboardData:
+    counts = {EVENT_LANDING_VIEWED: 42}
     return AnalyticsDashboardData(
-        engagement_counts=engagement,
-        server_counts=server,
-        conversion_rates=(
-            ConversionRate(
-                key="brief_to_form",
-                label="Brief view → form start",
-                numerator=15,
-                denominator=36,
-                numerator_label="Brief form started",
-                denominator_label="Brief viewed",
-                numerator_source="browser",
-                denominator_source="browser",
-                rate_pct=41.7,
-            ),
-        ),
-        attribution=(
-            AttributionRow(
-                source="linkedin",
-                medium="social",
-                campaign="spring-launch",
-                total_events=40,
-                leads=6,
-            ),
-        ),
-        case_studies=(
-            ContentEngagementRow(slug="payments-platform", content_type="case_study", views=12),
-        ),
-        articles=(
-            ContentEngagementRow(slug="diagnostic-readiness", content_type="article", views=8),
-        ),
+        date_from=NOW.date() - timedelta(days=6),
+        date_to=NOW.date(),
+        event_volumes=build_event_volumes(counts),
+        conversion_rates=(),
+        attribution_rows=(),
+        case_study_engagement=(),
+        article_engagement=(),
         generated_at=NOW,
-        date_range=parse_date_range(date_from="2026-07-01", date_to="2026-07-15", now=NOW),
     )
 
 
 @pytest.mark.unit
-def test_render_populated_analytics_dashboard() -> None:
+def test_preview_analytics_dashboard_seed_stable() -> None:
+    a = build_preview_analytics_dashboard_data(rng=random.Random(42), now=NOW)
+    b = build_preview_analytics_dashboard_data(rng=random.Random(42), now=NOW)
+    assert a == b
+    assert dashboard_has_activity(a) is True
+
+
+@pytest.mark.unit
+def test_preview_analytics_dashboard_html_includes_sections() -> None:
+    data = build_preview_analytics_dashboard_data(rng=random.Random(99), now=NOW)
     html = render_analytics_dashboard_page(
-        data=_populated_dashboard(),
-        admin_username=TEST_USERNAME,
+        data=data,
+        admin_username="preview",
+        preview_banner="Preview data — not production",
     )
-    assert "Analytics" in html
-    assert "Browser engagement" in html
-    assert "Server conversions" in html
+    assert "Preview data — not production" in html
+    assert 'id="analytics-title">Analytics</h1>' in html
+    assert "Event volume" in html
     assert "Conversion rates" in html
-    assert "Attribution" in html
-    assert "Case study engagement" in html
-    assert "Article engagement" in html
-    assert "Landing viewed" in html
-    assert "Lead persisted" in html
-    assert "linkedin" in html
-    assert "payments-platform" in html
-    assert "analytics-source-server" in html
-
-
-@pytest.mark.unit
-def test_render_analytics_csv_is_aggregated_only() -> None:
-    csv_body = render_analytics_dashboard_csv(_populated_dashboard())
-    assert "section,metric,value,detail" in csv_body
-    assert "engagement,Landing viewed,120,browser" in csv_body
-    assert "server_conversion,Lead persisted,10,server" in csv_body
-    assert "attribution,linkedin,40," in csv_body
-    assert "anonymous_session_id" not in csv_body
+    assert "UTM attribution" in html
+    assert "Case study views" in html
+    assert "Insight article views" in html
+    assert data.attribution_rows[0].utm_source in html
+    assert "Export CSV" in html
 
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_analytics_requires_authentication() -> None:
+def test_admin_analytics_requires_auth() -> None:
     response = client.get("/admin/analytics")
     assert response.status_code == 303
-    assert response.headers["location"].startswith("/admin/login")
+    assert "/admin/login" in response.headers["location"]
 
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_analytics_dashboard_route_renders_populated_data() -> None:
+def test_admin_analytics_renders_dashboard() -> None:
     from app import admin_auth
 
     raw_token = admin_auth.generate_session_token()
     token_hash = admin_auth.hash_session_token(raw_token)
     row = _session_row(token_hash=token_hash)
+    dashboard = _sample_dashboard()
     with mock_db_connection():
         with (
-            patch(
-                "app.admin_routes.db.get_admin_session_by_token_hash",
-                return_value=row,
-            ),
+            patch("app.admin_routes.db.get_admin_session_by_token_hash", return_value=row),
             patch(
                 "app.admin_analytics_routes.load_analytics_dashboard",
-                return_value=_populated_dashboard(),
+                return_value=dashboard,
             ),
         ):
             response = client.get(
-                "/admin/analytics?from=2026-07-01&to=2026-07-15",
+                "/admin/analytics?from=2026-07-09&to=2026-07-15",
                 cookies={SESSION_COOKIE_NAME: raw_token},
             )
     assert response.status_code == 200
     body = response.text
-    assert 'id="analytics-title"' in body
-    assert "Conversion rates" in body
-    assert 'aria-current="page"' in body
+    assert 'id="analytics-title">Analytics</h1>' in body
+    assert "Landing" in body
+    assert 'class="admin-nav-link" aria-current="page">Analytics</a>' in body
 
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_analytics_export_csv_route() -> None:
+def test_admin_analytics_export_csv_requires_auth() -> None:
+    response = client.get("/admin/analytics/export.csv")
+    assert response.status_code == 303
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_admin_analytics_export_csv_returns_aggregated_rows() -> None:
     from app import admin_auth
 
     raw_token = admin_auth.generate_session_token()
     token_hash = admin_auth.hash_session_token(raw_token)
     row = _session_row(token_hash=token_hash)
+    dashboard = _sample_dashboard()
     with mock_db_connection():
         with (
-            patch(
-                "app.admin_routes.db.get_admin_session_by_token_hash",
-                return_value=row,
-            ),
+            patch("app.admin_routes.db.get_admin_session_by_token_hash", return_value=row),
             patch(
                 "app.admin_analytics_routes.load_analytics_dashboard",
-                return_value=_populated_dashboard(),
+                return_value=dashboard,
             ),
         ):
             response = client.get(
@@ -209,32 +167,21 @@ def test_analytics_export_csv_route() -> None:
             )
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/csv")
-    assert "attachment" in response.headers.get("content-disposition", "")
-    assert "engagement,Landing viewed,120,browser" in response.text
+    assert "event_volume" in response.text
+    assert "anonymous_session_id" not in response.text
 
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_analytics_dashboard_db_error_shows_alert() -> None:
+def test_admin_analytics_preview_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    enable_admin_preview_env(monkeypatch)
     from app import admin_auth
 
     raw_token = admin_auth.generate_session_token()
     token_hash = admin_auth.hash_session_token(raw_token)
     row = _session_row(token_hash=token_hash)
-    with mock_db_connection():
-        with (
-            patch(
-                "app.admin_routes.db.get_admin_session_by_token_hash",
-                return_value=row,
-            ),
-            patch(
-                "app.admin_analytics_routes.load_analytics_dashboard",
-                side_effect=RuntimeError("db down"),
-            ),
-        ):
-            response = client.get(
-                "/admin/analytics",
-                cookies={SESSION_COOKIE_NAME: raw_token},
-            )
+    with patch("app.admin_routes.db.get_admin_session_by_token_hash", return_value=row):
+        response = client.get("/admin/analytics", cookies={SESSION_COOKIE_NAME: raw_token})
     assert response.status_code == 200
-    assert "temporarily unavailable" in response.text
+    assert "Preview data — not production" in response.text
+    assert "Conversion rates" in response.text

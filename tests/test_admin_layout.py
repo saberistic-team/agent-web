@@ -78,54 +78,21 @@ def _empty_dashboard_for_layout():
     )
 
 
-def _populated_analytics_for_layout():
-    from app.analytics_dashboard import (
-        AnalyticsDashboardData,
-        AttributionRow,
-        ContentEngagementRow,
-        ConversionRate,
-        EventCount,
-        parse_date_range,
-    )
+def _empty_analytics_dashboard_for_layout():
+    from datetime import date
 
-    now = datetime(2026, 7, 15, 12, 0, tzinfo=timezone.utc)
+    from app.analytics_dashboard import AnalyticsDashboardData
+
+    today = date.today()
     return AnalyticsDashboardData(
-        engagement_counts=(
-            EventCount("Landing Viewed", "Landing viewed", 10, "browser"),
-        ),
-        server_counts=(
-            EventCount("Lead Persisted", "Lead persisted", 2, "server"),
-        ),
-        conversion_rates=(
-            ConversionRate(
-                key="form_to_lead",
-                label="Form start → lead",
-                numerator=2,
-                denominator=5,
-                numerator_label="Lead persisted",
-                denominator_label="Brief form started",
-                numerator_source="server",
-                denominator_source="browser",
-                rate_pct=40.0,
-            ),
-        ),
-        attribution=(
-            AttributionRow(
-                source="linkedin",
-                medium="social",
-                campaign="launch",
-                total_events=10,
-                leads=2,
-            ),
-        ),
-        case_studies=(
-            ContentEngagementRow(slug="edge-migration", content_type="case_study", views=3),
-        ),
-        articles=(
-            ContentEngagementRow(slug="diagnostic-readiness", content_type="article", views=2),
-        ),
-        generated_at=now,
-        date_range=parse_date_range(now=now),
+        date_from=today,
+        date_to=today,
+        event_volumes=(),
+        conversion_rates=(),
+        attribution_rows=(),
+        case_study_engagement=(),
+        article_engagement=(),
+        generated_at=datetime.now(timezone.utc),
     )
 
 
@@ -514,13 +481,6 @@ def test_admin_active_nav(path: str, heading: str, title_id: str, nav_label: str
                     return_value=_empty_dashboard_for_layout(),
                 )
             )
-        if path == "/admin/analytics":
-            patchers.append(
-                patch(
-                    "app.admin_analytics_routes.load_analytics_dashboard",
-                    return_value=_populated_analytics_for_layout(),
-                )
-            )
         if path == "/admin/companies":
             patchers.append(patch("app.admin_routes._crm.list_companies", return_value=[]))
         if path == "/admin/contacts":
@@ -534,6 +494,13 @@ def test_admin_active_nav(path: str, heading: str, title_id: str, nav_label: str
         if path == "/admin/targets":
             patchers.append(patch("app.admin_qualification_routes._crm.list_qualification_targets", return_value=[]))
             patchers.append(patch("app.admin_qualification_routes._crm.list_qualification_working_lists", return_value=[]))
+        if path == "/admin/analytics":
+            patchers.append(
+                patch(
+                    "app.admin_analytics_routes.load_analytics_dashboard",
+                    return_value=_empty_analytics_dashboard_for_layout(),
+                )
+            )
         with patchers[0]:
             for extra in patchers[1:]:
                 extra.start()
@@ -548,6 +515,9 @@ def test_admin_active_nav(path: str, heading: str, title_id: str, nav_label: str
         assert 'id="dashboard-title"' in body
         assert "Today&apos;s attention" in body or "Today's attention" in body
         assert "Start building your pipeline" in body
+    elif path == "/admin/analytics":
+        assert f'id="{title_id}">{heading}</h1>' in body
+        assert "No events yet" in body
     else:
         assert f'id="{title_id}">{heading}</h1>' in body
     assert body.count('aria-current="page"') == 2

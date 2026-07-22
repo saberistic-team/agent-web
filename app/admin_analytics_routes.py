@@ -1,41 +1,51 @@
-"""Marketing analytics admin routes."""
+"""First-party marketing analytics admin routes."""
 
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 
-from fastapi import APIRouter, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import HTMLResponse, Response
 
 from app import db
-from app.admin_analytics_pages import (
-    render_analytics_dashboard_csv,
-    render_analytics_dashboard_page,
-)
-from app.analytics_dashboard import (
-    empty_analytics_dashboard,
-    load_analytics_dashboard,
-)
+from app.admin_analytics_pages import render_analytics_dashboard_page
+from app.analytics_dashboard import AnalyticsDashboardData, load_analytics_dashboard
+from app.analytics_export import render_analytics_export_csv
 from app.config import get_settings
-from app.repositories.postgres import get_repositories
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin/analytics", tags=["admin-analytics"])
 
 
+def _empty_dashboard(*, date_from: str | None, date_to: str | None) -> AnalyticsDashboardData:
+    from app.analytics_dashboard import parse_analytics_date_range
+
+    _, _, start_day, end_day = parse_analytics_date_range(date_from, date_to)
+    return AnalyticsDashboardData(
+        date_from=start_day,
+        date_to=end_day,
+        event_volumes=(),
+        conversion_rates=(),
+        attribution_rows=(),
+        case_study_engagement=(),
+        article_engagement=(),
+        generated_at=datetime.now(timezone.utc),
+    )
+
+
 @router.get("", response_class=HTMLResponse)
 @router.get("/", response_class=HTMLResponse)
-def admin_analytics_dashboard(
-    request: Request,
-    date_from: str | None = Query(None, alias="from"),
-    date_to: str | None = Query(None, alias="to"),
-) -> Response:
+def admin_analytics_dashboard(request: Request) -> HTMLResponse:
     from app.admin_routes import _session_csrf_for_forms, require_admin_session
 
     session = require_admin_session(request)
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
+    date_from = request.query_params.get("from")
+    date_to = request.query_params.get("to")
+
     if settings.admin_preview_enabled:
         from app.admin_preview import build_preview_analytics_dashboard_data
 
@@ -46,7 +56,7 @@ def admin_analytics_dashboard(
             )
         except Exception:
             logger.exception("Failed to build preview analytics dashboard")
-            return JSONResponse({"detail": "Internal Server Error"}, status_code=500)
+            raise HTTPException(status_code=500, detail="Internal Server Error") from None
         return HTMLResponse(
             render_analytics_dashboard_page(
                 data=preview_data,
@@ -56,23 +66,22 @@ def admin_analytics_dashboard(
             )
         )
 
+    dashboard_data: AnalyticsDashboardData | None = None
     db_error = False
-    dashboard_data = empty_analytics_dashboard(
-        date_from=date_from,
-        date_to=date_to,
-    )
     if settings.database_url:
         try:
             with db.db_connection(settings.database_url) as conn:
                 dashboard_data = load_analytics_dashboard(
                     conn,
-                    get_repositories().analytics_dashboard,
                     date_from=date_from,
                     date_to=date_to,
                 )
         except Exception:
             logger.exception("Failed to load analytics dashboard")
             db_error = True
+
+    if dashboard_data is None:
+        dashboard_data = _empty_dashboard(date_from=date_from, date_to=date_to)
 
     return HTMLResponse(
         render_analytics_dashboard_page(
@@ -85,48 +94,38 @@ def admin_analytics_dashboard(
 
 
 @router.get("/export.csv")
-def admin_analytics_export(
-    request: Request,
-    date_from: str | None = Query(None, alias="from"),
-    date_to: str | None = Query(None, alias="to"),
-) -> Response:
+def admin_analytics_export(request: Request) -> Response:
     from app.admin_routes import require_admin_session
 
     require_admin_session(request)
     settings = get_settings()
+    date_from = request.query_params.get("from")
+    date_to = request.query_params.get("to")
+
     if settings.admin_preview_enabled:
         from app.admin_preview import build_preview_analytics_dashboard_data
 
-        data = build_preview_analytics_dashboard_data(
+        preview_data = build_preview_analytics_dashboard_data(
             date_from=date_from,
             date_to=date_to,
         )
-    elif not settings.database_url:
-        data = empty_analytics_dashboard(
-            date_from=date_from,
-            date_to=date_to,
+        return Response(
+            content=render_analytics_export_csv(preview_data),
+            media_type="text/csv",
+            headers={"Content-Disposition": 'attachment; filename="analytics-export.csv"'},
         )
-    else:
-        try:
-            with db.db_connection(settings.database_url) as conn:
-                data = load_analytics_dashboard(
-                    conn,
-                    get_repositories().analytics_dashboard,
-                    date_from=date_from,
-                    date_to=date_to,
-                )
-        except Exception:
-            logger.exception("Failed to export analytics dashboard")
-            return JSONResponse(
-                {"detail": "Analytics export temporarily unavailable."},
-                status_code=503,
-            )
 
-    filename = (
-        f"marketing-analytics-{data.date_range.from_raw}-{data.date_range.to_raw}.csv"
-    )
+    if not settings.database_url:
+        raise HTTPException(status_code=503, detail="Database not configured")
+
+    with db.db_connection(settings.database_url) as conn:
+        dashboard_data = load_analytics_dashboard(
+            conn,
+            date_from=date_from,
+            date_to=date_to,
+        )
     return Response(
-        content=render_analytics_dashboard_csv(data),
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        content=render_analytics_export_csv(dashboard_data),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="analytics-export.csv"'},
     )

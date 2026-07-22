@@ -46,10 +46,19 @@ from app.admin_preview import (
     render_preview_section_main,
 )
 from app.admin_auth import SESSION_COOKIE_NAME
-from app.admin_analytics_pages import render_analytics_dashboard_page
 from app.admin_dashboard_pages import render_acquisition_dashboard_page
 from app.admin_action_queue_pages import render_action_queue_page
 from app.main import app
+
+
+@pytest.mark.unit
+def test_preview_analytics_dashboard_seed_stable() -> None:
+    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
+    a = build_preview_analytics_dashboard_data(rng=random.Random(42), now=now)
+    b = build_preview_analytics_dashboard_data(rng=random.Random(42), now=now)
+    assert a == b
+    assert a.attribution_rows
+    assert a.case_study_engagement
 
 
 @pytest.mark.unit
@@ -820,41 +829,6 @@ def test_preview_acquisition_dashboard_data_is_populated() -> None:
     assert data.recent_evidence
     assert data.without_decision_maker
     assert data.without_decision_maker[0].company_name == "Meridian Stack"
-
-
-@pytest.mark.unit
-def test_preview_analytics_dashboard_seed_stable() -> None:
-    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
-    a = build_preview_analytics_dashboard_data(rng=random.Random(42), now=now)
-    b = build_preview_analytics_dashboard_data(rng=random.Random(42), now=now)
-    assert a == b
-    assert a.engagement_counts[0].count >= 120
-    assert a.server_counts[0].count >= 8
-
-
-@pytest.mark.unit
-def test_preview_analytics_dashboard_html_includes_sections() -> None:
-    data = build_preview_analytics_dashboard_data(rng=random.Random(99))
-    html = render_analytics_dashboard_page(
-        data=data,
-        admin_username="preview",
-        preview_banner="Preview data — not production",
-    )
-    assert "Preview data — not production" in html
-    assert "Analytics" in html
-    assert "Browser engagement" in html
-    assert "Conversion rates" in html
-    assert data.attribution[0].source in html
-    assert data.case_studies[0].slug in html
-
-
-@pytest.mark.unit
-def test_preview_analytics_dashboard_data_is_populated() -> None:
-    data = build_preview_analytics_dashboard_data()
-    assert data.engagement_counts
-    assert data.server_counts
-    assert data.conversion_rates
-    assert data.attribution
 
 
 @pytest.mark.unit

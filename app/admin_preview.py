@@ -28,9 +28,10 @@ from app.analytics_dashboard import (
     AnalyticsDashboardData,
     AttributionRow,
     ContentEngagementRow,
-    EventCount,
+    DASHBOARD_EVENT_ORDER,
     build_conversion_rates,
-    parse_date_range,
+    build_event_volumes,
+    parse_analytics_date_range,
 )
 from app.acquisition_action_queue import (
     QUEUE_CATEGORY_DUE_TODAY,
@@ -357,71 +358,63 @@ def build_preview_analytics_dashboard_data(
     rng: random.Random | None = None,
     now: datetime | None = None,
 ) -> AnalyticsDashboardData:
-    """Randomized marketing analytics dashboard for ADMIN_PREVIEW_MODE."""
+    """Randomized marketing analytics dashboard for ADMIN_PREVIEW_MODE screenshots."""
     rng = _resolve_rng(rng, "analytics_dashboard")
     now = _resolve_now(now)
-    date_range = parse_date_range(date_from=date_from, date_to=date_to, now=now)
+    _, _, start_day, end_day = parse_analytics_date_range(date_from, date_to, now=now)
 
-    engagement_counts = (
-        EventCount("Landing Viewed", "Landing viewed", rng.randint(120, 480), "browser"),
-        EventCount("Services Viewed", "Services viewed", rng.randint(40, 180), "browser"),
-        EventCount("Case Studies Viewed", "Case studies index viewed", rng.randint(25, 90), "browser"),
-        EventCount("Case Study Viewed", "Case study viewed", rng.randint(30, 120), "browser"),
-        EventCount("Insights Viewed", "Insights index viewed", rng.randint(20, 80), "browser"),
-        EventCount("Insight Viewed", "Insight viewed", rng.randint(15, 70), "browser"),
-        EventCount("Brief Viewed", "Brief viewed", rng.randint(35, 140), "browser"),
-        EventCount("Brief Form Started", "Brief form started", rng.randint(12, 55), "browser"),
-        EventCount("Contact Initiated", "Contact initiated", rng.randint(3, 18), "browser"),
-    )
-    server_counts = (
-        EventCount("Lead Persisted", "Lead persisted", rng.randint(8, 32), "server"),
-        EventCount("Checkout Opened", "Checkout opened", rng.randint(5, 20), "server"),
-        EventCount("Payment Completed", "Payment completed", rng.randint(2, 12), "server"),
-    )
-    counts = {row.event_name: row.count for row in engagement_counts + server_counts}
+    counts: dict[str, int] = {}
+    for event_name, _source, _label in DASHBOARD_EVENT_ORDER:
+        counts[event_name] = (
+            rng.randint(12, 480) if event_name == "Landing Viewed" else rng.randint(2, 120)
+        )
 
-    attribution: list[AttributionRow] = []
-    for source in rng.sample(list(UTM_SOURCES), k=min(4, len(UTM_SOURCES))):
-        medium = rng.choice([m for m in UTM_MEDIUMS if m is not None] or ["social"])
-        campaign = rng.choice([c for c in UTM_CAMPAIGNS if c is not None] or ["inbound"])
-        total = rng.randint(10, 120)
-        leads = rng.randint(1, max(1, total // 4))
-        attribution.append(
+    attribution_rows: list[AttributionRow] = []
+    sources = ("linkedin", "newsletter", "(direct)", "partner")
+    mediums = ("social", "email", "—", "referral")
+    campaigns = ("q3-launch", "diagnostic-offer", "—", "case-study-retarget")
+    for index in range(rng.randint(4, 6)):
+        attribution_rows.append(
             AttributionRow(
-                source=source,
-                medium=medium,
-                campaign=campaign,
-                total_events=total,
-                leads=leads,
+                utm_source=sources[index % len(sources)],
+                utm_medium=mediums[index % len(mediums)],
+                utm_campaign=campaigns[index % len(campaigns)],
+                landing_views=rng.randint(20, 240),
+                brief_starts=rng.randint(4, 48),
+                leads=rng.randint(2, 24),
+                checkouts=rng.randint(1, 16),
+                payments=rng.randint(0, 10),
             )
         )
 
-    case_studies = tuple(
+    case_slugs = ("atlas-freight", "northwind-labs", "cedar-protocol", "meridian-stack")
+    article_slugs = ("pipeline-velocity", "first-party-analytics", "operator-crm")
+    case_study_engagement = tuple(
         ContentEngagementRow(
-            slug=slug,
             content_type="case_study",
-            views=rng.randint(5, 80),
-        )
-        for slug in ("payments-platform", "edge-migration", "billing-monolith")
-    )
-    articles = tuple(
-        ContentEngagementRow(
             slug=slug,
-            content_type="article",
-            views=rng.randint(3, 60),
+            views=rng.randint(8, 96),
         )
-        for slug in ("diagnostic-readiness", "architecture-review", "series-b-prep")
+        for slug in rng.sample(case_slugs, k=3)
+    )
+    article_engagement = tuple(
+        ContentEngagementRow(
+            content_type="article",
+            slug=slug,
+            views=rng.randint(6, 72),
+        )
+        for slug in rng.sample(article_slugs, k=2)
     )
 
     return AnalyticsDashboardData(
-        engagement_counts=engagement_counts,
-        server_counts=server_counts,
+        date_from=start_day,
+        date_to=end_day,
+        event_volumes=build_event_volumes(counts),
         conversion_rates=build_conversion_rates(counts),
-        attribution=tuple(attribution),
-        case_studies=case_studies,
-        articles=articles,
+        attribution_rows=tuple(attribution_rows),
+        case_study_engagement=case_study_engagement,
+        article_engagement=article_engagement,
         generated_at=now,
-        date_range=date_range,
     )
 
 

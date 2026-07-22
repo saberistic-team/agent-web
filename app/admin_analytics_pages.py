@@ -1,21 +1,21 @@
-"""HTML and CSV for the marketing analytics admin dashboard."""
+"""Admin HTML for the first-party marketing analytics dashboard."""
 
 from __future__ import annotations
 
-import csv
 import html
-import io
 from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from app.admin_layout import render_admin_shell
 from app.analytics_dashboard import (
     AnalyticsDashboardData,
-    ConversionRate,
-    EventCount,
-    dashboard_has_data,
+    AttributionRow,
+    ContentEngagementRow,
+    ConversionRateRow,
+    EventVolumeRow,
+    dashboard_has_activity,
 )
+from app.admin_layout import render_admin_shell
 
 
 def _esc(value: Any) -> str:
@@ -28,79 +28,80 @@ def _format_timestamp(value: datetime) -> str:
     return _esc(value.astimezone(ZoneInfo("UTC")).strftime("%Y-%m-%d %H:%M UTC"))
 
 
-def _format_rate(rate_pct: float | None) -> str:
-    if rate_pct is None:
+def _format_rate(row: ConversionRateRow) -> str:
+    if row.rate_pct is None:
         return "—"
-    return f"{rate_pct:.1f}%"
+    return f"{row.rate_pct:.1f}%"
 
 
 def _source_badge(source: str) -> str:
     label = "Server" if source == "server" else "Browser"
-    css = "analytics-source-server" if source == "server" else "analytics-source-browser"
-    return f'<span class="analytics-source-badge {css}">{label}</span>'
+    modifier = "analytics-badge--server" if source == "server" else "analytics-badge--browser"
+    return f'<span class="admin-badge analytics-badge {modifier}">{label}</span>'
 
 
-def _render_date_filter(*, data: AnalyticsDashboardData) -> str:
-    query = f"from={_esc(data.date_range.from_raw)}&amp;to={_esc(data.date_range.to_raw)}"
-    return f"""<form class="analytics-date-filter" method="get" action="/admin/analytics">
-      <label class="analytics-date-label">
-        From
-        <input type="date" name="from" value="{_esc(data.date_range.from_raw)}" required />
-      </label>
-      <label class="analytics-date-label">
-        To
-        <input type="date" name="to" value="{_esc(data.date_range.to_raw)}" required />
-      </label>
-      <button type="submit" class="dashboard-secondary-link">Apply range</button>
-      <a class="dashboard-secondary-link" href="/admin/analytics/export.csv?{query}">Export CSV</a>
-    </form>"""
-
-
-def _render_event_rows(rows: tuple[EventCount, ...], *, empty_message: str) -> str:
-    if not rows or not any(row.count for row in rows):
-        return f'<tr><td colspan="3" class="audit-empty">{_esc(empty_message)}</td></tr>'
-    return "".join(
-        f"""<tr>
-          <td>{_esc(row.label)}</td>
-          <td>{row.count}</td>
-          <td>{_source_badge(row.source)}</td>
-        </tr>"""
-        for row in rows
-    )
-
-
-def _render_conversion_rows(rows: tuple[ConversionRate, ...]) -> str:
+def _render_event_rows(rows: tuple[EventVolumeRow, ...]) -> str:
     if not rows:
-        return '<tr><td colspan="4" class="audit-empty">No conversion data.</td></tr>'
-    body = []
+        return '<tr><td colspan="3" class="audit-empty">No events in range.</td></tr>'
+    max_count = max((row.count for row in rows), default=1) or 1
+    body: list[str] = []
     for row in rows:
+        width = 0 if row.count == 0 else max(4, round(100 * row.count / max_count))
         body.append(
             f"""<tr>
               <td>{_esc(row.label)}</td>
-              <td>{row.numerator} <span class="analytics-rate-detail">({_esc(row.numerator_label)}, {_source_badge(row.numerator_source)})</span></td>
-              <td>{row.denominator} <span class="analytics-rate-detail">({_esc(row.denominator_label)}, {_source_badge(row.denominator_source)})</span></td>
-              <td>{_format_rate(row.rate_pct)}</td>
+              <td>{row.count}</td>
+              <td>{_source_badge(row.source)}</td>
+            </tr>
+            <tr class="analytics-funnel-bar-row">
+              <td colspan="3">
+                <div class="analytics-funnel-bar" style="width:{width}%;" aria-hidden="true"></div>
+              </td>
             </tr>"""
         )
     return "".join(body)
 
 
-def _render_attribution_rows(rows: tuple[Any, ...]) -> str:
+def _render_conversion_rows(rows: tuple[ConversionRateRow, ...]) -> str:
     if not rows:
-        return '<tr><td colspan="5" class="audit-empty">No attributed events in this range.</td></tr>'
+        return '<tr><td colspan="4" class="audit-empty">No conversion data.</td></tr>'
     return "".join(
         f"""<tr>
-          <td>{_esc(row.source)}</td>
-          <td>{_esc(row.medium)}</td>
-          <td>{_esc(row.campaign)}</td>
-          <td>{row.total_events}</td>
-          <td>{row.leads}</td>
+          <td>{_esc(row.label)}</td>
+          <td>{row.numerator}</td>
+          <td>{row.denominator}</td>
+          <td>{_format_rate(row)}</td>
+        </tr>
+        <tr class="analytics-rate-def">
+          <td colspan="4"><p class="dashboard-metric-def">{_esc(row.definition)}</p></td>
         </tr>"""
         for row in rows
     )
 
 
-def _render_content_rows(rows: tuple[Any, ...], *, empty_message: str) -> str:
+def _render_attribution_rows(rows: tuple[AttributionRow, ...]) -> str:
+    if not rows:
+        return '<tr><td colspan="8" class="audit-empty">No attributed events in range.</td></tr>'
+    return "".join(
+        f"""<tr>
+          <td>{_esc(row.utm_source)}</td>
+          <td>{_esc(row.utm_medium)}</td>
+          <td>{_esc(row.utm_campaign)}</td>
+          <td>{row.landing_views}</td>
+          <td>{row.brief_starts}</td>
+          <td>{row.leads}</td>
+          <td>{row.checkouts}</td>
+          <td>{row.payments}</td>
+        </tr>"""
+        for row in rows
+    )
+
+
+def _render_content_rows(
+    rows: tuple[ContentEngagementRow, ...],
+    *,
+    empty_message: str,
+) -> str:
     if not rows:
         return f'<tr><td colspan="2" class="audit-empty">{_esc(empty_message)}</td></tr>'
     return "".join(
@@ -116,8 +117,12 @@ def render_analytics_dashboard_page(
     db_error: bool = False,
     preview_banner: str | None = None,
 ) -> str:
-    generated = _format_timestamp(data.generated_at)
     definitions = data.metric_definitions
+    from_value = data.date_from.isoformat()
+    to_value = data.date_to.isoformat()
+    export_href = f"/admin/analytics/export.csv?from={_esc(from_value)}&amp;to={_esc(to_value)}"
+    generated = _format_timestamp(data.generated_at)
+
     banner_html = ""
     if preview_banner:
         banner_html = (
@@ -125,57 +130,51 @@ def render_analytics_dashboard_page(
         )
 
     if db_error:
-        empty_block = """<p class="brief-error" role="alert">
+        body_block = """<p class="brief-error" role="alert">
             Analytics metrics are temporarily unavailable. Try again shortly.
           </p>"""
-    elif not dashboard_has_data(data):
-        empty_block = """<section class="dashboard-empty" aria-labelledby="analytics-empty-title">
+    elif not dashboard_has_activity(data):
+        body_block = """<section class="dashboard-empty" aria-labelledby="analytics-empty-title">
           <h2 class="admin-section-title" id="analytics-empty-title">No events yet</h2>
           <p class="admin-lede">
-            First-party analytics events will appear here once site traffic is recorded
-            for the selected date range.
+            First-party analytics events will appear here once traffic is recorded for the selected range.
           </p>
         </section>"""
     else:
-        empty_block = ""
+        body_block = ""
 
-    main = f"""<section class="admin-panel dashboard-root" aria-labelledby="analytics-title">
+    main = f"""<section class="admin-panel dashboard-root analytics-root" aria-labelledby="analytics-title">
       {banner_html}
       <p class="admin-eyebrow">Marketing</p>
       <h1 class="admin-title" id="analytics-title">Analytics</h1>
       <p class="admin-lede">
-        Funnel, attribution, and content engagement for
-        <time datetime="{_esc(data.date_range.from_raw)}">{_esc(data.date_range.from_raw)}</time>
-        through
-        <time datetime="{_esc(data.date_range.to_raw)}">{_esc(data.date_range.to_raw)}</time>
-        (UTC). Generated <time datetime="{generated}">{generated}</time>.
+        Funnel, attribution, and content engagement for saberistic.com.
+        All times {_esc("UTC")}. Generated <time datetime="{generated}">{generated}</time>.
       </p>
-      {_render_date_filter(data=data)}
-      {empty_block}
-      <div class="dashboard-grid">
-        <section class="dashboard-panel" aria-labelledby="analytics-engagement-title">
-          <h2 class="admin-section-title" id="analytics-engagement-title">Browser engagement</h2>
-          <p class="dashboard-metric-def">{_esc(definitions["engagement_events"])}</p>
-          <div class="admin-table-wrap">
-            <table class="admin-table">
-              <thead><tr><th>Event</th><th>Count</th><th>Source</th></tr></thead>
-              <tbody>{_render_event_rows(data.engagement_counts, empty_message="No engagement events.")}</tbody>
-            </table>
-          </div>
-        </section>
-        <section class="dashboard-panel" aria-labelledby="analytics-server-title">
-          <h2 class="admin-section-title" id="analytics-server-title">Server conversions</h2>
-          <p class="dashboard-metric-def">{_esc(definitions["server_conversions"])}</p>
-          <div class="admin-table-wrap">
-            <table class="admin-table">
-              <thead><tr><th>Event</th><th>Count</th><th>Source</th></tr></thead>
-              <tbody>{_render_event_rows(data.server_counts, empty_message="No server conversion events.")}</tbody>
-            </table>
-          </div>
-        </section>
-      </div>
-      <section class="dashboard-panel" aria-labelledby="analytics-rates-title">
-        <h2 class="admin-section-title" id="analytics-rates-title">Conversion rates</h2>
+      <form class="analytics-range-form" method="get" action="/admin/analytics">
+        <label class="analytics-range-label">From
+          <input type="date" name="from" value="{_esc(from_value)}" required />
+        </label>
+        <label class="analytics-range-label">To
+          <input type="date" name="to" value="{_esc(to_value)}" required />
+        </label>
+        <button class="admin-action" type="submit">Apply range</button>
+        <a class="dashboard-secondary-link" href="{export_href}">Export CSV</a>
+      </form>
+      {body_block}
+      <section class="dashboard-panel" aria-labelledby="analytics-events-title">
+        <h2 class="admin-section-title" id="analytics-events-title">Event volume</h2>
+        <p class="dashboard-metric-def">{_esc(definitions["event_volume"])}</p>
+        <p class="dashboard-metric-def">{_esc(definitions["server_vs_browser"])}</p>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead><tr><th>Event</th><th>Count</th><th>Source</th></tr></thead>
+            <tbody>{_render_event_rows(data.event_volumes)}</tbody>
+          </table>
+        </div>
+      </section>
+      <section class="dashboard-panel" aria-labelledby="analytics-conversion-title">
+        <h2 class="admin-section-title" id="analytics-conversion-title">Conversion rates</h2>
         <p class="dashboard-metric-def">{_esc(definitions["conversion_rate"])}</p>
         <div class="admin-table-wrap">
           <table class="admin-table">
@@ -185,33 +184,36 @@ def render_analytics_dashboard_page(
         </div>
       </section>
       <section class="dashboard-panel" aria-labelledby="analytics-attribution-title">
-        <h2 class="admin-section-title" id="analytics-attribution-title">Attribution</h2>
+        <h2 class="admin-section-title" id="analytics-attribution-title">UTM attribution</h2>
         <p class="dashboard-metric-def">{_esc(definitions["attribution"])}</p>
         <div class="admin-table-wrap">
           <table class="admin-table">
-            <thead><tr><th>Source</th><th>Medium</th><th>Campaign</th><th>Events</th><th>Leads</th></tr></thead>
-            <tbody>{_render_attribution_rows(data.attribution)}</tbody>
+            <thead><tr>
+              <th>Source</th><th>Medium</th><th>Campaign</th>
+              <th>Landing</th><th>Brief start</th><th>Lead</th><th>Checkout</th><th>Paid</th>
+            </tr></thead>
+            <tbody>{_render_attribution_rows(data.attribution_rows)}</tbody>
           </table>
         </div>
       </section>
       <div class="dashboard-grid">
         <section class="dashboard-panel" aria-labelledby="analytics-case-studies-title">
-          <h2 class="admin-section-title" id="analytics-case-studies-title">Case study engagement</h2>
+          <h2 class="admin-section-title" id="analytics-case-studies-title">Case study views</h2>
           <p class="dashboard-metric-def">{_esc(definitions["content_engagement"])}</p>
           <div class="admin-table-wrap">
             <table class="admin-table">
               <thead><tr><th>Slug</th><th>Views</th></tr></thead>
-              <tbody>{_render_content_rows(data.case_studies, empty_message="No case study views.")}</tbody>
+              <tbody>{_render_content_rows(data.case_study_engagement, empty_message="No case study views in range.")}</tbody>
             </table>
           </div>
         </section>
         <section class="dashboard-panel" aria-labelledby="analytics-articles-title">
-          <h2 class="admin-section-title" id="analytics-articles-title">Article engagement</h2>
+          <h2 class="admin-section-title" id="analytics-articles-title">Insight article views</h2>
           <p class="dashboard-metric-def">{_esc(definitions["content_engagement"])}</p>
           <div class="admin-table-wrap">
             <table class="admin-table">
               <thead><tr><th>Slug</th><th>Views</th></tr></thead>
-              <tbody>{_render_content_rows(data.articles, empty_message="No article views.")}</tbody>
+              <tbody>{_render_content_rows(data.article_engagement, empty_message="No insight views in range.")}</tbody>
             </table>
           </div>
         </section>
@@ -224,45 +226,3 @@ def render_analytics_dashboard_page(
         admin_username=admin_username,
         csrf_token=csrf_token,
     )
-
-
-def render_analytics_dashboard_csv(data: AnalyticsDashboardData) -> str:
-    """Return aggregated analytics as CSV (no row-level visitor data)."""
-    buffer = io.StringIO()
-    writer = csv.writer(buffer)
-    writer.writerow(["section", "metric", "value", "detail"])
-    writer.writerow(["meta", "from_date", data.date_range.from_raw, ""])
-    writer.writerow(["meta", "to_date", data.date_range.to_raw, ""])
-    writer.writerow(["meta", "generated_at", data.generated_at.isoformat(), ""])
-
-    for row in data.engagement_counts:
-        writer.writerow(["engagement", row.label, row.count, row.source])
-    for row in data.server_counts:
-        writer.writerow(["server_conversion", row.label, row.count, row.source])
-
-    for row in data.conversion_rates:
-        writer.writerow(
-            [
-                "conversion_rate",
-                row.label,
-                _format_rate(row.rate_pct),
-                f"{row.numerator}/{row.denominator} ({row.numerator_label}/{row.denominator_label})",
-            ]
-        )
-
-    for row in data.attribution:
-        writer.writerow(
-            [
-                "attribution",
-                row.source,
-                row.total_events,
-                f"medium={row.medium}; campaign={row.campaign}; leads={row.leads}",
-            ]
-        )
-
-    for row in data.case_studies:
-        writer.writerow(["case_study", row.slug, row.views, ""])
-    for row in data.articles:
-        writer.writerow(["article", row.slug, row.views, ""])
-
-    return buffer.getvalue()
