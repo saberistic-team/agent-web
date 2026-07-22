@@ -27,38 +27,6 @@ from app.acquisition_dashboard import (
 from app.pipeline_stages import PIPELINE_STAGES
 from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES, TARGET_STATUSES
 from app.icp_scoring import default_icp_rules
-from app.linkedin_relationship_metrics import finalize_stored_metrics
-
-
-def build_preview_linkedin_metrics(
-    *,
-    rng: random.Random,
-    now: datetime,
-    former_colleague: bool = False,
-    warm_introducer: bool = False,
-) -> dict[str, object]:
-    """Deterministic computed metrics for contact detail screenshots."""
-    last_days = rng.randint(3, 45)
-    first_days = last_days + rng.randint(30, 240)
-    metrics = finalize_stored_metrics(
-        {
-            "connection_date": (now - timedelta(days=first_days + 120)).date().isoformat(),
-            "conversation_count": rng.randint(2, 8),
-            "inbound_count": rng.randint(1, 6),
-            "outbound_count": rng.randint(1, 6),
-            "first_interaction_at": (now - timedelta(days=first_days)).isoformat(),
-            "last_interaction_at": (now - timedelta(days=last_days)).isoformat(),
-            "two_way": True,
-            "message_directions": {
-                f"preview-key-{index}": rng.choice(["inbound", "outbound"])
-                for index in range(rng.randint(3, 6))
-            },
-        },
-        former_colleague=former_colleague,
-        warm_introducer=warm_introducer,
-        reference=now,
-    )
-    return metrics
 
 
 COMPANY_NAMES = (
@@ -957,6 +925,41 @@ def build_preview_company_research(
     ]
 
 
+def _preview_relationship_metrics(
+    rng: random.Random,
+    now: datetime,
+    *,
+    two_way: bool,
+    inbound: int,
+    outbound: int,
+) -> dict[str, object]:
+    from app.linkedin_relationship_metrics import relationship_scoring_inputs
+
+    last_days = rng.randint(3, 45)
+    connection_days = rng.randint(120, 800)
+    last_at = (now - timedelta(days=last_days)).date()
+    connection_at = (now - timedelta(days=connection_days)).date()
+    first_at = min(connection_at, last_at - timedelta(days=rng.randint(10, 90)))
+    metrics: dict[str, object] = {
+        "schema_version": "linkedin_relationship_v1",
+        "connection_date": connection_at.isoformat(),
+        "conversation_count": rng.randint(1, 4),
+        "message_count": inbound + outbound,
+        "inbound_count": inbound,
+        "outbound_count": outbound,
+        "first_interaction_at": first_at.isoformat(),
+        "last_interaction_at": last_at.isoformat(),
+        "recent_interaction_30d": last_days <= 30,
+        "recent_interaction_90d": last_days <= 90,
+        "two_way_conversation": two_way,
+        "message_keys": [f"conv-{rng.randint(1, 9)}|{last_at.isoformat()}|Preview|Owner"],
+        "updated_at": now.isoformat(),
+        "reference_date": now.date().isoformat(),
+    }
+    metrics["scoring_inputs"] = relationship_scoring_inputs(metrics)
+    return metrics
+
+
 def build_preview_contact(
     contact_id: UUID,
     *,
@@ -971,7 +974,6 @@ def build_preview_contact(
         last = contact_rng.choice(CONTACT_LAST)
         company = build_preview_company(PREVIEW_COMPANY_POPULATED_ID, rng=rng, now=now)
         company_name = str(company["name"]) if company else "Northwind Labs"
-        former_colleague = contact_rng.choice([False, True])
         return {
             "id": contact_id,
             "full_name": f"{first} {last}",
@@ -983,16 +985,16 @@ def build_preview_contact(
             "company_name": company_name,
             "buying_roles": ["technical_buyer", "executive_buyer"],
             "relationship_strength": "warm",
+            "crm_context_tags": ["former_colleague"],
+            "relationship_metrics": _preview_relationship_metrics(
+                contact_rng,
+                now,
+                two_way=True,
+                inbound=4,
+                outbound=3,
+            ),
             "last_interaction_at": (now - timedelta(days=6)).date().isoformat(),
             "notes": "Primary technical buyer; prefers async email before calls.",
-            "former_colleague": former_colleague,
-            "warm_introducer": False,
-            "linkedin_metrics": build_preview_linkedin_metrics(
-                rng=contact_rng,
-                now=now,
-                former_colleague=former_colleague,
-                warm_introducer=False,
-            ),
             "archived_at": None,
         }
     if contact_id == PREVIEW_CONTACT_ARCHIVED_ID:
@@ -1387,16 +1389,16 @@ def build_preview_contact_detail(
         "email_permission": "explicit_opt_in",
         "buying_roles": ["technical_buyer", "founder"],
         "relationship_strength": "warm",
+        "crm_context_tags": ["warm_introducer"],
+        "relationship_metrics": _preview_relationship_metrics(
+            rng,
+            now,
+            two_way=False,
+            inbound=1,
+            outbound=5,
+        ),
         "last_interaction_at": (now - timedelta(days=rng.randint(2, 30))).date().isoformat(),
         "notes": "Met at fintech infra meetup; interested in architecture review.",
-        "former_colleague": True,
-        "warm_introducer": not archived,
-        "linkedin_metrics": build_preview_linkedin_metrics(
-            rng=rng,
-            now=now,
-            former_colleague=True,
-            warm_introducer=not archived,
-        ),
         "company_id": str(PREVIEW_COMPANY_DETAIL_ARCHIVE_ID),
     }
     if archived:

@@ -51,7 +51,7 @@ FROZEN_MIGRATION_DIGESTS: dict[str, str] = {
     "018": "6650d3d092a41d904f2ab02f1e072876e905612a9d19d86bd605ec0db35b14b8",
     "019": "18c21301f9c206ebf5df5f02bcf8ffbad2372c8a8b18907e426bf014fd16ae77",
     "020": "b9d23f5ebd8293f3f2afb9a8f3241c8e94a0a8e0c8febce33816ec361a29948c",
-    # Digest for 021 is computed at ship time by freeze_shipped_migrations.py.
+    "021": "e8e9cd2b5478733ca421e5848442392459a8edf88a9e6ec8899ef431bca68469",
 }
 
 
@@ -799,11 +799,12 @@ ON CONFLICT (version_id, id) DO NOTHING;
     ),
     Migration(
         version="022",
-        name="contact_linkedin_metrics",
+        name="contact_relationship_metrics",
         up_sql="""
-ALTER TABLE contacts ADD COLUMN IF NOT EXISTS linkedin_metrics JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE contacts ADD COLUMN IF NOT EXISTS former_colleague BOOLEAN NOT NULL DEFAULT FALSE;
-ALTER TABLE contacts ADD COLUMN IF NOT EXISTS warm_introducer BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS relationship_metrics JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS crm_context_tags TEXT[] NOT NULL DEFAULT '{}';
+CREATE INDEX IF NOT EXISTS idx_contacts_crm_context_tags
+    ON contacts USING GIN (crm_context_tags);
 """,
     ),
 )

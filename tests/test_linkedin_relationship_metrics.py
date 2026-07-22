@@ -2,283 +2,260 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date
 
 import pytest
 
 from app.linkedin_relationship_metrics import (
-    aggregate_messages_for_connections,
-    build_metrics_for_contact,
-    compute_relationship_score,
-    compute_score_inputs,
-    merge_stored_metrics,
-    message_dedup_key,
-    normalize_message_row,
-    parse_message_timestamp,
-    recent_interaction_indicators,
-    validate_message_rows_for_commit,
+    assert_no_message_bodies,
+    merge_relationship_metrics,
+    message_identity,
+    normalize_message_metadata,
+    relationship_scoring_inputs,
+    strip_message_bodies,
 )
 
-REFERENCE = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
 
-CONNECTIONS = [
-    {
-        "First Name": "Ada",
-        "Last Name": "Lovelace",
-        "URL": "https://linkedin.com/in/ada-lovelace/",
-        "Connected On": "01 Jan 2024",
-    },
-    {
-        "First Name": "Grace",
-        "Last Name": "Hopper",
-        "URL": "https://linkedin.com/in/grace-hopper/",
-        "Connected On": "02 Feb 2024",
-    },
-]
-
-OWNER = "Jordan Owner"
+OWNER = "Grace Hopper"
+CONTACT = "Ada Lovelace"
+REFERENCE = date(2024, 3, 15)
 
 
 def _message_row(
     *,
     conversation_id: str,
-    from_name: str,
-    to_name: str,
-    date: str,
-    content: str = "",
+    sender: str,
+    recipient: str,
+    sent: str,
+    body: str = "private text",
 ) -> dict[str, str]:
-    row = {
+    return {
         "CONVERSATION ID": conversation_id,
-        "FROM": from_name,
-        "TO": to_name,
-        "DATE": date,
+        "FROM": sender,
+        "TO": recipient,
+        "SUBJECT": "Hello",
+        "CONTENT": body,
+        "DATE": sent,
+        "FOLDER": "INBOX",
     }
-    if content:
-        row["CONTENT"] = content
-    return row
 
 
 @pytest.mark.unit
-def test_normalize_message_row_rejects_transmitted_body() -> None:
+def test_normalize_message_metadata_strips_bodies() -> None:
+    meta = normalize_message_metadata(
+        _message_row(
+            conversation_id="conv-1",
+            sender=CONTACT,
+            recipient=OWNER,
+            sent="2024-01-01",
+        )
+    )
+    assert meta is not None
+    assert "CONTENT" not in meta
+    assert "private" not in str(meta.values())
+    assert meta["conversation_id"] == "conv-1"
+    assert meta["from"] == CONTACT
+
+
+@pytest.mark.unit
+def test_strip_message_bodies_removes_private_fields() -> None:
+    rows = strip_message_bodies(
+        [
+            _message_row(
+                conversation_id="conv-1",
+                sender=OWNER,
+                recipient=CONTACT,
+                sent="2024-01-01",
+            )
+        ]
+    )
+    assert "CONTENT" not in rows[0]
+    assert "SUBJECT" not in rows[0]
+
+
+@pytest.mark.unit
+def test_assert_no_message_bodies_rejects_transmission() -> None:
     with pytest.raises(ValueError, match="must not be transmitted"):
-        normalize_message_row(
-            {
-                "CONVERSATION ID": "conv-1",
-                "FROM": "Ada Lovelace",
-                "TO": OWNER,
-                "DATE": "2024-03-01",
-                "CONTENT": "Private text",
-            }
+        assert_no_message_bodies(
+            [
+                _message_row(
+                    conversation_id="conv-1",
+                    sender=OWNER,
+                    recipient=CONTACT,
+                    sent="2024-01-01",
+                    body="secret",
+                )
+            ]
         )
 
 
 @pytest.mark.unit
-def test_validate_message_rows_for_commit_accepts_metadata_only_rows() -> None:
-    rows = validate_message_rows_for_commit(
-        [
-            _message_row(
-                conversation_id="conv-1",
-                from_name="Ada Lovelace",
-                to_name=OWNER,
-                date="2024-03-01",
-            )
-        ]
-    )
-    assert len(rows) == 1
-    assert rows[0]["FROM"] == "Ada Lovelace"
-
-
-@pytest.mark.unit
 def test_one_way_solicitation_counts_outbound_only() -> None:
-    messages = [
+    rows = [
         _message_row(
             conversation_id="conv-solo",
-            from_name=OWNER,
-            to_name="Ada Lovelace",
-            date="2024-03-01",
+            sender=OWNER,
+            recipient=CONTACT,
+            sent="2024-01-05",
         ),
         _message_row(
             conversation_id="conv-solo",
-            from_name=OWNER,
-            to_name="Ada Lovelace",
-            date="2024-03-02",
+            sender=OWNER,
+            recipient=CONTACT,
+            sent="2024-01-10",
         ),
     ]
-    aggregates = aggregate_messages_for_connections(
-        messages,
-        CONNECTIONS,
+    metrics = merge_relationship_metrics(
+        None,
+        contact_name=CONTACT,
         owner_name=OWNER,
+        connection_date=date(2023, 12, 1),
+        message_rows=rows,
+        reference_date=REFERENCE,
     )
-    ada = aggregates["https://linkedin.com/in/ada-lovelace"]
-    assert ada.inbound_count == 0
-    assert ada.outbound_count == 2
-    assert ada.inbound_count + ada.outbound_count > 0
-    assert not (ada.inbound_count > 0 and ada.outbound_count > 0)
+    assert metrics["outbound_count"] == 2
+    assert metrics["inbound_count"] == 0
+    assert metrics["two_way_conversation"] is False
+    assert metrics["conversation_count"] == 1
 
 
 @pytest.mark.unit
-def test_two_way_conversation_counts_both_directions() -> None:
-    messages = [
+def test_two_way_conversation_requires_inbound_and_outbound() -> None:
+    rows = [
         _message_row(
-            conversation_id="conv-two",
-            from_name=OWNER,
-            to_name="Grace Hopper",
-            date="2024-04-01",
+            conversation_id="conv-2",
+            sender=OWNER,
+            recipient=CONTACT,
+            sent="2024-01-01",
         ),
         _message_row(
-            conversation_id="conv-two",
-            from_name="Grace Hopper",
-            to_name=OWNER,
-            date="2024-04-02",
+            conversation_id="conv-2",
+            sender=CONTACT,
+            recipient=OWNER,
+            sent="2024-01-02",
         ),
     ]
-    aggregates = aggregate_messages_for_connections(
-        messages,
-        CONNECTIONS,
+    metrics = merge_relationship_metrics(
+        None,
+        contact_name=CONTACT,
         owner_name=OWNER,
+        connection_date=None,
+        message_rows=rows,
+        reference_date=REFERENCE,
     )
-    grace = aggregates["https://linkedin.com/in/grace-hopper"]
-    assert grace.inbound_count == 1
-    assert grace.outbound_count == 1
-    assert grace.inbound_count > 0 and grace.outbound_count > 0
+    assert metrics["inbound_count"] == 1
+    assert metrics["outbound_count"] == 1
+    assert metrics["two_way_conversation"] is True
 
 
 @pytest.mark.unit
 def test_duplicate_export_rows_do_not_inflate_counts() -> None:
-    duplicate = _message_row(
+    row = _message_row(
         conversation_id="conv-dup",
-        from_name="Ada Lovelace",
-        to_name=OWNER,
-        date="2024-05-01",
+        sender=CONTACT,
+        recipient=OWNER,
+        sent="2024-02-01",
     )
-    messages = [duplicate, dict(duplicate)]
-    aggregates = aggregate_messages_for_connections(
-        messages,
-        CONNECTIONS,
+    first = merge_relationship_metrics(
+        None,
+        contact_name=CONTACT,
         owner_name=OWNER,
+        connection_date=None,
+        message_rows=[row, row],
+        reference_date=REFERENCE,
     )
-    ada = aggregates["https://linkedin.com/in/ada-lovelace"]
-    assert ada.inbound_count == 1
-    assert len(ada.message_directions) == 1
+    second = merge_relationship_metrics(
+        first,
+        contact_name=CONTACT,
+        owner_name=OWNER,
+        connection_date=None,
+        message_rows=[row],
+        reference_date=REFERENCE,
+    )
+    assert first["message_count"] == 1
+    assert second["message_count"] == 1
+    assert len(second["message_keys"]) == 1
 
 
 @pytest.mark.unit
-def test_incremental_merge_deduplicates_message_keys() -> None:
-    first = build_metrics_for_contact(
-        aggregate_messages_for_connections(
-            [
-                _message_row(
-                    conversation_id="conv-1",
-                    from_name=OWNER,
-                    to_name="Ada Lovelace",
-                    date="2024-01-01",
-                )
-            ],
-            CONNECTIONS,
-            owner_name=OWNER,
-        )["https://linkedin.com/in/ada-lovelace"],
-        reference=REFERENCE,
+def test_timestamp_boundaries_for_recent_interaction_flags() -> None:
+    rows = [
+        _message_row(
+            conversation_id="conv-recent",
+            sender=CONTACT,
+            recipient=OWNER,
+            sent="2024-02-20",
+        )
+    ]
+    within_30 = merge_relationship_metrics(
+        None,
+        contact_name=CONTACT,
+        owner_name=OWNER,
+        connection_date=None,
+        message_rows=rows,
+        reference_date=date(2024, 3, 15),
     )
-    second = build_metrics_for_contact(
-        aggregate_messages_for_connections(
-            [
-                _message_row(
-                    conversation_id="conv-1",
-                    from_name=OWNER,
-                    to_name="Ada Lovelace",
-                    date="2024-01-01",
-                ),
-                _message_row(
-                    conversation_id="conv-2",
-                    from_name="Ada Lovelace",
-                    to_name=OWNER,
-                    date="2024-02-01",
-                ),
-            ],
-            CONNECTIONS,
-            owner_name=OWNER,
-        )["https://linkedin.com/in/ada-lovelace"],
-        existing=first,
-        reference=REFERENCE,
+    assert within_30["recent_interaction_30d"] is True
+    assert within_30["recent_interaction_90d"] is True
+
+    outside_30 = merge_relationship_metrics(
+        None,
+        contact_name=CONTACT,
+        owner_name=OWNER,
+        connection_date=None,
+        message_rows=rows,
+        reference_date=date(2024, 4, 1),
     )
-    assert second["inbound_count"] == 1
-    assert second["outbound_count"] == 1
-    assert len(second["message_directions"]) == 2
+    assert outside_30["recent_interaction_30d"] is False
+    assert outside_30["recent_interaction_90d"] is True
 
 
 @pytest.mark.unit
-def test_timestamp_boundaries_for_recent_indicators() -> None:
-    last = datetime(2026, 5, 1, tzinfo=timezone.utc)
-    indicators = recent_interaction_indicators(last, reference=REFERENCE)
-    assert indicators["recent_30d"] is False
-    assert indicators["recent_90d"] is True
-    assert indicators["recent_180d"] is True
-
-    boundary = datetime(2026, 6, 14, tzinfo=timezone.utc)
-    exact = recent_interaction_indicators(boundary, reference=REFERENCE)
-    assert exact["recent_30d"] is True
-
-
-@pytest.mark.unit
-def test_score_inputs_include_crm_context_flags() -> None:
-    metrics = {
-        "connection_date": "2024-01-01",
-        "conversation_count": 3,
-        "inbound_count": 2,
-        "outbound_count": 1,
-        "last_interaction_at": "2026-07-01T00:00:00+00:00",
+def test_scoring_inputs_are_visible_and_deterministic() -> None:
+    rows = [
+        _message_row(
+            conversation_id="conv-score",
+            sender=CONTACT,
+            recipient=OWNER,
+            sent="2024-01-15",
+        )
+    ]
+    metrics = merge_relationship_metrics(
+        None,
+        contact_name=CONTACT,
+        owner_name=OWNER,
+        connection_date=date(2024, 1, 1),
+        message_rows=rows,
+        reference_date=REFERENCE,
+    )
+    inputs = relationship_scoring_inputs(metrics)
+    assert inputs == metrics["scoring_inputs"]
+    assert inputs["connection_date"] == "2024-01-01"
+    assert inputs["message_count"] == 1
+    assert set(inputs.keys()) == {
+        "schema_version",
+        "connection_date",
+        "conversation_count",
+        "message_count",
+        "inbound_count",
+        "outbound_count",
+        "first_interaction_at",
+        "last_interaction_at",
+        "recent_interaction_30d",
+        "recent_interaction_90d",
+        "two_way_conversation",
     }
-    inputs = compute_score_inputs(
-        metrics,
-        former_colleague=True,
-        warm_introducer=True,
-        reference=REFERENCE,
-    )
-    assert inputs["former_colleague"] is True
-    assert inputs["warm_introducer"] is True
-    assert inputs["two_way"] is True
 
 
 @pytest.mark.unit
-def test_relationship_score_is_deterministic() -> None:
-    inputs = {
-        "conversation_count": 4,
-        "inbound_count": 3,
-        "outbound_count": 2,
-        "two_way": True,
-        "recent_90d": True,
-        "recent_180d": True,
-        "former_colleague": True,
-        "warm_introducer": False,
-        "connection_tenure_days": 400,
-    }
-    assert compute_relationship_score(inputs) == compute_relationship_score(dict(inputs))
-
-
-@pytest.mark.unit
-def test_message_dedup_key_stable_for_same_metadata() -> None:
-    sent_at = parse_message_timestamp("2024-01-01")
-    assert message_dedup_key(
-        conversation_id="conv-1",
-        from_name="Ada Lovelace",
-        to_name=OWNER,
-        sent_at=sent_at,
-    ) == message_dedup_key(
-        conversation_id="conv-1",
-        from_name="Ada Lovelace",
-        to_name=OWNER,
-        sent_at=sent_at,
+def test_message_identity_is_stable_for_incremental_merge() -> None:
+    meta = normalize_message_metadata(
+        _message_row(
+            conversation_id="conv-stable",
+            sender=CONTACT,
+            recipient=OWNER,
+            sent="2024-01-01",
+        )
     )
-
-
-@pytest.mark.unit
-def test_merge_recomputes_counts_from_direction_map() -> None:
-    merged = merge_stored_metrics(
-        {"message_directions": {"a": "inbound", "b": "outbound"}},
-        {"message_directions": {"b": "outbound", "c": "inbound"}},
-        reference=REFERENCE,
-    )
-    assert merged["inbound_count"] == 2
-    assert merged["outbound_count"] == 1
-    assert merged["two_way"] is True
-    assert merged["computed_score"] >= 0
+    assert meta is not None
+    assert message_identity(meta) == message_identity(dict(meta))

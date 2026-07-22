@@ -6,12 +6,12 @@ import html
 from typing import Any
 
 from app.admin_layout import render_admin_archive_action_button, render_admin_shell
-from app.admin_contact_metrics import (
-    render_computed_linkedin_metrics_panel,
-    render_human_judgment_panel,
-)
 from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES, TARGET_STATUSES
 from app.contacts import EMAIL_PERMISSIONS, format_buying_roles
+from app.admin_contact_metrics import (
+    render_computed_relationship_metrics,
+    render_operator_judgment_fields,
+)
 from app.research_records import (
     RECORD_TYPE_LABELS,
     RESEARCH_RECORD_TYPES,
@@ -303,13 +303,17 @@ def render_admin_contact_research_page(
             "Email permission",
             EMAIL_PERMISSIONS.get(str(contact.get("email_permission")), contact.get("email_permission")),
         ),
+        (
+            "Buying roles",
+            format_buying_roles(contact.get("buying_roles")),
+        ),
     )
     facts_html = "".join(
         f"<div><dt>{html.escape(label)}</dt><dd>{html.escape(str(value or '—'))}</dd></div>"
         for label, value in contact_fields
     )
-    metrics_html = render_computed_linkedin_metrics_panel(contact)
-    judgment_html = render_human_judgment_panel(contact)
+    metrics_html = render_computed_relationship_metrics(contact.get("relationship_metrics"))
+    judgment_html = render_operator_judgment_fields(contact, crm_context_checkboxes="")
     company_link = ""
     if company is not None:
         company_id = html.escape(str(company["id"]), quote=True)

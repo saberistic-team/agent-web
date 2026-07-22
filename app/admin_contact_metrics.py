@@ -1,4 +1,4 @@
-"""Admin HTML for computed LinkedIn relationship metrics."""
+"""Admin HTML for LinkedIn-derived relationship metrics on contact pages."""
 
 from __future__ import annotations
 
@@ -6,97 +6,80 @@ import html
 import json
 from typing import Any
 
-from app.linkedin_relationship_metrics import finalize_stored_metrics, parse_stored_metrics
+from app.contacts import CRM_CONTEXT_TAGS, RELATIONSHIP_STRENGTHS, format_crm_context_tags
 
 
 def _esc(value: Any) -> str:
     return "" if value is None else html.escape(str(value), quote=True)
 
 
-def _format_metric_value(value: Any) -> str:
-    if value is True:
-        return "Yes"
-    if value is False:
-        return "No"
-    if value is None or value == "":
-        return "—"
-    return str(value)
+def _metric_row(label: str, value: Any) -> str:
+    display = _esc(value) if value not in (None, "") else "—"
+    return f'<div><dt>{_esc(label)}</dt><dd>{display}</dd></div>'
 
 
-def render_computed_linkedin_metrics_panel(
-    contact: dict[str, Any],
-    *,
-    reference_metrics: dict[str, Any] | None = None,
-) -> str:
-    """Render LinkedIn-derived metrics separately from operator judgment fields."""
-    raw_metrics = reference_metrics if reference_metrics is not None else contact.get("linkedin_metrics")
-    metrics = finalize_stored_metrics(
-        parse_stored_metrics(raw_metrics),
-        former_colleague=bool(contact.get("former_colleague")),
-        warm_introducer=bool(contact.get("warm_introducer")),
-    )
-    if not metrics or not metrics.get("schema_version"):
-        return """<section class="admin-section linkedin-metrics-panel" aria-labelledby="linkedin-metrics-title">
-      <p class="admin-eyebrow">LinkedIn export</p>
-      <h2 class="admin-section-heading" id="linkedin-metrics-title">Computed relationship metrics</h2>
-      <p class="admin-note">No LinkedIn message metadata has been imported for this contact yet.</p>
+def render_computed_relationship_metrics(metrics: dict[str, Any] | None) -> str:
+    if not metrics:
+        return """<section class="contact-metrics-section" aria-labelledby="contact-metrics-title">
+      <h2 class="admin-section-heading" id="contact-metrics-title">LinkedIn-derived metrics</h2>
+      <p class="admin-note">No computed metrics yet — import a LinkedIn export with message metadata.</p>
     </section>"""
 
-    score_inputs = metrics.get("score_inputs") or {}
-    rows = (
-        ("Connection date", metrics.get("connection_date")),
-        ("Conversations", metrics.get("conversation_count")),
-        ("Inbound messages", metrics.get("inbound_count")),
-        ("Outbound messages", metrics.get("outbound_count")),
-        ("Two-way conversation", metrics.get("two_way")),
-        ("First interaction", metrics.get("first_interaction_at")),
-        ("Last interaction", metrics.get("last_interaction_at")),
-        ("Active in last 30 days", metrics.get("recent_30d")),
-        ("Active in last 90 days", metrics.get("recent_90d")),
-        ("Active in last 180 days", metrics.get("recent_180d")),
-        ("Computed score", metrics.get("computed_score")),
-    )
-    metric_rows = "".join(
-        f"<div><dt>{_esc(label)}</dt><dd>{_esc(_format_metric_value(value))}</dd></div>"
-        for label, value in rows
-    )
-    inputs_json = json.dumps(score_inputs, sort_keys=True, indent=2)
-    return f"""<section class="admin-section linkedin-metrics-panel" aria-labelledby="linkedin-metrics-title">
-      <p class="admin-eyebrow">LinkedIn export</p>
-      <h2 class="admin-section-heading" id="linkedin-metrics-title">Computed relationship metrics</h2>
-      <p class="admin-note" role="note">
-        Derived from LinkedIn connection and message metadata only. Message bodies are never stored.
-        These values are deterministic and separate from operator judgment below.
-      </p>
-      <dl class="research-provenance linkedin-metrics-dl">{metric_rows}</dl>
-      <details class="linkedin-metrics-inputs">
+    scoring = metrics.get("scoring_inputs") or metrics
+    scoring_json = html.escape(json.dumps(scoring, sort_keys=True, indent=2))
+    return f"""<section class="contact-metrics-section" aria-labelledby="contact-metrics-title">
+      <h2 class="admin-section-heading" id="contact-metrics-title">LinkedIn-derived metrics</h2>
+      <p class="admin-note" role="note">Computed from export metadata only — not operator judgment.</p>
+      <dl class="research-provenance contact-metrics-dl">
+        {_metric_row("Connection date", metrics.get("connection_date"))}
+        {_metric_row("Conversations", metrics.get("conversation_count"))}
+        {_metric_row("Messages (deduplicated)", metrics.get("message_count"))}
+        {_metric_row("Inbound (they wrote you)", metrics.get("inbound_count"))}
+        {_metric_row("Outbound (you wrote them)", metrics.get("outbound_count"))}
+        {_metric_row("First interaction", metrics.get("first_interaction_at"))}
+        {_metric_row("Last interaction", metrics.get("last_interaction_at"))}
+        {_metric_row("Active in last 30 days", "Yes" if metrics.get("recent_interaction_30d") else "No")}
+        {_metric_row("Active in last 90 days", "Yes" if metrics.get("recent_interaction_90d") else "No")}
+        {_metric_row("Two-way conversation", "Yes" if metrics.get("two_way_conversation") else "No")}
+      </dl>
+      <details class="contact-metrics-inputs">
         <summary>Scoring inputs (deterministic)</summary>
-        <pre class="linkedin-metrics-pre">{_esc(inputs_json)}</pre>
+        <pre class="contact-metrics-pre">{scoring_json}</pre>
       </details>
     </section>"""
 
 
-def render_human_judgment_panel(contact: dict[str, Any]) -> str:
-    from app.contacts import RELATIONSHIP_STRENGTHS, format_buying_roles
-
+def render_operator_judgment_fields(
+    contact: dict[str, Any],
+    *,
+    crm_context_checkboxes: str,
+) -> str:
     relationship = RELATIONSHIP_STRENGTHS.get(
-        str(contact.get("relationship_strength")), contact.get("relationship_strength")
+        str(contact.get("relationship_strength")),
+        contact.get("relationship_strength"),
     )
-    rows = (
-        ("Relationship strength", relationship),
-        ("Last interaction (manual)", contact.get("last_interaction_at")),
-        ("Former colleague", "Yes" if contact.get("former_colleague") else "No"),
-        ("Warm introducer", "Yes" if contact.get("warm_introducer") else "No"),
-        ("Buying roles", format_buying_roles(contact.get("buying_roles"))),
-        ("Notes", contact.get("notes")),
-    )
-    fact_rows = "".join(
-        f"<div><dt>{_esc(label)}</dt><dd>{_esc(_format_metric_value(value))}</dd></div>"
-        for label, value in rows
-    )
-    return f"""<section class="admin-section human-judgment-panel" aria-labelledby="human-judgment-title">
-      <p class="admin-eyebrow">Operator judgment</p>
-      <h2 class="admin-section-heading" id="human-judgment-title">CRM context</h2>
-      <p class="admin-note" role="note">Human-entered fields used for outreach decisions. Not inferred from private messages.</p>
-      <dl class="research-provenance human-judgment-dl">{fact_rows}</dl>
+    return f"""<section class="contact-judgment-section" aria-labelledby="contact-judgment-title">
+      <h2 class="admin-section-heading" id="contact-judgment-title">Operator judgment</h2>
+      <p class="admin-note" role="note">Human-assigned context — separate from computed LinkedIn metrics.</p>
+      <dl class="research-provenance contact-judgment-dl">
+        {_metric_row("Relationship strength", relationship)}
+        {_metric_row("CRM context", format_crm_context_tags(contact.get("crm_context_tags")))}
+        {_metric_row("Last interaction (CRM field)", contact.get("last_interaction_at"))}
+        {_metric_row("Notes", contact.get("notes"))}
+      </dl>
+      {crm_context_checkboxes}
     </section>"""
+
+
+def crm_context_checkbox_field(selected: list[str] | None) -> str:
+    selected_set = set(selected or [])
+    boxes = "\n".join(
+        f'<label class="admin-checkbox"><input type="checkbox" name="crm_context_tags" value="{_esc(key)}"'
+        f'{" checked" if key in selected_set else ""} /> {_esc(label)}</label>'
+        for key, label in CRM_CONTEXT_TAGS.items()
+    )
+    return f"""<fieldset class="field contact-crm-context">
+      <legend>CRM context</legend>
+      <p class="admin-note">Explicit relationship context for scoring — not inferred from messages.</p>
+      {boxes}
+    </fieldset>"""
