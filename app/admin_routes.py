@@ -2090,6 +2090,7 @@ for _link in ADMIN_NAV_LINKS:
         "/admin/contacts",
         "/admin/imports",
         "/admin/pipeline",
+        "/admin/targets",
         "/admin/signals",
     }:
         continue

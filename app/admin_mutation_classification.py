@@ -116,6 +116,11 @@ ADMIN_MUTATION_ROUTE_CLASSIFICATIONS: dict[tuple[str, str], tuple[MutationClassi
         "Override reason/actor are captured directly on the append-only "
         "company_icp_score_snapshots row; no separate audit_events entry in this release.",
     ),
+    ("POST", "/admin/targets/working-list"): (
+        "intentionally_unaudited",
+        "Working-list save persists company IDs only on qualification_working_lists / "
+        "qualification_working_list_items; no audit_events entry in this release.",
+    ),
 }
 
 

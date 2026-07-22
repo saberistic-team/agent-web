@@ -102,6 +102,18 @@ from app.icp_scoring import (
     default_icp_rules,
     rule_from_row,
 )
+from app.qualification_targets import (
+    MAX_WORKING_LIST_ITEMS,
+    QualificationTargetFilters,
+    QualificationTargetRow,
+    WorkingListCreate,
+    build_target_row,
+    filter_target_rows,
+    rules_from_rows,
+    score_company_with_rules,
+    sort_target_rows,
+    tier_change_metadata,
+)
 from app.repositories import (
     ActivityRepository,
     AdminUserRepository,
@@ -117,8 +129,10 @@ from app.repositories import (
     PostgresIcpScoringRepository,
     PostgresImportBatchRepository,
     PostgresPipelineRepository,
+    PostgresQualificationRepository,
     PostgresResearchRecordRepository,
     PostgresSourceRecordRepository,
+    QualificationRepository,
     ResearchRecordRepository,
     SourceRecordRepository,
 )
@@ -139,6 +153,7 @@ class CrmRepositories:
     pipeline: PipelineRepository
     import_batches: ImportBatchRepository
     icp_scoring: IcpScoringRepository
+    qualification: QualificationRepository
     discovery_review: Any = field(default_factory=PostgresDiscoveryReviewRepository)
     discovery_merge_decisions: Any = field(
         default_factory=PostgresDiscoveryMergeDecisionRepository
@@ -156,6 +171,7 @@ def default_crm_repositories() -> CrmRepositories:
         pipeline=PostgresPipelineRepository(),
         import_batches=PostgresImportBatchRepository(),
         icp_scoring=PostgresIcpScoringRepository(),
+        qualification=PostgresQualificationRepository(),
         discovery_review=PostgresDiscoveryReviewRepository(),
         discovery_merge_decisions=PostgresDiscoveryMergeDecisionRepository(),
     )
@@ -2315,6 +2331,151 @@ class CrmService:
                 filters=filters,
             )
         return {"export_type": export_type, "filters": filters or {}}
+
+    @staticmethod
+    def _target_row_to_dict(row: QualificationTargetRow) -> dict[str, Any]:
+        return {
+            "company_id": row.company_id,
+            "id": row.company_id,
+            "name": row.name,
+            "score": row.score,
+            "tier": row.tier,
+            "stage": row.stage,
+            "vertical": row.vertical,
+            "strongest_signals": list(row.strongest_signals),
+            "warm_path": row.warm_path,
+            "has_warm_path": row.has_warm_path,
+            "next_action": row.next_action,
+            "evidence_freshness": row.evidence_freshness,
+            "missing_fields": list(row.missing_fields),
+            "pipeline_stage": row.pipeline_stage,
+            "pipeline_owner": row.pipeline_owner,
+            "score_calculated_at": row.score_calculated_at,
+            "stale_evidence": row.stale_evidence,
+        }
+
+    def list_qualification_targets(
+        self,
+        conn: psycopg.Connection,
+        *,
+        filters: QualificationTargetFilters | None = None,
+        actor: str | None = None,
+        persist_scores: bool = True,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        """Build tier A/B/C target rows from deterministic ICP scores."""
+        active_version = self._repos.icp_scoring.get_active_version(conn)
+        if active_version is None:
+            return []
+        version_id = UUID(str(active_version["id"]))
+        version_number = int(active_version["version_number"])
+        rules = rules_from_rows(
+            self._repos.icp_scoring.list_rules_for_version(conn, version_id)
+        )
+        companies = self._repos.qualification.list_active_companies(conn, limit=limit)
+        rows: list[QualificationTargetRow] = []
+        with crm_transaction(conn):
+            for company in companies:
+                company_id = UUID(str(company["id"]))
+                contacts = self._repos.contacts.list_for_company(conn, company_id, limit=200)
+                research = self._repos.research_records.list_for_company(
+                    conn, company_id, limit=200
+                )
+                score_result = score_company_with_rules(
+                    company=company,
+                    contacts=contacts,
+                    research_records=research,
+                    rules=rules,
+                    version_number=version_number,
+                )
+                target_row = build_target_row(company=company, score_result=score_result)
+                if target_row is None:
+                    continue
+                if persist_scores and actor:
+                    snapshot = self._repos.icp_scoring.insert_snapshot(
+                        conn,
+                        company_id=company_id,
+                        version_id=version_id,
+                        version_number=version_number,
+                        total_score=score_result.total_score,
+                        computed_score=score_result.computed_score,
+                        breakdown=[item.model_dump() for item in score_result.breakdown],
+                        missing_inputs=score_result.missing_inputs,
+                        calculated_at=score_result.calculated_at,
+                        is_override=score_result.is_override,
+                        override_reason=score_result.override_reason,
+                        override_by=score_result.override_by,
+                    )
+                    new_tier = target_row.tier
+                    previous_tier = self._repos.qualification.get_latest_tier_for_company(
+                        conn, company_id
+                    )
+                    if previous_tier != new_tier:
+                        self._repos.qualification.record_tier_change(
+                            conn,
+                            company_id=company_id,
+                            from_tier=previous_tier,
+                            to_tier=new_tier,
+                            score=score_result.total_score,
+                            changed_by=actor,
+                            snapshot_id=UUID(str(snapshot["id"])),
+                            metadata=tier_change_metadata(
+                                previous_tier=previous_tier,
+                                new_tier=new_tier,
+                                score=score_result.total_score,
+                            ),
+                        )
+                rows.append(target_row)
+        sorted_rows = sort_target_rows(rows)
+        if filters:
+            sorted_rows = filter_target_rows(sorted_rows, filters)
+        return [self._target_row_to_dict(row) for row in sorted_rows]
+
+    def list_qualification_tier_history(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        return self._repos.qualification.list_tier_history(conn, company_id, limit=limit)
+
+    def save_qualification_working_list(
+        self,
+        conn: psycopg.Connection,
+        *,
+        owner: str,
+        payload: WorkingListCreate,
+    ) -> dict[str, Any]:
+        company_ids = [UUID(value) for value in payload.company_ids]
+        if len(company_ids) > MAX_WORKING_LIST_ITEMS:
+            raise ValueError(f"working list cannot exceed {MAX_WORKING_LIST_ITEMS} companies")
+        with crm_transaction(conn):
+            return self._repos.qualification.create_working_list(
+                conn,
+                name=payload.name.strip(),
+                owner=owner,
+                company_ids=company_ids,
+                max_items=MAX_WORKING_LIST_ITEMS,
+            )
+
+    def list_qualification_working_lists(
+        self,
+        conn: psycopg.Connection,
+        *,
+        owner: str,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        return self._repos.qualification.list_working_lists_for_owner(
+            conn, owner=owner, limit=limit
+        )
+
+    def get_qualification_working_list_items(
+        self,
+        conn: psycopg.Connection,
+        list_id: UUID,
+    ) -> list[dict[str, Any]]:
+        return self._repos.qualification.get_working_list_items(conn, list_id)
 
     def preview_discovery_reconcile(
         self,

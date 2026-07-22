@@ -60,6 +60,7 @@ def _service(
         "pipeline": MagicMock(),
         "import_batches": MagicMock(),
         "icp_scoring": MagicMock(),
+        "qualification": MagicMock(),
         "discovery_review": discovery_review or MagicMock(),
         "discovery_merge_decisions": discovery_merge_decisions or MagicMock(),
     }

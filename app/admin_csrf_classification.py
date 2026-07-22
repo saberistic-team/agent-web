@@ -117,6 +117,10 @@ ADMIN_CSRF_ROUTE_POLICIES: dict[tuple[str, str], tuple[CsrfPolicy, str]] = {
         "session_csrf_required",
         "ICP score override requires a session-bound CSRF token in the form body.",
     ),
+    ("POST", "/admin/targets/working-list"): (
+        "session_csrf_required",
+        "Qualification working-list save requires a session-bound CSRF token in the form body.",
+    ),
 }
 
 

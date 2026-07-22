@@ -810,6 +810,50 @@ CREATE INDEX IF NOT EXISTS idx_contacts_crm_context_tags
     ),
     Migration(
         version="023",
+        name="qualification_targets",
+        up_sql="""
+CREATE TABLE IF NOT EXISTS qualification_tier_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID NOT NULL REFERENCES companies (id) ON DELETE CASCADE,
+    from_tier TEXT,
+    to_tier TEXT NOT NULL,
+    score NUMERIC(5, 2) NOT NULL,
+    changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    changed_by TEXT NOT NULL,
+    snapshot_id UUID REFERENCES company_icp_score_snapshots (id) ON DELETE SET NULL,
+    metadata JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_qualification_tier_history_company
+    ON qualification_tier_history (company_id, changed_at DESC);
+
+CREATE TABLE IF NOT EXISTS qualification_working_lists (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    owner TEXT NOT NULL,
+    max_items INTEGER NOT NULL DEFAULT 50
+        CHECK (max_items > 0 AND max_items <= 100),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_qualification_working_lists_owner
+    ON qualification_working_lists (owner, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS qualification_working_list_items (
+    list_id UUID NOT NULL REFERENCES qualification_working_lists (id) ON DELETE CASCADE,
+    company_id UUID NOT NULL REFERENCES companies (id) ON DELETE CASCADE,
+    position INTEGER NOT NULL DEFAULT 0,
+    added_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (list_id, company_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_qualification_working_list_items_list
+    ON qualification_working_list_items (list_id, position ASC);
+""",
+    ),
+    Migration(
+        version="024",
         name="discovery_reconciliation",
         up_sql="""
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS field_sources JSONB NOT NULL DEFAULT '{}'::jsonb;

@@ -27,6 +27,7 @@ class CompanyRepository(Protocol):
         target_status: str | None = None,
         last_verified_at: date | None = None,
         notes: str | None = None,
+        field_sources: dict[str, Any] | None = None,
     ) -> dict[str, Any]: ...
 
     def get_by_id(self, conn: psycopg.Connection, company_id: UUID) -> dict[str, Any] | None: ...
@@ -72,6 +73,7 @@ class CompanyRepository(Protocol):
         target_status: MaybeUnset[str] = UNSET,
         last_verified_at: MaybeUnset[date] = UNSET,
         notes: MaybeUnset[str] = UNSET,
+        field_sources: MaybeUnset[dict[str, Any]] = UNSET,
     ) -> dict[str, Any] | None: ...
 
     def archive(self, conn: psycopg.Connection, company_id: UUID) -> dict[str, Any] | None: ...
@@ -211,6 +213,14 @@ class SourceRecordRepository(Protocol):
         external_id: str,
     ) -> dict[str, Any] | None: ...
 
+    def update_payload(
+        self,
+        conn: psycopg.Connection,
+        *,
+        record_id: UUID,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]: ...
+
 
 class ActivityRepository(Protocol):
     def create(
@@ -284,6 +294,18 @@ class ResearchRecordRepository(Protocol):
         *,
         limit: int = 100,
     ) -> list[dict[str, Any]]: ...
+
+    def update_freshness(
+        self,
+        conn: psycopg.Connection,
+        *,
+        record_id: UUID,
+        observed_at: datetime | None,
+        confidence: float | None,
+        review_at: datetime | None,
+        expires_at: datetime | None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None: ...
 
 
 class PipelineRepository(Protocol):
@@ -507,6 +529,64 @@ class IcpScoringRepository(Protocol):
         conn: psycopg.Connection,
         *,
         limit: int = 100,
+    ) -> list[dict[str, Any]]: ...
+
+
+class QualificationRepository(Protocol):
+    def list_active_companies(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]: ...
+
+    def get_latest_tier_for_company(
+        self, conn: psycopg.Connection, company_id: UUID
+    ) -> str | None: ...
+
+    def record_tier_change(
+        self,
+        conn: psycopg.Connection,
+        *,
+        company_id: UUID,
+        from_tier: str | None,
+        to_tier: str,
+        score: float,
+        changed_by: str,
+        snapshot_id: UUID | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]: ...
+
+    def list_tier_history(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]: ...
+
+    def create_working_list(
+        self,
+        conn: psycopg.Connection,
+        *,
+        name: str,
+        owner: str,
+        company_ids: list[UUID],
+        max_items: int,
+    ) -> dict[str, Any]: ...
+
+    def list_working_lists_for_owner(
+        self,
+        conn: psycopg.Connection,
+        *,
+        owner: str,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]: ...
+
+    def get_working_list_items(
+        self,
+        conn: psycopg.Connection,
+        list_id: UUID,
     ) -> list[dict[str, Any]]: ...
 
 
