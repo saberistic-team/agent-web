@@ -68,6 +68,14 @@ def _should_advance_checkpoint(result: DiscoveryRunResult) -> bool:
     return not any(error.code == "adapter_failure" for error in result.errors)
 
 
+class DiscoverySourceRetryableFailure(Exception):
+    """Wrap a failed adapter result so retry logic can re-run the source."""
+
+    def __init__(self, result: DiscoveryRunResult) -> None:
+        self.result = result
+        super().__init__(result.errors[0].message if result.errors else "adapter failure")
+
+
 def run_source_with_retries(
     registry: DiscoverySourceRegistry,
     source_id: str,
@@ -97,14 +105,6 @@ def run_source_with_retries(
         )
     except DiscoverySourceRetryableFailure as exc:
         return exc.result
-
-
-class DiscoverySourceRetryableFailure(Exception):
-    """Wrap a failed adapter result so retry logic can re-run the source."""
-
-    def __init__(self, result: DiscoveryRunResult) -> None:
-        self.result = result
-        super().__init__(result.errors[0].message if result.errors else "adapter failure")
 
 
 def schedule_due(

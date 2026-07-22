@@ -25,6 +25,7 @@ from app.admin_action_queue_routes import router as admin_action_queue_router
 from app.admin_discovery_routes import router as admin_discovery_router
 from app.admin_icp_routes import router as admin_icp_router
 from app.admin_pipeline_routes import router as admin_pipeline_router
+from app.admin_action_queue_routes import router as admin_action_queue_router
 from app.admin_qualification_routes import router as admin_qualification_router
 from app.admin_routes import router as admin_router
 from app.actor_context import CORRELATION_HEADER

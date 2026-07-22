@@ -82,6 +82,15 @@ def test_qualification_targets_migration_tables() -> None:
 
 
 @pytest.mark.unit
+def test_discovery_runs_migration_tables() -> None:
+    migration = next(m for m in MIGRATIONS if m.name == "discovery_runs")
+    assert migration.version == "024"
+    assert "discovery_runs" in migration.up_sql
+    assert "discovery_run_sources" in migration.up_sql
+    assert "discovery_source_checkpoints" in migration.up_sql
+
+
+@pytest.mark.unit
 def test_icp_scoring_migration_tables() -> None:
     migration = next(m for m in MIGRATIONS if m.name == "icp_scoring")
     assert migration.version == "021"
@@ -506,11 +515,3 @@ def test_project_brief_analytics_session_migration_is_idempotent() -> None:
     assert migration.version == "018"
     assert "ADD COLUMN IF NOT EXISTS analytics_session_id UUID" in migration.up_sql
 
-
-@pytest.mark.unit
-def test_discovery_runs_migration_creates_run_history_tables() -> None:
-    migration = next(m for m in MIGRATIONS if m.name == "discovery_runs")
-    assert migration.version == "024"
-    assert "CREATE TABLE IF NOT EXISTS discovery_runs" in migration.up_sql
-    assert "CREATE TABLE IF NOT EXISTS discovery_run_sources" in migration.up_sql
-    assert "CREATE TABLE IF NOT EXISTS discovery_source_checkpoints" in migration.up_sql

@@ -356,6 +356,7 @@ def build_preview_action_queue_data(
 
     items: list[ActionQueueItem] = []
 
+    # Overdue action
     items.append(
         ActionQueueItem(
             item_key=f"{QUEUE_CATEGORY_OVERDUE}:{_preview_uuid(rng)}",
@@ -372,6 +373,7 @@ def build_preview_action_queue_data(
         )
     )
 
+    # Due today
     items.append(
         ActionQueueItem(
             item_key=f"{QUEUE_CATEGORY_DUE_TODAY}:{_preview_uuid(rng)}",
@@ -388,6 +390,7 @@ def build_preview_action_queue_data(
         )
     )
 
+    # Tier A qualified
     items.append(
         ActionQueueItem(
             item_key=f"{QUEUE_CATEGORY_TIER_A}:{_preview_uuid(rng)}",
@@ -403,6 +406,7 @@ def build_preview_action_queue_data(
         )
     )
 
+    # Warm introduction
     contact_name = f"{rng.choice(CONTACT_FIRST)} {rng.choice(CONTACT_LAST)}"
     items.append(
         ActionQueueItem(
@@ -419,6 +423,7 @@ def build_preview_action_queue_data(
         )
     )
 
+    # Stale high-value evidence
     items.append(
         ActionQueueItem(
             item_key=f"{QUEUE_CATEGORY_STALE_EVIDENCE}:{_preview_uuid(rng)}:{_preview_uuid(rng)}",
@@ -440,10 +445,9 @@ def build_preview_action_queue_data(
 
 def build_preview_export_csv() -> str:
     """Deterministic preview CSV with formula-injection sample cells."""
+    from app.crm_export import EXPORT_COLUMNS, neutralize_csv_cell
     import csv
     import io
-
-    from app.crm_export import EXPORT_COLUMNS, neutralize_csv_cell
 
     buffer = io.StringIO()
     writer = csv.DictWriter(buffer, fieldnames=list(EXPORT_COLUMNS))

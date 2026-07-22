@@ -6,6 +6,8 @@ import os
 from dataclasses import dataclass
 
 from app.app_environment import AppEnvironment, parse_app_environment
+
+_DISCOVERY_SCHEDULER_ENABLED = frozenset({"1", "true", "yes"})
 from app.admin_preview_security import resolve_admin_preview_enabled
 
 
@@ -176,7 +178,7 @@ def get_settings() -> Settings:
         discovery_scheduler_enabled=os.environ.get(
             "DISCOVERY_SCHEDULER_ENABLED", ""
         ).lower()
-        in ("1", "true", "yes"),
+        in _DISCOVERY_SCHEDULER_ENABLED,
         discovery_schedule_interval_days=int(
             os.environ.get("DISCOVERY_SCHEDULE_INTERVAL_DAYS", "7")
         ),
