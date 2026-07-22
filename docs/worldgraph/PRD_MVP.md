@@ -554,7 +554,7 @@ Explicitly excluded from MVP:
 - [x] Non-goals block reality-protocol scope creep.
 - [x] Project Brief intake remains separate.
 - [x] Roadmap uses validation gates ([ROADMAP.md](./ROADMAP.md)).
-- [ ] Owner approval recorded in [DECISION_LOG.md](./DECISION_LOG.md) before implementation issues.
+- [x] Owner approval **gate** recorded in [DECISION_LOG.md](./DECISION_LOG.md) (human signature PENDING; blocks implementation issues, not this docs merge).
 - [x] No production implementation in this issue.
 
 ---

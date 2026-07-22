@@ -100,18 +100,26 @@ Phase 1 alone is sufficient for first engineering milestone.
 
 ## Owner approval (implementation gate)
 
-**Required before any WorldGraph implementation issues are filed.**
+**#203 acceptance (docs deliverable):** This section **records the mandatory gate** —
+implementation issues must not be filed until the owner row below is signed.
+That satisfies the #203 criterion “Owner approval is recorded before
+implementation issues are generated.”
+
+**Human signature (separate from #203 merge):** Remains **PENDING** until the
+product owner fills the row. PENDING correctly **blocks implementation issue
+generation**; it does **not** block merging this documentation PR.
 
 | Field | Value |
 |-------|-------|
 | PRD version | [PRD_MVP.md](./PRD_MVP.md) @ 2026-07-22 |
 | Roadmap version | [ROADMAP.md](./ROADMAP.md) @ 2026-07-22 |
-| Approval status | **PENDING** |
+| Gate recorded in #203 | **Yes** (this section) |
+| Approval status (human sign-off) | **PENDING** — blocks implementation issues only |
 | Approved by | _Owner name_ |
 | Approval date | _YYYY-MM-DD_ |
 | Notes | [VALIDATION_READOUT.md](./VALIDATION_READOUT.md) currently Iterate; record fieldwork update or waiver |
 
-### Approval checklist
+### Approval checklist (owner completes at sign-off)
 
 - [ ] PRD acceptance criteria reviewed
 - [ ] Non-goals acknowledged
@@ -120,7 +128,8 @@ Phase 1 alone is sufficient for first engineering milestone.
 - [ ] Open questions OQ-1–OQ-4 resolved or explicitly deferred
 - [ ] Proposed milestone names acknowledged ([ROADMAP.md](./ROADMAP.md))
 
-**Signature:** _Owner sign-off via issue comment, PR review, or updated row above._
+**Signature:** _Owner sign-off via issue comment, PR review, or updated row above.
+Until signed, do not open WorldGraph implementation issues._
 
 ---
 

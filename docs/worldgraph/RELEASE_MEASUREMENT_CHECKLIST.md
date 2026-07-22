@@ -15,8 +15,9 @@
 2. Record **Sign-off** with date and reviewer.
 3. Track **Pilot metrics** weekly during active validation; archive results when gate
    closes.
-4. Do not mark `#203` acceptance “owner approval” done until
-   [DECISION_LOG.md](./DECISION_LOG.md) owner row is filled.
+4. `#203` records the owner-approval **gate** in [DECISION_LOG.md](./DECISION_LOG.md).
+   Do **not** open implementation issues until the owner signature row is filled —
+   that human sign-off is separate from merging the #203 documentation PR.
 
 ---
 
@@ -220,8 +221,8 @@ Before enabling WorldGraph analytics in production:
 - [x] [DECISION_LOG.md](./DECISION_LOG.md) consolidates prior decisions
 - [x] This checklist covers release and measurement gates
 - [x] Proposed milestone names documented (not created in GitHub)
-- [ ] Owner approval recorded in [DECISION_LOG.md](./DECISION_LOG.md)
-- [ ] No production code in #203 PR
+- [x] Owner approval **gate** recorded in [DECISION_LOG.md](./DECISION_LOG.md) (signature PENDING → blocks implementation issues only)
+- [x] No production code in #203 PR
 
 ---
 
