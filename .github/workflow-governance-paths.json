@@ -18,6 +18,10 @@
       "category": "orchestration dispatch"
     },
     {
+      "path": "scripts/issue_deps.py",
+      "category": "issue dependency gates"
+    },
+    {
       "path": "scripts/require_planner_plan.py",
       "category": "planner gate"
     },
