@@ -1,0 +1,304 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "world_id": {
+      "value": "wg:world:marble-demo",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "Marble spatial demo",
+        "confidence": 0.88,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "name": {
+      "value": "Marble Spatial Demo",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "Marble Spatial Demo",
+        "confidence": 0.9,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://example-worlds.test/spatial/marble-demo",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "https://example-worlds.test/spatial/marble-demo",
+        "confidence": 0.95,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Explorable AI-generated 3D environment with embodied navigation.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "explorable 3D spatial world",
+        "confidence": 0.85,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "Explore world CTA",
+        "confidence": 0.7,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "ai_spatial",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "3D spatial world",
+        "confidence": 0.9,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "modalities": [
+      {
+        "value": "3d",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example-worlds.test/spatial/marble-demo",
+          "evidence_snippet": "3D spatial",
+          "confidence": 0.9,
+          "observed_at": "2026-07-15T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "creator": {
+      "value": "World Labs Partner Studio",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "Creator: World Labs Partner Studio",
+        "confidence": 0.8,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://example-worlds.test/spatial/marble-demo/explore",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example-worlds.test/spatial/marble-demo",
+          "evidence_snippet": "Explore world",
+          "confidence": 0.92,
+          "observed_at": "2026-07-15T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "supported_devices": [
+      {
+        "value": "desktop_web",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://example-worlds.test/spatial/marble-demo",
+          "evidence_snippet": "WebXR optional",
+          "confidence": 0.6,
+          "observed_at": "2026-07-15T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "spatial_exploration",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "explorable environment",
+        "confidence": 0.88,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "versioned_world_export_v1.2",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "Persistence: versioned world export v1.2",
+        "confidence": 0.85,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Generated interior spatial environment",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "AI-generated 3D environment",
+        "confidence": 0.7,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "engines_models_protocols": [
+      {
+        "entity_type": "asset",
+        "label": {
+          "value": "glTF export",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://example-worlds.test/spatial/marble-demo",
+            "evidence_snippet": "glTF 2.0 export supported",
+            "confidence": 0.85,
+            "observed_at": "2026-07-15T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "canonical_ref": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-15T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "standards_ref": {
+          "standard": "gltf",
+          "ref_url": "https://www.khronos.org/gltf/"
+        }
+      }
+    ]
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "build_time_world_generation_and_runtime_embodied_agents",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "AI role: build-time world generation + runtime embodied agents",
+        "confidence": 0.9,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "build_and_runtime",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "build-time world generation + runtime",
+        "confidence": 0.88,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "model_disclosures": [
+      {
+        "value": "unknown",
+        "provenance": {
+          "source_kind": "unknown",
+          "source_url": null,
+          "evidence_snippet": null,
+          "confidence": 0,
+          "observed_at": "2026-07-15T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "ai_spatial",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://example-worlds.test/spatial/marble-demo",
+          "evidence_snippet": "spatial-marble-demo",
+          "confidence": 1.0,
+          "observed_at": "2026-07-15T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "primary_call_to_action": {
+      "value": "play",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "Explore world",
+        "confidence": 0.85,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "representative_media": [
+      {
+        "media_url": {
+          "value": "https://example-worlds.test/media/marble-demo-poster.webp",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://example-worlds.test/spatial/marble-demo",
+            "evidence_snippet": "poster.webp",
+            "confidence": 0.7,
+            "observed_at": "2026-07-15T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "media_type": {
+          "value": "image/webp",
+          "provenance": {
+            "source_kind": "derived",
+            "source_url": "https://example-worlds.test/spatial/marble-demo",
+            "evidence_snippet": "webp extension",
+            "confidence": 0.9,
+            "observed_at": "2026-07-15T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "c2pa_manifest_ref": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-15T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ]
+  }
+}

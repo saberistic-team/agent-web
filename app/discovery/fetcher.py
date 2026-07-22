@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ipaddress
 import socket
+import time
 from dataclasses import dataclass
 from typing import Callable
 from urllib.parse import urlparse
@@ -11,6 +12,7 @@ from urllib.parse import urlparse
 import httpx
 
 from app.discovery.rate_limit import RateLimiter
+from app.discovery.retry import RETRYABLE_HTTP_STATUS, retry_delay_seconds
 
 DEFAULT_MAX_BYTES = 512_000
 DEFAULT_MAX_REDIRECTS = 3
@@ -58,6 +60,9 @@ class FetchPolicy:
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
     user_agent: str = DISCOVERY_USER_AGENT
     rate_limit_requests_per_minute: int = DEFAULT_RATE_LIMIT_RPM
+    retry_max_attempts: int = 1
+    retry_base_seconds: float = 1.0
+    retry_cap_seconds: float = 30.0
 
 
 class FetchError(Exception):
@@ -254,7 +259,7 @@ class HttpFetcher:
             )
         try:
             assert client is not None
-            response = client.get(url, headers=headers)
+            response = self._get_with_retries(client, url, headers=headers)
         finally:
             if owns_client and client is not None:
                 client.close()
@@ -304,3 +309,27 @@ class HttpFetcher:
             not_modified=False,
             robots_allowed=True,
         )
+
+    def _get_with_retries(
+        self,
+        client: httpx.Client,
+        url: str,
+        *,
+        headers: dict[str, str],
+    ) -> httpx.Response:
+        attempts = max(self.policy.retry_max_attempts, 1)
+        last_response: httpx.Response | None = None
+        for attempt in range(attempts):
+            response = client.get(url, headers=headers)
+            if response.status_code not in RETRYABLE_HTTP_STATUS or attempt >= attempts - 1:
+                return response
+            last_response = response
+            delay = retry_delay_seconds(
+                attempt,
+                base_seconds=self.policy.retry_base_seconds,
+                cap_seconds=self.policy.retry_cap_seconds,
+                retry_after=response.headers.get("Retry-After"),
+            )
+            time.sleep(delay)
+        assert last_response is not None
+        return last_response

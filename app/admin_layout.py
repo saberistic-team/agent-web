@@ -12,6 +12,12 @@ ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
         "summary": "Acquisition pipeline and daily attention queues",
     },
     {
+        "label": "Queue",
+        "href": "/admin/queue",
+        "milestone": "Qualification workspace",
+        "summary": "Daily action queue and spreadsheet export",
+    },
+    {
         "label": "Audit",
         "href": "/admin/audit",
         "milestone": "Audit trail",
@@ -61,7 +67,7 @@ ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
     },
     {
         "label": "Discovery",
-        "href": "/admin/discovery",
+        "href": "/admin/discovery/inbox",
         "milestone": "Lead discovery",
         "summary": "Review discovered lead candidates",
     },
@@ -124,14 +130,19 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     # Pipeline detail (Next action, Change stage, Log activity, timeline).
     "/admin/pipeline/11111111-1111-1111-1111-111111111111",
     "/admin/pipeline/11111111-1111-1111-1111-111111111111?error=validation&focus=expected_value_cents",
+    # Daily action queue (prioritized work list + export).
+    "/admin/queue",
     "/admin/targets/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa01",
-    "/admin/discovery/11111111-1111-1111-1111-111111111101",
-    "/admin/discovery/11111111-1111-1111-1111-111111111102",
-    "/admin/discovery/11111111-1111-1111-1111-111111111103",
     # ICP scoring list, rules editor, and company score detail fixtures.
     "/admin/signals/rules",
     "/admin/signals/11111111-1111-1111-1111-111111111111",
     "/admin/signals/22222222-2222-2222-2222-222222222222",
+    "/admin/discovery",
+    "/admin/discovery/runs/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1",
+    "/admin/discovery/inbox",
+    "/admin/discovery/inbox/11111111-1111-1111-1111-111111111101",
+    "/admin/discovery/inbox/11111111-1111-1111-1111-111111111102",
+    "/admin/discovery/inbox/11111111-1111-1111-1111-111111111103",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).

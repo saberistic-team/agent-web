@@ -1,0 +1,235 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "Decart Oasis",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.decart.ai/",
+        "evidence_snippet": "Decart Oasis",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://www.decart.ai/",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.decart.ai/",
+        "evidence_snippet": "https://www.decart.ai/",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "ai_spatial",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.decart.ai/",
+        "evidence_snippet": "ai_spatial",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.decart.ai/",
+        "evidence_snippet": "qualifies",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Real-time interactive AI-generated world stream users can explore as a live spatial experience.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.decart.ai/",
+        "evidence_snippet": "Real-time interactive AI-generated world stream users can explore as a live spatial experience.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Decart",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.decart.ai/",
+        "evidence_snippet": "Decart",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://www.decart.ai/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.decart.ai/",
+          "evidence_snippet": "https://www.decart.ai/",
+          "confidence": 0.85,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "spatial_exploration",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.decart.ai/",
+        "evidence_snippet": "spatial_exploration",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "Session-based streaming; limited public persistence disclosure",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.decart.ai/",
+        "evidence_snippet": "Session-based streaming; limited public persistence disclosure",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "Public demo access advertised on site",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.decart.ai/",
+        "evidence_snippet": "Public demo access advertised on site",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Generated open environments",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.decart.ai/",
+        "evidence_snippet": "Generated open environments",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Real-time navigation via input stream",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.decart.ai/",
+        "evidence_snippet": "Real-time navigation via input stream",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "value": "None documented",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.decart.ai/",
+          "evidence_snippet": "None documented",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "value": "Web streaming client",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.decart.ai/",
+          "evidence_snippet": "Web streaming client",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Real-time world model renders and updates explorable environments from user input.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.decart.ai/",
+        "evidence_snippet": "Real-time world model renders and updates explorable environments from user input.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.decart.ai/",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "Site terms referenced",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.decart.ai/",
+        "evidence_snippet": "Site terms referenced",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "safety_categories": []
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "ai_spatial",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://www.decart.ai/",
+          "evidence_snippet": "ai_spatial",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Real-time interactive AI-generated world stream users can explore as a live spatial experience.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.decart.ai/",
+        "evidence_snippet": "Real-time interactive AI-generated world stream users can explore as a live spatial experience.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

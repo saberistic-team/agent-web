@@ -72,7 +72,7 @@ Data the platform controls and is responsible for protecting:
 | **CRM entities** | `companies`, `contacts` | `app/repositories/postgres.py` | Names, emails, profile URLs |
 | **Provenance** | `source_records`, `import_batches`, `import_batch_rows` | CRM repositories | Import snapshots (profile URLs) |
 | **Evidence** | `research_records` | CRM repositories | Operator notes; public evidence URLs |
-| **Pipeline** | `companies` pipeline columns, `company_stage_history`, `activities` | `app/acquisition_pipeline.py` | Deal metadata, no payment PAN |
+| **Pipeline** | `companies` pipeline columns, `pipeline_stage_history`, `activities` | `app/acquisition_pipeline.py` | Deal metadata, no payment PAN |
 | **Audit** | `audit_events` | `app/audit_service.py` | Redacted summaries only |
 | **Admin auth** | `admin_sessions`, `admin_login_flows`, `admin_login_rate_limits` | `app/db.py`, `app/admin_auth.py` | Hashed tokens only |
 | **First-party analytics** | `analytics_events`, `analytics_sessions` | `app/analytics_ingest.py` | Opaque session UUIDs; no brief/email |

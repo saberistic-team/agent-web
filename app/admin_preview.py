@@ -24,6 +24,24 @@ from app.acquisition_dashboard import (
     EvidenceRow,
     NextActionRow,
 )
+from app.analytics_dashboard import (
+    AnalyticsDashboardData,
+    AttributionRow,
+    ContentEngagementRow,
+    ConversionRateRow,
+    EventCountRow,
+    parse_analytics_date_range,
+)
+from app.acquisition_action_queue import (
+    QUEUE_CATEGORY_DUE_TODAY,
+    QUEUE_CATEGORY_OVERDUE,
+    QUEUE_CATEGORY_STALE_EVIDENCE,
+    QUEUE_CATEGORY_TIER_A,
+    QUEUE_CATEGORY_WARM_INTRO,
+    ActionQueueData,
+    ActionQueueItem,
+    PRIORITY_RANK,
+)
 from app.pipeline_stages import PIPELINE_STAGES
 from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES, TARGET_STATUSES
 from app.icp_scoring import default_icp_rules
@@ -330,6 +348,305 @@ def build_preview_acquisition_dashboard_data(
         without_next_action=_attention(pipeline_only=True),
         generated_at=now,
     )
+
+
+def build_preview_analytics_dashboard_data(
+    *,
+    period: str = "7d",
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> AnalyticsDashboardData:
+    """Randomized marketing analytics dashboard for ADMIN_PREVIEW_MODE screenshots."""
+    rng = _resolve_rng(rng, "analytics_dashboard")
+    now = _resolve_now(now)
+    try:
+        date_range = parse_analytics_date_range(period=period, reference=now)
+    except ValueError:
+        date_range = parse_analytics_date_range(period="7d", reference=now)
+
+    engagement_events = (
+        EventCountRow("Landing Viewed", rng.randint(120, 480), "browser"),
+        EventCountRow("Services Viewed", rng.randint(40, 180), "browser"),
+        EventCountRow("Case Studies Viewed", rng.randint(30, 120), "browser"),
+        EventCountRow("Case Study Viewed", rng.randint(20, 90), "browser"),
+        EventCountRow("Insights Viewed", rng.randint(25, 110), "browser"),
+        EventCountRow("Insight Viewed", rng.randint(18, 75), "browser"),
+        EventCountRow("Brief Viewed", rng.randint(35, 140), "browser"),
+        EventCountRow("Brief Form Started", rng.randint(12, 55), "browser"),
+        EventCountRow("Contact Initiated", rng.randint(3, 18), "browser"),
+    )
+    conversion_events = (
+        EventCountRow("Lead Persisted", rng.randint(8, 28), "server"),
+        EventCountRow("Checkout Opened", rng.randint(5, 20), "server"),
+        EventCountRow("Payment Completed", rng.randint(2, 12), "server"),
+    )
+    counts = {row.event_name: row.count for row in engagement_events + conversion_events}
+
+    def _rate(
+        key: str,
+        label: str,
+        num_name: str,
+        den_name: str,
+        num_def: str,
+        den_def: str,
+    ) -> ConversionRateRow:
+        numerator = counts[num_name]
+        denominator = counts[den_name]
+        rate_pct = round(100.0 * numerator / denominator, 1) if denominator > 0 else None
+        return ConversionRateRow(
+            key=key,
+            label=label,
+            numerator=numerator,
+            denominator=denominator,
+            rate_pct=rate_pct,
+            numerator_definition=num_def,
+            denominator_definition=den_def,
+        )
+
+    conversion_rates = (
+        _rate(
+            "landing_to_brief",
+            "Landing → brief view",
+            "Brief Viewed",
+            "Landing Viewed",
+            "Brief Viewed events (browser)",
+            "Landing Viewed events (browser)",
+        ),
+        _rate(
+            "brief_to_form",
+            "Brief view → form start",
+            "Brief Form Started",
+            "Brief Viewed",
+            "Brief Form Started events (browser)",
+            "Brief Viewed events (browser)",
+        ),
+        _rate(
+            "form_to_lead",
+            "Form start → lead persisted",
+            "Lead Persisted",
+            "Brief Form Started",
+            "Lead Persisted events (server, authoritative)",
+            "Brief Form Started events (browser)",
+        ),
+        _rate(
+            "lead_to_checkout",
+            "Lead → checkout opened",
+            "Checkout Opened",
+            "Lead Persisted",
+            "Checkout Opened events (server, authoritative)",
+            "Lead Persisted events (server, authoritative)",
+        ),
+        _rate(
+            "checkout_to_payment",
+            "Checkout → payment completed",
+            "Payment Completed",
+            "Checkout Opened",
+            "Payment Completed events (server, authoritative)",
+            "Checkout Opened events (server, authoritative)",
+        ),
+        _rate(
+            "landing_to_payment",
+            "Landing → payment completed",
+            "Payment Completed",
+            "Landing Viewed",
+            "Payment Completed events (server, authoritative)",
+            "Landing Viewed events (browser)",
+        ),
+    )
+
+    attribution_rows = tuple(
+        AttributionRow(
+            source=source,
+            medium=rng.choice(("social", "email", "referral", "cpc")),
+            campaign=rng.choice(("launch", "retarget", "newsletter", "partner")),
+            event_count=rng.randint(12, 120),
+            lead_count=rng.randint(1, 18),
+        )
+        for source in rng.sample(list(UTM_SOURCES), k=min(4, len(UTM_SOURCES)))
+    )
+
+    case_slugs = ("meridian-stack", "volt-spiral", "aperture-freight", "northwind-labs")
+    article_slugs = ("pipeline-signals", "icp-sharp-edges", "warm-intro-playbook")
+    case_study_engagement = tuple(
+        ContentEngagementRow(
+            slug=slug,
+            content_type="case_study",
+            views=rng.randint(8, 64),
+        )
+        for slug in rng.sample(case_slugs, k=rng.randint(2, len(case_slugs)))
+    )
+    article_engagement = tuple(
+        ContentEngagementRow(
+            slug=slug,
+            content_type="article",
+            views=rng.randint(6, 48),
+        )
+        for slug in rng.sample(article_slugs, k=rng.randint(2, len(article_slugs)))
+    )
+
+    return AnalyticsDashboardData(
+        date_range=date_range,
+        engagement_events=engagement_events,
+        conversion_events=conversion_events,
+        conversion_rates=conversion_rates,
+        attribution_rows=attribution_rows,
+        case_study_engagement=case_study_engagement,
+        article_engagement=article_engagement,
+        generated_at=now,
+    )
+
+
+def build_preview_action_queue_data(
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> ActionQueueData:
+    """Randomized daily action queue for ADMIN_PREVIEW_MODE screenshots."""
+    rng = _resolve_rng(rng, "action_queue")
+    now = _resolve_now(now)
+    companies = list(COMPANY_NAMES)
+    rng.shuffle(companies)
+    stage_keys = list(PIPELINE_STAGES.keys())
+
+    items: list[ActionQueueItem] = []
+
+    # Overdue action
+    items.append(
+        ActionQueueItem(
+            item_key=f"{QUEUE_CATEGORY_OVERDUE}:{_preview_uuid(rng)}",
+            priority_rank=PRIORITY_RANK[QUEUE_CATEGORY_OVERDUE],
+            category=QUEUE_CATEGORY_OVERDUE,
+            reason=f"Overdue next action for {companies[0]} — due {(now - timedelta(days=3)).strftime('%Y-%m-%d %H:%M UTC')}.",
+            company_id=_preview_uuid(rng),
+            company_name=companies[0],
+            next_action=rng.choice(BRIEF_TEXTS)[:100],
+            next_action_due_at=now - timedelta(days=3),
+            pipeline_stage=stage_keys[0],
+            pipeline_owner="alex",
+            expected_value_cents=120_000,
+        )
+    )
+
+    # Due today
+    items.append(
+        ActionQueueItem(
+            item_key=f"{QUEUE_CATEGORY_DUE_TODAY}:{_preview_uuid(rng)}",
+            priority_rank=PRIORITY_RANK[QUEUE_CATEGORY_DUE_TODAY],
+            category=QUEUE_CATEGORY_DUE_TODAY,
+            reason=f"Next action due today for {companies[1]}.",
+            company_id=_preview_uuid(rng),
+            company_name=companies[1],
+            next_action="Follow up on intro thread",
+            next_action_due_at=now.replace(hour=17, minute=0),
+            pipeline_stage=stage_keys[1],
+            pipeline_owner="sam",
+            expected_value_cents=80_000,
+        )
+    )
+
+    # Tier A qualified
+    items.append(
+        ActionQueueItem(
+            item_key=f"{QUEUE_CATEGORY_TIER_A}:{_preview_uuid(rng)}",
+            priority_rank=PRIORITY_RANK[QUEUE_CATEGORY_TIER_A],
+            category=QUEUE_CATEGORY_TIER_A,
+            reason=f"Newly qualified Tier A target {companies[2]} (qualified {(now - timedelta(days=2)).strftime('%Y-%m-%d')}).",
+            company_id=_preview_uuid(rng),
+            company_name=companies[2],
+            pipeline_stage="qualified",
+            pipeline_owner="alex",
+            expected_value_cents=200_000,
+            qualified_at=now - timedelta(days=2),
+        )
+    )
+
+    # Warm introduction
+    contact_name = f"{rng.choice(CONTACT_FIRST)} {rng.choice(CONTACT_LAST)}"
+    items.append(
+        ActionQueueItem(
+            item_key=f"{QUEUE_CATEGORY_WARM_INTRO}:{_preview_uuid(rng)}:{_preview_uuid(rng)}",
+            priority_rank=PRIORITY_RANK[QUEUE_CATEGORY_WARM_INTRO],
+            category=QUEUE_CATEGORY_WARM_INTRO,
+            reason=f"Warm introduction path via {contact_name} at {companies[3]} (warm relationship).",
+            company_id=_preview_uuid(rng),
+            company_name=companies[3],
+            contact_id=_preview_uuid(rng),
+            contact_name=contact_name,
+            pipeline_stage=stage_keys[2],
+            expected_value_cents=60_000,
+        )
+    )
+
+    # Stale high-value evidence
+    items.append(
+        ActionQueueItem(
+            item_key=f"{QUEUE_CATEGORY_STALE_EVIDENCE}:{_preview_uuid(rng)}:{_preview_uuid(rng)}",
+            priority_rank=PRIORITY_RANK[QUEUE_CATEGORY_STALE_EVIDENCE],
+            category=QUEUE_CATEGORY_STALE_EVIDENCE,
+            reason=f"Stale high-value evidence for {companies[4]} — confidence 85%, needs re-verification.",
+            company_id=_preview_uuid(rng),
+            company_name=companies[4],
+            evidence_record_id=_preview_uuid(rng),
+            evidence_confidence=0.85,
+            evidence_source_url="https://example.com/signal",
+            pipeline_stage=stage_keys[3],
+            expected_value_cents=150_000,
+        )
+    )
+
+    return ActionQueueData(items=tuple(items), generated_at=now)
+
+
+def build_preview_export_csv() -> str:
+    """Deterministic preview CSV with formula-injection sample cells."""
+    from app.crm_export import EXPORT_COLUMNS, neutralize_csv_cell
+    import csv
+    import io
+
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=list(EXPORT_COLUMNS))
+    writer.writeheader()
+    writer.writerow(
+        {
+            "company_name": neutralize_csv_cell("=HYPERLINK(\"evil\")"),
+            "company_domain": neutralize_csv_cell("northwind.io"),
+            "pipeline_stage": "qualified",
+            "tier": "A",
+            "target_status": "target",
+            "expected_value_usd": "1200.00",
+            "next_action": neutralize_csv_cell("+cmd|'/c calc'"),
+            "next_action_due_at": "2026-07-16 17:00 UTC",
+            "contact_name": neutralize_csv_cell("Alex Chen"),
+            "contact_title": "Founder",
+            "contact_buying_roles": "founder",
+            "contact_relationship_strength": "warm",
+            "evidence_source_url": "https://example.com/evidence",
+            "evidence_confidence": "0.85",
+            "evidence_type": "verified_fact",
+            "unresolved_fields": "",
+        }
+    )
+    writer.writerow(
+        {
+            "company_name": neutralize_csv_cell("Helios Rail"),
+            "company_domain": "",
+            "pipeline_stage": "researching",
+            "tier": "",
+            "target_status": "watching",
+            "expected_value_usd": "",
+            "next_action": "",
+            "next_action_due_at": "",
+            "contact_name": "",
+            "contact_title": "",
+            "contact_buying_roles": "",
+            "contact_relationship_strength": "",
+            "evidence_source_url": "",
+            "evidence_confidence": "",
+            "evidence_type": "",
+            "unresolved_fields": "next_action; next_action_due_at; decision_maker_contact",
+        }
+    )
+    return buffer.getvalue()
 
 
 def build_preview_dashboard_data(
@@ -711,169 +1028,6 @@ def build_preview_qualification_target_detail(
         },
     ]
     return company, target, history
-
-
-PREVIEW_DISCOVERY_CANDIDATE_IDS = (
-    UUID("11111111-1111-1111-1111-111111111101"),
-    UUID("11111111-1111-1111-1111-111111111102"),
-    UUID("11111111-1111-1111-1111-111111111103"),
-    UUID("11111111-1111-1111-1111-111111111104"),
-    UUID("11111111-1111-1111-1111-111111111105"),
-)
-PREVIEW_DISCOVERY_RUN_ID = UUID("22222222-2222-2222-2222-222222222201")
-
-
-def build_preview_discovery_filter_metadata(
-    *,
-    rng: random.Random | None = None,
-    now: datetime | None = None,
-) -> dict[str, object]:
-    rng = _resolve_rng(rng, "discovery_filter_metadata")
-    now = _resolve_now(now)
-    return {
-        "sources": ["fixture_api", "yc_rss", "sitemap_crawl"],
-        "runs": [
-            {
-                "id": str(PREVIEW_DISCOVERY_RUN_ID),
-                "source_id": "fixture_api",
-                "started_at": now - timedelta(days=2),
-                "candidate_count": len(PREVIEW_DISCOVERY_CANDIDATE_IDS),
-                "status": "completed",
-            }
-        ],
-    }
-
-
-def build_preview_discovery_inbox(
-    *,
-    filters: dict[str, str | None] | None = None,
-    rng: random.Random | None = None,
-    now: datetime | None = None,
-) -> list[dict[str, object]]:
-    rng = _resolve_rng(rng, "discovery_inbox")
-    now = _resolve_now(now)
-    filters = filters or {}
-    rows: list[dict[str, object]] = []
-    review_states = ("pending", "pending", "deferred", "pending", "accepted")
-    for index, candidate_id in enumerate(PREVIEW_DISCOVERY_CANDIDATE_IDS):
-        review_state = review_states[index % len(review_states)]
-        if filters.get("review_state") and filters["review_state"] != review_state:
-            continue
-        category = list(COMPANY_CATEGORIES)[index % len(COMPANY_CATEGORIES)]
-        if filters.get("category") and filters["category"] != category:
-            continue
-        freshness = rng.choice(("fresh", "recent", "aging", "stale"))
-        if filters.get("freshness") and filters["freshness"] != freshness:
-            continue
-        confidence = round(rng.uniform(0.45, 0.95), 2)
-        rows.append(
-            {
-                "id": candidate_id,
-                "name": COMPANY_NAMES[index % len(COMPANY_NAMES)],
-                "source_id": rng.choice(("fixture_api", "yc_rss")),
-                "run_id": str(PREVIEW_DISCOVERY_RUN_ID),
-                "category": category,
-                "confidence": confidence,
-                "freshness": freshness,
-                "review_state": review_state,
-                "discovered_at": now - timedelta(days=index + 1),
-                "domain": f"{COMPANY_NAMES[index % len(COMPANY_NAMES)].split()[0].lower()}.example",
-            }
-        )
-    return rows
-
-
-def preview_discovery_candidate_exists(candidate_id: UUID) -> bool:
-    return candidate_id in PREVIEW_DISCOVERY_CANDIDATE_IDS
-
-
-def build_preview_discovery_candidate_detail(
-    candidate_id: UUID,
-    *,
-    rng: random.Random | None = None,
-    now: datetime | None = None,
-) -> dict[str, object]:
-    rng = _resolve_rng(rng, f"discovery_candidate_detail:{candidate_id}")
-    now = _resolve_now(now)
-    index = PREVIEW_DISCOVERY_CANDIDATE_IDS.index(candidate_id)
-    name = COMPANY_NAMES[index % len(COMPANY_NAMES)]
-    domain = f"{name.split()[0].lower()}.example"
-    return {
-        "id": candidate_id,
-        "name": name,
-        "source_id": "fixture_api",
-        "run_id": str(PREVIEW_DISCOVERY_RUN_ID),
-        "external_id": f"fixture_api:{index:04d}",
-        "evidence_fingerprint": f"preview-fp-{index:02d}",
-        "domain": domain,
-        "website": f"https://{domain}",
-        "category": list(COMPANY_CATEGORIES)[index % len(COMPANY_CATEGORIES)],
-        "confidence": round(rng.uniform(0.55, 0.92), 2),
-        "freshness": rng.choice(("fresh", "recent", "aging")),
-        "review_state": "deferred" if index == 2 else "pending",
-        "discovered_at": now - timedelta(days=index + 2),
-        "signals": ["hiring", "public launch"],
-        "evidence": {
-            "snippet": f"{name} raised a seed round and is hiring platform engineers.",
-            "observations": [
-                {
-                    "source_url": f"https://news.example.com/{index}",
-                    "raw_source_id": "fixture_api",
-                    "value": f"name={name}",
-                    "confidence": 0.86,
-                    "retrieved_at": (now - timedelta(days=index + 1)).isoformat(),
-                    "review_at": (now + timedelta(days=20)).isoformat(),
-                    "expires_at": (now + timedelta(days=80)).isoformat(),
-                }
-            ],
-        },
-        "conflicts": (
-            ["Domain mismatch with existing company Meridian Stack"]
-            if index == 1
-            else []
-        ),
-        "match_suggestions": [
-            {
-                "id": PREVIEW_COMPANY_POPULATED_ID,
-                "name": "Meridian Stack",
-                "domain": "meridian.example",
-            }
-        ]
-        if index in {1, 3}
-        else [],
-    }
-
-
-def build_preview_discovery_bulk_preview(
-    *,
-    action: str,
-    candidate_ids: list[str],
-    rng: random.Random | None = None,
-) -> dict[str, object]:
-    rng = _resolve_rng(rng, "discovery_bulk_preview")
-    selected = build_preview_discovery_inbox(rng=rng)
-    if candidate_ids:
-        selected = [row for row in selected if str(row["id"]) in candidate_ids] or selected[:2]
-    else:
-        selected = selected[:2]
-    return {
-        "action": action,
-        "count": len(selected),
-        "candidates": [
-            {
-                "id": str(row["id"]),
-                "name": row["name"],
-                "source_id": row["source_id"],
-                "domain": row.get("domain"),
-                "review_state": row.get("review_state"),
-            }
-            for row in selected
-        ],
-        "invalid_state_ids": [],
-        "preview_token": "preview-bulk-token",
-        "rejection_reason": "Not a fit for current ICP" if action == "reject" else None,
-        "deferred_until": None,
-    }
 
 
 def build_preview_pipeline_companies(
@@ -1890,12 +2044,13 @@ AUDIT_ACTIONS = (
     "contact.restore",
     "pipeline.update",
     "brief.convert",
+    "research_record.create",
+    "pipeline_activity.create",
+    "discovery.merge_decision",
     "discovery.candidate.accept",
     "discovery.candidate.reject",
     "discovery.candidate.defer",
     "discovery.candidate.bulk",
-    "research_record.create",
-    "pipeline_activity.create",
 )
 
 
@@ -2482,3 +2637,384 @@ def build_preview_linkedin_reconcile(
         },
         "absent_preserved": rng.randint(12, 48),
     }
+
+
+def build_preview_discovery_reconcile(
+    *,
+    rng: random.Random | None = None,
+) -> dict[str, object]:
+    """Mock discovery reconcile preview with match, create, review, and conflict rows."""
+    rng = _resolve_rng(rng, "discovery_reconcile")
+    companies = list(COMPANY_NAMES)
+    rng.shuffle(companies)
+    rows: list[dict[str, object]] = [
+        {
+            "row_index": 0,
+            "external_id": "yc:seed-alpha",
+            "outcome": "matched",
+            "identity": {
+                "external_id": "yc:seed-alpha",
+                "name": companies[0],
+                "domain": "alpha.example.com",
+                "website": "https://alpha.example.com",
+                "signals": ["fintech", "seed"],
+            },
+            "match_tier": "domain",
+            "company_id": _preview_uuid(rng),
+            "company_label": companies[0],
+            "field_changes": [
+                {"field": "category", "before": None, "after": "fintech"},
+            ],
+            "evidence_append_count": 1,
+            "evidence_refresh_count": 0,
+        },
+        {
+            "row_index": 1,
+            "external_id": "rss:beta-signal",
+            "outcome": "create",
+            "identity": {
+                "external_id": "rss:beta-signal",
+                "name": companies[1],
+                "domain": "beta.example.com",
+                "website": "https://beta.example.com",
+                "signals": ["ai infrastructure"],
+            },
+            "match_tier": "none",
+            "field_changes": [
+                {"field": "domain", "before": None, "after": "beta.example.com"},
+            ],
+            "evidence_append_count": 1,
+            "evidence_refresh_count": 0,
+        },
+        {
+            "row_index": 2,
+            "external_id": "api:gamma-name",
+            "outcome": "review",
+            "identity": {
+                "external_id": "api:gamma-name",
+                "name": companies[2],
+                "domain": None,
+                "website": None,
+                "signals": ["watchlist"],
+            },
+            "match_tier": "name",
+            "company_id": _preview_uuid(rng),
+            "company_label": companies[2],
+            "conflict_reason": "Name-only match requires operator review",
+            "conflict_candidates": [
+                {
+                    "company_id": _preview_uuid(rng),
+                    "name": companies[2],
+                    "domain": "legacy.example.com",
+                    "website": "https://legacy.example.com",
+                }
+            ],
+        },
+        {
+            "row_index": 3,
+            "external_id": "sitemap:delta-conflict",
+            "outcome": "conflict",
+            "identity": {
+                "external_id": "sitemap:delta-conflict",
+                "name": companies[3],
+                "domain": "shared.example.com",
+                "website": "https://shared.example.com",
+                "signals": ["duplicate domain"],
+            },
+            "match_tier": "domain",
+            "conflict_reason": "Multiple companies share this domain or alias",
+            "conflict_candidates": [
+                {
+                    "company_id": _preview_uuid(rng),
+                    "name": f"{companies[3]} A",
+                    "domain": "shared.example.com",
+                    "website": "https://a.shared.example.com",
+                },
+                {
+                    "company_id": _preview_uuid(rng),
+                    "name": f"{companies[3]} B",
+                    "domain": "shared.example.com",
+                    "website": "https://b.shared.example.com",
+                },
+            ],
+        },
+    ]
+    return {
+        "rows": rows,
+        "summary_counts": {
+            "matched": 1,
+            "create": 1,
+            "review": 1,
+            "conflict": 1,
+            "unchanged": 0,
+            "skipped": 0,
+        },
+        "absent_preserved": rng.randint(8, 36),
+        "review_queue_count": rng.randint(2, 9),
+    }
+
+PREVIEW_DISCOVERY_RUN_IDS = (
+    UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1"),
+    UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb2"),
+    UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb3"),
+)
+
+
+
+PREVIEW_DISCOVERY_CANDIDATE_IDS = (
+    UUID("11111111-1111-1111-1111-111111111101"),
+    UUID("11111111-1111-1111-1111-111111111102"),
+    UUID("11111111-1111-1111-1111-111111111103"),
+    UUID("11111111-1111-1111-1111-111111111104"),
+    UUID("11111111-1111-1111-1111-111111111105"),
+)
+PREVIEW_DISCOVERY_INBOX_RUN_ID = UUID("22222222-2222-2222-2222-222222222201")
+
+
+
+def build_preview_discovery_filter_metadata(
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> dict[str, object]:
+    rng = _resolve_rng(rng, "discovery_filter_metadata")
+    now = _resolve_now(now)
+    return {
+        "sources": ["fixture_api", "yc_rss", "sitemap_crawl"],
+        "runs": [
+            {
+                "id": str(PREVIEW_DISCOVERY_INBOX_RUN_ID),
+                "source_id": "fixture_api",
+                "started_at": now - timedelta(days=2),
+                "candidate_count": len(PREVIEW_DISCOVERY_CANDIDATE_IDS),
+                "status": "completed",
+            }
+        ],
+    }
+
+
+def build_preview_discovery_inbox(
+    *,
+    filters: dict[str, str | None] | None = None,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> list[dict[str, object]]:
+    rng = _resolve_rng(rng, "discovery_inbox")
+    now = _resolve_now(now)
+    filters = filters or {}
+    rows: list[dict[str, object]] = []
+    review_states = ("pending", "pending", "deferred", "pending", "accepted")
+    for index, candidate_id in enumerate(PREVIEW_DISCOVERY_CANDIDATE_IDS):
+        review_state = review_states[index % len(review_states)]
+        if filters.get("review_state") and filters["review_state"] != review_state:
+            continue
+        category = list(COMPANY_CATEGORIES)[index % len(COMPANY_CATEGORIES)]
+        if filters.get("category") and filters["category"] != category:
+            continue
+        freshness = rng.choice(("fresh", "recent", "aging", "stale"))
+        if filters.get("freshness") and filters["freshness"] != freshness:
+            continue
+        confidence = round(rng.uniform(0.45, 0.95), 2)
+        rows.append(
+            {
+                "id": candidate_id,
+                "name": COMPANY_NAMES[index % len(COMPANY_NAMES)],
+                "source_id": rng.choice(("fixture_api", "yc_rss")),
+                "run_id": str(PREVIEW_DISCOVERY_INBOX_RUN_ID),
+                "category": category,
+                "confidence": confidence,
+                "freshness": freshness,
+                "review_state": review_state,
+                "discovered_at": now - timedelta(days=index + 1),
+                "domain": f"{COMPANY_NAMES[index % len(COMPANY_NAMES)].split()[0].lower()}.example",
+            }
+        )
+    return rows
+
+
+def preview_discovery_candidate_exists(candidate_id: UUID) -> bool:
+    return candidate_id in PREVIEW_DISCOVERY_CANDIDATE_IDS
+
+
+def build_preview_discovery_candidate_detail(
+    candidate_id: UUID,
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> dict[str, object]:
+    rng = _resolve_rng(rng, f"discovery_candidate_detail:{candidate_id}")
+    now = _resolve_now(now)
+    index = PREVIEW_DISCOVERY_CANDIDATE_IDS.index(candidate_id)
+    name = COMPANY_NAMES[index % len(COMPANY_NAMES)]
+    domain = f"{name.split()[0].lower()}.example"
+    return {
+        "id": candidate_id,
+        "name": name,
+        "source_id": "fixture_api",
+        "run_id": str(PREVIEW_DISCOVERY_INBOX_RUN_ID),
+        "external_id": f"fixture_api:{index:04d}",
+        "evidence_fingerprint": f"preview-fp-{index:02d}",
+        "domain": domain,
+        "website": f"https://{domain}",
+        "category": list(COMPANY_CATEGORIES)[index % len(COMPANY_CATEGORIES)],
+        "confidence": round(rng.uniform(0.55, 0.92), 2),
+        "freshness": rng.choice(("fresh", "recent", "aging")),
+        "review_state": "deferred" if index == 2 else "pending",
+        "discovered_at": now - timedelta(days=index + 2),
+        "signals": ["hiring", "public launch"],
+        "evidence": {
+            "snippet": f"{name} raised a seed round and is hiring platform engineers.",
+            "observations": [
+                {
+                    "source_url": f"https://news.example.com/{index}",
+                    "raw_source_id": "fixture_api",
+                    "value": f"name={name}",
+                    "confidence": 0.86,
+                    "retrieved_at": (now - timedelta(days=index + 1)).isoformat(),
+                    "review_at": (now + timedelta(days=20)).isoformat(),
+                    "expires_at": (now + timedelta(days=80)).isoformat(),
+                }
+            ],
+        },
+        "conflicts": (
+            ["Domain mismatch with existing company Meridian Stack"]
+            if index == 1
+            else []
+        ),
+        "match_suggestions": [
+            {
+                "id": PREVIEW_COMPANY_POPULATED_ID,
+                "name": "Meridian Stack",
+                "domain": "meridian.example",
+            }
+        ]
+        if index in {1, 3}
+        else [],
+    }
+
+
+def build_preview_discovery_bulk_preview(
+    *,
+    action: str,
+    candidate_ids: list[str],
+    rng: random.Random | None = None,
+) -> dict[str, object]:
+    rng = _resolve_rng(rng, "discovery_bulk_preview")
+    selected = build_preview_discovery_inbox(rng=rng)
+    if candidate_ids:
+        selected = [row for row in selected if str(row["id"]) in candidate_ids] or selected[:2]
+    else:
+        selected = selected[:2]
+    return {
+        "action": action,
+        "count": len(selected),
+        "candidates": [
+            {
+                "id": str(row["id"]),
+                "name": row["name"],
+                "source_id": row["source_id"],
+                "domain": row.get("domain"),
+                "review_state": row.get("review_state"),
+            }
+            for row in selected
+        ],
+        "invalid_state_ids": [],
+        "preview_token": "preview-bulk-token",
+        "rejection_reason": "Not a fit for current ICP" if action == "reject" else None,
+        "deferred_until": None,
+    }
+
+
+def build_preview_discovery_runs(
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> tuple[list[dict[str, object]], int]:
+    """Mock discovery run history for ADMIN_PREVIEW_MODE."""
+    rng = _resolve_rng(rng, "discovery_runs")
+    now = _resolve_now(now)
+    runs: list[dict[str, object]] = []
+    fixtures = (
+        ("scheduled", "completed", ("ycombinator",)),
+        ("manual", "partial", ("ycombinator",)),
+        ("scheduled", "failed", ("ycombinator",)),
+    )
+    for index, (trigger, status, sources) in enumerate(fixtures):
+        started = now - timedelta(days=index * 7, hours=rng.randint(1, 6))
+        finished = started + timedelta(minutes=rng.randint(3, 18))
+        runs.append(
+            {
+                "id": str(PREVIEW_DISCOVERY_RUN_IDS[index]),
+                "trigger_type": trigger,
+                "status": status,
+                "started_at": started,
+                "finished_at": finished,
+                "actor": "preview-operator" if trigger == "manual" else "scheduler",
+                "enabled_sources": list(sources),
+                "lock_acquired": True,
+                "correlation_id": f"corr-preview-discovery-{index + 1}",
+                "error_message": "Rate limit exceeded" if status == "failed" else None,
+            }
+        )
+    return runs, len(runs)
+
+
+def build_preview_discovery_run_detail(
+    run_id: str,
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> dict[str, object] | None:
+    """Mock discovery run detail with per-source outcomes."""
+    detail_rng = _resolve_rng(rng, f"discovery_run_detail:{run_id}")
+    runs, _ = build_preview_discovery_runs(rng=rng, now=now)
+    run = next((item for item in runs if str(item["id"]) == run_id), None)
+    if run is None:
+        return None
+    status = str(run["status"])
+    sources = [
+        {
+            "source_id": "ycombinator",
+            "status": "completed" if status == "completed" else status,
+            "fetched_count": detail_rng.randint(80, 120),
+            "accepted_count": detail_rng.randint(70, 100),
+            "rejected_count": detail_rng.randint(0, 5),
+            "error_count": 0 if status == "completed" else detail_rng.randint(1, 3),
+            "checkpoint_cursor": str(detail_rng.randint(0, 40)),
+            "checkpoint_etag": None,
+            "checkpoint_last_modified": None,
+            "checkpoint_last_run_at": run["finished_at"],
+            "errors": []
+            if status == "completed"
+            else [
+                {
+                    "code": "fetch_failed",
+                    "message": "Upstream rate limit exceeded",
+                    "recoverable": True,
+                }
+            ],
+        }
+    ]
+    if status == "partial":
+        sources.append(
+            {
+                "source_id": "rss-example",
+                "status": "failed",
+                "fetched_count": 0,
+                "accepted_count": 0,
+                "rejected_count": 0,
+                "error_count": 1,
+                "checkpoint_cursor": "page-2",
+                "checkpoint_etag": 'W/"abc123"',
+                "checkpoint_last_modified": None,
+                "checkpoint_last_run_at": None,
+                "errors": [
+                    {
+                        "code": "adapter_failure",
+                        "message": "Feed temporarily unavailable",
+                        "recoverable": True,
+                    }
+                ],
+            }
+        )
+    return {"run": run, "sources": sources}

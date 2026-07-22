@@ -84,6 +84,11 @@ ADMIN_MUTATION_ROUTE_CLASSIFICATIONS: dict[tuple[str, str], tuple[MutationClassi
         "Read-only reconciliation preview computes and returns a JSON diff without "
         "persisting anything; the eventual commit is covered by import.batch above.",
     ),
+    ("POST", "/admin/discovery/reconcile-preview"): (
+        "intentionally_unaudited",
+        "Read-only discovery reconciliation preview computes candidate matches without "
+        "persisting anything; commit paths emit discovery.merge_decision and research records.",
+    ),
     ("POST", "/admin/pipeline/{company_id}/stage"): (
         "required_immutable_business_audit",
         "Pipeline stage transition emits pipeline.update with bounded summaries.",
@@ -95,6 +100,27 @@ ADMIN_MUTATION_ROUTE_CLASSIFICATIONS: dict[tuple[str, str], tuple[MutationClassi
     ("POST", "/admin/pipeline/{company_id}/activities"): (
         "required_immutable_business_audit",
         "Pipeline activity creation emits pipeline_activity.create with bounded metadata.",
+    ),
+    ("POST", "/admin/queue/complete"): (
+        "required_immutable_business_audit",
+        "Queue complete logs task_completion activity and may emit pipeline.update when clearing next action.",
+    ),
+    ("POST", "/admin/queue/snooze"): (
+        "required_immutable_business_audit",
+        "Queue snooze updates next-action due date (pipeline.update) and logs task_completion activity.",
+    ),
+    ("POST", "/admin/queue/reschedule"): (
+        "required_immutable_business_audit",
+        "Queue reschedule updates next-action due date (pipeline.update) and logs task_completion activity.",
+    ),
+    ("POST", "/admin/queue/replace"): (
+        "required_immutable_business_audit",
+        "Queue replace updates next action (pipeline.update) and logs task_completion activity.",
+    ),
+    ("POST", "/admin/discovery/run"): (
+        "intentionally_unaudited",
+        "Discovery runs persist operational history in discovery_runs / discovery_run_sources; "
+        "no separate audit_events entry in this release.",
     ),
     ("POST", "/admin/signals/rules"): (
         "required_immutable_business_audit",
@@ -116,26 +142,27 @@ ADMIN_MUTATION_ROUTE_CLASSIFICATIONS: dict[tuple[str, str], tuple[MutationClassi
         "Working-list save persists company IDs only on qualification_working_lists / "
         "qualification_working_list_items; no audit_events entry in this release.",
     ),
-    ("POST", "/admin/discovery/{candidate_id}/accept"): (
+    ("POST", "/admin/discovery/inbox/{candidate_id}/accept"): (
         "required_immutable_business_audit",
         "Discovery accept emits discovery.candidate.accept with bounded IDs and outcome.",
     ),
-    ("POST", "/admin/discovery/{candidate_id}/reject"): (
+    ("POST", "/admin/discovery/inbox/{candidate_id}/reject"): (
         "required_immutable_business_audit",
         "Discovery reject emits discovery.candidate.reject with suppression metadata.",
     ),
-    ("POST", "/admin/discovery/{candidate_id}/defer"): (
+    ("POST", "/admin/discovery/inbox/{candidate_id}/defer"): (
         "required_immutable_business_audit",
         "Discovery defer emits discovery.candidate.defer with review date only.",
     ),
-    ("POST", "/admin/discovery/bulk/preview"): (
+    ("POST", "/admin/discovery/inbox/bulk/preview"): (
         "intentionally_unaudited",
         "Read-only bulk preview computes candidate summaries without persistence.",
     ),
-    ("POST", "/admin/discovery/bulk/commit"): (
+    ("POST", "/admin/discovery/inbox/bulk/commit"): (
         "required_immutable_business_audit",
         "Bulk commit emits discovery.candidate.bulk plus per-candidate action audits.",
     ),
+
 }
 
 

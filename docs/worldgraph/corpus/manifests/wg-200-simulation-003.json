@@ -1,0 +1,294 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "world_id": {
+      "value": "urn:worldgraph:corpus:wg-200-simulation-003",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://voyager.minedojo.org/",
+        "evidence_snippet": "Derived corpus id wg-200-simulation-003",
+        "confidence": 1.0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "name": {
+      "value": "Voyager",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://voyager.minedojo.org/",
+        "evidence_snippet": "Voyager",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://voyager.minedojo.org/",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://voyager.minedojo.org/",
+        "evidence_snippet": "https://voyager.minedojo.org/",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "LLM-driven lifelong learning agent in open-ended Minecraft world.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://voyager.minedojo.org/",
+        "evidence_snippet": "Embodied LLM agent learns skills, explores, and builds in Minecraft world",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://voyager.minedojo.org/",
+        "evidence_snippet": "Public product or documentation page reviewed",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "agent_simulation",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://voyager.minedojo.org/",
+        "evidence_snippet": "agent_simulation",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "MineDojo / NVIDIA Research collaborators",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://voyager.minedojo.org/",
+        "evidence_snippet": "MineDojo / NVIDIA Research collaborators",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "operator": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://github.com/MineDojo/Voyager",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://voyager.minedojo.org/",
+          "evidence_snippet": "Paper site links to open-source code and Minecraft dependency",
+          "confidence": 0.9,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "interactive_session",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://voyager.minedojo.org/",
+        "evidence_snippet": "Users affect outcomes via documented interaction: Autonomous exploration, crafting, tech tree progression via code execution",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "persistent_session_state",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://voyager.minedojo.org/",
+        "evidence_snippet": "Skill library and world checkpoints saved across episodes",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "age_guidance": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Embodied LLM agent learns skills, explores, and builds in Minecraft world",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://voyager.minedojo.org/",
+        "evidence_snippet": "Embodied LLM agent learns skills, explores, and builds in Minecraft world",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://voyager.minedojo.org/",
+        "evidence_snippet": "runtime",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "human_control_boundaries": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "Apache-2.0 on code; Minecraft license separate",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://voyager.minedojo.org/",
+        "evidence_snippet": "Apache-2.0 on code; Minecraft license separate",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "provenance_evidence": [
+      {
+        "value": "https://voyager.minedojo.org/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://voyager.minedojo.org/",
+          "evidence_snippet": "Primary research source URL",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "content_safety_categories": [
+      {
+        "value": "unknown",
+        "provenance": {
+          "source_kind": "unknown",
+          "source_url": null,
+          "evidence_snippet": null,
+          "confidence": 0,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "agent_simulation",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://voyager.minedojo.org/",
+          "evidence_snippet": "agent_simulation",
+          "confidence": 0.85,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Strong simulation-world reference with reproducible configs.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://voyager.minedojo.org/",
+        "evidence_snippet": "Corpus research synthesis",
+        "confidence": 0.6,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Minecraft overworld with survival mechanics and craft tree",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://voyager.minedojo.org/",
+        "evidence_snippet": "Bounded setting or mechanics described: Minecraft overworld with survival mechanics and craft tree",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Autonomous exploration, crafting, tech tree progression via code execution",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://voyager.minedojo.org/",
+        "evidence_snippet": "Mechanics from public documentation",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "platforms": [
+      {
+        "entity_type": "platform",
+        "label": {
+          "value": "Minecraft Java Edition",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://voyager.minedojo.org/",
+            "evidence_snippet": "Minecraft Java Edition",
+            "confidence": 0.85,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ]
+  }
+}

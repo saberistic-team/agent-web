@@ -175,3 +175,23 @@ def test_imports_reconcile_preview_rejects_bad_payload(
         json={"connections": "nope"},
     )
     assert response.status_code == 400
+
+
+@pytest.mark.unit
+def test_discovery_reconcile_preview_in_preview_mode(
+    authenticated_admin: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    enable_admin_preview_env(monkeypatch, base_url="http://localhost:8000")
+    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
+
+    response = client.post(
+        "/admin/discovery/reconcile-preview",
+        cookies=authenticated_admin,
+        json={"candidates": []},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["summary_counts"]["matched"] == 1
+    assert payload["review_queue_count"] >= 1
+    assert len(payload["rows"]) >= 4

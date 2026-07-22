@@ -22,9 +22,11 @@ from app.admin_preview import (
     PREVIEW_CONTACT_DETAIL_RESTORE_ID,
     PREVIEW_CONTACT_POPULATED_ID,
     PREVIEW_PIPELINE_COMPANY_IDS,
+    build_preview_action_queue_data,
     build_preview_company_detail,
     build_preview_contact_detail,
     build_preview_acquisition_dashboard_data,
+    build_preview_analytics_dashboard_data,
     build_preview_companies,
     build_preview_company,
     build_preview_company_contacts,
@@ -32,7 +34,9 @@ from app.admin_preview import (
     build_preview_contact,
     build_preview_contacts,
     build_preview_dashboard_data,
+    build_preview_export_csv,
     build_preview_linkedin_reconcile,
+    build_preview_discovery_reconcile,
     build_preview_pipeline_companies,
     build_preview_pipeline_detail,
     build_preview_section_rows,
@@ -44,6 +48,8 @@ from app.admin_preview import (
 )
 from app.admin_auth import SESSION_COOKIE_NAME
 from app.admin_dashboard_pages import render_acquisition_dashboard_page
+from app.admin_analytics_pages import render_analytics_dashboard_page
+from app.admin_action_queue_pages import render_action_queue_page
 from app.main import app
 
 
@@ -73,6 +79,71 @@ def test_preview_acquisition_dashboard_html_includes_sections() -> None:
     assert "Missing decision-maker" in html
     assert "qualifying" in html.lower()
     assert data.without_decision_maker[0].company_name in html
+
+
+@pytest.mark.unit
+def test_preview_analytics_dashboard_seed_stable() -> None:
+    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
+    a = build_preview_analytics_dashboard_data(rng=random.Random(42), now=now)
+    b = build_preview_analytics_dashboard_data(rng=random.Random(42), now=now)
+    assert a == b
+    assert len(a.engagement_events) >= 7
+    assert len(a.conversion_rates) == 6
+
+
+@pytest.mark.unit
+def test_preview_analytics_dashboard_html_includes_sections() -> None:
+    data = build_preview_analytics_dashboard_data(rng=random.Random(99))
+    html = render_analytics_dashboard_page(
+        data=data,
+        admin_username="preview",
+        preview_banner="Preview data — not production",
+    )
+    assert "Preview data — not production" in html
+    assert "Engagement events" in html
+    assert "Authoritative conversions" in html
+    assert "Conversion rates" in html
+    assert "Attribution (UTM)" in html
+    assert data.engagement_events[0].event_name in html
+    assert data.case_study_engagement[0].slug in html
+
+
+@pytest.mark.unit
+def test_preview_action_queue_seed_stable() -> None:
+    now = datetime(2026, 7, 16, 12, 0, tzinfo=timezone.utc)
+    a = build_preview_action_queue_data(rng=random.Random(42), now=now)
+    b = build_preview_action_queue_data(rng=random.Random(42), now=now)
+    assert a == b
+    assert len(a.items) == 5
+
+
+@pytest.mark.unit
+def test_preview_action_queue_html_includes_all_categories() -> None:
+    data = build_preview_action_queue_data(rng=random.Random(99))
+    html = render_action_queue_page(
+        data=data,
+        admin_username="preview",
+        csrf_token="preview-csrf",
+        preview_banner="Preview data — not production",
+    )
+    assert "Preview data — not production" in html
+    assert "Daily action queue" in html
+    assert "Overdue action" in html
+    assert "Due today" in html
+    assert "Tier A qualified" in html
+    assert "Warm introduction" in html
+    assert "Stale evidence" in html
+    assert data.items[0].company_name in html
+    assert "/admin/pipeline/" in html
+    assert "Export spreadsheet" in html
+
+
+@pytest.mark.unit
+def test_preview_export_csv_neutralizes_formulas() -> None:
+    csv_text = build_preview_export_csv()
+    assert "company_name" in csv_text
+    assert "'=HYPERLINK" in csv_text
+    assert "'+cmd" in csv_text
 
 
 @pytest.mark.unit
@@ -904,6 +975,47 @@ def test_preview_qualification_targets_html_route() -> None:
 
 
 @pytest.mark.unit
+def test_preview_linkedin_reconcile_stable_with_seed() -> None:
+    a = build_preview_linkedin_reconcile(rng=random.Random(42))
+    b = build_preview_linkedin_reconcile(rng=random.Random(42))
+    assert a == b
+    assert a["summary_counts"]["insert"] == 1
+    assert a["summary_counts"]["conflict"] == 1
+
+
+@pytest.mark.unit
+def test_preview_discovery_reconcile_stable_with_seed() -> None:
+    a = build_preview_discovery_reconcile(rng=random.Random(42))
+    b = build_preview_discovery_reconcile(rng=random.Random(42))
+    assert a == b
+    assert a["summary_counts"]["matched"] == 1
+    assert a["summary_counts"]["review"] == 1
+    assert a["summary_counts"]["conflict"] == 1
+
+
+@pytest.mark.unit
+def test_preview_discovery_runs_stable_with_seed() -> None:
+    from app.admin_preview import build_preview_discovery_runs
+
+    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
+    a = build_preview_discovery_runs(rng=random.Random(42), now=now)
+    b = build_preview_discovery_runs(rng=random.Random(42), now=now)
+    assert a == b
+    runs, total = a
+    assert total == 3
+    assert runs[0]["trigger_type"] == "scheduled"
+
+
+@pytest.mark.unit
+def test_render_preview_imports_main_includes_outcomes() -> None:
+    html = render_preview_imports_main(rng=random.Random(42))
+    assert "LinkedIn reconcile preview" in html
+    assert "insert" in html
+    assert "update" in html
+    assert "unchanged" in html
+    assert "conflict" in html
+    assert "absent from this export are preserved" in html
+
 def test_preview_discovery_inbox_stable_with_seed() -> None:
     from app.admin_preview import build_preview_discovery_inbox
 
@@ -914,6 +1026,7 @@ def test_preview_discovery_inbox_stable_with_seed() -> None:
 
 
 @pytest.mark.unit
+
 def test_preview_discovery_candidate_detail_contains_evidence() -> None:
     from app.admin_preview import (
         PREVIEW_DISCOVERY_CANDIDATE_IDS,
@@ -926,6 +1039,7 @@ def test_preview_discovery_candidate_detail_contains_evidence() -> None:
 
 
 @pytest.mark.unit
+
 def test_preview_discovery_inbox_route_html() -> None:
     from app.admin_preview import build_preview_discovery_filter_metadata, build_preview_discovery_inbox
     from app.admin_discovery_pages import render_discovery_inbox_page
@@ -940,23 +1054,3 @@ def test_preview_discovery_inbox_route_html() -> None:
     )
     assert "Review inbox" in html
     assert "Northwind Labs" in html or "Helios Rail" in html
-
-
-@pytest.mark.unit
-def test_preview_linkedin_reconcile_stable_with_seed() -> None:
-    a = build_preview_linkedin_reconcile(rng=random.Random(42))
-    b = build_preview_linkedin_reconcile(rng=random.Random(42))
-    assert a == b
-    assert a["summary_counts"]["insert"] == 1
-    assert a["summary_counts"]["conflict"] == 1
-
-
-@pytest.mark.unit
-def test_render_preview_imports_main_includes_outcomes() -> None:
-    html = render_preview_imports_main(rng=random.Random(42))
-    assert "LinkedIn reconcile preview" in html
-    assert "insert" in html
-    assert "update" in html
-    assert "unchanged" in html
-    assert "conflict" in html
-    assert "absent from this export are preserved" in html

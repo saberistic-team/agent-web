@@ -1,0 +1,147 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "Chronicle of the Starfall",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/negative/coming-soon",
+        "evidence_snippet": "Coming soon marketing page",
+        "confidence": 0.88,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://example-worlds.test/negative/coming-soon",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/negative/coming-soon",
+        "evidence_snippet": "https://example-worlds.test/negative/coming-soon",
+        "confidence": 0.95,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "excluded_candidate",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/negative/coming-soon",
+        "evidence_snippet": "marketing teaser",
+        "confidence": 0.85,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "announcement",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/negative/coming-soon",
+        "evidence_snippet": "Coming soon",
+        "confidence": 0.9,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Starfall Studios",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/negative/coming-soon",
+        "evidence_snippet": "Starfall Studios",
+        "confidence": 0.8,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://example-worlds.test/negative/coming-soon",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example-worlds.test/negative/coming-soon",
+          "evidence_snippet": "Join waitlist only",
+          "confidence": 0.85,
+          "observed_at": "2026-07-15T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "waitlist_signup_only",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/negative/coming-soon",
+        "evidence_snippet": "no playable experience",
+        "confidence": 0.92,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "promised_future_ai_narrative",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/negative/coming-soon",
+        "evidence_snippet": "AI-native world described in copy",
+        "confidence": 0.6,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "unknown_phase",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/negative/coming-soon",
+        "evidence_snippet": "no artifact to observe",
+        "confidence": 0.4,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "excluded",
+    "claim_status": "unclaimed",
+    "exclusion_reason": {
+      "value": "marketing_only_no_experience",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/negative/coming-soon",
+        "evidence_snippet": "coming soon marketing shell",
+        "confidence": 0.94,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "license_status": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

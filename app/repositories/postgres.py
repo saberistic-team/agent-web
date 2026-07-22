@@ -10,6 +10,7 @@ from uuid import UUID
 import psycopg
 
 from app.contacts import DECISION_MAKER_BUYING_ROLES
+from app.discovery.repository import PostgresDiscoveryRunRepository
 from app.patch import UNSET, MaybeUnset
 from app.repositories.protocols import (
     ActivityRepository,
@@ -42,6 +43,7 @@ class PostgresCompanyRepository:
         target_status: str | None = None,
         last_verified_at: date | None = None,
         notes: str | None = None,
+        field_sources: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         with conn.cursor() as cur:
             cur.execute(
@@ -49,15 +51,16 @@ class PostgresCompanyRepository:
                 INSERT INTO companies (
                     name, website, status, domain, category, stage,
                     headcount_estimate, funding_summary, target_status,
-                    last_verified_at, notes
+                    last_verified_at, notes, field_sources
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING *
                 """,
                 (
                     name, website, status, domain, category, stage,
                     headcount_estimate, funding_summary, target_status,
                     last_verified_at, notes,
+                    json.dumps(field_sources or {}),
                 ),
             )
             row = cur.fetchone()
@@ -179,6 +182,7 @@ class PostgresCompanyRepository:
         target_status: MaybeUnset[str] = UNSET,
         last_verified_at: MaybeUnset[date] = UNSET,
         notes: MaybeUnset[str] = UNSET,
+        field_sources: MaybeUnset[dict[str, Any]] = UNSET,
     ) -> dict[str, Any] | None:
         """Apply a partial patch.
 
@@ -200,11 +204,15 @@ class PostgresCompanyRepository:
             ("target_status", target_status),
             ("last_verified_at", last_verified_at),
             ("notes", notes),
+            ("field_sources", field_sources),
         ):
             if value is UNSET:
                 continue
             fields.append(f"{column} = %s")
-            values.append(value)
+            if column == "field_sources":
+                values.append(json.dumps(value or {}))
+            else:
+                values.append(value)
         if not fields:
             return self.get_by_id(conn, company_id)
 
@@ -664,6 +672,26 @@ class PostgresSourceRecordRepository:
             row = cur.fetchone()
         return dict(row) if row else None
 
+    def update_payload(
+        self,
+        conn: psycopg.Connection,
+        *,
+        record_id: UUID,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE source_records
+                SET payload = %s, updated_at = %s
+                WHERE id = %s
+                RETURNING *
+                """,
+                (json.dumps(payload), _now(), record_id),
+            )
+            row = cur.fetchone()
+        return dict(row) if row else {}
+
 
 class PostgresActivityRepository:
     def create(
@@ -806,6 +834,43 @@ class PostgresResearchRecordRepository:
             )
             rows = cur.fetchall()
         return [dict(row) for row in rows]
+
+    def update_freshness(
+        self,
+        conn: psycopg.Connection,
+        *,
+        record_id: UUID,
+        observed_at: datetime | None,
+        confidence: float | None,
+        review_at: datetime | None,
+        expires_at: datetime | None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE research_records
+                SET observed_at = %s,
+                    confidence = %s,
+                    review_at = %s,
+                    expires_at = %s,
+                    metadata = COALESCE(%s, metadata),
+                    updated_at = %s
+                WHERE id = %s
+                RETURNING *
+                """,
+                (
+                    observed_at,
+                    confidence,
+                    review_at,
+                    expires_at,
+                    json.dumps(metadata) if metadata is not None else None,
+                    _now(),
+                    record_id,
+                ),
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
 
 
 class PostgresPipelineRepository:
@@ -1437,6 +1502,144 @@ class PostgresAcquisitionDashboardRepository:
         limit: int,
     ) -> list[dict[str, Any]]:
         return self._pipeline.list_companies_without_next_action(conn, limit=limit)
+
+
+class PostgresAnalyticsDashboardRepository:
+    _ATTRIBUTION_EVENT_NAMES = (
+        "Landing Viewed",
+        "Services Viewed",
+        "Case Studies Viewed",
+        "Case Study Viewed",
+        "Insights Viewed",
+        "Insight Viewed",
+        "Brief Viewed",
+        "Brief Form Started",
+        "Lead Persisted",
+        "Checkout Opened",
+        "Payment Completed",
+        "Contact Initiated",
+    )
+
+    def count_events_in_range(
+        self,
+        conn: psycopg.Connection,
+        *,
+        period_start: datetime,
+        period_end: datetime,
+        event_names: tuple[str, ...],
+    ) -> list[tuple[str, int]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT event_name, COUNT(*)::int AS total
+                FROM analytics_events
+                WHERE occurred_at >= %s
+                  AND occurred_at < %s
+                  AND event_name = ANY(%s)
+                GROUP BY event_name
+                ORDER BY total DESC, event_name ASC
+                """,
+                (period_start, period_end, list(event_names)),
+            )
+            rows = cur.fetchall()
+        return [(str(row["event_name"]), int(row["total"])) for row in rows]
+
+    def count_attribution_in_range(
+        self,
+        conn: psycopg.Connection,
+        *,
+        period_start: datetime,
+        period_end: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    COALESCE(NULLIF(TRIM(attribution->>'utm_source'), ''), '(direct)') AS source,
+                    COALESCE(NULLIF(TRIM(attribution->>'utm_medium'), ''), '(none)') AS medium,
+                    COALESCE(NULLIF(TRIM(attribution->>'utm_campaign'), ''), '(none)') AS campaign,
+                    COUNT(*)::int AS event_count
+                FROM analytics_events
+                WHERE occurred_at >= %s
+                  AND occurred_at < %s
+                  AND event_name = ANY(%s)
+                GROUP BY 1, 2, 3
+                ORDER BY event_count DESC, source ASC, medium ASC, campaign ASC
+                LIMIT %s
+                """,
+                (
+                    period_start,
+                    period_end,
+                    list(self._ATTRIBUTION_EVENT_NAMES),
+                    limit,
+                ),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def count_content_engagement(
+        self,
+        conn: psycopg.Connection,
+        *,
+        period_start: datetime,
+        period_end: datetime,
+        event_name: str,
+        slug_property: str,
+        limit: int,
+    ) -> list[tuple[str, int]]:
+        if slug_property not in {"case_study_slug", "article_slug"}:
+            raise ValueError(f"unsupported slug property: {slug_property}")
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT properties->>%s AS slug, COUNT(*)::int AS views
+                FROM analytics_events
+                WHERE occurred_at >= %s
+                  AND occurred_at < %s
+                  AND event_name = %s
+                  AND COALESCE(TRIM(properties->>%s), '') <> ''
+                GROUP BY 1
+                ORDER BY views DESC, slug ASC
+                LIMIT %s
+                """,
+                (
+                    slug_property,
+                    period_start,
+                    period_end,
+                    event_name,
+                    slug_property,
+                    limit,
+                ),
+            )
+            rows = cur.fetchall()
+        return [(str(row["slug"]), int(row["views"])) for row in rows]
+
+    def count_leads_by_utm_source(
+        self,
+        conn: psycopg.Connection,
+        *,
+        period_start: datetime,
+        period_end: datetime,
+        limit: int,
+    ) -> list[tuple[str, int]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    COALESCE(NULLIF(TRIM(utm_source), ''), '(direct)') AS source,
+                    COUNT(*)::int AS total
+                FROM project_briefs
+                WHERE created_at >= %s
+                  AND created_at < %s
+                GROUP BY 1
+                ORDER BY total DESC, source ASC
+                LIMIT %s
+                """,
+                (period_start, period_end, limit),
+            )
+            rows = cur.fetchall()
+        return [(str(row["source"]), int(row["total"])) for row in rows]
 
 
 class PostgresAdminUserRepository:
@@ -2221,11 +2424,13 @@ class PostgresRepositories:
         self.audit_events = PostgresAuditEventRepository()
         self.project_briefs = PostgresProjectBriefRepository()
         self.acquisition_dashboard = PostgresAcquisitionDashboardRepository()
+        self.analytics_dashboard = PostgresAnalyticsDashboardRepository()
         self.action_queue = PostgresActionQueueRepository()
         self.pipeline = PostgresPipelineRepository()
         self.import_batches = PostgresImportBatchRepository()
         self.icp_scoring = PostgresIcpScoringRepository()
         self.qualification = PostgresQualificationRepository()
+        self.discovery_runs = PostgresDiscoveryRunRepository()
 
 
 _default_repositories = PostgresRepositories()
@@ -2247,11 +2452,13 @@ def default_repositories() -> dict[str, Any]:
         "audit_events": repos.audit_events,
         "project_briefs": repos.project_briefs,
         "acquisition_dashboard": repos.acquisition_dashboard,
+        "analytics_dashboard": repos.analytics_dashboard,
         "action_queue": repos.action_queue,
         "pipeline": repos.pipeline,
         "import_batches": repos.import_batches,
         "icp_scoring": repos.icp_scoring,
         "qualification": repos.qualification,
+        "discovery_runs": repos.discovery_runs,
     }
 
 

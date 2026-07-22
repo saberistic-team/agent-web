@@ -97,7 +97,7 @@ def render_discovery_inbox_page(
     rows = "".join(
         f"""<tr>
           <td><input type="checkbox" name="candidate_ids" value="{_esc(row.get('id'))}" aria-label="Select {_esc(row.get('name'))}" /></td>
-          <td><a href="/admin/discovery/{_esc(row.get('id'))}">{_esc(row.get('name'))}</a></td>
+          <td><a href="/admin/discovery/inbox/{_esc(row.get('id'))}">{_esc(row.get('name'))}</a></td>
           <td>{_esc(row.get('source_id'))}</td>
           <td>{_esc(COMPANY_CATEGORIES.get(str(row.get('category')), row.get('category') or '—'))}</td>
           <td>{_esc(row.get('confidence') if row.get('confidence') is not None else '—')}</td>
@@ -121,7 +121,7 @@ def render_discovery_inbox_page(
           <p class="admin-lede">Accept stores candidates for research in CRM. Reject suppresses identical evidence. Defer schedules a later review date.</p>
         </div>
       </div>
-      <form class="admin-form admin-form--compact" method="get" action="/admin/discovery">
+      <form class="admin-form admin-form--compact" method="get" action="/admin/discovery/inbox">
         <div class="field"><label for="source-filter">Source</label><select id="source-filter" name="source">{_source_options(filter_metadata.get('sources') or [], filters.get('source'))}</select></div>
         <div class="field"><label for="run-filter">Retrieval run</label><select id="run-filter" name="run_id">{_run_options(filter_metadata.get('runs') or [], filters.get('run_id'))}</select></div>
         <div class="field"><label for="category-filter">Category</label><select id="category-filter" name="category">{_options(COMPANY_CATEGORIES, filters.get('category'))}</select></div>
@@ -130,7 +130,7 @@ def render_discovery_inbox_page(
         <div class="field"><label for="review-filter">Review state</label><select id="review-filter" name="review_state">{_review_state_options(filters.get('review_state'))}</select></div>
         <button class="cta admin-submit" type="submit">Filter</button>
       </form>
-      <form class="admin-form" method="post" action="/admin/discovery/bulk/preview">
+      <form class="admin-form" method="post" action="/admin/discovery/inbox/bulk/preview">
         <input type="hidden" name="csrf_token" value="{_esc(csrf_token)}" />
         <div class="admin-table-wrap">
           <table class="admin-table">
@@ -159,7 +159,7 @@ def render_discovery_inbox_page(
     return render_admin_shell(
         title="Discovery inbox",
         main=main,
-        active_path="/admin/discovery",
+        active_path="/admin/discovery/inbox",
         admin_username=admin_username,
         csrf_token=csrf_token,
     )
@@ -259,7 +259,7 @@ def render_discovery_candidate_page(
         <section class="admin-subsection" aria-labelledby="accept-title">
           <h2 class="admin-subtitle" id="accept-title">Accept</h2>
           <p class="admin-hint">Acceptance stores the company for research — not sales-ready outreach.</p>
-          <form class="admin-form" method="post" action="/admin/discovery/{_esc(candidate.get('id'))}/accept">
+          <form class="admin-form" method="post" action="/admin/discovery/inbox/{_esc(candidate.get('id'))}/accept">
             <input type="hidden" name="csrf_token" value="{_esc(csrf_token)}" />
             <fieldset>
               <legend class="sr-only">Company choice</legend>
@@ -277,7 +277,7 @@ def render_discovery_candidate_page(
         </section>
         <section class="admin-subsection" aria-labelledby="reject-title">
           <h2 class="admin-subtitle" id="reject-title">Reject</h2>
-          <form class="admin-form" method="post" action="/admin/discovery/{_esc(candidate.get('id'))}/reject">
+          <form class="admin-form" method="post" action="/admin/discovery/inbox/{_esc(candidate.get('id'))}/reject">
             <input type="hidden" name="csrf_token" value="{_esc(csrf_token)}" />
             <div class="field"><label for="rejection-reason">Reason</label>
               <textarea id="rejection-reason" name="rejection_reason" required minlength="3" maxlength="500" placeholder="Why reject this candidate?"></textarea>
@@ -287,7 +287,7 @@ def render_discovery_candidate_page(
         </section>
         <section class="admin-subsection" aria-labelledby="defer-title">
           <h2 class="admin-subtitle" id="defer-title">Defer</h2>
-          <form class="admin-form" method="post" action="/admin/discovery/{_esc(candidate.get('id'))}/defer">
+          <form class="admin-form" method="post" action="/admin/discovery/inbox/{_esc(candidate.get('id'))}/defer">
             <input type="hidden" name="csrf_token" value="{_esc(csrf_token)}" />
             <div class="field"><label for="deferred-until">Review again on</label>
               <input id="deferred-until" type="datetime-local" name="deferred_until" required />
@@ -305,7 +305,7 @@ def render_discovery_candidate_page(
           <h1 class="admin-title" id="candidate-title">{_esc(candidate.get('name'))}</h1>
           <p class="admin-lede">Proposed company from {_esc(candidate.get('source_id'))} · state {_esc(str(candidate.get('review_state')).replace('_', ' '))}</p>
         </div>
-        <p><a href="/admin/discovery">← Back to inbox</a></p>
+        <p><a href="/admin/discovery/inbox">← Back to inbox</a></p>
       </div>
       {linked_html}
       <dl class="admin-dl">
@@ -337,7 +337,7 @@ def render_discovery_candidate_page(
     return render_admin_shell(
         title=f"Discovery · {_esc(candidate.get('name'))}",
         main=main,
-        active_path="/admin/discovery",
+        active_path="/admin/discovery/inbox",
         admin_username=admin_username,
         csrf_token=csrf_token,
     )
@@ -406,13 +406,13 @@ def render_discovery_bulk_preview_page(
           <h1 class="admin-title" id="bulk-preview-title">Bulk action preview</h1>
           <p class="admin-lede">Confirm {_esc(action)} for {preview.get('count', 0)} candidates. This step is auditable.</p>
         </div>
-        <p><a href="/admin/discovery">← Back to inbox</a></p>
+        <p><a href="/admin/discovery/inbox">← Back to inbox</a></p>
       </div>
       <div class="admin-table-wrap"><table class="admin-table">
         <thead><tr><th>Company</th><th>Source</th><th>Domain</th><th>State</th></tr></thead>
         <tbody>{rows}</tbody>
       </table></div>
-      <form class="admin-form" method="post" action="/admin/discovery/bulk/commit">
+      <form class="admin-form" method="post" action="/admin/discovery/inbox/bulk/commit">
         <input type="hidden" name="csrf_token" value="{_esc(csrf_token)}" />
         <input type="hidden" name="action" value="{_esc(action)}" />
         <input type="hidden" name="preview_token" value="{_esc(preview.get('preview_token'))}" />
@@ -424,7 +424,7 @@ def render_discovery_bulk_preview_page(
     return render_admin_shell(
         title="Bulk preview",
         main=main,
-        active_path="/admin/discovery",
+        active_path="/admin/discovery/inbox",
         admin_username=admin_username,
         csrf_token=csrf_token,
     )

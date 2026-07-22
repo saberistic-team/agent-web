@@ -72,7 +72,7 @@ def authenticated_admin() -> dict[str, Any]:
     ):
         db_conn.return_value.__enter__.return_value = mock_conn
         cookies = {SESSION_COOKIE_NAME: raw_token}
-        response = client.get("/admin/discovery", cookies=cookies)
+        response = client.get("/admin/discovery/inbox", cookies=cookies)
         match = re.search(r'name="csrf_token" value="([^"]+)"', response.text)
         assert match is not None
         yield {"cookies": cookies, "csrf_token": match.group(1), "conn": mock_conn}
@@ -81,7 +81,7 @@ def authenticated_admin() -> dict[str, Any]:
 @pytest.mark.unit
 @pytest.mark.integration
 def test_discovery_inbox_requires_auth() -> None:
-    response = client.get("/admin/discovery")
+    response = client.get("/admin/discovery/inbox")
     assert response.status_code == 303
     assert "/admin/login" in response.headers["location"]
 
@@ -104,7 +104,7 @@ def test_discovery_inbox_renders_for_authenticated_user(authenticated_admin: dic
     ]
     inbox.list_filter_metadata.return_value = {"sources": ["fixture_api"], "runs": []}
     with patch("app.admin_discovery_routes._inbox", inbox):
-        response = client.get("/admin/discovery", cookies=authenticated_admin["cookies"])
+        response = client.get("/admin/discovery/inbox", cookies=authenticated_admin["cookies"])
     assert response.status_code == 200
     assert "Review inbox" in response.text
     assert "Northwind Labs" in response.text
@@ -132,7 +132,7 @@ def test_discovery_candidate_detail_renders(authenticated_admin: dict[str, Any])
     }
     with patch("app.admin_discovery_routes._inbox", inbox):
         response = client.get(
-            f"/admin/discovery/{CANDIDATE_ID}",
+            f"/admin/discovery/inbox/{CANDIDATE_ID}",
             cookies=authenticated_admin["cookies"],
         )
     assert response.status_code == 200
@@ -144,11 +144,11 @@ def test_discovery_candidate_detail_renders(authenticated_admin: dict[str, Any])
 @pytest.mark.integration
 def test_discovery_accept_requires_csrf(authenticated_admin: dict[str, Any]) -> None:
     response = client.post(
-        f"/admin/discovery/{CANDIDATE_ID}/accept",
+        f"/admin/discovery/inbox/{CANDIDATE_ID}/accept",
         data={"csrf_token": "bad", "company_choice": "new"},
         cookies=authenticated_admin["cookies"],
     )
-    assert response.status_code == 400
+    assert response.status_code == 403
 
 
 @pytest.mark.unit
@@ -159,7 +159,7 @@ def test_discovery_accept_redirects_to_company(authenticated_admin: dict[str, An
     inbox.accept_candidate.return_value = {"company": {"id": company_id}}
     with patch("app.admin_discovery_routes._inbox", inbox):
         response = client.post(
-            f"/admin/discovery/{CANDIDATE_ID}/accept",
+            f"/admin/discovery/inbox/{CANDIDATE_ID}/accept",
             data={
                 "csrf_token": authenticated_admin["csrf_token"],
                 "company_choice": "new",
@@ -176,7 +176,7 @@ def test_discovery_reject_redirects_to_inbox(authenticated_admin: dict[str, Any]
     inbox = MagicMock()
     with patch("app.admin_discovery_routes._inbox", inbox):
         response = client.post(
-            f"/admin/discovery/{CANDIDATE_ID}/reject",
+            f"/admin/discovery/inbox/{CANDIDATE_ID}/reject",
             data={
                 "csrf_token": authenticated_admin["csrf_token"],
                 "rejection_reason": "Not a fit",
@@ -184,7 +184,7 @@ def test_discovery_reject_redirects_to_inbox(authenticated_admin: dict[str, Any]
             cookies=authenticated_admin["cookies"],
         )
     assert response.status_code == 303
-    assert response.headers["location"] == "/admin/discovery"
+    assert response.headers["location"] == "/admin/discovery/inbox"
     inbox.reject_candidate.assert_called_once()
 
 
@@ -194,7 +194,7 @@ def test_discovery_defer_redirects_to_inbox(authenticated_admin: dict[str, Any])
     inbox = MagicMock()
     with patch("app.admin_discovery_routes._inbox", inbox):
         response = client.post(
-            f"/admin/discovery/{CANDIDATE_ID}/defer",
+            f"/admin/discovery/inbox/{CANDIDATE_ID}/defer",
             data={
                 "csrf_token": authenticated_admin["csrf_token"],
                 "deferred_until": "2026-08-01T12:00",
@@ -226,7 +226,7 @@ def test_discovery_bulk_preview_renders(authenticated_admin: dict[str, Any]) -> 
     }
     with patch("app.admin_discovery_routes._inbox", inbox):
         response = client.post(
-            "/admin/discovery/bulk/preview",
+            "/admin/discovery/inbox/bulk/preview",
             data={
                 "csrf_token": authenticated_admin["csrf_token"],
                 "action": "reject",
@@ -242,7 +242,7 @@ def test_discovery_bulk_preview_renders(authenticated_admin: dict[str, Any]) -> 
 @pytest.mark.integration
 def test_discovery_inbox_preview_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     enable_admin_preview_env(monkeypatch)
-    response = client.get("/admin/discovery")
+    response = client.get("/admin/discovery/inbox")
     assert response.status_code == 200
     assert "Preview data — not production" in response.text
     assert "Review inbox" in response.text
@@ -252,7 +252,7 @@ def test_discovery_inbox_preview_mode(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.integration
 def test_discovery_candidate_preview_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     enable_admin_preview_env(monkeypatch)
-    response = client.get(f"/admin/discovery/{CANDIDATE_ID}")
+    response = client.get(f"/admin/discovery/inbox/{CANDIDATE_ID}")
     assert response.status_code == 200
     assert "Supporting evidence" in response.text
 
@@ -270,7 +270,7 @@ def test_discovery_accept_preview_mode_rejects_mutation(monkeypatch: pytest.Monk
     enable_admin_preview_env(monkeypatch)
     with patch("app.admin_routes._verify_session_csrf"):
         response = client.post(
-            f"/admin/discovery/{CANDIDATE_ID}/accept",
+            f"/admin/discovery/inbox/{CANDIDATE_ID}/accept",
             data={"csrf_token": "ignored", "company_choice": "new"},
         )
     assert response.status_code == 405

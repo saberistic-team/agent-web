@@ -27,6 +27,7 @@ class CompanyRepository(Protocol):
         target_status: str | None = None,
         last_verified_at: date | None = None,
         notes: str | None = None,
+        field_sources: dict[str, Any] | None = None,
     ) -> dict[str, Any]: ...
 
     def get_by_id(self, conn: psycopg.Connection, company_id: UUID) -> dict[str, Any] | None: ...
@@ -72,6 +73,7 @@ class CompanyRepository(Protocol):
         target_status: MaybeUnset[str] = UNSET,
         last_verified_at: MaybeUnset[date] = UNSET,
         notes: MaybeUnset[str] = UNSET,
+        field_sources: MaybeUnset[dict[str, Any]] = UNSET,
     ) -> dict[str, Any] | None: ...
 
     def archive(self, conn: psycopg.Connection, company_id: UUID) -> dict[str, Any] | None: ...
@@ -211,6 +213,14 @@ class SourceRecordRepository(Protocol):
         external_id: str,
     ) -> dict[str, Any] | None: ...
 
+    def update_payload(
+        self,
+        conn: psycopg.Connection,
+        *,
+        record_id: UUID,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]: ...
+
 
 class ActivityRepository(Protocol):
     def create(
@@ -284,6 +294,18 @@ class ResearchRecordRepository(Protocol):
         *,
         limit: int = 100,
     ) -> list[dict[str, Any]]: ...
+
+    def update_freshness(
+        self,
+        conn: psycopg.Connection,
+        *,
+        record_id: UUID,
+        observed_at: datetime | None,
+        confidence: float | None,
+        review_at: datetime | None,
+        expires_at: datetime | None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None: ...
 
 
 class PipelineRepository(Protocol):
@@ -421,6 +443,46 @@ class AcquisitionDashboardRepository(Protocol):
         *,
         limit: int,
     ) -> list[dict[str, Any]]: ...
+
+
+class AnalyticsDashboardRepository(Protocol):
+    def count_events_in_range(
+        self,
+        conn: psycopg.Connection,
+        *,
+        period_start: datetime,
+        period_end: datetime,
+        event_names: tuple[str, ...],
+    ) -> list[tuple[str, int]]: ...
+
+    def count_attribution_in_range(
+        self,
+        conn: psycopg.Connection,
+        *,
+        period_start: datetime,
+        period_end: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]: ...
+
+    def count_content_engagement(
+        self,
+        conn: psycopg.Connection,
+        *,
+        period_start: datetime,
+        period_end: datetime,
+        event_name: str,
+        slug_property: str,
+        limit: int,
+    ) -> list[tuple[str, int]]: ...
+
+    def count_leads_by_utm_source(
+        self,
+        conn: psycopg.Connection,
+        *,
+        period_start: datetime,
+        period_end: datetime,
+        limit: int,
+    ) -> list[tuple[str, int]]: ...
 
 
 class ActionQueueRepository(Protocol):

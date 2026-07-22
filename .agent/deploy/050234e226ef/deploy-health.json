@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "record_kind": "post_merge_deployment_health",
+  "sha": "050234e226ef61790e3c9c20c009a4fa9023dbe6",
+  "short_sha": "050234e226ef",
+  "environment": "production",
+  "base_url": "https://saberistic.com",
+  "health_url": "https://saberistic.com/health",
+  "recorded_at": "2026-07-22T04:32:43+00:00",
+  "started_at": "2026-07-22T04:32:40+00:00",
+  "finished_at": "2026-07-22T04:32:43+00:00",
+  "result": "pass",
+  "deployment": {
+    "provider": "render",
+    "service_id": "srv-d998qdf7f7vs73a13pt0",
+    "deploy_id": null,
+    "api_result": "pass",
+    "started_at": "2026-07-22T04:32:40+00:00",
+    "finished_at": "2026-07-22T04:32:43+00:00"
+  },
+  "verification_layers": {
+    "pr_head_ci": "not_recorded_here",
+    "merged_main_ci": "not_recorded_here",
+    "deployment_api": "pass",
+    "post_deploy_functional_health": "pass"
+  },
+  "migration": {
+    "expected_version": "023",
+    "applied_version": "023",
+    "status": "ok"
+  },
+  "application_health": {
+    "status": "ok",
+    "admin_client_source_policy": {
+      "mode": "trusted_proxy_cidrs",
+      "trusted_proxy_network_count": 5,
+      "trusted_edge_network_count": 22,
+      "legacy_admin_trust_proxy_headers": false
+    },
+    "admin_proxy_trust": {
+      "enabled": true,
+      "trusted_proxy_entry_count": 27
+    },
+    "schema_version": "023"
+  },
+  "smoke_checks": [
+    {
+      "id": "health_liveness",
+      "category": "application",
+      "method": "GET",
+      "path": "/health",
+      "result": "pass",
+      "note": "HTTP 200"
+    },
+    {
+      "id": "admin_login_page",
+      "category": "crm_auth",
+      "method": "GET",
+      "path": "/admin/login",
+      "result": "pass",
+      "note": "HTTP 200"
+    },
+    {
+      "id": "admin_dashboard_guard",
+      "category": "acquisition_dashboard",
+      "method": "GET",
+      "path": "/admin",
+      "result": "pass",
+      "note": "HTTP 303"
+    },
+    {
+      "id": "admin_companies_guard",
+      "category": "company_crud",
+      "method": "GET",
+      "path": "/admin/companies",
+      "result": "pass",
+      "note": "HTTP 303"
+    },
+    {
+      "id": "admin_contacts_guard",
+      "category": "contact_crud",
+      "method": "GET",
+      "path": "/admin/contacts",
+      "result": "pass",
+      "note": "HTTP 303"
+    },
+    {
+      "id": "admin_briefs_guard",
+      "category": "brief_conversion",
+      "method": "GET",
+      "path": "/admin/briefs",
+      "result": "pass",
+      "note": "HTTP 303"
+    },
+    {
+      "id": "admin_pipeline_guard",
+      "category": "pipeline",
+      "method": "GET",
+      "path": "/admin/pipeline",
+      "result": "pass",
+      "note": "HTTP 303"
+    },
+    {
+      "id": "brief_form_public",
+      "category": "brief_conversion",
+      "method": "GET",
+      "path": "/brief",
+      "result": "pass",
+      "note": "HTTP 200"
+    },
+    {
+      "id": "admin_proxy_trust",
+      "category": "application",
+      "method": "GET",
+      "path": "/health",
+      "result": "pass",
+      "note": "admin_proxy_trust active"
+    },
+    {
+      "id": "admin_authenticated_session",
+      "category": "crm_auth",
+      "method": "GET",
+      "path": "/admin",
+      "result": "skip",
+      "note": "DEPLOY_SMOKE_ADMIN_USERNAME/PASSWORD not set; route-guard checks only"
+    }
+  ],
+  "log_inspection": {
+    "status": "ok",
+    "window_seconds": 900,
+    "regressions_found": false,
+    "summary": "no migration/sql/validation/500 regressions in bounded window",
+    "matches": []
+  },
+  "linked_issues": [
+    200
+  ],
+  "linked_prs": [
+    411
+  ]
+}

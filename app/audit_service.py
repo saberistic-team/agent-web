@@ -77,6 +77,7 @@ ACTION_BRIEF_CONVERT = "brief.convert"
 ACTION_CONTACT_RESTORE = "contact.restore"
 ACTION_RESEARCH_RECORD_CREATE = "research_record.create"
 ACTION_PIPELINE_ACTIVITY_CREATE = "pipeline_activity.create"
+ACTION_DISCOVERY_MERGE_DECISION = "discovery.merge_decision"
 ACTION_DISCOVERY_CANDIDATE_ACCEPT = "discovery.candidate.accept"
 ACTION_DISCOVERY_CANDIDATE_REJECT = "discovery.candidate.reject"
 ACTION_DISCOVERY_CANDIDATE_DEFER = "discovery.candidate.defer"
@@ -632,46 +633,31 @@ def record_research_record_create(
     )
 
 
-def pipeline_activity_audit_summary(
-    *,
-    activity_id: str,
-    company_id: str,
-    contact_id: str | None,
-    activity_type: str,
-    created_at: Any,
-) -> dict[str, Any]:
-    """Bounded audit metadata for pipeline activity — no summary or metadata."""
-    created = (
-        created_at.isoformat()
-        if hasattr(created_at, "isoformat")
-        else str(created_at)
-    )
-    return {
-        "activity_id": activity_id,
-        "company_id": company_id,
-        "contact_id": contact_id,
-        "activity_type": activity_type,
-        "created_at": created,
-    }
-
-
-def record_pipeline_activity_create(
+def record_discovery_merge_decision(
     conn: psycopg.Connection,
     *,
     actor_context: ActorContext,
-    activity_id: str,
-    summary_after: dict[str, Any],
+    external_id: str,
+    decision: str,
+    company_id: str | None,
+    match_tier: str,
     repository: AuditEventRepository | None = None,
 ) -> dict[str, Any] | None:
     return record_event(
         conn,
         actor_context=actor_context,
-        action=ACTION_PIPELINE_ACTIVITY_CREATE,
-        entity_type="pipeline_activity",
-        entity_id=activity_id,
-        summary_after=summary_after,
+        action=ACTION_DISCOVERY_MERGE_DECISION,
+        entity_type="discovery_candidate",
+        entity_id=external_id,
+        summary_after={
+            "external_id": external_id,
+            "decision": decision,
+            "company_id": company_id,
+            "match_tier": match_tier,
+        },
         repository=repository,
     )
+
 
 
 def record_discovery_candidate_accept(
@@ -743,6 +729,47 @@ def record_discovery_candidate_bulk(
         actor_context=actor_context,
         action=ACTION_DISCOVERY_CANDIDATE_BULK,
         entity_type="discovery_candidate",
+        summary_after=summary_after,
+        repository=repository,
+    )
+
+def pipeline_activity_audit_summary(
+    *,
+    activity_id: str,
+    company_id: str,
+    contact_id: str | None,
+    activity_type: str,
+    created_at: Any,
+) -> dict[str, Any]:
+    """Bounded audit metadata for pipeline activity — no summary or metadata."""
+    created = (
+        created_at.isoformat()
+        if hasattr(created_at, "isoformat")
+        else str(created_at)
+    )
+    return {
+        "activity_id": activity_id,
+        "company_id": company_id,
+        "contact_id": contact_id,
+        "activity_type": activity_type,
+        "created_at": created,
+    }
+
+
+def record_pipeline_activity_create(
+    conn: psycopg.Connection,
+    *,
+    actor_context: ActorContext,
+    activity_id: str,
+    summary_after: dict[str, Any],
+    repository: AuditEventRepository | None = None,
+) -> dict[str, Any] | None:
+    return record_event(
+        conn,
+        actor_context=actor_context,
+        action=ACTION_PIPELINE_ACTIVITY_CREATE,
+        entity_type="pipeline_activity",
+        entity_id=activity_id,
         summary_after=summary_after,
         repository=repository,
     )

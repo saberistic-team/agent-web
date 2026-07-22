@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
@@ -69,6 +69,12 @@ from app.linkedin_import import (
     parse_export_date,
     snapshot_contact,
 )
+from app.discovery.types import DiscoveryCandidate
+from app.discovery_reconcile_ops import (
+    DiscoveryReconcileOps,
+    candidate_from_payload,
+    candidates_from_payloads,
+)
 from app.linkedin_reconcile import (
     MatchResolution,
     compute_importable_updates,
@@ -130,6 +136,10 @@ from app.repositories import (
     ResearchRecordRepository,
     SourceRecordRepository,
 )
+from app.repositories.discovery_reconcile_postgres import (
+    PostgresDiscoveryMergeDecisionRepository,
+    PostgresDiscoveryReviewRepository,
+)
 
 
 @dataclass(frozen=True)
@@ -144,6 +154,10 @@ class CrmRepositories:
     import_batches: ImportBatchRepository
     icp_scoring: IcpScoringRepository
     qualification: QualificationRepository
+    discovery_review: Any = field(default_factory=PostgresDiscoveryReviewRepository)
+    discovery_merge_decisions: Any = field(
+        default_factory=PostgresDiscoveryMergeDecisionRepository
+    )
 
 
 def default_crm_repositories() -> CrmRepositories:
@@ -158,6 +172,8 @@ def default_crm_repositories() -> CrmRepositories:
         import_batches=PostgresImportBatchRepository(),
         icp_scoring=PostgresIcpScoringRepository(),
         qualification=PostgresQualificationRepository(),
+        discovery_review=PostgresDiscoveryReviewRepository(),
+        discovery_merge_decisions=PostgresDiscoveryMergeDecisionRepository(),
     )
 
 
@@ -181,6 +197,7 @@ class CrmService:
 
     def __init__(self, repos: CrmRepositories | None = None) -> None:
         self._repos = repos or default_crm_repositories()
+        self._discovery_ops = DiscoveryReconcileOps(self._repos)
 
     def record_company_with_contact(
         self,
@@ -2588,4 +2605,76 @@ class CrmService:
     ) -> list[dict[str, Any]]:
         return self._repos.qualification.get_working_list_items(conn, list_id)
 
+    def preview_discovery_reconcile(
+        self,
+        conn: psycopg.Connection,
+        *,
+        candidates: list[dict[str, Any]] | list[Any],
+        run_id: str = "preview",
+    ) -> dict[str, Any]:
+        """Dry-run reconciliation for normalized discovery candidates."""
+        normalized = (
+            candidates
+            if candidates and isinstance(candidates[0], DiscoveryCandidate)
+            else candidates_from_payloads(candidates)  # type: ignore[arg-type]
+        )
+        return self._discovery_ops.preview(conn, candidates=normalized, run_id=run_id)
+
+    def commit_discovery_reconcile(
+        self,
+        conn: psycopg.Connection,
+        *,
+        actor_context: ActorContext,
+        candidates: list[dict[str, Any]] | list[Any],
+        run_id: str,
+        merge_decisions: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Apply discovery reconciliation without deleting absent CRM companies."""
+        normalized = (
+            candidates
+            if candidates and isinstance(candidates[0], DiscoveryCandidate)
+            else candidates_from_payloads(candidates)  # type: ignore[arg-type]
+        )
+        return self._discovery_ops.commit(
+            conn,
+            actor_context=actor_context,
+            candidates=normalized,
+            run_id=run_id,
+            merge_decisions=merge_decisions,
+        )
+
+    def record_discovery_merge_decision(
+        self,
+        conn: psycopg.Connection,
+        *,
+        actor_context: ActorContext,
+        external_id: str,
+        source_id: str,
+        decision: str,
+        company_id: str | UUID | None,
+        candidate_payload: dict[str, Any],
+        match_tier: str,
+        notes: str | None = None,
+    ) -> dict[str, Any]:
+        """Persist an auditable operator merge decision for later runs."""
+        candidate = candidate_from_payload(candidate_payload)
+        return self._discovery_ops.record_merge_decision(
+            conn,
+            actor_context=actor_context,
+            external_id=external_id,
+            source_id=source_id,
+            decision=decision,
+            company_id=company_id,
+            candidate=candidate,
+            match_tier=match_tier,
+            notes=notes,
+        )
+
+    def list_discovery_review_queue(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        return self._discovery_ops.list_review_queue(conn, limit=limit)
 

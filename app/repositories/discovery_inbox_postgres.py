@@ -55,9 +55,28 @@ class PostgresDiscoveryInboxRepository:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, source_id, started_at, completed_at, status, candidate_count
-                FROM discovery_runs
-                ORDER BY started_at DESC
+                SELECT
+                    r.id,
+                    COALESCE(
+                        (
+                            SELECT s.source_id
+                            FROM discovery_run_sources s
+                            WHERE s.run_id = r.id
+                            ORDER BY s.started_at ASC
+                            LIMIT 1
+                        ),
+                        COALESCE(r.enabled_sources[1], 'unknown')
+                    ) AS source_id,
+                    r.started_at,
+                    r.finished_at AS completed_at,
+                    r.status,
+                    (
+                        SELECT COUNT(*)::int
+                        FROM discovery_candidates c
+                        WHERE c.run_id = r.id
+                    ) AS candidate_count
+                FROM discovery_runs r
+                ORDER BY r.started_at DESC
                 LIMIT %s
                 """,
                 (limit,),

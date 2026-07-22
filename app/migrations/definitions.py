@@ -53,6 +53,8 @@ FROZEN_MIGRATION_DIGESTS: dict[str, str] = {
     "020": "b9d23f5ebd8293f3f2afb9a8f3241c8e94a0a8e0c8febce33816ec361a29948c",
     "021": "e8e9cd2b5478733ca421e5848442392459a8edf88a9e6ec8899ef431bca68469",
     "022": "bcb6a85dc0c8e7070fa3a380030a587bdedcc2f83a9e50d037c998625d0b513e",
+    "023": "c078a2897d27642bd565413a84e7b6feaf2fbfb8b8d2f9d21b46155df6415a42",
+    "024": "7556483f77ba5d247b8a4961276c1f1ba4123788c74e8ad046cb9932f900bbb3",
 }
 
 
@@ -854,22 +856,124 @@ CREATE INDEX IF NOT EXISTS idx_qualification_working_list_items_list
     ),
     Migration(
         version="024",
-        name="discovery_inbox",
+        name="discovery_runs",
         up_sql="""
 CREATE TABLE IF NOT EXISTS discovery_runs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    source_id TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    trigger_type TEXT NOT NULL
+        CHECK (trigger_type IN ('scheduled', 'manual')),
+    status TEXT NOT NULL
+        CHECK (status IN ('running', 'completed', 'partial', 'failed', 'skipped')),
     started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    completed_at TIMESTAMPTZ,
-    status TEXT NOT NULL DEFAULT 'completed'
-        CHECK (status IN ('running', 'completed', 'failed', 'partial')),
-    candidate_count INTEGER NOT NULL DEFAULT 0,
-    metadata JSONB
+    finished_at TIMESTAMPTZ,
+    actor TEXT,
+    correlation_id TEXT NOT NULL,
+    enabled_sources TEXT[] NOT NULL DEFAULT '{}'::text[],
+    error_message TEXT,
+    lock_acquired BOOLEAN NOT NULL DEFAULT FALSE
 );
 
-CREATE INDEX IF NOT EXISTS idx_discovery_runs_source_started
-    ON discovery_runs (source_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_discovery_runs_started_at
+    ON discovery_runs (started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_discovery_runs_status
+    ON discovery_runs (status);
 
+CREATE TABLE IF NOT EXISTS discovery_run_sources (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    run_id UUID NOT NULL REFERENCES discovery_runs (id) ON DELETE CASCADE,
+    source_id TEXT NOT NULL,
+    status TEXT NOT NULL
+        CHECK (status IN ('completed', 'partial', 'failed', 'skipped')),
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    finished_at TIMESTAMPTZ,
+    fetched_count INTEGER NOT NULL DEFAULT 0,
+    accepted_count INTEGER NOT NULL DEFAULT 0,
+    rejected_count INTEGER NOT NULL DEFAULT 0,
+    error_count INTEGER NOT NULL DEFAULT 0,
+    checkpoint_cursor TEXT,
+    checkpoint_etag TEXT,
+    checkpoint_last_modified TEXT,
+    checkpoint_last_run_at TEXT,
+    errors JSONB NOT NULL DEFAULT '[]'::jsonb,
+    CONSTRAINT discovery_run_sources_run_source_unique UNIQUE (run_id, source_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_discovery_run_sources_run_id
+    ON discovery_run_sources (run_id);
+
+CREATE TABLE IF NOT EXISTS discovery_source_checkpoints (
+    source_id TEXT PRIMARY KEY,
+    cursor TEXT,
+    etag TEXT,
+    last_modified TEXT,
+    last_run_at TEXT,
+    last_success_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+""",
+    ),
+    Migration(
+        version="025",
+        name="discovery_reconciliation",
+        up_sql="""
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS field_sources JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+CREATE TABLE IF NOT EXISTS discovery_review_queue (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    external_id TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    candidate_name TEXT NOT NULL,
+    candidate_domain TEXT,
+    candidate_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    reason TEXT NOT NULL,
+    match_tier TEXT NOT NULL,
+    candidate_company_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'resolved', 'dismissed')),
+    resolved_company_id UUID REFERENCES companies (id) ON DELETE SET NULL,
+    resolved_by TEXT,
+    resolved_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_discovery_review_queue_external_pending
+    ON discovery_review_queue (external_id)
+    WHERE status = 'pending';
+
+CREATE INDEX IF NOT EXISTS idx_discovery_review_queue_status_created
+    ON discovery_review_queue (status, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS discovery_merge_decisions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    external_id TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    decision TEXT NOT NULL
+        CHECK (decision IN ('link', 'create', 'dismiss', 'override')),
+    company_id UUID REFERENCES companies (id) ON DELETE SET NULL,
+    candidate_domain TEXT,
+    candidate_name TEXT NOT NULL,
+    match_tier TEXT NOT NULL,
+    actor TEXT NOT NULL,
+    correlation_id TEXT,
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_discovery_merge_decisions_external
+    ON discovery_merge_decisions (external_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_research_records_discovery_observation_key
+    ON research_records ((metadata->>'discovery_observation_key'))
+    WHERE metadata ? 'discovery_observation_key';
+""",
+    ),
+    Migration(
+        version="026",
+        name="discovery_inbox",
+        up_sql="""
 CREATE TABLE IF NOT EXISTS discovery_candidates (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     run_id UUID REFERENCES discovery_runs (id) ON DELETE SET NULL,

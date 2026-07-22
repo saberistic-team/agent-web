@@ -1,0 +1,330 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "world_id": {
+      "value": "wg-corpus-012",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://github.com/joonspk-r/generative_agents",
+        "evidence_snippet": "Corpus id wg-corpus-012",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "name": {
+      "value": "Generative Agents",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/joonspk-r/generative_agents",
+        "evidence_snippet": "Generative Agents",
+        "confidence": 0.9,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://github.com/joonspk-r/generative_agents",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/joonspk-r/generative_agents",
+        "evidence_snippet": "https://github.com/joonspk-r/generative_agents",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Research simulation of believable agent society in a small town (Smallville).",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/joonspk-r/generative_agents",
+        "evidence_snippet": "Research simulation of believable agent society in a small town (Smallville).",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://github.com/joonspk-r/generative_agents",
+        "evidence_snippet": "Public entry documented",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "agent_simulation",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://github.com/joonspk-r/generative_agents",
+        "evidence_snippet": "agent_simulation",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Stanford / UW researchers",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/joonspk-r/generative_agents",
+        "evidence_snippet": "Creator/operator: Stanford / UW researchers",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "operator": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "modalities": [
+      {
+        "value": "2d",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://github.com/joonspk-r/generative_agents",
+          "evidence_snippet": "2d",
+          "confidence": 0.7,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://github.com/joonspk-r/generative_agents",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://github.com/joonspk-r/generative_agents",
+          "evidence_snippet": "https://github.com/joonspk-r/generative_agents",
+          "confidence": 0.9,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "simulation_observation",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/joonspk-r/generative_agents",
+        "evidence_snippet": "simulation_observation",
+        "confidence": 0.82,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "simulation_logs_and_saved_states",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/joonspk-r/generative_agents",
+        "evidence_snippet": "simulation_logs_and_saved_states",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "open_source_research_artifact",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/joonspk-r/generative_agents",
+        "evidence_snippet": "open_source_research_artifact",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "age_guidance": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "LLM-driven agents with memory and planning architectures.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/joonspk-r/generative_agents",
+        "evidence_snippet": "LLM-driven agents with memory and planning architectures.",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://github.com/joonspk-r/generative_agents",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "human_control_boundaries": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "MIT (repo)",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/joonspk-r/generative_agents",
+        "evidence_snippet": "MIT (repo)",
+        "confidence": 0.6,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "moderation_contact": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Smallville research environment.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://github.com/joonspk-r/generative_agents",
+        "evidence_snippet": "Smallville research environment.",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Agent memory, reflection, and planning loops.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://github.com/joonspk-r/generative_agents",
+        "evidence_snippet": "Agent memory, reflection, and planning loops.",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "entity_type": "character",
+        "label": {
+          "value": "25 generative agents",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://github.com/joonspk-r/generative_agents",
+            "evidence_snippet": "25 generative agents",
+            "confidence": 0.7,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "canonical_ref": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "entity_type": "platform",
+        "label": {
+          "value": "Local Python simulation",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://github.com/joonspk-r/generative_agents",
+            "evidence_snippet": "Local Python simulation",
+            "confidence": 0.7,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "canonical_ref": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "agent_simulation",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://github.com/joonspk-r/generative_agents",
+          "evidence_snippet": "agent_simulation",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Research simulation of believable agent society in a small town (Smallville).",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://github.com/joonspk-r/generative_agents",
+        "evidence_snippet": "Research simulation of believable agent society in a small town (Smallville).",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

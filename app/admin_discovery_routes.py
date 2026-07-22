@@ -1,23 +1,29 @@
-"""Lead discovery review inbox admin routes."""
+"""Admin routes for discovery run history, manual triggers, and review inbox."""
 
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+
+from app import admin, admin_auth, db
+from app.admin_discovery import render_discovery_run_detail_page, render_discovery_runs_page
+from app.actor_context import actor_context_from_request, correlation_id_from_request
+from app.admin_response import admin_html_response
+from app.config import Settings, get_settings
+from app.discovery.service import get_discovery_run_service
+
+from datetime import datetime, timezone
+
 from pydantic import ValidationError
 
-from app import db
-from app.actor_context import actor_context_from_request
 from app.admin_discovery_pages import (
     render_discovery_bulk_preview_page,
     render_discovery_candidate_page,
     render_discovery_inbox_page,
 )
-from app.config import get_settings
 from app.discovery_inbox import (
     DiscoveryBulkLimitError,
     DiscoveryCandidateAccept,
@@ -34,6 +40,185 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin/discovery", tags=["admin-discovery"])
 _inbox = DiscoveryInboxService()
+
+
+def _session_csrf_for_forms(request: Request, settings: Settings) -> str:
+    return admin_auth.session_csrf_for_request(request, settings)
+
+
+def _verify_session_csrf(
+    request: Request,
+    session: admin_auth.AdminSession,
+    csrf_token: str,
+) -> None:
+    settings = get_settings()
+    if not admin_auth.verify_session_csrf_request(request, csrf_token, settings):
+        raise HTTPException(status_code=403, detail="Invalid CSRF token.")
+
+
+def require_admin_session(request: Request) -> admin_auth.AdminSession:
+    from app.admin_routes import require_admin_session as _require
+
+    return _require(request)
+
+
+@router.get("", response_class=HTMLResponse)
+@router.get("/", response_class=HTMLResponse)
+def admin_discovery_runs(request: Request, page: int = 1) -> HTMLResponse:
+    session = require_admin_session(request)
+    settings = get_settings()
+    csrf_token = _session_csrf_for_forms(request, settings)
+    per_page = 50
+    trigger_message = request.query_params.get("message")
+
+    if settings.admin_preview_enabled:
+        from app.admin_preview import build_preview_discovery_runs
+
+        runs, total = build_preview_discovery_runs()
+        return admin_html_response(
+            render_discovery_runs_page(
+                runs=runs,
+                page=max(page, 1),
+                per_page=per_page,
+                total=total,
+                admin_username=session.admin_username,
+                csrf_token=csrf_token,
+                schedule_interval_days=settings.discovery_schedule_interval_days,
+                preview_banner="Preview data — not production",
+                trigger_message=trigger_message,
+            )
+        )
+
+    if not settings.database_url:
+        runs, total = [], 0
+    else:
+        service = get_discovery_run_service()
+        with db.db_connection(settings.database_url) as conn:
+            runs, total = service.list_runs(conn, page=page, per_page=per_page)
+
+    return admin_html_response(
+        render_discovery_runs_page(
+            runs=runs,
+            page=max(page, 1),
+            per_page=per_page,
+            total=total,
+            admin_username=session.admin_username,
+            csrf_token=csrf_token,
+            schedule_interval_days=settings.discovery_schedule_interval_days,
+            trigger_message=trigger_message,
+        )
+    )
+
+
+@router.get("/runs/{run_id}", response_class=HTMLResponse)
+def admin_discovery_run_detail(request: Request, run_id: UUID) -> HTMLResponse:
+    session = require_admin_session(request)
+    settings = get_settings()
+    csrf_token = _session_csrf_for_forms(request, settings)
+
+    if settings.admin_preview_enabled:
+        from app.admin_preview import build_preview_discovery_run_detail
+
+        state = build_preview_discovery_run_detail(str(run_id))
+        if state is None:
+            return HTMLResponse(
+                admin.render_admin_not_found(
+                    f"/admin/discovery/runs/{run_id}",
+                    admin_username=session.admin_username,
+                    csrf_token=csrf_token,
+                ),
+                status_code=404,
+            )
+        return admin_html_response(
+            render_discovery_run_detail_page(
+                run=state["run"],
+                sources=state["sources"],
+                admin_username=session.admin_username,
+                csrf_token=csrf_token,
+                preview_banner="Preview data — not production",
+            )
+        )
+
+    if not settings.database_url:
+        return HTMLResponse(
+            admin.render_admin_not_found(
+                f"/admin/discovery/runs/{run_id}",
+                admin_username=session.admin_username,
+                csrf_token=csrf_token,
+            ),
+            status_code=404,
+        )
+
+    service = get_discovery_run_service()
+    with db.db_connection(settings.database_url) as conn:
+        state = service.get_run(conn, run_id)
+    if state is None:
+        return HTMLResponse(
+            admin.render_admin_not_found(
+                f"/admin/discovery/runs/{run_id}",
+                admin_username=session.admin_username,
+                csrf_token=csrf_token,
+            ),
+            status_code=404,
+        )
+    return admin_html_response(
+        render_discovery_run_detail_page(
+            run=state["run"],
+            sources=state["sources"],
+            admin_username=session.admin_username,
+            csrf_token=csrf_token,
+        )
+    )
+
+
+@router.post("/run")
+def admin_discovery_run_trigger(
+    request: Request,
+    csrf_token: str = Form(..., alias="csrf_token"),
+) -> RedirectResponse:
+    session = require_admin_session(request)
+    settings = get_settings()
+    _verify_session_csrf(request, session, csrf_token)
+
+    if settings.admin_preview_enabled:
+        return RedirectResponse(
+            url="/admin/discovery?message=Preview+mode+%E2%80%94+runs+are+read-only",
+            status_code=303,
+        )
+
+    if not settings.database_url:
+        return RedirectResponse(
+            url="/admin/discovery?message=Database+is+not+configured",
+            status_code=303,
+        )
+
+    actor_context = actor_context_from_request(request, actor=session.admin_username)
+    correlation_id = correlation_id_from_request(request)
+    service = get_discovery_run_service()
+    try:
+        with db.db_connection(settings.database_url) as conn:
+            result = service.trigger_manual_run(
+                conn,
+                settings,
+                actor=actor_context.actor,
+                correlation_id=correlation_id,
+            )
+    except Exception:
+        logger.exception("Manual discovery run failed")
+        return RedirectResponse(
+            url="/admin/discovery?message=Discovery+run+failed",
+            status_code=303,
+        )
+
+    if result.run_id is not None:
+        return RedirectResponse(
+            url=f"/admin/discovery/runs/{result.run_id}",
+            status_code=303,
+        )
+    return RedirectResponse(
+        url="/admin/discovery?message=Discovery+run+did+not+start",
+        status_code=303,
+    )
 
 
 def _parse_filters(
@@ -58,7 +243,9 @@ def _parse_filters(
     except ValidationError:
         filters = DiscoveryInboxFilters()
         raw = {key: None if key != "review_state" else "pending" for key in raw}
-    has_filter = any(value for key, value in raw.items() if key != "review_state" or value != "pending")
+    has_filter = any(
+        value for key, value in raw.items() if key != "review_state" or value != "pending"
+    )
     if raw.get("review_state") and raw.get("review_state") != "pending":
         has_filter = True
     return (filters if has_filter else DiscoveryInboxFilters(), raw)
@@ -73,8 +260,8 @@ def _parse_deferred_until(raw: str | None) -> datetime:
     return parsed
 
 
-@router.get("", response_class=HTMLResponse)
-@router.get("/", response_class=HTMLResponse)
+@router.get("/inbox", response_class=HTMLResponse)
+@router.get("/inbox/", response_class=HTMLResponse)
 def admin_discovery_inbox(
     request: Request,
     source: str | None = None,
@@ -85,8 +272,6 @@ def admin_discovery_inbox(
     review_state: str | None = None,
     saved: str | None = None,
 ) -> HTMLResponse:
-    from app.admin_routes import _session_csrf_for_forms, require_admin_session
-
     session = require_admin_session(request)
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
@@ -139,15 +324,13 @@ def admin_discovery_inbox(
     )
 
 
-@router.get("/bulk/preview", response_class=HTMLResponse)
+@router.get("/inbox/bulk/preview", response_class=HTMLResponse)
 def admin_discovery_bulk_preview_get(request: Request) -> RedirectResponse:
-    from app.admin_routes import require_admin_session
-
     require_admin_session(request)
-    return RedirectResponse(url="/admin/discovery", status_code=303)
+    return RedirectResponse(url="/admin/discovery/inbox", status_code=303)
 
 
-@router.post("/bulk/preview", response_class=HTMLResponse)
+@router.post("/inbox/bulk/preview", response_class=HTMLResponse)
 def admin_discovery_bulk_preview_post(
     request: Request,
     csrf_token: str = Form(...),
@@ -156,8 +339,6 @@ def admin_discovery_bulk_preview_post(
     rejection_reason: str | None = Form(default=None),
     deferred_until: str | None = Form(default=None),
 ) -> HTMLResponse:
-    from app.admin_routes import _session_csrf_for_forms, _verify_session_csrf, require_admin_session
-
     session = require_admin_session(request)
     settings = get_settings()
     _verify_session_csrf(request, session, csrf_token)
@@ -214,7 +395,7 @@ def admin_discovery_bulk_preview_post(
     )
 
 
-@router.post("/bulk/commit", response_class=HTMLResponse)
+@router.post("/inbox/bulk/commit", response_class=HTMLResponse)
 def admin_discovery_bulk_commit(
     request: Request,
     csrf_token: str = Form(...),
@@ -224,8 +405,6 @@ def admin_discovery_bulk_commit(
     rejection_reason: str | None = Form(default=None),
     deferred_until: str | None = Form(default=None),
 ) -> RedirectResponse:
-    from app.admin_routes import _verify_session_csrf, require_admin_session
-
     session = require_admin_session(request)
     settings = get_settings()
     _verify_session_csrf(request, session, csrf_token)
@@ -253,13 +432,11 @@ def admin_discovery_bulk_commit(
     except (DiscoveryBulkLimitError, DiscoveryInboxError, DiscoveryCandidateStateError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    return RedirectResponse(url="/admin/discovery?saved=1", status_code=303)
+    return RedirectResponse(url="/admin/discovery/inbox?saved=1", status_code=303)
 
 
-@router.get("/{candidate_id}", response_class=HTMLResponse)
+@router.get("/inbox/{candidate_id}", response_class=HTMLResponse)
 def admin_discovery_candidate_detail(request: Request, candidate_id: UUID) -> HTMLResponse:
-    from app.admin_routes import _session_csrf_for_forms, require_admin_session
-
     session = require_admin_session(request)
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
@@ -298,7 +475,7 @@ def admin_discovery_candidate_detail(request: Request, candidate_id: UUID) -> HT
     )
 
 
-@router.post("/{candidate_id}/accept", response_class=HTMLResponse)
+@router.post("/inbox/{candidate_id}/accept", response_class=HTMLResponse)
 def admin_discovery_accept_candidate(
     request: Request,
     candidate_id: UUID,
@@ -306,8 +483,6 @@ def admin_discovery_accept_candidate(
     company_choice: str = Form(...),
     selected_company_id: str | None = Form(default=None),
 ) -> RedirectResponse:
-    from app.admin_routes import _verify_session_csrf, require_admin_session
-
     session = require_admin_session(request)
     settings = get_settings()
     _verify_session_csrf(request, session, csrf_token)
@@ -349,15 +524,13 @@ def admin_discovery_accept_candidate(
     )
 
 
-@router.post("/{candidate_id}/reject", response_class=HTMLResponse)
+@router.post("/inbox/{candidate_id}/reject", response_class=HTMLResponse)
 def admin_discovery_reject_candidate(
     request: Request,
     candidate_id: UUID,
     csrf_token: str = Form(...),
     rejection_reason: str = Form(...),
 ) -> RedirectResponse:
-    from app.admin_routes import _verify_session_csrf, require_admin_session
-
     session = require_admin_session(request)
     settings = get_settings()
     _verify_session_csrf(request, session, csrf_token)
@@ -385,18 +558,16 @@ def admin_discovery_reject_candidate(
     except (DiscoveryCandidateNotFoundError, DiscoveryCandidateStateError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    return RedirectResponse(url="/admin/discovery", status_code=303)
+    return RedirectResponse(url="/admin/discovery/inbox", status_code=303)
 
 
-@router.post("/{candidate_id}/defer", response_class=HTMLResponse)
+@router.post("/inbox/{candidate_id}/defer", response_class=HTMLResponse)
 def admin_discovery_defer_candidate(
     request: Request,
     candidate_id: UUID,
     csrf_token: str = Form(...),
     deferred_until: str = Form(...),
 ) -> RedirectResponse:
-    from app.admin_routes import _verify_session_csrf, require_admin_session
-
     session = require_admin_session(request)
     settings = get_settings()
     _verify_session_csrf(request, session, csrf_token)
@@ -425,4 +596,4 @@ def admin_discovery_defer_candidate(
     except (DiscoveryCandidateNotFoundError, DiscoveryCandidateStateError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    return RedirectResponse(url="/admin/discovery", status_code=303)
+    return RedirectResponse(url="/admin/discovery/inbox", status_code=303)
