@@ -141,7 +141,7 @@
       "id": "wg-negative-004",
       "category": "negative_model",
       "qualification": "excluded",
-      "exclusion_reason": "foundation_model_not_world",
+      "exclusion_reason": "foundation_model_or_tool_not_world",
       "canonical_url": "https://example.com/worldgraph-spike/negative/foundation-model",
       "fixture": "negative-foundation-model.html",
       "source_type": "html_landing"

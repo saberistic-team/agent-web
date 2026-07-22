@@ -40,9 +40,9 @@ Throwaway code lives in `spike/worldgraph/` (not imported by `app/main.py`).
 
 **Dependency note:** Canonical Manifest v0 ([#199](https://github.com/saberistic-team/agent-web/issues/199))
 and the full 30-entry research corpus ([#200](https://github.com/saberistic-team/agent-web/issues/200))
-are still in progress. This spike uses a spike-aligned Manifest v0 schema and a bounded
-18-source corpus sufficient to answer architecture questions without guessing production
-schema.
+are tracked separately. This spike uses the same `schema_version` and provenance rules as
+#199; see [WORLD_MANIFEST_V0.md](./WORLD_MANIFEST_V0.md) for the authoritative field spec.
+The bounded 18-source corpus here remains sufficient for architecture evidence.
 
 ---
 

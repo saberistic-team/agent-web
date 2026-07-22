@@ -1,0 +1,302 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "Marble Spatial Demo",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example.com/worldgraph-spike/spatial/marble-demo",
+        "evidence_snippet": "Marble Spatial Demo — explorable AI world",
+        "confidence": 0.9,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://example.com/worldgraph-spike/spatial/marble-demo",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example.com/worldgraph-spike/spatial/marble-demo",
+        "evidence_snippet": "https://example.com/worldgraph-spike/spatial/marble-demo",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Explorable AI-generated spatial environment with WebXR-capable entry.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example.com/worldgraph-spike/spatial/marble-demo",
+        "evidence_snippet": "explorable AI-generated spatial environment",
+        "confidence": 0.86,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "beta",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example.com/worldgraph-spike/spatial/marble-demo",
+        "evidence_snippet": "beta preview",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "ai_spatial",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example.com/worldgraph-spike/spatial/marble-demo",
+        "evidence_snippet": "ai_spatial",
+        "confidence": 0.92,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "modalities": [
+      {
+        "value": "3d_spatial",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example.com/worldgraph-spike/spatial/marble-demo",
+          "evidence_snippet": "spatial environment",
+          "confidence": 0.88,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      },
+      {
+        "value": "webxr",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example.com/worldgraph-spike/spatial/marble-demo",
+          "evidence_snippet": "WebXR entry supported",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "creator": {
+      "value": "World Labs Partner Studio",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example.com/worldgraph-spike/spatial/marble-demo",
+        "evidence_snippet": "Creator: World Labs Partner Studio",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://example-worlds.test/spatial/marble-demo/explore",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example.com/worldgraph-spike/spatial/marble-demo",
+          "evidence_snippet": "Explore world",
+          "confidence": 0.94,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "supported_devices": [
+      {
+        "value": "web",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://example.com/worldgraph-spike/spatial/marble-demo",
+          "evidence_snippet": "browser entry",
+          "confidence": 0.8,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      },
+      {
+        "value": "vr_headset",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example.com/worldgraph-spike/spatial/marble-demo",
+          "evidence_snippet": "WebXR",
+          "confidence": 0.72,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "spatial_exploration",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example.com/worldgraph-spike/spatial/marble-demo",
+        "evidence_snippet": "explorable environment",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "versioned_world_api_configuration",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example.com/worldgraph-spike/spatial/marble-demo",
+        "evidence_snippet": "World API version pin",
+        "confidence": 0.77,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Procedural marble canyon biome",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example.com/worldgraph-spike/spatial/marble-demo",
+        "evidence_snippet": "marble canyon",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "assets_and_dependencies": [
+      {
+        "entity_type": "asset",
+        "entity_id": "urn:worldgraph:asset:marble-scene-gltf",
+        "display_name": {
+          "value": "Marble canyon glTF scene",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://example.com/worldgraph-spike/spatial/marble-demo",
+            "evidence_snippet": "glTF export",
+            "confidence": 0.65,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "reference_url": {
+          "value": "https://example-worlds.test/assets/marble-canyon.gltf",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://example.com/worldgraph-spike/spatial/marble-demo",
+            "evidence_snippet": "gltf asset link",
+            "confidence": 0.6,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "external_standard": "gltf"
+      }
+    ],
+    "engines_models_protocols": [
+      {
+        "entity_type": "platform",
+        "entity_id": "urn:worldgraph:platform:world-labs-api",
+        "display_name": {
+          "value": "World Labs World API",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://example.com/worldgraph-spike/spatial/marble-demo",
+            "evidence_snippet": "World API",
+            "confidence": 0.8,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "reference_url": {
+          "value": "https://www.worldlabs.ai/blog/announcing-the-world-api",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://example.com/worldgraph-spike/spatial/marble-demo",
+            "evidence_snippet": "World API reference",
+            "confidence": 0.55,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ],
+    "economy": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Build-time generative spatial layout with runtime reactive environment behavior",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example.com/worldgraph-spike/spatial/marble-demo",
+        "evidence_snippet": "AI-generated spatial environment",
+        "confidence": 0.88,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "build_and_runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example.com/worldgraph-spike/spatial/marble-demo",
+        "evidence_snippet": "build_and_runtime",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "discovery": {
+    "representative_media": [
+      {
+        "value": "https://example-worlds.test/media/marble-demo-poster.webp",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example.com/worldgraph-spike/spatial/marble-demo",
+          "evidence_snippet": "poster image",
+          "confidence": 0.7,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "primary_call_to_action": {
+      "value": "enter",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example.com/worldgraph-spike/spatial/marble-demo",
+        "evidence_snippet": "Explore world",
+        "confidence": 0.9,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}
