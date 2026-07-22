@@ -2346,115 +2346,6 @@ class PostgresImportBatchRepository:
         return [dict(row) for row in rows]
 
 
-
-
-class PostgresMarketingAnalyticsRepository:
-    """Indexed aggregates over analytics_events for the marketing dashboard."""
-
-    _ATTRIBUTION_EVENTS = (
-        "Landing Viewed",
-        "Brief Viewed",
-        "Brief Form Started",
-        "Lead Persisted",
-        "Checkout Opened",
-        "Payment Completed",
-        "Contact Initiated",
-    )
-
-    def count_events_by_name(
-        self,
-        conn: psycopg.Connection,
-        *,
-        start: datetime,
-        end: datetime,
-        event_names: tuple[str, ...],
-    ) -> list[tuple[str, int]]:
-        if not event_names:
-            return []
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT event_name, COUNT(*)::int AS total
-                FROM analytics_events
-                WHERE occurred_at >= %s
-                  AND occurred_at < %s
-                  AND event_name = ANY(%s)
-                GROUP BY event_name
-                ORDER BY total DESC, event_name ASC
-                """,
-                (start, end, list(event_names)),
-            )
-            rows = cur.fetchall()
-        return [(str(row["event_name"]), int(row["total"])) for row in rows]
-
-    def list_attribution_breakdown(
-        self,
-        conn: psycopg.Connection,
-        *,
-        start: datetime,
-        end: datetime,
-        limit: int,
-    ) -> list[dict[str, Any]]:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT
-                  COALESCE(NULLIF(TRIM(attribution->>'utm_source'), ''), '(direct)') AS utm_source,
-                  COALESCE(NULLIF(TRIM(attribution->>'utm_medium'), ''), '(none)') AS utm_medium,
-                  COALESCE(NULLIF(TRIM(attribution->>'utm_campaign'), ''), '(none)') AS utm_campaign,
-                  COUNT(*)::int AS event_count
-                FROM analytics_events
-                WHERE occurred_at >= %s
-                  AND occurred_at < %s
-                  AND event_name = ANY(%s)
-                GROUP BY 1, 2, 3
-                ORDER BY event_count DESC, utm_source ASC
-                LIMIT %s
-                """,
-                (start, end, list(self._ATTRIBUTION_EVENTS), limit),
-            )
-            rows = cur.fetchall()
-        return [dict(row) for row in rows]
-
-    def list_content_engagement(
-        self,
-        conn: psycopg.Connection,
-        *,
-        start: datetime,
-        end: datetime,
-        event_name: str,
-        slug_property: str,
-        limit: int,
-    ) -> list[dict[str, Any]]:
-        if slug_property not in {"case_study_slug", "article_slug"}:
-            raise ValueError(f"unsupported slug property: {slug_property}")
-        with conn.cursor() as cur:
-            cur.execute(
-                f"""
-                SELECT properties->>%s AS slug, COUNT(*)::int AS view_count
-                FROM analytics_events
-                WHERE occurred_at >= %s
-                  AND occurred_at < %s
-                  AND event_name = %s
-                  AND properties->>%s IS NOT NULL
-                  AND TRIM(properties->>%s) <> ''
-                GROUP BY slug
-                ORDER BY view_count DESC, slug ASC
-                LIMIT %s
-                """,
-                (
-                    slug_property,
-                    start,
-                    end,
-                    event_name,
-                    slug_property,
-                    slug_property,
-                    limit,
-                ),
-            )
-            rows = cur.fetchall()
-        return [dict(row) for row in rows]
-
 class PostgresRepositories:
     """Bundle of Postgres repository implementations including CRM + audit."""
 
@@ -2469,7 +2360,6 @@ class PostgresRepositories:
         self.project_briefs = PostgresProjectBriefRepository()
         self.acquisition_dashboard = PostgresAcquisitionDashboardRepository()
         self.analytics_dashboard = PostgresAnalyticsDashboardRepository()
-        self.marketing_analytics = PostgresMarketingAnalyticsRepository()
         self.action_queue = PostgresActionQueueRepository()
         self.pipeline = PostgresPipelineRepository()
         self.import_batches = PostgresImportBatchRepository()
@@ -2497,7 +2387,6 @@ def default_repositories() -> dict[str, Any]:
         "project_briefs": repos.project_briefs,
         "acquisition_dashboard": repos.acquisition_dashboard,
         "analytics_dashboard": repos.analytics_dashboard,
-        "marketing_analytics": repos.marketing_analytics,
         "action_queue": repos.action_queue,
         "pipeline": repos.pipeline,
         "import_batches": repos.import_batches,
