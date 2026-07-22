@@ -2038,6 +2038,29 @@ async def admin_imports_reconcile_preview(request: Request) -> JSONResponse:
     return JSONResponse(preview)
 
 
+@router.post("/discovery/reconcile-preview")
+async def admin_discovery_reconcile_preview(request: Request) -> JSONResponse:
+    """Server-side reconciliation preview for normalized discovery candidates."""
+    require_admin_session(request)
+    settings = get_settings()
+    if settings.admin_preview_enabled:
+        from app.admin_preview import build_preview_discovery_reconcile
+
+        return JSONResponse(build_preview_discovery_reconcile())
+    if not settings.database_url:
+        raise HTTPException(status_code=503, detail="Database is not configured.")
+    try:
+        body = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON body.") from exc
+    candidates = body.get("candidates")
+    if not isinstance(candidates, list):
+        raise HTTPException(status_code=400, detail="candidates must be a list.")
+    with db.db_connection(settings.database_url) as conn:
+        preview = _crm.preview_discovery_reconcile(conn, candidates=candidates)
+    return JSONResponse(preview)
+
+
 for _link in ADMIN_NAV_LINKS:
     if _link["href"] in {
         "/admin",

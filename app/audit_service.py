@@ -77,6 +77,7 @@ ACTION_BRIEF_CONVERT = "brief.convert"
 ACTION_CONTACT_RESTORE = "contact.restore"
 ACTION_RESEARCH_RECORD_CREATE = "research_record.create"
 ACTION_PIPELINE_ACTIVITY_CREATE = "pipeline_activity.create"
+ACTION_DISCOVERY_MERGE_DECISION = "discovery.merge_decision"
 
 
 def _is_sensitive_key(key: str) -> bool:
@@ -624,6 +625,32 @@ def record_research_record_create(
         entity_type="research_record",
         entity_id=research_record_id,
         summary_after=summary_after,
+        repository=repository,
+    )
+
+
+def record_discovery_merge_decision(
+    conn: psycopg.Connection,
+    *,
+    actor_context: ActorContext,
+    external_id: str,
+    decision: str,
+    company_id: str | None,
+    match_tier: str,
+    repository: AuditEventRepository | None = None,
+) -> dict[str, Any] | None:
+    return record_event(
+        conn,
+        actor_context=actor_context,
+        action=ACTION_DISCOVERY_MERGE_DECISION,
+        entity_type="discovery_candidate",
+        entity_id=external_id,
+        summary_after={
+            "external_id": external_id,
+            "decision": decision,
+            "company_id": company_id,
+            "match_tier": match_tier,
+        },
         repository=repository,
     )
 

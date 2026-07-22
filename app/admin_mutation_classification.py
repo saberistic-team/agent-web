@@ -84,6 +84,11 @@ ADMIN_MUTATION_ROUTE_CLASSIFICATIONS: dict[tuple[str, str], tuple[MutationClassi
         "Read-only reconciliation preview computes and returns a JSON diff without "
         "persisting anything; the eventual commit is covered by import.batch above.",
     ),
+    ("POST", "/admin/discovery/reconcile-preview"): (
+        "intentionally_unaudited",
+        "Read-only discovery reconciliation preview computes candidate matches without "
+        "persisting anything; commit paths emit discovery.merge_decision and research records.",
+    ),
     ("POST", "/admin/pipeline/{company_id}/stage"): (
         "required_immutable_business_audit",
         "Pipeline stage transition emits pipeline.update with bounded summaries.",

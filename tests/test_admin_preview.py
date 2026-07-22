@@ -33,6 +33,7 @@ from app.admin_preview import (
     build_preview_contacts,
     build_preview_dashboard_data,
     build_preview_linkedin_reconcile,
+    build_preview_discovery_reconcile,
     build_preview_pipeline_companies,
     build_preview_pipeline_detail,
     build_preview_section_rows,
@@ -870,6 +871,16 @@ def test_preview_linkedin_reconcile_stable_with_seed() -> None:
     b = build_preview_linkedin_reconcile(rng=random.Random(42))
     assert a == b
     assert a["summary_counts"]["insert"] == 1
+    assert a["summary_counts"]["conflict"] == 1
+
+
+@pytest.mark.unit
+def test_preview_discovery_reconcile_stable_with_seed() -> None:
+    a = build_preview_discovery_reconcile(rng=random.Random(42))
+    b = build_preview_discovery_reconcile(rng=random.Random(42))
+    assert a == b
+    assert a["summary_counts"]["matched"] == 1
+    assert a["summary_counts"]["review"] == 1
     assert a["summary_counts"]["conflict"] == 1
 
 

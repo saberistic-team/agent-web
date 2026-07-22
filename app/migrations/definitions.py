@@ -797,4 +797,60 @@ CROSS JOIN (
 ON CONFLICT (version_id, id) DO NOTHING;
 """,
     ),
+    Migration(
+        version="022",
+        name="discovery_reconciliation",
+        up_sql="""
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS field_sources JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+CREATE TABLE IF NOT EXISTS discovery_review_queue (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    external_id TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    candidate_name TEXT NOT NULL,
+    candidate_domain TEXT,
+    candidate_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    reason TEXT NOT NULL,
+    match_tier TEXT NOT NULL,
+    candidate_company_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'resolved', 'dismissed')),
+    resolved_company_id UUID REFERENCES companies (id) ON DELETE SET NULL,
+    resolved_by TEXT,
+    resolved_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_discovery_review_queue_external_pending
+    ON discovery_review_queue (external_id)
+    WHERE status = 'pending';
+
+CREATE INDEX IF NOT EXISTS idx_discovery_review_queue_status_created
+    ON discovery_review_queue (status, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS discovery_merge_decisions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    external_id TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    decision TEXT NOT NULL
+        CHECK (decision IN ('link', 'create', 'dismiss', 'override')),
+    company_id UUID REFERENCES companies (id) ON DELETE SET NULL,
+    candidate_domain TEXT,
+    candidate_name TEXT NOT NULL,
+    match_tier TEXT NOT NULL,
+    actor TEXT NOT NULL,
+    correlation_id TEXT,
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_discovery_merge_decisions_external
+    ON discovery_merge_decisions (external_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_research_records_discovery_observation_key
+    ON research_records ((metadata->>'discovery_observation_key'))
+    WHERE metadata ? 'discovery_observation_key';
+""",
+    ),
 )

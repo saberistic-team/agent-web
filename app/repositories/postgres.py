@@ -11,6 +11,10 @@ import psycopg
 
 from app.contacts import DECISION_MAKER_BUYING_ROLES
 from app.patch import UNSET, MaybeUnset
+from app.repositories.discovery_reconcile_postgres import (
+    PostgresDiscoveryMergeDecisionRepository,
+    PostgresDiscoveryReviewRepository,
+)
 from app.repositories.protocols import (
     ActivityRepository,
     AdminUserRepository,
@@ -42,6 +46,7 @@ class PostgresCompanyRepository:
         target_status: str | None = None,
         last_verified_at: date | None = None,
         notes: str | None = None,
+        field_sources: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         with conn.cursor() as cur:
             cur.execute(
@@ -49,15 +54,16 @@ class PostgresCompanyRepository:
                 INSERT INTO companies (
                     name, website, status, domain, category, stage,
                     headcount_estimate, funding_summary, target_status,
-                    last_verified_at, notes
+                    last_verified_at, notes, field_sources
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING *
                 """,
                 (
                     name, website, status, domain, category, stage,
                     headcount_estimate, funding_summary, target_status,
                     last_verified_at, notes,
+                    json.dumps(field_sources or {}),
                 ),
             )
             row = cur.fetchone()
@@ -179,6 +185,7 @@ class PostgresCompanyRepository:
         target_status: MaybeUnset[str] = UNSET,
         last_verified_at: MaybeUnset[date] = UNSET,
         notes: MaybeUnset[str] = UNSET,
+        field_sources: MaybeUnset[dict[str, Any]] = UNSET,
     ) -> dict[str, Any] | None:
         """Apply a partial patch.
 
@@ -200,11 +207,15 @@ class PostgresCompanyRepository:
             ("target_status", target_status),
             ("last_verified_at", last_verified_at),
             ("notes", notes),
+            ("field_sources", field_sources),
         ):
             if value is UNSET:
                 continue
             fields.append(f"{column} = %s")
-            values.append(value)
+            if column == "field_sources":
+                values.append(json.dumps(value or {}))
+            else:
+                values.append(value)
         if not fields:
             return self.get_by_id(conn, company_id)
 
@@ -651,6 +662,26 @@ class PostgresSourceRecordRepository:
             row = cur.fetchone()
         return dict(row) if row else None
 
+    def update_payload(
+        self,
+        conn: psycopg.Connection,
+        *,
+        record_id: UUID,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE source_records
+                SET payload = %s
+                WHERE id = %s
+                RETURNING *
+                """,
+                (json.dumps(payload), record_id),
+            )
+            row = cur.fetchone()
+        return dict(row) if row else {}
+
 
 class PostgresActivityRepository:
     def create(
@@ -793,6 +824,41 @@ class PostgresResearchRecordRepository:
             )
             rows = cur.fetchall()
         return [dict(row) for row in rows]
+
+    def update_freshness(
+        self,
+        conn: psycopg.Connection,
+        *,
+        record_id: UUID,
+        observed_at: datetime | None,
+        confidence: float | None,
+        review_at: datetime | None,
+        expires_at: datetime | None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE research_records
+                SET observed_at = %s,
+                    confidence = %s,
+                    review_at = %s,
+                    expires_at = %s,
+                    metadata = COALESCE(%s, metadata)
+                WHERE id = %s
+                RETURNING *
+                """,
+                (
+                    observed_at,
+                    confidence,
+                    review_at,
+                    expires_at,
+                    json.dumps(metadata) if metadata is not None else None,
+                    record_id,
+                ),
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
 
 
 class PostgresPipelineRepository:
@@ -1821,6 +1887,8 @@ class PostgresRepositories:
         self.pipeline = PostgresPipelineRepository()
         self.import_batches = PostgresImportBatchRepository()
         self.icp_scoring = PostgresIcpScoringRepository()
+        self.discovery_review = PostgresDiscoveryReviewRepository()
+        self.discovery_merge_decisions = PostgresDiscoveryMergeDecisionRepository()
 
 
 _default_repositories = PostgresRepositories()
