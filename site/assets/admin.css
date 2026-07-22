@@ -1286,3 +1286,32 @@ body.admin-app {
   font-size: 1.1rem;
   margin: 1.5rem 0 0.5rem;
 }
+
+.contact-metrics-section,
+.contact-judgment-section {
+  margin: 1.5rem 0;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--line);
+}
+
+.contact-metrics-section {
+  border-left: 3px solid var(--accent);
+}
+
+.contact-judgment-section {
+  border-left: 3px solid color-mix(in srgb, var(--muted) 60%, var(--line));
+}
+
+.contact-metrics-pre {
+  margin: 0.75rem 0 0;
+  padding: 0.75rem;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  border: 1px solid var(--line);
+}
+
+.contact-crm-context {
+  margin-top: 1rem;
+}

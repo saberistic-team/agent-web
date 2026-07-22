@@ -95,6 +95,8 @@ class ContactRepository(Protocol):
         notes: str | None = None,
         buying_roles: list[str] | None = None,
         field_sources: dict[str, Any] | None = None,
+        relationship_metrics: dict[str, Any] | None = None,
+        crm_context_tags: list[str] | None = None,
     ) -> dict[str, Any]: ...
 
     def get_by_id(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None: ...
@@ -178,6 +180,8 @@ class ContactRepository(Protocol):
         notes: MaybeUnset[str] = UNSET,
         buying_roles: MaybeUnset[list[str]] = UNSET,
         field_sources: MaybeUnset[dict[str, Any]] = UNSET,
+        relationship_metrics: MaybeUnset[dict[str, Any]] = UNSET,
+        crm_context_tags: MaybeUnset[list[str]] = UNSET,
     ) -> dict[str, Any] | None: ...
 
     def count_active(self, conn: psycopg.Connection) -> int: ...

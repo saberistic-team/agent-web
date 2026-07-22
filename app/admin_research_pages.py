@@ -8,7 +8,11 @@ from typing import Any
 from app.admin_buying_group_pages import render_buying_group_section
 from app.admin_layout import render_admin_archive_action_button, render_admin_shell
 from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES, TARGET_STATUSES
-from app.contacts import EMAIL_PERMISSIONS, RELATIONSHIP_STRENGTHS, format_buying_roles
+from app.contacts import EMAIL_PERMISSIONS, format_buying_roles
+from app.admin_contact_metrics import (
+    render_computed_relationship_metrics,
+    render_operator_judgment_fields,
+)
 from app.research_records import (
     RECORD_TYPE_LABELS,
     RESEARCH_RECORD_TYPES,
@@ -287,19 +291,13 @@ def render_admin_contact_research_page(
             "Buying roles",
             format_buying_roles(contact.get("buying_roles")),
         ),
-        (
-            "Relationship",
-            RELATIONSHIP_STRENGTHS.get(
-                str(contact.get("relationship_strength")), contact.get("relationship_strength")
-            ),
-        ),
-        ("Last interaction", contact.get("last_interaction_at")),
-        ("Notes", contact.get("notes")),
     )
     facts_html = "".join(
         f"<div><dt>{html.escape(label)}</dt><dd>{html.escape(str(value or '—'))}</dd></div>"
         for label, value in contact_fields
     )
+    metrics_html = render_computed_relationship_metrics(contact.get("relationship_metrics"))
+    judgment_html = render_operator_judgment_fields(contact, crm_context_checkboxes="")
     company_link = ""
     if company is not None:
         company_id = html.escape(str(company["id"]), quote=True)
@@ -332,6 +330,8 @@ def render_admin_contact_research_page(
           <p class="admin-lede">Research records for contact <code>{contact_id}</code>.</p>
           <p><a class="cta" href="/admin/contacts/{contact_id}/edit">Edit contact</a></p>
           <dl class="research-provenance">{facts_html}</dl>
+          {metrics_html}
+          {judgment_html}
           <form method="post" action="/admin/contacts/{contact_id}/{archive_action}">
             <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}" />
             {archive_button}

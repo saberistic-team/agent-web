@@ -72,9 +72,18 @@ from app.linkedin_import import (
 from app.linkedin_reconcile import (
     MatchResolution,
     compute_importable_updates,
+    is_field_user_owned,
+    parse_field_sources,
     preview_connection_row,
     resolve_company_id,
     resolve_connection_match,
+)
+from app.linkedin_relationship_metrics import (
+    assert_no_message_bodies,
+    build_connection_date_index,
+    merge_relationship_metrics,
+    metrics_last_interaction_date,
+    strip_message_bodies,
 )
 from app.pipeline_stages import (
     initial_pipeline_stage_for_brief_status,
@@ -1366,6 +1375,8 @@ class CrmService:
         connections: list[dict[str, Any]],
         export_date: Any | None = None,
         checksum: str | None = None,
+        message_metadata: list[dict[str, Any]] | None = None,
+        owner_name: str | None = None,
     ) -> dict[str, Any]:
         """Merge LinkedIn connections incrementally without deleting absent records."""
         resolved_checksum = checksum or compute_import_checksum(connections)
@@ -1570,6 +1581,21 @@ class CrmService:
                     payload={"source_kind": SOURCE_KIND_CONNECTION, **identity},
                 )
 
+            if message_metadata and owner_name:
+                self._apply_linkedin_relationship_metrics(
+                    conn,
+                    connections=connections,
+                    message_rows=message_metadata,
+                    owner_name=owner_name,
+                    export_date=export_date,
+                    touched_contact_ids={
+                        UUID(str(record["entity_id"]))
+                        for record in row_records
+                        if record.get("entity_id") is not None
+                    },
+                    seen_at=seen_at,
+                )
+
             persisted_rows: list[dict[str, Any]] = []
             for record in row_records:
                 persisted_rows.append(
@@ -1613,6 +1639,51 @@ class CrmService:
             "idempotent": False,
             "summary_counts": summary,
         }
+
+    def _apply_linkedin_relationship_metrics(
+        self,
+        conn: psycopg.Connection,
+        *,
+        connections: list[dict[str, Any]],
+        message_rows: list[dict[str, Any]],
+        owner_name: str,
+        export_date: Any | None,
+        touched_contact_ids: set[UUID],
+        seen_at: datetime,
+    ) -> None:
+        assert_no_message_bodies(message_rows)
+        safe_rows = strip_message_bodies(message_rows)
+        reference_date = parse_export_date(export_date) or seen_at.date()
+        connection_index = build_connection_date_index(connections)
+
+        for contact_id in touched_contact_ids:
+            contact = self._repos.contacts.get_by_id(conn, contact_id)
+            if contact is None or contact.get("archived_at") is not None:
+                continue
+            contact_name = str(contact.get("full_name") or "")
+            if not contact_name.strip():
+                continue
+            profile_url = contact.get("profile_url")
+            connection_date = connection_index.get(str(profile_url)) if profile_url else None
+            existing_metrics = contact.get("relationship_metrics")
+            if not isinstance(existing_metrics, dict):
+                existing_metrics = {}
+            merged = merge_relationship_metrics(
+                existing_metrics,
+                contact_name=contact_name,
+                owner_name=owner_name,
+                connection_date=connection_date,
+                message_rows=safe_rows,
+                reference_date=reference_date,
+            )
+            updates: dict[str, Any] = {"relationship_metrics": merged}
+            field_sources = parse_field_sources(contact.get("field_sources"))
+            metrics_last = metrics_last_interaction_date(merged)
+            if metrics_last is not None and not is_field_user_owned(field_sources, "last_interaction_at"):
+                current_last = contact.get("last_interaction_at")
+                if current_last is None or metrics_last > current_last:
+                    updates["last_interaction_at"] = metrics_last
+            self._repos.contacts.update(conn, contact_id, **updates)
 
     def get_import_batch(
         self,
