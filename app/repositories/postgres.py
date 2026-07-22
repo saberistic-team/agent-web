@@ -267,6 +267,8 @@ class PostgresContactRepository:
         notes: str | None = None,
         buying_roles: list[str] | None = None,
         field_sources: dict[str, Any] | None = None,
+        relationship_metrics: dict[str, Any] | None = None,
+        crm_context_tags: list[str] | None = None,
     ) -> dict[str, Any]:
         with conn.cursor() as cur:
             cur.execute(
@@ -274,9 +276,10 @@ class PostgresContactRepository:
                 INSERT INTO contacts (
                     full_name, email, title, profile_url, email_permission,
                     company_id, last_interaction_at, relationship_strength,
-                    notes, buying_roles, field_sources
+                    notes, buying_roles, field_sources, relationship_metrics,
+                    crm_context_tags
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s)
                 RETURNING *
                 """,
                 (
@@ -291,6 +294,8 @@ class PostgresContactRepository:
                     notes,
                     buying_roles or [],
                     json.dumps(field_sources or {}),
+                    json.dumps(relationship_metrics or {}),
+                    crm_context_tags or [],
                 ),
             )
             row = cur.fetchone()
@@ -522,6 +527,8 @@ class PostgresContactRepository:
         notes: MaybeUnset[str] = UNSET,
         buying_roles: MaybeUnset[list[str]] = UNSET,
         field_sources: MaybeUnset[dict[str, Any]] = UNSET,
+        relationship_metrics: MaybeUnset[dict[str, Any]] = UNSET,
+        crm_context_tags: MaybeUnset[list[str]] = UNSET,
     ) -> dict[str, Any] | None:
         """Apply a partial patch.
 
@@ -550,6 +557,12 @@ class PostgresContactRepository:
         if field_sources is not UNSET:
             fields.append("field_sources = %s::jsonb")
             values.append(json.dumps(field_sources))
+        if relationship_metrics is not UNSET:
+            fields.append("relationship_metrics = %s::jsonb")
+            values.append(json.dumps(relationship_metrics))
+        if crm_context_tags is not UNSET:
+            fields.append("crm_context_tags = %s")
+            values.append(crm_context_tags)
         if not fields:
             return self.get_by_id(conn, contact_id)
 
@@ -1043,6 +1056,162 @@ class PostgresPipelineRepository:
         return [(str(row["bucket"]), int(row["total"])) for row in rows]
 
 
+class PostgresMarketingAnalyticsRepository:
+    _UTM_SOURCE_EXPR = (
+        "COALESCE(NULLIF(TRIM(attribution->>'utm_source'), ''), '(direct)')"
+    )
+    _UTM_MEDIUM_EXPR = (
+        "COALESCE(NULLIF(TRIM(attribution->>'utm_medium'), ''), '(none)')"
+    )
+    _UTM_CAMPAIGN_EXPR = (
+        "COALESCE(NULLIF(TRIM(attribution->>'utm_campaign'), ''), '(none)')"
+    )
+    _BRIEF_UTM_SOURCE_EXPR = "COALESCE(NULLIF(TRIM(utm_source), ''), '(direct)')"
+    _BRIEF_UTM_MEDIUM_EXPR = "COALESCE(NULLIF(TRIM(utm_medium), ''), '(none)')"
+    _BRIEF_UTM_CAMPAIGN_EXPR = "COALESCE(NULLIF(TRIM(utm_campaign), ''), '(none)')"
+
+    def count_events_by_name(
+        self,
+        conn: psycopg.Connection,
+        *,
+        window_start: datetime,
+        window_end: datetime,
+        event_names: tuple[str, ...] | list[str],
+    ) -> list[tuple[str, int]]:
+        if not event_names:
+            return []
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT event_name, COUNT(*)::int AS total
+                FROM analytics_events
+                WHERE occurred_at >= %s
+                  AND occurred_at < %s
+                  AND event_name = ANY(%s)
+                GROUP BY event_name
+                ORDER BY total DESC, event_name ASC
+                """,
+                (window_start, window_end, list(event_names)),
+            )
+            rows = cur.fetchall()
+        return [(str(row["event_name"]), int(row["total"])) for row in rows]
+
+    def list_event_attribution(
+        self,
+        conn: psycopg.Connection,
+        *,
+        window_start: datetime,
+        window_end: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT
+                    {self._UTM_SOURCE_EXPR} AS utm_source,
+                    {self._UTM_MEDIUM_EXPR} AS utm_medium,
+                    {self._UTM_CAMPAIGN_EXPR} AS utm_campaign,
+                    COUNT(*)::int AS event_count
+                FROM analytics_events
+                WHERE occurred_at >= %s
+                  AND occurred_at < %s
+                GROUP BY utm_source, utm_medium, utm_campaign
+                ORDER BY event_count DESC, utm_source ASC
+                LIMIT %s
+                """,
+                (window_start, window_end, limit),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def list_lead_attribution(
+        self,
+        conn: psycopg.Connection,
+        *,
+        window_start: datetime,
+        window_end: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT
+                    {self._BRIEF_UTM_SOURCE_EXPR} AS utm_source,
+                    {self._BRIEF_UTM_MEDIUM_EXPR} AS utm_medium,
+                    {self._BRIEF_UTM_CAMPAIGN_EXPR} AS utm_campaign,
+                    COUNT(*)::int AS leads,
+                    COUNT(*) FILTER (
+                        WHERE status = 'paid'
+                          AND paid_at >= %s
+                          AND paid_at < %s
+                    )::int AS payments
+                FROM project_briefs
+                WHERE created_at >= %s
+                  AND created_at < %s
+                GROUP BY utm_source, utm_medium, utm_campaign
+                ORDER BY leads DESC, utm_source ASC
+                LIMIT %s
+                """,
+                (window_start, window_end, window_start, window_end, limit),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def list_case_study_engagement(
+        self,
+        conn: psycopg.Connection,
+        *,
+        window_start: datetime,
+        window_end: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT properties->>'case_study_slug' AS slug, COUNT(*)::int AS views
+                FROM analytics_events
+                WHERE occurred_at >= %s
+                  AND occurred_at < %s
+                  AND event_name = 'Case Study Viewed'
+                  AND properties ? 'case_study_slug'
+                  AND NULLIF(TRIM(properties->>'case_study_slug'), '') IS NOT NULL
+                GROUP BY slug
+                ORDER BY views DESC, slug ASC
+                LIMIT %s
+                """,
+                (window_start, window_end, limit),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def list_article_engagement(
+        self,
+        conn: psycopg.Connection,
+        *,
+        window_start: datetime,
+        window_end: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT properties->>'article_slug' AS slug, COUNT(*)::int AS views
+                FROM analytics_events
+                WHERE occurred_at >= %s
+                  AND occurred_at < %s
+                  AND event_name = 'Insight Viewed'
+                  AND properties ? 'article_slug'
+                  AND NULLIF(TRIM(properties->>'article_slug'), '') IS NOT NULL
+                GROUP BY slug
+                ORDER BY views DESC, slug ASC
+                LIMIT %s
+                """,
+                (window_start, window_end, limit),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+
 class PostgresAcquisitionDashboardRepository:
     _COMPANY_DIMENSIONS = frozenset({"stage", "category"})
     _PUBLIC_EVIDENCE_TYPES = ("verified_fact", "public_signal")
@@ -1206,134 +1375,6 @@ class PostgresAcquisitionDashboardRepository:
         limit: int,
     ) -> list[dict[str, Any]]:
         return self._pipeline.list_companies_without_next_action(conn, limit=limit)
-
-
-class PostgresMarketingAnalyticsRepository:
-    _ALLOWED_SLUG_PROPERTIES = frozenset({"article_slug", "case_study_slug"})
-
-    def count_events_by_name(
-        self,
-        conn: psycopg.Connection,
-        *,
-        start: datetime,
-        end: datetime,
-        event_names: tuple[str, ...],
-        authoritative_only: bool,
-    ) -> dict[str, int]:
-        if not event_names:
-            return {}
-        consent_filter = "" if authoritative_only else "AND consent_state != 'declined'"
-        with conn.cursor() as cur:
-            cur.execute(
-                f"""
-                SELECT event_name, COUNT(*)::int AS total
-                FROM analytics_events
-                WHERE occurred_at >= %s
-                  AND occurred_at < %s
-                  AND event_name = ANY(%s)
-                  {consent_filter}
-                GROUP BY event_name
-                """,
-                (start, end, list(event_names)),
-            )
-            rows = cur.fetchall()
-        return {str(row["event_name"]): int(row["total"]) for row in rows}
-
-    def list_attribution_summary(
-        self,
-        conn: psycopg.Connection,
-        *,
-        start: datetime,
-        end: datetime,
-        limit: int,
-    ) -> list[dict[str, Any]]:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                WITH landing AS (
-                    SELECT
-                        COALESCE(NULLIF(TRIM(attribution->>'utm_source'), ''), '(direct)') AS utm_source,
-                        COALESCE(NULLIF(TRIM(attribution->>'utm_medium'), ''), '—') AS utm_medium,
-                        COALESCE(NULLIF(TRIM(attribution->>'utm_campaign'), ''), '—') AS utm_campaign,
-                        COUNT(*)::int AS landing_views
-                    FROM analytics_events
-                    WHERE occurred_at >= %s
-                      AND occurred_at < %s
-                      AND consent_state != 'declined'
-                      AND event_name = 'Landing Viewed'
-                    GROUP BY 1, 2, 3
-                ),
-                briefs AS (
-                    SELECT
-                        COALESCE(NULLIF(TRIM(utm_source), ''), '(direct)') AS utm_source,
-                        COALESCE(NULLIF(TRIM(utm_medium), ''), '—') AS utm_medium,
-                        COALESCE(NULLIF(TRIM(utm_campaign), ''), '—') AS utm_campaign,
-                        COUNT(*)::int AS leads,
-                        COUNT(*) FILTER (
-                            WHERE status = 'paid'
-                              AND paid_at >= %s
-                              AND paid_at < %s
-                        )::int AS payments
-                    FROM project_briefs
-                    WHERE created_at >= %s
-                      AND created_at < %s
-                    GROUP BY 1, 2, 3
-                ),
-                combined AS (
-                    SELECT
-                        COALESCE(l.utm_source, b.utm_source) AS utm_source,
-                        COALESCE(l.utm_medium, b.utm_medium) AS utm_medium,
-                        COALESCE(l.utm_campaign, b.utm_campaign) AS utm_campaign,
-                        COALESCE(l.landing_views, 0) AS landing_views,
-                        COALESCE(b.leads, 0) AS leads,
-                        COALESCE(b.payments, 0) AS payments
-                    FROM landing l
-                    FULL OUTER JOIN briefs b
-                      ON l.utm_source = b.utm_source
-                     AND l.utm_medium = b.utm_medium
-                     AND l.utm_campaign = b.utm_campaign
-                )
-                SELECT *
-                FROM combined
-                WHERE landing_views > 0 OR leads > 0 OR payments > 0
-                ORDER BY leads DESC, landing_views DESC, utm_source ASC
-                LIMIT %s
-                """,
-                (start, end, start, end, start, end, limit),
-            )
-            rows = cur.fetchall()
-        return [dict(row) for row in rows]
-
-    def list_content_engagement(
-        self,
-        conn: psycopg.Connection,
-        *,
-        start: datetime,
-        end: datetime,
-        event_name: str,
-        slug_property: str,
-        limit: int,
-    ) -> list[dict[str, Any]]:
-        if slug_property not in self._ALLOWED_SLUG_PROPERTIES:
-            raise ValueError(f"unsupported slug property: {slug_property}")
-        with conn.cursor() as cur:
-            cur.execute(
-                f"""
-                SELECT properties->>%s AS slug, COUNT(*)::int AS views
-                FROM analytics_events
-                WHERE occurred_at >= %s
-                  AND occurred_at < %s
-                  AND consent_state != 'declined'
-                  AND event_name = %s
-                  AND COALESCE(properties->>%s, '') <> ''
-                GROUP BY 1
-                ORDER BY views DESC, slug ASC
-                LIMIT %s
-                """,
-                (slug_property, start, end, event_name, slug_property, limit),
-            )
-            rows = cur.fetchall()
-        return [dict(row) for row in rows]
 
 
 class PostgresAdminUserRepository:

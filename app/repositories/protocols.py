@@ -95,6 +95,8 @@ class ContactRepository(Protocol):
         notes: str | None = None,
         buying_roles: list[str] | None = None,
         field_sources: dict[str, Any] | None = None,
+        relationship_metrics: dict[str, Any] | None = None,
+        crm_context_tags: list[str] | None = None,
     ) -> dict[str, Any]: ...
 
     def get_by_id(self, conn: psycopg.Connection, contact_id: UUID) -> dict[str, Any] | None: ...
@@ -178,6 +180,8 @@ class ContactRepository(Protocol):
         notes: MaybeUnset[str] = UNSET,
         buying_roles: MaybeUnset[list[str]] = UNSET,
         field_sources: MaybeUnset[dict[str, Any]] = UNSET,
+        relationship_metrics: MaybeUnset[dict[str, Any]] = UNSET,
+        crm_context_tags: MaybeUnset[list[str]] = UNSET,
     ) -> dict[str, Any] | None: ...
 
     def count_active(self, conn: psycopg.Connection) -> int: ...
@@ -359,6 +363,53 @@ class PipelineRepository(Protocol):
     ) -> list[tuple[str, int]]: ...
 
 
+class MarketingAnalyticsRepository(Protocol):
+    def count_events_by_name(
+        self,
+        conn: psycopg.Connection,
+        *,
+        window_start: datetime,
+        window_end: datetime,
+        event_names: tuple[str, ...] | list[str],
+    ) -> list[tuple[str, int]]: ...
+
+    def list_event_attribution(
+        self,
+        conn: psycopg.Connection,
+        *,
+        window_start: datetime,
+        window_end: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]: ...
+
+    def list_lead_attribution(
+        self,
+        conn: psycopg.Connection,
+        *,
+        window_start: datetime,
+        window_end: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]: ...
+
+    def list_case_study_engagement(
+        self,
+        conn: psycopg.Connection,
+        *,
+        window_start: datetime,
+        window_end: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]: ...
+
+    def list_article_engagement(
+        self,
+        conn: psycopg.Connection,
+        *,
+        window_start: datetime,
+        window_end: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]: ...
+
+
 class AcquisitionDashboardRepository(Protocol):
     def count_companies_by_dimension(
         self,
@@ -415,38 +466,6 @@ class AcquisitionDashboardRepository(Protocol):
         self,
         conn: psycopg.Connection,
         *,
-        limit: int,
-    ) -> list[dict[str, Any]]: ...
-
-
-class MarketingAnalyticsRepository(Protocol):
-    def count_events_by_name(
-        self,
-        conn: psycopg.Connection,
-        *,
-        start: datetime,
-        end: datetime,
-        event_names: tuple[str, ...],
-        authoritative_only: bool,
-    ) -> dict[str, int]: ...
-
-    def list_attribution_summary(
-        self,
-        conn: psycopg.Connection,
-        *,
-        start: datetime,
-        end: datetime,
-        limit: int,
-    ) -> list[dict[str, Any]]: ...
-
-    def list_content_engagement(
-        self,
-        conn: psycopg.Connection,
-        *,
-        start: datetime,
-        end: datetime,
-        event_name: str,
-        slug_property: str,
         limit: int,
     ) -> list[dict[str, Any]]: ...
 

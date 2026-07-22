@@ -2,6 +2,7 @@
 
 from app.repositories.postgres import (
     PostgresAcquisitionDashboardRepository,
+    PostgresMarketingAnalyticsRepository,
     PostgresActivityRepository,
     PostgresAdminUserRepository,
     PostgresAuditEventRepository,
@@ -9,7 +10,6 @@ from app.repositories.postgres import (
     PostgresContactRepository,
     PostgresImportBatchRepository,
     PostgresIcpScoringRepository,
-    PostgresMarketingAnalyticsRepository,
     PostgresPipelineRepository,
     PostgresProjectBriefRepository,
     PostgresRepositories,
@@ -20,6 +20,7 @@ from app.repositories.postgres import (
 )
 from app.repositories.protocols import (
     AcquisitionDashboardRepository,
+    MarketingAnalyticsRepository,
     ActivityRepository,
     AdminUserRepository,
     AuditEventRepository,
@@ -27,7 +28,6 @@ from app.repositories.protocols import (
     ContactRepository,
     IcpScoringRepository,
     ImportBatchRepository,
-    MarketingAnalyticsRepository,
     PipelineRepository,
     ProjectBriefRepository,
     ResearchRecordRepository,
@@ -36,6 +36,7 @@ from app.repositories.protocols import (
 
 __all__ = [
     "AcquisitionDashboardRepository",
+    "MarketingAnalyticsRepository",
     "ActivityRepository",
     "AdminUserRepository",
     "AuditEventRepository",
@@ -43,12 +44,12 @@ __all__ = [
     "ContactRepository",
     "IcpScoringRepository",
     "ImportBatchRepository",
-    "MarketingAnalyticsRepository",
     "PipelineRepository",
     "ProjectBriefRepository",
     "ResearchRecordRepository",
     "SourceRecordRepository",
     "PostgresAcquisitionDashboardRepository",
+    "PostgresMarketingAnalyticsRepository",
     "PostgresActivityRepository",
     "PostgresAdminUserRepository",
     "PostgresAuditEventRepository",
@@ -56,7 +57,6 @@ __all__ = [
     "PostgresContactRepository",
     "PostgresImportBatchRepository",
     "PostgresIcpScoringRepository",
-    "PostgresMarketingAnalyticsRepository",
     "PostgresPipelineRepository",
     "PostgresProjectBriefRepository",
     "PostgresRepositories",

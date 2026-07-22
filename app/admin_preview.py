@@ -24,6 +24,20 @@ from app.acquisition_dashboard import (
     EvidenceRow,
     NextActionRow,
 )
+from app.marketing_analytics_dashboard import (
+    CLIENT_SUPPLEMENTARY_EVENTS,
+    ENGAGEMENT_EVENTS,
+    SERVER_CONVERSION_EVENTS,
+    ContentEngagementRow,
+    ConversionRateRow,
+    EventAttributionRow,
+    EventCountRow,
+    EventSource,
+    LeadAttributionRow,
+    MarketingAnalyticsDashboardData,
+    compute_conversion_rate,
+    parse_analytics_date_range,
+)
 from app.pipeline_stages import PIPELINE_STAGES
 from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES, TARGET_STATUSES
 from app.icp_scoring import default_icp_rules
@@ -324,149 +338,165 @@ def build_preview_acquisition_dashboard_data(
     )
 
 
-def build_preview_marketing_analytics_dashboard_data(
+def build_preview_marketing_analytics_data(
     *,
     rng: random.Random | None = None,
     now: datetime | None = None,
-) -> "MarketingAnalyticsDashboardData":
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> MarketingAnalyticsDashboardData:
     """Randomized marketing analytics dashboard for ADMIN_PREVIEW_MODE screenshots."""
-    from app.marketing_analytics_dashboard import (
-        AttributionRow,
-        ContentEngagementRow,
-        ConversionRate,
-        EventCount,
-        MarketingAnalyticsDashboardData,
-        ENGAGEMENT_EVENT_LABELS,
-        ENGAGEMENT_EVENT_NAMES,
-        SERVER_CONVERSION_EVENT_NAMES,
-        SERVER_EVENT_LABELS,
-        SUPPLEMENTARY_CLIENT_EVENT_NAMES,
-        SUPPLEMENTARY_EVENT_LABELS,
-        parse_date_range,
-    )
-
     rng = _resolve_rng(rng, "marketing_analytics")
     now = _resolve_now(now)
-    date_range = parse_date_range(now=now)
+    date_range = parse_analytics_date_range(
+        date_from=date_from,
+        date_to=date_to,
+        reference=now,
+    )
 
-    def _counts(
+    def _event_rows(
         event_names: tuple[str, ...],
-        labels: dict[str, str],
         *,
-        source: str,
-        low: int,
-        high: int,
-    ) -> tuple[EventCount, ...]:
+        source: EventSource,
+        min_count: int = 12,
+        max_count: int = 420,
+    ) -> tuple[EventCountRow, ...]:
         return tuple(
-            EventCount(
+            EventCountRow(
                 event_name=name,
-                label=labels.get(name, name),
-                count=rng.randint(low, high),
+                count=rng.randint(min_count, max_count),
                 source=source,
             )
             for name in event_names
         )
 
-    engagement = _counts(
-        ENGAGEMENT_EVENT_NAMES,
-        ENGAGEMENT_EVENT_LABELS,
-        source="browser",
-        low=12,
-        high=240,
+    engagement = _event_rows(ENGAGEMENT_EVENTS, source="browser")
+    server = _event_rows(SERVER_CONVERSION_EVENTS, source="server", min_count=3, max_count=48)
+    client = _event_rows(
+        CLIENT_SUPPLEMENTARY_EVENTS,
+        source="client_supplementary",
+        min_count=2,
+        max_count=24,
     )
-    server = _counts(
-        SERVER_CONVERSION_EVENT_NAMES,
-        SERVER_EVENT_LABELS,
-        source="server",
-        low=3,
-        high=48,
-    )
-    supplementary = _counts(
-        SUPPLEMENTARY_CLIENT_EVENT_NAMES,
-        SUPPLEMENTARY_EVENT_LABELS,
-        source="browser",
-        low=0,
-        high=12,
-    )
-
-    counts = {row.event_name: row.count for row in (*engagement, *server)}
-    landing = counts.get("Landing Viewed", 100)
-    brief_start = counts.get("Brief Form Started", 40)
-    lead = counts.get("Lead Persisted", 20)
-    checkout = counts.get("Checkout Opened", 12)
-    payment = counts.get("Payment Completed", 8)
-
+    counts = {
+        **{row.event_name: row.count for row in engagement},
+        **{row.event_name: row.count for row in server},
+        **{row.event_name: row.count for row in client},
+    }
     conversion_rates = (
-        ConversionRate(
-            label="Brief start rate",
-            numerator=brief_start,
-            denominator=landing,
-            rate_pct=round(100.0 * brief_start / landing, 1) if landing else None,
-            numerator_label="Brief form started",
-            denominator_label="Landing views",
-            numerator_definition="analytics_events Brief Form Started",
-            denominator_definition="analytics_events Landing Viewed",
+        ConversionRateRow(
+            key="landing_to_brief_form",
+            label="Landing → brief form start",
+            numerator_event="Brief Form Started",
+            denominator_event="Landing Viewed",
+            numerator=counts["Brief Form Started"],
+            denominator=counts["Landing Viewed"],
+            rate_pct=compute_conversion_rate(
+                counts["Brief Form Started"], counts["Landing Viewed"]
+            ),
+            definition=(
+                "Numerator: count of `Brief Form Started` in window. "
+                "Denominator: count of `Landing Viewed` in window."
+            ),
         ),
-        ConversionRate(
-            label="Lead rate",
-            numerator=lead,
-            denominator=brief_start,
-            rate_pct=round(100.0 * lead / brief_start, 1) if brief_start else None,
-            numerator_label="Lead persisted",
-            denominator_label="Brief form started",
-            numerator_definition="server Lead Persisted",
-            denominator_definition="analytics_events Brief Form Started",
+        ConversionRateRow(
+            key="form_to_lead",
+            label="Brief form → lead persisted",
+            numerator_event="Lead Persisted",
+            denominator_event="Brief Form Started",
+            numerator=counts["Lead Persisted"],
+            denominator=counts["Brief Form Started"],
+            rate_pct=compute_conversion_rate(
+                counts["Lead Persisted"], counts["Brief Form Started"]
+            ),
+            definition=(
+                "Numerator: count of `Lead Persisted` in window. "
+                "Denominator: count of `Brief Form Started` in window."
+            ),
         ),
-        ConversionRate(
-            label="Payment rate",
-            numerator=payment,
-            denominator=checkout,
-            rate_pct=round(100.0 * payment / checkout, 1) if checkout else None,
-            numerator_label="Paid diagnostic",
-            denominator_label="Checkout opened",
-            numerator_definition="server Payment Completed",
-            denominator_definition="server Checkout Opened",
+        ConversionRateRow(
+            key="lead_to_checkout",
+            label="Lead → checkout opened",
+            numerator_event="Checkout Opened",
+            denominator_event="Lead Persisted",
+            numerator=counts["Checkout Opened"],
+            denominator=counts["Lead Persisted"],
+            rate_pct=compute_conversion_rate(
+                counts["Checkout Opened"], counts["Lead Persisted"]
+            ),
+            definition=(
+                "Numerator: count of `Checkout Opened` in window. "
+                "Denominator: count of `Lead Persisted` in window."
+            ),
+        ),
+        ConversionRateRow(
+            key="checkout_to_payment",
+            label="Checkout → payment completed",
+            numerator_event="Payment Completed",
+            denominator_event="Checkout Opened",
+            numerator=counts["Payment Completed"],
+            denominator=counts["Checkout Opened"],
+            rate_pct=compute_conversion_rate(
+                counts["Payment Completed"], counts["Checkout Opened"]
+            ),
+            definition=(
+                "Numerator: count of `Payment Completed` in window. "
+                "Denominator: count of `Checkout Opened` in window."
+            ),
+        ),
+        ConversionRateRow(
+            key="brief_view_to_form",
+            label="Brief view → form start",
+            numerator_event="Brief Form Started",
+            denominator_event="Brief Viewed",
+            numerator=counts["Brief Form Started"],
+            denominator=counts["Brief Viewed"],
+            rate_pct=compute_conversion_rate(
+                counts["Brief Form Started"], counts["Brief Viewed"]
+            ),
+            definition=(
+                "Numerator: count of `Brief Form Started` in window. "
+                "Denominator: count of `Brief Viewed` in window."
+            ),
         ),
     )
-
-    sources = ("linkedin", "newsletter", "google", "(direct)")
-    mediums = ("social", "email", "cpc", "—")
-    campaigns = ("q2-launch", "diagnostic-offer", "insights-feature", "—")
-    attribution_rows = tuple(
-        AttributionRow(
-            utm_source=rng.choice(sources),
-            utm_medium=rng.choice(mediums),
-            utm_campaign=rng.choice(campaigns),
-            landing_views=rng.randint(20, 180),
-            leads=rng.randint(2, 24),
-            payments=rng.randint(0, 8),
+    event_attribution = tuple(
+        EventAttributionRow(
+            utm_source=rng.choice(UTM_SOURCES),
+            utm_medium=rng.choice([m or "organic" for m in UTM_MEDIUMS]),
+            utm_campaign=rng.choice([c or "inbound" for c in UTM_CAMPAIGNS]),
+            event_count=rng.randint(24, 280),
         )
-        for _ in range(rng.randint(4, 7))
+        for _ in range(rng.randint(4, 6))
     )
-
-    article_slugs = (
-        "postgres-indexing",
-        "stripe-webhooks",
-        "first-party-analytics",
-        "crm-pipeline",
+    lead_attribution = tuple(
+        LeadAttributionRow(
+            utm_source=rng.choice(UTM_SOURCES),
+            utm_medium=rng.choice([m or "organic" for m in UTM_MEDIUMS]),
+            utm_campaign=rng.choice([c or "inbound" for c in UTM_CAMPAIGNS]),
+            leads=rng.randint(2, 18),
+            payments=rng.randint(0, 6),
+        )
+        for _ in range(rng.randint(3, 5))
     )
-    case_slugs = ("fintech-replatform", "logistics-dashboard", "ai-diagnostics")
-
+    case_slugs = ("payments-platform", "edge-migration", "billing-carve-out")
+    article_slugs = ("diagnostic-playbook", "architecture-review", "rollout-sequencing")
     return MarketingAnalyticsDashboardData(
-        engagement_counts=engagement,
-        server_counts=server,
-        supplementary_counts=supplementary,
-        conversion_rates=conversion_rates,
-        attribution_rows=attribution_rows,
-        article_engagement=tuple(
-            ContentEngagementRow(slug=slug, views=rng.randint(8, 96), content_type="article")
-            for slug in rng.sample(article_slugs, k=3)
-        ),
-        case_study_engagement=tuple(
-            ContentEngagementRow(slug=slug, views=rng.randint(6, 72), content_type="case_study")
-            for slug in rng.sample(case_slugs, k=2)
-        ),
         date_range=date_range,
+        engagement_events=engagement,
+        server_conversion_events=server,
+        client_supplementary_events=client,
+        conversion_rates=conversion_rates,
+        event_attribution=event_attribution,
+        lead_attribution=lead_attribution,
+        case_study_engagement=tuple(
+            ContentEngagementRow(slug=slug, views=rng.randint(18, 140))
+            for slug in rng.sample(case_slugs, k=rng.randint(2, len(case_slugs)))
+        ),
+        article_engagement=tuple(
+            ContentEngagementRow(slug=slug, views=rng.randint(12, 96))
+            for slug in rng.sample(article_slugs, k=rng.randint(2, len(article_slugs)))
+        ),
         generated_at=now,
     )
 
