@@ -704,3 +704,34 @@ def test_validate_public_url_rejects_credentials() -> None:
 def test_rate_limiter_rejects_invalid_limit() -> None:
     with pytest.raises(ValueError, match="positive"):
         RateLimiter(requests_per_minute=0)
+
+
+@pytest.mark.unit
+def test_http_fetcher_retries_retryable_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"count": 0}
+
+    class _FakeResponse:
+        def __init__(self, status_code: int) -> None:
+            self.status_code = status_code
+            self.headers = {"Retry-After": "0", "content-type": "application/json"}
+            self.content = b"{}"
+            self.url = "https://api.example.com/data"
+
+    class _FakeClient:
+        def get(self, url: str, headers: dict[str, str]) -> _FakeResponse:
+            calls["count"] += 1
+            if calls["count"] == 1:
+                return _FakeResponse(429)
+            return _FakeResponse(200)
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr("app.discovery.fetcher.time.sleep", lambda _delay: None)
+    fetcher = HttpFetcher(
+        policy=FetchPolicy(retry_max_attempts=3, retry_base_seconds=0.0, retry_cap_seconds=0.0),
+        client=_FakeClient(),
+    )
+    result = fetcher.fetch("https://api.example.com/data", skip_dns_validation=True)
+    assert result.status_code == 200
+    assert calls["count"] == 2

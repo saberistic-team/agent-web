@@ -456,7 +456,7 @@ def test_admin_nav_links_present(path: str) -> None:
         ("/admin/targets", "Target lists", "targets-title", "Targets"),
         ("/admin/pipeline", "Pipeline", "pipeline-title", "Pipeline"),
         ("/admin/imports", "LinkedIn export preview", "imports-title", "Imports"),
-        ("/admin/discovery", "Discovery", "admin-empty-title", "Discovery"),
+        ("/admin/discovery", "Discovery runs", "discovery-runs-title", "Discovery"),
         ("/admin/analytics", "Analytics", "analytics-title", "Analytics"),
         ("/admin/content", "Content", "admin-empty-title", "Content"),
         ("/admin/settings", "Settings", "admin-empty-title", "Settings"),
@@ -497,6 +497,15 @@ def test_admin_active_nav(path: str, heading: str, title_id: str, nav_label: str
         if path == "/admin/targets":
             patchers.append(patch("app.admin_qualification_routes._crm.list_qualification_targets", return_value=[]))
             patchers.append(patch("app.admin_qualification_routes._crm.list_qualification_working_lists", return_value=[]))
+        if path == "/admin/discovery":
+            service = MagicMock()
+            service.list_runs.return_value = ([], 0)
+            patchers.append(
+                patch(
+                    "app.admin_discovery_routes.get_discovery_run_service",
+                    return_value=service,
+                )
+            )
         if path == "/admin/analytics":
             patchers.append(
                 patch(

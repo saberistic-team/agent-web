@@ -112,6 +112,10 @@ ADMIN_CSRF_ROUTE_POLICIES: dict[tuple[str, str], tuple[CsrfPolicy, str]] = {
         "session_csrf_required",
         "Queue replace requires a session-bound CSRF token in the form body.",
     ),
+    ("POST", "/admin/discovery/run"): (
+        "session_csrf_required",
+        "Manual discovery run requires a session-bound CSRF token in the form body.",
+    ),
     ("POST", "/admin/signals/rules"): (
         "session_csrf_required",
         "ICP rule publish requires a session-bound CSRF token in the form body.",

@@ -853,4 +853,64 @@ CREATE INDEX IF NOT EXISTS idx_qualification_working_list_items_list
     ON qualification_working_list_items (list_id, position ASC);
 """,
     ),
+    Migration(
+        version="024",
+        name="discovery_runs",
+        up_sql="""
+CREATE TABLE IF NOT EXISTS discovery_runs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    trigger_type TEXT NOT NULL
+        CHECK (trigger_type IN ('scheduled', 'manual')),
+    status TEXT NOT NULL
+        CHECK (status IN ('running', 'completed', 'partial', 'failed', 'skipped')),
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    finished_at TIMESTAMPTZ,
+    actor TEXT,
+    correlation_id TEXT NOT NULL,
+    enabled_sources TEXT[] NOT NULL DEFAULT '{}'::text[],
+    error_message TEXT,
+    lock_acquired BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+CREATE INDEX IF NOT EXISTS idx_discovery_runs_started_at
+    ON discovery_runs (started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_discovery_runs_status
+    ON discovery_runs (status);
+
+CREATE TABLE IF NOT EXISTS discovery_run_sources (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    run_id UUID NOT NULL REFERENCES discovery_runs (id) ON DELETE CASCADE,
+    source_id TEXT NOT NULL,
+    status TEXT NOT NULL
+        CHECK (status IN ('completed', 'partial', 'failed', 'skipped')),
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    finished_at TIMESTAMPTZ,
+    fetched_count INTEGER NOT NULL DEFAULT 0,
+    accepted_count INTEGER NOT NULL DEFAULT 0,
+    rejected_count INTEGER NOT NULL DEFAULT 0,
+    error_count INTEGER NOT NULL DEFAULT 0,
+    checkpoint_cursor TEXT,
+    checkpoint_etag TEXT,
+    checkpoint_last_modified TEXT,
+    checkpoint_last_run_at TEXT,
+    errors JSONB NOT NULL DEFAULT '[]'::jsonb,
+    CONSTRAINT discovery_run_sources_run_source_unique UNIQUE (run_id, source_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_discovery_run_sources_run_id
+    ON discovery_run_sources (run_id);
+
+CREATE TABLE IF NOT EXISTS discovery_source_checkpoints (
+    source_id TEXT PRIMARY KEY,
+    cursor TEXT,
+    etag TEXT,
+    last_modified TEXT,
+    last_run_at TEXT,
+    last_success_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+""",
+    ),
 )

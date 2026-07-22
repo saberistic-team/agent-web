@@ -21,6 +21,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import case_studies, db, email_service, insights, page_service, server_analytics, stripe_service
 from app.admin_auth import AdminLoginRequired, login_redirect_url
+from app.admin_discovery_routes import router as admin_discovery_router
 from app.admin_icp_routes import router as admin_icp_router
 from app.admin_pipeline_routes import router as admin_pipeline_router
 from app.admin_action_queue_routes import router as admin_action_queue_router
@@ -288,6 +289,7 @@ app.include_router(admin_action_queue_router)
 app.include_router(admin_analytics_router)
 app.include_router(admin_icp_router)
 app.include_router(admin_qualification_router)
+app.include_router(admin_discovery_router)
 app.include_router(admin_router)
 app.add_middleware(AdminPreviewReadOnlyMiddleware)
 

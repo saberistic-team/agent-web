@@ -2632,3 +2632,105 @@ def build_preview_linkedin_reconcile(
         },
         "absent_preserved": rng.randint(12, 48),
     }
+
+
+PREVIEW_DISCOVERY_RUN_IDS = (
+    UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1"),
+    UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb2"),
+    UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb3"),
+)
+
+
+def build_preview_discovery_runs(
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> tuple[list[dict[str, object]], int]:
+    """Mock discovery run history for ADMIN_PREVIEW_MODE."""
+    rng = _resolve_rng(rng, "discovery_runs")
+    now = _resolve_now(now)
+    runs: list[dict[str, object]] = []
+    fixtures = (
+        ("scheduled", "completed", ("ycombinator",)),
+        ("manual", "partial", ("ycombinator",)),
+        ("scheduled", "failed", ("ycombinator",)),
+    )
+    for index, (trigger, status, sources) in enumerate(fixtures):
+        started = now - timedelta(days=index * 7, hours=rng.randint(1, 6))
+        finished = started + timedelta(minutes=rng.randint(3, 18))
+        runs.append(
+            {
+                "id": str(PREVIEW_DISCOVERY_RUN_IDS[index]),
+                "trigger_type": trigger,
+                "status": status,
+                "started_at": started,
+                "finished_at": finished,
+                "actor": "preview-operator" if trigger == "manual" else "scheduler",
+                "enabled_sources": list(sources),
+                "lock_acquired": True,
+                "correlation_id": f"corr-preview-discovery-{index + 1}",
+                "error_message": "Rate limit exceeded" if status == "failed" else None,
+            }
+        )
+    return runs, len(runs)
+
+
+def build_preview_discovery_run_detail(
+    run_id: str,
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> dict[str, object] | None:
+    """Mock discovery run detail with per-source outcomes."""
+    detail_rng = _resolve_rng(rng, f"discovery_run_detail:{run_id}")
+    runs, _ = build_preview_discovery_runs(rng=rng, now=now)
+    run = next((item for item in runs if str(item["id"]) == run_id), None)
+    if run is None:
+        return None
+    status = str(run["status"])
+    sources = [
+        {
+            "source_id": "ycombinator",
+            "status": "completed" if status == "completed" else status,
+            "fetched_count": detail_rng.randint(80, 120),
+            "accepted_count": detail_rng.randint(70, 100),
+            "rejected_count": detail_rng.randint(0, 5),
+            "error_count": 0 if status == "completed" else detail_rng.randint(1, 3),
+            "checkpoint_cursor": str(detail_rng.randint(0, 40)),
+            "checkpoint_etag": None,
+            "checkpoint_last_modified": None,
+            "checkpoint_last_run_at": run["finished_at"],
+            "errors": []
+            if status == "completed"
+            else [
+                {
+                    "code": "fetch_failed",
+                    "message": "Upstream rate limit exceeded",
+                    "recoverable": True,
+                }
+            ],
+        }
+    ]
+    if status == "partial":
+        sources.append(
+            {
+                "source_id": "rss-example",
+                "status": "failed",
+                "fetched_count": 0,
+                "accepted_count": 0,
+                "rejected_count": 0,
+                "error_count": 1,
+                "checkpoint_cursor": "page-2",
+                "checkpoint_etag": 'W/"abc123"',
+                "checkpoint_last_modified": None,
+                "checkpoint_last_run_at": None,
+                "errors": [
+                    {
+                        "code": "adapter_failure",
+                        "message": "Feed temporarily unavailable",
+                        "recoverable": True,
+                    }
+                ],
+            }
+        )
+    return {"run": run, "sources": sources}

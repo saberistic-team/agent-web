@@ -983,6 +983,19 @@ def test_preview_linkedin_reconcile_stable_with_seed() -> None:
 
 
 @pytest.mark.unit
+def test_preview_discovery_runs_stable_with_seed() -> None:
+    from app.admin_preview import build_preview_discovery_runs
+
+    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
+    a = build_preview_discovery_runs(rng=random.Random(42), now=now)
+    b = build_preview_discovery_runs(rng=random.Random(42), now=now)
+    assert a == b
+    runs, total = a
+    assert total == 3
+    assert runs[0]["trigger_type"] == "scheduled"
+
+
+@pytest.mark.unit
 def test_render_preview_imports_main_includes_outcomes() -> None:
     html = render_preview_imports_main(rng=random.Random(42))
     assert "LinkedIn reconcile preview" in html

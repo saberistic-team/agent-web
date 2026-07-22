@@ -112,6 +112,11 @@ ADMIN_MUTATION_ROUTE_CLASSIFICATIONS: dict[tuple[str, str], tuple[MutationClassi
         "required_immutable_business_audit",
         "Queue replace updates next action (pipeline.update) and logs task_completion activity.",
     ),
+    ("POST", "/admin/discovery/run"): (
+        "intentionally_unaudited",
+        "Discovery runs persist operational history in discovery_runs / discovery_run_sources; "
+        "no separate audit_events entry in this release.",
+    ),
     ("POST", "/admin/signals/rules"): (
         "required_immutable_business_audit",
         "Publishing an ICP rule version emits scoring_rule.update per changed rule with "

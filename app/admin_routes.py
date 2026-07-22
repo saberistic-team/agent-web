@@ -2071,6 +2071,7 @@ for _link in ADMIN_NAV_LINKS:
         "/admin/analytics",
         "/admin/targets",
         "/admin/signals",
+        "/admin/discovery",
     }:
         continue
     _section = _link["href"].removeprefix("/admin/")
