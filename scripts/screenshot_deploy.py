@@ -287,6 +287,7 @@ ADMIN_SCREENSHOT_ROUTES: tuple[str, ...] = (
     "/admin/signals/rules",
     "/admin/signals/11111111-1111-1111-1111-111111111111",
     "/admin/signals/22222222-2222-2222-2222-222222222222",
+    "/admin/discovery/runs/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1",
 )
 
 # Fallback when app.admin_layout import fails (keep in sync).
