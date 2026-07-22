@@ -15,7 +15,12 @@ CsrfPolicy = Literal[
     "exempt_read_only_preview",
 ]
 
-_READ_ONLY_PREVIEW_ROUTES = frozenset({("POST", "/admin/imports/reconcile-preview")})
+_READ_ONLY_PREVIEW_ROUTES = frozenset(
+    {
+        ("POST", "/admin/imports/reconcile-preview"),
+        ("POST", "/admin/discovery/reconcile-preview"),
+    }
+)
 
 # (HTTP method, route path template) -> (policy, documented reason)
 ADMIN_CSRF_ROUTE_POLICIES: dict[tuple[str, str], tuple[CsrfPolicy, str]] = {
@@ -83,6 +88,10 @@ ADMIN_CSRF_ROUTE_POLICIES: dict[tuple[str, str], tuple[CsrfPolicy, str]] = {
     ("POST", "/admin/imports/reconcile-preview"): (
         "exempt_read_only_preview",
         "Read-only reconciliation preview performs no persistence; preview mode denies unsafe methods.",
+    ),
+    ("POST", "/admin/discovery/reconcile-preview"): (
+        "exempt_read_only_preview",
+        "Read-only discovery reconciliation preview performs no persistence.",
     ),
     ("POST", "/admin/pipeline/{company_id}/stage"): (
         "session_csrf_required",

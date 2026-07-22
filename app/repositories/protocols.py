@@ -27,6 +27,7 @@ class CompanyRepository(Protocol):
         target_status: str | None = None,
         last_verified_at: date | None = None,
         notes: str | None = None,
+        field_sources: dict[str, Any] | None = None,
     ) -> dict[str, Any]: ...
 
     def get_by_id(self, conn: psycopg.Connection, company_id: UUID) -> dict[str, Any] | None: ...
@@ -72,6 +73,7 @@ class CompanyRepository(Protocol):
         target_status: MaybeUnset[str] = UNSET,
         last_verified_at: MaybeUnset[date] = UNSET,
         notes: MaybeUnset[str] = UNSET,
+        field_sources: MaybeUnset[dict[str, Any]] = UNSET,
     ) -> dict[str, Any] | None: ...
 
     def archive(self, conn: psycopg.Connection, company_id: UUID) -> dict[str, Any] | None: ...
@@ -211,6 +213,14 @@ class SourceRecordRepository(Protocol):
         external_id: str,
     ) -> dict[str, Any] | None: ...
 
+    def update_payload(
+        self,
+        conn: psycopg.Connection,
+        *,
+        record_id: UUID,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]: ...
+
 
 class ActivityRepository(Protocol):
     def create(
@@ -284,6 +294,18 @@ class ResearchRecordRepository(Protocol):
         *,
         limit: int = 100,
     ) -> list[dict[str, Any]]: ...
+
+    def update_freshness(
+        self,
+        conn: psycopg.Connection,
+        *,
+        record_id: UUID,
+        observed_at: datetime | None,
+        confidence: float | None,
+        review_at: datetime | None,
+        expires_at: datetime | None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None: ...
 
 
 class PipelineRepository(Protocol):

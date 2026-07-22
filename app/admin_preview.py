@@ -2634,6 +2634,120 @@ def build_preview_linkedin_reconcile(
     }
 
 
+def build_preview_discovery_reconcile(
+    *,
+    rng: random.Random | None = None,
+) -> dict[str, object]:
+    """Mock discovery reconcile preview with match, create, review, and conflict rows."""
+    rng = _resolve_rng(rng, "discovery_reconcile")
+    companies = list(COMPANY_NAMES)
+    rng.shuffle(companies)
+    rows: list[dict[str, object]] = [
+        {
+            "row_index": 0,
+            "external_id": "yc:seed-alpha",
+            "outcome": "matched",
+            "identity": {
+                "external_id": "yc:seed-alpha",
+                "name": companies[0],
+                "domain": "alpha.example.com",
+                "website": "https://alpha.example.com",
+                "signals": ["fintech", "seed"],
+            },
+            "match_tier": "domain",
+            "company_id": _preview_uuid(rng),
+            "company_label": companies[0],
+            "field_changes": [
+                {"field": "category", "before": None, "after": "fintech"},
+            ],
+            "evidence_append_count": 1,
+            "evidence_refresh_count": 0,
+        },
+        {
+            "row_index": 1,
+            "external_id": "rss:beta-signal",
+            "outcome": "create",
+            "identity": {
+                "external_id": "rss:beta-signal",
+                "name": companies[1],
+                "domain": "beta.example.com",
+                "website": "https://beta.example.com",
+                "signals": ["ai infrastructure"],
+            },
+            "match_tier": "none",
+            "field_changes": [
+                {"field": "domain", "before": None, "after": "beta.example.com"},
+            ],
+            "evidence_append_count": 1,
+            "evidence_refresh_count": 0,
+        },
+        {
+            "row_index": 2,
+            "external_id": "api:gamma-name",
+            "outcome": "review",
+            "identity": {
+                "external_id": "api:gamma-name",
+                "name": companies[2],
+                "domain": None,
+                "website": None,
+                "signals": ["watchlist"],
+            },
+            "match_tier": "name",
+            "company_id": _preview_uuid(rng),
+            "company_label": companies[2],
+            "conflict_reason": "Name-only match requires operator review",
+            "conflict_candidates": [
+                {
+                    "company_id": _preview_uuid(rng),
+                    "name": companies[2],
+                    "domain": "legacy.example.com",
+                    "website": "https://legacy.example.com",
+                }
+            ],
+        },
+        {
+            "row_index": 3,
+            "external_id": "sitemap:delta-conflict",
+            "outcome": "conflict",
+            "identity": {
+                "external_id": "sitemap:delta-conflict",
+                "name": companies[3],
+                "domain": "shared.example.com",
+                "website": "https://shared.example.com",
+                "signals": ["duplicate domain"],
+            },
+            "match_tier": "domain",
+            "conflict_reason": "Multiple companies share this domain or alias",
+            "conflict_candidates": [
+                {
+                    "company_id": _preview_uuid(rng),
+                    "name": f"{companies[3]} A",
+                    "domain": "shared.example.com",
+                    "website": "https://a.shared.example.com",
+                },
+                {
+                    "company_id": _preview_uuid(rng),
+                    "name": f"{companies[3]} B",
+                    "domain": "shared.example.com",
+                    "website": "https://b.shared.example.com",
+                },
+            ],
+        },
+    ]
+    return {
+        "rows": rows,
+        "summary_counts": {
+            "matched": 1,
+            "create": 1,
+            "review": 1,
+            "conflict": 1,
+            "unchanged": 0,
+            "skipped": 0,
+        },
+        "absent_preserved": rng.randint(8, 36),
+        "review_queue_count": rng.randint(2, 9),
+    }
+
 PREVIEW_DISCOVERY_RUN_IDS = (
     UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1"),
     UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb2"),
