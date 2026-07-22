@@ -109,7 +109,17 @@
   },
   "trust": {
     "qualification_status": "excluded",
-    "exclusion_reason": "marketing_only",
+    "exclusion_reason": {
+      "value": "Marketing page without reviewable experience or reproducible artifact.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example.com/worldgraph-spike/negative/marketing-only",
+        "evidence_snippet": "Describes a world but provides no experience",
+        "confidence": 0.9,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
     "claim_status": "unclaimed"
   }
 }

@@ -109,7 +109,17 @@
   },
   "trust": {
     "qualification_status": "excluded",
-    "exclusion_reason": "single_purpose_assistant",
+    "exclusion_reason": {
+      "value": "Single-purpose assistant with no bounded world context or rule system.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example.com/worldgraph-spike/negative/assistant",
+        "evidence_snippet": "General-purpose chat assistant for email drafting",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
     "claim_status": "unclaimed"
   }
 }

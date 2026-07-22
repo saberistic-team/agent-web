@@ -109,16 +109,56 @@
   },
   "trust": {
     "qualification_status": "excluded",
-    "exclusion_reason": "platform_product_not_world",
+    "exclusion_reason": {
+      "value": "Platform or engine product, not a playable world instance.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example.com/worldgraph-spike/negative/engine",
+        "evidence_snippet": "Game engine and middleware SDK for developers",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
     "claim_status": "unclaimed"
   },
-  "entity_links": {
+  "linked_entities": {
     "platforms": [
       {
         "entity_type": "platform",
-        "label": "WorldEngine SDK",
-        "url": "https://example.com/worldgraph-spike/negative/engine",
-        "external_standard": "other",
+        "entity_id": {
+          "value": "worldengine-sdk",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://example.com/worldgraph-spike/negative/engine",
+            "evidence_snippet": "NovaEngine 5 SDK",
+            "confidence": 0.8,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "label": {
+          "value": "WorldEngine SDK",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://example.com/worldgraph-spike/negative/engine",
+            "evidence_snippet": "platform product, not world",
+            "confidence": 0.8,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "url": {
+          "value": "https://example.com/worldgraph-spike/negative/engine",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://example.com/worldgraph-spike/negative/engine",
+            "evidence_snippet": "platform product, not world",
+            "confidence": 0.8,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
         "provenance": {
           "source_kind": "source_observation",
           "source_url": "https://example.com/worldgraph-spike/negative/engine",

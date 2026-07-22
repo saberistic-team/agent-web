@@ -109,7 +109,17 @@
   },
   "trust": {
     "qualification_status": "excluded",
-    "exclusion_reason": "no_stable_entry_point",
+    "exclusion_reason": {
+      "value": "No stable public or reviewable entry point.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example.com/worldgraph-spike/negative/coming-soon",
+        "evidence_snippet": "Join the waitlist — no playable entry point yet",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
     "claim_status": "unclaimed"
   }
 }

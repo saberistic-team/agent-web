@@ -109,15 +109,56 @@
   },
   "trust": {
     "qualification_status": "excluded",
-    "exclusion_reason": "foundation_model_not_world",
+    "exclusion_reason": {
+      "value": "Foundation model API is not an addressable interactive world.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example.com/worldgraph-spike/negative/foundation-model",
+        "evidence_snippet": "Large language model API for developers",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
     "claim_status": "unclaimed"
   },
-  "entity_links": {
+  "linked_entities": {
     "assets": [
       {
         "entity_type": "asset",
-        "label": "Foundation weights",
-        "url": "https://example.com/worldgraph-spike/negative/foundation-model/weights",
+        "entity_id": {
+          "value": "foundation-weights",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://example.com/worldgraph-spike/negative/foundation-model",
+            "evidence_snippet": "model weights download",
+            "confidence": 0.7,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "label": {
+          "value": "Foundation weights",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://example.com/worldgraph-spike/negative/foundation-model",
+            "evidence_snippet": "model weights download",
+            "confidence": 0.7,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "url": {
+          "value": "https://example.com/worldgraph-spike/negative/foundation-model/weights",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://example.com/worldgraph-spike/negative/foundation-model",
+            "evidence_snippet": "model weights download",
+            "confidence": 0.7,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
         "provenance": {
           "source_kind": "source_observation",
           "source_url": "https://example.com/worldgraph-spike/negative/foundation-model",
