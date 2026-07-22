@@ -56,6 +56,31 @@ See [AUDIT_EVENTS.md](AUDIT_EVENTS.md) for append-only audit semantics.
 
 ## Tables
 
+### `project_briefs`
+
+Public brief intake and Stripe payment rows ([#1](https://github.com/saberistic-team/agent-web/issues/1),
+payment detail columns in migration `016`). Owned by `app/db.py`; full column
+reference in [PROJECT_BRIEF.md](PROJECT_BRIEF.md).
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | `SERIAL` | PK; referenced by brief conversion as `source_records.external_id` |
+| `created_at` | `TIMESTAMPTZ` | Auto on insert |
+| `website`, `contact_method`, `contact_value`, `brief` | `TEXT` | Intake fields |
+| `status` | `TEXT` | `pending_payment`, `paid`, or `abandoned` |
+| `stripe_session_id`, `stripe_payment_intent_id` | `TEXT` | Nullable Stripe identifiers |
+| `paid_at` | `TIMESTAMPTZ` | Nullable payment timestamp |
+| `payment_subtotal_cents` | `INTEGER` | Nullable; pre-discount subtotal from Stripe (migration `016`) |
+| `payment_discount_cents` | `INTEGER` | Nullable; discount amount in cents (migration `016`) |
+| `payment_amount_cents` | `INTEGER` | Nullable; final collected amount in cents (migration `016`) |
+| `payment_currency` | `TEXT` | Nullable; e.g. `usd` (migration `016`) |
+| `stripe_promotion_code_id` | `TEXT` | Nullable Stripe promotion code id (migration `016`) |
+| `stripe_coupon_id` | `TEXT` | Nullable Stripe coupon id (migration `016`) |
+| `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term` | `TEXT` | Nullable attribution (migration `002`) |
+
+Brief conversion maps paid brief amounts to `companies.expected_value_cents` via
+`CrmService.convert_project_brief()` — never to legacy company dollar-value columns.
+
 ### `companies`
 
 | Column | Type | Notes |
@@ -74,71 +99,49 @@ See [AUDIT_EVENTS.md](AUDIT_EVENTS.md) for append-only audit semantics.
 | `notes` | `TEXT` | Optional operator notes |
 | `archived_at` | `TIMESTAMPTZ` | Soft archive timestamp; related records remain untouched |
 | `status` | `TEXT` | `prospect`, `active`, `inactive` |
-| `pipeline_stage` | `TEXT` | `NOT NULL`, default `researching`; acquisition stage keys in `app/pipeline_stages.py`; `CHECK` constraint matches `PIPELINE_STAGE_ORDER` |
+| `pipeline_stage` | `TEXT` | **Not null**, default `researching`; acquisition stage — see `app/pipeline_stages.py` |
 | `next_action` | `TEXT` | Optional operator next step |
 | `next_action_due_at` | `TIMESTAMPTZ` | Optional due date for next action |
-| `pipeline_owner` | `TEXT` | Optional assigned operator username |
-| `expected_value_cents` | `INTEGER` | Optional expected deal value as **whole cents** (USD in admin UI); nullable |
-| `pipeline_loss_reason` | `TEXT` | Required when `pipeline_stage = 'lost'` (validated in `app/acquisition_pipeline.py`) |
-| `pipeline_nurture_reason` | `TEXT` | Required when `pipeline_stage = 'nurture'` (validated in `app/acquisition_pipeline.py`) |
+| `pipeline_owner` | `TEXT` | Optional assigned operator (admin username) |
+| `expected_value_cents` | `INTEGER` | Optional expected deal value in **USD cents** (non-negative; application validates upper bound) |
+| `pipeline_loss_reason` | `TEXT` | Optional loss context; required by admin validation when `pipeline_stage = 'lost'` |
+| `pipeline_nurture_reason` | `TEXT` | Optional nurture context; required by admin validation when `pipeline_stage = 'nurture'` |
+
+`pipeline_stage` is constrained to the keys in `app/pipeline_stages.py`
+(`researching`, `qualified`, `ready_for_outreach`, `contacted`, `replied`,
+`discovery_scheduled`, `diagnostic_proposed`, `diagnostic_paid`,
+`larger_engagement`, `won`, `lost`, `nurture`).
 
 Indexes: `status`, `website`, `domain`, `category`, `stage`, `target_status`,
-`archived_at`, `last_verified_at`, partial `pipeline_stage` (`WHERE pipeline_stage IS NOT NULL`),
-partial `next_action_due_at` (`WHERE next_action_due_at IS NOT NULL AND archived_at IS NULL`).
+`archived_at`, `last_verified_at`, partial `pipeline_stage`
+(`WHERE pipeline_stage IS NOT NULL`), partial `next_action_due_at`
+(`WHERE next_action_due_at IS NOT NULL AND archived_at IS NULL`).
 
-Repositories and admin routes read and write **only** the canonical pipeline column
-names above (`PostgresPipelineRepository`, `CrmService`, brief conversion). Do not
-query `owner`, `expected_value`, or `stage_reason` in application SQL.
+`PostgresPipelineRepository.update_pipeline_fields()` and `CrmService` pipeline
+mutations read and write the canonical columns above — never legacy names.
+
+#### Compatibility artifacts (legacy migration 013 only)
+
+Some production databases recorded an earlier incompatible form of migration
+`013` before the canonical SQL shipped. Migration `015` backfills canonical
+columns from these **compatibility-only** fields and retains them for audit; the
+application does **not** read or write them:
+
+| Column / object | Type | Status |
+|-----------------|------|--------|
+| `owner` | `TEXT` | Legacy pipeline assignee; backfilled into `pipeline_owner` |
+| `expected_value` | `NUMERIC(12,2)` | Legacy deal value in dollars; backfilled into `expected_value_cents` |
+| `stage_reason` | `TEXT` | Legacy combined loss/nurture note; split into `pipeline_loss_reason` / `pipeline_nurture_reason` |
+| `company_stage_history` | table | Legacy stage history; rows copied into `pipeline_stage_history` with `metadata.legacy_reason` when present |
+| `idx_companies_owner` | index | Legacy index on `owner`; not recreated by migration `015` |
+
+Fresh installs that apply the current migration `013` never create these objects.
+Do not use legacy column names in queries, exports, or runbooks.
 
 `app/companies.py` owns the category/stage/target registries and normalizes domains
 before storage. Unknown registry values are validation errors; blank optional values
 remain unset. A matching active normalized domain produces a non-blocking duplicate
 warning rather than preventing a save.
-
-### Legacy compatibility (migration `015`)
-
-Fresh databases that apply the current migration `013` never create the artifacts
-below. They exist only on databases that recorded an **earlier incompatible form**
-of migration `013` (legacy `owner` / `expected_value` / `stage_reason` columns and
-`company_stage_history`) before migration `015` reconciled them.
-
-| Artifact | Role |
-|----------|------|
-| `companies.owner` | Legacy operator assignment; backfilled into `pipeline_owner` when null |
-| `companies.expected_value` | Legacy `NUMERIC(12,2)` dollars; backfilled into `expected_value_cents` (`ROUND(value * 100)`) when null |
-| `companies.stage_reason` | Legacy combined reason; backfilled into `pipeline_loss_reason` or `pipeline_nurture_reason` by stage when null |
-| `company_stage_history` | Legacy stage history table; rows copied into `pipeline_stage_history` (`legacy_reason` in metadata) |
-| `idx_companies_owner` | Legacy index on `owner`; not used by application code |
-
-These columns and tables are **compatibility artifacts**, not canonical fields.
-Leave them in place on upgraded legacy deployments; do not reference them in new
-queries, examples, or repository methods.
-
-### `project_briefs`
-
-Public brief intake table (migrations `001`, `002`, `016`). Stripe metadata keeps
-`SERIAL` ids. See [PROJECT_BRIEF.md](PROJECT_BRIEF.md) for routes and webhook
-behavior.
-
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | `SERIAL` | PK |
-| `created_at` | `TIMESTAMPTZ` | Auto on insert |
-| `website` | `TEXT` | Required |
-| `contact_method` | `TEXT` | Default `email`; legacy `phone` rows may exist |
-| `contact_value` | `TEXT` | Customer email |
-| `brief` | `TEXT` | Project description |
-| `status` | `TEXT` | `pending_payment`, `paid`, or `abandoned` |
-| `stripe_session_id` | `TEXT` | Nullable Checkout session id |
-| `stripe_payment_intent_id` | `TEXT` | Nullable; absent on 100%-off promotion codes |
-| `paid_at` | `TIMESTAMPTZ` | Set when webhook marks row `paid` |
-| `payment_subtotal_cents` | `INTEGER` | Nullable; Stripe `amount_subtotal` |
-| `payment_discount_cents` | `INTEGER` | Nullable; Stripe `total_details.amount_discount` |
-| `payment_amount_cents` | `INTEGER` | Nullable; final collected amount (`amount_total`) |
-| `payment_currency` | `TEXT` | Nullable; e.g. `usd` |
-| `stripe_promotion_code_id` | `TEXT` | Nullable promotion code id when applied |
-| `stripe_coupon_id` | `TEXT` | Nullable coupon id when applied |
-| `utm_source` … `utm_term` | `TEXT` | Optional attribution columns (migration `002`) |
 
 ### `contacts`
 
@@ -274,7 +277,7 @@ Timestamped acquisition pipeline stage changes ([#107](https://github.com/saberi
 | `to_stage` | `TEXT` | New pipeline stage |
 | `changed_at` | `TIMESTAMPTZ` | When the transition occurred (`DEFAULT NOW()`) |
 | `changed_by` | `TEXT` | Admin username |
-| `metadata` | `JSONB` | Optional structured fields (loss/nurture reasons live on `companies`) |
+| `metadata` | `JSONB` | Optional structured fields; canonical loss/nurture context lives on `companies.pipeline_loss_reason` / `companies.pipeline_nurture_reason` |
 
 Indexes: `(company_id, changed_at DESC)`.
 
@@ -339,24 +342,6 @@ batch-owned contact changes when records were not edited later.
 
 Indexes: `email`, `is_active`.
 
-### `audit_events`
-
-Append-only operator audit log (migration `007`). Updates and deletes are blocked
-by triggers. See [AUDIT_EVENTS.md](AUDIT_EVENTS.md).
-
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | `UUID` | PK |
-| `created_at` | `TIMESTAMPTZ` | Auto on insert |
-| `actor` | `TEXT` | Operator or system principal |
-| `action` | `TEXT` | Event key (e.g. `auth.login.success`) |
-| `entity_type`, `entity_id` | `TEXT` | Optional entity reference |
-| `correlation_id` | `TEXT` | Required request correlation id |
-| `summary_before`, `summary_after` | `JSONB` | Redacted before/after snapshots |
-| `metadata` | `JSONB` | Optional structured fields |
-
-Indexes: `created_at DESC`, `action`, `actor`, `correlation_id`.
-
 ### `admin_sessions`
 
 Server-side sessions for operator login ([#101](https://github.com/saberistic-team/agent-web/issues/101)).
@@ -417,61 +402,70 @@ Migrations live in `app/migrations/definitions.py` and are applied at startup vi
 | `004` | `admin_sessions` | Server-side admin session rows |
 | `005` | `admin_login_rate_limits` | Shared admin login rate-limit state |
 | `006` | `admin_csrf_binding` | Login-flow CSRF rows and session CSRF column |
-| `007` | `audit_events` | Append-only audit log with immutability triggers |
+| `007` | `audit_events` | Append-only audit trail with immutability triggers |
 | `008` | `research_records` | Typed research records with provenance and expiry |
 | `009` | `admin_login_flows_cleanup_indexes` | Partial indexes for login-flow TTL cleanup |
 | `010` | `company_records` | Company firmographics, normalized domain, and soft archival |
 | `011` | `acquisition_dashboard_indexes` | Research-record indexes for the acquisition dashboard |
 | `012` | `contact_records` | Contact roles, relationship context, optional email, soft archival |
-| `013` | `acquisition_pipeline` | Canonical pipeline columns, `pipeline_stage_history`, activity types |
+| `013` | `acquisition_pipeline` | Canonical pipeline columns, stage history, expanded activity types |
 | `014` | `import_batches` | LinkedIn import batch metadata and per-row outcomes |
-| `015` | `reconcile_acquisition_pipeline_schema` | Reconcile legacy migration-013 deployments (see below) |
+| `015` | `reconcile_acquisition_pipeline_schema` | Backfill canonical pipeline schema on legacy-013 databases |
 | `016` | `project_brief_payment_details` | Stripe payment breakdown columns on `project_briefs` |
+
+Later versions (`017`+) extend analytics, ICP scoring, and qualification tables;
+see `app/migrations/definitions.py` for the full registry.
 
 Applied versions are recorded in `schema_migrations`. Steps are **idempotent**
 (`IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`) so empty and existing Render Postgres
 databases both converge safely.
 
-Later migrations (`017` and above) extend analytics, ICP scoring, and other
-features; they are not listed here. The ledger above is the CRM baseline through
-payment-detail storage.
-
-#### Migration `015` — legacy pipeline reconciliation
+### Migration 015 — legacy migration 013 reconciliation
 
 Migration `015` repairs databases that applied an **earlier incompatible form** of
-migration `013` (legacy `owner`, `expected_value`, `stage_reason`, and
+migration `013` (legacy `owner` / `expected_value` / `stage_reason` columns and
 `company_stage_history`) without rewriting applied migration history:
 
-1. **No history rewrite** — rows already recorded in `schema_migrations` for `013`
-   stay unchanged; frozen digests for shipped versions (see
-   `FROZEN_MIGRATION_DIGESTS` in `app/migrations/definitions.py`) are never
-   mutated in source or in the database.
-2. **Canonical columns** — adds `pipeline_owner`, `expected_value_cents`,
-   `pipeline_loss_reason`, and `pipeline_nurture_reason` when missing (no-op on
-   fresh installs that already applied the current `013`).
-3. **Backfill** — when legacy columns exist, copies non-empty values into the
-   canonical columns only where the target is still `NULL` (dollars → cents via
-   `ROUND(expected_value * 100)`; `stage_reason` → loss or nurture reason by
-   `pipeline_stage`).
-4. **Stage history** — ensures `pipeline_stage_history` exists and copies rows
-   from `company_stage_history` (`ON CONFLICT (id) DO NOTHING`); legacy `reason`
-   values land in `metadata.legacy_reason`.
-5. **Index rebuild** — drops and recreates named pipeline indexes so a non-canonical
-   partial definition cannot linger.
-6. **Idempotent** — safe to re-run; second startup applies no pending versions.
-7. **Rollback posture** — forward-only; emergency rollback is backup restore or a
-   new forward migration, not deletion of `schema_migrations` rows.
+1. **Preserves `schema_migrations`.** Rows already recorded for `013` stay
+   unchanged; reconciliation runs as a new forward step `015`.
+2. **Adds canonical columns** (`pipeline_owner`, `expected_value_cents`,
+   `pipeline_loss_reason`, `pipeline_nurture_reason`) when missing — idempotent on
+   fresh installs that already received them from the current `013`.
+3. **Backfills** canonical fields from legacy columns when present:
+   - `pipeline_owner` ← `owner` (non-blank)
+   - `expected_value_cents` ← `ROUND(expected_value * 100)` (dollars → cents)
+   - `pipeline_loss_reason` / `pipeline_nurture_reason` ← `stage_reason` when
+     `pipeline_stage` is `lost` or `nurture`
+4. **Copies history** from `company_stage_history` into `pipeline_stage_history`
+   (`INSERT … ON CONFLICT (id) DO NOTHING`) preserving `metadata.legacy_reason`.
+5. **Rebuilds pipeline indexes** (`idx_companies_pipeline_stage`,
+   `idx_companies_next_action_due_at`, `idx_pipeline_stage_history_company_id`) so
+   partial definitions match the canonical migration `013`.
+6. **Retains legacy columns and `company_stage_history`** as compatibility
+   artifacts (see companies table above).
 
-Legacy columns and `company_stage_history` are **retained** on upgraded databases
-as compatibility artifacts (see [Legacy compatibility](#legacy-compatibility-migration-015)).
+Re-running migration `015` SQL is safe: backfills only fill null canonical values,
+history copy is idempotent, and index rebuilds are guarded with `DROP INDEX IF EXISTS`.
 
-#### Migration `016` — project-brief payment details
+The shipped SQL digest for `015` is frozen in `FROZEN_MIGRATION_DIGESTS` — do not
+edit migration `015` in place after it has shipped; add a new forward migration instead.
 
-Adds nullable Stripe Checkout breakdown columns on `project_briefs`:
-`payment_subtotal_cents`, `payment_discount_cents`, `payment_amount_cents`,
-`payment_currency`, `stripe_promotion_code_id`, and `stripe_coupon_id`. Populated
-by the Stripe webhook on `checkout.session.completed`; admin brief views show
-actual collected amounts when present. All monetary fields are whole cents.
+### Migration 016 — project brief payment details
+
+Migration `016` adds nullable Stripe payment breakdown columns on `project_briefs`
+(`payment_subtotal_cents`, `payment_discount_cents`, `payment_amount_cents`,
+`payment_currency`, `stripe_promotion_code_id`, `stripe_coupon_id`). Amounts are
+stored in **cents**; currency is a lowercase ISO code when set. Columns are
+populated by the Stripe webhook handler in `app/db.py` on successful checkout.
+
+**Rollback posture:** forward-only — reverse via a new migration or restore from backup
+(see [BACKUP_RESTORE.md](BACKUP_RESTORE.md)); do not delete `schema_migrations` rows.
+
+### Schema documentation drift check
+
+`scripts/check_crm_schema_docs.py` (exercised by `tests/test_crm_schema_docs.py`)
+compares `docs/CRM_SCHEMA.md` against migration definitions `001`–`016` and the
+canonical pipeline column set so legacy names cannot re-enter operational documentation.
 
 ### Concurrent startup
 

@@ -1,78 +1,130 @@
-"""Unit tests for CRM schema documentation contract (#277)."""
+"""Documentation/schema drift checks for docs/CRM_SCHEMA.md (#277)."""
 
 from __future__ import annotations
 
-from pathlib import Path
+import os
+from collections.abc import Iterator
+from contextlib import contextmanager
+from typing import Any
 
+import psycopg
 import pytest
+from psycopg.rows import dict_row
 
-from app.crm_schema_doc_contract import (
-    CANONICAL_COMPANY_PIPELINE_COLUMNS,
-    COMPANIES_COLUMNS_THROUGH_016,
-    CRM_SCHEMA_DOC,
-    MIGRATION_LEDGER_LAST,
-    PROJECT_BRIEF_PAYMENT_COLUMNS,
-    expected_migration_ledger,
-    validate_crm_schema_doc,
+from app.migrations.definitions import MIGRATIONS, Migration
+from app.migrations.runner import apply_migrations
+from scripts.check_crm_schema_docs import (
+    CANONICAL_PIPELINE_COLUMNS,
+    LEGACY_PIPELINE_COLUMNS,
+    PAYMENT_DETAIL_COLUMNS,
+    check_crm_schema_docs,
 )
-from scripts.check_crm_schema_docs import main as check_crm_schema_docs_main
+
+_REQUIRED = (os.environ.get("REQUIRE_TEST_DATABASE") or "").strip() in {"1", "true", "yes"}
+_DATABASE_URL = (os.environ.get("TEST_DATABASE_URL") or "").strip()
+
+
+def _require_database_url() -> str:
+    if _DATABASE_URL:
+        return _DATABASE_URL
+    if _REQUIRED:
+        pytest.fail("REQUIRE_TEST_DATABASE=1 but TEST_DATABASE_URL is unset")
+    pytest.skip("TEST_DATABASE_URL not set; skipping live Postgres schema tests")
+
+
+@pytest.fixture(scope="module")
+def database_url() -> str:
+    return _require_database_url()
+
+
+@contextmanager
+def _connect(database_url: str) -> Iterator[psycopg.Connection]:
+    conn = psycopg.connect(database_url, autocommit=False)
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+def _reset_public_schema(conn: psycopg.Connection) -> None:
+    conn.execute("DROP SCHEMA IF EXISTS public CASCADE")
+    conn.execute("CREATE SCHEMA public")
+    conn.execute("GRANT ALL ON SCHEMA public TO CURRENT_USER")
+    conn.execute("GRANT ALL ON SCHEMA public TO public")
+    conn.commit()
+
+
+@pytest.fixture
+def pg_conn(database_url: str) -> Iterator[psycopg.Connection]:
+    with _connect(database_url) as conn:
+        _reset_public_schema(conn)
+        try:
+            yield conn
+        finally:
+            conn.rollback()
+            _reset_public_schema(conn)
+
+
+def _migrations_through(version: str) -> tuple[Migration, ...]:
+    selected: list[Migration] = []
+    for migration in MIGRATIONS:
+        selected.append(migration)
+        if migration.version == version:
+            break
+    else:
+        raise AssertionError(f"migration {version} not found")
+    return tuple(selected)
+
+
+def _company_columns(conn: psycopg.Connection) -> set[str]:
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'companies'
+            """
+        )
+        return {str(row["column_name"]) for row in cur.fetchall()}
+
+
+def _brief_columns(conn: psycopg.Connection) -> set[str]:
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'project_briefs'
+            """
+        )
+        return {str(row["column_name"]) for row in cur.fetchall()}
 
 
 @pytest.mark.unit
-def test_crm_schema_doc_passes_contract() -> None:
-    errors = validate_crm_schema_doc(CRM_SCHEMA_DOC)
-    assert errors == []
+def test_crm_schema_docs_passes() -> None:
+    result = check_crm_schema_docs()
+    assert result.ok, "\n".join(result.errors)
 
 
 @pytest.mark.unit
-def test_check_crm_schema_docs_script_exits_zero() -> None:
-    assert check_crm_schema_docs_main() == 0
+def test_crm_schema_docs_flags_missing_migration(tmp_path: Any) -> None:
+    schema = tmp_path / "CRM_SCHEMA.md"
+    schema.write_text("# stub\n", encoding="utf-8")
+    result = check_crm_schema_docs(schema_path=schema)
+    assert not result.ok
+    assert any("migration ledger missing" in err for err in result.errors)
 
 
-@pytest.mark.unit
-def test_expected_migration_ledger_covers_001_through_016_without_gaps() -> None:
-    ledger = expected_migration_ledger()
-    assert ledger["001"] == "project_briefs"
-    assert ledger[MIGRATION_LEDGER_LAST] == "project_brief_payment_details"
-    versions = sorted(ledger)
-    assert versions == [f"{index:03d}" for index in range(1, 17)]
+@pytest.mark.integration
+def test_postgres_schema_through_016_matches_canonical_pipeline_columns(
+    pg_conn: psycopg.Connection,
+) -> None:
+    applied = apply_migrations(pg_conn, migrations=_migrations_through("016"))
+    assert applied[-1] == "016"
 
+    columns = _company_columns(pg_conn)
+    assert CANONICAL_PIPELINE_COLUMNS.issubset(columns)
+    assert LEGACY_PIPELINE_COLUMNS.isdisjoint(columns)
 
-@pytest.mark.unit
-def test_contract_flags_missing_canonical_pipeline_column(tmp_path: Path) -> None:
-    text = CRM_SCHEMA_DOC.read_text(encoding="utf-8")
-    broken = text.replace("`pipeline_owner`", "`assigned_operator`")
-    path = tmp_path / "CRM_SCHEMA.md"
-    path.write_text(broken, encoding="utf-8")
-    errors = validate_crm_schema_doc(path)
-    assert any("pipeline_owner" in error for error in errors)
-
-
-@pytest.mark.unit
-def test_contract_flags_legacy_column_in_companies_table(tmp_path: Path) -> None:
-    text = CRM_SCHEMA_DOC.read_text(encoding="utf-8")
-    broken = text.replace(
-        "| `pipeline_owner` | `TEXT` | Optional assigned operator username |",
-        "| `owner` | `TEXT` | Assigned operator |",
-    )
-    path = tmp_path / "CRM_SCHEMA.md"
-    path.write_text(broken, encoding="utf-8")
-    errors = validate_crm_schema_doc(path)
-    assert any("legacy pipeline columns as canonical" in error for error in errors)
-
-
-@pytest.mark.unit
-def test_canonical_pipeline_column_set_is_stable() -> None:
-    assert CANONICAL_COMPANY_PIPELINE_COLUMNS == frozenset(
-        {
-            "pipeline_stage",
-            "next_action",
-            "next_action_due_at",
-            "pipeline_owner",
-            "expected_value_cents",
-            "pipeline_loss_reason",
-            "pipeline_nurture_reason",
-        }
-    )
-    assert CANONICAL_COMPANY_PIPELINE_COLUMNS.issubset(COMPANIES_COLUMNS_THROUGH_016)
-    assert PROJECT_BRIEF_PAYMENT_COLUMNS
+    brief_columns = _brief_columns(pg_conn)
+    assert PAYMENT_DETAIL_COLUMNS.issubset(brief_columns)
