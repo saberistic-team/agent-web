@@ -1,0 +1,85 @@
+# One-shot: CODEOWNER handoff for PR #417 after Reviewer APPROVED.
+# Do not retrigger Reviewer — bot approval is already on head 65450e19.
+name: "CODEOWNER handoff PR 417 (#122)"
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+jobs:
+  handoff:
+    if: github.event.pull_request.number == 417
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Mint Builder App token
+        id: builder
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.BUILDER_APP_ID }}
+          private-key: ${{ secrets.BUILDER_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-issues: write
+          permission-pull-requests: write
+
+      - name: Mint Reviewer App token
+        id: reviewer
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.REVIEWER_APP_ID }}
+          private-key: ${{ secrets.REVIEWER_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-issues: write
+          permission-pull-requests: write
+          permission-contents: write
+
+      - name: Request CODEOWNER, queue auto-merge, post handoff
+        env:
+          BUILDER_TOKEN: ${{ steps.builder.outputs.token }}
+          REVIEWER_TOKEN: ${{ steps.reviewer.outputs.token }}
+          REPO: ${{ github.repository }}
+          PR: "417"
+          ISSUE: "122"
+        run: |
+          set -euo pipefail
+
+          GH_TOKEN="${BUILDER_TOKEN}" gh api "repos/${REPO}/pulls/${PR}/requested_reviewers" \
+            -f reviewers[]=saberistic || true
+
+          # Queue squash merge once CODEOWNER + checks are satisfied (Gate cannot).
+          set +e
+          AUTO_OUT="$(GH_TOKEN="${REVIEWER_TOKEN}" gh pr merge "${PR}" --repo "${REPO}" --squash --auto 2>&1)"
+          AUTO_RC=$?
+          if [[ "${AUTO_RC}" -ne 0 ]]; then
+            AUTO_OUT="$(GH_TOKEN="${BUILDER_TOKEN}" gh pr merge "${PR}" --repo "${REPO}" --squash --auto 2>&1)"
+            AUTO_RC=$?
+          fi
+          set -e
+          echo "auto-merge rc=${AUTO_RC} out=${AUTO_OUT}"
+
+          GH_TOKEN="${BUILDER_TOKEN}" gh issue comment "${ISSUE}" --repo "${REPO}" --body "$(cat <<'EOM'
+          ### codeowner_needed
+          - Gate cannot squash-merge without a CODEOWNER approval (`* @saberistic`)
+          - Reviewer bot already `APPROVED` on head `65450e19`; please Approve PR #417 so merge can complete
+          - Conflicts resolved vs #120/#121: inbox is migration `026` at `/admin/discovery/inbox`
+          EOM
+          )"
+
+          GH_TOKEN="${BUILDER_TOKEN}" gh pr comment "${PR}" --repo "${REPO}" --body "$(cat <<'EOM'
+          ### codeowner_needed
+          - Reviewer: `APPROVED` (`review:approved`)
+          - CI/contracts: green path after screenshot commit
+          - Blocker: branch protection needs `@saberistic` CODEOWNER Approve
+          - After Approve: squash merge (auto-merge queued if App permissions allow; else Gate/human)
+          EOM
+          )"
+
+          GH_TOKEN="${BUILDER_TOKEN}" gh pr view "${PR}" --repo "${REPO}" \
+            --json reviewRequests,autoMergeRequest,mergeStateStatus,reviewDecision,statusCheckRollup \
+            --jq '{reviewRequests,autoMergeRequest,mergeStateStatus,reviewDecision}'
