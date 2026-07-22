@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 from app import admin_auth, db
 from app.admin_auth import SESSION_COOKIE_NAME
 from app.main import app
+from tests.conftest import enable_admin_preview_env
 
 client = TestClient(app, follow_redirects=False)
 
@@ -200,8 +201,7 @@ def test_queue_snooze_calls_service(authenticated_admin: dict[str, Any]) -> None
 @pytest.mark.unit
 @pytest.mark.integration
 def test_preview_queue_renders_mock_data(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    enable_admin_preview_env(monkeypatch)
     monkeypatch.delenv("DATABASE_URL", raising=False)
     response = client.get("/admin/queue")
     assert response.status_code == 200
@@ -301,8 +301,7 @@ def test_queue_replace_rejects_empty_action(authenticated_admin: dict[str, Any])
 @pytest.mark.unit
 @pytest.mark.integration
 def test_preview_export_returns_csv(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    enable_admin_preview_env(monkeypatch)
     monkeypatch.delenv("DATABASE_URL", raising=False)
     raw_token = admin_auth.generate_session_token()
     csrf_raw = admin_auth.generate_csrf_value()
@@ -329,28 +328,31 @@ def test_preview_export_returns_csv(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_preview_queue_actions_redirect_with_message(
-    authenticated_admin: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+def test_preview_queue_actions_reject_unsafe_methods(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    for path, expected in (
-        ("/admin/queue/complete", "Preview%3A%20action%20recorded"),
-        ("/admin/queue/snooze", "Preview%3A%20snoozed"),
-        ("/admin/queue/reschedule", "Preview%3A%20rescheduled"),
-        ("/admin/queue/replace", "Preview%3A%20next%20action%20replaced"),
-    ):
-        data = {
-            "company_id": str(COMPANY_ID),
-            "item_key": "overdue:1",
-            "item_category": "overdue_action",
-            "csrf_token": authenticated_admin["csrf_token"],
-        }
-        if path.endswith("snooze"):
-            data["snooze_days"] = "3"
-        if path.endswith("reschedule") or path.endswith("replace"):
-            data["next_action_due_at"] = "2026-07-21T10:00:00+00:00"
-        if path.endswith("replace"):
-            data["next_action"] = "New task"
-        response = client.post(path, data=data, cookies=authenticated_admin["cookies"])
-        assert response.status_code == 303
-        assert expected in response.headers["location"]
+    # Central AdminPreviewReadOnlyMiddleware (#331) rejects every unsafe method
+    # under /admin with 405 before the route handler runs.
+    enable_admin_preview_env(monkeypatch)
+    with patch("app.admin_routes._verify_session_csrf"):
+        for path, extra in (
+            ("/admin/queue/complete", {}),
+            ("/admin/queue/snooze", {"snooze_days": "3"}),
+            ("/admin/queue/reschedule", {"next_action_due_at": "2026-07-21T10:00:00+00:00"}),
+            (
+                "/admin/queue/replace",
+                {
+                    "next_action": "New task",
+                    "next_action_due_at": "2026-07-21T10:00:00+00:00",
+                },
+            ),
+        ):
+            data = {
+                "company_id": str(COMPANY_ID),
+                "item_key": "overdue:1",
+                "item_category": "overdue_action",
+                "csrf_token": "irrelevant-in-preview",
+                **extra,
+            }
+            response = client.post(path, data=data)
+            assert response.status_code == 405, path

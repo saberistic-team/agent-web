@@ -348,8 +348,8 @@ def build_preview_action_queue_data(
     now: datetime | None = None,
 ) -> ActionQueueData:
     """Randomized daily action queue for ADMIN_PREVIEW_MODE screenshots."""
-    rng = rng or _preview_rng()
-    now = now or datetime.now(timezone.utc)
+    rng = _resolve_rng(rng, "action_queue")
+    now = _resolve_now(now)
     companies = list(COMPANY_NAMES)
     rng.shuffle(companies)
     stage_keys = list(PIPELINE_STAGES.keys())

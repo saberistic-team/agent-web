@@ -212,6 +212,8 @@ def test_complete_queue_item_clears_next_action_and_audits() -> None:
             admin_users=MagicMock(),
             pipeline=pipeline_repo,
             import_batches=MagicMock(),
+            icp_scoring=MagicMock(),
+            qualification=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -252,6 +254,8 @@ def test_snooze_queue_item_extends_due_date() -> None:
             admin_users=MagicMock(),
             pipeline=pipeline_repo,
             import_batches=MagicMock(),
+            icp_scoring=MagicMock(),
+            qualification=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -283,6 +287,8 @@ def test_reschedule_queue_item_updates_due_at() -> None:
             admin_users=MagicMock(),
             pipeline=pipeline_repo,
             import_batches=MagicMock(),
+            icp_scoring=MagicMock(),
+            qualification=MagicMock(),
         )
     )
     new_due = datetime(2026, 8, 1, tzinfo=timezone.utc)
@@ -315,6 +321,8 @@ def test_replace_queue_item_records_activity() -> None:
             admin_users=MagicMock(),
             pipeline=pipeline_repo,
             import_batches=MagicMock(),
+            icp_scoring=MagicMock(),
+            qualification=MagicMock(),
         )
     )
     update = PipelineNextActionUpdate(
@@ -346,6 +354,8 @@ def test_request_export_records_audit() -> None:
             admin_users=MagicMock(),
             pipeline=MagicMock(),
             import_batches=MagicMock(),
+            icp_scoring=MagicMock(),
+            qualification=MagicMock(),
         )
     )
     conn = MagicMock()
