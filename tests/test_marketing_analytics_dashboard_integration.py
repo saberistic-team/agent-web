@@ -110,7 +110,7 @@ def test_dashboard_counts_known_fixture_events(pg_conn: psycopg.Connection) -> N
     window_start = datetime(2026, 7, 10, 0, 0, tzinfo=UTC)
     _insert_event(
         pg_conn,
-        idempotency_key="a1",
+        idempotency_key="660e8400-e29b-41d4-a716-446655440001",
         event_name="Landing Viewed",
         occurred_at=window_start,
         attribution={"utm_source": "linkedin", "utm_medium": "social", "utm_campaign": "launch"},
@@ -118,7 +118,7 @@ def test_dashboard_counts_known_fixture_events(pg_conn: psycopg.Connection) -> N
     )
     _insert_event(
         pg_conn,
-        idempotency_key="a2",
+        idempotency_key="660e8400-e29b-41d4-a716-446655440002",
         event_name="Landing Viewed",
         occurred_at=window_start,
         attribution={"utm_source": "linkedin", "utm_medium": "social", "utm_campaign": "launch"},
@@ -126,14 +126,14 @@ def test_dashboard_counts_known_fixture_events(pg_conn: psycopg.Connection) -> N
     )
     _insert_event(
         pg_conn,
-        idempotency_key="a3",
+        idempotency_key="660e8400-e29b-41d4-a716-446655440003",
         event_name="Brief Form Started",
         occurred_at=window_start,
         properties={"page": "/brief", "funnel_step": 4},
     )
     _insert_event(
         pg_conn,
-        idempotency_key="a4",
+        idempotency_key="660e8400-e29b-41d4-a716-446655440004",
         event_name="Insight Viewed",
         occurred_at=window_start,
         properties={"page": "/insights/postgres", "article_slug": "postgres-indexing"},
@@ -162,14 +162,14 @@ def test_duplicate_idempotency_key_not_double_counted(pg_conn: psycopg.Connectio
     occurred = datetime(2026, 7, 11, 8, 0, tzinfo=UTC)
     _insert_event(
         pg_conn,
-        idempotency_key="dup-key",
+        idempotency_key="770e8400-e29b-41d4-a716-446655440001",
         event_name="Services Viewed",
         occurred_at=occurred,
         properties={"page": "/services"},
     )
     _insert_event(
         pg_conn,
-        idempotency_key="dup-key",
+        idempotency_key="770e8400-e29b-41d4-a716-446655440001",
         event_name="Services Viewed",
         occurred_at=occurred,
         properties={"page": "/services"},
