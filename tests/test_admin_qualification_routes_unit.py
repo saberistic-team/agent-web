@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 from app import admin_auth, db
 from app.admin_auth import SESSION_COOKIE_NAME
 from app.main import app
+from tests.conftest import enable_admin_preview_env
 
 client = TestClient(app, follow_redirects=False)
 
@@ -233,8 +234,7 @@ def test_save_working_list_success_redirects(authenticated_admin: dict[str, Any]
 @pytest.mark.unit
 @pytest.mark.integration
 def test_targets_preview_mode_returns_mock_rows(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    enable_admin_preview_env(monkeypatch)
     response = client.get("/admin/targets")
     assert response.status_code == 200
     assert "Preview data — not production" in response.text
@@ -244,8 +244,7 @@ def test_targets_preview_mode_returns_mock_rows(monkeypatch: pytest.MonkeyPatch)
 @pytest.mark.unit
 @pytest.mark.integration
 def test_target_detail_preview_mode(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    enable_admin_preview_env(monkeypatch)
     response = client.get(f"/admin/targets/{COMPANY_ID}")
     assert response.status_code == 200
     assert "Preview data — not production" in response.text
@@ -253,23 +252,22 @@ def test_target_detail_preview_mode(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_save_working_list_preview_redirects(
+def test_save_working_list_preview_mode_rejects_unsafe_method(
     monkeypatch: pytest.MonkeyPatch,
-    authenticated_admin: dict[str, Any],
 ) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
-    response = client.post(
-        "/admin/targets/working-list",
-        data={
-            "csrf_token": authenticated_admin["csrf_token"],
-            "name": "Preview list",
-            "company_ids": [str(COMPANY_ID)],
-        },
-        cookies=authenticated_admin["cookies"],
-    )
-    assert response.status_code == 303
-    assert response.headers["location"] == "/admin/targets?saved=1"
+    # Central AdminPreviewReadOnlyMiddleware (#331) rejects every unsafe method
+    # under /admin with 405 before the route handler runs.
+    enable_admin_preview_env(monkeypatch)
+    with patch("app.admin_routes._verify_session_csrf"):
+        response = client.post(
+            "/admin/targets/working-list",
+            data={
+                "csrf_token": "irrelevant-in-preview",
+                "name": "Preview list",
+                "company_ids": [str(COMPANY_ID)],
+            },
+        )
+    assert response.status_code == 405
 
 
 @pytest.mark.unit
@@ -337,8 +335,7 @@ def test_save_working_list_503_without_database(
 @pytest.mark.unit
 @pytest.mark.integration
 def test_target_detail_preview_404_for_unknown_id(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    enable_admin_preview_env(monkeypatch)
     response = client.get(
         "/admin/targets/00000000-0000-0000-0000-000000000099",
     )

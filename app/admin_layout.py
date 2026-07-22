@@ -124,7 +124,6 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     # Pipeline detail (Next action, Change stage, Log activity, timeline).
     "/admin/pipeline/11111111-1111-1111-1111-111111111111",
     "/admin/pipeline/11111111-1111-1111-1111-111111111111?error=validation&focus=expected_value_cents",
-    "/admin/targets",
     "/admin/targets/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa01",
     # ICP scoring list, rules editor, and company score detail fixtures.
     "/admin/signals/rules",

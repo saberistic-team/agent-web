@@ -587,8 +587,8 @@ def build_preview_qualification_targets(
     now: datetime | None = None,
 ) -> list[dict[str, object]]:
     """Randomized tier A/B/C targets for ADMIN_PREVIEW_MODE."""
-    rng = rng or _preview_rng()
-    now = now or datetime.now(timezone.utc)
+    rng = _resolve_rng(rng, "qualification_targets")
+    now = _resolve_now(now)
     filters = filters or {}
     tiers = ("A", "B", "C")
     targets: list[dict[str, object]] = []
@@ -658,8 +658,8 @@ def build_preview_qualification_working_lists(
     rng: random.Random | None = None,
     now: datetime | None = None,
 ) -> list[dict[str, object]]:
-    rng = rng or _preview_rng()
-    now = now or datetime.now(timezone.utc)
+    rng = _resolve_rng(rng, "qualification_working_lists")
+    now = _resolve_now(now)
     return [
         {
             "id": UUID(int=rng.getrandbits(128), version=4),
@@ -686,8 +686,8 @@ def build_preview_qualification_target_detail(
     rng: random.Random | None = None,
     now: datetime | None = None,
 ) -> tuple[dict[str, object], dict[str, object] | None, list[dict[str, object]]]:
-    rng = rng or _preview_rng()
-    now = now or datetime.now(timezone.utc)
+    rng = _resolve_rng(rng, f"qualification_target_detail:{company_id}")
+    now = _resolve_now(now)
     targets = build_preview_qualification_targets(rng=rng, now=now)
     target = next((row for row in targets if row["id"] == company_id), None)
     company = {
