@@ -666,6 +666,9 @@ def test_preview_company_contact_fixtures_resolve_and_render_markup() -> None:
         admin_username="preview",
     )
     assert "Archive contact" in contact_detail
+    assert "LinkedIn-derived metrics" in contact_detail
+    assert "Operator judgment" in contact_detail
+    assert "Computed from export metadata" in contact_detail
 
     archived_contact_edit = render_contact_form_page(
         csrf_token="csrf",
