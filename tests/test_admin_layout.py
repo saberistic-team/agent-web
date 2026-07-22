@@ -78,18 +78,54 @@ def _empty_dashboard_for_layout():
     )
 
 
-def _empty_analytics_for_layout():
-    from app.analytics_dashboard import AnalyticsDashboardData, parse_date_range
+def _populated_analytics_for_layout():
+    from app.analytics_dashboard import (
+        AnalyticsDashboardData,
+        AttributionRow,
+        ContentEngagementRow,
+        ConversionRate,
+        EventCount,
+        parse_date_range,
+    )
 
+    now = datetime(2026, 7, 15, 12, 0, tzinfo=timezone.utc)
     return AnalyticsDashboardData(
-        engagement_counts=(),
-        server_counts=(),
-        conversion_rates=(),
-        attribution=(),
-        case_studies=(),
-        articles=(),
-        generated_at=datetime.now(timezone.utc),
-        date_range=parse_date_range(),
+        engagement_counts=(
+            EventCount("Landing Viewed", "Landing viewed", 10, "browser"),
+        ),
+        server_counts=(
+            EventCount("Lead Persisted", "Lead persisted", 2, "server"),
+        ),
+        conversion_rates=(
+            ConversionRate(
+                key="brief_to_form",
+                label="Brief view → form start",
+                numerator=1,
+                denominator=2,
+                numerator_label="Brief form started",
+                denominator_label="Brief viewed",
+                numerator_source="browser",
+                denominator_source="browser",
+                rate_pct=50.0,
+            ),
+        ),
+        attribution=(
+            AttributionRow(
+                source="linkedin",
+                medium="social",
+                campaign="launch",
+                total_events=5,
+                leads=1,
+            ),
+        ),
+        case_studies=(
+            ContentEngagementRow(slug="payments-platform", content_type="case_study", views=3),
+        ),
+        articles=(
+            ContentEngagementRow(slug="diagnostic-readiness", content_type="article", views=2),
+        ),
+        generated_at=now,
+        date_range=parse_date_range(now=now),
     )
 
 
@@ -102,6 +138,7 @@ def test_admin_nav_links_include_required_destinations() -> None:
         "/admin/companies",
         "/admin/contacts",
         "/admin/signals",
+        "/admin/targets",
         "/admin/pipeline",
         "/admin/imports",
         "/admin/discovery",
@@ -116,6 +153,7 @@ def test_admin_nav_links_include_required_destinations() -> None:
         "Companies",
         "Contacts",
         "Signals",
+        "Targets",
         "Pipeline",
         "Imports",
         "Discovery",
@@ -443,6 +481,7 @@ def test_admin_nav_links_present(path: str) -> None:
         ("/admin", "Today's attention", "dashboard-title", "Dashboard"),
         ("/admin/contacts", "Contacts", "contacts-title", "Contacts"),
         ("/admin/signals", "ICP scores", "icp-scores-title", "Signals"),
+        ("/admin/targets", "Target lists", "targets-title", "Targets"),
         ("/admin/pipeline", "Pipeline", "pipeline-title", "Pipeline"),
         ("/admin/imports", "LinkedIn export preview", "imports-title", "Imports"),
         ("/admin/discovery", "Discovery", "admin-empty-title", "Discovery"),
@@ -473,6 +512,13 @@ def test_admin_active_nav(path: str, heading: str, title_id: str, nav_label: str
                     return_value=_empty_dashboard_for_layout(),
                 )
             )
+        if path == "/admin/analytics":
+            patchers.append(
+                patch(
+                    "app.admin_analytics_routes.load_analytics_dashboard",
+                    return_value=_populated_analytics_for_layout(),
+                )
+            )
         if path == "/admin/companies":
             patchers.append(patch("app.admin_routes._crm.list_companies", return_value=[]))
         if path == "/admin/contacts":
@@ -483,13 +529,9 @@ def test_admin_active_nav(path: str, heading: str, title_id: str, nav_label: str
         if path == "/admin/signals":
             patchers.append(patch("app.admin_icp_routes._crm.list_company_icp_scores", return_value=[]))
             patchers.append(patch("app.admin_icp_routes._crm.get_active_icp_version", return_value=None))
-        if path == "/admin/analytics":
-            patchers.append(
-                patch(
-                    "app.admin_routes.load_analytics_dashboard",
-                    return_value=_empty_analytics_for_layout(),
-                )
-            )
+        if path == "/admin/targets":
+            patchers.append(patch("app.admin_qualification_routes._crm.list_qualification_targets", return_value=[]))
+            patchers.append(patch("app.admin_qualification_routes._crm.list_qualification_working_lists", return_value=[]))
         with patchers[0]:
             for extra in patchers[1:]:
                 extra.start()

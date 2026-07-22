@@ -9,15 +9,13 @@ from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from app.admin_layout import render_admin_shell
 from app.analytics_dashboard import (
     AnalyticsDashboardData,
-    AttributionRow,
-    ContentEngagementRow,
     ConversionRate,
     EventCount,
     dashboard_has_data,
 )
-from app.admin_layout import render_admin_shell
 
 
 def _esc(value: Any) -> str:
@@ -87,7 +85,7 @@ def _render_conversion_rows(rows: tuple[ConversionRate, ...]) -> str:
     return "".join(body)
 
 
-def _render_attribution_rows(rows: tuple[AttributionRow, ...]) -> str:
+def _render_attribution_rows(rows: tuple[Any, ...]) -> str:
     if not rows:
         return '<tr><td colspan="5" class="audit-empty">No attributed events in this range.</td></tr>'
     return "".join(
@@ -102,11 +100,7 @@ def _render_attribution_rows(rows: tuple[AttributionRow, ...]) -> str:
     )
 
 
-def _render_content_rows(
-    rows: tuple[ContentEngagementRow, ...],
-    *,
-    empty_message: str,
-) -> str:
+def _render_content_rows(rows: tuple[Any, ...], *, empty_message: str) -> str:
     if not rows:
         return f'<tr><td colspan="2" class="audit-empty">{_esc(empty_message)}</td></tr>'
     return "".join(

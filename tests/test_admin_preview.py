@@ -25,7 +25,7 @@ from app.admin_preview import (
     build_preview_company_detail,
     build_preview_contact_detail,
     build_preview_acquisition_dashboard_data,
-    build_preview_marketing_analytics_data,
+    build_preview_analytics_dashboard_data,
     build_preview_companies,
     build_preview_company,
     build_preview_company_contacts,
@@ -45,7 +45,7 @@ from app.admin_preview import (
 )
 from app.admin_auth import SESSION_COOKIE_NAME
 from app.admin_dashboard_pages import render_acquisition_dashboard_page
-from app.admin_analytics_pages import render_marketing_analytics_page
+from app.admin_analytics_pages import render_analytics_dashboard_page
 from app.main import app
 
 
@@ -782,28 +782,38 @@ def test_preview_acquisition_dashboard_data_is_populated() -> None:
 
 
 @pytest.mark.unit
-def test_preview_marketing_analytics_html_includes_sections() -> None:
-    data = build_preview_marketing_analytics_data(rng=random.Random(99))
-    html = render_marketing_analytics_page(
+def test_preview_analytics_dashboard_seed_stable() -> None:
+    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
+    a = build_preview_analytics_dashboard_data(rng=random.Random(42), now=now)
+    b = build_preview_analytics_dashboard_data(rng=random.Random(42), now=now)
+    assert a == b
+    assert a.engagement_counts[0].count >= 120
+    assert a.server_counts[0].count >= 8
+
+
+@pytest.mark.unit
+def test_preview_analytics_dashboard_html_includes_sections() -> None:
+    data = build_preview_analytics_dashboard_data(rng=random.Random(99))
+    html = render_analytics_dashboard_page(
         data=data,
         admin_username="preview",
         preview_banner="Preview data — not production",
     )
     assert "Preview data — not production" in html
-    assert "Marketing analytics" in html
-    assert "Authoritative conversions" in html
+    assert "Analytics" in html
+    assert "Browser engagement" in html
     assert "Conversion rates" in html
-    assert data.event_attribution[0].utm_source in html
-    assert data.case_study_engagement[0].slug in html
+    assert data.attribution[0].source in html
+    assert data.case_studies[0].slug in html
 
 
 @pytest.mark.unit
-def test_preview_marketing_analytics_data_is_populated() -> None:
-    data = build_preview_marketing_analytics_data()
-    assert data.engagement_events
-    assert data.server_conversion_events
+def test_preview_analytics_dashboard_data_is_populated() -> None:
+    data = build_preview_analytics_dashboard_data()
+    assert data.engagement_counts
+    assert data.server_counts
     assert data.conversion_rates
-    assert data.lead_attribution
+    assert data.attribution
 
 
 @pytest.mark.unit
@@ -892,6 +902,42 @@ def test_preview_icp_detail_includes_breakdown_and_override() -> None:
     assert snapshot["is_override"] is True
     assert snapshot["override_reason"]
     assert len(snapshot["breakdown"]) == 10
+
+
+@pytest.mark.unit
+def test_preview_qualification_targets_seed_stable() -> None:
+    import random
+
+    from app.admin_preview import build_preview_qualification_targets
+
+    now = datetime(2026, 7, 16, 12, 0, tzinfo=timezone.utc)
+    a = build_preview_qualification_targets(rng=random.Random(42), now=now)
+    b = build_preview_qualification_targets(rng=random.Random(42), now=now)
+    assert a == b
+    assert len(a) >= 3
+    assert all(row["tier"] in {"A", "B", "C"} for row in a)
+    assert all(int(row["score"]) >= 4 for row in a)
+
+
+@pytest.mark.unit
+def test_preview_qualification_targets_html_route() -> None:
+    import random
+
+    from app.admin_preview import build_preview_qualification_targets
+    from app.admin_qualification_pages import render_targets_list_page
+
+    rows = build_preview_qualification_targets(rng=random.Random(7))
+    html = render_targets_list_page(
+        targets=rows,
+        filters={key: None for key in ("tier", "category", "stage", "pipeline_stage", "owner", "freshness", "warm_path")},
+        working_lists=[],
+        csrf_token="csrf",
+        admin_username="preview",
+        preview_banner="Preview data — not production",
+    )
+    assert rows[0]["name"] in html
+    assert "Target lists" in html
+    assert "Preview data — not production" in html
 
 
 @pytest.mark.unit

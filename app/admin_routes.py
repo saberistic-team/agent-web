@@ -7,13 +7,12 @@ from datetime import datetime, timezone
 from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Form, HTTPException, Query, Request
+from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from pydantic import ValidationError
 
-from app import admin, admin_auth, admin_analytics_pages, admin_companies as company_pages, admin_contacts as contact_pages, admin_dashboard_pages, admin_import_batches, admin_imports as import_pages, admin_pages, admin_research_pages, audit_service, brief_service, db
+from app import admin, admin_auth, admin_companies as company_pages, admin_contacts as contact_pages, admin_dashboard_pages, admin_import_batches, admin_imports as import_pages, admin_pages, admin_research_pages, audit_service, brief_service, db
 from app.acquisition_dashboard import AcquisitionDashboardData, load_acquisition_dashboard
-from app.analytics_dashboard import AnalyticsDashboardData, load_analytics_dashboard
 from app.companies import (
     COMPANY_CATEGORIES,
     COMPANY_STAGES,
@@ -2059,139 +2058,18 @@ async def admin_imports_reconcile_preview(request: Request) -> JSONResponse:
     return JSONResponse(preview)
 
 
-@router.get("/analytics", response_class=HTMLResponse)
-def admin_analytics_dashboard(
-    request: Request,
-    from_date: str | None = Query(None, alias="from"),
-    to_date: str | None = Query(None, alias="to"),
-) -> Response:
-    session = require_admin_session(request)
-    settings = get_settings()
-    csrf_token = _session_csrf_for_forms(request, settings)
-    if settings.admin_preview_enabled:
-        from app.admin_preview import build_preview_analytics_dashboard_data
-
-        try:
-            preview_data = build_preview_analytics_dashboard_data(
-                date_from=from_date,
-                date_to=to_date,
-            )
-        except Exception:
-            logger.exception("Failed to build preview analytics dashboard")
-            return JSONResponse({"detail": "Internal Server Error"}, status_code=500)
-        return HTMLResponse(
-            admin_analytics_pages.render_analytics_dashboard_page(
-                data=preview_data,
-                admin_username=session.admin_username,
-                csrf_token=csrf_token,
-                preview_banner="Preview data — not production",
-            )
-        )
-
-    dashboard_data: AnalyticsDashboardData | None = None
-    db_error = False
-    if settings.database_url:
-        try:
-            with db.db_connection(settings.database_url) as conn:
-                dashboard_data = load_analytics_dashboard(
-                    conn,
-                    get_repositories().analytics_dashboard,
-                    date_from=from_date,
-                    date_to=to_date,
-                )
-        except Exception:
-            logger.exception("Failed to load analytics dashboard")
-            db_error = True
-
-    if dashboard_data is None:
-        from app.analytics_dashboard import parse_date_range
-
-        dashboard_data = AnalyticsDashboardData(
-            engagement_counts=(),
-            server_counts=(),
-            conversion_rates=(),
-            attribution=(),
-            case_studies=(),
-            articles=(),
-            generated_at=datetime.now(timezone.utc),
-            date_range=parse_date_range(date_from=from_date, date_to=to_date),
-        )
-
-    return HTMLResponse(
-        admin_analytics_pages.render_analytics_dashboard_page(
-            data=dashboard_data,
-            admin_username=session.admin_username,
-            csrf_token=csrf_token,
-            db_error=db_error,
-        )
-    )
-
-
-@router.get("/analytics/export.csv")
-def admin_analytics_export_csv(
-    request: Request,
-    from_date: str | None = Query(None, alias="from"),
-    to_date: str | None = Query(None, alias="to"),
-) -> Response:
-    session = require_admin_session(request)
-    _ = session
-    settings = get_settings()
-    if settings.admin_preview_enabled:
-        from app.admin_preview import build_preview_analytics_dashboard_data
-
-        data = build_preview_analytics_dashboard_data(
-            date_from=from_date,
-            date_to=to_date,
-        )
-    elif not settings.database_url:
-        from app.analytics_dashboard import parse_date_range
-
-        data = AnalyticsDashboardData(
-            engagement_counts=(),
-            server_counts=(),
-            conversion_rates=(),
-            attribution=(),
-            case_studies=(),
-            articles=(),
-            generated_at=datetime.now(timezone.utc),
-            date_range=parse_date_range(date_from=from_date, date_to=to_date),
-        )
-    else:
-        try:
-            with db.db_connection(settings.database_url) as conn:
-                data = load_analytics_dashboard(
-                    conn,
-                    get_repositories().analytics_dashboard,
-                    date_from=from_date,
-                    date_to=to_date,
-                )
-        except Exception:
-            logger.exception("Failed to export analytics dashboard")
-            raise HTTPException(
-                status_code=503,
-                detail="Analytics export is temporarily unavailable.",
-            ) from None
-
-    csv_body = admin_analytics_pages.render_analytics_dashboard_csv(data)
-    filename = f"analytics-{data.date_range.from_raw}-to-{data.date_range.to_raw}.csv"
-    return Response(
-        content=csv_body,
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
 for _link in ADMIN_NAV_LINKS:
     if _link["href"] in {
         "/admin",
+        "/admin/analytics",
         "/admin/audit",
         "/admin/briefs",
         "/admin/companies",
         "/admin/contacts",
         "/admin/imports",
         "/admin/pipeline",
+        "/admin/targets",
         "/admin/signals",
-        "/admin/analytics",
     }:
         continue
     _section = _link["href"].removeprefix("/admin/")

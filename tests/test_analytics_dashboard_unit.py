@@ -96,7 +96,6 @@ def test_count_events_sql_is_bounded_and_indexed() -> None:
         event_names=(EVENT_LANDING_VIEWED, EVENT_BRIEF_VIEWED),
     )
     sql = str(conn.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
-    params = conn.cursor.return_value.__enter__.return_value.execute.call_args.args[1]
     assert "occurred_at >= %s" in sql
     assert "occurred_at < %s" in sql
     assert "event_name = ANY(%s)" in sql

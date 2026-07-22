@@ -46,7 +46,7 @@ def admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
 @contextmanager
 def mock_db_connection() -> Generator[MagicMock, None, None]:
     conn = MagicMock()
-    with patch("app.admin_routes.db.db_connection") as db_conn:
+    with patch("app.admin_analytics_routes.db.db_connection") as db_conn:
         db_conn.return_value.__enter__.return_value = conn
         db_conn.return_value.__exit__.return_value = None
         yield conn
@@ -169,7 +169,7 @@ def test_analytics_dashboard_route_renders_populated_data() -> None:
                 return_value=row,
             ),
             patch(
-                "app.admin_routes.load_analytics_dashboard",
+                "app.admin_analytics_routes.load_analytics_dashboard",
                 return_value=_populated_dashboard(),
             ),
         ):
@@ -199,7 +199,7 @@ def test_analytics_export_csv_route() -> None:
                 return_value=row,
             ),
             patch(
-                "app.admin_routes.load_analytics_dashboard",
+                "app.admin_analytics_routes.load_analytics_dashboard",
                 return_value=_populated_dashboard(),
             ),
         ):
@@ -228,7 +228,7 @@ def test_analytics_dashboard_db_error_shows_alert() -> None:
                 return_value=row,
             ),
             patch(
-                "app.admin_routes.load_analytics_dashboard",
+                "app.admin_analytics_routes.load_analytics_dashboard",
                 side_effect=RuntimeError("db down"),
             ),
         ):

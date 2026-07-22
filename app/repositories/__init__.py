@@ -1,8 +1,8 @@
 """CRM repository exports."""
 
 from app.repositories.postgres import (
-    PostgresAnalyticsDashboardRepository,
     PostgresAcquisitionDashboardRepository,
+    PostgresAnalyticsDashboardRepository,
     PostgresActivityRepository,
     PostgresAdminUserRepository,
     PostgresAuditEventRepository,
@@ -12,6 +12,7 @@ from app.repositories.postgres import (
     PostgresIcpScoringRepository,
     PostgresPipelineRepository,
     PostgresProjectBriefRepository,
+    PostgresQualificationRepository,
     PostgresRepositories,
     PostgresResearchRecordRepository,
     PostgresSourceRecordRepository,
@@ -19,8 +20,8 @@ from app.repositories.postgres import (
     get_repositories,
 )
 from app.repositories.protocols import (
-    AnalyticsDashboardRepository,
     AcquisitionDashboardRepository,
+    AnalyticsDashboardRepository,
     ActivityRepository,
     AdminUserRepository,
     AuditEventRepository,
@@ -30,13 +31,14 @@ from app.repositories.protocols import (
     ImportBatchRepository,
     PipelineRepository,
     ProjectBriefRepository,
+    QualificationRepository,
     ResearchRecordRepository,
     SourceRecordRepository,
 )
 
 __all__ = [
-    "AnalyticsDashboardRepository",
     "AcquisitionDashboardRepository",
+    "AnalyticsDashboardRepository",
     "ActivityRepository",
     "AdminUserRepository",
     "AuditEventRepository",
@@ -46,10 +48,11 @@ __all__ = [
     "ImportBatchRepository",
     "PipelineRepository",
     "ProjectBriefRepository",
+    "QualificationRepository",
     "ResearchRecordRepository",
     "SourceRecordRepository",
-    "PostgresAnalyticsDashboardRepository",
     "PostgresAcquisitionDashboardRepository",
+    "PostgresAnalyticsDashboardRepository",
     "PostgresActivityRepository",
     "PostgresAdminUserRepository",
     "PostgresAuditEventRepository",
@@ -59,6 +62,7 @@ __all__ = [
     "PostgresIcpScoringRepository",
     "PostgresPipelineRepository",
     "PostgresProjectBriefRepository",
+    "PostgresQualificationRepository",
     "PostgresRepositories",
     "PostgresResearchRecordRepository",
     "PostgresSourceRecordRepository",

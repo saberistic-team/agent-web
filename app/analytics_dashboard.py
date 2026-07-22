@@ -306,6 +306,33 @@ def build_conversion_rates(counts: dict[str, int]) -> tuple[ConversionRate, ...]
     )
 
 
+def empty_analytics_dashboard(
+    *,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    now: datetime | None = None,
+) -> AnalyticsDashboardData:
+    """Return zeroed dashboard rows for the selected date range."""
+    reference = now or datetime.now(timezone.utc)
+    date_range = parse_date_range(date_from=date_from, date_to=date_to, now=reference)
+    return AnalyticsDashboardData(
+        engagement_counts=tuple(
+            _event_count({}, name, label=ENGAGEMENT_EVENT_LABELS[name], source="browser")
+            for name in ENGAGEMENT_EVENT_ORDER
+        ),
+        server_counts=tuple(
+            _event_count({}, name, label=SERVER_EVENT_LABELS[name], source="server")
+            for name in SERVER_EVENT_ORDER
+        ),
+        conversion_rates=build_conversion_rates({}),
+        attribution=(),
+        case_studies=(),
+        articles=(),
+        generated_at=reference,
+        date_range=date_range,
+    )
+
+
 def load_analytics_dashboard(
     conn: psycopg.Connection,
     repo: AnalyticsDashboardRepository,
@@ -375,11 +402,19 @@ def load_analytics_dashboard(
             for row in attribution_rows
         ),
         case_studies=tuple(
-            ContentEngagementRow(slug=str(row["slug"]), content_type="case_study", views=int(row["views"]))
+            ContentEngagementRow(
+                slug=str(row["slug"]),
+                content_type="case_study",
+                views=int(row["views"]),
+            )
             for row in case_study_rows
         ),
         articles=tuple(
-            ContentEngagementRow(slug=str(row["slug"]), content_type="article", views=int(row["views"]))
+            ContentEngagementRow(
+                slug=str(row["slug"]),
+                content_type="article",
+                views=int(row["views"]),
+            )
             for row in article_rows
         ),
         generated_at=reference,

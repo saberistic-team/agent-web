@@ -541,6 +541,64 @@ class IcpScoringRepository(Protocol):
     ) -> list[dict[str, Any]]: ...
 
 
+class QualificationRepository(Protocol):
+    def list_active_companies(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]: ...
+
+    def get_latest_tier_for_company(
+        self, conn: psycopg.Connection, company_id: UUID
+    ) -> str | None: ...
+
+    def record_tier_change(
+        self,
+        conn: psycopg.Connection,
+        *,
+        company_id: UUID,
+        from_tier: str | None,
+        to_tier: str,
+        score: float,
+        changed_by: str,
+        snapshot_id: UUID | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]: ...
+
+    def list_tier_history(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]: ...
+
+    def create_working_list(
+        self,
+        conn: psycopg.Connection,
+        *,
+        name: str,
+        owner: str,
+        company_ids: list[UUID],
+        max_items: int,
+    ) -> dict[str, Any]: ...
+
+    def list_working_lists_for_owner(
+        self,
+        conn: psycopg.Connection,
+        *,
+        owner: str,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]: ...
+
+    def get_working_list_items(
+        self,
+        conn: psycopg.Connection,
+        list_id: UUID,
+    ) -> list[dict[str, Any]]: ...
+
+
 class AuditEventRepository(Protocol):
     def append(
         self,
