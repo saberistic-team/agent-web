@@ -43,9 +43,14 @@ def admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
 @contextmanager
 def mock_db_connection() -> Generator[MagicMock, None, None]:
     conn = MagicMock()
-    with patch("app.admin_routes.db.db_connection") as db_conn:
-        db_conn.return_value.__enter__.return_value = conn
-        db_conn.return_value.__exit__.return_value = None
+    with (
+        patch("app.admin_routes.db.db_connection") as admin_db_conn,
+        patch("app.admin_analytics_routes.db.db_connection") as analytics_db_conn,
+    ):
+        admin_db_conn.return_value.__enter__.return_value = conn
+        admin_db_conn.return_value.__exit__.return_value = None
+        analytics_db_conn.return_value.__enter__.return_value = conn
+        analytics_db_conn.return_value.__exit__.return_value = None
         yield conn
 
 
@@ -75,6 +80,22 @@ def _empty_dashboard_for_layout():
         without_decision_maker=(),
         without_next_action=(),
         generated_at=datetime.now(timezone.utc),
+    )
+
+
+def _empty_analytics_dashboard_for_layout():
+    from app.analytics_dashboard import AnalyticsDashboardData, AnalyticsDateRange
+
+    now = datetime.now(timezone.utc)
+    return AnalyticsDashboardData(
+        date_range=AnalyticsDateRange(start=now, end=now, label="Last 7 days (UTC)"),
+        engagement_events=(),
+        conversion_events=(),
+        conversion_rates=(),
+        attribution_rows=(),
+        case_study_engagement=(),
+        article_engagement=(),
+        generated_at=now,
     )
 
 
@@ -436,7 +457,7 @@ def test_admin_nav_links_present(path: str) -> None:
         ("/admin/pipeline", "Pipeline", "pipeline-title", "Pipeline"),
         ("/admin/imports", "LinkedIn export preview", "imports-title", "Imports"),
         ("/admin/discovery", "Discovery", "admin-empty-title", "Discovery"),
-        ("/admin/analytics", "Analytics", "admin-empty-title", "Analytics"),
+        ("/admin/analytics", "Analytics", "analytics-title", "Analytics"),
         ("/admin/content", "Content", "admin-empty-title", "Content"),
         ("/admin/settings", "Settings", "admin-empty-title", "Settings"),
     ],
@@ -476,6 +497,13 @@ def test_admin_active_nav(path: str, heading: str, title_id: str, nav_label: str
         if path == "/admin/targets":
             patchers.append(patch("app.admin_qualification_routes._crm.list_qualification_targets", return_value=[]))
             patchers.append(patch("app.admin_qualification_routes._crm.list_qualification_working_lists", return_value=[]))
+        if path == "/admin/analytics":
+            patchers.append(
+                patch(
+                    "app.admin_analytics_routes.load_analytics_dashboard",
+                    return_value=_empty_analytics_dashboard_for_layout(),
+                )
+            )
         with patchers[0]:
             for extra in patchers[1:]:
                 extra.start()

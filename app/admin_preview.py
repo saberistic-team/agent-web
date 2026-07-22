@@ -24,6 +24,14 @@ from app.acquisition_dashboard import (
     EvidenceRow,
     NextActionRow,
 )
+from app.analytics_dashboard import (
+    AnalyticsDashboardData,
+    AttributionRow,
+    ContentEngagementRow,
+    ConversionRateRow,
+    EventCountRow,
+    parse_analytics_date_range,
+)
 from app.acquisition_action_queue import (
     QUEUE_CATEGORY_DUE_TODAY,
     QUEUE_CATEGORY_OVERDUE,
@@ -338,6 +346,152 @@ def build_preview_acquisition_dashboard_data(
         stale_evidence=_evidence(stale=True),
         without_decision_maker=_without_decision_maker(),
         without_next_action=_attention(pipeline_only=True),
+        generated_at=now,
+    )
+
+
+def build_preview_analytics_dashboard_data(
+    *,
+    period: str = "7d",
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> AnalyticsDashboardData:
+    """Randomized marketing analytics dashboard for ADMIN_PREVIEW_MODE screenshots."""
+    rng = _resolve_rng(rng, "analytics_dashboard")
+    now = _resolve_now(now)
+    try:
+        date_range = parse_analytics_date_range(period=period, reference=now)
+    except ValueError:
+        date_range = parse_analytics_date_range(period="7d", reference=now)
+
+    engagement_events = (
+        EventCountRow("Landing Viewed", rng.randint(120, 480), "browser"),
+        EventCountRow("Services Viewed", rng.randint(40, 180), "browser"),
+        EventCountRow("Case Studies Viewed", rng.randint(30, 120), "browser"),
+        EventCountRow("Case Study Viewed", rng.randint(20, 90), "browser"),
+        EventCountRow("Insights Viewed", rng.randint(25, 110), "browser"),
+        EventCountRow("Insight Viewed", rng.randint(18, 75), "browser"),
+        EventCountRow("Brief Viewed", rng.randint(35, 140), "browser"),
+        EventCountRow("Brief Form Started", rng.randint(12, 55), "browser"),
+        EventCountRow("Contact Initiated", rng.randint(3, 18), "browser"),
+    )
+    conversion_events = (
+        EventCountRow("Lead Persisted", rng.randint(8, 28), "server"),
+        EventCountRow("Checkout Opened", rng.randint(5, 20), "server"),
+        EventCountRow("Payment Completed", rng.randint(2, 12), "server"),
+    )
+    counts = {row.event_name: row.count for row in engagement_events + conversion_events}
+
+    def _rate(
+        key: str,
+        label: str,
+        num_name: str,
+        den_name: str,
+        num_def: str,
+        den_def: str,
+    ) -> ConversionRateRow:
+        numerator = counts[num_name]
+        denominator = counts[den_name]
+        rate_pct = round(100.0 * numerator / denominator, 1) if denominator > 0 else None
+        return ConversionRateRow(
+            key=key,
+            label=label,
+            numerator=numerator,
+            denominator=denominator,
+            rate_pct=rate_pct,
+            numerator_definition=num_def,
+            denominator_definition=den_def,
+        )
+
+    conversion_rates = (
+        _rate(
+            "landing_to_brief",
+            "Landing → brief view",
+            "Brief Viewed",
+            "Landing Viewed",
+            "Brief Viewed events (browser)",
+            "Landing Viewed events (browser)",
+        ),
+        _rate(
+            "brief_to_form",
+            "Brief view → form start",
+            "Brief Form Started",
+            "Brief Viewed",
+            "Brief Form Started events (browser)",
+            "Brief Viewed events (browser)",
+        ),
+        _rate(
+            "form_to_lead",
+            "Form start → lead persisted",
+            "Lead Persisted",
+            "Brief Form Started",
+            "Lead Persisted events (server, authoritative)",
+            "Brief Form Started events (browser)",
+        ),
+        _rate(
+            "lead_to_checkout",
+            "Lead → checkout opened",
+            "Checkout Opened",
+            "Lead Persisted",
+            "Checkout Opened events (server, authoritative)",
+            "Lead Persisted events (server, authoritative)",
+        ),
+        _rate(
+            "checkout_to_payment",
+            "Checkout → payment completed",
+            "Payment Completed",
+            "Checkout Opened",
+            "Payment Completed events (server, authoritative)",
+            "Checkout Opened events (server, authoritative)",
+        ),
+        _rate(
+            "landing_to_payment",
+            "Landing → payment completed",
+            "Payment Completed",
+            "Landing Viewed",
+            "Payment Completed events (server, authoritative)",
+            "Landing Viewed events (browser)",
+        ),
+    )
+
+    attribution_rows = tuple(
+        AttributionRow(
+            source=source,
+            medium=rng.choice(("social", "email", "referral", "cpc")),
+            campaign=rng.choice(("launch", "retarget", "newsletter", "partner")),
+            event_count=rng.randint(12, 120),
+            lead_count=rng.randint(1, 18),
+        )
+        for source in rng.sample(list(UTM_SOURCES), k=min(4, len(UTM_SOURCES)))
+    )
+
+    case_slugs = ("meridian-stack", "volt-spiral", "aperture-freight", "northwind-labs")
+    article_slugs = ("pipeline-signals", "icp-sharp-edges", "warm-intro-playbook")
+    case_study_engagement = tuple(
+        ContentEngagementRow(
+            slug=slug,
+            content_type="case_study",
+            views=rng.randint(8, 64),
+        )
+        for slug in rng.sample(case_slugs, k=rng.randint(2, len(case_slugs)))
+    )
+    article_engagement = tuple(
+        ContentEngagementRow(
+            slug=slug,
+            content_type="article",
+            views=rng.randint(6, 48),
+        )
+        for slug in rng.sample(article_slugs, k=rng.randint(2, len(article_slugs)))
+    )
+
+    return AnalyticsDashboardData(
+        date_range=date_range,
+        engagement_events=engagement_events,
+        conversion_events=conversion_events,
+        conversion_rates=conversion_rates,
+        attribution_rows=attribution_rows,
+        case_study_engagement=case_study_engagement,
+        article_engagement=article_engagement,
         generated_at=now,
     )
 

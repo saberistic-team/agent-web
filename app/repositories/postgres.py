@@ -1439,6 +1439,144 @@ class PostgresAcquisitionDashboardRepository:
         return self._pipeline.list_companies_without_next_action(conn, limit=limit)
 
 
+class PostgresAnalyticsDashboardRepository:
+    _ATTRIBUTION_EVENT_NAMES = (
+        "Landing Viewed",
+        "Services Viewed",
+        "Case Studies Viewed",
+        "Case Study Viewed",
+        "Insights Viewed",
+        "Insight Viewed",
+        "Brief Viewed",
+        "Brief Form Started",
+        "Lead Persisted",
+        "Checkout Opened",
+        "Payment Completed",
+        "Contact Initiated",
+    )
+
+    def count_events_in_range(
+        self,
+        conn: psycopg.Connection,
+        *,
+        period_start: datetime,
+        period_end: datetime,
+        event_names: tuple[str, ...],
+    ) -> list[tuple[str, int]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT event_name, COUNT(*)::int AS total
+                FROM analytics_events
+                WHERE occurred_at >= %s
+                  AND occurred_at < %s
+                  AND event_name = ANY(%s)
+                GROUP BY event_name
+                ORDER BY total DESC, event_name ASC
+                """,
+                (period_start, period_end, list(event_names)),
+            )
+            rows = cur.fetchall()
+        return [(str(row["event_name"]), int(row["total"])) for row in rows]
+
+    def count_attribution_in_range(
+        self,
+        conn: psycopg.Connection,
+        *,
+        period_start: datetime,
+        period_end: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    COALESCE(NULLIF(TRIM(attribution->>'utm_source'), ''), '(direct)') AS source,
+                    COALESCE(NULLIF(TRIM(attribution->>'utm_medium'), ''), '(none)') AS medium,
+                    COALESCE(NULLIF(TRIM(attribution->>'utm_campaign'), ''), '(none)') AS campaign,
+                    COUNT(*)::int AS event_count
+                FROM analytics_events
+                WHERE occurred_at >= %s
+                  AND occurred_at < %s
+                  AND event_name = ANY(%s)
+                GROUP BY 1, 2, 3
+                ORDER BY event_count DESC, source ASC, medium ASC, campaign ASC
+                LIMIT %s
+                """,
+                (
+                    period_start,
+                    period_end,
+                    list(self._ATTRIBUTION_EVENT_NAMES),
+                    limit,
+                ),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def count_content_engagement(
+        self,
+        conn: psycopg.Connection,
+        *,
+        period_start: datetime,
+        period_end: datetime,
+        event_name: str,
+        slug_property: str,
+        limit: int,
+    ) -> list[tuple[str, int]]:
+        if slug_property not in {"case_study_slug", "article_slug"}:
+            raise ValueError(f"unsupported slug property: {slug_property}")
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT properties->>%s AS slug, COUNT(*)::int AS views
+                FROM analytics_events
+                WHERE occurred_at >= %s
+                  AND occurred_at < %s
+                  AND event_name = %s
+                  AND COALESCE(TRIM(properties->>%s), '') <> ''
+                GROUP BY 1
+                ORDER BY views DESC, slug ASC
+                LIMIT %s
+                """,
+                (
+                    slug_property,
+                    period_start,
+                    period_end,
+                    event_name,
+                    slug_property,
+                    limit,
+                ),
+            )
+            rows = cur.fetchall()
+        return [(str(row["slug"]), int(row["views"])) for row in rows]
+
+    def count_leads_by_utm_source(
+        self,
+        conn: psycopg.Connection,
+        *,
+        period_start: datetime,
+        period_end: datetime,
+        limit: int,
+    ) -> list[tuple[str, int]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    COALESCE(NULLIF(TRIM(utm_source), ''), '(direct)') AS source,
+                    COUNT(*)::int AS total
+                FROM project_briefs
+                WHERE created_at >= %s
+                  AND created_at < %s
+                GROUP BY 1
+                ORDER BY total DESC, source ASC
+                LIMIT %s
+                """,
+                (period_start, period_end, limit),
+            )
+            rows = cur.fetchall()
+        return [(str(row["source"]), int(row["total"])) for row in rows]
+
+
 class PostgresAdminUserRepository:
     def create(
         self,
@@ -2221,6 +2359,7 @@ class PostgresRepositories:
         self.audit_events = PostgresAuditEventRepository()
         self.project_briefs = PostgresProjectBriefRepository()
         self.acquisition_dashboard = PostgresAcquisitionDashboardRepository()
+        self.analytics_dashboard = PostgresAnalyticsDashboardRepository()
         self.action_queue = PostgresActionQueueRepository()
         self.pipeline = PostgresPipelineRepository()
         self.import_batches = PostgresImportBatchRepository()
@@ -2247,6 +2386,7 @@ def default_repositories() -> dict[str, Any]:
         "audit_events": repos.audit_events,
         "project_briefs": repos.project_briefs,
         "acquisition_dashboard": repos.acquisition_dashboard,
+        "analytics_dashboard": repos.analytics_dashboard,
         "action_queue": repos.action_queue,
         "pipeline": repos.pipeline,
         "import_batches": repos.import_batches,
