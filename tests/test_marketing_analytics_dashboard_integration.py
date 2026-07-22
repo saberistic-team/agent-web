@@ -25,6 +25,14 @@ _REQUIRED = (os.environ.get("REQUIRE_TEST_DATABASE") or "").strip() in {"1", "tr
 _DATABASE_URL = (os.environ.get("TEST_DATABASE_URL") or "").strip()
 
 
+@pytest.fixture(autouse=True)
+def analytics_ingest_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BASE_URL", "http://testserver")
+    monkeypatch.setenv("FIRST_PARTY_ANALYTICS_ENABLED", "true")
+    monkeypatch.delenv("ANALYTICS_ENABLED", raising=False)
+    analytics_ingest._fallback_buckets.clear()
+
+
 def _require_database_url() -> str:
     if _DATABASE_URL:
         return _DATABASE_URL
