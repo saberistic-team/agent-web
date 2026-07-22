@@ -67,6 +67,17 @@ def test_unknown_registry_values_are_rejected() -> None:
         ContactCreate(full_name="Ada", buying_roles=["ceo"])
     with pytest.raises(ValidationError, match="unknown relationship strength"):
         ContactCreate(full_name="Ada", relationship_strength="bestie")
+    with pytest.raises(ValidationError, match="unknown CRM context tag"):
+        ContactCreate(full_name="Ada", crm_context_tags=["best_friend"])
+
+
+@pytest.mark.unit
+def test_crm_context_tags_accept_known_values() -> None:
+    contact = ContactCreate(
+        full_name="Ada",
+        crm_context_tags=["former_colleague", "warm_introducer", "former_colleague"],
+    )
+    assert contact.crm_context_tags == ["former_colleague", "warm_introducer"]
 
 
 @pytest.mark.unit

@@ -34,6 +34,10 @@ RELATIONSHIP_STRENGTHS: dict[str, str] = {
     "strong": "Strong",
     "champion": "Champion",
 }
+CRM_CONTEXT_TAGS: dict[str, str] = {
+    "former_colleague": "Former colleague",
+    "warm_introducer": "Warm introducer",
+}
 EMAIL_PERMISSIONS: dict[str, str] = {
     "unknown": "Unknown",
     "inferred": "Inferred from public source",
@@ -121,6 +125,20 @@ def _validate_buying_roles(values: list[str] | None) -> list[str]:
     return normalized
 
 
+def _validate_crm_context_tags(values: list[str] | None) -> list[str]:
+    if not values:
+        return []
+    normalized: list[str] = []
+    for value in values:
+        if not value or not value.strip():
+            continue
+        if value not in CRM_CONTEXT_TAGS:
+            raise ValueError(f"unknown CRM context tag: {value}")
+        if value not in normalized:
+            normalized.append(value)
+    return normalized
+
+
 class ContactCreate(BaseModel):
     full_name: str = Field(min_length=1, max_length=500)
     title: str | None = Field(default=None, max_length=500)
@@ -132,6 +150,7 @@ class ContactCreate(BaseModel):
     relationship_strength: str | None = None
     notes: str | None = Field(default=None, max_length=10000)
     buying_roles: list[str] = Field(default_factory=list)
+    crm_context_tags: list[str] = Field(default_factory=list)
 
     @field_validator("full_name")
     @classmethod
@@ -170,6 +189,11 @@ class ContactCreate(BaseModel):
     @classmethod
     def validate_roles(cls, value: list[str] | None) -> list[str]:
         return _validate_buying_roles(value)
+
+    @field_validator("crm_context_tags")
+    @classmethod
+    def validate_crm_context_tags(cls, value: list[str] | None) -> list[str]:
+        return _validate_crm_context_tags(value)
 
 
 def contact_audit_summary(contact: dict[str, Any]) -> dict[str, Any]:
@@ -349,3 +373,9 @@ def format_buying_roles(values: list[str] | None) -> str:
     if not values:
         return "—"
     return ", ".join(BUYING_ROLES.get(role, role) for role in values)
+
+
+def format_crm_context_tags(values: list[str] | None) -> str:
+    if not values:
+        return "—"
+    return ", ".join(CRM_CONTEXT_TAGS.get(tag, tag) for tag in values)
