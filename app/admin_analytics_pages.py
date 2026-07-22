@@ -32,7 +32,7 @@ def _format_timestamp(value: datetime) -> str:
 def _render_range_form(*, selected_days: int | None, date_range_label: str) -> str:
     preset_links = []
     for days in ALLOWED_RANGE_PRESETS:
-        selected = " aria-current=\"true\"" if selected_days == days else ""
+        selected = ' aria-current="true"' if selected_days == days else ""
         preset_links.append(
             f'<a class="analytics-range-link"{selected} href="/admin/analytics?days={days}">'
             f"{days}d</a>"

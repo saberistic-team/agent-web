@@ -2068,9 +2068,9 @@ for _link in ADMIN_NAV_LINKS:
         "/admin/imports",
         "/admin/pipeline",
         "/admin/queue",
+        "/admin/analytics",
         "/admin/targets",
         "/admin/signals",
-        "/admin/analytics",
     }:
         continue
     _section = _link["href"].removeprefix("/admin/")

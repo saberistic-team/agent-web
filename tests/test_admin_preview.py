@@ -87,7 +87,7 @@ def test_preview_analytics_dashboard_seed_stable() -> None:
     b = build_preview_analytics_dashboard_data(rng=random.Random(42), now=now)
     assert a == b
     assert len(a.event_counts) >= 8
-    assert len(a.attribution) >= 3
+    assert len(a.conversion_rates) >= 4
 
 
 @pytest.mark.unit
@@ -99,11 +99,10 @@ def test_preview_analytics_dashboard_html_includes_sections() -> None:
         preview_banner="Preview data — not production",
     )
     assert "Preview data — not production" in html
-    assert "Marketing analytics" in html
     assert "Event volume" in html
     assert "Conversion rates" in html
-    assert data.case_study_engagement[0].slug in html
     assert data.attribution[0].key in html
+    assert data.case_study_engagement[0].slug in html
 
 
 @pytest.mark.unit

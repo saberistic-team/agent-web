@@ -15,7 +15,12 @@ from fastapi.testclient import TestClient
 from app.admin_analytics_pages import render_analytics_dashboard_page
 from app.admin_auth import SESSION_COOKIE_NAME
 from app.admin_preview import build_preview_analytics_dashboard_data
-from app.analytics_dashboard import AnalyticsDashboardData, build_event_volumes, dashboard_has_activity
+from app.analytics_dashboard import (
+    AnalyticsDashboardData,
+    CrmFunnelCounts,
+    dashboard_has_activity,
+    parse_analytics_date_range,
+)
 from app.analytics_event_schema import EVENT_LANDING_VIEWED
 from app.main import app
 from tests.conftest import enable_admin_preview_env
@@ -61,13 +66,13 @@ def _session_row(*, token_hash: str) -> dict[str, Any]:
 
 
 def _sample_dashboard() -> AnalyticsDashboardData:
-    counts = {EVENT_LANDING_VIEWED: 42}
+    date_range = parse_analytics_date_range(start="2026-07-09", end="2026-07-15", now=NOW)
     return AnalyticsDashboardData(
-        date_from=NOW.date() - timedelta(days=6),
-        date_to=NOW.date(),
-        event_volumes=build_event_volumes(counts),
+        date_range=date_range,
+        event_counts=(),
+        crm_counts=CrmFunnelCounts(leads=0, checkouts=0, payments=0),
         conversion_rates=(),
-        attribution_rows=(),
+        attribution=(),
         case_study_engagement=(),
         article_engagement=(),
         generated_at=NOW,
@@ -91,14 +96,14 @@ def test_preview_analytics_dashboard_html_includes_sections() -> None:
         preview_banner="Preview data — not production",
     )
     assert "Preview data — not production" in html
-    assert 'id="analytics-title">Analytics</h1>' in html
+    assert 'id="analytics-title">Marketing analytics</h1>' in html
     assert "Event volume" in html
     assert "Conversion rates" in html
-    assert "UTM attribution" in html
-    assert "Case study views" in html
-    assert "Insight article views" in html
-    assert data.attribution_rows[0].utm_source in html
-    assert "Export CSV" in html
+    assert "Attribution" in html
+    assert "Case study engagement" in html
+    assert "Insight engagement" in html
+    assert data.attribution[0].key in html
+    assert "Download CSV" in html
 
 
 @pytest.mark.unit
@@ -127,13 +132,12 @@ def test_admin_analytics_renders_dashboard() -> None:
             ),
         ):
             response = client.get(
-                "/admin/analytics?from=2026-07-09&to=2026-07-15",
+                "/admin/analytics?start=2026-07-09&end=2026-07-15",
                 cookies={SESSION_COOKIE_NAME: raw_token},
             )
     assert response.status_code == 200
     body = response.text
-    assert 'id="analytics-title">Analytics</h1>' in body
-    assert "Landing" in body
+    assert 'id="analytics-title">Marketing analytics</h1>' in body
     assert 'class="admin-nav-link" aria-current="page">Analytics</a>' in body
 
 
@@ -160,6 +164,7 @@ def test_admin_analytics_export_csv_returns_aggregated_rows() -> None:
                 "app.admin_analytics_routes.load_analytics_dashboard",
                 return_value=dashboard,
             ),
+            patch("app.admin_analytics_routes._crm.request_export"),
         ):
             response = client.get(
                 "/admin/analytics/export.csv",
@@ -167,7 +172,7 @@ def test_admin_analytics_export_csv_returns_aggregated_rows() -> None:
             )
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/csv")
-    assert "event_volume" in response.text
+    assert "meta" in response.text
     assert "anonymous_session_id" not in response.text
 
 

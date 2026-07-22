@@ -2212,10 +2212,6 @@ class PostgresRepositories:
     """Bundle of Postgres repository implementations including CRM + audit."""
 
     def __init__(self) -> None:
-        from app.repositories.postgres_analytics_dashboard import (
-            PostgresAnalyticsDashboardRepository,
-        )
-
         self.companies = PostgresCompanyRepository()
         self.contacts = PostgresContactRepository()
         self.source_records = PostgresSourceRecordRepository()
@@ -2225,12 +2221,16 @@ class PostgresRepositories:
         self.audit_events = PostgresAuditEventRepository()
         self.project_briefs = PostgresProjectBriefRepository()
         self.acquisition_dashboard = PostgresAcquisitionDashboardRepository()
-        self.analytics_dashboard = PostgresAnalyticsDashboardRepository()
         self.action_queue = PostgresActionQueueRepository()
         self.pipeline = PostgresPipelineRepository()
         self.import_batches = PostgresImportBatchRepository()
         self.icp_scoring = PostgresIcpScoringRepository()
         self.qualification = PostgresQualificationRepository()
+        from app.repositories.postgres_analytics_dashboard import (
+            PostgresAnalyticsDashboardRepository,
+        )
+
+        self.analytics_dashboard = PostgresAnalyticsDashboardRepository()
 
 
 _default_repositories = PostgresRepositories()
@@ -2252,12 +2252,12 @@ def default_repositories() -> dict[str, Any]:
         "audit_events": repos.audit_events,
         "project_briefs": repos.project_briefs,
         "acquisition_dashboard": repos.acquisition_dashboard,
-        "analytics_dashboard": repos.analytics_dashboard,
         "action_queue": repos.action_queue,
         "pipeline": repos.pipeline,
         "import_batches": repos.import_batches,
         "icp_scoring": repos.icp_scoring,
         "qualification": repos.qualification,
+        "analytics_dashboard": repos.analytics_dashboard,
     }
 
 

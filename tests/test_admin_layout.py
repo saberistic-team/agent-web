@@ -78,6 +78,25 @@ def _empty_dashboard_for_layout():
     )
 
 
+def _empty_analytics_dashboard_for_layout():
+    from app.analytics_dashboard import (
+        AnalyticsDashboardData,
+        CrmFunnelCounts,
+        parse_analytics_date_range,
+    )
+
+    return AnalyticsDashboardData(
+        date_range=parse_analytics_date_range(),
+        event_counts=(),
+        crm_counts=CrmFunnelCounts(leads=0, checkouts=0, payments=0),
+        conversion_rates=(),
+        attribution=(),
+        case_study_engagement=(),
+        article_engagement=(),
+        generated_at=datetime.now(timezone.utc),
+    )
+
+
 @pytest.mark.unit
 def test_admin_nav_links_include_required_destinations() -> None:
     assert ADMIN_HREFS == (
@@ -476,6 +495,13 @@ def test_admin_active_nav(path: str, heading: str, title_id: str, nav_label: str
         if path == "/admin/targets":
             patchers.append(patch("app.admin_qualification_routes._crm.list_qualification_targets", return_value=[]))
             patchers.append(patch("app.admin_qualification_routes._crm.list_qualification_working_lists", return_value=[]))
+        if path == "/admin/analytics":
+            patchers.append(
+                patch(
+                    "app.admin_analytics_routes.load_analytics_dashboard",
+                    return_value=_empty_analytics_dashboard_for_layout(),
+                )
+            )
         with patchers[0]:
             for extra in patchers[1:]:
                 extra.start()

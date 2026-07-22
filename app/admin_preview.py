@@ -346,8 +346,8 @@ def build_preview_analytics_dashboard_data(
     *,
     rng: random.Random | None = None,
     now: datetime | None = None,
-    date_range: AnalyticsDateRange | None = None,
-) -> AnalyticsDashboardData:
+    date_range: Any | None = None,
+) -> Any:
     """Randomized marketing analytics dashboard for ADMIN_PREVIEW_MODE screenshots."""
     from app.analytics_dashboard import (
         ALLOWED_RANGE_PRESETS,
@@ -366,7 +366,10 @@ def build_preview_analytics_dashboard_data(
     rng = _resolve_rng(rng, "analytics_dashboard")
     now = _resolve_now(now)
     if date_range is None:
-        date_range = parse_analytics_date_range(days=str(rng.choice(ALLOWED_RANGE_PRESETS)), now=now)
+        date_range = parse_analytics_date_range(
+            days=str(rng.choice(ALLOWED_RANGE_PRESETS)),
+            now=now,
+        )
 
     event_counts: list[FunnelEventCount] = []
     raw_counts: dict[str, int] = {}
