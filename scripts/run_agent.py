@@ -30,7 +30,12 @@ from github_api import (
     post_issue_comment,
     split_repo,
 )
-from issue_deps import dependency_block_reason
+from issue_deps import (
+    add_sub_issue_link,
+    dependency_block_reason,
+    reconcile_comment,
+    reconcile_issue_dependencies,
+)
 from milestones import (
     ensure_open_milestone,
     issue_milestone_number,
@@ -724,8 +729,16 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
     body = data.get("body") or ""
     labels = {label["name"] for label in data.get("labels") or []}
 
-    # Fail closed on open / unstructured dependencies before queue (#204).
-    dep_reason = dependency_block_reason(repo, issue, body=body)
+    # Derive missing blockedBy / parent-child / Depends-on, then fail closed
+    # if anything is still open or unstructured (#204).
+    reconcile_summary = reconcile_issue_dependencies(
+        repo, issue, body=body, write=True
+    )
+    note = reconcile_comment(reconcile_summary)
+    if note:
+        post_issue_comment(repo, issue, note)
+    body = str(reconcile_summary.get("body") or body)
+    dep_reason = dependency_block_reason(repo, issue, body=body, reconcile=False)
     if dep_reason:
         escalate(
             repo,
@@ -794,6 +807,9 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
                 body=child_body,
             )
             children.append(int(child["number"]))
+            # GitHub parent/child link so dispatcher treats open children as
+            # blockers for any later parent work.
+            sub_status = add_sub_issue_link(repo, issue, int(child["number"]))
             post_issue_comment(
                 repo,
                 child["number"],
@@ -804,6 +820,7 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
                     f"- priority: `{priority_label}`\n"
                     f"- milestone: `{milestone_title}`\n"
                     f"- intended_agent: `{agent_label}`\n"
+                    f"- parent_link: `{sub_status}`\n"
                     "- awaiting: dispatcher (priority queue)\n"
                 ),
             )
