@@ -1,0 +1,22 @@
+{
+  "description": "World Manifest v0 fixture index (issue #199)",
+  "positive": [
+    "positive/narrative-scene-alpha.json",
+    "positive/spatial-marble-demo.json",
+    "positive/simulation-agent-colony.json"
+  ],
+  "negative_structural": [
+    "negative-structural/invalid-schema-version.json",
+    "negative-structural/missing-identity-name.json",
+    "negative-structural/verified-unknown-value.json",
+    "negative-structural/empty-entry-points-and-extra-property.json",
+    "negative-structural/missing-provenance-wrapper.json"
+  ],
+  "negative_qualification": [
+    "negative-qualification/static-image-gallery.json",
+    "negative-qualification/general-assistant.json",
+    "negative-qualification/foundation-model-api.json",
+    "negative-qualification/game-engine-product.json",
+    "negative-qualification/marketing-coming-soon.json"
+  ]
+}

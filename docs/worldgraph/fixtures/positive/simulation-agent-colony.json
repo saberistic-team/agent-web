@@ -1,6 +1,17 @@
 {
   "schema_version": "world-manifest-v0",
   "identity": {
+    "world_id": {
+      "value": "urn:worldgraph:example:simulation-agent-colony",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/sim/agent-colony",
+        "evidence_snippet": "Derived from canonical URL",
+        "confidence": 0.9,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
     "name": {
       "value": "Agent Colony",
       "provenance": {
@@ -24,12 +35,12 @@
       }
     },
     "summary": {
-      "value": "Multi-agent society simulation with persistent world state and emergent diplomacy.",
+      "value": "Multi-agent society simulation with persistent world state and resource rules.",
       "provenance": {
         "source_kind": "source_observation",
         "source_url": "https://example-worlds.test/sim/agent-colony",
         "evidence_snippet": "Multi-agent society simulation",
-        "confidence": 0.85,
+        "confidence": 0.88,
         "observed_at": "2026-07-15T00:00:00+00:00",
         "verification_status": "unverified"
       }
@@ -39,8 +50,8 @@
       "provenance": {
         "source_kind": "derived",
         "source_url": "https://example-worlds.test/sim/agent-colony",
-        "evidence_snippet": "simulation dashboard link",
-        "confidence": 0.7,
+        "evidence_snippet": "Simulation dashboard link",
+        "confidence": 0.75,
         "observed_at": "2026-07-15T00:00:00+00:00",
         "verification_status": "unverified"
       }
@@ -50,7 +61,7 @@
       "provenance": {
         "source_kind": "derived",
         "source_url": "https://example-worlds.test/sim/agent-colony",
-        "evidence_snippet": "agent society simulation",
+        "evidence_snippet": "Multi-agent society simulation",
         "confidence": 0.85,
         "observed_at": "2026-07-15T00:00:00+00:00",
         "verification_status": "unverified"
@@ -83,18 +94,18 @@
       }
     ],
     "interaction_model": {
-      "value": "simulation_tick",
+      "value": "observer_and_policy_injection_with_agent_planning",
       "provenance": {
         "source_kind": "source_observation",
         "source_url": "https://example-worlds.test/sim/agent-colony",
-        "evidence_snippet": "Agents operate under published mechanics",
-        "confidence": 0.75,
+        "evidence_snippet": "Agents operate under published mechanics; AI controls agent planning each tick",
+        "confidence": 0.8,
         "observed_at": "2026-07-15T00:00:00+00:00",
         "verification_status": "unverified"
       }
     },
     "persistence_model": {
-      "value": "persistent_world_state",
+      "value": "persistent_world_state_across_ticks",
       "provenance": {
         "source_kind": "source_observation",
         "source_url": "https://example-worlds.test/sim/agent-colony",
@@ -103,39 +114,50 @@
         "observed_at": "2026-07-15T00:00:00+00:00",
         "verification_status": "unverified"
       }
+    },
+    "access_requirements": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
     }
   },
   "world_structure": {
     "rules_or_mechanics": {
-      "value": "Resource rules and emergent diplomacy mechanics",
+      "value": "resource_rules_and_emergent_diplomacy",
       "provenance": {
         "source_kind": "source_observation",
         "source_url": "https://example-worlds.test/sim/agent-colony",
         "evidence_snippet": "resource rules, and emergent diplomacy",
-        "confidence": 0.8,
+        "confidence": 0.82,
         "observed_at": "2026-07-15T00:00:00+00:00",
         "verification_status": "unverified"
       }
     },
     "state_model": {
-      "value": "Territory, resources, and agent relationships persist across ticks",
+      "value": "tick_based_simulation_state",
       "provenance": {
         "source_kind": "derived",
         "source_url": "https://example-worlds.test/sim/agent-colony",
-        "evidence_snippet": "persistent world state",
+        "evidence_snippet": "planning each tick",
         "confidence": 0.7,
         "observed_at": "2026-07-15T00:00:00+00:00",
         "verification_status": "unverified"
       }
     },
-    "agents_and_characters": [
+    "protocols": [
       {
-        "value": "Autonomous colony agents with planning policies",
+        "value": "a2a",
         "provenance": {
-          "source_kind": "source_observation",
+          "source_kind": "creator_declared",
           "source_url": "https://example-worlds.test/sim/agent-colony",
-          "evidence_snippet": "AI controls agent planning each tick",
-          "confidence": 0.85,
+          "evidence_snippet": "Agents expose A2A cards at /.well-known/agent-card.json",
+          "confidence": 0.6,
           "observed_at": "2026-07-15T00:00:00+00:00",
           "verification_status": "unverified"
         }
@@ -157,9 +179,20 @@
     "ai_usage_phase": {
       "value": "runtime",
       "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/sim/agent-colony",
+        "evidence_snippet": "runtime agent planning",
+        "confidence": 0.85,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agent_controlled_elements": {
+      "value": "agent_planning_and_diplomacy",
+      "provenance": {
         "source_kind": "source_observation",
         "source_url": "https://example-worlds.test/sim/agent-colony",
-        "evidence_snippet": "each tick",
+        "evidence_snippet": "agent planning each tick",
         "confidence": 0.85,
         "observed_at": "2026-07-15T00:00:00+00:00",
         "verification_status": "unverified"
@@ -181,6 +214,43 @@
       }
     }
   },
+  "linked_entities": {
+    "agents": [
+      {
+        "entity_type": "agent",
+        "entity_id": {
+          "value": "colony-agent-policy",
+          "provenance": {
+            "source_kind": "derived",
+            "source_url": "https://example-worlds.test/sim/agent-colony",
+            "evidence_snippet": "agent planning",
+            "confidence": 0.65,
+            "observed_at": "2026-07-15T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "a2a_agent_card_url": {
+          "value": "https://example-worlds.test/sim/agent-colony/.well-known/agent-card.json",
+          "provenance": {
+            "source_kind": "creator_declared",
+            "source_url": "https://example-worlds.test/sim/agent-colony",
+            "evidence_snippet": "A2A well-known path declared in docs",
+            "confidence": 0.55,
+            "observed_at": "2026-07-15T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example-worlds.test/sim/agent-colony",
+          "evidence_snippet": "Multi-agent society",
+          "confidence": 0.75,
+          "observed_at": "2026-07-15T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
   "discovery": {
     "primary_call_to_action": {
       "value": "enter",
@@ -188,7 +258,7 @@
         "source_kind": "derived",
         "source_url": "https://example-worlds.test/sim/agent-colony",
         "evidence_snippet": "Simulation dashboard",
-        "confidence": 0.8,
+        "confidence": 0.7,
         "observed_at": "2026-07-15T00:00:00+00:00",
         "verification_status": "unverified"
       }

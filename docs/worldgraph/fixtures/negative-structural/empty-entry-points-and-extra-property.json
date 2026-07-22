@@ -1,0 +1,103 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "No Entry",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example.com",
+        "evidence_snippet": "x",
+        "confidence": 0.5,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://example.com",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example.com",
+        "evidence_snippet": "https://example.com",
+        "confidence": 0.5,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "interactive_narrative",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example.com",
+        "evidence_snippet": "interactive_narrative",
+        "confidence": 0.5,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example.com",
+        "evidence_snippet": "published",
+        "confidence": 0.5,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [],
+    "interaction_model": {
+      "value": "interactive_session",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example.com",
+        "evidence_snippet": "interactive_session",
+        "confidence": 0.5,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "runtime dialogue",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example.com",
+        "evidence_snippet": "runtime dialogue",
+        "confidence": 0.5,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example.com",
+        "evidence_snippet": "runtime",
+        "confidence": 0.5,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed"
+  },
+  "unexpected_top_level_field": true
+}

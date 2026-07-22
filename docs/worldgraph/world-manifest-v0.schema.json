@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://saberistic.com/schemas/world-manifest-v0.json",
   "title": "World Manifest v0",
-  "description": "Canonical WorldGraph manifest schema (issue #199). Every factual field uses provenance wrappers; unknown values cannot be verified.",
+  "description": "Versioned metadata contract for AI-native worlds (issue #199). Every populated factual field carries provenance; unknown values cannot be verified.",
   "type": "object",
   "required": ["schema_version", "identity", "experience", "ai_role", "trust"],
   "additionalProperties": false,
@@ -11,21 +11,16 @@
       "type": "string",
       "const": "world-manifest-v0"
     },
-    "manifest_version": { "$ref": "#/$defs/provenStringOrUnknown" },
     "identity": { "$ref": "#/$defs/identitySection" },
     "experience": { "$ref": "#/$defs/experienceSection" },
     "world_structure": { "$ref": "#/$defs/worldStructureSection" },
     "ai_role": { "$ref": "#/$defs/aiRoleSection" },
     "trust": { "$ref": "#/$defs/trustSection" },
     "discovery": { "$ref": "#/$defs/discoverySection" },
-    "linked_entities": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/linkedEntity" }
-    },
+    "linked_entities": { "$ref": "#/$defs/linkedEntitiesSection" },
     "extensions": {
       "type": "object",
-      "additionalProperties": true,
-      "description": "Forward-compatible namespace for vendor-specific extensions."
+      "additionalProperties": true
     }
   },
   "$defs": {
@@ -36,7 +31,12 @@
       "properties": {
         "source_kind": {
           "type": "string",
-          "enum": ["source_observation", "creator_declared", "derived", "unknown"]
+          "enum": [
+            "source_observation",
+            "creator_declared",
+            "derived",
+            "unknown"
+          ]
         },
         "source_url": { "type": ["string", "null"], "format": "uri" },
         "evidence_snippet": { "type": ["string", "null"], "maxLength": 2000 },
@@ -86,6 +86,15 @@
         "provenance": { "$ref": "#/$defs/provenance" }
       }
     },
+    "provenDateTime": {
+      "type": "object",
+      "required": ["value", "provenance"],
+      "additionalProperties": false,
+      "properties": {
+        "value": { "type": "string", "format": "date-time" },
+        "provenance": { "$ref": "#/$defs/provenance" }
+      }
+    },
     "provenStringOrUnknown": {
       "oneOf": [
         {
@@ -98,13 +107,12 @@
               "allOf": [
                 { "$ref": "#/$defs/provenance" },
                 {
-                  "type": "object",
-                  "required": ["source_kind", "confidence", "observed_at", "verification_status"],
                   "properties": {
                     "source_kind": { "const": "unknown" },
                     "confidence": { "const": 0 },
                     "verification_status": { "const": "unverified" }
-                  }
+                  },
+                  "required": ["source_kind", "confidence", "verification_status"]
                 }
               ]
             }
@@ -117,9 +125,59 @@
       "type": "array",
       "items": { "$ref": "#/$defs/provenString" }
     },
-    "provenStringOrUnknownList": {
+    "provenStringListOrUnknown": {
       "type": "array",
       "items": { "$ref": "#/$defs/provenStringOrUnknown" }
+    },
+    "provenFacet": {
+      "type": "object",
+      "required": ["key", "value", "provenance"],
+      "additionalProperties": false,
+      "properties": {
+        "key": { "$ref": "#/$defs/provenString" },
+        "value": { "$ref": "#/$defs/provenString" },
+        "provenance": { "$ref": "#/$defs/provenance" }
+      }
+    },
+    "provenMediaRef": {
+      "type": "object",
+      "required": ["value", "provenance"],
+      "additionalProperties": false,
+      "properties": {
+        "value": { "type": "string", "format": "uri" },
+        "c2pa_manifest_url": { "$ref": "#/$defs/provenUrl" },
+        "provenance": { "$ref": "#/$defs/provenance" }
+      }
+    },
+    "entryPointDetail": {
+      "type": "object",
+      "required": ["url", "provenance"],
+      "additionalProperties": false,
+      "properties": {
+        "url": { "$ref": "#/$defs/provenUrl" },
+        "label": { "$ref": "#/$defs/provenStringOrUnknown" },
+        "device": { "$ref": "#/$defs/provenStringOrUnknown" },
+        "auth_hint": { "$ref": "#/$defs/provenStringOrUnknown" },
+        "provenance": { "$ref": "#/$defs/provenance" }
+      }
+    },
+    "linkedEntityRef": {
+      "type": "object",
+      "required": ["entity_type", "entity_id", "provenance"],
+      "additionalProperties": false,
+      "properties": {
+        "entity_type": {
+          "type": "string",
+          "enum": ["agent", "character", "platform", "creator", "organization", "asset"]
+        },
+        "entity_id": { "$ref": "#/$defs/provenString" },
+        "label": { "$ref": "#/$defs/provenStringOrUnknown" },
+        "url": { "$ref": "#/$defs/provenUrl" },
+        "a2a_agent_card_url": { "$ref": "#/$defs/provenUrl" },
+        "registry_url": { "$ref": "#/$defs/provenUrl" },
+        "c2pa_manifest_url": { "$ref": "#/$defs/provenUrl" },
+        "provenance": { "$ref": "#/$defs/provenance" }
+      }
     },
     "identitySection": {
       "type": "object",
@@ -132,10 +190,10 @@
         "summary": { "$ref": "#/$defs/provenStringOrUnknown" },
         "status": { "$ref": "#/$defs/provenString" },
         "version": { "$ref": "#/$defs/provenStringOrUnknown" },
-        "created_at": { "$ref": "#/$defs/provenStringOrUnknown" },
-        "updated_at": { "$ref": "#/$defs/provenStringOrUnknown" },
         "world_type": { "$ref": "#/$defs/provenString" },
         "modalities": { "$ref": "#/$defs/provenStringList" },
+        "created_at": { "$ref": "#/$defs/provenDateTime" },
+        "updated_at": { "$ref": "#/$defs/provenDateTime" },
         "creator": { "$ref": "#/$defs/provenStringOrUnknown" },
         "operator": { "$ref": "#/$defs/provenStringOrUnknown" },
         "claimed_owner": { "$ref": "#/$defs/provenStringOrUnknown" }
@@ -151,16 +209,20 @@
           "minItems": 1,
           "items": { "$ref": "#/$defs/provenUrl" }
         },
+        "entry_point_details": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/entryPointDetail" }
+        },
         "supported_devices": { "$ref": "#/$defs/provenStringList" },
         "interaction_model": { "$ref": "#/$defs/provenString" },
         "persistence_model": { "$ref": "#/$defs/provenStringOrUnknown" },
+        "modalities": { "$ref": "#/$defs/provenStringList" },
         "access_requirements": { "$ref": "#/$defs/provenStringOrUnknown" },
         "pricing": { "$ref": "#/$defs/provenStringOrUnknown" },
         "availability": { "$ref": "#/$defs/provenStringOrUnknown" },
-        "region": { "$ref": "#/$defs/provenStringOrUnknown" },
+        "region_guidance": { "$ref": "#/$defs/provenStringOrUnknown" },
         "age_guidance": { "$ref": "#/$defs/provenStringOrUnknown" },
-        "supported_languages": { "$ref": "#/$defs/provenStringList" },
-        "modalities": { "$ref": "#/$defs/provenStringList" }
+        "supported_languages": { "$ref": "#/$defs/provenStringListOrUnknown" }
       }
     },
     "worldStructureSection": {
@@ -171,14 +233,16 @@
         "lore_or_canon": { "$ref": "#/$defs/provenStringOrUnknown" },
         "rules_or_mechanics": { "$ref": "#/$defs/provenStringOrUnknown" },
         "state_model": { "$ref": "#/$defs/provenStringOrUnknown" },
-        "agents_and_characters": { "$ref": "#/$defs/provenStringOrUnknownList" },
-        "assets_and_dependencies": { "$ref": "#/$defs/provenStringOrUnknownList" },
-        "platforms": { "$ref": "#/$defs/provenStringOrUnknownList" },
-        "engines": { "$ref": "#/$defs/provenStringOrUnknownList" },
-        "models": { "$ref": "#/$defs/provenStringOrUnknownList" },
-        "protocols": { "$ref": "#/$defs/provenStringOrUnknownList" },
+        "agents_and_characters": { "$ref": "#/$defs/provenStringListOrUnknown" },
+        "assets": { "$ref": "#/$defs/provenStringListOrUnknown" },
+        "dependencies": { "$ref": "#/$defs/provenStringListOrUnknown" },
+        "platforms": { "$ref": "#/$defs/provenStringListOrUnknown" },
+        "engines": { "$ref": "#/$defs/provenStringListOrUnknown" },
+        "models": { "$ref": "#/$defs/provenStringListOrUnknown" },
+        "protocols": { "$ref": "#/$defs/provenStringListOrUnknown" },
         "economy": { "$ref": "#/$defs/provenStringOrUnknown" },
-        "governance": { "$ref": "#/$defs/provenStringOrUnknown" }
+        "governance": { "$ref": "#/$defs/provenStringOrUnknown" },
+        "interoperability_claims": { "$ref": "#/$defs/provenStringListOrUnknown" }
       }
     },
     "aiRoleSection": {
@@ -188,9 +252,11 @@
       "properties": {
         "material_ai_role": { "$ref": "#/$defs/provenString" },
         "ai_usage_phase": { "$ref": "#/$defs/provenString" },
-        "generated_or_controlled_elements": { "$ref": "#/$defs/provenStringList" },
-        "model_disclosures": { "$ref": "#/$defs/provenStringOrUnknownList" },
-        "human_control_boundaries": { "$ref": "#/$defs/provenStringOrUnknown" }
+        "generated_elements": { "$ref": "#/$defs/provenStringOrUnknown" },
+        "agent_controlled_elements": { "$ref": "#/$defs/provenStringOrUnknown" },
+        "model_disclosures": { "$ref": "#/$defs/provenStringListOrUnknown" },
+        "human_control_boundaries": { "$ref": "#/$defs/provenStringOrUnknown" },
+        "moderation_boundaries": { "$ref": "#/$defs/provenStringOrUnknown" }
       }
     },
     "trustSection": {
@@ -216,15 +282,11 @@
         },
         "license_status": { "$ref": "#/$defs/provenStringOrUnknown" },
         "commercial_use_status": { "$ref": "#/$defs/provenStringOrUnknown" },
-        "ip_declarations": { "$ref": "#/$defs/provenStringOrUnknownList" },
-        "source_evidence": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/provenUrl" }
-        },
-        "safety_categories": { "$ref": "#/$defs/provenStringOrUnknownList" },
+        "ip_declarations": { "$ref": "#/$defs/provenStringOrUnknown" },
+        "provenance_notes": { "$ref": "#/$defs/provenStringOrUnknown" },
+        "safety_categories": { "$ref": "#/$defs/provenStringListOrUnknown" },
         "moderation_contact": { "$ref": "#/$defs/provenStringOrUnknown" },
-        "data_privacy_notes": { "$ref": "#/$defs/provenStringOrUnknown" },
-        "content_rights_notes": { "$ref": "#/$defs/provenStringOrUnknown" }
+        "data_privacy_notes": { "$ref": "#/$defs/provenStringOrUnknown" }
       },
       "allOf": [
         {
@@ -233,46 +295,13 @@
             "required": ["qualification_status"]
           },
           "then": {
-            "required": ["exclusion_reason"]
+            "required": ["exclusion_reason"],
+            "properties": {
+              "exclusion_reason": { "$ref": "#/$defs/provenString" }
+            }
           }
         }
       ]
-    },
-    "representativeMedia": {
-      "type": "object",
-      "required": ["media_url"],
-      "additionalProperties": false,
-      "properties": {
-        "media_url": { "$ref": "#/$defs/provenUrl" },
-        "media_type": { "$ref": "#/$defs/provenStringOrUnknown" },
-        "c2pa_manifest_url": { "$ref": "#/$defs/provenStringOrUnknown" },
-        "c2pa_validation": {
-          "oneOf": [
-            {
-              "type": "object",
-              "required": ["value", "provenance"],
-              "additionalProperties": false,
-              "properties": {
-                "value": {
-                  "type": "string",
-                  "enum": ["valid", "invalid", "unknown"]
-                },
-                "provenance": { "$ref": "#/$defs/provenance" }
-              }
-            }
-          ]
-        }
-      }
-    },
-    "worldReference": {
-      "type": "object",
-      "required": ["world_id", "relationship"],
-      "additionalProperties": false,
-      "properties": {
-        "world_id": { "$ref": "#/$defs/provenString" },
-        "relationship": { "$ref": "#/$defs/provenString" },
-        "reference_url": { "$ref": "#/$defs/provenUrl" }
-      }
     },
     "discoverySection": {
       "type": "object",
@@ -280,63 +309,40 @@
       "properties": {
         "tags": { "$ref": "#/$defs/provenStringList" },
         "facets": {
-          "type": "object",
-          "additionalProperties": { "$ref": "#/$defs/provenStringOrUnknown" }
+          "type": "array",
+          "items": { "$ref": "#/$defs/provenFacet" }
         },
         "representative_media": {
           "type": "array",
-          "items": { "$ref": "#/$defs/representativeMedia" }
+          "items": { "$ref": "#/$defs/provenMediaRef" }
         },
         "semantic_description": { "$ref": "#/$defs/provenStringOrUnknown" },
-        "related_worlds": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/worldReference" }
-        },
-        "inspirations": { "$ref": "#/$defs/provenStringOrUnknownList" },
-        "forks": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/worldReference" }
-        },
-        "imports": { "$ref": "#/$defs/provenStringOrUnknownList" },
-        "dependencies": { "$ref": "#/$defs/provenStringOrUnknownList" },
+        "related_worlds": { "$ref": "#/$defs/provenStringListOrUnknown" },
+        "inspirations": { "$ref": "#/$defs/provenStringListOrUnknown" },
+        "forks_and_imports": { "$ref": "#/$defs/provenStringListOrUnknown" },
         "primary_call_to_action": { "$ref": "#/$defs/provenStringOrUnknown" }
       }
     },
-    "linkedEntity": {
+    "linkedEntitiesSection": {
       "type": "object",
-      "required": ["entity_type", "entity_id"],
       "additionalProperties": false,
       "properties": {
-        "entity_type": {
-          "type": "string",
-          "enum": [
-            "platform",
-            "agent",
-            "character",
-            "creator",
-            "organization",
-            "asset",
-            "engine",
-            "model"
-          ]
+        "agents": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/linkedEntityRef" }
         },
-        "entity_id": { "type": "string", "minLength": 1 },
-        "display_name": { "$ref": "#/$defs/provenStringOrUnknown" },
-        "reference_url": { "$ref": "#/$defs/provenUrl" },
-        "external_standard": {
-          "type": "string",
-          "enum": [
-            "a2a_agent_card",
-            "mcp_registry",
-            "c2pa",
-            "gltf",
-            "openusd",
-            "webxr",
-            "msf_web_of_worlds"
-          ]
+        "platforms": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/linkedEntityRef" }
         },
-        "external_id": { "$ref": "#/$defs/provenStringOrUnknown" },
-        "capabilities": { "$ref": "#/$defs/provenStringList" }
+        "creators": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/linkedEntityRef" }
+        },
+        "assets": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/linkedEntityRef" }
+        }
       }
     }
   }

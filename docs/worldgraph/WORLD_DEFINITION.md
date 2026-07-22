@@ -2,98 +2,66 @@
 
 Parent issue: [#199](https://github.com/saberistic-team/agent-web/issues/199).
 
-**Status:** Product definition for WorldGraph indexing. No production routes, database
-tables, or public API are implied by this document.
+**Status:** Product-definition document for WorldGraph qualification and entity
+taxonomy. No production database migration, public API, or marketing claim that World
+Manifest v0 is an industry standard is implied by this file.
 
 **Related:** [WORLD_MANIFEST_V0.md](./WORLD_MANIFEST_V0.md),
-[STANDARDS_FIELD_MAPPING.md](./STANDARDS_FIELD_MAPPING.md),
+[world-manifest-v0.schema.json](./world-manifest-v0.schema.json),
 [MARKET_POSITION.md](./MARKET_POSITION.md)
 
 ---
 
 ## Primary indexed object
 
-WorldGraph indexes **World** entities: addressable, interactive systems that use AI
-materially within a bounded setting and that can be described, qualified, and linked
-without collapsing platforms, tools, characters, and static media into one vague
-category.
+WorldGraph indexes **World** entities: addressable interactive systems that are
+persistent or reproducible, have a bounded setting or rule system, permit users or
+agents to affect outcomes, and use AI materially in the environment, characters,
+narrative, simulation, or runtime behavior.
 
-A World is **not** a substitute for every artifact in the AI-native stack. Platforms,
-engines, agents, characters, creators, organizations, assets, and IP are **linked
-entity types** referenced from a World Manifest v0 — they are indexed separately when
-WorldGraph grows beyond MVP documentation.
+A World is not a platform product, a foundation model, a generic assistant, static AI
+media, or a marketing page without a reviewable experience.
 
 ---
 
-## MVP definition
+## Qualification rules (MVP)
 
-For the MVP, an **AI-native world** is an addressable interactive system that is
-**persistent or reproducible**, has a **bounded setting or rule system**, permits
-**users or agents to affect outcomes**, and uses **AI materially** in the environment,
-characters, narrative, simulation, or runtime behavior.
+An entry **qualifies** as an AI-native world when **all seven** criteria below are
+satisfied. Reviewers apply the checklist independently; disagreement on a single
+criterion should move the record to `pending_review` rather than forcing `qualifies`.
 
-Passive playback, generic tooling, and marketing-only pages are out of scope for the
-World entity even when they mention “worlds” in prose.
+| # | Criterion | Reviewer question | Typical evidence |
+|---|-----------|-------------------|------------------|
+| 1 | **Stable entry point** | Is there a public or reviewable URL, repo path, or registry record that resolves to the experience (not only a waitlist)? | Play/enter link, deploy instructions with reachable entry, well-known manifest |
+| 2 | **Meaningful interaction** | Can a user or agent change outcomes, state, or narrative — not only watch or read? | Interaction model copy, mechanics docs, live session |
+| 3 | **Bounded setting or rules** | Is there a setting, canon, simulation, or mechanics boundary — not unbounded general chat? | Lore, rules, state model, quest/mechanics pages |
+| 4 | **Persistence or reproducibility** | Does state persist across sessions **or** can a versioned config/seed reproduce the world? | Save slots, DB-backed state, tagged releases, `make reproduce SEED=` |
+| 5 | **Material AI role** | Is AI used materially at build time, runtime, or both — not a decorative label? | NPC/dialogue systems, procedural gen, agent policies |
+| 6 | **Identifiable creator or operator** | Is there a named creator, org, operator, or rights claimant (even if unverified)? | Byline, org footer, repo owner, registry publisher |
+| 7 | **Access and safety metadata** | Is there enough public metadata to evaluate entry (access, age, moderation contact, or explicit unknowns)? | Pricing/login notes, safety categories, moderation email — or honest `unknown` |
 
----
+### Qualification outcomes
 
-## Qualification criteria
+| `trust.qualification_status` | When to use |
+|------------------------------|-------------|
+| `qualifies` | All seven criteria met with observable or declared evidence |
+| `excluded` | One or more criteria fail; record `exclusion_reason` in trust metadata |
+| `pending_review` | Mixed or insufficient evidence; do not infer missing facts |
 
-A candidate must satisfy **all seven** criteria below. Reviewers mark each criterion
-`met`, `partial`, `unmet`, or `unknown`. A world **qualifies** only when every
-criterion is `met`. Any `unmet` criterion yields **excluded** with a documented
-`exclusion_reason`. `partial` or `unknown` on required evidence yields
-**pending_review** until resolved or excluded.
-
-| # | Criterion | Reviewer question | Typical positive signals | Typical exclusion signals |
-|---|-----------|-------------------|--------------------------|---------------------------|
-| 1 | **Stable entry point** | Can a scout open or reproduce a reviewable experience from a durable URL, repo tag, or published config? | Play/enter links, deploy docs with pinned version, registry homepage | Waitlist-only page, broken link, “coming soon” with no artifact |
-| 2 | **Meaningful interaction** | Can a user or agent change state, narrative, or outcomes — not only watch? | Quests, rooms, simulation ticks, choice branches | Static gallery, autoplay video, read-only docs |
-| 3 | **Bounded setting or rules** | Is there canon, mechanics, simulation rules, or a defined scenario boundary? | Lore files, rules docs, mechanics API, scenario config | Unbounded general chat with no world context |
-| 4 | **Persistence or reproducibility** | Is state saved across sessions or reproducible from version/seed/config? | Cloud saves, Postgres world state, `SEED=42` reproduce docs | Ephemeral demo with no stated model |
-| 5 | **Material AI role** | Is AI used in environment, characters, narrative, simulation, or runtime — not merely mentioned? | Runtime dialogue, procedural gen, agent policies | “Powered by AI” badge only; AI as optional skin |
-| 6 | **Identifiable creator or rights claimant** | Is there a named creator, operator, org, or rights holder to contact? | Creator line, operator footer, GitHub org, registry publisher | Anonymous drop with no claim path |
-| 7 | **Access and safety metadata** | Is there enough access, age, or safety context to evaluate entry? | Login requirements, region notes, moderation contact, content warnings | No entry constraints documented and none inferable |
-
-### Reviewer worksheet
-
-Two reviewers should independently complete the worksheet below. **Inter-rater agreement**
-on `qualifies` / `excluded` / `pending_review` is the acceptance gate for qualification
-consistency.
-
-```text
-World: ______________________   Canonical URL: ______________________
-Reviewer: ____________________   Date: ____________________
-
-[ ] 1 Entry point     met | partial | unmet | unknown   Notes: _______
-[ ] 2 Interaction     met | partial | unmet | unknown   Notes: _______
-[ ] 3 Bounded rules   met | partial | unmet | unknown   Notes: _______
-[ ] 4 Persistence     met | partial | unmet | unknown   Notes: _______
-[ ] 5 Material AI     met | partial | unmet | unknown   Notes: _______
-[ ] 6 Creator/rights  met | partial | unmet | unknown   Notes: _______
-[ ] 7 Access/safety   met | partial | unmet | unknown   Notes: _______
-
-Outcome: qualifies | excluded | pending_review
-Exclusion reason (if excluded): _________________________________
-```
-
-Store the outcome in manifest `trust.qualification_status` and optional
-`trust.exclusion_reason`. Do not infer criteria from model extraction alone without
-source evidence.
+Extractors and reviewers **must not invent** values for missing criteria. Unknown stays
+`unknown` with `source_kind: "unknown"` and `confidence: 0`.
 
 ---
 
-## Included examples
+## Included examples (World entities)
 
-These categories ** qualify** when all seven criteria are met:
+These categories **may qualify** when all seven criteria are met:
 
-| Category | Description | Example signals |
-|----------|-------------|-----------------|
-| Interactive narrative / character worlds | Branching or persistent character experiences | Scene/play links, canon files, runtime dialogue |
-| Explorable AI spatial environments | Walkable or navigable generated spaces | WebXR/desktop explore links, collision/state export |
-| Persistent agent societies / simulations | Multi-agent worlds with rules and state | Simulation dashboard, mechanics docs, agent policies |
-| Games / social worlds with material AI | Multiplayer or UGC with AI moderation or NPC fill | Join/play URLs, room state, AI moderation role |
-| Training / research simulations | Reproducible sims with world state and agents | Config hash, reproduce scripts, published rules |
+- Interactive narrative or character worlds (choice-driven scenes, persistent relationships)
+- Explorable AI-generated spatial environments (WebXR, desktop orbit, collision)
+- Persistent agent societies and simulations (multi-agent ticks, resource rules)
+- Games or social experiences with material AI behavior (NPC memory, AI hosts)
+- Training or research simulations with world state and agents (reproducible seeds)
 
 See positive fixtures under [fixtures/positive/](./fixtures/positive/).
 
@@ -102,60 +70,68 @@ See positive fixtures under [fixtures/positive/](./fixtures/positive/).
 ## Excluded from the World entity
 
 The following are **not** Worlds. They may appear as linked entities, sources, or
-discovery adjacency — not as the primary indexed World record.
+negative qualification fixtures — not as collapsed “world” records.
 
-| Exclusion class | Rationale | Example |
-|-----------------|-----------|---------|
-| Static AI media | No interaction or world state | Image/video gallery, generated prose ebook |
-| Single-purpose assistant | No bounded world context | Email/calendar chatbot |
-| Foundation model / prompt / dataset / generic tool | Infrastructure, not an experience | Model API docs, prompt marketplace |
-| Engine or platform as product only | Product listing without playable world instance | Game engine SDK download page |
-| Unaddressable demo | No stable reviewable entry | Local-only demo, expired preview |
-| Marketing-only page | Describes a world without experience or artifact | Waitlist landing with no reproducible build |
+| Exclusion | Rationale | Example fixture |
+|-----------|-----------|-----------------|
+| Static AI media | Passive playback; no interactive system | [negative-qualification/static-image-gallery.json](./fixtures/negative-qualification/static-image-gallery.json) |
+| Single-purpose assistant | No bounded world context or simulation | [negative-qualification/general-assistant.json](./fixtures/negative-qualification/general-assistant.json) |
+| Foundation model / prompt / dataset / generic tool | Infrastructure, not an experience | [negative-qualification/foundation-model-api.json](./fixtures/negative-qualification/foundation-model-api.json) |
+| Engine or platform as product only | SDK/editor without a playable world instance | [negative-qualification/game-engine-product.json](./fixtures/negative-qualification/game-engine-product.json) |
+| Unaddressable demo | No stable entry point | [negative-qualification/marketing-coming-soon.json](./fixtures/negative-qualification/marketing-coming-soon.json) |
 
-Manifests for excluded candidates use `trust.qualification_status: "excluded"` and a
-proven `trust.exclusion_reason`. See [fixtures/excluded/](./fixtures/excluded/).
-
----
-
-## Entity type taxonomy
-
-WorldGraph distinguishes these entity types. Only **World** is the primary object defined
-here; others are linked references in Manifest v0.
-
-| Entity type | Role | World relationship | Example |
-|-------------|------|--------------------|---------|
-| **World** | Primary indexed experience | — | Scene Alpha, Agent Colony |
-| **Platform** | Distribution or runtime host | `world_structure.platforms[]`, `linked_entities.platforms[]` | Web embed host, Discord guild template |
-| **Agent / Character** | Autonomous or playable actor in the world | `world_structure.agents_and_characters[]`, A2A card links | Quest NPC, lounge host agent |
-| **Creator / Organization** | Human or org that builds or operates | `identity.creator`, `identity.operator`, `identity.claimed_owner` | Aurora Labs, Arena Operators Guild |
-| **Asset / IP** | Licensed or reusable content | `world_structure.assets_and_dependencies[]`, C2PA on media | Character bible, licensed soundtrack |
-| **Engine / Model / Protocol** | Technical dependency (not a World) | `world_structure.engines[]`, `models[]`, `protocols[]` | WebXR, glTF export, specific LLM provider |
-
-**Do not** classify an engine SKU, MCP server package, or foundation model API as a World
-unless it also ships a specific playable or reproducible world instance with its own entry
-point and bounded experience.
+Marketing pages that **describe** a world but provide no experience or reproducible
+artifact are excluded under criterion 1.
 
 ---
 
-## Relationship to Manifest v0
+## Distinct entity types
 
-Qualification outcomes and entity boundaries are expressed in
-[World Manifest v0](./WORLD_MANIFEST_V0.md):
+WorldGraph treats the following as **separate linked types**. Do not merge them into a
+single vague “world” blob.
 
-- Required manifest fields are minimal for independent creators (name, URL, entry,
-  interaction, AI role, qualification status).
-- Optional economy and governance fields never block MVP publication.
-- Every populated factual field carries provenance; unknown stays unknown.
+| Entity type | Role | Linked from World manifest |
+|-------------|------|----------------------------|
+| **World** | Primary indexed interactive system | `identity.world_id`, `canonical_url` |
+| **Platform** | Distribution or runtime host (Roblox, Discord, web embed) | `world_structure.platforms[]`, `linked_entities.platforms[]` |
+| **Agent / Character** | In-world actors with skills or dialogue | `world_structure.agents_and_characters[]`, `linked_entities.agents[]` (A2A Agent Card URL when available) |
+| **Creator / Organization** | Human or org claiming operation or rights | `identity.creator`, `identity.operator`, `identity.claimed_owner`, `linked_entities.creators[]` |
+| **Asset / IP** | Media, models, lore files, licenses | `world_structure.assets[]`, `linked_entities.assets[]`, C2PA references on media |
 
-Machine validation: [world-manifest-v0.schema.json](./world-manifest-v0.schema.json)
-and `tests/test_world_manifest_v0.py`.
+Platforms, engines, agents, characters, creators, organizations, assets, and IP **link
+to** Worlds; they are not interchangeable with the World record.
 
 ---
 
-## Standards note
+## Reviewer workflow
 
-World Manifest v0 aligns with adjacent standards (A2A Agent Cards, MCP Registry metadata,
-C2PA, spatial-web interoperability claims) via reference and field mapping — it is **not**
-claimed as an industry standard in this milestone. See
-[STANDARDS_FIELD_MAPPING.md](./STANDARDS_FIELD_MAPPING.md).
+1. Fetch or load the declared entry point and canonical URL.
+2. Walk the seven-criterion checklist; cite `evidence_snippet` per populated field.
+3. Set `trust.qualification_status` to `qualifies`, `excluded`, or `pending_review`.
+4. For `excluded`, set `trust.exclusion_reason` (proven string) referencing the failed criterion.
+5. Never set `verification_status` beyond `unverified` from fetch-only observation.
+6. Prefer `unknown` over guessed license, pricing, or model names.
+
+Two reviewers should reach the same outcome on the same corpus entry when evidence is
+stable; persistent disagreement triggers `pending_review` and human escalation.
+
+---
+
+## Relationship to spike work
+
+Issue [#204](https://github.com/saberistic-team/agent-web/issues/204) spike extractors
+(`spike/worldgraph/`) produce minimal Manifest v0 snapshots aligned with this definition.
+Spike validation remains in `spike/worldgraph/manifest_schema.py`; canonical schema and
+fixtures for #199 live in this directory.
+
+---
+
+## Fixtures index
+
+| Path | Purpose |
+|------|---------|
+| [fixtures/positive/](./fixtures/positive/) | Three qualifying manifests (schema-valid) |
+| [fixtures/negative-structural/](./fixtures/negative-structural/) | Five structurally invalid manifests (schema rejects) |
+| [fixtures/negative-qualification/](./fixtures/negative-qualification/) | Five excluded worlds (schema-valid, `qualification_status: excluded`) |
+
+Validation tests: `tests/test_worldgraph_manifest_v0.py`.

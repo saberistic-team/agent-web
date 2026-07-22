@@ -1,0 +1,169 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "NovaEngine 5",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/negative/engine",
+        "evidence_snippet": "NovaEngine 5",
+        "confidence": 0.7,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://example-worlds.test/negative/engine",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/negative/engine",
+        "evidence_snippet": "https://example-worlds.test/negative/engine",
+        "confidence": 0.9,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Game engine and middleware SDK for developers.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/negative/engine",
+        "evidence_snippet": "Game engine and middleware SDK for developers.",
+        "confidence": 0.7,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "review",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/negative/engine",
+        "evidence_snippet": "not a qualifying world",
+        "confidence": 0.7,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "platform_product",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/negative/engine",
+        "evidence_snippet": "platform_product",
+        "confidence": 0.7,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://example-worlds.test/negative/engine/download",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example-worlds.test/negative/engine",
+          "evidence_snippet": "https://example-worlds.test/negative/engine/download",
+          "confidence": 0.85,
+          "observed_at": "2026-07-15T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "sdk_download",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/negative/engine",
+        "evidence_snippet": "sdk_download",
+        "confidence": 0.7,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Optional AI plugins; product is an engine, not a playable world instance.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/negative/engine",
+        "evidence_snippet": "Optional AI plugins; product is an engine, not a playable world instance.",
+        "confidence": 0.7,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "not_applicable",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/negative/engine",
+        "evidence_snippet": "Excluded entity",
+        "confidence": 0.5,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "excluded",
+    "exclusion_reason": {
+      "value": "Excluded: platform/engine product without a playable world instance.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/negative/engine",
+        "evidence_snippet": "Excluded: platform/engine product without a playable world instance.",
+        "confidence": 0.9,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

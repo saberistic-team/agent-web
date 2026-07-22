@@ -1,0 +1,169 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "AI Image Gallery",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/negative/image-gallery",
+        "evidence_snippet": "AI Image Gallery",
+        "confidence": 0.7,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://example-worlds.test/negative/image-gallery",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/negative/image-gallery",
+        "evidence_snippet": "https://example-worlds.test/negative/image-gallery",
+        "confidence": 0.9,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Browse static AI-generated images and videos. No interactive world or persistent state.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/negative/image-gallery",
+        "evidence_snippet": "Browse static AI-generated images and videos. No interactive world or persistent state.",
+        "confidence": 0.7,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "review",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/negative/image-gallery",
+        "evidence_snippet": "not a qualifying world",
+        "confidence": 0.7,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "static_media",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/negative/image-gallery",
+        "evidence_snippet": "static_media",
+        "confidence": 0.7,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://example-worlds.test/negative/image-gallery",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example-worlds.test/negative/image-gallery",
+          "evidence_snippet": "https://example-worlds.test/negative/image-gallery",
+          "confidence": 0.85,
+          "observed_at": "2026-07-15T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "passive_playback",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/negative/image-gallery",
+        "evidence_snippet": "passive_playback",
+        "confidence": 0.7,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Generates static images only; no runtime world behavior.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/negative/image-gallery",
+        "evidence_snippet": "Generates static images only; no runtime world behavior.",
+        "confidence": 0.7,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "not_applicable",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/negative/image-gallery",
+        "evidence_snippet": "Excluded entity",
+        "confidence": 0.5,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "excluded",
+    "exclusion_reason": {
+      "value": "Excluded criterion 2: passive media gallery without meaningful interaction or world state.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/negative/image-gallery",
+        "evidence_snippet": "Excluded criterion 2: passive media gallery without meaningful interaction or world state.",
+        "confidence": 0.9,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}
