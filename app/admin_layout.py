@@ -42,6 +42,12 @@ ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
         "summary": "Inbound triggers and intent scoring",
     },
     {
+        "label": "Targets",
+        "href": "/admin/targets",
+        "milestone": "Qualification workspace",
+        "summary": "Tier A/B/C lists with evidence gaps and freshness",
+    },
+    {
         "label": "Pipeline",
         "href": "/admin/pipeline",
         "milestone": "Pipeline operations",
@@ -118,6 +124,7 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     # Pipeline detail (Next action, Change stage, Log activity, timeline).
     "/admin/pipeline/11111111-1111-1111-1111-111111111111",
     "/admin/pipeline/11111111-1111-1111-1111-111111111111?error=validation&focus=expected_value_cents",
+    "/admin/targets/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa01",
     # ICP scoring list, rules editor, and company score detail fixtures.
     "/admin/signals/rules",
     "/admin/signals/11111111-1111-1111-1111-111111111111",

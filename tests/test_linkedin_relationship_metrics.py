@@ -20,7 +20,7 @@ OWNER = "Grace Hopper"
 CONTACT = "Ada Lovelace"
 REFERENCE = date(2024, 3, 15)
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.integration]
 
 
 def _message_row(
