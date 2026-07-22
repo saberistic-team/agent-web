@@ -1,0 +1,115 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "AI Image Gallery",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example.com/worldgraph-spike/negative/image-gallery",
+        "evidence_snippet": "AI Image Gallery",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://example.com/worldgraph-spike/negative/image-gallery",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example.com/worldgraph-spike/negative/image-gallery",
+        "evidence_snippet": "gallery landing URL",
+        "confidence": 0.9,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "static_media",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example.com/worldgraph-spike/negative/image-gallery",
+        "evidence_snippet": "static_media",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example.com/worldgraph-spike/negative/image-gallery",
+        "evidence_snippet": "published gallery",
+        "confidence": 0.5,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://example.com/worldgraph-spike/negative/image-gallery",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example.com/worldgraph-spike/negative/image-gallery",
+          "evidence_snippet": "view-only gallery page",
+          "confidence": 0.85,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "passive_viewing",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example.com/worldgraph-spike/negative/image-gallery",
+        "evidence_snippet": "scroll-only image gallery",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Images generated offline; no runtime AI in experience",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example.com/worldgraph-spike/negative/image-gallery",
+        "evidence_snippet": "static generated images only",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "build_time",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example.com/worldgraph-spike/negative/image-gallery",
+        "evidence_snippet": "build_time only",
+        "confidence": 0.6,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "excluded",
+    "exclusion_reason": "static_ai_media_only",
+    "claim_status": "unclaimed"
+  }
+}

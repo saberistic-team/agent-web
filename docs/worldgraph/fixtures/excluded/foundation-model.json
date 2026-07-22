@@ -1,0 +1,132 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "Foundation Model Card",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example.com/worldgraph-spike/negative/foundation-model",
+        "evidence_snippet": "Foundation Model Card",
+        "confidence": 0.83,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://example.com/worldgraph-spike/negative/foundation-model",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example.com/worldgraph-spike/negative/foundation-model",
+        "evidence_snippet": "model card URL",
+        "confidence": 0.9,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "foundation_model",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example.com/worldgraph-spike/negative/foundation-model",
+        "evidence_snippet": "foundation_model",
+        "confidence": 0.78,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example.com/worldgraph-spike/negative/foundation-model",
+        "evidence_snippet": "model weights release",
+        "confidence": 0.55,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://example.com/worldgraph-spike/negative/foundation-model/card",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example.com/worldgraph-spike/negative/foundation-model",
+          "evidence_snippet": "model card page",
+          "confidence": 0.76,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "documentation_only",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example.com/worldgraph-spike/negative/foundation-model",
+        "evidence_snippet": "read model card, download weights",
+        "confidence": 0.72,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Base model weights and training card — not an interactive world",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example.com/worldgraph-spike/negative/foundation-model",
+        "evidence_snippet": "foundation model artifact",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "build_time",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example.com/worldgraph-spike/negative/foundation-model",
+        "evidence_snippet": "build_time component",
+        "confidence": 0.6,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "excluded",
+    "exclusion_reason": "foundation_model_not_world",
+    "claim_status": "unclaimed"
+  },
+  "entity_links": {
+    "assets": [
+      {
+        "entity_type": "asset",
+        "label": "Foundation weights",
+        "url": "https://example.com/worldgraph-spike/negative/foundation-model/weights",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example.com/worldgraph-spike/negative/foundation-model",
+          "evidence_snippet": "model weights download",
+          "confidence": 0.7,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  }
+}
