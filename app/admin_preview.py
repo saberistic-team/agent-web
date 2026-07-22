@@ -2046,6 +2046,11 @@ AUDIT_ACTIONS = (
     "brief.convert",
     "research_record.create",
     "pipeline_activity.create",
+    "discovery.merge_decision",
+    "discovery.candidate.accept",
+    "discovery.candidate.reject",
+    "discovery.candidate.defer",
+    "discovery.candidate.bulk",
 )
 
 
@@ -2753,6 +2758,171 @@ PREVIEW_DISCOVERY_RUN_IDS = (
     UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb2"),
     UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb3"),
 )
+
+
+
+PREVIEW_DISCOVERY_CANDIDATE_IDS = (
+    UUID("11111111-1111-1111-1111-111111111101"),
+    UUID("11111111-1111-1111-1111-111111111102"),
+    UUID("11111111-1111-1111-1111-111111111103"),
+    UUID("11111111-1111-1111-1111-111111111104"),
+    UUID("11111111-1111-1111-1111-111111111105"),
+)
+PREVIEW_DISCOVERY_INBOX_RUN_ID = UUID("22222222-2222-2222-2222-222222222201")
+
+
+
+def build_preview_discovery_filter_metadata(
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> dict[str, object]:
+    rng = _resolve_rng(rng, "discovery_filter_metadata")
+    now = _resolve_now(now)
+    return {
+        "sources": ["fixture_api", "yc_rss", "sitemap_crawl"],
+        "runs": [
+            {
+                "id": str(PREVIEW_DISCOVERY_INBOX_RUN_ID),
+                "source_id": "fixture_api",
+                "started_at": now - timedelta(days=2),
+                "candidate_count": len(PREVIEW_DISCOVERY_CANDIDATE_IDS),
+                "status": "completed",
+            }
+        ],
+    }
+
+
+def build_preview_discovery_inbox(
+    *,
+    filters: dict[str, str | None] | None = None,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> list[dict[str, object]]:
+    rng = _resolve_rng(rng, "discovery_inbox")
+    now = _resolve_now(now)
+    filters = filters or {}
+    rows: list[dict[str, object]] = []
+    review_states = ("pending", "pending", "deferred", "pending", "accepted")
+    for index, candidate_id in enumerate(PREVIEW_DISCOVERY_CANDIDATE_IDS):
+        review_state = review_states[index % len(review_states)]
+        if filters.get("review_state") and filters["review_state"] != review_state:
+            continue
+        category = list(COMPANY_CATEGORIES)[index % len(COMPANY_CATEGORIES)]
+        if filters.get("category") and filters["category"] != category:
+            continue
+        freshness = rng.choice(("fresh", "recent", "aging", "stale"))
+        if filters.get("freshness") and filters["freshness"] != freshness:
+            continue
+        confidence = round(rng.uniform(0.45, 0.95), 2)
+        rows.append(
+            {
+                "id": candidate_id,
+                "name": COMPANY_NAMES[index % len(COMPANY_NAMES)],
+                "source_id": rng.choice(("fixture_api", "yc_rss")),
+                "run_id": str(PREVIEW_DISCOVERY_INBOX_RUN_ID),
+                "category": category,
+                "confidence": confidence,
+                "freshness": freshness,
+                "review_state": review_state,
+                "discovered_at": now - timedelta(days=index + 1),
+                "domain": f"{COMPANY_NAMES[index % len(COMPANY_NAMES)].split()[0].lower()}.example",
+            }
+        )
+    return rows
+
+
+def preview_discovery_candidate_exists(candidate_id: UUID) -> bool:
+    return candidate_id in PREVIEW_DISCOVERY_CANDIDATE_IDS
+
+
+def build_preview_discovery_candidate_detail(
+    candidate_id: UUID,
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> dict[str, object]:
+    rng = _resolve_rng(rng, f"discovery_candidate_detail:{candidate_id}")
+    now = _resolve_now(now)
+    index = PREVIEW_DISCOVERY_CANDIDATE_IDS.index(candidate_id)
+    name = COMPANY_NAMES[index % len(COMPANY_NAMES)]
+    domain = f"{name.split()[0].lower()}.example"
+    return {
+        "id": candidate_id,
+        "name": name,
+        "source_id": "fixture_api",
+        "run_id": str(PREVIEW_DISCOVERY_INBOX_RUN_ID),
+        "external_id": f"fixture_api:{index:04d}",
+        "evidence_fingerprint": f"preview-fp-{index:02d}",
+        "domain": domain,
+        "website": f"https://{domain}",
+        "category": list(COMPANY_CATEGORIES)[index % len(COMPANY_CATEGORIES)],
+        "confidence": round(rng.uniform(0.55, 0.92), 2),
+        "freshness": rng.choice(("fresh", "recent", "aging")),
+        "review_state": "deferred" if index == 2 else "pending",
+        "discovered_at": now - timedelta(days=index + 2),
+        "signals": ["hiring", "public launch"],
+        "evidence": {
+            "snippet": f"{name} raised a seed round and is hiring platform engineers.",
+            "observations": [
+                {
+                    "source_url": f"https://news.example.com/{index}",
+                    "raw_source_id": "fixture_api",
+                    "value": f"name={name}",
+                    "confidence": 0.86,
+                    "retrieved_at": (now - timedelta(days=index + 1)).isoformat(),
+                    "review_at": (now + timedelta(days=20)).isoformat(),
+                    "expires_at": (now + timedelta(days=80)).isoformat(),
+                }
+            ],
+        },
+        "conflicts": (
+            ["Domain mismatch with existing company Meridian Stack"]
+            if index == 1
+            else []
+        ),
+        "match_suggestions": [
+            {
+                "id": PREVIEW_COMPANY_POPULATED_ID,
+                "name": "Meridian Stack",
+                "domain": "meridian.example",
+            }
+        ]
+        if index in {1, 3}
+        else [],
+    }
+
+
+def build_preview_discovery_bulk_preview(
+    *,
+    action: str,
+    candidate_ids: list[str],
+    rng: random.Random | None = None,
+) -> dict[str, object]:
+    rng = _resolve_rng(rng, "discovery_bulk_preview")
+    selected = build_preview_discovery_inbox(rng=rng)
+    if candidate_ids:
+        selected = [row for row in selected if str(row["id"]) in candidate_ids] or selected[:2]
+    else:
+        selected = selected[:2]
+    return {
+        "action": action,
+        "count": len(selected),
+        "candidates": [
+            {
+                "id": str(row["id"]),
+                "name": row["name"],
+                "source_id": row["source_id"],
+                "domain": row.get("domain"),
+                "review_state": row.get("review_state"),
+            }
+            for row in selected
+        ],
+        "invalid_state_ids": [],
+        "preview_token": "preview-bulk-token",
+        "rejection_reason": "Not a fit for current ICP" if action == "reject" else None,
+        "deferred_until": None,
+    }
 
 
 def build_preview_discovery_runs(

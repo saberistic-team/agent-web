@@ -69,7 +69,7 @@ ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
         "label": "Discovery",
         "href": "/admin/discovery",
         "milestone": "Lead discovery",
-        "summary": "Prospect search and list building",
+        "summary": "Review discovered lead candidates and run history",
     },
     {
         "label": "Analytics",
@@ -138,6 +138,10 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/signals/11111111-1111-1111-1111-111111111111",
     "/admin/signals/22222222-2222-2222-2222-222222222222",
     "/admin/discovery/runs/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1",
+    "/admin/discovery/inbox",
+    "/admin/discovery/inbox/11111111-1111-1111-1111-111111111101",
+    "/admin/discovery/inbox/11111111-1111-1111-1111-111111111102",
+    "/admin/discovery/inbox/11111111-1111-1111-1111-111111111103",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).

@@ -970,4 +970,64 @@ CREATE INDEX IF NOT EXISTS idx_research_records_discovery_observation_key
     WHERE metadata ? 'discovery_observation_key';
 """,
     ),
+    Migration(
+        version="026",
+        name="discovery_inbox",
+        up_sql="""
+CREATE TABLE IF NOT EXISTS discovery_candidates (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    run_id UUID REFERENCES discovery_runs (id) ON DELETE SET NULL,
+    source_id TEXT NOT NULL,
+    external_id TEXT NOT NULL,
+    evidence_fingerprint TEXT NOT NULL,
+    name TEXT NOT NULL,
+    domain TEXT,
+    website TEXT,
+    category TEXT,
+    confidence NUMERIC(4, 3),
+    signals TEXT[] NOT NULL DEFAULT '{}',
+    evidence JSONB,
+    raw_payload JSONB,
+    conflicts JSONB,
+    match_suggestions JSONB,
+    review_state TEXT NOT NULL DEFAULT 'pending'
+        CHECK (review_state IN ('pending', 'accepted', 'rejected', 'deferred')),
+    deferred_until TIMESTAMPTZ,
+    rejection_reason TEXT,
+    linked_company_id UUID REFERENCES companies (id) ON DELETE SET NULL,
+    discovered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    reviewed_at TIMESTAMPTZ,
+    reviewed_by TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (source_id, external_id, evidence_fingerprint)
+);
+
+CREATE INDEX IF NOT EXISTS idx_discovery_candidates_inbox
+    ON discovery_candidates (review_state, discovered_at DESC);
+CREATE INDEX IF NOT EXISTS idx_discovery_candidates_source
+    ON discovery_candidates (source_id);
+CREATE INDEX IF NOT EXISTS idx_discovery_candidates_run
+    ON discovery_candidates (run_id);
+CREATE INDEX IF NOT EXISTS idx_discovery_candidates_category
+    ON discovery_candidates (category);
+CREATE INDEX IF NOT EXISTS idx_discovery_candidates_confidence
+    ON discovery_candidates (confidence);
+
+CREATE TABLE IF NOT EXISTS discovery_rejection_suppressions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    source_id TEXT NOT NULL,
+    external_id TEXT NOT NULL,
+    evidence_fingerprint TEXT NOT NULL,
+    rejection_reason TEXT NOT NULL,
+    rejected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    rejected_by TEXT NOT NULL,
+    candidate_id UUID REFERENCES discovery_candidates (id) ON DELETE SET NULL,
+    UNIQUE (source_id, external_id, evidence_fingerprint)
+);
+
+CREATE INDEX IF NOT EXISTS idx_discovery_rejection_suppressions_lookup
+    ON discovery_rejection_suppressions (source_id, external_id, evidence_fingerprint);
+""",
+    ),
 )

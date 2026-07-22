@@ -18,7 +18,7 @@ PREVIEW_ALLOW_HEADER = ", ".join(sorted(PREVIEW_ALLOWED_METHODS))
 # block below so their own ADMIN_PREVIEW_MODE branch (returning fixed mock
 # data) keeps working instead of being pre-empted by this guard.
 PREVIEW_SAFE_UNSAFE_METHOD_PATHS: frozenset[str] = frozenset(
-    {"/admin/imports/reconcile-preview", "/admin/discovery/reconcile-preview"}
+    {"/admin/imports/reconcile-preview", "/admin/discovery/reconcile-preview", "/admin/discovery/inbox/bulk/preview"}
 )
 
 # Production data-store and provider credentials that must stay empty in preview.

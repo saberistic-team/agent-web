@@ -78,6 +78,10 @@ ACTION_CONTACT_RESTORE = "contact.restore"
 ACTION_RESEARCH_RECORD_CREATE = "research_record.create"
 ACTION_PIPELINE_ACTIVITY_CREATE = "pipeline_activity.create"
 ACTION_DISCOVERY_MERGE_DECISION = "discovery.merge_decision"
+ACTION_DISCOVERY_CANDIDATE_ACCEPT = "discovery.candidate.accept"
+ACTION_DISCOVERY_CANDIDATE_REJECT = "discovery.candidate.reject"
+ACTION_DISCOVERY_CANDIDATE_DEFER = "discovery.candidate.defer"
+ACTION_DISCOVERY_CANDIDATE_BULK = "discovery.candidate.bulk"
 
 
 def _is_sensitive_key(key: str) -> bool:
@@ -654,6 +658,80 @@ def record_discovery_merge_decision(
         repository=repository,
     )
 
+
+
+def record_discovery_candidate_accept(
+    conn: psycopg.Connection,
+    *,
+    actor_context: ActorContext,
+    candidate_id: str,
+    summary_after: dict[str, Any] | None = None,
+    repository: AuditEventRepository | None = None,
+) -> dict[str, Any] | None:
+    return record_event(
+        conn,
+        actor_context=actor_context,
+        action=ACTION_DISCOVERY_CANDIDATE_ACCEPT,
+        entity_type="discovery_candidate",
+        entity_id=candidate_id,
+        summary_after=summary_after,
+        repository=repository,
+    )
+
+
+def record_discovery_candidate_reject(
+    conn: psycopg.Connection,
+    *,
+    actor_context: ActorContext,
+    candidate_id: str,
+    summary_after: dict[str, Any] | None = None,
+    repository: AuditEventRepository | None = None,
+) -> dict[str, Any] | None:
+    return record_event(
+        conn,
+        actor_context=actor_context,
+        action=ACTION_DISCOVERY_CANDIDATE_REJECT,
+        entity_type="discovery_candidate",
+        entity_id=candidate_id,
+        summary_after=summary_after,
+        repository=repository,
+    )
+
+
+def record_discovery_candidate_defer(
+    conn: psycopg.Connection,
+    *,
+    actor_context: ActorContext,
+    candidate_id: str,
+    summary_after: dict[str, Any] | None = None,
+    repository: AuditEventRepository | None = None,
+) -> dict[str, Any] | None:
+    return record_event(
+        conn,
+        actor_context=actor_context,
+        action=ACTION_DISCOVERY_CANDIDATE_DEFER,
+        entity_type="discovery_candidate",
+        entity_id=candidate_id,
+        summary_after=summary_after,
+        repository=repository,
+    )
+
+
+def record_discovery_candidate_bulk(
+    conn: psycopg.Connection,
+    *,
+    actor_context: ActorContext,
+    summary_after: dict[str, Any] | None = None,
+    repository: AuditEventRepository | None = None,
+) -> dict[str, Any] | None:
+    return record_event(
+        conn,
+        actor_context=actor_context,
+        action=ACTION_DISCOVERY_CANDIDATE_BULK,
+        entity_type="discovery_candidate",
+        summary_after=summary_after,
+        repository=repository,
+    )
 
 def pipeline_activity_audit_summary(
     *,

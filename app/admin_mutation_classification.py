@@ -142,6 +142,27 @@ ADMIN_MUTATION_ROUTE_CLASSIFICATIONS: dict[tuple[str, str], tuple[MutationClassi
         "Working-list save persists company IDs only on qualification_working_lists / "
         "qualification_working_list_items; no audit_events entry in this release.",
     ),
+    ("POST", "/admin/discovery/inbox/{candidate_id}/accept"): (
+        "required_immutable_business_audit",
+        "Discovery accept emits discovery.candidate.accept with bounded IDs and outcome.",
+    ),
+    ("POST", "/admin/discovery/inbox/{candidate_id}/reject"): (
+        "required_immutable_business_audit",
+        "Discovery reject emits discovery.candidate.reject with suppression metadata.",
+    ),
+    ("POST", "/admin/discovery/inbox/{candidate_id}/defer"): (
+        "required_immutable_business_audit",
+        "Discovery defer emits discovery.candidate.defer with review date only.",
+    ),
+    ("POST", "/admin/discovery/inbox/bulk/preview"): (
+        "intentionally_unaudited",
+        "Read-only bulk preview computes candidate summaries without persistence.",
+    ),
+    ("POST", "/admin/discovery/inbox/bulk/commit"): (
+        "required_immutable_business_audit",
+        "Bulk commit emits discovery.candidate.bulk plus per-candidate action audits.",
+    ),
+
 }
 
 

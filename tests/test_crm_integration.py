@@ -100,10 +100,10 @@ def test_apply_migrations_records_schema_versions() -> None:
     cur.fetchall.return_value = []
 
     versions = apply_migrations(conn)
-    assert versions == ["001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021", "022", "023", "024", "025"]
+    assert versions == ["001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021", "022", "023", "024", "025", "026"]
     insert_calls = [
         call
         for call in cur.execute.call_args_list
         if "schema_migrations" in str(call.args[0]) and "INSERT" in str(call.args[0])
     ]
-    assert len(insert_calls) == 25
+    assert len(insert_calls) == 26

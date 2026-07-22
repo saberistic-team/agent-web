@@ -19,6 +19,7 @@ _READ_ONLY_PREVIEW_ROUTES = frozenset(
     {
         ("POST", "/admin/imports/reconcile-preview"),
         ("POST", "/admin/discovery/reconcile-preview"),
+        ("POST", "/admin/discovery/inbox/bulk/preview"),
     }
 )
 
@@ -141,6 +142,27 @@ ADMIN_CSRF_ROUTE_POLICIES: dict[tuple[str, str], tuple[CsrfPolicy, str]] = {
         "session_csrf_required",
         "Qualification working-list save requires a session-bound CSRF token in the form body.",
     ),
+    ("POST", "/admin/discovery/inbox/{candidate_id}/accept"): (
+        "session_csrf_required",
+        "Discovery accept requires a session-bound CSRF token in the form body.",
+    ),
+    ("POST", "/admin/discovery/inbox/{candidate_id}/reject"): (
+        "session_csrf_required",
+        "Discovery reject requires a session-bound CSRF token in the form body.",
+    ),
+    ("POST", "/admin/discovery/inbox/{candidate_id}/defer"): (
+        "session_csrf_required",
+        "Discovery defer requires a session-bound CSRF token in the form body.",
+    ),
+    ("POST", "/admin/discovery/inbox/bulk/preview"): (
+        "exempt_read_only_preview",
+        "Bulk preview performs no persistence; preview mode denies unsafe methods except allowlisted read-only previews.",
+    ),
+    ("POST", "/admin/discovery/inbox/bulk/commit"): (
+        "session_csrf_required",
+        "Bulk commit requires a session-bound CSRF token in the form body.",
+    ),
+
 }
 
 

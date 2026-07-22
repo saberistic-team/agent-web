@@ -1015,3 +1015,42 @@ def test_render_preview_imports_main_includes_outcomes() -> None:
     assert "unchanged" in html
     assert "conflict" in html
     assert "absent from this export are preserved" in html
+
+def test_preview_discovery_inbox_stable_with_seed() -> None:
+    from app.admin_preview import build_preview_discovery_inbox
+
+    a = build_preview_discovery_inbox(rng=random.Random(42))
+    b = build_preview_discovery_inbox(rng=random.Random(42))
+    assert a == b
+    assert len(a) >= 3
+
+
+@pytest.mark.unit
+
+def test_preview_discovery_candidate_detail_contains_evidence() -> None:
+    from app.admin_preview import (
+        PREVIEW_DISCOVERY_CANDIDATE_IDS,
+        build_preview_discovery_candidate_detail,
+    )
+
+    candidate = build_preview_discovery_candidate_detail(PREVIEW_DISCOVERY_CANDIDATE_IDS[0])
+    assert candidate["evidence"]["snippet"]
+    assert candidate["match_suggestions"] or candidate["conflicts"] is not None
+
+
+@pytest.mark.unit
+
+def test_preview_discovery_inbox_route_html() -> None:
+    from app.admin_preview import build_preview_discovery_filter_metadata, build_preview_discovery_inbox
+    from app.admin_discovery_pages import render_discovery_inbox_page
+
+    html = render_discovery_inbox_page(
+        candidates=build_preview_discovery_inbox(rng=random.Random(7)),
+        filters={"review_state": "pending"},
+        filter_metadata=build_preview_discovery_filter_metadata(rng=random.Random(7)),
+        csrf_token="preview-csrf",
+        admin_username="preview",
+        preview_banner="Preview data — not production",
+    )
+    assert "Review inbox" in html
+    assert "Northwind Labs" in html or "Helios Rail" in html
