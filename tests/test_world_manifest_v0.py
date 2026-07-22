@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from jsonschema import Draft202012Validator
 
-from spike.worldgraph.manifest_schema import ManifestValidationError, validate_manifest_v0
+from spike.worldgraph.manifest_schema import validate_manifest_v0
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "docs" / "worldgraph" / "world-manifest-v0.schema.json"
@@ -16,6 +16,26 @@ POSITIVE_FIXTURES_DIR = REPO_ROOT / "docs" / "worldgraph" / "fixtures" / "positi
 NEGATIVE_FIXTURES_DIR = REPO_ROOT / "docs" / "worldgraph" / "fixtures" / "negative"
 WORLD_DEFINITION_PATH = REPO_ROOT / "docs" / "worldgraph" / "WORLD_DEFINITION.md"
 WORLD_MANIFEST_DOC_PATH = REPO_ROOT / "docs" / "worldgraph" / "WORLD_MANIFEST_V0.md"
+
+EXCLUSION_FIXTURES = frozenset(
+    {
+        "excluded-assistant.json",
+        "excluded-static-gallery.json",
+        "excluded-engine-product.json",
+        "excluded-foundation-model.json",
+        "excluded-marketing-waitlist.json",
+    }
+)
+
+STRUCTURAL_NEGATIVE_FIXTURES = frozenset(
+    {
+        "structural-empty-entry-points.json",
+        "structural-invalid-schema-version.json",
+        "structural-missing-ai-role.json",
+        "structural-missing-trust.json",
+        "structural-verified-unknown.json",
+    }
+)
 
 
 def _load_schema() -> dict:
@@ -56,6 +76,8 @@ def test_positive_fixture_count() -> None:
 def test_negative_fixture_count() -> None:
     fixtures = sorted(NEGATIVE_FIXTURES_DIR.glob("*.json"))
     assert len(fixtures) >= 5
+    assert len([path for path in fixtures if path.name in EXCLUSION_FIXTURES]) >= 5
+    assert len([path for path in fixtures if path.name in STRUCTURAL_NEGATIVE_FIXTURES]) >= 5
 
 
 @pytest.mark.unit
@@ -72,20 +94,44 @@ def test_positive_fixtures_validate_against_json_schema(
     errors = sorted(schema_validator.iter_errors(manifest), key=lambda err: err.path)
     assert not errors, [error.message for error in errors]
     validate_manifest_v0(manifest)
+    assert manifest["trust"]["qualification_status"] == "qualifies"
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
     "fixture_path",
-    sorted(NEGATIVE_FIXTURES_DIR.glob("*.json")),
+    sorted(path for path in NEGATIVE_FIXTURES_DIR.glob("*.json") if path.name in EXCLUSION_FIXTURES),
     ids=lambda path: path.name,
 )
-def test_negative_fixtures_fail_json_schema(
+def test_exclusion_fixtures_validate_but_are_excluded(
     schema_validator: Draft202012Validator,
     fixture_path: Path,
 ) -> None:
     manifest = _load_fixture(fixture_path)
-    assert any(schema_validator.iter_errors(manifest))
+    errors = sorted(schema_validator.iter_errors(manifest), key=lambda err: err.path)
+    assert not errors, [error.message for error in errors]
+    validate_manifest_v0(manifest)
+    assert manifest["trust"]["qualification_status"] == "excluded"
+    assert isinstance(manifest["trust"]["exclusion_reason"], str)
+    assert manifest["trust"]["exclusion_reason"]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "fixture_path",
+    sorted(
+        path
+        for path in NEGATIVE_FIXTURES_DIR.glob("*.json")
+        if path.name not in EXCLUSION_FIXTURES
+    ),
+    ids=lambda path: path.name,
+)
+def test_structural_negative_fixtures_fail_json_schema(
+    schema_validator: Draft202012Validator,
+    fixture_path: Path,
+) -> None:
+    manifest = _load_fixture(fixture_path)
+    assert any(schema_validator.iter_errors(manifest)), fixture_path.name
 
 
 @pytest.mark.unit
@@ -107,7 +153,7 @@ def test_schema_entity_types_are_distinct() -> None:
 
 @pytest.mark.unit
 def test_excluded_manifest_requires_exclusion_reason(schema_validator: Draft202012Validator) -> None:
-    manifest = _load_fixture(POSITIVE_FIXTURES_DIR / "narrative-scene-alpha.json")
+    manifest = _load_fixture(POSITIVE_FIXTURES_DIR / "001-narrative-scene-alpha.json")
     manifest["trust"]["qualification_status"] = "excluded"
     manifest["trust"].pop("exclusion_reason", None)
     assert any(schema_validator.iter_errors(manifest))

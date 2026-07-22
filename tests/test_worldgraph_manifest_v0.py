@@ -90,7 +90,8 @@ def test_exclusion_fixtures_validate_but_are_excluded(fixture_path: Path) -> Non
     manifest = load_fixture(fixture_path)
     jsonschema.validate(instance=manifest, schema=schema)
     assert manifest["trust"]["qualification_status"] == "excluded"
-    assert manifest["trust"]["exclusion_reason"]["value"] != "unknown"
+    assert isinstance(manifest["trust"]["exclusion_reason"], str)
+    assert manifest["trust"]["exclusion_reason"] != "unknown"
 
 
 @pytest.mark.unit

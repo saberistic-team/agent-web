@@ -1,46 +1,35 @@
 {
   "schema_version": "world-manifest-v0",
   "identity": {
-    "world_id": {
-      "value": "unknown",
-      "provenance": {
-        "source_kind": "unknown",
-        "source_url": null,
-        "evidence_snippet": null,
-        "confidence": 0,
-        "observed_at": "2026-07-22T00:00:00+00:00",
-        "verification_status": "unverified"
-      }
-    },
     "name": {
       "value": "Agent Colony",
       "provenance": {
         "source_kind": "source_observation",
-        "source_url": "https://example-worlds.test/sim/agent-colony",
-        "evidence_snippet": "Agent Colony",
-        "confidence": 0.8,
+        "source_url": "https://example.com/worldgraph-spike/sim/agent-colony",
+        "evidence_snippet": "Agent Colony — persistent multi-agent society",
+        "confidence": 0.91,
         "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }
     },
     "canonical_url": {
-      "value": "https://example-worlds.test/sim/agent-colony",
+      "value": "https://example.com/worldgraph-spike/sim/agent-colony",
       "provenance": {
         "source_kind": "source_observation",
-        "source_url": "https://example-worlds.test/sim/agent-colony",
-        "evidence_snippet": "https://example-worlds.test/sim/agent-colony",
+        "source_url": "https://example.com/worldgraph-spike/sim/agent-colony",
+        "evidence_snippet": "https://example.com/worldgraph-spike/sim/agent-colony",
         "confidence": 0.95,
         "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }
     },
     "summary": {
-      "value": "Multi-agent society simulation with persistent world state and emergent diplomacy.",
+      "value": "Multi-agent society simulation with persistent world state and emergent social dynamics.",
       "provenance": {
         "source_kind": "source_observation",
-        "source_url": "https://example-worlds.test/sim/agent-colony",
-        "evidence_snippet": "Multi-agent society simulation",
-        "confidence": 0.8,
+        "source_url": "https://example.com/worldgraph-spike/sim/agent-colony",
+        "evidence_snippet": "multi-agent society simulation",
+        "confidence": 0.88,
         "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }
@@ -49,82 +38,137 @@
       "value": "published",
       "provenance": {
         "source_kind": "derived",
-        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "source_url": "https://example.com/worldgraph-spike/sim/agent-colony",
         "evidence_snippet": "published",
-        "confidence": 0.7,
-        "observed_at": "2026-07-22T00:00:00+00:00",
-        "verification_status": "unverified"
-      }
-    },
-    "version": {
-      "value": "unknown",
-      "provenance": {
-        "source_kind": "unknown",
-        "source_url": null,
-        "evidence_snippet": null,
-        "confidence": 0,
+        "confidence": 0.65,
         "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }
     },
     "world_type": {
-      "value": "simulation",
+      "value": "agent_simulation",
       "provenance": {
-        "source_kind": "derived",
-        "source_url": "https://example-worlds.test/sim/agent-colony",
-        "evidence_snippet": "simulation",
-        "confidence": 0.8,
+        "source_kind": "source_observation",
+        "source_url": "https://example.com/worldgraph-spike/sim/agent-colony",
+        "evidence_snippet": "agent_simulation",
+        "confidence": 0.9,
         "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }
     },
-    "modalities": [
+    "creator": {
+      "value": "Colony Research Group",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example.com/worldgraph-spike/sim/agent-colony",
+        "evidence_snippet": "Creator: Colony Research Group",
+        "confidence": 0.82,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
       {
-        "value": "text",
+        "value": "https://example-worlds.test/sim/agent-colony/run",
         "provenance": {
           "source_kind": "source_observation",
-          "source_url": null,
-          "evidence_snippet": null,
-          "confidence": 0.8,
-          "observed_at": "2026-07-22T00:00:00+00:00",
-          "verification_status": "unverified"
-        }
-      },
-      {
-        "value": "choice_driven",
-        "provenance": {
-          "source_kind": "source_observation",
-          "source_url": null,
-          "evidence_snippet": null,
-          "confidence": 0.8,
+          "source_url": "https://example.com/worldgraph-spike/sim/agent-colony",
+          "evidence_snippet": "Run simulation",
+          "confidence": 0.93,
           "observed_at": "2026-07-22T00:00:00+00:00",
           "verification_status": "unverified"
         }
       }
     ],
-    "creator": {
-      "value": "unknown",
+    "interaction_model": {
+      "value": "agent_society_observation_and_steering",
       "provenance": {
-        "source_kind": "unknown",
-        "source_url": null,
-        "evidence_snippet": null,
-        "confidence": 0,
+        "source_kind": "source_observation",
+        "source_url": "https://example.com/worldgraph-spike/sim/agent-colony",
+        "evidence_snippet": "steer colony policies and observe emergent behavior",
+        "confidence": 0.8,
         "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }
     },
-    "operator": {
-      "value": "unknown",
+    "persistence_model": {
+      "value": "persistent_world_db_with_reproducible_seeds",
       "provenance": {
-        "source_kind": "unknown",
-        "source_url": null,
-        "evidence_snippet": null,
-        "confidence": 0,
+        "source_kind": "source_observation",
+        "source_url": "https://example.com/worldgraph-spike/sim/agent-colony",
+        "evidence_snippet": "persistent world state",
+        "confidence": 0.87,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Synthetic colony with resource constraints",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example.com/worldgraph-spike/sim/agent-colony",
+        "evidence_snippet": "colony simulation",
+        "confidence": 0.75,
         "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }
     },
-    "claimed_owner": {
+    "rules_or_mechanics": {
+      "value": "Agent action economy, resource limits, social norms",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example.com/worldgraph-spike/sim/agent-colony",
+        "evidence_snippet": "simulation rules",
+        "confidence": 0.78,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "state_model": {
+      "value": "Colony inventory, agent relationships, policy flags",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example.com/worldgraph-spike/sim/agent-colony",
+        "evidence_snippet": "world state",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "entity_type": "agent",
+        "entity_id": "urn:worldgraph:agent:colony-resident",
+        "display_name": {
+          "value": "Colony resident agents",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://example.com/worldgraph-spike/sim/agent-colony",
+            "evidence_snippet": "multi-agent society",
+            "confidence": 0.85,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "reference_url": {
+          "value": "https://example.com/.well-known/agent-colony-card.json",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://example.com/worldgraph-spike/sim/agent-colony",
+            "evidence_snippet": "A2A agent card link",
+            "confidence": 0.6,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "external_standard": "a2a_agent_card"
+      }
+    ],
+    "governance": {
       "value": "unknown",
       "provenance": {
         "source_kind": "unknown",
@@ -136,227 +180,14 @@
       }
     }
   },
-  "experience": {
-    "entry_points": [
-      {
-        "value": "https://example-worlds.test/sim/agent-colony/watch",
-        "provenance": {
-          "source_kind": "source_observation",
-          "source_url": "https://example-worlds.test/sim/agent-colony",
-          "evidence_snippet": "Simulation dashboard",
-          "confidence": 0.8,
-          "observed_at": "2026-07-22T00:00:00+00:00",
-          "verification_status": "unverified"
-        }
-      }
-    ],
-    "supported_devices": [
-      {
-        "value": "desktop",
-        "provenance": {
-          "source_kind": "source_observation",
-          "source_url": null,
-          "evidence_snippet": null,
-          "confidence": 0.8,
-          "observed_at": "2026-07-22T00:00:00+00:00",
-          "verification_status": "unverified"
-        }
-      },
-      {
-        "value": "mobile",
-        "provenance": {
-          "source_kind": "source_observation",
-          "source_url": null,
-          "evidence_snippet": null,
-          "confidence": 0.8,
-          "observed_at": "2026-07-22T00:00:00+00:00",
-          "verification_status": "unverified"
-        }
-      }
-    ],
-    "access_requirements": {
-      "value": "web_login_optional",
-      "provenance": {
-        "source_kind": "source_observation",
-        "source_url": null,
-        "evidence_snippet": null,
-        "confidence": 0.6,
-        "observed_at": "2026-07-22T00:00:00+00:00",
-        "verification_status": "unverified"
-      }
-    },
-    "pricing": {
-      "value": "free",
-      "provenance": {
-        "source_kind": "source_observation",
-        "source_url": null,
-        "evidence_snippet": null,
-        "confidence": 0.6,
-        "observed_at": "2026-07-22T00:00:00+00:00",
-        "verification_status": "unverified"
-      }
-    },
-    "availability": {
-      "value": "public",
-      "provenance": {
-        "source_kind": "source_observation",
-        "source_url": null,
-        "evidence_snippet": null,
-        "confidence": 0.6,
-        "observed_at": "2026-07-22T00:00:00+00:00",
-        "verification_status": "unverified"
-      }
-    },
-    "region_restrictions": {
-      "value": "unknown",
-      "provenance": {
-        "source_kind": "unknown",
-        "source_url": null,
-        "evidence_snippet": null,
-        "confidence": 0,
-        "observed_at": "2026-07-22T00:00:00+00:00",
-        "verification_status": "unverified"
-      }
-    },
-    "age_guidance": {
-      "value": "unknown",
-      "provenance": {
-        "source_kind": "unknown",
-        "source_url": null,
-        "evidence_snippet": null,
-        "confidence": 0,
-        "observed_at": "2026-07-22T00:00:00+00:00",
-        "verification_status": "unverified"
-      }
-    },
-    "interaction_model": {
-      "value": "simulation_ticks_with_player_overrides",
-      "provenance": {
-        "source_kind": "source_observation",
-        "source_url": "https://example-worlds.test/sim/agent-colony",
-        "evidence_snippet": "Agents operate under published mechanics",
-        "confidence": 0.8,
-        "observed_at": "2026-07-22T00:00:00+00:00",
-        "verification_status": "unverified"
-      }
-    },
-    "persistence_model": {
-      "value": "persistent_world_state_per_tick",
-      "provenance": {
-        "source_kind": "source_observation",
-        "source_url": "https://example-worlds.test/sim/agent-colony",
-        "evidence_snippet": "persistent world state",
-        "confidence": 0.8,
-        "observed_at": "2026-07-22T00:00:00+00:00",
-        "verification_status": "unverified"
-      }
-    },
-    "supported_languages": [
-      {
-        "value": "en",
-        "provenance": {
-          "source_kind": "source_observation",
-          "source_url": null,
-          "evidence_snippet": null,
-          "confidence": 0.8,
-          "observed_at": "2026-07-22T00:00:00+00:00",
-          "verification_status": "unverified"
-        }
-      }
-    ]
-  },
-  "world_structure": {
-    "setting": {
-      "value": "resource_scarcity_colony",
-      "provenance": {
-        "source_kind": "source_observation",
-        "source_url": null,
-        "evidence_snippet": null,
-        "confidence": 0.55,
-        "observed_at": "2026-07-22T00:00:00+00:00",
-        "verification_status": "unverified"
-      }
-    },
-    "rules_or_mechanics": {
-      "value": "published_mechanics_docs",
-      "provenance": {
-        "source_kind": "source_observation",
-        "source_url": null,
-        "evidence_snippet": null,
-        "confidence": 0.6,
-        "observed_at": "2026-07-22T00:00:00+00:00",
-        "verification_status": "unverified"
-      }
-    },
-    "state_model": {
-      "value": "tick_based_world_graph",
-      "provenance": {
-        "source_kind": "source_observation",
-        "source_url": null,
-        "evidence_snippet": null,
-        "confidence": 0.55,
-        "observed_at": "2026-07-22T00:00:00+00:00",
-        "verification_status": "unverified"
-      }
-    },
-    "agents_and_characters": [
-      {
-        "entity_type": "agent",
-        "display_name": {
-          "value": "Colony Planner",
-          "provenance": {
-            "source_kind": "source_observation",
-            "source_url": null,
-            "evidence_snippet": null,
-            "confidence": 0.8,
-            "observed_at": "2026-07-22T00:00:00+00:00",
-            "verification_status": "unverified"
-          }
-        },
-        "reference_url": {
-          "value": "https://example-worlds.test/.well-known/agent-colony-card.json",
-          "provenance": {
-            "source_kind": "source_observation",
-            "source_url": null,
-            "evidence_snippet": null,
-            "confidence": 0.5,
-            "observed_at": "2026-07-22T00:00:00+00:00",
-            "verification_status": "unverified"
-          }
-        },
-        "a2a_agent_card_url": {
-          "value": "https://example-worlds.test/.well-known/agent-colony-card.json",
-          "provenance": {
-            "source_kind": "source_observation",
-            "source_url": null,
-            "evidence_snippet": null,
-            "confidence": 0.5,
-            "observed_at": "2026-07-22T00:00:00+00:00",
-            "verification_status": "unverified"
-          }
-        },
-        "mcp_server_uri": {
-          "value": "unknown",
-          "provenance": {
-            "source_kind": "unknown",
-            "source_url": null,
-            "evidence_snippet": null,
-            "confidence": 0,
-            "observed_at": "2026-07-22T00:00:00+00:00",
-            "verification_status": "unverified"
-          }
-        }
-      }
-    ]
-  },
   "ai_role": {
     "material_ai_role": {
-      "value": "AI controls agent planning each simulation tick.",
+      "value": "Autonomous agents plan, trade, and negotiate within simulation rules",
       "provenance": {
         "source_kind": "source_observation",
-        "source_url": "https://example-worlds.test/sim/agent-colony",
-        "evidence_snippet": "AI controls agent planning",
-        "confidence": 0.8,
+        "source_url": "https://example.com/worldgraph-spike/sim/agent-colony",
+        "evidence_snippet": "autonomous agents",
+        "confidence": 0.9,
         "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }
@@ -365,19 +196,8 @@
       "value": "runtime",
       "provenance": {
         "source_kind": "derived",
-        "source_url": "https://example-worlds.test/sim/agent-colony",
+        "source_url": "https://example.com/worldgraph-spike/sim/agent-colony",
         "evidence_snippet": "runtime",
-        "confidence": 0.8,
-        "observed_at": "2026-07-22T00:00:00+00:00",
-        "verification_status": "unverified"
-      }
-    },
-    "agent_controlled_elements": {
-      "value": "agent_planning_policies",
-      "provenance": {
-        "source_kind": "source_observation",
-        "source_url": null,
-        "evidence_snippet": null,
         "confidence": 0.8,
         "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
@@ -395,58 +215,12 @@
           "verification_status": "unverified"
         }
       }
-    ],
-    "human_control_boundaries": {
-      "value": "unknown",
-      "provenance": {
-        "source_kind": "unknown",
-        "source_url": null,
-        "evidence_snippet": null,
-        "confidence": 0,
-        "observed_at": "2026-07-22T00:00:00+00:00",
-        "verification_status": "unverified"
-      }
-    }
+    ]
   },
   "trust": {
     "qualification_status": "qualifies",
     "claim_status": "unclaimed",
     "license_status": {
-      "value": "unknown",
-      "provenance": {
-        "source_kind": "unknown",
-        "source_url": null,
-        "evidence_snippet": null,
-        "confidence": 0,
-        "observed_at": "2026-07-22T00:00:00+00:00",
-        "verification_status": "unverified"
-      }
-    },
-    "commercial_use_status": {
-      "value": "unknown",
-      "provenance": {
-        "source_kind": "unknown",
-        "source_url": null,
-        "evidence_snippet": null,
-        "confidence": 0,
-        "observed_at": "2026-07-22T00:00:00+00:00",
-        "verification_status": "unverified"
-      }
-    },
-    "content_safety_categories": [
-      {
-        "value": "unknown",
-        "provenance": {
-          "source_kind": "unknown",
-          "source_url": null,
-          "evidence_snippet": null,
-          "confidence": 0,
-          "observed_at": "2026-07-22T00:00:00+00:00",
-          "verification_status": "unverified"
-        }
-      }
-    ],
-    "moderation_contact": {
       "value": "unknown",
       "provenance": {
         "source_kind": "unknown",
@@ -472,46 +246,24 @@
   "discovery": {
     "tags": [
       {
-        "value": "simulation",
+        "value": "agent_simulation",
         "provenance": {
-          "source_kind": "source_observation",
-          "source_url": null,
-          "evidence_snippet": null,
-          "confidence": 0.8,
-          "observed_at": "2026-07-22T00:00:00+00:00",
-          "verification_status": "unverified"
-        }
-      },
-      {
-        "value": "multi_agent",
-        "provenance": {
-          "source_kind": "source_observation",
-          "source_url": null,
-          "evidence_snippet": null,
-          "confidence": 0.8,
+          "source_kind": "derived",
+          "source_url": "https://example.com/worldgraph-spike/sim/agent-colony",
+          "evidence_snippet": "agent_simulation",
+          "confidence": 0.95,
           "observed_at": "2026-07-22T00:00:00+00:00",
           "verification_status": "unverified"
         }
       }
     ],
-    "semantic_description": {
-      "value": "Persistent agent society with resource rules and emergent diplomacy.",
-      "provenance": {
-        "source_kind": "source_observation",
-        "source_url": "https://example-worlds.test/sim/agent-colony",
-        "evidence_snippet": "agent society simulation",
-        "confidence": 0.8,
-        "observed_at": "2026-07-22T00:00:00+00:00",
-        "verification_status": "unverified"
-      }
-    },
     "primary_call_to_action": {
       "value": "play",
       "provenance": {
         "source_kind": "source_observation",
-        "source_url": null,
-        "evidence_snippet": null,
-        "confidence": 0.8,
+        "source_url": "https://example.com/worldgraph-spike/sim/agent-colony",
+        "evidence_snippet": "Run simulation",
+        "confidence": 0.88,
         "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }

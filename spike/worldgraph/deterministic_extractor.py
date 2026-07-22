@@ -136,6 +136,11 @@ class DeterministicExtractor:
                 "qualification_status": qualification_status,
                 "claim_status": "unclaimed",
                 "license_status": unknown_field(),
+                **(
+                    {"exclusion_reason": exclusion_reason}
+                    if qualification_status == "excluded" and exclusion_reason
+                    else {}
+                ),
             },
             "discovery": {
                 "tags": [proven(source_id, source_kind="derived", source_url=canonical_url, evidence_snippet=source_id, confidence=1.0)],

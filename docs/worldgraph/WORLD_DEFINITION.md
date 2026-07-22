@@ -145,8 +145,9 @@ Authoritative manifest examples for schema validation live under
 
 | Kind | Path | Purpose |
 |------|------|---------|
-| Positive (≥3) | `fixtures/positive/*.json` | Valid World Manifest v0 snapshots |
-| Negative (≥5) | `fixtures/negative/*.json` | Structurally invalid manifests rejected by JSON Schema |
+| Positive (≥3) | `fixtures/positive/*.json` | Valid World Manifest v0 snapshots (`qualification_status: qualifies`) |
+| Exclusion (≥5) | `fixtures/negative/excluded-*.json` | Schema-valid manifests with `qualification_status: excluded` |
+| Structural (≥5) | `fixtures/negative/structural-*.json` (and `neg-*.json`) | Invalid manifests rejected by JSON Schema |
 
 Qualification examples in the technical spike corpus
 (`docs/worldgraph/spike/corpus_sources.json`) complement but do not replace these

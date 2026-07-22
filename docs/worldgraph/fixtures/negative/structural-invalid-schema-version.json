@@ -1,13 +1,13 @@
 {
-  "schema_version": "world-manifest-v99",
+  "schema_version": "world-manifest-v999",
   "identity": {
     "world_id": {
-      "value": "unknown",
+      "value": "urn:worldgraph:world:scene-alpha",
       "provenance": {
-        "source_kind": "unknown",
-        "source_url": null,
-        "evidence_snippet": null,
-        "confidence": 0,
+        "source_kind": "derived",
+        "source_url": "https://example.com/worldgraph-spike/narrative/scene-alpha",
+        "evidence_snippet": "Derived from canonical URL slug scene-alpha",
+        "confidence": 1.0,
         "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }
@@ -16,19 +16,19 @@
       "value": "Scene Alpha",
       "provenance": {
         "source_kind": "source_observation",
-        "source_url": "https://example-worlds.test/narrative/scene-alpha",
-        "evidence_snippet": "Scene Alpha",
-        "confidence": 0.8,
+        "source_url": "https://example.com/worldgraph-spike/narrative/scene-alpha",
+        "evidence_snippet": "Scene Alpha \u2014 Interactive AI Character World",
+        "confidence": 0.9,
         "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }
     },
     "canonical_url": {
-      "value": "https://example-worlds.test/narrative/scene-alpha",
+      "value": "https://example.com/worldgraph-spike/narrative/scene-alpha",
       "provenance": {
         "source_kind": "source_observation",
-        "source_url": "https://example-worlds.test/narrative/scene-alpha",
-        "evidence_snippet": "https://example-worlds.test/narrative/scene-alpha",
+        "source_url": "https://example.com/worldgraph-spike/narrative/scene-alpha",
+        "evidence_snippet": "https://example.com/worldgraph-spike/narrative/scene-alpha",
         "confidence": 0.95,
         "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
@@ -38,9 +38,9 @@
       "value": "Interactive narrative world with AI-driven characters and persistent session state.",
       "provenance": {
         "source_kind": "source_observation",
-        "source_url": "https://example-worlds.test/narrative/scene-alpha",
-        "evidence_snippet": "persistent character world",
-        "confidence": 0.8,
+        "source_url": "https://example.com/worldgraph-spike/narrative/scene-alpha",
+        "evidence_snippet": "persistent character world where your choices reshape relationships",
+        "confidence": 0.85,
         "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }
@@ -49,20 +49,9 @@
       "value": "published",
       "provenance": {
         "source_kind": "derived",
-        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "source_url": "https://example.com/worldgraph-spike/narrative/scene-alpha",
         "evidence_snippet": "published",
         "confidence": 0.7,
-        "observed_at": "2026-07-22T00:00:00+00:00",
-        "verification_status": "unverified"
-      }
-    },
-    "version": {
-      "value": "unknown",
-      "provenance": {
-        "source_kind": "unknown",
-        "source_url": null,
-        "evidence_snippet": null,
-        "confidence": 0,
         "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }
@@ -70,10 +59,10 @@
     "world_type": {
       "value": "interactive_narrative",
       "provenance": {
-        "source_kind": "derived",
-        "source_url": "https://example-worlds.test/narrative/scene-alpha",
-        "evidence_snippet": "interactive_narrative",
-        "confidence": 0.8,
+        "source_kind": "source_observation",
+        "source_url": "https://example.com/worldgraph-spike/narrative/scene-alpha",
+        "evidence_snippet": "world:type interactive_narrative",
+        "confidence": 0.88,
         "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }
@@ -82,21 +71,10 @@
       {
         "value": "text",
         "provenance": {
-          "source_kind": "source_observation",
-          "source_url": null,
-          "evidence_snippet": null,
-          "confidence": 0.8,
-          "observed_at": "2026-07-22T00:00:00+00:00",
-          "verification_status": "unverified"
-        }
-      },
-      {
-        "value": "choice_driven",
-        "provenance": {
-          "source_kind": "source_observation",
-          "source_url": null,
-          "evidence_snippet": null,
-          "confidence": 0.8,
+          "source_kind": "derived",
+          "source_url": "https://example.com/worldgraph-spike/narrative/scene-alpha",
+          "evidence_snippet": "text dialogue interaction",
+          "confidence": 0.6,
           "observed_at": "2026-07-22T00:00:00+00:00",
           "verification_status": "unverified"
         }
@@ -106,7 +84,7 @@
       "value": "Aurora Labs",
       "provenance": {
         "source_kind": "source_observation",
-        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "source_url": "https://example.com/worldgraph-spike/narrative/scene-alpha",
         "evidence_snippet": "Creator: Aurora Labs",
         "confidence": 0.8,
         "observed_at": "2026-07-22T00:00:00+00:00",
@@ -114,17 +92,6 @@
       }
     },
     "operator": {
-      "value": "unknown",
-      "provenance": {
-        "source_kind": "unknown",
-        "source_url": null,
-        "evidence_snippet": null,
-        "confidence": 0,
-        "observed_at": "2026-07-22T00:00:00+00:00",
-        "verification_status": "unverified"
-      }
-    },
-    "claimed_owner": {
       "value": "unknown",
       "provenance": {
         "source_kind": "unknown",
@@ -142,9 +109,9 @@
         "value": "https://example-worlds.test/narrative/scene-alpha/play",
         "provenance": {
           "source_kind": "source_observation",
-          "source_url": "https://example-worlds.test/narrative/scene-alpha",
+          "source_url": "https://example.com/worldgraph-spike/narrative/scene-alpha",
           "evidence_snippet": "Enter world",
-          "confidence": 0.8,
+          "confidence": 0.92,
           "observed_at": "2026-07-22T00:00:00+00:00",
           "verification_status": "unverified"
         }
@@ -152,68 +119,46 @@
     ],
     "supported_devices": [
       {
-        "value": "desktop",
+        "value": "web",
         "provenance": {
-          "source_kind": "source_observation",
-          "source_url": null,
-          "evidence_snippet": null,
-          "confidence": 0.8,
-          "observed_at": "2026-07-22T00:00:00+00:00",
-          "verification_status": "unverified"
-        }
-      },
-      {
-        "value": "mobile",
-        "provenance": {
-          "source_kind": "source_observation",
-          "source_url": null,
-          "evidence_snippet": null,
-          "confidence": 0.8,
+          "source_kind": "derived",
+          "source_url": "https://example.com/worldgraph-spike/narrative/scene-alpha",
+          "evidence_snippet": "web landing page",
+          "confidence": 0.75,
           "observed_at": "2026-07-22T00:00:00+00:00",
           "verification_status": "unverified"
         }
       }
     ],
+    "interaction_model": {
+      "value": "interactive_session",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example.com/worldgraph-spike/narrative/scene-alpha",
+        "evidence_snippet": "choices reshape relationships and story arcs",
+        "confidence": 0.84,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "persistent_session_state",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example.com/worldgraph-spike/narrative/scene-alpha",
+        "evidence_snippet": "persistent session state",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
     "access_requirements": {
-      "value": "web_login_optional",
+      "value": "free_web_entry",
       "provenance": {
-        "source_kind": "source_observation",
-        "source_url": null,
-        "evidence_snippet": null,
-        "confidence": 0.6,
-        "observed_at": "2026-07-22T00:00:00+00:00",
-        "verification_status": "unverified"
-      }
-    },
-    "pricing": {
-      "value": "free",
-      "provenance": {
-        "source_kind": "source_observation",
-        "source_url": null,
-        "evidence_snippet": null,
-        "confidence": 0.6,
-        "observed_at": "2026-07-22T00:00:00+00:00",
-        "verification_status": "unverified"
-      }
-    },
-    "availability": {
-      "value": "public",
-      "provenance": {
-        "source_kind": "source_observation",
-        "source_url": null,
-        "evidence_snippet": null,
-        "confidence": 0.6,
-        "observed_at": "2026-07-22T00:00:00+00:00",
-        "verification_status": "unverified"
-      }
-    },
-    "region_restrictions": {
-      "value": "unknown",
-      "provenance": {
-        "source_kind": "unknown",
-        "source_url": null,
-        "evidence_snippet": null,
-        "confidence": 0,
+        "source_kind": "derived",
+        "source_url": "https://example.com/worldgraph-spike/narrative/scene-alpha",
+        "evidence_snippet": "public play link",
+        "confidence": 0.55,
         "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }
@@ -228,62 +173,27 @@
         "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }
-    },
-    "interaction_model": {
-      "value": "choice_driven_scenes_with_ai_character_responses",
-      "provenance": {
-        "source_kind": "source_observation",
-        "source_url": "https://example-worlds.test/narrative/scene-alpha",
-        "evidence_snippet": "choices reshape relationships",
-        "confidence": 0.8,
-        "observed_at": "2026-07-22T00:00:00+00:00",
-        "verification_status": "unverified"
-      }
-    },
-    "persistence_model": {
-      "value": "session_and_cloud_save_slots",
-      "provenance": {
-        "source_kind": "source_observation",
-        "source_url": "https://example-worlds.test/narrative/scene-alpha",
-        "evidence_snippet": "persistent session state",
-        "confidence": 0.8,
-        "observed_at": "2026-07-22T00:00:00+00:00",
-        "verification_status": "unverified"
-      }
-    },
-    "supported_languages": [
-      {
-        "value": "en",
-        "provenance": {
-          "source_kind": "source_observation",
-          "source_url": null,
-          "evidence_snippet": null,
-          "confidence": 0.8,
-          "observed_at": "2026-07-22T00:00:00+00:00",
-          "verification_status": "unverified"
-        }
-      }
-    ]
+    }
   },
   "world_structure": {
     "setting": {
-      "value": "character_driven_drama",
+      "value": "Character-driven drama with relationship arcs",
       "provenance": {
         "source_kind": "source_observation",
-        "source_url": null,
-        "evidence_snippet": null,
-        "confidence": 0.55,
+        "source_url": "https://example.com/worldgraph-spike/narrative/scene-alpha",
+        "evidence_snippet": "character world",
+        "confidence": 0.7,
         "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }
     },
     "rules_or_mechanics": {
-      "value": "relationship_meters_and_story_beats",
+      "value": "Branching dialogue with persistent relationship state",
       "provenance": {
-        "source_kind": "source_observation",
-        "source_url": null,
-        "evidence_snippet": null,
-        "confidence": 0.55,
+        "source_kind": "derived",
+        "source_url": "https://example.com/worldgraph-spike/narrative/scene-alpha",
+        "evidence_snippet": "choices reshape relationships",
+        "confidence": 0.65,
         "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }
@@ -291,95 +201,31 @@
     "agents_and_characters": [
       {
         "entity_type": "character",
+        "entity_id": "urn:worldgraph:character:scene-alpha-cast",
         "display_name": {
-          "value": "Lead Companion",
+          "value": "AI character ensemble",
           "provenance": {
             "source_kind": "source_observation",
-            "source_url": null,
-            "evidence_snippet": null,
-            "confidence": 0.8,
-            "observed_at": "2026-07-22T00:00:00+00:00",
-            "verification_status": "unverified"
-          }
-        },
-        "reference_url": {
-          "value": "unknown",
-          "provenance": {
-            "source_kind": "unknown",
-            "source_url": null,
-            "evidence_snippet": null,
-            "confidence": 0,
-            "observed_at": "2026-07-22T00:00:00+00:00",
-            "verification_status": "unverified"
-          }
-        },
-        "a2a_agent_card_url": {
-          "value": "unknown",
-          "provenance": {
-            "source_kind": "unknown",
-            "source_url": null,
-            "evidence_snippet": null,
-            "confidence": 0,
-            "observed_at": "2026-07-22T00:00:00+00:00",
-            "verification_status": "unverified"
-          }
-        },
-        "mcp_server_uri": {
-          "value": "unknown",
-          "provenance": {
-            "source_kind": "unknown",
-            "source_url": null,
-            "evidence_snippet": null,
-            "confidence": 0,
+            "source_url": "https://example.com/worldgraph-spike/narrative/scene-alpha",
+            "evidence_snippet": "AI-driven characters",
+            "confidence": 0.7,
             "observed_at": "2026-07-22T00:00:00+00:00",
             "verification_status": "unverified"
           }
         }
       }
     ],
-    "protocols": [
+    "platforms": [
       {
-        "entity_type": "protocol",
+        "entity_type": "platform",
+        "entity_id": "urn:worldgraph:platform:web",
         "display_name": {
-          "value": "web_embed",
+          "value": "Web",
           "provenance": {
-            "source_kind": "source_observation",
-            "source_url": null,
-            "evidence_snippet": null,
+            "source_kind": "derived",
+            "source_url": "https://example.com/worldgraph-spike/narrative/scene-alpha",
+            "evidence_snippet": "web entry",
             "confidence": 0.8,
-            "observed_at": "2026-07-22T00:00:00+00:00",
-            "verification_status": "unverified"
-          }
-        },
-        "reference_url": {
-          "value": "unknown",
-          "provenance": {
-            "source_kind": "unknown",
-            "source_url": null,
-            "evidence_snippet": null,
-            "confidence": 0,
-            "observed_at": "2026-07-22T00:00:00+00:00",
-            "verification_status": "unverified"
-          }
-        },
-        "a2a_agent_card_url": {
-          "value": "unknown",
-          "provenance": {
-            "source_kind": "unknown",
-            "source_url": null,
-            "evidence_snippet": null,
-            "confidence": 0,
-            "observed_at": "2026-07-22T00:00:00+00:00",
-            "verification_status": "unverified"
-          }
-        },
-        "mcp_server_uri": {
-          "value": "unknown",
-          "provenance": {
-            "source_kind": "unknown",
-            "source_url": null,
-            "evidence_snippet": null,
-            "confidence": 0,
             "observed_at": "2026-07-22T00:00:00+00:00",
             "verification_status": "unverified"
           }
@@ -389,12 +235,12 @@
   },
   "ai_role": {
     "material_ai_role": {
-      "value": "Runtime AI controls character dialogue and emotional state.",
+      "value": "Runtime AI controls character dialogue and emotional state",
       "provenance": {
         "source_kind": "source_observation",
-        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "source_url": "https://example.com/worldgraph-spike/narrative/scene-alpha",
         "evidence_snippet": "Runtime AI controls character dialogue",
-        "confidence": 0.8,
+        "confidence": 0.86,
         "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }
@@ -403,48 +249,24 @@
       "value": "runtime",
       "provenance": {
         "source_kind": "derived",
-        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "source_url": "https://example.com/worldgraph-spike/narrative/scene-alpha",
         "evidence_snippet": "runtime",
-        "confidence": 0.8,
+        "confidence": 0.75,
         "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }
     },
-    "generated_elements": {
-      "value": "unknown",
-      "provenance": {
-        "source_kind": "unknown",
-        "source_url": null,
-        "evidence_snippet": null,
-        "confidence": 0,
-        "observed_at": "2026-07-22T00:00:00+00:00",
-        "verification_status": "unverified"
-      }
-    },
-    "agent_controlled_elements": {
-      "value": "character_dialogue_and_emotional_state",
+    "generated_or_agent_controlled": {
+      "value": "Character dialogue and emotional state",
       "provenance": {
         "source_kind": "source_observation",
-        "source_url": null,
-        "evidence_snippet": null,
+        "source_url": "https://example.com/worldgraph-spike/narrative/scene-alpha",
+        "evidence_snippet": "character dialogue and emotional state",
         "confidence": 0.8,
         "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }
     },
-    "model_disclosures": [
-      {
-        "value": "unknown",
-        "provenance": {
-          "source_kind": "unknown",
-          "source_url": null,
-          "evidence_snippet": null,
-          "confidence": 0,
-          "observed_at": "2026-07-22T00:00:00+00:00",
-          "verification_status": "unverified"
-        }
-      }
-    ],
     "human_control_boundaries": {
       "value": "unknown",
       "provenance": {
@@ -471,18 +293,20 @@
         "verification_status": "unverified"
       }
     },
-    "commercial_use_status": {
-      "value": "unknown",
-      "provenance": {
-        "source_kind": "unknown",
-        "source_url": null,
-        "evidence_snippet": null,
-        "confidence": 0,
-        "observed_at": "2026-07-22T00:00:00+00:00",
-        "verification_status": "unverified"
+    "source_evidence": [
+      {
+        "value": "https://example.com/worldgraph-spike/narrative/scene-alpha",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example.com/worldgraph-spike/narrative/scene-alpha",
+          "evidence_snippet": "primary landing page",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
       }
-    },
-    "content_safety_categories": [
+    ],
+    "safety_categories": [
       {
         "value": "unknown",
         "provenance": {
@@ -494,62 +318,29 @@
           "verification_status": "unverified"
         }
       }
-    ],
-    "moderation_contact": {
-      "value": "unknown",
-      "provenance": {
-        "source_kind": "unknown",
-        "source_url": null,
-        "evidence_snippet": null,
-        "confidence": 0,
-        "observed_at": "2026-07-22T00:00:00+00:00",
-        "verification_status": "unverified"
-      }
-    },
-    "data_privacy_notes": {
-      "value": "unknown",
-      "provenance": {
-        "source_kind": "unknown",
-        "source_url": null,
-        "evidence_snippet": null,
-        "confidence": 0,
-        "observed_at": "2026-07-22T00:00:00+00:00",
-        "verification_status": "unverified"
-      }
-    }
+    ]
   },
   "discovery": {
     "tags": [
       {
         "value": "interactive_narrative",
         "provenance": {
-          "source_kind": "source_observation",
-          "source_url": null,
-          "evidence_snippet": null,
-          "confidence": 0.8,
-          "observed_at": "2026-07-22T00:00:00+00:00",
-          "verification_status": "unverified"
-        }
-      },
-      {
-        "value": "character_world",
-        "provenance": {
-          "source_kind": "source_observation",
-          "source_url": null,
-          "evidence_snippet": null,
-          "confidence": 0.8,
+          "source_kind": "derived",
+          "source_url": "https://example.com/worldgraph-spike/narrative/scene-alpha",
+          "evidence_snippet": "interactive_narrative",
+          "confidence": 0.9,
           "observed_at": "2026-07-22T00:00:00+00:00",
           "verification_status": "unverified"
         }
       }
     ],
     "semantic_description": {
-      "value": "Enter a persistent character world where your choices reshape relationships and story arcs.",
+      "value": "Persistent AI character narrative with player-driven relationship outcomes.",
       "provenance": {
-        "source_kind": "source_observation",
-        "source_url": "https://example-worlds.test/narrative/scene-alpha",
-        "evidence_snippet": "persistent character world",
-        "confidence": 0.8,
+        "source_kind": "derived",
+        "source_url": "https://example.com/worldgraph-spike/narrative/scene-alpha",
+        "evidence_snippet": "summary synthesis",
+        "confidence": 0.6,
         "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }
@@ -558,68 +349,12 @@
       "value": "enter",
       "provenance": {
         "source_kind": "source_observation",
-        "source_url": null,
-        "evidence_snippet": null,
-        "confidence": 0.8,
+        "source_url": "https://example.com/worldgraph-spike/narrative/scene-alpha",
+        "evidence_snippet": "Enter world",
+        "confidence": 0.9,
         "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }
-    },
-    "representative_media": [
-      {
-        "url": {
-          "value": "https://example-worlds.test/media/scene-alpha-hero.png",
-          "provenance": {
-            "source_kind": "source_observation",
-            "source_url": "https://example-worlds.test/narrative/scene-alpha",
-            "evidence_snippet": "hero image",
-            "confidence": 0.5,
-            "observed_at": "2026-07-22T00:00:00+00:00",
-            "verification_status": "unverified"
-          }
-        },
-        "media_type": {
-          "value": "image/png",
-          "provenance": {
-            "source_kind": "source_observation",
-            "source_url": null,
-            "evidence_snippet": null,
-            "confidence": 0.8,
-            "observed_at": "2026-07-22T00:00:00+00:00",
-            "verification_status": "unverified"
-          }
-        },
-        "c2pa_manifest_url": {
-          "value": "unknown",
-          "provenance": {
-            "source_kind": "unknown",
-            "source_url": null,
-            "evidence_snippet": null,
-            "confidence": 0,
-            "observed_at": "2026-07-22T00:00:00+00:00",
-            "verification_status": "unverified"
-          }
-        },
-        "c2pa_claim_generator": {
-          "value": "unknown",
-          "provenance": {
-            "source_kind": "unknown",
-            "source_url": null,
-            "evidence_snippet": null,
-            "confidence": 0,
-            "observed_at": "2026-07-22T00:00:00+00:00",
-            "verification_status": "unverified"
-          }
-        },
-        "provenance": {
-          "source_kind": "source_observation",
-          "source_url": "https://example-worlds.test/narrative/scene-alpha",
-          "evidence_snippet": "hero image",
-          "confidence": 0.5,
-          "observed_at": "2026-07-22T00:00:00+00:00",
-          "verification_status": "unverified"
-        }
-      }
-    ]
+    }
   }
 }
