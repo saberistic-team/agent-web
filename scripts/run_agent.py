@@ -30,6 +30,12 @@ from github_api import (
     post_issue_comment,
     split_repo,
 )
+from issue_deps import (
+    add_sub_issue_link,
+    dependency_block_reason,
+    reconcile_comment,
+    reconcile_issue_dependencies,
+)
 from milestones import (
     ensure_open_milestone,
     issue_milestone_number,
@@ -723,6 +729,27 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
     body = data.get("body") or ""
     labels = {label["name"] for label in data.get("labels") or []}
 
+    # Derive missing blockedBy / parent-child / Depends-on, then fail closed
+    # if anything is still open or unstructured (#204).
+    reconcile_summary = reconcile_issue_dependencies(
+        repo, issue, body=body, write=True
+    )
+    note = reconcile_comment(reconcile_summary)
+    if note:
+        post_issue_comment(repo, issue, note)
+    body = str(reconcile_summary.get("body") or body)
+    dep_reason = dependency_block_reason(repo, issue, body=body, reconcile=False)
+    if dep_reason:
+        escalate(
+            repo,
+            issue,
+            (
+                "Cannot queue until dependencies are machine-readable and closed.\n\n"
+                f"{dep_reason}"
+            ),
+        )
+        return
+
     type_label = next((l for l in labels if l.startswith("type:")), None)
     if type_label is None:
         if re.search(r"\bdocs?\b", title + "\n" + body, re.I):
@@ -780,6 +807,9 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
                 body=child_body,
             )
             children.append(int(child["number"]))
+            # GitHub parent/child link so dispatcher treats open children as
+            # blockers for any later parent work.
+            sub_status = add_sub_issue_link(repo, issue, int(child["number"]))
             post_issue_comment(
                 repo,
                 child["number"],
@@ -790,6 +820,7 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
                     f"- priority: `{priority_label}`\n"
                     f"- milestone: `{milestone_title}`\n"
                     f"- intended_agent: `{agent_label}`\n"
+                    f"- parent_link: `{sub_status}`\n"
                     "- awaiting: dispatcher (priority queue)\n"
                 ),
             )
@@ -852,10 +883,38 @@ def is_landing_issue(title: str, body: str) -> bool:
     )
 
 
+def docs_out_of_scope_product_paths(filenames: list[str]) -> list[str]:
+    """Return paths that a ``type:docs`` PR must not change.
+
+    Docs issues may ship markdown/specs plus supporting research fixtures under
+    ``docs/``, agent briefs, orchestration ``scripts/``, tests, and WorldGraph
+    ``spike/`` helpers that keep schema fixtures honest. Product surfaces
+    (``app/``, ``site/``, ``migrations/``) and other unexpected executable code
+    remain hard fails.
+    """
+    allowed_prefixes = ("docs/", "AGENTS/", "scripts/", "tests/", "spike/")
+    return [
+        name
+        for name in filenames
+        if name.startswith(("app/", "site/", "migrations/"))
+        or (
+            name.endswith((".py", ".ts", ".js"))
+            and not name.startswith(allowed_prefixes)
+        )
+    ]
+
+
 def role_builder(repo: str, issue: int, brief: Path) -> None:
     data = get_issue(repo, issue)
     title = data.get("title") or f"issue-{issue}"
     body = data.get("body") or ""
+
+    # Do not invent stand-in schemas while upstream issues are still open (#204).
+    dep_reason = dependency_block_reason(repo, issue, body=body)
+    if dep_reason:
+        escalate(repo, issue, dep_reason)
+        write_builder_handoff("blocked")
+        return
 
     # Ops / verify issues: run smoke against production; no stub PR (avoids
     # reviewer↔builder loops on worklog-only PRs).
@@ -1031,6 +1090,13 @@ def role_docs(repo: str, issue: int, brief: Path) -> None:
     data = get_issue(repo, issue)
     title = data.get("title") or f"issue-{issue}"
     body = data.get("body") or ""
+
+    dep_reason = dependency_block_reason(repo, issue, body=body)
+    if dep_reason:
+        escalate(repo, issue, dep_reason)
+        write_docs_handoff("blocked")
+        return
+
     # Prefer existing linked PR head (including after review:changes-requested).
     prs = linked_open_prs(repo, issue)
     if prs:
@@ -1179,6 +1245,31 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
     is_docs_issue = "type:docs" in issue_labels
     implementer = "Docs" if is_docs_issue else "Builder"
 
+    # Open / unstructured dependencies: terminal block, do not requeue Builder (#204).
+    dep_reason = dependency_block_reason(
+        repo, issue, body=issue_data_early.get("body") or ""
+    )
+    if dep_reason:
+        body = (
+            "### reviewer_decision\n"
+            "- decision: `blocked`\n"
+            "- terminal: true\n"
+            f"- brief: `{brief}`\n"
+            "- hard_fails:\n"
+            f"  - open dependencies: {dep_reason}\n"
+        )
+        api(
+            "POST",
+            f"/repos/{owner}/{name}/pulls/{pr_number}/reviews",
+            body={
+                "commit_id": pr["head"]["sha"],
+                "event": "REQUEST_CHANGES",
+                "body": body,
+            },
+        )
+        post_issue_comment(repo, issue, body)
+        return
+
     # Merge conflicts first — return to implementing agent; skip the rest.
     try:
         from builder_conflicts import (
@@ -1315,15 +1406,7 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
                 "docs PR is agent-updates stub only — required deliverable "
                 "files missing; return to Docs"
             )
-        product_paths = [
-            name
-            for name in filenames
-            if name.startswith(("app/", "site/", "migrations/"))
-            or (
-                name.endswith((".py", ".ts", ".js"))
-                and not name.startswith(("docs/", "AGENTS/", "scripts/", "tests/"))
-            )
-        ]
+        product_paths = docs_out_of_scope_product_paths(filenames)
         if product_paths:
             hard_fail_reasons.append(
                 "type:docs PR includes product code paths "

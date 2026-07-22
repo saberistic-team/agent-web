@@ -1,0 +1,33 @@
+{
+  "schema_version": "world-manifest-v0-fixtures-index",
+  "positive": [
+    "001-narrative-scene-alpha.json",
+    "002-simulation-agent-colony.json",
+    "003-spatial-marble-demo.json"
+  ],
+  "negative_exclusion": [
+    "excluded-assistant.json",
+    "excluded-engine-product.json",
+    "excluded-foundation-model.json",
+    "excluded-marketing-waitlist.json",
+    "excluded-static-gallery.json"
+  ],
+  "negative_structural": [
+    "neg-empty-entry-points.json",
+    "neg-excluded-without-reason.json",
+    "neg-extra-top-level-property.json",
+    "neg-invalid-qualification-status.json",
+    "neg-missing-identity-name.json",
+    "neg-missing-schema-version.json",
+    "neg-missing-trust-section.json",
+    "neg-unknown-high-confidence.json",
+    "neg-verified-unknown-fields.json",
+    "neg-verified-unknown-summary.json",
+    "neg-wrong-schema-version.json",
+    "structural-empty-entry-points.json",
+    "structural-invalid-schema-version.json",
+    "structural-missing-ai-role.json",
+    "structural-missing-trust.json",
+    "structural-verified-unknown.json"
+  ]
+}

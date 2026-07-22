@@ -1,0 +1,247 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "Hidden Door",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.hiddendoor.co/",
+        "evidence_snippet": "Hidden Door",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://www.hiddendoor.co/",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.hiddendoor.co/",
+        "evidence_snippet": "https://www.hiddendoor.co/",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "interactive_narrative",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.hiddendoor.co/",
+        "evidence_snippet": "interactive_narrative",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.hiddendoor.co/",
+        "evidence_snippet": "qualifies",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "AI-native narrative RPG where players enter licensed fictional worlds with persistent story sessions.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.hiddendoor.co/",
+        "evidence_snippet": "AI-native narrative RPG where players enter licensed fictional worlds with persistent story sessions.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Hidden Door Inc.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.hiddendoor.co/",
+        "evidence_snippet": "Hidden Door Inc.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://www.hiddendoor.co/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.hiddendoor.co/",
+          "evidence_snippet": "https://www.hiddendoor.co/",
+          "confidence": 0.85,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "game_master_narrative_rpg",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.hiddendoor.co/",
+        "evidence_snippet": "game_master_narrative_rpg",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "Story sessions maintain continuity within a campaign.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.hiddendoor.co/",
+        "evidence_snippet": "Story sessions maintain continuity within a campaign.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "Waitlist/invite web experience; public marketing site reviewable",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.hiddendoor.co/",
+        "evidence_snippet": "Waitlist/invite web experience; public marketing site reviewable",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Licensed fictional universes (e.g., Oz) with defined rules",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.hiddendoor.co/",
+        "evidence_snippet": "Licensed fictional universes (e.g., Oz) with defined rules",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "RPG roles, cards, scene prompts",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.hiddendoor.co/",
+        "evidence_snippet": "RPG roles, cards, scene prompts",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "value": "NPC cast and player characters with RPG attributes.",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.hiddendoor.co/",
+          "evidence_snippet": "NPC cast and player characters with RPG attributes.",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "value": "Web",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.hiddendoor.co/",
+          "evidence_snippet": "Web",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Game master models orchestrate scenes, NPC dialogue, and rule-aware outcomes.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.hiddendoor.co/",
+        "evidence_snippet": "Game master models orchestrate scenes, NPC dialogue, and rule-aware outcomes.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.hiddendoor.co/",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "Uses licensed IP; rights statements on site for partner properties",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.hiddendoor.co/",
+        "evidence_snippet": "Uses licensed IP; rights statements on site for partner properties",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "safety_categories": [
+      {
+        "value": "Family-oriented positioning; specific age rating not fully disclosed publicly",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.hiddendoor.co/",
+          "evidence_snippet": "Family-oriented positioning; specific age rating not fully disclosed publicly",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "interactive_narrative",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://www.hiddendoor.co/",
+          "evidence_snippet": "interactive_narrative",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "AI-native narrative RPG where players enter licensed fictional worlds with persistent story sessions.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.hiddendoor.co/",
+        "evidence_snippet": "AI-native narrative RPG where players enter licensed fictional worlds with persistent story sessions.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

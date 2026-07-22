@@ -1,0 +1,247 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "Brookhaven RP",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.roblox.com/games/4924922222/Brookhaven-RP",
+        "evidence_snippet": "Brookhaven RP",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://www.roblox.com/games/4924922222/Brookhaven-RP",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.roblox.com/games/4924922222/Brookhaven-RP",
+        "evidence_snippet": "https://www.roblox.com/games/4924922222/Brookhaven-RP",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "ai_game",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.roblox.com/games/4924922222/Brookhaven-RP",
+        "evidence_snippet": "ai_game",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.roblox.com/games/4924922222/Brookhaven-RP",
+        "evidence_snippet": "qualifies",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Large-scale social roleplay world on Roblox with housing, jobs, and player-driven stories.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.roblox.com/games/4924922222/Brookhaven-RP",
+        "evidence_snippet": "Large-scale social roleplay world on Roblox with housing, jobs, and player-driven stories.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Voldex / Brookhaven developers",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.roblox.com/games/4924922222/Brookhaven-RP",
+        "evidence_snippet": "Voldex / Brookhaven developers",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://www.roblox.com/games/4924922222/Brookhaven-RP",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.roblox.com/games/4924922222/Brookhaven-RP",
+          "evidence_snippet": "https://www.roblox.com/games/4924922222/Brookhaven-RP",
+          "confidence": 0.85,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "multiplayer_social_interaction",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.roblox.com/games/4924922222/Brookhaven-RP",
+        "evidence_snippet": "multiplayer_social_interaction",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "Player housing and progress persist per Roblox account.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.roblox.com/games/4924922222/Brookhaven-RP",
+        "evidence_snippet": "Player housing and progress persist per Roblox account.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "Free Roblox experience; account and client required",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.roblox.com/games/4924922222/Brookhaven-RP",
+        "evidence_snippet": "Free Roblox experience; account and client required",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Suburban roleplay town",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.roblox.com/games/4924922222/Brookhaven-RP",
+        "evidence_snippet": "Suburban roleplay town",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Role jobs, housing, vehicles, social systems",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.roblox.com/games/4924922222/Brookhaven-RP",
+        "evidence_snippet": "Role jobs, housing, vehicles, social systems",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "value": "Player avatars; limited scripted NPCs",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.roblox.com/games/4924922222/Brookhaven-RP",
+          "evidence_snippet": "Player avatars; limited scripted NPCs",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "value": "Roblox client",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.roblox.com/games/4924922222/Brookhaven-RP",
+          "evidence_snippet": "Roblox client",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Roblox platform AI moderation and recommended experiences; limited in-world NPC AI.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.roblox.com/games/4924922222/Brookhaven-RP",
+        "evidence_snippet": "Roblox platform AI moderation and recommended experiences; limited in-world NPC AI.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.roblox.com/games/4924922222/Brookhaven-RP",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "Roblox Terms and experience-specific policies",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.roblox.com/games/4924922222/Brookhaven-RP",
+        "evidence_snippet": "Roblox Terms and experience-specific policies",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "safety_categories": [
+      {
+        "value": "Roblox age recommendations and parental controls documented",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.roblox.com/games/4924922222/Brookhaven-RP",
+          "evidence_snippet": "Roblox age recommendations and parental controls documented",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "ai_game_ugc",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://www.roblox.com/games/4924922222/Brookhaven-RP",
+          "evidence_snippet": "ai_game_ugc",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Large-scale social roleplay world on Roblox with housing, jobs, and player-driven stories.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.roblox.com/games/4924922222/Brookhaven-RP",
+        "evidence_snippet": "Large-scale social roleplay world on Roblox with housing, jobs, and player-driven stories.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

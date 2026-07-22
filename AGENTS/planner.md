@@ -23,12 +23,40 @@ Before any issue enters `status:queued`, it must already carry:
 - an **open** GitHub milestone for the current product phase (unless
   `priority:critical` — hotfixes may skip milestones)
 - `status:queued`
+- **machine-readable dependencies** (or an explicit `None` / `N/A`) when the
+  issue depends on other work — see Dependencies below
 
 Do **not** apply `agent:builder` or `agent:docs` when queuing. The dispatcher
 filters to open-milestone work (plus critical), then picks the next issue by
 earliest milestone due date, then `priority:*` (critical → high → medium →
 normal → low), then issue number. Record `intended_agent` and `milestone` in
 `### planner_plan`.
+
+### Dependencies (required when work is blocked on other issues)
+
+Prose-only “start after Manifest / corpus …” is **not** enough (learned from
+[#204](https://github.com/saberistic-team/agent-web/issues/204)). Before
+`status:queued`:
+
+1. Prefer GitHub **blocked by** / **blocking** and **parent / sub-issue** links
+2. Add an explicit body line: `Depends on: #199, #200` (or
+   `## Dependencies` containing only those refs / `None` / `N/A`)
+3. When spawning children, GitHub parent/child must be set (`addSubIssue`) so
+   open children block the parent from dequeue
+
+Planner and Dispatcher run `reconcile_issue_dependencies` (`scripts/issue_deps.py`):
+they read related issues/PRs, derive missing deps from strong ordering phrases
+and linked PR bodies, then **write** missing `blockedBy` / sub-issue links and
+sync `Depends on:` before queue / dequeue. A `### dependency_reconcile` comment
+records what was added.
+
+If a `## Dependencies` section has narrative text but **no** `#N` refs (and
+reconcile cannot infer any), do **not** queue — rewrite to `Depends on:` or set
+`status:blocked` with `@human-review`. Do not invent stand-in schemas so a later
+spike can “guess” upstream docs.
+
+Builder/Docs/Reviewer/Gate enforce the same closed-deps rules via
+`scripts/issue_deps.py`.
 
 Humans open/close milestones to mark the current phase. You assign issues to an
 open milestone (prefer the parent’s open milestone, else the earliest-due open
@@ -98,3 +126,6 @@ Escalate when:
 - scope is outside any agent role (policy, secrets, billing, legal, etc.)
 - decomposition cannot be decided without a human call
 - a dependency or decision is not resolvable from the issue alone
+- dependencies exist but are not machine-readable (`Depends on: #N` /
+  GitHub blockedBy / explicit `None`), or listed dependency issues are still
+  open — use `status:blocked`, do **not** queue

@@ -242,6 +242,7 @@ SITE_HTML_TO_ROUTE: dict[str, str] = {
 # Keep in sync with app.admin_layout.ADMIN_SCREENSHOT_PATHS (nav shell + login).
 ADMIN_SCREENSHOT_ROUTES: tuple[str, ...] = (
     "/admin",
+    "/admin/queue",
     "/admin/audit",
     "/admin/briefs",
     "/admin/companies",
@@ -285,6 +286,7 @@ ADMIN_SCREENSHOT_ROUTES: tuple[str, ...] = (
     "/admin/contacts/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbc/edit",
     "/admin/pipeline/11111111-1111-1111-1111-111111111111",
     "/admin/pipeline/11111111-1111-1111-1111-111111111111?error=validation&focus=expected_value_cents",
+    "/admin/queue",
     "/admin/targets/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa01",
     "/admin/signals/rules",
     "/admin/signals/11111111-1111-1111-1111-111111111111",

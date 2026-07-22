@@ -1,0 +1,306 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "world_id": {
+      "value": "wg-corpus-028",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.unrealengine.com/",
+        "evidence_snippet": "Corpus id wg-corpus-028",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "name": {
+      "value": "Unreal Engine",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.unrealengine.com/",
+        "evidence_snippet": "Unreal Engine",
+        "confidence": 0.9,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://www.unrealengine.com/",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.unrealengine.com/",
+        "evidence_snippet": "https://www.unrealengine.com/",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Real-time 3D creation engine and SDK.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.unrealengine.com/",
+        "evidence_snippet": "Real-time 3D creation engine and SDK.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.unrealengine.com/",
+        "evidence_snippet": "Public entry documented",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "excluded_candidate",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.unrealengine.com/",
+        "evidence_snippet": "excluded_candidate",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Epic Games",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.unrealengine.com/",
+        "evidence_snippet": "Creator/operator: Epic Games",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "operator": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://www.unrealengine.com/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.unrealengine.com/",
+          "evidence_snippet": "https://www.unrealengine.com/",
+          "confidence": 0.9,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "download_sdk",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.unrealengine.com/",
+        "evidence_snippet": "download_sdk",
+        "confidence": 0.82,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "project_files",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.unrealengine.com/",
+        "evidence_snippet": "project_files",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "download_required",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.unrealengine.com/",
+        "evidence_snippet": "download_required",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "age_guidance": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Tooling; worlds are created by downstream authors.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.unrealengine.com/",
+        "evidence_snippet": "Tooling; worlds are created by downstream authors.",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.unrealengine.com/",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "human_control_boundaries": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "excluded",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "Epic license",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.unrealengine.com/",
+        "evidence_snippet": "Epic license",
+        "confidence": 0.6,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "moderation_contact": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "exclusion_reason": {
+      "value": "rule_2_not_an_experience",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.unrealengine.com/",
+        "evidence_snippet": "Game engine/SDK product, not a playable world.",
+        "confidence": 0.9,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "platforms": [
+      {
+        "entity_type": "platform",
+        "label": {
+          "value": "Desktop",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://www.unrealengine.com/",
+            "evidence_snippet": "Desktop",
+            "confidence": 0.7,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "canonical_ref": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ],
+    "engines_models_protocols": [
+      {
+        "entity_type": "platform",
+        "label": {
+          "value": "Unreal Engine",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://www.unrealengine.com/",
+            "evidence_snippet": "Unreal Engine",
+            "confidence": 0.7,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "canonical_ref": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "negative_control",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://www.unrealengine.com/",
+          "evidence_snippet": "negative_control",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Real-time 3D creation engine and SDK.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.unrealengine.com/",
+        "evidence_snippet": "Real-time 3D creation engine and SDK.",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

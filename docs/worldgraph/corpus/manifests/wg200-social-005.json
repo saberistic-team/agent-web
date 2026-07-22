@@ -1,0 +1,247 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "EVE Online",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "EVE Online",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://www.eveonline.com/",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "https://www.eveonline.com/",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "persistent_social",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "persistent_social",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "qualifies",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Persistent sci-fi MMO universe with player-driven economy, politics, and large-scale conflicts.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "Persistent sci-fi MMO universe with player-driven economy, politics, and large-scale conflicts.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "CCP Games",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "CCP Games",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://www.eveonline.com/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.eveonline.com/",
+          "evidence_snippet": "https://www.eveonline.com/",
+          "confidence": 0.85,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "multiplayer_social_interaction",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "multiplayer_social_interaction",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "Single-shard universe running since 2003.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "Single-shard universe running since 2003.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "Client download; subscription/free options",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "Client download; subscription/free options",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "New Eden galaxy",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "New Eden galaxy",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Markets, sovereignty, combat, industry",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "Markets, sovereignty, combat, industry",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "value": "NPC factions; player capsuleers",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.eveonline.com/",
+          "evidence_snippet": "NPC factions; player capsuleers",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "value": "EVE client",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.eveonline.com/",
+          "evidence_snippet": "EVE client",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "NPC factions and market systems; CCP exploring AI-assisted content tools.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "NPC factions and market systems; CCP exploring AI-assisted content tools.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "EULA and Terms of Service published",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "EULA and Terms of Service published",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "safety_categories": [
+      {
+        "value": "Teen rating (PEGI 12/ESRB Teen)",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.eveonline.com/",
+          "evidence_snippet": "Teen rating (PEGI 12/ESRB Teen)",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "persistent_social",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://www.eveonline.com/",
+          "evidence_snippet": "persistent_social",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Persistent sci-fi MMO universe with player-driven economy, politics, and large-scale conflicts.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "Persistent sci-fi MMO universe with player-driven economy, politics, and large-scale conflicts.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

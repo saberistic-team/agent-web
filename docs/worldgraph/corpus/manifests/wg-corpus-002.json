@@ -1,0 +1,341 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "world_id": {
+      "value": "wg-corpus-002",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "Corpus id wg-corpus-002",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "name": {
+      "value": "Character.AI",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "Character.AI",
+        "confidence": 0.9,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://character.ai/",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "https://character.ai/",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Character-driven chat worlds where users interact with authored personas in bounded scenes.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "Character-driven chat worlds where users interact with authored personas in bounded scenes.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "Public entry documented",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "interactive_narrative",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "interactive_narrative",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Character Technologies",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "Creator/operator: Character Technologies",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "operator": {
+      "value": "Character Technologies",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "Operator: Character Technologies",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "modalities": [
+      {
+        "value": "text",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://character.ai/",
+          "evidence_snippet": "text",
+          "confidence": 0.7,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      },
+      {
+        "value": "voice",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://character.ai/",
+          "evidence_snippet": "voice",
+          "confidence": 0.7,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://character.ai/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://character.ai/",
+          "evidence_snippet": "https://character.ai/",
+          "confidence": 0.9,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "character_chat_session",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "character_chat_session",
+        "confidence": 0.82,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "chat_history_and_character_memory",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "chat_history_and_character_memory",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "free_account_required",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "free_account_required",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "age_guidance": {
+      "value": "Community guidelines and age gate documented",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "Community guidelines and age gate documented",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Runtime character models drive persona dialogue and multi-character scenes.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "Runtime character models drive persona dialogue and multi-character scenes.",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "human_control_boundaries": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "moderation_contact": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Persona-specific backstory and scene prompts.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "Persona-specific backstory and scene prompts.",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Persona cards, group scenes, and user-authored character definitions.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "Persona cards, group scenes, and user-authored character definitions.",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "entity_type": "character",
+        "label": {
+          "value": "User-facing AI characters and scenes",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://character.ai/",
+            "evidence_snippet": "User-facing AI characters and scenes",
+            "confidence": 0.7,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "canonical_ref": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "entity_type": "platform",
+        "label": {
+          "value": "Web and mobile apps",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://character.ai/",
+            "evidence_snippet": "Web and mobile apps",
+            "confidence": 0.7,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "canonical_ref": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "interactive_narrative",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://character.ai/",
+          "evidence_snippet": "interactive_narrative",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Character-driven chat worlds where users interact with authored personas in bounded scenes.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "Character-driven chat worlds where users interact with authored personas in bounded scenes.",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}
