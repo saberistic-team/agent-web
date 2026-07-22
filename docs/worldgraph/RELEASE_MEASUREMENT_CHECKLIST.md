@@ -1,235 +1,221 @@
-# WorldGraph — Release and measurement checklist
+# WorldGraph MVP — release and measurement checklist
 
 **Parent issue:** [#203](https://github.com/saberistic-team/agent-web/issues/203)
 
-**Purpose:** Gate each phase launch and ongoing pilot measurement. Use alongside
-[PRD_MVP.md](./PRD_MVP.md) success framework and [ROADMAP.md](./ROADMAP.md) exit criteria.
+**Purpose:** Pre-launch verification and ongoing measurement for WorldGraph MVP
+(Phases 1–3). Use per phase; public launch requires Phase 3 sections complete.
 
 **Last updated:** 2026-07-22
+
+**Related:** [PRD_MVP.md](./PRD_MVP.md), [ROADMAP.md](./ROADMAP.md),
+[DECISION_LOG.md](./DECISION_LOG.md)
 
 ---
 
 ## How to use
 
-1. Complete **Pre-launch** sections before enabling a phase in production.
-2. Record **Sign-off** with date and reviewer.
-3. Track **Pilot metrics** weekly during active validation; archive results when gate
-   closes.
-4. `#203` records the owner-approval **gate** in [DECISION_LOG.md](./DECISION_LOG.md).
-   Do **not** open implementation issues until the owner signature row is filled —
-   that human sign-off is separate from merging the #203 documentation PR.
+| Symbol | Meaning |
+|--------|---------|
+| ☐ | Not verified |
+| ☑ | Verified (link evidence in PR or runbook) |
+| N/A | Not applicable for this phase |
+
+Record verifier, date, and link in the PR or ops ticket when checking boxes.
 
 ---
 
-## Phase 1 — Registry foundation (private drafts)
+## A. Governance gates (all phases)
 
-### Pre-launch
-
-#### Product and scope
-
-- [ ] Scope matches [ROADMAP.md Phase 1](./ROADMAP.md#phase-1--manifest-private-drafts-and-admin-review) only
-- [ ] No public `/worlds` routes enabled
-- [ ] No writes from world flows to `project_briefs` or CRM tables
-- [ ] `/brief` copy unchanged; no World listing consent implied
-
-#### Security and trust
-
-- [ ] SSRF, redirect, size, and MIME policies match [ADR Decision 6](./ADR_INGESTION_AND_SEARCH.md)
-- [ ] Adversarial fixtures (`wg-security-001`, `wg-negative-*`) pass CI
-- [ ] Prompt-injection stripping enabled on any model path (if present)
-- [ ] Audit events emitted for ingest, reject, and admin actions
-
-#### Data and schema
-
-- [ ] Manifest snapshots validate against [world-manifest-v0.schema.json](./world-manifest-v0.schema.json)
-- [ ] Unknown fields use explicit unknown provenance
-- [ ] Evidence excerpts ≤ 2 KB; no full HTML retention by default
-
-#### Admin UX
-
-- [ ] `ADMIN_PREVIEW_MODE` provides randomized mock drafts for Reviewer screenshots
-- [ ] Qualification checklist covers duplicates, rights, safety
-- [ ] Reject-with-reason path tested
-
-#### Operations
-
-- [ ] Worker retry and idempotency documented
-- [ ] Review queue SLA defined (default: 5 business days pilot)
-- [ ] Staging end-to-end demo recorded (URL → draft → admin review)
-
-### Phase 1 sign-off
-
-| Role | Name | Date | Notes |
-|------|------|------|-------|
-| Product owner | | | |
-| Engineering | | | |
-| Security review | | | |
-
-### Phase 1 pilot metrics (optional for G1)
-
-| Metric | Target | Actual | Pass? |
-|--------|--------|--------|-------|
-| Admin URL → valid draft rate | ≥95% structured sources | | |
-| Schema validation failures | 0 unexplained | | |
-| Median ingest job time | Measure | | |
+| ☐ | Item | Evidence |
+|---|------|----------|
+| ☐ | [VALIDATION_READOUT.md](./VALIDATION_READOUT.md) recommends **Proceed** | Readout sign-off |
+| ☐ | Product owner approval on [PRD_MVP.md](./PRD_MVP.md) | [DECISION_LOG.md](./DECISION_LOG.md) |
+| ☐ | No open **Stop** falsifiers from market position | Readout contradictions section |
+| ☐ | Project Brief (`/brief`) isolated from World intake | Integration test + copy review |
+| ☐ | Research corpus not auto-published | Operator-only import documented |
 
 ---
 
-## Phase 2 — Creator trust and public profiles
+## B. Phase 1 — Pipeline release
 
-### Pre-launch
+### B.1 Functional
 
-- [ ] Gate G1 exit criteria met ([ROADMAP.md](./ROADMAP.md))
-- [ ] #202 supply signal met **or** owner waiver recorded in [DECISION_LOG.md](./DECISION_LOG.md)
-- [ ] Domain + GitHub claim flows pass integration tests
-- [ ] Publish/unpublish audited; public 404 when unpublished
-- [ ] Trust labels visible for observed vs declared vs verified fields
-- [ ] Creator correction retains snapshot history
-- [ ] Concierge worlds published only with explicit creator consent
+| ☐ | Item | Acceptance reference |
+|---|------|---------------------|
+| ☐ | Admin can create private draft from URL | PRD FR-001 |
+| ☐ | Ingestion returns async job; no sync block | ADR Decision 1 |
+| ☐ | Evidence excerpts stored; full HTML not archived by default | ADR Decision 6 |
+| ☐ | Manifest snapshot validates against schema | PRD FR-003 |
+| ☐ | Unknown fields remain unknown in UI | PRD FR-004 |
+| ☐ | Qualification checklist operable in admin | PRD FR-005 |
+| ☐ | Duplicate URL flagged before publish | PRD FR-006 |
+| ☐ | Reject path with categorized exclusion reason | PRD FR-005 |
+| ☐ | `ADMIN_PREVIEW_MODE` populates review queue mock data | Builder policy |
 
-### Phase 2 sign-off
+### B.2 Security and trust
 
-| Role | Name | Date | Notes |
-|------|------|------|-------|
-| Product owner | | | |
-| Engineering | | | |
-| Legal (rights copy) | | | |
+| ☐ | Item |
+|---|------|
+| ☐ | SSRF block list tested |
+| ☐ | Redirect limit enforced |
+| ☐ | Response size cap (1 MiB) enforced |
+| ☐ | HTML sanitized before excerpt display |
+| ☐ | Prompt-injection markers stripped before model stage |
+| ☐ | Audit events for admin decisions |
 
-### Supply activation metrics (Group 1)
+### B.3 Measurement baseline (Phase 1)
 
-| Metric | Target (PRD) | Week 1 | Week 4 | Week 8 |
-|--------|--------------|--------|--------|--------|
-| Eligible drafts reviewed (%) | 100% within SLA | | | |
-| Concierge claim completion (%) | ≥70% | | | |
-| Published pilot worlds (count) | ≥10 | | | |
-| Median submit → publish (days) | Measure | | | |
-
-### Manifest quality metrics (Group 2)
-
-| Metric | Target (PRD) | Week 4 | Week 8 |
-|--------|--------------|--------|--------|
-| Required-field completeness | 100% or explicit unknown | | |
-| Median unknown optional fields | ~3 (spike baseline) | | |
-| Median creator correction time (min) | Measure (#202) | | |
-| Open factual disputes | 0 > 14 days unresolved | | |
-| Stale-field rate (%) | <20% at 90 days | | |
+| Metric | Baseline / target | Source |
+|--------|-------------------|--------|
+| Job success rate | ≥95% valid URLs → review or reject | Ops dashboard |
+| Schema validation pass | 100% snapshots | CI |
+| Median ingestion latency | Document p50/p95 | Worker metrics |
 
 ---
 
-## Phase 3 — Scout discovery (public search)
+## C. Phase 2 — Profiles release
 
-### Pre-launch
+### C.1 Functional
 
-- [ ] Gate G2 exit criteria met
-- [ ] #202 demand signal met **or** owner waiver recorded
-- [ ] ≥20 published worlds in index
-- [ ] FTS + trigram search deployed; pgvector **not** enabled unless G3b triggered
-- [ ] Minimum score threshold suppresses negative-intent weak matches
-- [ ] No-result UX suggests refinements; no fabricated results
-- [ ] Primary actions: enter, integrate, source, contact — all instrumented
-- [ ] Analytics events use coarse path classes; no raw query PII
-- [ ] Public pages meet WCAG 2.2 AA checklist (keyboard, labels, contrast)
-- [ ] Brand tokens: navy/orange; Archivo Black + IBM Plex Mono
+| ☐ | Item | Acceptance reference |
+|---|------|---------------------|
+| ☐ | `/worlds/submit` live; copy states not `/brief` | PRD FR-001, FR-020 |
+| ☐ | Claim: DNS/well-known path works | PRD FR-008 |
+| ☐ | Claim: GitHub repo path works | PRD FR-008 |
+| ☐ | Email magic link fallback works | PRD FR-008 |
+| ☐ | Creator correction + attestation logged | PRD FR-009 |
+| ☐ | Admin required for first publish | PRD FR-010 |
+| ☐ | Public profile + manifest.json URLs | PRD FR-011 |
+| ☐ | Unpublish de-indexes; audit retained | PRD FR-012 |
+| ☐ | Stale banner when re-fetch fails / SLA exceeded | PRD FR-013 |
+| ☐ | Dispute banner on affected fields | PRD FR-014 |
+| ☐ | Field-level trust badges (OBS/DECL/DER/?) | PRD FR-015 |
+| ☐ | Primary CTA cluster present | PRD FR-016 |
 
-### Phase 3 sign-off
+### C.2 Accessibility (Phase 2 public pages)
 
-| Role | Name | Date | Notes |
-|------|------|------|-------|
-| Product owner | | | |
-| Engineering | | | |
-| Privacy review | | | |
+| ☐ | Item |
+|---|------|
+| ☐ | Keyboard navigation for profile CTAs and disclosures |
+| ☐ | Trust badges have text equivalents |
+| ☐ | External links announce "opens external site" |
+| ☐ | WCAG AA contrast on navy/orange palette |
+| ☐ | `prefers-reduced-motion` respected |
 
-### Discovery success metrics (Group 3)
+### C.3 Measurement (Phase 2)
 
-| Metric | Target (PRD) | Week 2 | Week 6 |
-|--------|--------------|--------|--------|
-| Discovery task completion (#202 tasks) | ≥80% | | |
-| Useful-result selection (top-3 click rate) | ≥60% | | |
-| Outbound actions per completing participant | ≥1 | | |
-| No-result rate (qualifying intents) | 0% on curated set | | |
-| p95 search latency (ms) | <200 | | |
-
-### Retention metrics (Group 4)
-
-| Metric | Target (PRD) | Day 30 | Day 90 |
-|--------|--------------|--------|--------|
-| Creators updating profiles (%) | ≥50% | | |
-| Discovery repeat-use self-report (%) | ≥40% | | |
-
----
-
-## Phase 4 — Graph and developer API
-
-### Pre-launch
-
-- [ ] Gate G3 exit criteria met
-- [ ] OpenAPI spec published; rate limits enforced
-- [ ] Read-only API; no third-party write
-- [ ] Linked entity edges populated from manifest where declared
-
-### Phase 4 sign-off
-
-| Role | Name | Date | Notes |
-|------|------|------|-------|
-| Product owner | | | |
-| Engineering | | | |
+| Group | Metric | Pilot target | Notes |
+|-------|--------|--------------|-------|
+| Supply activation | Drafts reaching review | Track weekly | From validation plan |
+| Supply activation | Claim completion rate | ≥70% in 14 days | ROADMAP Phase 2 exit |
+| Supply activation | Publish with creator approval | ≥5/10 concierge bar | Validation plan |
+| Manifest quality | Required-field completeness | ≥80% populated or unknown | Corpus gap matrix |
+| Manifest quality | Median correction time | ≤30 min directional | Validation plan |
+| Manifest quality | Top disputed fields | Document top 3 | Concierge template |
+| Guardrails | False verification incidents | 0 | Manual audit |
 
 ---
 
-## Phase 5 — Rights workflows (conditional)
+## D. Phase 3 — Discovery release (public MVP)
 
-### Pre-launch
+### D.1 Functional
 
-- [ ] Gate G4 exit criteria met
-- [ ] #202 monetization signal for rights/licensing package
-- [ ] Legal review of rights request copy
-- [ ] No escrow, tokens, or contract execution in product
+| ☐ | Item | Acceptance reference |
+|---|------|---------------------|
+| ☐ | `/worlds` search + structured filters | PRD FR-017 |
+| ☐ | Comparison cards show trust chips | PRD FR-015 |
+| ☐ | Minimum score threshold; excluded never surface | TECHNICAL_SPIKE |
+| ☐ | Honest no-result with refinements | PRD FR-018 |
+| ☐ | Profile view → outbound action logging | PRD FR-016, FR-019 |
+| ☐ | Only `published` Worlds in index | State model |
+| ☐ | Pilot corpus ≥15 published mixed categories | ROADMAP Phase 3 entry |
 
----
+### D.2 Privacy (analytics)
 
-## Guardrails (Group 5) — ongoing
+| ☐ | Item |
+|---|------|
+| ☐ | No fingerprinting |
+| ☐ | No persistent anonymous visitor ID |
+| ☐ | Search queries hashed or length-only per policy |
+| ☐ | Scout PII not in analytics store |
+| ☐ | 90-day aggregate retention documented |
 
-Track weekly across all public phases:
+### D.3 Measurement (Phase 3 — discovery success)
 
-| Metric | Target | Current | Action if breached |
-|--------|--------|---------|-------------------|
-| Rights disputes unresolved > 14 days | 0 | | Escalate legal |
-| Confirmed unsafe listings at publish | 0 | | Halt publish; postmortem |
-| Confirmed false verification | 0 | | Revoke claim; audit |
-| Privacy incidents (analytics/profile) | 0 | | Incident response |
-| Removals trend | Non-increasing after day 30 | | Review qualification rules |
-
----
-
-## Analytics implementation checklist
-
-Before enabling WorldGraph analytics in production:
-
-- [ ] Event names added to allowlist (see [PRD § Analytics](./PRD_MVP.md#analytics-and-measurement-plan))
-- [ ] `path_class` buckets defined for `/worlds/*` routes
-- [ ] Search queries stored as hash or intent bucket only
-- [ ] `consent_state` respected per [ANALYTICS_EVENT_SCHEMA.md](../ANALYTICS_EVENT_SCHEMA.md)
-- [ ] Dashboard or weekly export for five metric groups
-- [ ] Parity check documented if extending server analytics modules
-
----
-
-## PRD and roadmap acceptance (#203)
-
-- [x] [PRD_MVP.md](./PRD_MVP.md) published with all required sections
-- [x] [ROADMAP.md](./ROADMAP.md) uses validation gates
-- [x] [DECISION_LOG.md](./DECISION_LOG.md) consolidates prior decisions
-- [x] This checklist covers release and measurement gates
-- [x] Proposed milestone names documented (not created in GitHub)
-- [x] Owner approval **gate** recorded in [DECISION_LOG.md](./DECISION_LOG.md) (signature PENDING → blocks implementation issues only)
-- [x] No production code in #203 PR
+| Group | Metric | Pilot target | Source |
+|-------|--------|--------------|--------|
+| Discovery success | Task completion (facilitated) | ≥4/6 complete ≥3/4 tasks | VALIDATION_PLAN |
+| Discovery success | Profile view after search | ≥60% when results >0 | Analytics |
+| Discovery success | Outbound action rate | ≥25% of profile views | `outbound_action` |
+| Discovery success | No-result rate (curated queries) | ≤15% | `search_no_result` |
+| Retention | Repeat scout context documented | ≥3/6 verbatim quotes | Validation plan |
+| Guardrails | Unsafe listing incidents | 0 unresolved | Moderation queue |
+| Guardrails | Rights disputes open | Track; <5% Worlds | Dispute states |
 
 ---
 
-## Related documents
+## E. Ongoing operational checklist (post-launch)
 
-- [PRD_MVP.md](./PRD_MVP.md)
-- [ROADMAP.md](./ROADMAP.md)
-- [DECISION_LOG.md](./DECISION_LOG.md)
-- [MARKET_POSITION.md](./MARKET_POSITION.md)
-- [TECHNICAL_SPIKE.md](./TECHNICAL_SPIKE.md)
+### E.1 Weekly
+
+| ☐ | Action |
+|---|--------|
+| ☐ | Review admin queue SLA (submitted → first decision) |
+| ☐ | Sample 5 published manifests for stale fields |
+| ☐ | Check dispute and unpublish queue |
+| ☐ | Review guardrail metrics dashboard |
+
+### E.2 Monthly
+
+| ☐ | Action |
+|---|--------|
+| ☐ | Re-fetch published canonical URLs (freshness) |
+| ☐ | Audit claim expirations and reverification |
+| ☐ | Review no-result queries for filter/schema gaps |
+| ☐ | Update [DECISION_LOG.md](./DECISION_LOG.md) if policy changes |
+
+### E.3 Quarterly
+
+| ☐ | Action |
+|---|--------|
+| ☐ | Revisit ROADMAP phase gates (Phase 4/5) |
+| ☐ | Compare metrics to validation readout |
+| ☐ | Re-run discovery task sample (n≥3) if search changed |
+
+---
+
+## F. Success framework summary (five groups)
+
+Pilot targets derive from [VALIDATION_PLAN.md](./VALIDATION_PLAN.md) and
+[VALIDATION_READOUT.md](./VALIDATION_READOUT.md) — not invented baselines.
+
+| Group | Key metrics | Pilot target |
+|-------|-------------|--------------|
+| **1. Supply activation** | Drafts reviewed; claims completed; published with approval | ≥7/10 corrections; ≥5/10 publish approve |
+| **2. Manifest quality** | Field completeness; correction time; disputes; stale rate | ≥80% required fields; ≤30 min median correction; track stale % |
+| **3. Discovery success** | Task completion; profile views; outbound actions; no-result rate | ≥4/6 tasks; ≥60% click-through; ≥25% outbound; ≤15% no-result |
+| **4. Retention** | Creators updating profiles; scouts repeat context | Qualitative repeat-use quotes ≥3/6; creator update requests tracked |
+| **5. Guardrails** | Rights disputes; unsafe listings; false verification; privacy | 0 false verification; disputes <5% Worlds; 0 privacy incidents |
+
+---
+
+## G. Rollback criteria
+
+Initiate rollback or feature flag off if:
+
+| Condition | Action |
+|-----------|--------|
+| SSRF or unsanitized XSS in production evidence | Disable ingestion worker |
+| Negative-control World in public search | Disable search index build |
+| Project Brief → World auto-create detected | Hotfix + disable intake |
+| Privacy incident (scout PII in analytics) | Stop analytics emit; purge per policy |
+
+---
+
+## H. Sign-off (public MVP launch)
+
+| Role | Name | Date | Phase 3 complete |
+|------|------|------|------------------|
+| Product | | | ☐ |
+| Engineering | | | ☐ |
+| Operations | | | ☐ |

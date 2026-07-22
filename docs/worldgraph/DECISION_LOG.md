@@ -1,141 +1,95 @@
-# WorldGraph — Product decision log
+# WorldGraph product decision log
 
 **Parent issue:** [#203](https://github.com/saberistic-team/agent-web/issues/203)
 
-**Purpose:** Record product decisions across Product Definition so implementation
-issues do not re-litigate settled boundaries. Owner approval for implementation is
-recorded at the bottom.
+**Status:** Living log. Decisions below are recorded at PRD authoring; owner approval
+for implementation is tracked separately.
 
 **Last updated:** 2026-07-22
 
----
-
-## Decision index
-
-| ID | Date | Decision | Source | Status |
-|----|------|----------|--------|--------|
-| D-001 | 2026-07-15 | WorldGraph is a neutral registry/discovery graph, not a creation engine or marketplace | [#198](./MARKET_POSITION.md) | Accepted |
-| D-002 | 2026-07-15 | Primary ICP: independent creators; primary discovery: scouts/producers/IP | [#198](./MARKET_POSITION.md) | Accepted |
-| D-003 | 2026-07-15 | Creator-first registry before consumer-scale search | [#198](./MARKET_POSITION.md) | Accepted |
-| D-004 | 2026-07-15 | MVP monetization hypothesis only; no paid ranking | [#198](./MARKET_POSITION.md) | Accepted |
-| D-005 | 2026-07-15 | Acknowledge MSF “Web of Worlds”; wedge is product/graph | [#198](./MARKET_POSITION.md) | Accepted |
-| D-006 | 2026-07-15 | Manifest v0 field-level provenance; unknown stays unknown | [#204](./MANIFEST_V0.md) | Accepted |
-| D-007 | 2026-07-15 | CRM boundary: no world entities in `project_briefs` / CRM tables | [#204](./MANIFEST_V0.md) | Accepted |
-| D-008 | 2026-07-15 | Async ingestion via DB jobs + Render worker | [#204](./ADR_INGESTION_AND_SEARCH.md) | Accepted |
-| D-009 | 2026-07-15 | Deterministic extraction primary; model-assisted optional overlay | [#204](./ADR_INGESTION_AND_SEARCH.md) | Accepted |
-| D-010 | 2026-07-15 | Phase 1 search: Postgres FTS + trigram; defer pgvector | [#204](./ADR_INGESTION_AND_SEARCH.md) | Accepted |
-| D-011 | 2026-07-15 | Separate verification methods with non-interchangeable trust levels | [#204](./ADR_INGESTION_AND_SEARCH.md) | Accepted |
-| D-012 | 2026-07-15 | Spike security baseline carries forward unchanged | [#204](./ADR_INGESTION_AND_SEARCH.md) | Accepted |
-| D-013 | 2026-07-15 | No production implementation from spike milestone | [#204](./TECHNICAL_SPIKE.md) | Accepted |
-| D-014 | 2026-07-22 | AI-native world qualification rules (seven-rule checklist) | [#199](./WORLD_DEFINITION.md) | Accepted |
-| D-015 | 2026-07-22 | Operator-assisted registry; no unrestricted crawler | [#201](./UX_JOURNEYS.md) | Accepted |
-| D-016 | 2026-07-22 | `/brief` Project Brief intake never auto-publishes as World | [#201](./UX_JOURNEYS.md), [PRD](./PRD_MVP.md) | Accepted |
-| D-017 | 2026-07-22 | Admin review before first publication | [#201](./UX_JOURNEYS.md) | Accepted |
-| D-018 | 2026-07-22 | Creator claim distinct from Saberistic verification | [#201](./UX_JOURNEYS.md) | Accepted |
-| D-019 | 2026-07-22 | MVP scoped per [PRD_MVP.md](./PRD_MVP.md); phased per [ROADMAP.md](./ROADMAP.md) | [#203](https://github.com/saberistic-team/agent-web/issues/203) | Proposed |
-| D-020 | 2026-07-22 | Phase 1 engineering issues only after owner PRD approval | [#203](https://github.com/saberistic-team/agent-web/issues/203) | Proposed |
-| D-021 | 2026-07-22 | Phase 2+ gated on #202 fieldwork readout (currently Iterate) unless owner waives | [#202](./VALIDATION_READOUT.md) | Proposed |
-| D-022 | 2026-07-22 | Public search opens at ≥20 published worlds | [PRD](./PRD_MVP.md) | Proposed |
-| D-023 | 2026-07-22 | Phase 1 creator intake admin-only; public submit in Phase 2 | [PRD](./PRD_MVP.md) | Proposed |
-| D-024 | 2026-07-22 | Model-assisted extraction off by default in Phase 1 | [PRD](./PRD_MVP.md) | Proposed |
+**Related:** [PRD_MVP.md](./PRD_MVP.md), [ROADMAP.md](./ROADMAP.md),
+[VALIDATION_READOUT.md](./VALIDATION_READOUT.md)
 
 ---
 
-## Decision detail
+## How to use this log
 
-### D-001 — Product category
+| Column | Meaning |
+|--------|---------|
+| **ID** | Stable reference (`WG-D###`) |
+| **Decision** | What was chosen |
+| **Rationale / evidence** | Why — cite upstream issues or validation |
+| **Status** | `proposed` · `accepted` · `superseded` · `deferred` |
+| **Owner** | Role accountable for reversal |
 
-**Decision:** WorldGraph begins as a **neutral, verified registry and discovery graph
-for AI-native worlds**.
-
-**Rejected alternatives:** World-building engine, metaverse runtime, consumer
-entertainment destination, transaction marketplace.
-
-**Evidence:** [MARKET_POSITION.md](./MARKET_POSITION.md)
-
----
-
-### D-006 — Provenance discipline
-
-**Decision:** Every populated factual field cites provenance with confidence and
-observation time. Missing facts remain `"unknown"` with `confidence: 0`.
-
-**Rejected alternatives:** Model output as verified fact; implicit inference without
-evidence records.
-
-**Evidence:** [MANIFEST_V0.md](./MANIFEST_V0.md), spike validation tests
+New decisions from implementation issues append rows; do not rewrite history.
 
 ---
 
-### D-016 — Project Brief boundary
+## Decisions
 
-**Decision:** The paid `/brief` consulting intake ([PROJECT_BRIEF.md](../PROJECT_BRIEF.md))
-remains a separate CRM flow. WorldGraph drafts may not be created from brief rows
-without explicit creator consent and a distinct intake path.
-
-**Rejected alternatives:** Auto-publish brief submissions; merge brief JSON into manifest.
-
----
-
-### D-019 — MVP scope package
-
-**Decision:** The buildable MVP comprises registry, verification, public profiles,
-scout search, and privacy-preserving analytics — delivered in **five gated phases**.
-Phase 1 alone is sufficient for first engineering milestone.
-
-**Non-goals:** See [PRD_MVP.md § Non-goals](./PRD_MVP.md#non-goals).
-
----
-
-## Open decisions (awaiting owner)
-
-| ID | Question | Options | Recommendation |
-|----|----------|---------|----------------|
-| OQ-1 | Approve PRD while #202 readout is Iterate (no fieldwork)? | Wait / Proceed Phase 1 only | Proceed Phase 1 only after sign-off |
-| OQ-2 | Public creator submit timing | Phase 1 admin-only / Phase 2 public | Phase 2 |
-| OQ-3 | Scout contact mechanism | Relay form / mailto | Relay with abuse controls |
-| OQ-4 | WorldGraph standalone vs services-led | Standalone product / GTM support | Decide after #202 monetization fieldwork |
+| ID | Date | Decision | Rationale / evidence | Status | Owner |
+|----|------|----------|------------------------|--------|-------|
+| WG-D001 | 2026-07-15 | WorldGraph is a **neutral registry and discovery graph**, not a world engine, runtime, or marketplace | [MARKET_POSITION.md](./MARKET_POSITION.md) (#198) | accepted | Product |
+| WG-D002 | 2026-07-15 | **Creator-first** supply strategy; consumer entertainment search deferred | Market position invalidation criteria; scout ICP first | accepted | Product |
+| WG-D003 | 2026-07-15 | Seven-rule **World qualification** gates indexing | [WORLD_DEFINITION.md](./WORLD_DEFINITION.md) (#199); corpus validates 25/30 | accepted | Product |
+| WG-D004 | 2026-07-15 | **Manifest v0** is Saberistic product schema — not declared industry standard | #199 explicit decision; MSF Web of Worlds tracked, not originated | accepted | Product |
+| WG-D005 | 2026-07-15 | Unknown fields stay `"unknown"` with zero confidence; verified ≠ observed | Schema + spike enforcement (#199, #204) | accepted | Product |
+| WG-D006 | 2026-07-22 | Research corpus (#200) is **research-only**; never auto-published to public index | [CORPUS_REPORT.md](./CORPUS_REPORT.md) | accepted | Product |
+| WG-D007 | 2026-07-22 | **Project Brief (`/brief`)** remains separate intake; no auto World listing from CRM | [UX_JOURNEYS.md](./UX_JOURNEYS.md) (#201) | accepted | Product |
+| WG-D008 | 2026-07-22 | **Admin review before first publication**; claim and Saberistic review are distinct gates | UX journeys state model (#201) | accepted | Product |
+| WG-D009 | 2026-07-15 | Async ingestion via **Postgres jobs + Render worker** | [ADR_INGESTION_AND_SEARCH.md](./ADR_INGESTION_AND_SEARCH.md) Decision 1 (#204) | accepted | Engineering |
+| WG-D010 | 2026-07-15 | **Deterministic extraction primary**; model-assisted optional overlay never auto-verifies | ADR Decision 2; 12/12 spike corpus pass | accepted | Engineering |
+| WG-D011 | 2026-07-15 | **Separate `world_*` tables**; CRM entities unchanged | ADR Decision 3; Manifest v0 CRM boundary | accepted | Engineering |
+| WG-D012 | 2026-07-15 | Phase 1 search = **PostgreSQL FTS + trigram**; pgvector deferred | ADR Decision 4; benchmark at MVP corpus scale | accepted | Engineering |
+| WG-D013 | 2026-07-15 | Claim methods: DNS/well-known > GitHub repo > email magic link | ADR Decision 5 | accepted | Product |
+| WG-D014 | 2026-07-22 | MVP basic listing **free**; monetization packages remain hypotheses | MARKET_POSITION + VALIDATION_PLAN | accepted | Product |
+| WG-D015 | 2026-07-22 | **No paid ranking or promoted placement** in MVP | Market position + UX journeys | accepted | Product |
+| WG-D016 | 2026-07-22 | Pilot seed content: operator-import **research corpus subset** after review — not bulk crawl | CORPUS_REPORT; 25 qualifying Worlds | accepted | Product |
+| WG-D017 | 2026-07-22 | Public MVP launch requires **Phases 1–3** (pipeline, profiles, discovery) | PRD scope mapping; Phase 1 alone is internal release | proposed | Product |
+| WG-D018 | 2026-07-22 | **90-day re-fetch** default freshness SLA before `stale` state | UX journeys open question default (#201) | proposed | Product |
+| WG-D019 | 2026-07-22 | Default policy: **hold publication until creator claim** unless admin policy flag | UX journeys (#201) | proposed | Product |
+| WG-D020 | 2026-07-22 | Implementation **blocked** until validation readout recommends **Proceed** + owner sign-off | [VALIDATION_READOUT.md](./VALIDATION_READOUT.md) — fieldwork incomplete | accepted | Product |
+| WG-D021 | 2026-07-22 | Only **Phase 1** decomposes to engineering issues upon PRD owner approval | Issue #203 acceptance criteria | proposed | Product |
 
 ---
 
-## Owner approval (implementation gate)
+## Owner approval gate (implementation)
 
-**#203 acceptance (docs deliverable):** This section **records the mandatory gate** —
-implementation issues must not be filed until the owner row below is signed.
-That satisfies the #203 criterion “Owner approval is recorded before
-implementation issues are generated.”
+| Gate | Requirement | Status |
+|------|-------------|--------|
+| PRD + roadmap authored | This milestone (#203) | **Complete** |
+| Validation readout **Proceed** | Supply + demand evidence per [VALIDATION_PLAN.md](./VALIDATION_PLAN.md) | **Not met** — iterate |
+| Product owner sign-off | Record name + date below | **Pending** |
+| Phase 1 engineering issues | Created only after both rows above | **Blocked** |
 
-**Human signature (separate from #203 merge):** Remains **PENDING** until the
-product owner fills the row. PENDING correctly **blocks implementation issue
-generation**; it does **not** block merging this documentation PR.
+### Sign-off record
 
-| Field | Value |
-|-------|-------|
-| PRD version | [PRD_MVP.md](./PRD_MVP.md) @ 2026-07-22 |
-| Roadmap version | [ROADMAP.md](./ROADMAP.md) @ 2026-07-22 |
-| Gate recorded in #203 | **Yes** (this section) |
-| Approval status (human sign-off) | **PENDING** — blocks implementation issues only |
-| Approved by | _Owner name_ |
-| Approval date | _YYYY-MM-DD_ |
-| Notes | [VALIDATION_READOUT.md](./VALIDATION_READOUT.md) currently Iterate; record fieldwork update or waiver |
-
-### Approval checklist (owner completes at sign-off)
-
-- [ ] PRD acceptance criteria reviewed
-- [ ] Non-goals acknowledged
-- [ ] Phase 1 scope and exit criteria accepted
-- [ ] Validation gate policy accepted (G2+ requires #202 or waiver)
-- [ ] Open questions OQ-1–OQ-4 resolved or explicitly deferred
-- [ ] Proposed milestone names acknowledged ([ROADMAP.md](./ROADMAP.md))
-
-**Signature:** _Owner sign-off via issue comment, PR review, or updated row above.
-Until signed, do not open WorldGraph implementation issues._
+| Role | Name | Date | Notes |
+|------|------|------|-------|
+| Product owner | — | — | Pending validation Proceed + PRD review |
+| Engineering lead | — | — | Pending Phase 1 issue breakdown |
 
 ---
 
-## Change log
+## Superseded / deferred
 
-| Date | Change | Author |
-|------|--------|--------|
-| 2026-07-22 | Initial log for #203; consolidates #198–#204 decisions | Docs agent |
-| 2026-07-22 | Sync decision sources to landed #199–#202 artifacts after merge of #410–#413 | Docs agent |
+| ID | Topic | Resolution |
+|----|-------|------------|
+| — | Automatic publication of Project Brief records | **Rejected** — WG-D007 |
+| — | pgvector Phase 1 | **Deferred** — WG-D012; revisit at >5k worlds or >15% lexical no-result |
+| — | World generation / hosting | **Out of MVP** — see PRD non-goals |
+| — | Tokens, marketplace escrow, governance execution | **Out of MVP** — see PRD non-goals |
+
+---
+
+## Open decisions requiring owner input
+
+| ID | Question | Options | Default if silent |
+|----|----------|---------|-------------------|
+| WG-Q001 | Publish **observation-only** profiles without claim? | Hold / allow with banner / case-by-case | Hold (WG-D019) |
+| WG-Q002 | Public **tombstone** for unpublished slugs? | Yes minimal / 404 only | Yes minimal tombstone |
+| WG-Q003 | Exact **stale** SLA | 60 / 90 / 120 days | 90 days (WG-D018) |
+| WG-Q004 | Store raw search queries in analytics | Hashed bucket only / 14-day raw / none | Hashed bucket (UX journeys) |
+| WG-Q005 | Scout **saved lists** | Phase 3+ / Phase 4 / never | Phase 4 |
+| WG-Q006 | Relationship to Saberistic **services GTM** | Standalone product / services attach | Open — market position #198 |

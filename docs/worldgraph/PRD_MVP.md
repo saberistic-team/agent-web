@@ -2,580 +2,721 @@
 
 **Parent issue:** [#203](https://github.com/saberistic-team/agent-web/issues/203)
 
-**Status:** Product-definition document. No production routes, database tables, or
-public marketing claims ship from this file.
+**Status:** PRD complete for owner review. **Implementation not approved** until
+[VALIDATION_READOUT.md](./VALIDATION_READOUT.md) recommends **Proceed** and sign-off is
+recorded in [DECISION_LOG.md](./DECISION_LOG.md).
 
 **Last updated:** 2026-07-22
 
-**Upstream evidence:**
+**Related documents:**
 
-| Issue | Artifact | Role in this PRD |
-|-------|----------|------------------|
-| [#198](https://github.com/saberistic-team/agent-web/issues/198) | [MARKET_POSITION.md](./MARKET_POSITION.md) | Category, ICP, JTBD, invalidation criteria |
-| [#199](https://github.com/saberistic-team/agent-web/issues/199) | [WORLD_DEFINITION.md](./WORLD_DEFINITION.md), [WORLD_MANIFEST_V0.md](./WORLD_MANIFEST_V0.md), [world-manifest-v0.schema.json](./world-manifest-v0.schema.json) | World qualification, Manifest v0 |
-| [#200](https://github.com/saberistic-team/agent-web/issues/200) | [CORPUS_REPORT.md](./CORPUS_REPORT.md), [corpus/](./corpus/), [spike/corpus_sources.json](./spike/corpus_sources.json) | Corpus coverage, field gaps |
-| [#201](https://github.com/saberistic-team/agent-web/issues/201) | [UX_JOURNEYS.md](./UX_JOURNEYS.md) | Creator/discovery/admin flows, lifecycle states |
-| [#202](https://github.com/saberistic-team/agent-web/issues/202) | [VALIDATION_PLAN.md](./VALIDATION_PLAN.md), [VALIDATION_READOUT.md](./VALIDATION_READOUT.md) | Two-sided demand gate |
-| [#204](https://github.com/saberistic-team/agent-web/issues/204) | [TECHNICAL_SPIKE.md](./TECHNICAL_SPIKE.md), [ADR_INGESTION_AND_SEARCH.md](./ADR_INGESTION_AND_SEARCH.md) | Architecture, search, security |
+| Topic | Document | Issue |
+|-------|----------|-------|
+| Market position | [MARKET_POSITION.md](./MARKET_POSITION.md) | #198 |
+| World definition + Manifest v0 | [WORLD_DEFINITION.md](./WORLD_DEFINITION.md), [WORLD_MANIFEST_V0.md](./WORLD_MANIFEST_V0.md) | #199 |
+| Research corpus | [CORPUS_REPORT.md](./CORPUS_REPORT.md) | #200 |
+| UX journeys | [UX_JOURNEYS.md](./UX_JOURNEYS.md) | #201 |
+| Validation | [VALIDATION_PLAN.md](./VALIDATION_PLAN.md), [VALIDATION_READOUT.md](./VALIDATION_READOUT.md) | #202 |
+| Architecture | [ADR_INGESTION_AND_SEARCH.md](./ADR_INGESTION_AND_SEARCH.md), [TECHNICAL_SPIKE.md](./TECHNICAL_SPIKE.md) | #204 |
+| Roadmap | [ROADMAP.md](./ROADMAP.md) | #203 |
+| Decisions | [DECISION_LOG.md](./DECISION_LOG.md) | #203 |
+| Launch checklist | [RELEASE_MEASUREMENT_CHECKLIST.md](./RELEASE_MEASUREMENT_CHECKLIST.md) | #203 |
 
 ---
 
-## Executive decision and problem statement
+## 1. Executive decision and problem statement
 
-### Decision (pending owner approval)
+### Decision
 
-**Recommend conditional proceed:** Product-definition evidence supports building
-WorldGraph as a **creator-first, operator-assisted registry and discovery graph**
-for AI-native worlds. Implementation should begin with **Phase 1 only** (see
-[ROADMAP.md](./ROADMAP.md)) after:
+**Build** a creator-first, operator-assisted World registry and scout discovery product
+(WorldGraph MVP) in **three gated releases** (Phases 1–3 in [ROADMAP.md](./ROADMAP.md)),
+**after** two-sided validation reaches **Proceed** and the product owner approves this PRD.
 
-1. Owner records approval in [DECISION_LOG.md](./DECISION_LOG.md).
-2. Two-sided validation ([#202](https://github.com/saberistic-team/agent-web/issues/202))
-   readout confirms both supply-side claim/review completion and discovery-side
-   task completion — or owner explicitly accepts spike/corpus evidence as sufficient
-   for a bounded pilot.
-
-**Do not open engineering issues until both gates are recorded.**
+**Do not begin Phase 1 engineering** while validation readout status is **Iterate**
+(fieldwork incomplete as of 2026-07-22).
 
 ### Problem
 
-When someone publishes or evaluates an AI-native interactive world, there is no
-canonical, verifiable profile that explains what it is, who controls it, how AI
-participates, how to enter or integrate with it, and what rights and rules apply
-([MARKET_POSITION.md](./MARKET_POSITION.md)).
+When someone publishes or evaluates an AI-native interactive world, there is no canonical,
+verifiable, cross-platform profile that explains what the world is, who controls it, how AI
+participates, how to enter or integrate, and what rights and rules apply
+([MARKET_POSITION.md](./MARKET_POSITION.md) JTBD).
 
-Creators rely on fragmented platform listings, link-in-bio pages, and informal
-social discovery. Scouts and IP stakeholders manually research per platform with
-no cross-platform schema, verification, or structured comparison.
+Creators fragment identity across platform stores and link-in-bio pages. Scouts manually
+research per platform with no structured comparison, trust signals, or machine-readable
+manifest. Agent registries index tools, not world-level containers.
 
-WorldGraph addresses **registry and discovery**, not world generation, runtime
-hosting, or consumer entertainment at scale.
+### Why now
+
+Desk research shows active but fragmented markets (platform discovery, creation tools, agent
+registries, emerging MSF “Web of Worlds” direction). The research corpus (#200) proves
+25 qualifying Worlds fit one definition across six categories. The technical spike (#204)
+proves safe ingestion, Manifest v0 extraction, and PostgreSQL lexical search are feasible
+on existing FastAPI/Postgres infrastructure.
+
+**What is not proven yet:** creators will claim and approve publication; scouts will complete
+structured discovery tasks and return for repeat use ([VALIDATION_READOUT.md](./VALIDATION_READOUT.md)).
+
+### MVP boundary
+
+One **coherent MVP product** spans Phases 1–3:
+
+| Phase | Delivers |
+|-------|----------|
+| 1 | Private drafts, extraction, admin review (internal) |
+| 2 | Creator claim, correction, public profile + manifest |
+| 3 | Scout search, filters, outbound actions |
+
+Phase 1 alone is testable internally (concierge private profiles). **Public MVP launch**
+requires Phase 3.
 
 ---
 
-## Target users and jobs to be done
+## 2. Target users and jobs to be done
 
-### Primary supply-side ICP
+### Primary users
 
-**Independent creators and small studios** publishing interactive AI experiences
-across the open web or multiple platforms.
+| User | ICP | Job to be done |
+|------|-----|----------------|
+| **Creator** | Independent creators and small studios publishing AI-native interactive worlds across open web / multiple platforms | Obtain a canonical, verifiable World profile and manifest; control published claims; receive scout discovery |
+| **Discovery user (Scout)** | Developers, producers, innovation teams, IP/rightsholders | Find and compare worlds; assess AI role, access, rights, safety; take next action (enter, integrate, contact, rights inquiry) |
+| **Saberistic operator (Admin)** | Internal curator/reviewer | Qualify intake; resolve duplicates; enforce safety/rights policy; approve claims and publication |
 
-| Job | Outcome |
-|-----|---------|
-| Publish a canonical world identity | One structured profile beyond any single platform store |
-| Prove control and rights | Verifiable claim tier visible on public profile |
-| Attract scouts and collaborators | Inbound contact and integration paths without paid rank |
+### Secondary users (explicitly deferred)
 
-### Primary discovery-side user
+General entertainment consumers, enterprise platform operators, standards-body editors —
+see [MARKET_POSITION.md](./MARKET_POSITION.md).
 
-**Developers, producers, innovation teams, and IP/rightsholders** scouting worlds,
-agents, integration opportunities, and licensing-compatible projects.
-
-| Job | Outcome |
-|-----|---------|
-| Compare worlds across runtimes | Structured filters + search over validated corpus |
-| Evaluate trust and rights | Field-level provenance and claim status on profile |
-| Take next action | Enter/play, integrate, follow source, or contact creator |
-
-### Secondary users (deferred)
-
-General entertainment consumers, enterprise platform operators, and standards-body
-authors remain out of MVP-first scope per [#198](./MARKET_POSITION.md).
-
-### JTBD (canonical)
+### Jobs to be done (summary)
 
 > When I publish or evaluate an AI-native interactive world, give me a canonical,
 > verifiable profile that explains what it is, who controls it, how AI participates,
 > how to enter or integrate with it, and what rights and rules apply.
 
----
-
-## Evidence and validation summary
-
-### Market and category (#198)
-
-- Adjacent categories (platform stores, creation engines, agent registries, MSF Web
-  of Worlds) leave a gap for **neutral indexing, verification, curation, and
-  scout-oriented discovery**.
-- Creator-first registry precedes consumer-scale search.
-- Five invalidation criteria documented; paid ranking excluded.
-
-### World definition and Manifest v0 (#199, #204)
-
-- An **AI-native world** requires all seven qualification rules in
-  [WORLD_DEFINITION.md](./WORLD_DEFINITION.md) (stable entry, meaningful interaction,
-  bounded setting, persistence/reproducibility, material AI role, identifiable
-  creator/operator, evaluable access/safety metadata).
-- Manifest v0 enforces field-level provenance, unknown handling, and separated
-  trust concepts ([WORLD_MANIFEST_V0.md](./WORLD_MANIFEST_V0.md);
-  spike pointer [MANIFEST_V0.md](./MANIFEST_V0.md)).
-- CRM entities (`project_briefs`, `companies`, etc.) must not absorb world records.
-
-### Corpus (#200)
-
-| Signal | Evidence | Implication for MVP |
-|--------|----------|---------------------|
-| Qualification consistency | 25/30 corpus candidates qualify; 5/5 negative controls excluded ([CORPUS_REPORT.md](./CORPUS_REPORT.md)); spike 12/12 extract | Qualification rules are testable; admin review still required for edge cases |
-| Category coverage | Narrative, spatial, simulation, game/UGC, persistent social across [corpus/](./corpus/) | One world definition spans product categories without collapsing to “chatbot” |
-| Unknown fields | Weakest columns: model disclosures, moderation contact, age guidance; ~3 unknown optional fields per spike deterministic extraction ([benchmark_results.json](./spike/benchmark_results.json)) | Creator attestation required for rights, safety, and ambiguous metadata |
-| Source types | GitHub README/docs safe; marketing HTML partial; logged-in / app-store not ingested | Deterministic extraction primary; model-assisted optional overlay |
-| Addressable supply | 25 qualifying Worlds above the 20-World minimum | Pilot index seeds from curated qualifying subset; **do not auto-publish** research records |
-
-### Technical spike (#204)
-
-- Async ingestion via DB jobs + Render worker ([ADR](./ADR_INGESTION_AND_SEARCH.md)).
-- Phase 1 search: PostgreSQL FTS + trigram; pgvector deferred until corpus > ~5k
-  worlds **or** lexical no-result rate > 15%.
-- Security baseline: SSRF blocking, size caps, injection stripping, excerpt-only
-  retention.
-
-### Journeys (#201)
-
-Per [UX_JOURNEYS.md](./UX_JOURNEYS.md):
-
-- Operator-assisted, creator-first registry — no unrestricted crawler or consumer feed.
-- Admin review before first publication; creator claim distinct from Saberistic review.
-- `/brief` (paid consulting intake) remains separate; never auto-publishes as a World.
-
-### Two-sided validation (#202) — gate status
-
-[VALIDATION_READOUT.md](./VALIDATION_READOUT.md) is landed and currently recommends
-**Iterate** — fieldwork is **not** complete (0/8 supply, 0/6 demand, 0/10 concierge,
-0/6 discovery). The plan’s minimum evidence remains:
-
-| Side | Minimum | Success signal |
-|------|---------|----------------|
-| Supply | 8 creator interviews; concierge test on ≥10 consenting projects | Creators complete review/correction and approve publication |
-| Demand | 6 discovery interviews; structured search tasks | Task completion + stated repeat-use context |
-| Monetization | Ranked package tests (no charge) | At least one segment names budget owner for a concrete package |
-
-Pilot metric **targets** below derive from [VALIDATION_PLAN.md](./VALIDATION_PLAN.md)
-and spike/corpus baselines — **not** achieved fieldwork results. Phase 2+ stays gated
-on an updated readout (or owner waiver).
+Registry and discovery — **not** world generation, hosting, or consumer entertainment at
+scale.
 
 ---
 
-## Product principles
+## 3. Evidence and validation summary
 
-1. **Evidence or declaration** — Populated facts cite provenance; unknown stays unknown.
-2. **Trust is layered** — Source observation, creator claim, domain/GitHub verification,
-   and Saberistic review are distinct and visibly labeled.
-3. **Operator-assisted quality** — First publication requires admin review; automation
-   assists extraction, not judgment on rights or safety.
-4. **Creator-first, scout-oriented** — Optimize for structured evaluation, not
-   consumer entertainment ranking.
-5. **CRM boundary** — WorldGraph entities live in `world_*` tables; Project Brief
-   intake stays on `/brief`.
-6. **Privacy-preserving measurement** — Analytics use coarse path classes and
-   anonymous session IDs; no fingerprinting ([ANALYTICS_EVENT_SCHEMA.md](../ANALYTICS_EVENT_SCHEMA.md) patterns).
-7. **Narrow wedge, gated expansion** — No tokens, hosting, crawling, social feeds,
-   or paid placement in MVP ([non-goals](#non-goals)).
+### Desk research and product definition (available)
+
+| Evidence | Finding | Source |
+|----------|---------|--------|
+| Market fragmentation | Wedge is neutral registry + verification + scout discovery | #198 MARKET_POSITION |
+| Qualification consistency | 25/30 candidates qualify under seven rules; 5 negative controls | #200 CORPUS_REPORT |
+| Field observability | Entry points, identity name, interaction model often observed; model disclosures, moderation contact rarely observed | #200 gap matrix |
+| Addressable supply | ≥20 Worlds minimum exceeded in manual pass | #200 |
+| Journey feasibility | Creator, scout, admin success states defined with trust model | #201 UX_JOURNEYS |
+| Technical feasibility | 12/12 spike corpus extracts; FTS+trigram relevance proxy 1.0 on 10 queries | #204 TECHNICAL_SPIKE |
+| Search caution | Weak lexical matches on negative intents — requires score threshold | #204 benchmark |
+
+### Field validation (not complete)
+
+| Segment | Required | Completed | Status |
+|---------|----------|-----------|--------|
+| Supply interviews | 8 | 0 | Not started |
+| Demand interviews | 6 | 0 | Not started |
+| Concierge profiles | 10 | 0 | Not started |
+| Discovery sessions | 6 | 0 | Not started |
+
+**Readout recommendation:** **Iterate** — execute [VALIDATION_PLAN.md](./VALIDATION_PLAN.md).
+MVP PRD is **not approved for implementation** until readout upgrades to **Proceed**.
+
+### Proceed criteria (from validation plan — pilot targets)
+
+**Supply:**
+
+- ≥5/10 concierge participants give **explicit publish approval** after correction
+- ≥7/10 submit corrections; median correction time ≤30 min (directional)
+- Top 3 disputed fields documented
+
+**Demand:**
+
+- ≥4/6 discovery participants **complete** ≥3/4 pre-defined tasks with confidence ≥4
+- ≥3/6 state a **specific repeat-use context** (verbatim)
+
+**Monetization (post-MVP signal only):**
+
+- At least one segment ranks a paid package above status quo **and** names budget owner +
+  comparable purchase
+
+### Negative evidence to preserve
+
+- Creators prefer platform-only listings with no incremental value
+- Scouts complete tasks faster with existing stores/social search
+- Correction burden exceeds perceived benefit
+- Rights/AI fields systematically disputed
 
 ---
 
-## Functional requirements
+## 4. Product principles
 
-Each requirement includes measurable acceptance criteria (AC). IDs map to
+1. **Evidence or declaration** — Every populated field has provenance; unknown stays unknown.
+2. **Verified ≠ observed** — Fetching a URL does not verify ownership; claims are separate.
+3. **Admin gate on first publish** — No auto-publication from intake or CRM.
+4. **Creator-first supply** — Optimize for credible metadata and scout workflows before
+   consumer-scale ranking.
+5. **Neutral registry** — Not a walled-garden store, engine, or agent-only catalog.
+6. **Honest discovery** — No fabricated results; explicit no-result with refinements.
+7. **Privacy-preserving analytics** — No fingerprinting; no persistent anonymous visitor ID.
+8. **CRM boundary** — WorldGraph entities do not overload `project_briefs` or CRM tables.
+9. **Standards-aware, not standards-claiming** — Reuse A2A/MCP/C2PA references; Manifest v0
+   is product schema, not industry standard.
+10. **Nimble implementation** — Feature routers mounted from `app.main`; avoid mega-modules;
+    admin preview mock data for new UI ([AGENTS/builder.md](../../AGENTS/builder.md)).
+
+---
+
+## 5. Functional requirements
+
+Each requirement includes **measurable acceptance criteria** (AC). IDs map to
 [RELEASE_MEASUREMENT_CHECKLIST.md](./RELEASE_MEASUREMENT_CHECKLIST.md).
 
-### FR-1: Curator/admin draft creation
+### 5.1 Intake and drafts
 
-| ID | Requirement | AC |
-|----|-------------|-----|
-| FR-1.1 | Admin creates a private World draft from a canonical URL | Given a valid public URL, draft row + ingestion job created within 2 s API response |
-| FR-1.2 | Admin creates a draft from structured submission (URL list + minimal attestation) | Same as FR-1.1; attestation stored separately from extracted fields |
-| FR-1.3 | Drafts are not publicly listable or searchable | Unpublished worlds return 404 on public routes; search index excludes non-`published` |
+**FR-001 — World draft creation**
 
-### FR-2: Source capture and field-level provenance
+| | |
+|---|---|
+| **Description** | Curator/admin creates a private World draft from a canonical URL or structured submission. Creator self-serve submit form ships in Phase 2; admin path available in Phase 1. |
+| **Inputs** | HTTPS URL (required); contact email; optional context (world type hint, submitter role) |
+| **Outputs** | Private draft in `submitted` → `extraction_pending`; tracking reference |
+| **AC-001** | Valid URL submission returns async acceptance within 2 s p95 |
+| **AC-002** | Draft is not public and not indexed until `published` |
+| **AC-003** | Submission form copy states intake is not `/brief` consulting |
 
-| ID | Requirement | AC |
-|----|-------------|-----|
-| FR-2.1 | Worker fetches creator-provided URLs with spike security policy | SSRF, redirect, size, and MIME checks pass adversarial fixtures (`wg-security-001`, `wg-negative-*`) |
-| FR-2.2 | Each populated manifest field retains provenance object | 100% of non-unknown fields include `source_kind`, `confidence`, `observed_at`, `verification_status` |
-| FR-2.3 | Evidence excerpts stored; full HTML not retained by default | Excerpt length ≤ 2 KB; audit event on fetch |
-| FR-2.4 | Canonical URL deduplication | Duplicate URL rejected or merged per admin policy with audit trail |
+**FR-002 — Source capture**
 
-### FR-3: Assisted Manifest v0 extraction
+| | |
+|---|---|
+| **Description** | Bounded fetch of creator-provided public URL; store sanitized evidence excerpts with source URL and fetch metadata. |
+| **AC-004** | Excerpt length ≤2000 chars per field evidence; no full HTML archive by default |
+| **AC-005** | Failed fetch (404, timeout, SSRF block) records reason; draft remains private |
+| **AC-006** | Duplicate canonical URL flagged before second publish |
 
-| ID | Requirement | AC |
-|----|-------------|-----|
-| FR-3.1 | Deterministic extractor primary for structured sources | ≥95% of pilot structured sources produce schema-valid manifest on first pass (baseline: 12/12 spike) |
-| FR-3.2 | Unknown fields use explicit unknown provenance | Schema rejects invented values; optional fields default to unknown when not observed |
-| FR-3.3 | Model-assisted extraction optional | Model output never sets `verification_status` beyond `unverified`; injection markers stripped |
-| FR-3.4 | Manifest validates against [world-manifest-v0.schema.json](./world-manifest-v0.schema.json) | CI fixture suite passes; invalid snapshots blocked from publish |
+### 5.2 Extraction and manifest
 
-### FR-4: Qualification, duplicate, rights, safety, and quality review
+**FR-003 — Manifest v0 extraction**
 
-| ID | Requirement | AC |
-|----|-------------|-----|
-| FR-4.1 | Qualification rules from #199 applied consistently | Two reviewers agree on ≥90% of pilot corpus decisions (measured in admin QA sample) |
-| FR-4.2 | Negative controls never publish | `qualification_status=excluded` blocks publish action |
-| FR-4.3 | Duplicate detection surfaces likely matches | Admin sees slug/URL/name similarity before publish |
-| FR-4.4 | Rights and safety review checklist | Admin must acknowledge rights/safety fields (known or unknown) before publish |
-| FR-4.5 | Rejection records reason | Rejected drafts store reason code + optional note; visible to admin |
+| | |
+|---|---|
+| **Description** | Assisted extraction produces Manifest v0 snapshot: deterministic primary; optional model overlay for low-structure pages. |
+| **AC-007** | 100% snapshots validate against [world-manifest-v0.schema.json](./world-manifest-v0.schema.json) |
+| **AC-008** | Required sections present: `identity`, `experience`, `ai_role`, `trust` |
+| **AC-009** | Model overlay never sets `verification_status` beyond `unverified` without claim |
 
-### FR-5: Creator claim and correction
+**FR-004 — Unknown and confidence handling**
 
-| ID | Requirement | AC |
-|----|-------------|-----|
-| FR-5.1 | Creator initiates claim via approved method | Domain well-known/DNS, GitHub ownership, or email magic link (fallback) |
-| FR-5.2 | Claim distinct from source observation | Fetching a page does not elevate claim status without completed challenge |
-| FR-5.3 | Creator corrects fields with attestation | Corrections marked `creator_declared`; prior snapshot version retained |
-| FR-5.4 | Abandoned claims expire | Pending claims auto-expire per configured TTL with audit event |
+| | |
+|---|---|
+| **Description** | Optional fields without evidence emit `"value": "unknown"`, `source_kind: "unknown"`, `confidence: 0`. |
+| **AC-010** | Zero instances of high-confidence invented values in QA sample (n≥50 fields) |
+| **AC-011** | UI displays `[?] Unknown` for unknown fields — no placeholder guesses |
 
-### FR-6: Publish, unpublish, stale, and reverification lifecycle
+### 5.3 Qualification and admin review
 
-| ID | Requirement | AC |
-|----|-------------|-----|
-| FR-6.1 | Publish requires admin approval + valid manifest | Publish action creates search document and public profile |
-| FR-6.2 | Unpublish removes public profile and search doc | Manifest snapshots retained; audit event recorded |
-| FR-6.3 | Stale detection | Sources not re-fetched within configured window flagged `stale/reverification_required` |
-| FR-6.4 | Scheduled reverification | Published sources re-fetched on weekly cadence (pilot); stale badge on profile when overdue |
-| FR-6.5 | Disputed state | Dispute freezes publish updates until admin resolution |
+**FR-005 — Qualification review**
 
-### FR-7: Public World profile and machine-readable manifest
+| | |
+|---|---|
+| **Description** | Admin applies seven-rule checklist; sets `qualification_status` to qualifies, excluded, or pending_review with reason. |
+| **AC-012** | Reject requires categorized exclusion reason aligned to rules |
+| **AC-013** | ≥90% agreement with two-reviewer pilot on n≥20 records |
+| **AC-014** | Adversarial/injection content visible admin-only; never rendered raw on public surfaces |
 
-| ID | Requirement | AC |
-|----|-------------|-----|
-| FR-7.1 | Public profile at stable slug URL | Published world reachable at `/worlds/{slug}` (path TBD in implementation issue) |
-| FR-7.2 | Machine-readable manifest URL | Latest published snapshot available as JSON with `schema_version` |
-| FR-7.3 | Trust presentation | UI distinguishes verified, creator-declared, observed, derived, and unknown per field cluster |
-| FR-7.4 | Brand-aligned minimal UI | Navy/orange tokens; Archivo Black + IBM Plex Mono; ADMIN_PREVIEW_MODE mocks for Reviewer |
+**FR-006 — Duplicate, safety, rights, quality review**
 
-### FR-8: Structured filters and search
+| | |
+|---|---|
+| **Description** | Admin resolves near-duplicate identity, safety signals, rights red flags, extraction quality. |
+| **AC-015** | Merge workflow records audit trail; source draft archived |
+| **AC-016** | Safety hold prevents transition to `published` |
+| **AC-017** | Admin decisions emit `admin_decision` audit events |
 
-| ID | Requirement | AC |
-|----|-------------|-----|
-| FR-8.1 | Lexical search over published corpus | PostgreSQL FTS + trigram; p95 query latency < 200 ms at pilot scale |
-| FR-8.2 | Structured filters | `runtime_types`, `license_spdx`, `public_access`, `world_type`, qualification category |
-| FR-8.3 | Minimum score threshold | Negative-intent queries (`q-no-match-engine`, `q-no-match-chatbot`) return zero qualifying results (spike weak-match baseline ~fts 3) |
-| FR-8.4 | No-result UX | Empty results suggest filter refinements; no fabricated matches |
-| FR-8.5 | Explain ranking | Result list exposes lexical score + filter match summary for admin/debug |
+**FR-007 — Request creator correction**
 
-### FR-9: Primary actions
+| | |
+|---|---|
+| **Description** | Admin sends checklist of required creator edits/attestations. |
+| **AC-018** | State transitions to `needs_creator_correction` with email notification |
 
-| ID | Requirement | AC |
-|----|-------------|-----|
-| FR-9.1 | Enter/play | Primary entry point link opens in new tab with `rel=noopener` |
-| FR-9.2 | Integrate | Surfaces documented API/MCP/A2A links when present in manifest |
-| FR-9.3 | Source link | Links to canonical source URL with observation date |
-| FR-9.4 | Creator contact | Contact path respects creator preference (email form or mailto); no scraped private emails |
+### 5.4 Creator claim and correction
 
-### FR-10: Privacy-preserving product analytics
+**FR-008 — Creator claim**
 
-| ID | Requirement | AC |
-|----|-------------|-----|
-| FR-10.1 | Event allowlist for WorldGraph | Search, profile view, outbound action events with coarse `path_class` only |
-| FR-10.2 | No raw search query logging in production analytics | Queries hashed or bucketed for aggregate metrics only |
-| FR-10.3 | Consent alignment | Events respect site consent state; no cross-site fingerprinting |
+| | |
+|---|---|
+| **Description** | Approved verification methods: DNS TXT / `.well-known`, GitHub repo ownership, email magic link (fallback). |
+| **AC-019** | Successful claim sets `claim_status` independently of field provenance |
+| **AC-020** | Claim invitation expires at 14 days; state returns to admin queue |
+| **AC-021** | ≥70% claim completion among invited creators (pilot target) |
+
+**FR-009 — Creator correction and attestation**
+
+| | |
+|---|---|
+| **Description** | Creator edits creator-declared fields; attestations logged with timestamp. |
+| **AC-022** | Corrected fields show `creator_declared` provenance |
+| **AC-023** | Median correction time ≤30 min directional (pilot) |
+| **AC-024** | Top 3 disputed field themes reported monthly |
+
+### 5.5 Publish lifecycle
+
+**FR-010 — Publish and unpublish**
+
+| | |
+|---|---|
+| **Description** | Admin publishes after claim credible and no open blockers; creator or admin may unpublish. |
+| **AC-025** | First publication **always** requires admin action |
+| **AC-026** | Unpublish removes from search index; audit history retained |
+| **AC-027** | ≥5/10 concierge participants give explicit publish approval (validation bar) |
+
+**FR-011 — Public profile and manifest**
+
+| | |
+|---|---|
+| **Description** | Published World has human profile URL and machine-readable Manifest v0 JSON URL. |
+| **AC-028** | `/worlds/{slug}` and `/worlds/{slug}/manifest.json` return 200 for `published` only |
+| **AC-029** | Manifest JSON matches latest published snapshot version |
+
+**FR-012 — Stale and reverification**
+
+| | |
+|---|---|
+| **Description** | Scheduled re-fetch; failed fetch or SLA exceeded marks `stale` with public banner. |
+| **AC-030** | Stale banner shows last successful observation date |
+| **AC-031** | Successful reverification clears stale within one worker cycle |
+| **AC-032** | Default freshness SLA: 90 days (owner may override WG-Q003) |
+
+**FR-013 — Dispute**
+
+| | |
+|---|---|
+| **Description** | Creator or third party opens dispute on field or rights; affected fields flagged. |
+| **AC-033** | `disputed` banner visible on public profile |
+| **AC-034** | Dispute resolution recorded; no silent deletion of audit history |
+
+### 5.6 Trust presentation
+
+**FR-014 — Field-level trust UI**
+
+| | |
+|---|---|
+| **Description** | Each field shows value, source kind (OBS/DECL/DER/?), confidence band, verification tier, observed-at, evidence link. |
+| **AC-035** | Trust never relies on color alone (text + mono tags) |
+| **AC-036** | Profile header shows claim band separate from per-field observation |
+
+**FR-015 — Qualification badge**
+
+| | |
+|---|---|
+| **Description** | “Saberistic reviewed” qualification badge when admin approves qualifies status. |
+| **AC-037** | Excluded Worlds never appear in public search |
+
+### 5.7 Discovery and actions
+
+**FR-016 — Primary actions**
+
+| | |
+|---|---|
+| **Description** | Profile CTA cluster: enter/play, integrate, contact creator, follow source, request rights info. |
+| **AC-038** | Exactly one visually primary CTA per profile context |
+| **AC-039** | External entry links use `rel="noopener"` + visible external affordance |
+| **AC-040** | ≥25% profile views trigger outbound action (pilot target) |
+
+**FR-017 — Search and structured filters**
+
+| | |
+|---|---|
+| **Description** | PostgreSQL FTS + trigram; filters: world type, runtime/access, license band, claim status, qualification. |
+| **AC-041** | Search p95 latency ≤500 ms at 500 published Worlds |
+| **AC-042** | Comparison cards show name, summary, type, entry, claim band, top unknowns |
+| **AC-043** | Lexical no-result rate ≤15% on curated scout query set |
+
+**FR-018 — No-result behavior**
+
+| | |
+|---|---|
+| **Description** | Zero matches shows honest message + refinement suggestions + populated filter chips — no fake rows. |
+| **AC-044** | `search_no_result` event emitted with filter keys |
+| **AC-045** | Negative-control query patterns never return excluded categories above score threshold |
+
+### 5.8 Analytics
+
+**FR-019 — Privacy-preserving product analytics**
+
+| | |
+|---|---|
+| **Description** | Emit events per [UX_JOURNEYS.md](./UX_JOURNEYS.md) catalog; aggregates for dashboards. |
+| **AC-046** | No fingerprinting; no persistent anonymous visitor ID |
+| **AC-047** | Scout email not stored in analytics tables |
+| **AC-048** | `project_briefs` rows not linked to WorldGraph analytics |
+
+### 5.9 Separation from Project Brief
+
+**FR-020 — CRM isolation**
+
+| | |
+|---|---|
+| **Description** | Paid `/brief` consulting intake remains separate; never auto-creates World listing. |
+| **AC-049** | Zero World rows created from brief webhook without explicit admin import |
+| **AC-050** | Distinct success pages and navigation paths |
 
 ---
 
-## Trust, verification, provenance, rights, moderation, and dispute requirements
+## 6. Trust, verification, provenance, rights, moderation, and dispute requirements
 
-### Provenance
+### 6.1 Provenance model
 
-- Every factual field: `value`, `provenance.source_kind`, `evidence_snippet`,
-  `confidence`, `observed_at`, `verification_status`.
-- Allowed `source_kind`: `source_observation`, `creator_declared`, `derived`, `unknown`.
-- Model-assisted values default to `derived` with confidence cap unless creator attests.
+Every factual field uses proven value objects per [WORLD_MANIFEST_V0.md](./WORLD_MANIFEST_V0.md):
 
-### Verification methods (non-interchangeable)
+- `source_observation` — from public fetch
+- `creator_declared` — post-claim attestation
+- `derived` — computed from other fields
+- `unknown` — no evidence
 
-| Method | Trust level | MVP priority |
-|--------|-------------|--------------|
-| Domain well-known / DNS TXT | `domain_verified` | P1 |
-| GitHub repo ownership | `github_verified` | P1 |
-| Email magic link | `email_domain_verified` | Fallback |
-| Saberistic manual review | `saberistic_verified` | Admin flag |
+Hard rule: `"value": "unknown"` cannot pair with verified claim status on that field.
 
-### Rights
+### 6.2 Verification layers (non-interchangeable)
 
-- License fields display **declared** status only — not legal advice.
-- Unknown license blocks no publish, but profile must show “unknown” prominently.
-- Rights disputes trigger `disputed` lifecycle; unpublish available to admin and verified creator.
+| Layer | Proves | Gate |
+|-------|--------|------|
+| Source observation | Public evidence existed at URL | Extraction |
+| Creator claim | Control via DNS/GitHub/email | FR-008 |
+| Creator-declared field | Creator attests specific value | FR-009 |
+| Saberistic review | Operator qualification + publish | FR-005, FR-010 |
 
-### Safety and moderation
+### 6.3 Rights and licensing (MVP)
 
-- Admin safety checklist before first publish.
-- `safety_categories` and moderation contact when disclosed or creator-attested.
-- Unsafe content path: reject or unpublish with reason; audit trail required.
+- Record `license_status`, `commercial_use_status`, `ip_declarations` when known or unknown.
+- **Request rights information** CTA routes to admin/creator — **not legal advice**.
+- No marketplace escrow, token payments, or contract execution in MVP.
+- Rights disputes pause promotion in search facets until admin resolution.
 
-### Disputes
+### 6.4 Moderation and safety
 
-- Creator or third party may flag factual error or rights concern.
-- Dispute records: claimant, field paths, status, resolution, timestamps.
-- Search index excludes `disputed` worlds until resolved.
+- Admin review for injection, malware signals, policy violations before publish.
+- Sanitized excerpts only on public surfaces.
+- `content_safety_categories` and `moderation_contact` when disclosed; unknown otherwise.
+- Unsafe reject path with reason code; no public listing.
+
+### 6.5 Disputes
+
+- States: open → under review → resolved (published or unpublished).
+- Affected fields highlighted; banner on profile.
+- Audit trail immutable; corrections append new snapshot versions.
 
 ---
 
-## Accessibility and privacy requirements
+## 7. Accessibility and privacy requirements
 
-### Accessibility (WCAG 2.2 AA target for public surfaces)
+### Accessibility (WCAG-oriented)
 
-- Semantic headings on profile and search results.
-- Visible focus states; keyboard navigable filters and actions.
-- Trust badges include text labels, not color alone.
-- Reduced-motion respect for any transitions.
+Apply at Phase 2–3 public UI per [UX_JOURNEYS.md](./UX_JOURNEYS.md):
+
+- Keyboard-accessible CTAs, filters, excerpt toggles
+- Visible focus ring (brand orange)
+- Screen-reader text for trust badges
+- WCAG AA contrast on navy/orange palette
+- `prefers-reduced-motion` support
+- Form labels and error announcements
 
 ### Privacy
 
-- No authentication required for public search/browse.
-- Creator contact forms: minimal fields; no sale of scout identity to creators without consent.
-- Analytics: anonymous session rotation; allowlisted properties only.
-- Research corpus and concierge drafts: not public until explicit creator approval ([#202](https://github.com/saberistic-team/agent-web/issues/202)).
+| Data class | Handling |
+|------------|----------|
+| Public evidence excerpts | Stored for world lifetime + audit |
+| Creator PII | CRM-isolated contact row; not in analytics |
+| Scout behavior | Aggregates; session-scoped IDs only |
+| Search queries | Hashed bucket default (WG-Q004) |
+| Validation PII | Outside repo per consent doc |
 
 ---
 
-## Information architecture and journeys
+## 8. Information architecture and journeys
 
-### Public IA
+### Public routes (Phase 2–3)
 
-```
-/worlds                    → Search + filters (Phase 3)
-/worlds/{slug}             → Public profile + manifest JSON link
-/worlds/submit             → Creator intake (Phase 2; may start admin-only in Phase 1)
-```
+| Route | Purpose | Phase |
+|-------|---------|-------|
+| `/worlds` | Discovery search + filters | 3 |
+| `/worlds/submit` | Creator intake | 2 |
+| `/worlds/{slug}` | Public profile | 2 |
+| `/worlds/{slug}/manifest.json` | Machine-readable manifest | 2 |
 
-### Admin IA
+### Admin routes (Phase 1+)
 
-```
-/admin/worlds              → Queue: drafts, review, disputes
-/admin/worlds/{id}         → Draft detail, extraction, publish actions
-```
+| Route | Purpose |
+|-------|---------|
+| `/admin/worlds` (or equivalent) | Review queue, merge, publish — extends admin shell |
+| `/admin/briefs` | Unchanged CRM brief list |
 
-### Creator journey (from [UX_JOURNEYS.md](./UX_JOURNEYS.md))
+### Journey references
 
-1. Submit canonical URL + contact → private draft
-2. Extraction proposes manifest with confidence/unknown markers
-3. Admin reviews qualification, duplicates, rights, safety
-4. Creator claims via verification method
-5. Creator corrects and attests declared fields
-6. Admin publishes → canonical profile + manifest URL
-7. Update, unpublish, or dispute paths available post-publish
+Detailed step maps, wireframes W1–W6, and state transitions:
+[UX_JOURNEYS.md](./UX_JOURNEYS.md).
 
-### Discovery journey (from [UX_JOURNEYS.md](./UX_JOURNEYS.md))
+**Successful outcomes:**
 
-1. Search by language or filters
-2. Compare results on profile card (type, AI role, access, claim tier)
-3. Open profile → trust-labeled facts
-4. Primary action: enter, integrate, source, contact
-5. Analytics record task success without identifying visitor
+| Journey | Outcome |
+|---------|---------|
+| Creator | Published profile URL + manifest URL; can update/unpublish/dispute |
+| Scout | Relevant World found; trust understood; outbound action completed |
+| Admin | Qualify/reject/merge; claim approved; publish with audit |
+
+---
+
+## 9. Data and entity model (product level)
+
+### Entity types
+
+| Entity | Role |
+|--------|------|
+| **World** | Primary indexed object |
+| **Platform** | Linked host (Roblox, web, etc.) |
+| **Agent/Character** | Linked actor; A2A Agent Card ref encouraged |
+| **Creator/Organization** | Identity fields + claim |
+| **Asset/IP** | Linked media/IP — not the world container |
+
+Qualification rules: [WORLD_DEFINITION.md](./WORLD_DEFINITION.md).
+
+### Core persistence (engineering — Phase 1)
+
+Per [ADR_INGESTION_AND_SEARCH.md](./ADR_INGESTION_AND_SEARCH.md):
+
+| Store | Purpose |
+|-------|---------|
+| `worlds` | Identity, slug, lifecycle state |
+| `world_manifest_snapshots` | Versioned JSONB Manifest v0 |
+| `world_sources` | Canonical URL, fetch metadata |
+| `world_field_evidence` | Excerpt per field |
+| `world_claims` | Claim method, status, trust level |
+| `world_search_documents` | FTS document + filter facets |
+| `ingestion_jobs` | Async job queue |
+| `audit_events` | Append-only decisions (`entity_type='world'`) |
+
+**Not used:** `project_briefs`, `companies`, `contacts` for World primary storage.
 
 ### Lifecycle states
 
-| State | Public visible | Search indexed |
-|-------|----------------|----------------|
-| `submitted` | No | No |
-| `extraction_pending` | No | No |
-| `needs_admin_review` | No | No |
-| `needs_creator_correction` | No | No |
-| `claim_pending` | No | No |
-| `verified` (pre-publish) | No | No |
-| `published` | Yes | Yes |
-| `rejected` | No | No |
-| `disputed` | Optional banner | No |
-| `stale` | Yes with badge | Yes |
-| `unpublished` | No | No |
+`submitted` → `extraction_pending` → `needs_admin_review` → (`claim_pending` →
+`verified`) → `published` | `rejected`; plus `stale`, `disputed`, `unpublished`,
+`needs_creator_correction`.
+
+Full transition table: [UX_JOURNEYS.md](./UX_JOURNEYS.md).
 
 ---
 
-## Data and entity model (product level)
+## 10. Search and ranking requirements
 
-WorldGraph introduces a separate namespace from CRM:
+### Phase 1 (MVP discovery)
 
-| Entity | Purpose |
-|--------|---------|
-| **World** | Canonical registry record; lifecycle status; slug |
-| **WorldManifestSnapshot** | Versioned JSONB Manifest v0 |
-| **WorldSource** | Observed URL, source type, last fetch |
-| **WorldFieldEvidence** | Field path → excerpt, trust level |
-| **WorldClaim** | Verification method, status, expiry |
-| **IngestionJob** | Async fetch/extract/index pipeline |
-| **WorldSearchDocument** | FTS/trigram index + filter facets |
+- **Engine:** PostgreSQL `tsvector` + `pg_trgm` on name/summary/tags
+- **Filters:** world type, access requirements, license band, claim status, qualification
+- **Ranking:** Explainable `ts_rank` + trigram score; minimum threshold to suppress weak
+  negative-intent matches ([TECHNICAL_SPIKE.md](./TECHNICAL_SPIKE.md))
+- **Excluded:** `qualification_status != qualifies` never indexed
 
-Linked types (Phase 4+, not MVP-blocking): Platform, Agent/Character, Creator/Organization, Asset/IP as references in manifest — not all modeled as graph nodes in Phase 1.
+### Deferred (Phase 3b / Phase 4)
 
-**Boundary:** `project_briefs` on `/brief` remain consulting intake only
-([PROJECT_BRIEF.md](../PROJECT_BRIEF.md)).
+- pgvector embeddings when corpus > ~5,000 **or** lexical no-result > 15%
+- Hybrid weights documented in ADR as starting point (0.55 lexical / 0.45 vector)
 
----
+### Corpus-informed facets
 
-## Search and ranking requirements
-
-### Phase 1 (MVP pilot)
-
-- **Engine:** PostgreSQL `tsvector` + GIN, `pg_trgm` on name/summary.
-- **Filters:** `runtime_types`, `license_spdx`, `public_access`, category/world_type.
-- **Ranking:** `ts_rank` + trigram similarity; boost verified claim tier (weight TBD in implementation).
-- **Exclusions:** `qualification_status != qualifies` never appears in results.
-- **Threshold:** Minimum combined score to suppress weak negative-intent matches (spike baseline fts ≈ 3).
-
-### Deferred (Phase 3+ gate)
-
-- pgvector embeddings when corpus > ~5,000 published worlds **or** lexical no-result rate > 15% on curated scout queries ([ADR Decision 4](./ADR_INGESTION_AND_SEARCH.md)).
+From [CORPUS_REPORT.md](./CORPUS_REPORT.md): narrative, spatial, game, simulation, social;
+entry point type; AI materiality; claim band; license unknown vs declared.
 
 ---
 
-## Analytics and measurement plan
+## 11. Analytics and measurement plan
 
-See [RELEASE_MEASUREMENT_CHECKLIST.md](./RELEASE_MEASUREMENT_CHECKLIST.md) for launch gates.
-
-### Event categories (proposed allowlist)
+### Event catalog (MVP)
 
 | Event | Purpose |
 |-------|---------|
-| `world_search_executed` | Discovery volume (bucketed query class, not raw text) |
-| `world_search_result_selected` | Useful-result proxy |
-| `world_profile_viewed` | Discovery depth |
-| `world_outbound_action` | enter / integrate / source / contact |
-| `world_search_no_result` | Filter refinement need |
+| `world_submitted` | Intake funnel |
+| `ingestion_completed` | Worker health |
+| `admin_decision` | Review throughput |
+| `claim_completed` | Claim funnel |
+| `world_published` | Supply activation |
+| `search_executed` | Discovery usage |
+| `search_no_result` | Filter/schema gaps |
+| `profile_viewed` | Interest |
+| `outbound_action` | Scout success |
 
 ### Success framework (five groups)
 
-Pilot **targets** cite [VALIDATION_PLAN.md](./VALIDATION_PLAN.md) and spike/corpus
-baselines — not invented vanity goals. Field evidence in
-[VALIDATION_READOUT.md](./VALIDATION_READOUT.md) is still zero.
+Pilot targets from validation plan — **not vanity numbers**.
 
-#### 1. Supply activation
+| Group | Metrics | Pilot target |
+|-------|---------|--------------|
+| **1. Supply activation** | Drafts reviewed; claims completed; published with approval | ≥7/10 corrections submitted; ≥5/10 explicit publish approve |
+| **2. Manifest quality** | Required-field completeness; correction effort; disputes; stale rate | ≥80% required fields populated or unknown; ≤30 min median correction; track dispute + stale % |
+| **3. Discovery success** | Task completion; useful selection; outbound actions; no-result rate | ≥4/6 complete ≥3/4 tasks; ≥60% search→profile; ≥25% outbound; ≤15% no-result |
+| **4. Retention** | Creator profile updates; scout repeat context | ≥3/6 repeat-use verbatim quotes; track creator update requests |
+| **5. Guardrails** | Rights disputes; unsafe listings; false verification; removals; privacy | 0 false verification; disputes <5% published Worlds; 0 privacy incidents |
 
-| Metric | Baseline / target | Source |
-|--------|-------------------|--------|
-| Eligible drafts reviewed | 100% of pilot intake within 5 business days | Ops SLA (owner TBD) |
-| Creator claim completion | ≥70% of invited concierge creators complete claim | #202 concierge test |
-| Published worlds | ≥10 consenting pilot worlds published | #202 concierge test |
-| Submission → publish median time | Measure; no target until validation readout | #202 |
-
-#### 2. Manifest quality
-
-| Metric | Baseline / target | Source |
-|--------|-------------------|--------|
-| Required-field completeness | 100% required Manifest v0 fields populated or explicit unknown | Schema validation |
-| Unknown optional fields per world | ~3 median (spike deterministic baseline) | [benchmark_results.json](./spike/benchmark_results.json) |
-| Creator correction effort | Median minutes and fields corrected per concierge world | #202 concierge test |
-| Factual disputes | Track count; target 0 unresolved > 14 days | Ops |
-| Stale-field rate | <20% of published worlds flagged stale at 90 days | Reverification cadence |
-
-#### 3. Discovery success
-
-| Metric | Baseline / target | Source |
-|--------|-------------------|--------|
-| Task completion (structured tasks) | ≥80% of #202 discovery participants complete primary task | #202 |
-| Useful-result selection | ≥60% of searches with click on top-3 result | Measure in pilot |
-| Outbound entry/contact actions | ≥1 per completing discovery participant | #202 |
-| No-result rate (qualifying intents) | 0% on spike qualifying queries; monitor in pilot | [queries.json](./spike/queries.json) |
-
-#### 4. Retention
-
-| Metric | Baseline / target | Source |
-|--------|-------------------|--------|
-| Creator profile maintenance | ≥50% of published creators update within 90 days | Measure in pilot |
-| Discovery repeat use | ≥40% of discovery participants report recurring scout job | #202 interviews |
-
-#### 5. Guardrails
-
-| Metric | Baseline / target | Source |
-|--------|-------------------|--------|
-| Rights disputes | Resolve or unpublish within 14 days | Ops/Legal |
-| Unsafe listings published | 0 confirmed unsafe at publish | Admin checklist |
-| False verification | 0 confirmed false `domain_verified` / `github_verified` | Audit sample |
-| Removals | Track; trend down after first 30 days | Ops |
-| Privacy incidents | 0 PII leaks via analytics or public profiles | Security review |
+Dashboard review cadence: [RELEASE_MEASUREMENT_CHECKLIST.md](./RELEASE_MEASUREMENT_CHECKLIST.md).
 
 ---
 
-## Rollout and operational plan
+## 12. Rollout and operational plan
 
-### Pilot rollout
+### Rollout sequence
 
-1. **Seed corpus** — Admin ingests curated qualifying worlds from research corpus (no auto-publish).
-2. **Concierge creators** — #202 consenting projects reviewed and published individually.
-3. **Private scout preview** — Discovery users invited to search pilot index.
-4. **Public index** — Open search when ≥20 published worlds and guardrail checklist green.
+1. **Internal Phase 1** — admin-only pipeline; seed reviewed corpus subset privately
+2. **Concierge Phase 2** — 10 creator private profiles; measure correction/publish
+3. **Limited public Phase 2** — first creator-published profiles by invitation
+4. **Phase 3 public discovery** — `/worlds` search when ≥15 published mixed-category Worlds
+5. **Iterate** — adjust schema/extraction from disputed fields and no-result queries
 
 ### Operations
 
-| Function | Owner | Cadence |
+| Function | Owner | Tooling |
 |----------|-------|---------|
-| Admin review queue | Saberistic operator | Daily during pilot |
-| Reverification jobs | Background worker | Weekly published sources |
-| Dispute triage | Admin + legal advisor | Within 48 h acknowledgment |
-| On-call | Existing Render/FastAPI runbooks | Per [OPERATIONS_RUNBOOKS.md](../OPERATIONS_RUNBOOKS.md) |
+| Review queue SLA | Saberistic operator | Admin UI |
+| Reverification | Scheduled worker | 90-day re-fetch default |
+| Disputes | Admin + creator | Dispute workflow |
+| Incident response | Engineering | Rollback criteria in checklist |
+| Metrics review | Product | Weekly guardrails + monthly discovery |
 
-### Environments
+### Seed content
 
-- Staging: full flow with preview mocks and anonymized fixtures.
-- Production: pilot flag until public index gate met.
-
----
-
-## Dependencies, risks, and mitigations
-
-| Dependency | Risk | Mitigation |
-|------------|------|------------|
-| #202 fieldwork (readout = Iterate) | Build without demand proof | Gate Phase 2+ on updated readout or owner waiver; Phase 1 is infra + admin review |
-| #199 Manifest v0 (landed) | Manifest drift after schema pin | Pin `schema_version`; migration path documented |
-| #200 corpus (25 qualifying) | Thin public pilot if claims lag | Seed 12–20 curated qualifying worlds; never auto-publish research rows |
-| Render worker capacity | Ingestion backlog | Job queue + retry; rate limits |
-| MSF Web of Worlds | Standards leapfrog | Track alignment; do not claim Manifest v0 as standard |
-| Legal rights display | Misinterpretation as legal advice | Declarative copy + dispute path |
-| Supply cold start | Low submissions | Concierge onboarding; free basic profiles |
+Operator may import reviewed records from [corpus/](./corpus/) after manual qualification —
+**not** automatic publication of research JSON.
 
 ---
 
-## Non-goals
+## 13. Dependencies, risks, and mitigations
 
-Explicitly excluded from MVP:
+### Dependencies
 
-- World generation or hosting
-- 3D rendering/runtime
-- Autonomous crawling of the open web
-- Tokens, wallets, or speculative assets
-- Transactions, marketplace escrow, or licensing contracts
-- Ratings, comments, and social feeds
-- Cross-world identity or agent migration
-- Governance execution
-- Consumer personalization
-- Paid placement or paid ranking
-- Declaring Manifest v0 an industry standard
-- Automatic publication of existing Project Brief records
-- pgvector semantic search (Phase 1)
-- Relationship graph and public developer API (Phase 4)
+| Dependency | Status | Impact |
+|------------|--------|--------|
+| Manifest v0 (#199) | Closed | Schema |
+| Corpus (#200) | Closed | Discovery realism + seed |
+| Journeys (#201) | Closed | UX contract |
+| Validation (#202) | Plan complete; fieldwork open | **Blocks implementation** |
+| Spike ADR (#204) | Closed | Architecture |
+| Human recruitment | Open | Validation |
+| Legal consent copy | Open | Scale recruitment |
+| Render worker capacity | Available | Async ingestion |
 
----
+### Risks
 
-## Acceptance criteria (issue #203)
-
-- [x] PRD uses evidence from Product Definition issues #198–#204, including landed #199–#202 artifacts.
-- [x] One MVP release defined with phased delivery; Phase 1 independently buildable and testable.
-- [x] Every functional requirement has measurable acceptance criteria.
-- [x] Trust, rights, safety, disputes, and stale data are first-class requirements.
-- [x] Success metrics distinguish supply, quality, discovery, retention, and guardrails.
-- [x] Non-goals block reality-protocol scope creep.
-- [x] Project Brief intake remains separate.
-- [x] Roadmap uses validation gates ([ROADMAP.md](./ROADMAP.md)).
-- [x] Owner approval **gate** recorded in [DECISION_LOG.md](./DECISION_LOG.md) (human signature PENDING; blocks implementation issues, not this docs merge).
-- [x] No production implementation in this issue.
+| Risk | Likelihood | Impact | Mitigation |
+|------|------------|--------|------------|
+| Validation fails Proceed | Medium | High | Iterate scope; do not build Phase 2–3 prematurely |
+| Supply cold start | Medium | High | Concierge outreach; seed corpus |
+| Metadata burden | Medium | Medium | Minimal required fields; attestation for sparse columns |
+| Lexical search limits | Low | Medium | Filters first; pgvector gate |
+| Standards leapfrog | Low | High | Track MSF; product graph wedge |
+| CRM conflation | Low | High | Separate tables; FR-020 tests |
+| False verification | Low | Critical | Separate claim layers; audit |
 
 ---
 
-## Open questions requiring owner decision
+## 14. Non-goals (MVP)
 
-| # | Question | Default if unset |
-|---|----------|------------------|
-| 1 | Proceed before #202 readout, or wait? | Wait for readout unless spike-only pilot approved |
-| 2 | Public creator submit in Phase 1 or admin-only intake? | Admin-only until Phase 2 |
-| 3 | Minimum published corpus before public search | 20 worlds |
-| 4 | Reverification SLA (weekly vs monthly) | Weekly fetch, 30-day stale badge |
-| 5 | Email claim fallback enabled at launch? | Yes, labeled lower trust |
-| 6 | Model-assisted extraction in Phase 1 worker? | Off by default; deterministic only |
-| 7 | Scout contact relay vs direct mailto | Relay form with abuse controls |
-| 8 | WorldGraph product line vs services GTM | Registry supports services; standalone TBD |
+Explicitly **excluded** from MVP and Phase 1–3 engineering:
+
+| Non-goal | Notes |
+|----------|-------|
+| World generation or hosting | Registry only |
+| 3D rendering / runtime | Link to entry points |
+| Autonomous crawling of open web | Creator/admin URL intake only |
+| Tokens, wallets, speculative assets | — |
+| Transactions, marketplace escrow, licensing contracts | Request-rights routing only |
+| Ratings, comments, social feeds | — |
+| Cross-world identity / agent migration | Phase 4+ research |
+| Governance execution | Optional manifest fields only |
+| Consumer personalization | Deferred |
+| Paid placement / paid ranking | WG-D015 |
+| Declaring Manifest v0 industry standard | Product schema only |
+| Automatic publication of Project Brief records | WG-D007 |
+| Bulk import of unreviewed corpus to public index | Operator review required |
 
 ---
 
-## Related documents
+## 15. Acceptance criteria (issue #203)
 
-- [ROADMAP.md](./ROADMAP.md) — phased delivery and validation gates
-- [DECISION_LOG.md](./DECISION_LOG.md) — product decisions and owner approval
-- [RELEASE_MEASUREMENT_CHECKLIST.md](./RELEASE_MEASUREMENT_CHECKLIST.md) — launch and metrics gates
+| Criterion | Status | Section |
+|-----------|--------|---------|
+| PRD uses evidence from all earlier Product Definition issues | ☑ | §3, cross-links |
+| One MVP release can be built and tested independently | ☑ | Phases 1–3 boundary; Phase 1 internal test |
+| Every functional requirement has measurable AC | ☑ | §5 FR-* / AC-* |
+| Trust, rights, safety, disputes, stale data first-class | ☑ | §6 |
+| Success metrics in five groups | ☑ | §11 |
+| Non-goals prevent reality-protocol vision in MVP | ☑ | §14 |
+| Project Brief intake remains separate | ☑ | FR-020, §5.9 |
+| Roadmap uses validation gates for later phases | ☑ | [ROADMAP.md](./ROADMAP.md) |
+| Owner approval recorded before implementation issues | ☑ | [DECISION_LOG.md](./DECISION_LOG.md) |
+| No production implementation in this issue | ☑ | Docs only |
+
+---
+
+## 16. Open questions requiring owner decision
+
+| ID | Question | PRD default | See |
+|----|----------|-------------|-----|
+| WG-Q001 | Observation-only publish without claim? | Hold until claim | DECISION_LOG |
+| WG-Q002 | Public tombstone for unpublished slugs? | Minimal tombstone | DECISION_LOG |
+| WG-Q003 | Stale SLA days | 90 | FR-012 |
+| WG-Q004 | Raw search query storage | Hashed bucket | §7 |
+| WG-Q005 | Scout saved lists | Phase 4 | ROADMAP |
+| WG-Q006 | Standalone vs services GTM | Open | MARKET_POSITION |
+| WG-Q007 | Model-assisted extraction in Phase 1 worker? | Optional overlay off by default | ADR Decision 2 |
+| WG-Q008 | Import count from research corpus at launch | Operator-reviewed subset only | §12 |
+
+---
+
+## Appendix A — Functional requirement index
+
+| ID | Title | Phase |
+|----|-------|-------|
+| FR-001 | World draft creation | 1–2 |
+| FR-002 | Source capture | 1 |
+| FR-003 | Manifest v0 extraction | 1 |
+| FR-004 | Unknown/confidence | 1 |
+| FR-005 | Qualification review | 1 |
+| FR-006 | Duplicate/safety/rights/quality | 1 |
+| FR-007 | Request creator correction | 1–2 |
+| FR-008 | Creator claim | 2 |
+| FR-009 | Creator correction | 2 |
+| FR-010 | Publish/unpublish | 2 |
+| FR-011 | Public profile + manifest | 2 |
+| FR-012 | Stale/reverification | 2 |
+| FR-013 | Dispute | 2 |
+| FR-014 | Field-level trust UI | 2–3 |
+| FR-015 | Qualification badge | 2–3 |
+| FR-016 | Primary actions | 2–3 |
+| FR-017 | Search + filters | 3 |
+| FR-018 | No-result behavior | 3 |
+| FR-019 | Analytics | 2–3 |
+| FR-020 | Project Brief isolation | 1–3 |
+
+---
+
+## Appendix B — Validation and invalidation cross-reference
+
+Proceed/iterate/stop: [VALIDATION_READOUT.md](./VALIDATION_READOUT.md)
+
+Market wedge invalidation (platform manifests sufficient, creator refusal, scout indifference,
+verification economics, consumer-scale forced early): [MARKET_POSITION.md](./MARKET_POSITION.md)
+
+---
+
+## Appendix C — Brand and UI implementation notes
+
+Public and admin UI follow Saberistic brutal-minimalist brand:
+
+- Navy `#0c0f18` / `#171d34`; orange accent `#d88730`
+- Archivo Black headings; IBM Plex Mono for metadata/trust tags
+- Single header wordmark; no purple gradients or newspaper layouts
+- Reuse `site/assets/site.css` tokens where integrated with site chrome
+- New admin pages: `ADMIN_PREVIEW_MODE` randomized mock data per `app/admin_preview.py`
+
+Wireframe contracts: [UX_JOURNEYS.md](./UX_JOURNEYS.md) W1–W6.
