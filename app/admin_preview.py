@@ -24,13 +24,6 @@ from app.acquisition_dashboard import (
     EvidenceRow,
     NextActionRow,
 )
-from app.marketing_analytics import (
-    AttributionRow,
-    ContentEngagementRow,
-    EventCount,
-    MarketingAnalyticsData,
-    build_conversion_rates,
-)
 from app.acquisition_action_queue import (
     QUEUE_CATEGORY_DUE_TODAY,
     QUEUE_CATEGORY_OVERDUE,
@@ -349,106 +342,94 @@ def build_preview_acquisition_dashboard_data(
     )
 
 
-def build_preview_marketing_analytics_data(
+def build_preview_analytics_dashboard_data(
     *,
-    period_days: int = 7,
     rng: random.Random | None = None,
     now: datetime | None = None,
-) -> MarketingAnalyticsData:
-    """Randomized marketing analytics for ADMIN_PREVIEW_MODE screenshots."""
-    rng = _resolve_rng(rng, "marketing_analytics")
+    date_range: AnalyticsDateRange | None = None,
+) -> AnalyticsDashboardData:
+    """Randomized marketing analytics dashboard for ADMIN_PREVIEW_MODE screenshots."""
+    from app.analytics_dashboard import (
+        ALLOWED_RANGE_PRESETS,
+        AnalyticsDashboardData,
+        AnalyticsDateRange,
+        AttributionBucket,
+        ContentEngagementRow,
+        ConversionRate,
+        CrmFunnelCounts,
+        DASHBOARD_EVENT_ROWS,
+        FunnelEventCount,
+        build_conversion_rates,
+        parse_analytics_date_range,
+    )
+
+    rng = _resolve_rng(rng, "analytics_dashboard")
     now = _resolve_now(now)
-    period_end = now
-    period_start = period_end - timedelta(days=period_days)
+    if date_range is None:
+        date_range = parse_analytics_date_range(days=str(rng.choice(ALLOWED_RANGE_PRESETS)), now=now)
 
-    landing = rng.randint(420, 980)
-    services = rng.randint(80, 220)
-    case_index = rng.randint(60, 140)
-    case_detail = rng.randint(40, 120)
-    insights_index = rng.randint(50, 130)
-    insight_detail = rng.randint(35, 95)
-    brief_viewed = rng.randint(90, 180)
-    form_started = rng.randint(35, min(brief_viewed, 80))
-    contact = rng.randint(8, 28)
-    leads = rng.randint(12, min(form_started, 24))
-    checkouts = rng.randint(8, min(leads, 18))
-    payments = rng.randint(4, min(checkouts, 12))
-    abandoned = rng.randint(1, 5)
-
-    engagement_counts = (
-        EventCount("Landing Viewed", "Landing views", landing, "browser"),
-        EventCount("Services Viewed", "Services views", services, "browser"),
-        EventCount("Case Studies Viewed", "Case studies index", case_index, "browser"),
-        EventCount("Case Study Viewed", "Case study detail", case_detail, "browser"),
-        EventCount("Insights Viewed", "Insights index", insights_index, "browser"),
-        EventCount("Insight Viewed", "Insight article", insight_detail, "browser"),
-        EventCount("Brief Viewed", "Brief page views", brief_viewed, "browser"),
-        EventCount("Brief Form Started", "Brief form starts", form_started, "browser"),
-        EventCount("Contact Initiated", "Contact initiated", contact, "browser"),
-    )
-    server_counts = (
-        EventCount("Lead Persisted", "Leads persisted", leads, "server"),
-        EventCount("Checkout Opened", "Checkouts opened", checkouts, "server"),
-        EventCount("Payment Completed", "Payments completed", payments, "server"),
-    )
-    engagement_lookup = {row.event_name: row.count for row in engagement_counts}
-    server_lookup = {row.event_name: row.count for row in server_counts}
-
-    attribution_rows: list[AttributionRow] = []
-    for source in UTM_SOURCES[:4]:
-        medium = rng.choice([m for m in UTM_MEDIUMS if m is not None])
-        campaign = rng.choice([c for c in UTM_CAMPAIGNS if c is not None])
-        attribution_rows.append(
-            AttributionRow(
-                utm_source=source,
-                utm_medium=medium or "social",
-                utm_campaign=campaign or "spring-launch",
-                engagement_events=rng.randint(40, 280),
-                leads=rng.randint(2, 10),
-                payments=rng.randint(0, 4),
+    event_counts: list[FunnelEventCount] = []
+    raw_counts: dict[str, int] = {}
+    for event_name, source, category in DASHBOARD_EVENT_ROWS:
+        count = rng.randint(12, 420) if category == "engagement" else rng.randint(3, 96)
+        raw_counts[event_name] = count
+        event_counts.append(
+            FunnelEventCount(
+                event_name=event_name,
+                count=count,
+                source=source,
+                category=category,
             )
         )
-    attribution_rows.append(
-        AttributionRow(
-            utm_source="(direct)",
-            utm_medium="(none)",
-            utm_campaign="(none)",
-            engagement_events=rng.randint(120, 360),
-            leads=rng.randint(3, 8),
-            payments=rng.randint(1, 3),
-        )
-    )
 
-    case_slugs = ("fintech-platform", "ai-infrastructure", "supply-chain")
-    article_slugs = ("architecture-diagnostic", "team-topology", "platform-migration")
-    case_study_engagement = tuple(
-        ContentEngagementRow(
-            content_type="case_study",
-            slug=slug,
-            views=rng.randint(12, 88),
-        )
-        for slug in case_slugs
+    crm_counts = CrmFunnelCounts(
+        leads=raw_counts.get("Lead Persisted", rng.randint(8, 40)),
+        checkouts=rng.randint(4, 28),
+        payments=rng.randint(2, 18),
     )
-    article_engagement = tuple(
-        ContentEngagementRow(
-            content_type="article",
-            slug=slug,
-            views=rng.randint(10, 72),
-        )
-        for slug in article_slugs
-    )
+    attribution: list[AttributionBucket] = []
+    for dimension, values in (
+        ("utm_source", UTM_SOURCES),
+        ("utm_medium", tuple(v for v in UTM_MEDIUMS if v)),
+        ("utm_campaign", tuple(v for v in UTM_CAMPAIGNS if v)),
+    ):
+        for value in rng.sample(list(values), k=min(len(values), rng.randint(2, 4))):
+            attribution.append(
+                AttributionBucket(
+                    dimension=dimension,
+                    key=value,
+                    event_count=rng.randint(10, 180),
+                    lead_count=rng.randint(0, 24),
+                )
+            )
 
-    return MarketingAnalyticsData(
-        period_days=period_days,
-        period_start=period_start,
-        period_end=period_end,
-        engagement_counts=engagement_counts,
-        server_conversion_counts=server_counts,
-        conversion_rates=build_conversion_rates(engagement_lookup, server_lookup),
-        attribution_rows=tuple(attribution_rows),
-        case_study_engagement=case_study_engagement,
-        article_engagement=article_engagement,
-        abandoned_checkouts=abandoned,
+    case_slugs = ("meridian-stack", "volt-spiral", "aperture-freight", "northline")
+    article_slugs = ("architecture-diagnostic", "platform-risk", "leadership-gaps")
+    return AnalyticsDashboardData(
+        date_range=date_range,
+        event_counts=tuple(event_counts),
+        crm_counts=crm_counts,
+        conversion_rates=build_conversion_rates(
+            event_counts=raw_counts,
+            crm_counts=crm_counts,
+        ),
+        attribution=tuple(attribution),
+        case_study_engagement=tuple(
+            ContentEngagementRow(
+                content_type="case_study",
+                slug=slug,
+                views=rng.randint(20, 240),
+            )
+            for slug in rng.sample(case_slugs, k=3)
+        ),
+        article_engagement=tuple(
+            ContentEngagementRow(
+                content_type="article",
+                slug=slug,
+                views=rng.randint(15, 190),
+            )
+            for slug in rng.sample(article_slugs, k=2)
+        ),
         generated_at=now,
     )
 

@@ -1274,189 +1274,6 @@ class PostgresActionQueueRepository:
         return [dict(row) for row in rows]
 
 
-class PostgresMarketingAnalyticsRepository:
-    _ALLOWED_SLUG_PROPERTIES = frozenset({"case_study_slug", "article_slug"})
-
-    def count_engagement_events(
-        self,
-        conn: psycopg.Connection,
-        *,
-        period_start: datetime,
-        period_end: datetime,
-        event_names: tuple[str, ...],
-    ) -> list[tuple[str, int]]:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT event_name, COUNT(DISTINCT idempotency_key)::int AS total
-                FROM analytics_events
-                WHERE occurred_at >= %s
-                  AND occurred_at < %s
-                  AND event_name = ANY(%s)
-                GROUP BY event_name
-                ORDER BY total DESC, event_name ASC
-                """,
-                (period_start, period_end, list(event_names)),
-            )
-            rows = cur.fetchall()
-        return [(str(row["event_name"]), int(row["total"])) for row in rows]
-
-    def count_server_conversion_events(
-        self,
-        conn: psycopg.Connection,
-        *,
-        period_start: datetime,
-        period_end: datetime,
-        event_names: tuple[str, ...],
-    ) -> list[tuple[str, int]]:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT event_name, COUNT(DISTINCT idempotency_key)::int AS total
-                FROM analytics_events
-                WHERE occurred_at >= %s
-                  AND occurred_at < %s
-                  AND event_name = ANY(%s)
-                GROUP BY event_name
-                ORDER BY total DESC, event_name ASC
-                """,
-                (period_start, period_end, list(event_names)),
-            )
-            rows = cur.fetchall()
-        return [(str(row["event_name"]), int(row["total"])) for row in rows]
-
-    def count_attribution_from_events(
-        self,
-        conn: psycopg.Connection,
-        *,
-        period_start: datetime,
-        period_end: datetime,
-        event_names: tuple[str, ...],
-        limit: int,
-    ) -> list[dict[str, Any]]:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT
-                    COALESCE(NULLIF(TRIM(attribution->>'utm_source'), ''), '(direct)') AS utm_source,
-                    COALESCE(NULLIF(TRIM(attribution->>'utm_medium'), ''), '(none)') AS utm_medium,
-                    COALESCE(NULLIF(TRIM(attribution->>'utm_campaign'), ''), '(none)') AS utm_campaign,
-                    COUNT(DISTINCT idempotency_key)::int AS events
-                FROM analytics_events
-                WHERE occurred_at >= %s
-                  AND occurred_at < %s
-                  AND event_name = ANY(%s)
-                GROUP BY 1, 2, 3
-                ORDER BY events DESC, utm_source ASC
-                LIMIT %s
-                """,
-                (period_start, period_end, list(event_names), limit),
-            )
-            rows = cur.fetchall()
-        return [dict(row) for row in rows]
-
-    def count_attribution_from_briefs(
-        self,
-        conn: psycopg.Connection,
-        *,
-        period_start: datetime,
-        period_end: datetime,
-        limit: int,
-    ) -> list[dict[str, Any]]:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT
-                    COALESCE(NULLIF(TRIM(utm_source), ''), '(direct)') AS utm_source,
-                    COALESCE(NULLIF(TRIM(utm_medium), ''), '(none)') AS utm_medium,
-                    COALESCE(NULLIF(TRIM(utm_campaign), ''), '(none)') AS utm_campaign,
-                    COUNT(*)::int AS leads,
-                    COUNT(*) FILTER (
-                        WHERE status = 'paid'
-                          AND paid_at >= %s
-                          AND paid_at < %s
-                    )::int AS payments
-                FROM project_briefs
-                WHERE created_at >= %s
-                  AND created_at < %s
-                GROUP BY 1, 2, 3
-                ORDER BY leads DESC, utm_source ASC
-                LIMIT %s
-                """,
-                (
-                    period_start,
-                    period_end,
-                    period_start,
-                    period_end,
-                    limit,
-                ),
-            )
-            rows = cur.fetchall()
-        return [dict(row) for row in rows]
-
-    def count_content_engagement(
-        self,
-        conn: psycopg.Connection,
-        *,
-        period_start: datetime,
-        period_end: datetime,
-        event_name: str,
-        slug_property: str,
-        limit: int,
-    ) -> list[dict[str, Any]]:
-        if slug_property not in self._ALLOWED_SLUG_PROPERTIES:
-            raise ValueError(f"unsupported slug property: {slug_property}")
-        with conn.cursor() as cur:
-            cur.execute(
-                f"""
-                SELECT properties->>%s AS slug,
-                       COUNT(DISTINCT idempotency_key)::int AS views
-                FROM analytics_events
-                WHERE occurred_at >= %s
-                  AND occurred_at < %s
-                  AND event_name = %s
-                  AND properties->>%s IS NOT NULL
-                  AND TRIM(properties->>%s) <> ''
-                GROUP BY slug
-                ORDER BY views DESC, slug ASC
-                LIMIT %s
-                """,
-                (
-                    slug_property,
-                    period_start,
-                    period_end,
-                    event_name,
-                    slug_property,
-                    slug_property,
-                    limit,
-                ),
-            )
-            rows = cur.fetchall()
-        return [dict(row) for row in rows]
-
-    def count_abandoned_checkouts(
-        self,
-        conn: psycopg.Connection,
-        *,
-        period_start: datetime,
-        period_end: datetime,
-    ) -> int:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT COUNT(*)::int AS total
-                FROM project_briefs
-                WHERE status = 'pending_payment'
-                  AND stripe_session_id IS NOT NULL
-                  AND created_at >= %s
-                  AND created_at < %s
-                """,
-                (period_start, period_end),
-            )
-            row = cur.fetchone()
-        return int(row["total"]) if row else 0
-
-
 class PostgresAcquisitionDashboardRepository:
     _COMPANY_DIMENSIONS = frozenset({"stage", "category"})
     _PUBLIC_EVIDENCE_TYPES = ("verified_fact", "public_signal")
@@ -2395,6 +2212,10 @@ class PostgresRepositories:
     """Bundle of Postgres repository implementations including CRM + audit."""
 
     def __init__(self) -> None:
+        from app.repositories.postgres_analytics_dashboard import (
+            PostgresAnalyticsDashboardRepository,
+        )
+
         self.companies = PostgresCompanyRepository()
         self.contacts = PostgresContactRepository()
         self.source_records = PostgresSourceRecordRepository()
@@ -2404,7 +2225,7 @@ class PostgresRepositories:
         self.audit_events = PostgresAuditEventRepository()
         self.project_briefs = PostgresProjectBriefRepository()
         self.acquisition_dashboard = PostgresAcquisitionDashboardRepository()
-        self.marketing_analytics = PostgresMarketingAnalyticsRepository()
+        self.analytics_dashboard = PostgresAnalyticsDashboardRepository()
         self.action_queue = PostgresActionQueueRepository()
         self.pipeline = PostgresPipelineRepository()
         self.import_batches = PostgresImportBatchRepository()
@@ -2431,7 +2252,7 @@ def default_repositories() -> dict[str, Any]:
         "audit_events": repos.audit_events,
         "project_briefs": repos.project_briefs,
         "acquisition_dashboard": repos.acquisition_dashboard,
-        "marketing_analytics": repos.marketing_analytics,
+        "analytics_dashboard": repos.analytics_dashboard,
         "action_queue": repos.action_queue,
         "pipeline": repos.pipeline,
         "import_batches": repos.import_batches,

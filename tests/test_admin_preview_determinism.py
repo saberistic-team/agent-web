@@ -133,10 +133,9 @@ def test_namespace_change_affects_only_target_fixture() -> None:
         now=ctx.reference_time,
         rng=preview_rng_for_namespace("companies", context=ctx),
     )
-    _ = build_preview_section_rows(
-        "/admin/analytics",
+    _ = build_preview_analytics_dashboard_data(
         now=ctx.reference_time,
-        rng=preview_rng_for_namespace("section:/admin/analytics", context=ctx),
+        rng=preview_rng_for_namespace("analytics_dashboard", context=ctx),
     )
     companies_b = build_preview_companies(
         now=ctx.reference_time,
@@ -190,28 +189,6 @@ def test_frozen_time_controls_overdue_and_upcoming_boundaries() -> None:
     for row in data.upcoming_actions:
         assert row.next_action_due_at > frozen
         assert row.next_action_due_at <= frozen + timedelta(days=10)
-
-
-@pytest.mark.unit
-def test_analytics_preview_dashboard_is_deterministic() -> None:
-    ctx = PreviewContext(
-        root_seed=116,
-        reference_time=DEFAULT_PREVIEW_REFERENCE_TIME,
-        fixture_version=PREVIEW_FIXTURE_VERSION,
-    )
-    first = build_preview_analytics_dashboard_data(
-        now=ctx.reference_time,
-        rng=preview_rng_for_namespace("analytics_dashboard", context=ctx),
-    )
-    second = build_preview_analytics_dashboard_data(
-        now=ctx.reference_time,
-        rng=preview_rng_for_namespace("analytics_dashboard", context=ctx),
-    )
-    assert first == second
-    assert first.engagement_counts[0].count > 0
-    assert first.attribution
-    assert first.case_studies
-    assert first.articles
 
 
 @pytest.mark.unit

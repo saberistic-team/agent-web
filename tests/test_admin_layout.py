@@ -14,7 +14,6 @@ from fastapi.testclient import TestClient
 
 from app.admin_auth import SESSION_COOKIE_NAME
 from app.admin_layout import ADMIN_NAV_LINKS, render_admin_nav, render_admin_shell
-from app.marketing_analytics import MarketingAnalyticsData
 from app.main import app
 from tests.conftest import enable_admin_preview_env
 
@@ -437,7 +436,7 @@ def test_admin_nav_links_present(path: str) -> None:
         ("/admin/pipeline", "Pipeline", "pipeline-title", "Pipeline"),
         ("/admin/imports", "LinkedIn export preview", "imports-title", "Imports"),
         ("/admin/discovery", "Discovery", "admin-empty-title", "Discovery"),
-        ("/admin/analytics", "Funnel &amp; attribution", "marketing-analytics-title", "Analytics"),
+        ("/admin/analytics", "Marketing analytics", "analytics-title", "Analytics"),
         ("/admin/content", "Content", "admin-empty-title", "Content"),
         ("/admin/settings", "Settings", "admin-empty-title", "Settings"),
     ],
@@ -474,26 +473,6 @@ def test_admin_active_nav(path: str, heading: str, title_id: str, nav_label: str
         if path == "/admin/signals":
             patchers.append(patch("app.admin_icp_routes._crm.list_company_icp_scores", return_value=[]))
             patchers.append(patch("app.admin_icp_routes._crm.get_active_icp_version", return_value=None))
-        if path == "/admin/analytics":
-            empty_analytics = MarketingAnalyticsData(
-                period_days=7,
-                period_start=datetime.now(timezone.utc) - timedelta(days=7),
-                period_end=datetime.now(timezone.utc),
-                engagement_counts=(),
-                server_conversion_counts=(),
-                conversion_rates=(),
-                attribution_rows=(),
-                case_study_engagement=(),
-                article_engagement=(),
-                abandoned_checkouts=0,
-                generated_at=datetime.now(timezone.utc),
-            )
-            patchers.append(
-                patch(
-                    "app.admin_marketing_analytics_routes.load_marketing_analytics",
-                    return_value=empty_analytics,
-                )
-            )
         if path == "/admin/targets":
             patchers.append(patch("app.admin_qualification_routes._crm.list_qualification_targets", return_value=[]))
             patchers.append(patch("app.admin_qualification_routes._crm.list_qualification_working_lists", return_value=[]))

@@ -423,62 +423,44 @@ class AcquisitionDashboardRepository(Protocol):
     ) -> list[dict[str, Any]]: ...
 
 
-class MarketingAnalyticsRepository(Protocol):
-    def count_engagement_events(
+class AnalyticsDashboardRepository(Protocol):
+    def count_events_by_name(
         self,
         conn: psycopg.Connection,
         *,
-        period_start: datetime,
-        period_end: datetime,
-        event_names: tuple[str, ...],
-    ) -> list[tuple[str, int]]: ...
+        start: datetime,
+        end: datetime,
+        event_names: list[str],
+    ) -> dict[str, int]: ...
 
-    def count_server_conversion_events(
+    def count_crm_funnel(
         self,
         conn: psycopg.Connection,
         *,
-        period_start: datetime,
-        period_end: datetime,
-        event_names: tuple[str, ...],
-    ) -> list[tuple[str, int]]: ...
+        start: datetime,
+        end: datetime,
+    ) -> dict[str, int]: ...
 
-    def count_attribution_from_events(
+    def list_attribution_buckets(
         self,
         conn: psycopg.Connection,
         *,
-        period_start: datetime,
-        period_end: datetime,
-        event_names: tuple[str, ...],
+        start: datetime,
+        end: datetime,
+        dimension: str,
         limit: int,
     ) -> list[dict[str, Any]]: ...
 
-    def count_attribution_from_briefs(
+    def list_content_engagement(
         self,
         conn: psycopg.Connection,
         *,
-        period_start: datetime,
-        period_end: datetime,
-        limit: int,
-    ) -> list[dict[str, Any]]: ...
-
-    def count_content_engagement(
-        self,
-        conn: psycopg.Connection,
-        *,
-        period_start: datetime,
-        period_end: datetime,
+        start: datetime,
+        end: datetime,
         event_name: str,
         slug_property: str,
         limit: int,
     ) -> list[dict[str, Any]]: ...
-
-    def count_abandoned_checkouts(
-        self,
-        conn: psycopg.Connection,
-        *,
-        period_start: datetime,
-        period_end: datetime,
-    ) -> int: ...
 
 
 class ActionQueueRepository(Protocol):

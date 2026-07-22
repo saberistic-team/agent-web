@@ -1,90 +1,69 @@
-"""Aggregated analytics dashboard CSV export."""
+"""CSV export for aggregated marketing analytics dashboard results."""
 
 from __future__ import annotations
 
 import csv
 import io
 
-from app.analytics_dashboard import DASHBOARD_TIMEZONE, AnalyticsDashboardData
+from app.analytics_dashboard import AnalyticsDashboardData, format_conversion_rate
 from app.crm_export import neutralize_csv_cell
 
 
-def render_analytics_export_csv(data: AnalyticsDashboardData) -> str:
-    """Render aggregated funnel, conversion, attribution, and content metrics as CSV."""
+def render_analytics_dashboard_csv(data: AnalyticsDashboardData) -> str:
+    """Render aggregated analytics dashboard metrics as CSV (no row-level events)."""
     buffer = io.StringIO()
     writer = csv.writer(buffer)
+    writer.writerow(["section", "metric", "value", "detail"])
 
-    writer.writerow(["section", "metric", "value", "source", "definition"])
-    for row in data.event_volumes:
+    writer.writerow(["meta", "range_label", data.date_range.label, ""])
+    writer.writerow(["meta", "range_start_utc", data.date_range.start.isoformat(), ""])
+    writer.writerow(["meta", "range_end_utc", data.date_range.end.isoformat(), "exclusive"])
+    writer.writerow(["meta", "generated_at_utc", data.generated_at.isoformat(), ""])
+
+    for row in data.event_counts:
         writer.writerow(
             [
                 "event_volume",
-                neutralize_csv_cell(row.label),
+                row.event_name,
                 row.count,
-                row.source,
-                neutralize_csv_cell(data.metric_definitions["event_volume"]),
+                f"{row.source};{row.category}",
             ]
         )
 
-    for row in data.conversion_rates:
-        rate = "" if row.rate_pct is None else f"{row.rate_pct:.1f}%"
+    writer.writerow(["crm", "leads", data.crm_counts.leads, data.metric_definitions["crm_leads"]])
+    writer.writerow(
+        ["crm", "checkouts", data.crm_counts.checkouts, data.metric_definitions["crm_checkouts"]]
+    )
+    writer.writerow(
+        ["crm", "payments", data.crm_counts.payments, data.metric_definitions["crm_payments"]]
+    )
+
+    for rate in data.conversion_rates:
+        pct = format_conversion_rate(rate.numerator, rate.denominator)
         writer.writerow(
             [
                 "conversion_rate",
-                neutralize_csv_cell(row.label),
-                neutralize_csv_cell(f"{row.numerator}/{row.denominator} = {rate}"),
-                "computed",
-                neutralize_csv_cell(row.definition),
+                rate.label,
+                "" if pct is None else f"{pct}%",
+                f"numerator={rate.numerator} ({rate.numerator_definition}); "
+                f"denominator={rate.denominator} ({rate.denominator_definition})",
             ]
         )
 
-    for row in data.attribution_rows:
+    for bucket in data.attribution:
         writer.writerow(
             [
                 "attribution",
-                neutralize_csv_cell(
-                    f"{row.utm_source} / {row.utm_medium} / {row.utm_campaign}"
-                ),
-                neutralize_csv_cell(
-                    f"landing={row.landing_views}; brief={row.brief_starts}; "
-                    f"leads={row.leads}; checkout={row.checkouts}; paid={row.payments}"
-                ),
-                "aggregated",
-                neutralize_csv_cell(data.metric_definitions["attribution"]),
+                bucket.dimension,
+                bucket.event_count,
+                f"key={neutralize_csv_cell(bucket.key)}; leads={bucket.lead_count}",
             ]
         )
 
     for row in data.case_study_engagement:
-        writer.writerow(
-            [
-                "content_engagement",
-                neutralize_csv_cell(f"case_study:{row.slug}"),
-                row.views,
-                "browser",
-                neutralize_csv_cell(data.metric_definitions["content_engagement"]),
-            ]
-        )
+        writer.writerow(["content", "case_study", row.views, neutralize_csv_cell(row.slug)])
 
     for row in data.article_engagement:
-        writer.writerow(
-            [
-                "content_engagement",
-                neutralize_csv_cell(f"article:{row.slug}"),
-                row.views,
-                "browser",
-                neutralize_csv_cell(data.metric_definitions["content_engagement"]),
-            ]
-        )
+        writer.writerow(["content", "article", row.views, neutralize_csv_cell(row.slug)])
 
-    writer.writerow(
-        [
-            "meta",
-            "date_range",
-            neutralize_csv_cell(f"{data.date_from.isoformat()}..{data.date_to.isoformat()}"),
-            DASHBOARD_TIMEZONE,
-            neutralize_csv_cell(
-                f"Generated {data.generated_at.astimezone().strftime('%Y-%m-%d %H:%M %Z')}"
-            ),
-        ]
-    )
     return buffer.getvalue()
