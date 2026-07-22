@@ -111,6 +111,11 @@ ADMIN_MUTATION_ROUTE_CLASSIFICATIONS: dict[tuple[str, str], tuple[MutationClassi
         "Override reason/actor are captured directly on the append-only "
         "company_icp_score_snapshots row; no separate audit_events entry in this release.",
     ),
+    ("POST", "/admin/discovery/run"): (
+        "intentionally_unaudited",
+        "Discovery run trigger is recorded in discovery_runs with actor and "
+        "correlation_id; no separate audit_events entry in this release.",
+    ),
 }
 
 
