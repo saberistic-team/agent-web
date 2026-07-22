@@ -1,0 +1,62 @@
+# One-shot: retrigger Reviewer after handoff commit dismissed prior APPROVED.
+name: "Retrigger Reviewer PR 417 (#122)"
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+jobs:
+  retrigger:
+    if: github.event.pull_request.number == 417
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Mint Builder App token
+        id: builder
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.BUILDER_APP_ID }}
+          private-key: ${{ secrets.BUILDER_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-issues: write
+          permission-pull-requests: write
+
+      - name: Hand off to agent:reviewer
+        env:
+          GH_TOKEN: ${{ steps.builder.outputs.token }}
+          REPO: ${{ github.repository }}
+          ISSUE: "122"
+          PR: "417"
+        run: |
+          set -euo pipefail
+          gh api "repos/${REPO}/pulls/${PR}/requested_reviewers" \
+            -f reviewers[]=saberistic || true
+
+          for label in \
+            status:new status:queued status:in-progress status:blocked \
+            status:done status:failed status:needs-review \
+            review:needs-review review:approved review:changes-requested \
+            agent:reviewer agent:builder agent:docs agent:planner
+          do
+            gh issue edit "${ISSUE}" --repo "${REPO}" --remove-label "${label}" 2>/dev/null || true
+          done
+          sleep 2
+          gh issue edit "${ISSUE}" --repo "${REPO}" \
+            --add-label "status:needs-review" \
+            --add-label "review:needs-review" \
+            --add-label "agent:reviewer"
+
+          gh issue comment "${ISSUE}" --repo "${REPO}" --body "$(cat <<'EOM'
+          ### builder_unblock
+          - pr: #417
+          - note: re-queued Reviewer after CODEOWNER handoff commit; squash auto-merge already enabled
+          - next: `agent:reviewer` then `@saberistic` CODEOWNER Approve
+          EOM
+          )"
+          gh issue view "${ISSUE}" --repo "${REPO}" --json labels --jq '[.labels[].name]'
+          gh pr view "${PR}" --repo "${REPO}" --json autoMergeRequest,reviewDecision,mergeStateStatus
