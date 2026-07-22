@@ -44,8 +44,8 @@ from app.admin_preview import (
     render_preview_section_main,
 )
 from app.admin_auth import SESSION_COOKIE_NAME
-from app.admin_dashboard_pages import render_acquisition_dashboard_page
 from app.admin_analytics_pages import render_analytics_dashboard_page
+from app.admin_dashboard_pages import render_acquisition_dashboard_page
 from app.main import app
 
 

@@ -199,10 +199,9 @@ def test_analytics_preview_dashboard_is_deterministic() -> None:
         reference_time=DEFAULT_PREVIEW_REFERENCE_TIME,
         fixture_version=PREVIEW_FIXTURE_VERSION,
     )
-    rng = preview_rng_for_namespace("analytics_dashboard", context=ctx)
     first = build_preview_analytics_dashboard_data(
         now=ctx.reference_time,
-        rng=rng,
+        rng=preview_rng_for_namespace("analytics_dashboard", context=ctx),
     )
     second = build_preview_analytics_dashboard_data(
         now=ctx.reference_time,
