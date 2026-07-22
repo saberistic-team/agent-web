@@ -682,11 +682,11 @@ class PostgresSourceRecordRepository:
             cur.execute(
                 """
                 UPDATE source_records
-                SET payload = %s
+                SET payload = %s, updated_at = %s
                 WHERE id = %s
                 RETURNING *
                 """,
-                (json.dumps(payload), record_id),
+                (json.dumps(payload), _now(), record_id),
             )
             row = cur.fetchone()
         return dict(row) if row else {}
@@ -853,7 +853,8 @@ class PostgresResearchRecordRepository:
                     confidence = %s,
                     review_at = %s,
                     expires_at = %s,
-                    metadata = COALESCE(%s, metadata)
+                    metadata = COALESCE(%s, metadata),
+                    updated_at = %s
                 WHERE id = %s
                 RETURNING *
                 """,
@@ -863,6 +864,7 @@ class PostgresResearchRecordRepository:
                     review_at,
                     expires_at,
                     json.dumps(metadata) if metadata is not None else None,
+                    _now(),
                     record_id,
                 ),
             )
