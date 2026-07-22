@@ -24,13 +24,12 @@ from app.acquisition_dashboard import (
     EvidenceRow,
     NextActionRow,
 )
-from app.marketing_analytics_dashboard import (
+from app.marketing_analytics import (
     AttributionRow,
     ContentEngagementRow,
-    ConversionRateRow,
-    EventCountRow,
-    MarketingAnalyticsDashboardData,
-    normalize_filters,
+    EventCount,
+    MarketingAnalyticsData,
+    build_conversion_rates,
 )
 from app.acquisition_action_queue import (
     QUEUE_CATEGORY_DUE_TODAY,
@@ -352,103 +351,104 @@ def build_preview_acquisition_dashboard_data(
 
 def build_preview_marketing_analytics_data(
     *,
-    date_from: str | None = None,
-    date_to: str | None = None,
+    period_days: int = 7,
     rng: random.Random | None = None,
     now: datetime | None = None,
-) -> MarketingAnalyticsDashboardData:
-    """Randomized marketing analytics dashboard for ADMIN_PREVIEW_MODE screenshots."""
+) -> MarketingAnalyticsData:
+    """Randomized marketing analytics for ADMIN_PREVIEW_MODE screenshots."""
     rng = _resolve_rng(rng, "marketing_analytics")
     now = _resolve_now(now)
-    filters = normalize_filters(date_from=date_from, date_to=date_to, reference=now)
+    period_end = now
+    period_start = period_end - timedelta(days=period_days)
 
-    engagement = (
-        EventCountRow("Landing Viewed", rng.randint(120, 480), "browser"),
-        EventCountRow("Services Viewed", rng.randint(40, 180), "browser"),
-        EventCountRow("Case Studies Viewed", rng.randint(30, 120), "browser"),
-        EventCountRow("Insights Viewed", rng.randint(25, 95), "browser"),
-        EventCountRow("Brief Viewed", rng.randint(18, 72), "browser"),
-        EventCountRow("Brief Form Started", rng.randint(8, 36), "browser"),
-        EventCountRow("Contact Initiated", rng.randint(2, 14), "browser"),
-    )
-    server = (
-        EventCountRow("Lead Persisted", rng.randint(4, 18), "server"),
-        EventCountRow("Checkout Opened", rng.randint(3, 12), "server"),
-        EventCountRow("Payment Completed", rng.randint(2, 9), "server"),
-    )
-    landing = engagement[0].count
-    brief_viewed = engagement[4].count
-    form_started = engagement[5].count
-    leads = server[0].count
-    checkouts = server[1].count
-    payments = server[2].count
+    landing = rng.randint(420, 980)
+    services = rng.randint(80, 220)
+    case_index = rng.randint(60, 140)
+    case_detail = rng.randint(40, 120)
+    insights_index = rng.randint(50, 130)
+    insight_detail = rng.randint(35, 95)
+    brief_viewed = rng.randint(90, 180)
+    form_started = rng.randint(35, min(brief_viewed, 80))
+    contact = rng.randint(8, 28)
+    leads = rng.randint(12, min(form_started, 24))
+    checkouts = rng.randint(8, min(leads, 18))
+    payments = rng.randint(4, min(checkouts, 12))
+    abandoned = rng.randint(1, 5)
 
-    conversion_rates = (
-        ConversionRateRow(
-            "Brief view → form start",
-            form_started,
-            brief_viewed,
-            round(100.0 * form_started / brief_viewed, 1),
-            "Count of `Brief Form Started` browser events",
-            "Count of `Brief Viewed` browser events",
-        ),
-        ConversionRateRow(
-            "Form start → lead",
-            leads,
-            form_started,
-            round(100.0 * leads / form_started, 1),
-            "Count of `Lead Persisted` server events",
-            "Count of `Brief Form Started` browser events",
-        ),
-        ConversionRateRow(
-            "Lead → checkout",
-            checkouts,
-            leads,
-            round(100.0 * checkouts / leads, 1),
-            "Count of `Checkout Opened` server events",
-            "Count of `Lead Persisted` server events",
-        ),
-        ConversionRateRow(
-            "Checkout → payment",
-            payments,
-            checkouts,
-            round(100.0 * payments / checkouts, 1),
-            "Count of `Payment Completed` server events",
-            "Count of `Checkout Opened` server events",
-        ),
-        ConversionRateRow(
-            "Landing → lead",
-            leads,
-            landing,
-            round(100.0 * leads / landing, 1),
-            "Count of `Lead Persisted` server events",
-            "Count of `Landing Viewed` browser events",
-        ),
+    engagement_counts = (
+        EventCount("Landing Viewed", "Landing views", landing, "browser"),
+        EventCount("Services Viewed", "Services views", services, "browser"),
+        EventCount("Case Studies Viewed", "Case studies index", case_index, "browser"),
+        EventCount("Case Study Viewed", "Case study detail", case_detail, "browser"),
+        EventCount("Insights Viewed", "Insights index", insights_index, "browser"),
+        EventCount("Insight Viewed", "Insight article", insight_detail, "browser"),
+        EventCount("Brief Viewed", "Brief page views", brief_viewed, "browser"),
+        EventCount("Brief Form Started", "Brief form starts", form_started, "browser"),
+        EventCount("Contact Initiated", "Contact initiated", contact, "browser"),
+    )
+    server_counts = (
+        EventCount("Lead Persisted", "Leads persisted", leads, "server"),
+        EventCount("Checkout Opened", "Checkouts opened", checkouts, "server"),
+        EventCount("Payment Completed", "Payments completed", payments, "server"),
+    )
+    engagement_lookup = {row.event_name: row.count for row in engagement_counts}
+    server_lookup = {row.event_name: row.count for row in server_counts}
+
+    attribution_rows: list[AttributionRow] = []
+    for source in UTM_SOURCES[:4]:
+        medium = rng.choice([m for m in UTM_MEDIUMS if m is not None])
+        campaign = rng.choice([c for c in UTM_CAMPAIGNS if c is not None])
+        attribution_rows.append(
+            AttributionRow(
+                utm_source=source,
+                utm_medium=medium or "social",
+                utm_campaign=campaign or "spring-launch",
+                engagement_events=rng.randint(40, 280),
+                leads=rng.randint(2, 10),
+                payments=rng.randint(0, 4),
+            )
+        )
+    attribution_rows.append(
+        AttributionRow(
+            utm_source="(direct)",
+            utm_medium="(none)",
+            utm_campaign="(none)",
+            engagement_events=rng.randint(120, 360),
+            leads=rng.randint(3, 8),
+            payments=rng.randint(1, 3),
+        )
     )
 
-    attribution = (
-        AttributionRow("linkedin", "social", "launch-q3", 86, 6, 3),
-        AttributionRow("(direct)", "(none)", "(none)", 142, 4, 2),
-        AttributionRow("newsletter", "email", "insights-digest", 38, 2, 1),
+    case_slugs = ("fintech-platform", "ai-infrastructure", "supply-chain")
+    article_slugs = ("architecture-diagnostic", "team-topology", "platform-migration")
+    case_study_engagement = tuple(
+        ContentEngagementRow(
+            content_type="case_study",
+            slug=slug,
+            views=rng.randint(12, 88),
+        )
+        for slug in case_slugs
     )
-    case_study_views = (
-        ContentEngagementRow("northwind-labs", rng.randint(12, 48)),
-        ContentEngagementRow("helios-rail", rng.randint(8, 32)),
-        ContentEngagementRow("cedar-protocol", rng.randint(5, 24)),
-    )
-    article_views = (
-        ContentEngagementRow("first-party-analytics", rng.randint(10, 40)),
-        ContentEngagementRow("pipeline-attention", rng.randint(6, 28)),
+    article_engagement = tuple(
+        ContentEngagementRow(
+            content_type="article",
+            slug=slug,
+            views=rng.randint(10, 72),
+        )
+        for slug in article_slugs
     )
 
-    return MarketingAnalyticsDashboardData(
-        filters=filters,
-        engagement_events=engagement,
-        server_events=server,
-        conversion_rates=conversion_rates,
-        attribution=attribution,
-        case_study_views=case_study_views,
-        article_views=article_views,
+    return MarketingAnalyticsData(
+        period_days=period_days,
+        period_start=period_start,
+        period_end=period_end,
+        engagement_counts=engagement_counts,
+        server_conversion_counts=server_counts,
+        conversion_rates=build_conversion_rates(engagement_lookup, server_lookup),
+        attribution_rows=tuple(attribution_rows),
+        case_study_engagement=case_study_engagement,
+        article_engagement=article_engagement,
+        abandoned_checkouts=abandoned,
         generated_at=now,
     )
 

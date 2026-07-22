@@ -2061,6 +2061,7 @@ async def admin_imports_reconcile_preview(request: Request) -> JSONResponse:
 for _link in ADMIN_NAV_LINKS:
     if _link["href"] in {
         "/admin",
+        "/admin/analytics",
         "/admin/audit",
         "/admin/briefs",
         "/admin/companies",
@@ -2070,7 +2071,6 @@ for _link in ADMIN_NAV_LINKS:
         "/admin/queue",
         "/admin/targets",
         "/admin/signals",
-        "/admin/analytics",
     }:
         continue
     _section = _link["href"].removeprefix("/admin/")
