@@ -7,6 +7,8 @@ import re
 from typing import Any
 
 from spike.worldgraph.extractor import ExtractionResult, proven, unknown_field
+from spike.worldgraph.fetcher import strip_html_to_text
+from spike.worldgraph.prompt_injection import detect_injection_phrases, sanitize_model_field
 
 ALLOWED_EXCLUSION_REASONS = frozenset(
     {
@@ -31,8 +33,6 @@ def normalize_exclusion_reason(reason: str | None) -> str | None:
     if normalized not in ALLOWED_EXCLUSION_REASONS:
         return None
     return normalized
-from spike.worldgraph.fetcher import strip_html_to_text
-from spike.worldgraph.prompt_injection import detect_injection_phrases, sanitize_model_field
 
 
 class DeterministicExtractor:
