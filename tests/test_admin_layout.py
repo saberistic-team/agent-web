@@ -436,7 +436,7 @@ def test_admin_nav_links_present(path: str) -> None:
         ("/admin/pipeline", "Pipeline", "pipeline-title", "Pipeline"),
         ("/admin/imports", "LinkedIn export preview", "imports-title", "Imports"),
         ("/admin/discovery", "Discovery", "admin-empty-title", "Discovery"),
-        ("/admin/analytics", "Marketing analytics", "analytics-title", "Analytics"),
+        ("/admin/analytics", "Funnel &amp; attribution", "analytics-title", "Analytics"),
         ("/admin/content", "Content", "admin-empty-title", "Content"),
         ("/admin/settings", "Settings", "admin-empty-title", "Settings"),
     ],
@@ -476,6 +476,15 @@ def test_admin_active_nav(path: str, heading: str, title_id: str, nav_label: str
         if path == "/admin/targets":
             patchers.append(patch("app.admin_qualification_routes._crm.list_qualification_targets", return_value=[]))
             patchers.append(patch("app.admin_qualification_routes._crm.list_qualification_working_lists", return_value=[]))
+        if path == "/admin/analytics":
+            from app.marketing_analytics_dashboard import empty_dashboard_data, parse_analytics_date_range
+
+            patchers.append(
+                patch(
+                    "app.admin_analytics_routes.load_marketing_analytics_dashboard",
+                    return_value=empty_dashboard_data(parse_analytics_date_range()),
+                )
+            )
         with patchers[0]:
             for extra in patchers[1:]:
                 extra.start()

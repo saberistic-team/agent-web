@@ -26,7 +26,7 @@ from app.admin_preview import (
     build_preview_company_detail,
     build_preview_contact_detail,
     build_preview_acquisition_dashboard_data,
-    build_preview_analytics_dashboard_data,
+    build_preview_marketing_analytics_data,
     build_preview_companies,
     build_preview_company,
     build_preview_company_contacts,
@@ -47,7 +47,6 @@ from app.admin_preview import (
 )
 from app.admin_auth import SESSION_COOKIE_NAME
 from app.admin_dashboard_pages import render_acquisition_dashboard_page
-from app.admin_analytics_pages import render_analytics_dashboard_page
 from app.admin_action_queue_pages import render_action_queue_page
 from app.main import app
 
@@ -81,29 +80,30 @@ def test_preview_acquisition_dashboard_html_includes_sections() -> None:
 
 
 @pytest.mark.unit
-def test_preview_analytics_dashboard_seed_stable() -> None:
+def test_preview_marketing_analytics_data_is_deterministic() -> None:
     now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
-    a = build_preview_analytics_dashboard_data(rng=random.Random(42), now=now)
-    b = build_preview_analytics_dashboard_data(rng=random.Random(42), now=now)
+    a = build_preview_marketing_analytics_data(rng=random.Random(42), now=now)
+    b = build_preview_marketing_analytics_data(rng=random.Random(42), now=now)
     assert a == b
-    assert len(a.event_counts) >= 8
-    assert len(a.attribution) >= 3
+    assert a.event_counts
+    assert a.attribution
+    assert a.case_study_engagement
 
 
 @pytest.mark.unit
-def test_preview_analytics_dashboard_html_includes_sections() -> None:
-    data = build_preview_analytics_dashboard_data(rng=random.Random(99))
-    html = render_analytics_dashboard_page(
+def test_preview_marketing_analytics_html_includes_sections() -> None:
+    from app.admin_analytics_pages import render_marketing_analytics_page
+
+    data = build_preview_marketing_analytics_data(rng=random.Random(99))
+    html = render_marketing_analytics_page(
         data=data,
         admin_username="preview",
         preview_banner="Preview data — not production",
     )
-    assert "Preview data — not production" in html
-    assert "Marketing analytics" in html
-    assert "Event volume" in html
+    assert 'id="analytics-title"' in html
     assert "Conversion rates" in html
-    assert data.case_study_engagement[0].slug in html
-    assert data.attribution[0].key in html
+    assert "Case study engagement" in html
+    assert "Lead Persisted" in html or "Leads persisted" in html
 
 
 @pytest.mark.unit

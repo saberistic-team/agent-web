@@ -78,11 +78,11 @@ def render_admin_page(
 
             main = render_preview_imports_main()
         elif active_path == "/admin/analytics":
-            from app.admin_analytics_pages import render_analytics_dashboard_page
-            from app.admin_preview import build_preview_analytics_dashboard_data
+            from app.admin_analytics_pages import render_marketing_analytics_page
+            from app.admin_preview import build_preview_marketing_analytics_data
 
-            return render_analytics_dashboard_page(
-                data=build_preview_analytics_dashboard_data(),
+            return render_marketing_analytics_page(
+                data=build_preview_marketing_analytics_data(),
                 admin_username=admin_username,
                 csrf_token=csrf_token,
                 preview_banner="Preview data — not production",
