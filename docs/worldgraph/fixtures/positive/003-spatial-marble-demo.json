@@ -1,0 +1,567 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "world_id": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "name": {
+      "value": "Marble Demo World",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "Marble Demo World",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://example-worlds.test/spatial/marble-demo",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "https://example-worlds.test/spatial/marble-demo",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Explorable AI-generated 3D spatial world with WebXR support.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "Explorable AI-generated 3D spatial world",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "evidence_snippet": "published",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "version": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "ai_spatial",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "ai_spatial",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "modalities": [
+      {
+        "value": "3d",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": null,
+          "evidence_snippet": null,
+          "confidence": 0.8,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      },
+      {
+        "value": "webxr",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": null,
+          "evidence_snippet": null,
+          "confidence": 0.8,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "creator": {
+      "value": "Aurora Labs",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "evidence_snippet": "Creator: Aurora Labs",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "operator": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "claimed_owner": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://example-worlds.test/spatial/marble-demo/explore",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example-worlds.test/spatial/marble-demo",
+          "evidence_snippet": "Explore",
+          "confidence": 0.8,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "supported_devices": [
+      {
+        "value": "desktop",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": null,
+          "evidence_snippet": null,
+          "confidence": 0.8,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      },
+      {
+        "value": "vr_headset",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": null,
+          "evidence_snippet": null,
+          "confidence": 0.8,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "access_requirements": {
+      "value": "web_login_optional",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0.6,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "pricing": {
+      "value": "free",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0.6,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "availability": {
+      "value": "public",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0.6,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "region_restrictions": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "age_guidance": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "interaction_model": {
+      "value": "spatial_exploration_with_physics",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "Walk through an AI-generated spatial environment",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "exportable_world_state_bundles",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "exportable world state",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "supported_languages": [
+      {
+        "value": "en",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": null,
+          "evidence_snippet": null,
+          "confidence": 0.8,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "world_structure": {
+    "setting": {
+      "value": "procedural_outdoor_biome",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0.55,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "state_model": {
+      "value": "glTF_world_bundle",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0.55,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "protocols": [
+      {
+        "entity_type": "protocol",
+        "display_name": {
+          "value": "webxr",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0.8,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "reference_url": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "a2a_agent_card_url": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "mcp_server_uri": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      },
+      {
+        "entity_type": "protocol",
+        "display_name": {
+          "value": "gltf",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0.8,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "reference_url": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "a2a_agent_card_url": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "mcp_server_uri": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ]
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Build-time AI generates meshes; runtime AI handles ambient NPC behavior.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "Build-time AI generates meshes",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "build_and_runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "build_and_runtime",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "generated_elements": {
+      "value": "meshes_and_lighting",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agent_controlled_elements": {
+      "value": "ambient_npc_behavior",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "model_disclosures": [
+      {
+        "value": "unknown",
+        "provenance": {
+          "source_kind": "unknown",
+          "source_url": null,
+          "evidence_snippet": null,
+          "confidence": 0,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "human_control_boundaries": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "commercial_use_status": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "content_safety_categories": [
+      {
+        "value": "unknown",
+        "provenance": {
+          "source_kind": "unknown",
+          "source_url": null,
+          "evidence_snippet": null,
+          "confidence": 0,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "moderation_contact": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "data_privacy_notes": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "spatial",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": null,
+          "evidence_snippet": null,
+          "confidence": 0.8,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      },
+      {
+        "value": "webxr",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": null,
+          "evidence_snippet": null,
+          "confidence": 0.8,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Walk through an AI-generated spatial environment with collision and exportable state.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "AI-generated spatial environment",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "primary_call_to_action": {
+      "value": "enter",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

@@ -1,0 +1,625 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "world_id": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "name": {
+      "value": "Scene Alpha",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "evidence_snippet": "Scene Alpha",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://example-worlds.test/narrative/scene-alpha",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "evidence_snippet": "https://example-worlds.test/narrative/scene-alpha",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "domain_verified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "evidence_snippet": "published",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "version": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "interactive_narrative",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "evidence_snippet": "interactive_narrative",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "modalities": [
+      {
+        "value": "text",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": null,
+          "evidence_snippet": null,
+          "confidence": 0.8,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      },
+      {
+        "value": "choice_driven",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": null,
+          "evidence_snippet": null,
+          "confidence": 0.8,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "creator": {
+      "value": "Aurora Labs",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "evidence_snippet": "Creator: Aurora Labs",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "operator": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "claimed_owner": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://example-worlds.test/narrative/scene-alpha/play",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example-worlds.test/narrative/scene-alpha",
+          "evidence_snippet": "Enter world",
+          "confidence": 0.8,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "supported_devices": [
+      {
+        "value": "desktop",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": null,
+          "evidence_snippet": null,
+          "confidence": 0.8,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      },
+      {
+        "value": "mobile",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": null,
+          "evidence_snippet": null,
+          "confidence": 0.8,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "access_requirements": {
+      "value": "web_login_optional",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0.6,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "pricing": {
+      "value": "free",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0.6,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "availability": {
+      "value": "public",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0.6,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "region_restrictions": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "age_guidance": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "interaction_model": {
+      "value": "choice_driven_scenes_with_ai_character_responses",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "evidence_snippet": "choices reshape relationships",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "session_and_cloud_save_slots",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "evidence_snippet": "persistent session state",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "supported_languages": [
+      {
+        "value": "en",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": null,
+          "evidence_snippet": null,
+          "confidence": 0.8,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "world_structure": {
+    "setting": {
+      "value": "character_driven_drama",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0.55,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "relationship_meters_and_story_beats",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0.55,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "entity_type": "character",
+        "display_name": {
+          "value": "Lead Companion",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0.8,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "reference_url": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "a2a_agent_card_url": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "mcp_server_uri": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ],
+    "protocols": [
+      {
+        "entity_type": "protocol",
+        "display_name": {
+          "value": "web_embed",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0.8,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "reference_url": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "a2a_agent_card_url": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "mcp_server_uri": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ]
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Runtime AI controls character dialogue and emotional state.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "evidence_snippet": "Runtime AI controls character dialogue",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "evidence_snippet": "runtime",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "generated_elements": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agent_controlled_elements": {
+      "value": "character_dialogue_and_emotional_state",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "model_disclosures": [
+      {
+        "value": "unknown",
+        "provenance": {
+          "source_kind": "unknown",
+          "source_url": null,
+          "evidence_snippet": null,
+          "confidence": 0,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "human_control_boundaries": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "commercial_use_status": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "content_safety_categories": [
+      {
+        "value": "unknown",
+        "provenance": {
+          "source_kind": "unknown",
+          "source_url": null,
+          "evidence_snippet": null,
+          "confidence": 0,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "moderation_contact": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "data_privacy_notes": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "interactive_narrative",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": null,
+          "evidence_snippet": null,
+          "confidence": 0.8,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      },
+      {
+        "value": "character_world",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": null,
+          "evidence_snippet": null,
+          "confidence": 0.8,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Enter a persistent character world where your choices reshape relationships and story arcs.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "evidence_snippet": "persistent character world",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "primary_call_to_action": {
+      "value": "enter",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "representative_media": [
+      {
+        "url": {
+          "value": "https://example-worlds.test/media/scene-alpha-hero.png",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://example-worlds.test/narrative/scene-alpha",
+            "evidence_snippet": "hero image",
+            "confidence": 0.5,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "media_type": {
+          "value": "image/png",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0.8,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "c2pa_manifest_url": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "c2pa_claim_generator": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T00:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example-worlds.test/narrative/scene-alpha",
+          "evidence_snippet": "hero image",
+          "confidence": 0.5,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  }
+}
