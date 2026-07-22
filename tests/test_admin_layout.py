@@ -133,6 +133,7 @@ def _populated_analytics_for_layout():
 def test_admin_nav_links_include_required_destinations() -> None:
     assert ADMIN_HREFS == (
         "/admin",
+        "/admin/queue",
         "/admin/audit",
         "/admin/briefs",
         "/admin/companies",
@@ -148,6 +149,7 @@ def test_admin_nav_links_include_required_destinations() -> None:
     )
     assert ADMIN_LABELS == (
         "Dashboard",
+        "Queue",
         "Audit",
         "Briefs",
         "Companies",

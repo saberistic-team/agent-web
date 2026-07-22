@@ -454,6 +454,56 @@ class AnalyticsDashboardRepository(Protocol):
     ) -> list[dict[str, Any]]: ...
 
 
+class ActionQueueRepository(Protocol):
+    def list_overdue_next_actions(
+        self,
+        conn: psycopg.Connection,
+        *,
+        reference: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]: ...
+
+    def list_due_today_next_actions(
+        self,
+        conn: psycopg.Connection,
+        *,
+        day_start: datetime,
+        day_end: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]: ...
+
+    def list_recently_qualified_tier_a(
+        self,
+        conn: psycopg.Connection,
+        *,
+        since: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]: ...
+
+    def list_warm_introduction_opportunities(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int,
+    ) -> list[dict[str, Any]]: ...
+
+    def list_stale_high_value_evidence(
+        self,
+        conn: psycopg.Connection,
+        *,
+        reference: datetime,
+        min_value_cents: int,
+        limit: int,
+    ) -> list[dict[str, Any]]: ...
+
+    def list_export_candidates(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int,
+    ) -> list[dict[str, Any]]: ...
+
+
 class ProjectBriefRepository(Protocol):
     def list_page(
         self,

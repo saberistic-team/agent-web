@@ -52,6 +52,8 @@ FROZEN_MIGRATION_DIGESTS: dict[str, str] = {
     "019": "18c21301f9c206ebf5df5f02bcf8ffbad2372c8a8b18907e426bf014fd16ae77",
     "020": "b9d23f5ebd8293f3f2afb9a8f3241c8e94a0a8e0c8febce33816ec361a29948c",
     "021": "e8e9cd2b5478733ca421e5848442392459a8edf88a9e6ec8899ef431bca68469",
+    "022": "bcb6a85dc0c8e7070fa3a380030a587bdedcc2f83a9e50d037c998625d0b513e",
+    "023": "c078a2897d27642bd565413a84e7b6feaf2fbfb8b8d2f9d21b46155df6415a42",
 }
 
 
@@ -795,6 +797,60 @@ CROSS JOIN (
     SELECT id FROM icp_scoring_versions WHERE version_number = 1 LIMIT 1
 ) AS active_version
 ON CONFLICT (version_id, id) DO NOTHING;
+""",
+    ),
+    Migration(
+        version="022",
+        name="contact_relationship_metrics",
+        up_sql="""
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS relationship_metrics JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS crm_context_tags TEXT[] NOT NULL DEFAULT '{}';
+CREATE INDEX IF NOT EXISTS idx_contacts_crm_context_tags
+    ON contacts USING GIN (crm_context_tags);
+""",
+    ),
+    Migration(
+        version="023",
+        name="qualification_targets",
+        up_sql="""
+CREATE TABLE IF NOT EXISTS qualification_tier_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID NOT NULL REFERENCES companies (id) ON DELETE CASCADE,
+    from_tier TEXT,
+    to_tier TEXT NOT NULL,
+    score NUMERIC(5, 2) NOT NULL,
+    changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    changed_by TEXT NOT NULL,
+    snapshot_id UUID REFERENCES company_icp_score_snapshots (id) ON DELETE SET NULL,
+    metadata JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_qualification_tier_history_company
+    ON qualification_tier_history (company_id, changed_at DESC);
+
+CREATE TABLE IF NOT EXISTS qualification_working_lists (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    owner TEXT NOT NULL,
+    max_items INTEGER NOT NULL DEFAULT 50
+        CHECK (max_items > 0 AND max_items <= 100),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_qualification_working_lists_owner
+    ON qualification_working_lists (owner, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS qualification_working_list_items (
+    list_id UUID NOT NULL REFERENCES qualification_working_lists (id) ON DELETE CASCADE,
+    company_id UUID NOT NULL REFERENCES companies (id) ON DELETE CASCADE,
+    position INTEGER NOT NULL DEFAULT 0,
+    added_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (list_id, company_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_qualification_working_list_items_list
+    ON qualification_working_list_items (list_id, position ASC);
 """,
     ),
 )

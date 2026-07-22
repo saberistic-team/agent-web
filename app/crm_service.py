@@ -72,9 +72,18 @@ from app.linkedin_import import (
 from app.linkedin_reconcile import (
     MatchResolution,
     compute_importable_updates,
+    is_field_user_owned,
+    parse_field_sources,
     preview_connection_row,
     resolve_company_id,
     resolve_connection_match,
+)
+from app.linkedin_relationship_metrics import (
+    assert_no_message_bodies,
+    build_connection_date_index,
+    merge_relationship_metrics,
+    metrics_last_interaction_date,
+    strip_message_bodies,
 )
 from app.pipeline_stages import (
     initial_pipeline_stage_for_brief_status,
@@ -86,6 +95,18 @@ from app.icp_scoring import (
     calculate_icp_score,
     default_icp_rules,
     rule_from_row,
+)
+from app.qualification_targets import (
+    MAX_WORKING_LIST_ITEMS,
+    QualificationTargetFilters,
+    QualificationTargetRow,
+    WorkingListCreate,
+    build_target_row,
+    filter_target_rows,
+    rules_from_rows,
+    score_company_with_rules,
+    sort_target_rows,
+    tier_change_metadata,
 )
 from app.repositories import (
     ActivityRepository,
@@ -102,8 +123,10 @@ from app.repositories import (
     PostgresIcpScoringRepository,
     PostgresImportBatchRepository,
     PostgresPipelineRepository,
+    PostgresQualificationRepository,
     PostgresResearchRecordRepository,
     PostgresSourceRecordRepository,
+    QualificationRepository,
     ResearchRecordRepository,
     SourceRecordRepository,
 )
@@ -120,6 +143,7 @@ class CrmRepositories:
     pipeline: PipelineRepository
     import_batches: ImportBatchRepository
     icp_scoring: IcpScoringRepository
+    qualification: QualificationRepository
 
 
 def default_crm_repositories() -> CrmRepositories:
@@ -133,6 +157,7 @@ def default_crm_repositories() -> CrmRepositories:
         pipeline=PostgresPipelineRepository(),
         import_batches=PostgresImportBatchRepository(),
         icp_scoring=PostgresIcpScoringRepository(),
+        qualification=PostgresQualificationRepository(),
     )
 
 
@@ -1350,6 +1375,8 @@ class CrmService:
         connections: list[dict[str, Any]],
         export_date: Any | None = None,
         checksum: str | None = None,
+        message_metadata: list[dict[str, Any]] | None = None,
+        owner_name: str | None = None,
     ) -> dict[str, Any]:
         """Merge LinkedIn connections incrementally without deleting absent records."""
         resolved_checksum = checksum or compute_import_checksum(connections)
@@ -1554,6 +1581,21 @@ class CrmService:
                     payload={"source_kind": SOURCE_KIND_CONNECTION, **identity},
                 )
 
+            if message_metadata and owner_name:
+                self._apply_linkedin_relationship_metrics(
+                    conn,
+                    connections=connections,
+                    message_rows=message_metadata,
+                    owner_name=owner_name,
+                    export_date=export_date,
+                    touched_contact_ids={
+                        UUID(str(record["entity_id"]))
+                        for record in row_records
+                        if record.get("entity_id") is not None
+                    },
+                    seen_at=seen_at,
+                )
+
             persisted_rows: list[dict[str, Any]] = []
             for record in row_records:
                 persisted_rows.append(
@@ -1597,6 +1639,51 @@ class CrmService:
             "idempotent": False,
             "summary_counts": summary,
         }
+
+    def _apply_linkedin_relationship_metrics(
+        self,
+        conn: psycopg.Connection,
+        *,
+        connections: list[dict[str, Any]],
+        message_rows: list[dict[str, Any]],
+        owner_name: str,
+        export_date: Any | None,
+        touched_contact_ids: set[UUID],
+        seen_at: datetime,
+    ) -> None:
+        assert_no_message_bodies(message_rows)
+        safe_rows = strip_message_bodies(message_rows)
+        reference_date = parse_export_date(export_date) or seen_at.date()
+        connection_index = build_connection_date_index(connections)
+
+        for contact_id in touched_contact_ids:
+            contact = self._repos.contacts.get_by_id(conn, contact_id)
+            if contact is None or contact.get("archived_at") is not None:
+                continue
+            contact_name = str(contact.get("full_name") or "")
+            if not contact_name.strip():
+                continue
+            profile_url = contact.get("profile_url")
+            connection_date = connection_index.get(str(profile_url)) if profile_url else None
+            existing_metrics = contact.get("relationship_metrics")
+            if not isinstance(existing_metrics, dict):
+                existing_metrics = {}
+            merged = merge_relationship_metrics(
+                existing_metrics,
+                contact_name=contact_name,
+                owner_name=owner_name,
+                connection_date=connection_date,
+                message_rows=safe_rows,
+                reference_date=reference_date,
+            )
+            updates: dict[str, Any] = {"relationship_metrics": merged}
+            field_sources = parse_field_sources(contact.get("field_sources"))
+            metrics_last = metrics_last_interaction_date(merged)
+            if metrics_last is not None and not is_field_user_owned(field_sources, "last_interaction_at"):
+                current_last = contact.get("last_interaction_at")
+                if current_last is None or metrics_last > current_last:
+                    updates["last_interaction_at"] = metrics_last
+            self._repos.contacts.update(conn, contact_id, **updates)
 
     def get_import_batch(
         self,
@@ -2227,4 +2314,278 @@ class CrmService:
                 filters=filters,
             )
         return {"export_type": export_type, "filters": filters or {}}
+
+    def complete_queue_item(
+        self,
+        conn: psycopg.Connection,
+        *,
+        actor_context: ActorContext,
+        company_id: UUID,
+        item_key: str,
+        item_category: str,
+    ) -> dict[str, Any]:
+        company = self._repos.pipeline.get_company_pipeline(conn, company_id)
+        if company is None:
+            raise ValueError("Company not found.")
+        summary = company.get("next_action") or item_category
+        with crm_transaction(conn):
+            self._repos.activities.create(
+                conn,
+                activity_type="task_completion",
+                summary=f"Queue complete ({item_category}): {summary}",
+                company_id=company_id,
+                metadata={"item_key": item_key, "item_category": item_category},
+            )
+            if company.get("next_action"):
+                summary_before = pipeline_summary(company)
+                updated = self._repos.pipeline.update_pipeline_fields(
+                    conn,
+                    company_id,
+                    next_action=None,
+                    next_action_due_at=None,
+                )
+                if updated is not None:
+                    audit_service.record_pipeline_update(
+                        conn,
+                        actor_context=actor_context,
+                        entity_id=str(company_id),
+                        summary_before=summary_before,
+                        summary_after=pipeline_summary(updated),
+                    )
+        return {"item_key": item_key, "status": "completed"}
+
+    def snooze_queue_item(
+        self,
+        conn: psycopg.Connection,
+        *,
+        actor_context: ActorContext,
+        company_id: UUID,
+        item_key: str,
+        item_category: str,
+        snooze_days: int,
+    ) -> dict[str, Any]:
+        company = self._repos.pipeline.get_company_pipeline(conn, company_id)
+        if company is None:
+            raise ValueError("Company not found.")
+        reference = company.get("next_action_due_at") or datetime.now(timezone.utc)
+        if isinstance(reference, str):
+            reference = datetime.fromisoformat(reference.replace("Z", "+00:00"))
+        if reference.tzinfo is None:
+            reference = reference.replace(tzinfo=timezone.utc)
+        new_due = reference + timedelta(days=snooze_days)
+        update = PipelineNextActionUpdate(next_action_due_at=new_due)
+        self.update_pipeline_next_action(
+            conn,
+            actor_context=actor_context,
+            company_id=company_id,
+            update=update,
+        )
+        with crm_transaction(conn):
+            self._repos.activities.create(
+                conn,
+                activity_type="task_completion",
+                summary=f"Queue snooze ({item_category}): +{snooze_days}d",
+                company_id=company_id,
+                metadata={"item_key": item_key, "snooze_days": snooze_days},
+            )
+        return {"item_key": item_key, "next_action_due_at": new_due}
+
+    def reschedule_queue_item(
+        self,
+        conn: psycopg.Connection,
+        *,
+        actor_context: ActorContext,
+        company_id: UUID,
+        item_key: str,
+        item_category: str,
+        next_action_due_at: datetime,
+    ) -> dict[str, Any]:
+        update = PipelineNextActionUpdate(next_action_due_at=next_action_due_at)
+        self.update_pipeline_next_action(
+            conn,
+            actor_context=actor_context,
+            company_id=company_id,
+            update=update,
+        )
+        with crm_transaction(conn):
+            self._repos.activities.create(
+                conn,
+                activity_type="task_completion",
+                summary=f"Queue reschedule ({item_category})",
+                company_id=company_id,
+                metadata={"item_key": item_key, "due_at": next_action_due_at.isoformat()},
+            )
+        return {"item_key": item_key, "next_action_due_at": next_action_due_at}
+
+    def replace_queue_item(
+        self,
+        conn: psycopg.Connection,
+        *,
+        actor_context: ActorContext,
+        company_id: UUID,
+        item_key: str,
+        item_category: str,
+        update: PipelineNextActionUpdate,
+    ) -> dict[str, Any]:
+        self.update_pipeline_next_action(
+            conn,
+            actor_context=actor_context,
+            company_id=company_id,
+            update=update,
+        )
+        with crm_transaction(conn):
+            self._repos.activities.create(
+                conn,
+                activity_type="task_completion",
+                summary=f"Queue replace ({item_category})",
+                company_id=company_id,
+                metadata={"item_key": item_key},
+            )
+        return {"item_key": item_key, "status": "replaced"}
+
+    @staticmethod
+    def _target_row_to_dict(row: QualificationTargetRow) -> dict[str, Any]:
+        return {
+            "company_id": row.company_id,
+            "id": row.company_id,
+            "name": row.name,
+            "score": row.score,
+            "tier": row.tier,
+            "stage": row.stage,
+            "vertical": row.vertical,
+            "strongest_signals": list(row.strongest_signals),
+            "warm_path": row.warm_path,
+            "has_warm_path": row.has_warm_path,
+            "next_action": row.next_action,
+            "evidence_freshness": row.evidence_freshness,
+            "missing_fields": list(row.missing_fields),
+            "pipeline_stage": row.pipeline_stage,
+            "pipeline_owner": row.pipeline_owner,
+            "score_calculated_at": row.score_calculated_at,
+            "stale_evidence": row.stale_evidence,
+        }
+
+    def list_qualification_targets(
+        self,
+        conn: psycopg.Connection,
+        *,
+        filters: QualificationTargetFilters | None = None,
+        actor: str | None = None,
+        persist_scores: bool = True,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        """Build tier A/B/C target rows from deterministic ICP scores."""
+        active_version = self._repos.icp_scoring.get_active_version(conn)
+        if active_version is None:
+            return []
+        version_id = UUID(str(active_version["id"]))
+        version_number = int(active_version["version_number"])
+        rules = rules_from_rows(
+            self._repos.icp_scoring.list_rules_for_version(conn, version_id)
+        )
+        companies = self._repos.qualification.list_active_companies(conn, limit=limit)
+        rows: list[QualificationTargetRow] = []
+        with crm_transaction(conn):
+            for company in companies:
+                company_id = UUID(str(company["id"]))
+                contacts = self._repos.contacts.list_for_company(conn, company_id, limit=200)
+                research = self._repos.research_records.list_for_company(
+                    conn, company_id, limit=200
+                )
+                score_result = score_company_with_rules(
+                    company=company,
+                    contacts=contacts,
+                    research_records=research,
+                    rules=rules,
+                    version_number=version_number,
+                )
+                target_row = build_target_row(company=company, score_result=score_result)
+                if target_row is None:
+                    continue
+                if persist_scores and actor:
+                    snapshot = self._repos.icp_scoring.insert_snapshot(
+                        conn,
+                        company_id=company_id,
+                        version_id=version_id,
+                        version_number=version_number,
+                        total_score=score_result.total_score,
+                        computed_score=score_result.computed_score,
+                        breakdown=[item.model_dump() for item in score_result.breakdown],
+                        missing_inputs=score_result.missing_inputs,
+                        calculated_at=score_result.calculated_at,
+                        is_override=score_result.is_override,
+                        override_reason=score_result.override_reason,
+                        override_by=score_result.override_by,
+                    )
+                    new_tier = target_row.tier
+                    previous_tier = self._repos.qualification.get_latest_tier_for_company(
+                        conn, company_id
+                    )
+                    if previous_tier != new_tier:
+                        self._repos.qualification.record_tier_change(
+                            conn,
+                            company_id=company_id,
+                            from_tier=previous_tier,
+                            to_tier=new_tier,
+                            score=score_result.total_score,
+                            changed_by=actor,
+                            snapshot_id=UUID(str(snapshot["id"])),
+                            metadata=tier_change_metadata(
+                                previous_tier=previous_tier,
+                                new_tier=new_tier,
+                                score=score_result.total_score,
+                            ),
+                        )
+                rows.append(target_row)
+        sorted_rows = sort_target_rows(rows)
+        if filters:
+            sorted_rows = filter_target_rows(sorted_rows, filters)
+        return [self._target_row_to_dict(row) for row in sorted_rows]
+
+    def list_qualification_tier_history(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        return self._repos.qualification.list_tier_history(conn, company_id, limit=limit)
+
+    def save_qualification_working_list(
+        self,
+        conn: psycopg.Connection,
+        *,
+        owner: str,
+        payload: WorkingListCreate,
+    ) -> dict[str, Any]:
+        company_ids = [UUID(value) for value in payload.company_ids]
+        if len(company_ids) > MAX_WORKING_LIST_ITEMS:
+            raise ValueError(f"working list cannot exceed {MAX_WORKING_LIST_ITEMS} companies")
+        with crm_transaction(conn):
+            return self._repos.qualification.create_working_list(
+                conn,
+                name=payload.name.strip(),
+                owner=owner,
+                company_ids=company_ids,
+                max_items=MAX_WORKING_LIST_ITEMS,
+            )
+
+    def list_qualification_working_lists(
+        self,
+        conn: psycopg.Connection,
+        *,
+        owner: str,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        return self._repos.qualification.list_working_lists_for_owner(
+            conn, owner=owner, limit=limit
+        )
+
+    def get_qualification_working_list_items(
+        self,
+        conn: psycopg.Connection,
+        list_id: UUID,
+    ) -> list[dict[str, Any]]:
+        return self._repos.qualification.get_working_list_items(conn, list_id)
+
 

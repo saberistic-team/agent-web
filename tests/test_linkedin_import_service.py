@@ -73,6 +73,7 @@ def _service(
         "pipeline": MagicMock(),
         "import_batches": import_batches or MagicMock(),
         "icp_scoring": MagicMock(),
+        "qualification": MagicMock(),
     }
     return CrmService(repos=CrmRepositories(**repos)), MagicMock()
 
@@ -347,3 +348,75 @@ def test_commit_skips_when_match_contact_missing() -> None:
             connections=[{"Email Address": "ada@example.com", "Position": "Mathematician"}],
         )
     assert result["summary_counts"]["skipped"] == 1
+
+
+@pytest.mark.unit
+def test_commit_linkedin_import_applies_relationship_metrics() -> None:
+    import_batches = MagicMock()
+    contacts = MagicMock()
+    companies = MagicMock()
+    source_records = MagicMock()
+    import_batches.get_committed_by_checksum.return_value = None
+    import_batches.create.return_value = _batch_row()
+    import_batches.update_status.return_value = _batch_row()
+    import_batches.create_row.side_effect = lambda *args, **kwargs: {"id": "row", **kwargs}
+    contacts.find_by_profile_url.return_value = []
+    contacts.get_active_by_email.return_value = None
+    companies.find_by_exact_name.return_value = []
+    created = {
+        "id": CONTACT_ID,
+        "full_name": "Ada Lovelace",
+        "title": "Mathematician",
+        "profile_url": "https://linkedin.com/in/ada-lovelace",
+        "company_id": None,
+        "archived_at": None,
+        "field_sources": {},
+        "relationship_metrics": {},
+        "last_interaction_at": None,
+    }
+    contacts.create.return_value = created
+    contacts.get_by_id.return_value = created
+
+    service, conn = _service(
+        import_batches=import_batches,
+        contacts=contacts,
+        companies=companies,
+        source_records=source_records,
+    )
+
+    message_metadata = [
+        {
+            "CONVERSATION ID": "conv-1",
+            "FROM": "Grace Hopper",
+            "TO": "Ada Lovelace",
+            "DATE": "2024-02-01",
+        },
+        {
+            "CONVERSATION ID": "conv-1",
+            "FROM": "Ada Lovelace",
+            "TO": "Grace Hopper",
+            "DATE": "2024-02-02",
+        },
+    ]
+
+    with pytest.MonkeyPatch.context() as patcher:
+        patcher.setattr(
+            "app.crm_service.audit_service.record_import_batch",
+            MagicMock(),
+        )
+        service.commit_linkedin_import(
+            conn,
+            actor_context=ACTOR,
+            connections=CONNECTIONS[:1],
+            message_metadata=message_metadata,
+            owner_name="Grace Hopper",
+            export_date="2024-03-01",
+        )
+
+    contacts.update.assert_called()
+    kwargs = contacts.update.call_args.kwargs
+    metrics = kwargs["relationship_metrics"]
+    assert metrics["two_way_conversation"] is True
+    assert metrics["message_count"] == 2
+    assert metrics["inbound_count"] == 1
+    assert metrics["outbound_count"] == 1

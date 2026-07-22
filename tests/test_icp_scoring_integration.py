@@ -85,6 +85,7 @@ def _service() -> CrmService:
             pipeline=MagicMock(),
             import_batches=MagicMock(),
             icp_scoring=MagicMock(),
+            qualification=MagicMock(),
         )
     )
 

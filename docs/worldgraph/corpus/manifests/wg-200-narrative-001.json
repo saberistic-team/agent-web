@@ -1,0 +1,294 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "world_id": {
+      "value": "urn:worldgraph:corpus:wg-200-narrative-001",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://blog.character.ai/introducing-scenes/",
+        "evidence_snippet": "Derived corpus id wg-200-narrative-001",
+        "confidence": 1.0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "name": {
+      "value": "Character.AI Scenes",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://blog.character.ai/introducing-scenes/",
+        "evidence_snippet": "Character.AI Scenes",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://blog.character.ai/introducing-scenes/",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://blog.character.ai/introducing-scenes/",
+        "evidence_snippet": "https://blog.character.ai/introducing-scenes/",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Multi-character interactive scenes with persistent AI-driven narrative state.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://blog.character.ai/introducing-scenes/",
+        "evidence_snippet": "Runtime LLM drives character dialogue, scene state, and branching narrative outcomes",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://blog.character.ai/introducing-scenes/",
+        "evidence_snippet": "Public product or documentation page reviewed",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "interactive_narrative",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://blog.character.ai/introducing-scenes/",
+        "evidence_snippet": "interactive_narrative",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Character Technologies, Inc.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://blog.character.ai/introducing-scenes/",
+        "evidence_snippet": "Character Technologies, Inc.",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "operator": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://character.ai/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://blog.character.ai/introducing-scenes/",
+          "evidence_snippet": "Free web signup required; scenes playable after account creation",
+          "confidence": 0.9,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "interactive_session",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://blog.character.ai/introducing-scenes/",
+        "evidence_snippet": "Users affect outcomes via documented interaction: Multi-character scenes with player-directed choices and relationship state",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "persistent_session_state",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://blog.character.ai/introducing-scenes/",
+        "evidence_snippet": "Saved scene progress and character memory across sessions",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "age_guidance": {
+      "value": "Teen rating noted in product policies; age gate on signup",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://blog.character.ai/introducing-scenes/",
+        "evidence_snippet": "Teen rating noted in product policies; age gate on signup",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Runtime LLM drives character dialogue, scene state, and branching narrative outcomes",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://blog.character.ai/introducing-scenes/",
+        "evidence_snippet": "Runtime LLM drives character dialogue, scene state, and branching narrative outcomes",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://blog.character.ai/introducing-scenes/",
+        "evidence_snippet": "runtime",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "human_control_boundaries": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "provenance_evidence": [
+      {
+        "value": "https://blog.character.ai/introducing-scenes/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://blog.character.ai/introducing-scenes/",
+          "evidence_snippet": "Primary research source URL",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "content_safety_categories": [
+      {
+        "value": "unknown",
+        "provenance": {
+          "source_kind": "unknown",
+          "source_url": null,
+          "evidence_snippet": null,
+          "confidence": 0,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "interactive_narrative",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://blog.character.ai/introducing-scenes/",
+          "evidence_snippet": "interactive_narrative",
+          "confidence": 0.85,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Canonical narrative-world pattern; group chat variant overlaps social category.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://blog.character.ai/introducing-scenes/",
+        "evidence_snippet": "Corpus research synthesis",
+        "confidence": 0.6,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "User-authored or template scenes with defined character casts and goals",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://blog.character.ai/introducing-scenes/",
+        "evidence_snippet": "Bounded setting or mechanics described: User-authored or template scenes with defined character casts and goals",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Multi-character scenes with player-directed choices and relationship state",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://blog.character.ai/introducing-scenes/",
+        "evidence_snippet": "Mechanics from public documentation",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "platforms": [
+      {
+        "entity_type": "platform",
+        "label": {
+          "value": "Web (Character.AI)",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://blog.character.ai/introducing-scenes/",
+            "evidence_snippet": "Web (Character.AI)",
+            "confidence": 0.85,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ]
+  }
+}

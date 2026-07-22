@@ -1,6 +1,7 @@
 """CRM repository exports."""
 
 from app.repositories.postgres import (
+    PostgresActionQueueRepository,
     PostgresAcquisitionDashboardRepository,
     PostgresAnalyticsDashboardRepository,
     PostgresActivityRepository,
@@ -20,6 +21,7 @@ from app.repositories.postgres import (
     get_repositories,
 )
 from app.repositories.protocols import (
+    ActionQueueRepository,
     AcquisitionDashboardRepository,
     AnalyticsDashboardRepository,
     ActivityRepository,
@@ -37,6 +39,7 @@ from app.repositories.protocols import (
 )
 
 __all__ = [
+    "ActionQueueRepository",
     "AcquisitionDashboardRepository",
     "AnalyticsDashboardRepository",
     "ActivityRepository",
@@ -51,6 +54,7 @@ __all__ = [
     "QualificationRepository",
     "ResearchRecordRepository",
     "SourceRecordRepository",
+    "PostgresActionQueueRepository",
     "PostgresAcquisitionDashboardRepository",
     "PostgresAnalyticsDashboardRepository",
     "PostgresActivityRepository",

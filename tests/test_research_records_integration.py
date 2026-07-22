@@ -105,6 +105,7 @@ def test_crm_service_attach_research_record_commits() -> None:
             pipeline=MagicMock(),
             import_batches=MagicMock(),
             icp_scoring=MagicMock(),
+            qualification=MagicMock(),
         )
     )
     conn = MagicMock()

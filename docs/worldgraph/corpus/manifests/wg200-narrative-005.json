@@ -1,0 +1,247 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "Friends & Fables",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.friendsandfables.com/",
+        "evidence_snippet": "Friends & Fables",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://www.friendsandfables.com/",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.friendsandfables.com/",
+        "evidence_snippet": "https://www.friendsandfables.com/",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "interactive_narrative",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.friendsandfables.com/",
+        "evidence_snippet": "interactive_narrative",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.friendsandfables.com/",
+        "evidence_snippet": "qualifies",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "AI game master for tabletop-style campaigns with persistent party worlds and rule-aware narration.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.friendsandfables.com/",
+        "evidence_snippet": "AI game master for tabletop-style campaigns with persistent party worlds and rule-aware narration.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Friends & Fables",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.friendsandfables.com/",
+        "evidence_snippet": "Friends & Fables",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://www.friendsandfables.com/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.friendsandfables.com/",
+          "evidence_snippet": "https://www.friendsandfables.com/",
+          "confidence": 0.85,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "tabletop_game_master",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.friendsandfables.com/",
+        "evidence_snippet": "tabletop_game_master",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "Campaigns and character sheets persist across sessions.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.friendsandfables.com/",
+        "evidence_snippet": "Campaigns and character sheets persist across sessions.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "Web signup; free and paid tiers advertised",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.friendsandfables.com/",
+        "evidence_snippet": "Web signup; free and paid tiers advertised",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "User-selected campaign settings",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.friendsandfables.com/",
+        "evidence_snippet": "User-selected campaign settings",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Character sheets, dice rolls, quest tracking",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.friendsandfables.com/",
+        "evidence_snippet": "Character sheets, dice rolls, quest tracking",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "value": "Party members and NPCs with sheet-backed state.",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.friendsandfables.com/",
+          "evidence_snippet": "Party members and NPCs with sheet-backed state.",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "value": "Web",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.friendsandfables.com/",
+          "evidence_snippet": "Web",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "AI GM generates scenes, adjudicates rules, and voices NPCs during sessions.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.friendsandfables.com/",
+        "evidence_snippet": "AI GM generates scenes, adjudicates rules, and voices NPCs during sessions.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.friendsandfables.com/",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "Terms of Service linked from site",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.friendsandfables.com/",
+        "evidence_snippet": "Terms of Service linked from site",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "safety_categories": [
+      {
+        "value": "General audience TTRPG; detailed age policy not prominent",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.friendsandfables.com/",
+          "evidence_snippet": "General audience TTRPG; detailed age policy not prominent",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "interactive_narrative",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://www.friendsandfables.com/",
+          "evidence_snippet": "interactive_narrative",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "AI game master for tabletop-style campaigns with persistent party worlds and rule-aware narration.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.friendsandfables.com/",
+        "evidence_snippet": "AI game master for tabletop-style campaigns with persistent party worlds and rule-aware narration.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}
