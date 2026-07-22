@@ -81,10 +81,10 @@ def test_analytics_preview_renders_populated_dashboard(monkeypatch: pytest.Monke
     assert response.status_code == 200
     body = response.text
     assert 'id="analytics-title"' in body
-    assert "Funnel &amp; attribution" in body or "Marketing analytics" in body
-    assert "Event volume" in body
+    assert "Funnel &amp; attribution" in body
+    assert "Funnel &amp; engagement events" in body
     assert "Conversion rates" in body
-    assert "Attribution" in body
+    assert "UTM attribution" in body
     assert "Case study engagement" in body
     assert "Preview data — not production" in body
     assert "Landing Viewed" in body
@@ -109,7 +109,7 @@ def test_analytics_export_preview_csv(monkeypatch: pytest.MonkeyPatch) -> None:
             )
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/csv")
-    assert "conversion_rate" in response.text
+    assert "Conversion rates" in response.text or "rate_pct" in response.text
 
 
 @pytest.mark.unit
@@ -124,7 +124,7 @@ def test_analytics_db_error_shows_banner() -> None:
             "app.admin_routes.db.get_admin_session_by_token_hash",
             return_value=row,
         ), patch(
-            "app.admin_analytics_routes.load_analytics_dashboard",
+            "app.admin_analytics_routes.load_marketing_analytics_dashboard",
             side_effect=RuntimeError("db down"),
         ):
             response = client.get(
