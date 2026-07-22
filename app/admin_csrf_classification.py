@@ -96,6 +96,18 @@ ADMIN_CSRF_ROUTE_POLICIES: dict[tuple[str, str], tuple[CsrfPolicy, str]] = {
         "session_csrf_required",
         "Pipeline activity creation requires a session-bound CSRF token in the form body.",
     ),
+    ("POST", "/admin/signals/rules"): (
+        "session_csrf_required",
+        "ICP rule publish requires a session-bound CSRF token in the form body.",
+    ),
+    ("POST", "/admin/signals/{company_id}/recalculate"): (
+        "session_csrf_required",
+        "ICP score recalculation requires a session-bound CSRF token in the form body.",
+    ),
+    ("POST", "/admin/signals/{company_id}/override"): (
+        "session_csrf_required",
+        "ICP score override requires a session-bound CSRF token in the form body.",
+    ),
 }
 
 
