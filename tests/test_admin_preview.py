@@ -22,7 +22,6 @@ from app.admin_preview import (
     PREVIEW_CONTACT_DETAIL_RESTORE_ID,
     PREVIEW_CONTACT_POPULATED_ID,
     PREVIEW_PIPELINE_COMPANY_IDS,
-    build_preview_action_queue_data,
     build_preview_company_detail,
     build_preview_contact_detail,
     build_preview_acquisition_dashboard_data,
@@ -33,7 +32,6 @@ from app.admin_preview import (
     build_preview_contact,
     build_preview_contacts,
     build_preview_dashboard_data,
-    build_preview_export_csv,
     build_preview_linkedin_reconcile,
     build_preview_pipeline_companies,
     build_preview_pipeline_detail,
@@ -46,7 +44,6 @@ from app.admin_preview import (
 )
 from app.admin_auth import SESSION_COOKIE_NAME
 from app.admin_dashboard_pages import render_acquisition_dashboard_page
-from app.admin_action_queue_pages import render_action_queue_page
 from app.main import app
 
 
@@ -76,44 +73,6 @@ def test_preview_acquisition_dashboard_html_includes_sections() -> None:
     assert "Missing decision-maker" in html
     assert "qualifying" in html.lower()
     assert data.without_decision_maker[0].company_name in html
-
-
-@pytest.mark.unit
-def test_preview_action_queue_seed_stable() -> None:
-    now = datetime(2026, 7, 16, 12, 0, tzinfo=timezone.utc)
-    a = build_preview_action_queue_data(rng=random.Random(42), now=now)
-    b = build_preview_action_queue_data(rng=random.Random(42), now=now)
-    assert a == b
-    assert len(a.items) == 5
-
-
-@pytest.mark.unit
-def test_preview_action_queue_html_includes_all_categories() -> None:
-    data = build_preview_action_queue_data(rng=random.Random(99))
-    html = render_action_queue_page(
-        data=data,
-        admin_username="preview",
-        csrf_token="preview-csrf",
-        preview_banner="Preview data — not production",
-    )
-    assert "Preview data — not production" in html
-    assert "Daily action queue" in html
-    assert "Overdue action" in html
-    assert "Due today" in html
-    assert "Tier A qualified" in html
-    assert "Warm introduction" in html
-    assert "Stale evidence" in html
-    assert data.items[0].company_name in html
-    assert "/admin/pipeline/" in html
-    assert "Export spreadsheet" in html
-
-
-@pytest.mark.unit
-def test_preview_export_csv_neutralizes_formulas() -> None:
-    csv_text = build_preview_export_csv()
-    assert "company_name" in csv_text
-    assert "'=HYPERLINK" in csv_text
-    assert "'+cmd" in csv_text
 
 
 @pytest.mark.unit
@@ -942,6 +901,45 @@ def test_preview_qualification_targets_html_route() -> None:
     assert rows[0]["name"] in html
     assert "Target lists" in html
     assert "Preview data — not production" in html
+
+
+@pytest.mark.unit
+def test_preview_discovery_inbox_stable_with_seed() -> None:
+    from app.admin_preview import build_preview_discovery_inbox
+
+    a = build_preview_discovery_inbox(rng=random.Random(42))
+    b = build_preview_discovery_inbox(rng=random.Random(42))
+    assert a == b
+    assert len(a) >= 3
+
+
+@pytest.mark.unit
+def test_preview_discovery_candidate_detail_contains_evidence() -> None:
+    from app.admin_preview import (
+        PREVIEW_DISCOVERY_CANDIDATE_IDS,
+        build_preview_discovery_candidate_detail,
+    )
+
+    candidate = build_preview_discovery_candidate_detail(PREVIEW_DISCOVERY_CANDIDATE_IDS[0])
+    assert candidate["evidence"]["snippet"]
+    assert candidate["match_suggestions"] or candidate["conflicts"] is not None
+
+
+@pytest.mark.unit
+def test_preview_discovery_inbox_route_html() -> None:
+    from app.admin_preview import build_preview_discovery_filter_metadata, build_preview_discovery_inbox
+    from app.admin_discovery_pages import render_discovery_inbox_page
+
+    html = render_discovery_inbox_page(
+        candidates=build_preview_discovery_inbox(rng=random.Random(7)),
+        filters={"review_state": "pending"},
+        filter_metadata=build_preview_discovery_filter_metadata(rng=random.Random(7)),
+        csrf_token="preview-csrf",
+        admin_username="preview",
+        preview_banner="Preview data — not production",
+    )
+    assert "Review inbox" in html
+    assert "Northwind Labs" in html or "Helios Rail" in html
 
 
 @pytest.mark.unit

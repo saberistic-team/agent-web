@@ -12,12 +12,6 @@ ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
         "summary": "Acquisition pipeline and daily attention queues",
     },
     {
-        "label": "Queue",
-        "href": "/admin/queue",
-        "milestone": "Qualification workspace",
-        "summary": "Daily action queue and spreadsheet export",
-    },
-    {
         "label": "Audit",
         "href": "/admin/audit",
         "milestone": "Audit trail",
@@ -69,7 +63,7 @@ ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
         "label": "Discovery",
         "href": "/admin/discovery",
         "milestone": "Lead discovery",
-        "summary": "Prospect search and list building",
+        "summary": "Review discovered lead candidates",
     },
     {
         "label": "Analytics",
@@ -130,9 +124,10 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     # Pipeline detail (Next action, Change stage, Log activity, timeline).
     "/admin/pipeline/11111111-1111-1111-1111-111111111111",
     "/admin/pipeline/11111111-1111-1111-1111-111111111111?error=validation&focus=expected_value_cents",
-    # Daily action queue (prioritized work list + export).
-    "/admin/queue",
     "/admin/targets/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa01",
+    "/admin/discovery/11111111-1111-1111-1111-111111111101",
+    "/admin/discovery/11111111-1111-1111-1111-111111111102",
+    "/admin/discovery/11111111-1111-1111-1111-111111111103",
     # ICP scoring list, rules editor, and company score detail fixtures.
     "/admin/signals/rules",
     "/admin/signals/11111111-1111-1111-1111-111111111111",

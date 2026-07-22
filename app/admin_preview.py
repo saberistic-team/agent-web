@@ -24,16 +24,6 @@ from app.acquisition_dashboard import (
     EvidenceRow,
     NextActionRow,
 )
-from app.acquisition_action_queue import (
-    QUEUE_CATEGORY_DUE_TODAY,
-    QUEUE_CATEGORY_OVERDUE,
-    QUEUE_CATEGORY_STALE_EVIDENCE,
-    QUEUE_CATEGORY_TIER_A,
-    QUEUE_CATEGORY_WARM_INTRO,
-    ActionQueueData,
-    ActionQueueItem,
-    PRIORITY_RANK,
-)
 from app.pipeline_stages import PIPELINE_STAGES
 from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES, TARGET_STATUSES
 from app.icp_scoring import default_icp_rules
@@ -340,159 +330,6 @@ def build_preview_acquisition_dashboard_data(
         without_next_action=_attention(pipeline_only=True),
         generated_at=now,
     )
-
-
-def build_preview_action_queue_data(
-    *,
-    rng: random.Random | None = None,
-    now: datetime | None = None,
-) -> ActionQueueData:
-    """Randomized daily action queue for ADMIN_PREVIEW_MODE screenshots."""
-    rng = _resolve_rng(rng, "action_queue")
-    now = _resolve_now(now)
-    companies = list(COMPANY_NAMES)
-    rng.shuffle(companies)
-    stage_keys = list(PIPELINE_STAGES.keys())
-
-    items: list[ActionQueueItem] = []
-
-    # Overdue action
-    items.append(
-        ActionQueueItem(
-            item_key=f"{QUEUE_CATEGORY_OVERDUE}:{_preview_uuid(rng)}",
-            priority_rank=PRIORITY_RANK[QUEUE_CATEGORY_OVERDUE],
-            category=QUEUE_CATEGORY_OVERDUE,
-            reason=f"Overdue next action for {companies[0]} — due {(now - timedelta(days=3)).strftime('%Y-%m-%d %H:%M UTC')}.",
-            company_id=_preview_uuid(rng),
-            company_name=companies[0],
-            next_action=rng.choice(BRIEF_TEXTS)[:100],
-            next_action_due_at=now - timedelta(days=3),
-            pipeline_stage=stage_keys[0],
-            pipeline_owner="alex",
-            expected_value_cents=120_000,
-        )
-    )
-
-    # Due today
-    items.append(
-        ActionQueueItem(
-            item_key=f"{QUEUE_CATEGORY_DUE_TODAY}:{_preview_uuid(rng)}",
-            priority_rank=PRIORITY_RANK[QUEUE_CATEGORY_DUE_TODAY],
-            category=QUEUE_CATEGORY_DUE_TODAY,
-            reason=f"Next action due today for {companies[1]}.",
-            company_id=_preview_uuid(rng),
-            company_name=companies[1],
-            next_action="Follow up on intro thread",
-            next_action_due_at=now.replace(hour=17, minute=0),
-            pipeline_stage=stage_keys[1],
-            pipeline_owner="sam",
-            expected_value_cents=80_000,
-        )
-    )
-
-    # Tier A qualified
-    items.append(
-        ActionQueueItem(
-            item_key=f"{QUEUE_CATEGORY_TIER_A}:{_preview_uuid(rng)}",
-            priority_rank=PRIORITY_RANK[QUEUE_CATEGORY_TIER_A],
-            category=QUEUE_CATEGORY_TIER_A,
-            reason=f"Newly qualified Tier A target {companies[2]} (qualified {(now - timedelta(days=2)).strftime('%Y-%m-%d')}).",
-            company_id=_preview_uuid(rng),
-            company_name=companies[2],
-            pipeline_stage="qualified",
-            pipeline_owner="alex",
-            expected_value_cents=200_000,
-            qualified_at=now - timedelta(days=2),
-        )
-    )
-
-    # Warm introduction
-    contact_name = f"{rng.choice(CONTACT_FIRST)} {rng.choice(CONTACT_LAST)}"
-    items.append(
-        ActionQueueItem(
-            item_key=f"{QUEUE_CATEGORY_WARM_INTRO}:{_preview_uuid(rng)}:{_preview_uuid(rng)}",
-            priority_rank=PRIORITY_RANK[QUEUE_CATEGORY_WARM_INTRO],
-            category=QUEUE_CATEGORY_WARM_INTRO,
-            reason=f"Warm introduction path via {contact_name} at {companies[3]} (warm relationship).",
-            company_id=_preview_uuid(rng),
-            company_name=companies[3],
-            contact_id=_preview_uuid(rng),
-            contact_name=contact_name,
-            pipeline_stage=stage_keys[2],
-            expected_value_cents=60_000,
-        )
-    )
-
-    # Stale high-value evidence
-    items.append(
-        ActionQueueItem(
-            item_key=f"{QUEUE_CATEGORY_STALE_EVIDENCE}:{_preview_uuid(rng)}:{_preview_uuid(rng)}",
-            priority_rank=PRIORITY_RANK[QUEUE_CATEGORY_STALE_EVIDENCE],
-            category=QUEUE_CATEGORY_STALE_EVIDENCE,
-            reason=f"Stale high-value evidence for {companies[4]} — confidence 85%, needs re-verification.",
-            company_id=_preview_uuid(rng),
-            company_name=companies[4],
-            evidence_record_id=_preview_uuid(rng),
-            evidence_confidence=0.85,
-            evidence_source_url="https://example.com/signal",
-            pipeline_stage=stage_keys[3],
-            expected_value_cents=150_000,
-        )
-    )
-
-    return ActionQueueData(items=tuple(items), generated_at=now)
-
-
-def build_preview_export_csv() -> str:
-    """Deterministic preview CSV with formula-injection sample cells."""
-    from app.crm_export import EXPORT_COLUMNS, neutralize_csv_cell
-    import csv
-    import io
-
-    buffer = io.StringIO()
-    writer = csv.DictWriter(buffer, fieldnames=list(EXPORT_COLUMNS))
-    writer.writeheader()
-    writer.writerow(
-        {
-            "company_name": neutralize_csv_cell("=HYPERLINK(\"evil\")"),
-            "company_domain": neutralize_csv_cell("northwind.io"),
-            "pipeline_stage": "qualified",
-            "tier": "A",
-            "target_status": "target",
-            "expected_value_usd": "1200.00",
-            "next_action": neutralize_csv_cell("+cmd|'/c calc'"),
-            "next_action_due_at": "2026-07-16 17:00 UTC",
-            "contact_name": neutralize_csv_cell("Alex Chen"),
-            "contact_title": "Founder",
-            "contact_buying_roles": "founder",
-            "contact_relationship_strength": "warm",
-            "evidence_source_url": "https://example.com/evidence",
-            "evidence_confidence": "0.85",
-            "evidence_type": "verified_fact",
-            "unresolved_fields": "",
-        }
-    )
-    writer.writerow(
-        {
-            "company_name": neutralize_csv_cell("Helios Rail"),
-            "company_domain": "",
-            "pipeline_stage": "researching",
-            "tier": "",
-            "target_status": "watching",
-            "expected_value_usd": "",
-            "next_action": "",
-            "next_action_due_at": "",
-            "contact_name": "",
-            "contact_title": "",
-            "contact_buying_roles": "",
-            "contact_relationship_strength": "",
-            "evidence_source_url": "",
-            "evidence_confidence": "",
-            "evidence_type": "",
-            "unresolved_fields": "next_action; next_action_due_at; decision_maker_contact",
-        }
-    )
-    return buffer.getvalue()
 
 
 def build_preview_dashboard_data(
@@ -874,6 +711,169 @@ def build_preview_qualification_target_detail(
         },
     ]
     return company, target, history
+
+
+PREVIEW_DISCOVERY_CANDIDATE_IDS = (
+    UUID("11111111-1111-1111-1111-111111111101"),
+    UUID("11111111-1111-1111-1111-111111111102"),
+    UUID("11111111-1111-1111-1111-111111111103"),
+    UUID("11111111-1111-1111-1111-111111111104"),
+    UUID("11111111-1111-1111-1111-111111111105"),
+)
+PREVIEW_DISCOVERY_RUN_ID = UUID("22222222-2222-2222-2222-222222222201")
+
+
+def build_preview_discovery_filter_metadata(
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> dict[str, object]:
+    rng = _resolve_rng(rng, "discovery_filter_metadata")
+    now = _resolve_now(now)
+    return {
+        "sources": ["fixture_api", "yc_rss", "sitemap_crawl"],
+        "runs": [
+            {
+                "id": str(PREVIEW_DISCOVERY_RUN_ID),
+                "source_id": "fixture_api",
+                "started_at": now - timedelta(days=2),
+                "candidate_count": len(PREVIEW_DISCOVERY_CANDIDATE_IDS),
+                "status": "completed",
+            }
+        ],
+    }
+
+
+def build_preview_discovery_inbox(
+    *,
+    filters: dict[str, str | None] | None = None,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> list[dict[str, object]]:
+    rng = _resolve_rng(rng, "discovery_inbox")
+    now = _resolve_now(now)
+    filters = filters or {}
+    rows: list[dict[str, object]] = []
+    review_states = ("pending", "pending", "deferred", "pending", "accepted")
+    for index, candidate_id in enumerate(PREVIEW_DISCOVERY_CANDIDATE_IDS):
+        review_state = review_states[index % len(review_states)]
+        if filters.get("review_state") and filters["review_state"] != review_state:
+            continue
+        category = list(COMPANY_CATEGORIES)[index % len(COMPANY_CATEGORIES)]
+        if filters.get("category") and filters["category"] != category:
+            continue
+        freshness = rng.choice(("fresh", "recent", "aging", "stale"))
+        if filters.get("freshness") and filters["freshness"] != freshness:
+            continue
+        confidence = round(rng.uniform(0.45, 0.95), 2)
+        rows.append(
+            {
+                "id": candidate_id,
+                "name": COMPANY_NAMES[index % len(COMPANY_NAMES)],
+                "source_id": rng.choice(("fixture_api", "yc_rss")),
+                "run_id": str(PREVIEW_DISCOVERY_RUN_ID),
+                "category": category,
+                "confidence": confidence,
+                "freshness": freshness,
+                "review_state": review_state,
+                "discovered_at": now - timedelta(days=index + 1),
+                "domain": f"{COMPANY_NAMES[index % len(COMPANY_NAMES)].split()[0].lower()}.example",
+            }
+        )
+    return rows
+
+
+def preview_discovery_candidate_exists(candidate_id: UUID) -> bool:
+    return candidate_id in PREVIEW_DISCOVERY_CANDIDATE_IDS
+
+
+def build_preview_discovery_candidate_detail(
+    candidate_id: UUID,
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> dict[str, object]:
+    rng = _resolve_rng(rng, f"discovery_candidate_detail:{candidate_id}")
+    now = _resolve_now(now)
+    index = PREVIEW_DISCOVERY_CANDIDATE_IDS.index(candidate_id)
+    name = COMPANY_NAMES[index % len(COMPANY_NAMES)]
+    domain = f"{name.split()[0].lower()}.example"
+    return {
+        "id": candidate_id,
+        "name": name,
+        "source_id": "fixture_api",
+        "run_id": str(PREVIEW_DISCOVERY_RUN_ID),
+        "external_id": f"fixture_api:{index:04d}",
+        "evidence_fingerprint": f"preview-fp-{index:02d}",
+        "domain": domain,
+        "website": f"https://{domain}",
+        "category": list(COMPANY_CATEGORIES)[index % len(COMPANY_CATEGORIES)],
+        "confidence": round(rng.uniform(0.55, 0.92), 2),
+        "freshness": rng.choice(("fresh", "recent", "aging")),
+        "review_state": "deferred" if index == 2 else "pending",
+        "discovered_at": now - timedelta(days=index + 2),
+        "signals": ["hiring", "public launch"],
+        "evidence": {
+            "snippet": f"{name} raised a seed round and is hiring platform engineers.",
+            "observations": [
+                {
+                    "source_url": f"https://news.example.com/{index}",
+                    "raw_source_id": "fixture_api",
+                    "value": f"name={name}",
+                    "confidence": 0.86,
+                    "retrieved_at": (now - timedelta(days=index + 1)).isoformat(),
+                    "review_at": (now + timedelta(days=20)).isoformat(),
+                    "expires_at": (now + timedelta(days=80)).isoformat(),
+                }
+            ],
+        },
+        "conflicts": (
+            ["Domain mismatch with existing company Meridian Stack"]
+            if index == 1
+            else []
+        ),
+        "match_suggestions": [
+            {
+                "id": PREVIEW_COMPANY_POPULATED_ID,
+                "name": "Meridian Stack",
+                "domain": "meridian.example",
+            }
+        ]
+        if index in {1, 3}
+        else [],
+    }
+
+
+def build_preview_discovery_bulk_preview(
+    *,
+    action: str,
+    candidate_ids: list[str],
+    rng: random.Random | None = None,
+) -> dict[str, object]:
+    rng = _resolve_rng(rng, "discovery_bulk_preview")
+    selected = build_preview_discovery_inbox(rng=rng)
+    if candidate_ids:
+        selected = [row for row in selected if str(row["id"]) in candidate_ids] or selected[:2]
+    else:
+        selected = selected[:2]
+    return {
+        "action": action,
+        "count": len(selected),
+        "candidates": [
+            {
+                "id": str(row["id"]),
+                "name": row["name"],
+                "source_id": row["source_id"],
+                "domain": row.get("domain"),
+                "review_state": row.get("review_state"),
+            }
+            for row in selected
+        ],
+        "invalid_state_ids": [],
+        "preview_token": "preview-bulk-token",
+        "rejection_reason": "Not a fit for current ICP" if action == "reject" else None,
+        "deferred_until": None,
+    }
 
 
 def build_preview_pipeline_companies(
@@ -1890,6 +1890,10 @@ AUDIT_ACTIONS = (
     "contact.restore",
     "pipeline.update",
     "brief.convert",
+    "discovery.candidate.accept",
+    "discovery.candidate.reject",
+    "discovery.candidate.defer",
+    "discovery.candidate.bulk",
     "research_record.create",
     "pipeline_activity.create",
 )

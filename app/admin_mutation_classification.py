@@ -96,22 +96,6 @@ ADMIN_MUTATION_ROUTE_CLASSIFICATIONS: dict[tuple[str, str], tuple[MutationClassi
         "required_immutable_business_audit",
         "Pipeline activity creation emits pipeline_activity.create with bounded metadata.",
     ),
-    ("POST", "/admin/queue/complete"): (
-        "required_immutable_business_audit",
-        "Queue complete logs task_completion activity and may emit pipeline.update when clearing next action.",
-    ),
-    ("POST", "/admin/queue/snooze"): (
-        "required_immutable_business_audit",
-        "Queue snooze updates next-action due date (pipeline.update) and logs task_completion activity.",
-    ),
-    ("POST", "/admin/queue/reschedule"): (
-        "required_immutable_business_audit",
-        "Queue reschedule updates next-action due date (pipeline.update) and logs task_completion activity.",
-    ),
-    ("POST", "/admin/queue/replace"): (
-        "required_immutable_business_audit",
-        "Queue replace updates next action (pipeline.update) and logs task_completion activity.",
-    ),
     ("POST", "/admin/signals/rules"): (
         "required_immutable_business_audit",
         "Publishing an ICP rule version emits scoring_rule.update per changed rule with "
@@ -131,6 +115,26 @@ ADMIN_MUTATION_ROUTE_CLASSIFICATIONS: dict[tuple[str, str], tuple[MutationClassi
         "intentionally_unaudited",
         "Working-list save persists company IDs only on qualification_working_lists / "
         "qualification_working_list_items; no audit_events entry in this release.",
+    ),
+    ("POST", "/admin/discovery/{candidate_id}/accept"): (
+        "required_immutable_business_audit",
+        "Discovery accept emits discovery.candidate.accept with bounded IDs and outcome.",
+    ),
+    ("POST", "/admin/discovery/{candidate_id}/reject"): (
+        "required_immutable_business_audit",
+        "Discovery reject emits discovery.candidate.reject with suppression metadata.",
+    ),
+    ("POST", "/admin/discovery/{candidate_id}/defer"): (
+        "required_immutable_business_audit",
+        "Discovery defer emits discovery.candidate.defer with review date only.",
+    ),
+    ("POST", "/admin/discovery/bulk/preview"): (
+        "intentionally_unaudited",
+        "Read-only bulk preview computes candidate summaries without persistence.",
+    ),
+    ("POST", "/admin/discovery/bulk/commit"): (
+        "required_immutable_business_audit",
+        "Bulk commit emits discovery.candidate.bulk plus per-candidate action audits.",
     ),
 }
 
