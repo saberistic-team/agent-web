@@ -1,0 +1,294 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "world_id": {
+      "value": "urn:worldgraph:corpus:wg-200-social-004",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.secondlife.com/",
+        "evidence_snippet": "Derived corpus id wg-200-social-004",
+        "confidence": 1.0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "name": {
+      "value": "Second Life",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.secondlife.com/",
+        "evidence_snippet": "Second Life",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://www.secondlife.com/",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.secondlife.com/",
+        "evidence_snippet": "https://www.secondlife.com/",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Long-lived persistent virtual world with user economy and social systems.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.secondlife.com/",
+        "evidence_snippet": "Select regions and tools integrate NPC scripts; LLM integrations documented by community and Linden partners",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.secondlife.com/",
+        "evidence_snippet": "Public product or documentation page reviewed",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "persistent_social",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.secondlife.com/",
+        "evidence_snippet": "persistent_social",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Linden Lab",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.secondlife.com/",
+        "evidence_snippet": "Linden Lab",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "operator": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://secondlife.com/support/downloads/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.secondlife.com/",
+          "evidence_snippet": "Free client; premium land fees documented",
+          "confidence": 0.9,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "interactive_session",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.secondlife.com/",
+        "evidence_snippet": "Users affect outcomes via documented interaction: Virtual land, economy, events, and user-created experiences",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "persistent_session_state",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.secondlife.com/",
+        "evidence_snippet": "Long-running user economy, land ownership, and avatar identity",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "account_and_client_required",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.secondlife.com/",
+        "evidence_snippet": "Free client; premium land fees documented",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "age_guidance": {
+      "value": "16+ registration requirement stated",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.secondlife.com/",
+        "evidence_snippet": "16+ registration requirement stated",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Select regions and tools integrate NPC scripts; LLM integrations documented by community and Linden partners",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.secondlife.com/",
+        "evidence_snippet": "Select regions and tools integrate NPC scripts; LLM integrations documented by community and Linden partners",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.secondlife.com/",
+        "evidence_snippet": "runtime",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "human_control_boundaries": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "provenance_evidence": [
+      {
+        "value": "https://www.secondlife.com/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.secondlife.com/",
+          "evidence_snippet": "Primary research source URL",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "content_safety_categories": [
+      {
+        "value": "unknown",
+        "provenance": {
+          "source_kind": "unknown",
+          "source_url": null,
+          "evidence_snippet": null,
+          "confidence": 0,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "persistent_social",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://www.secondlife.com/",
+          "evidence_snippet": "persistent_social",
+          "confidence": 0.85,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Historic persistent world; AI role emerging via plugins rather than core product.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.secondlife.com/",
+        "evidence_snippet": "Corpus research synthesis",
+        "confidence": 0.6,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Continent-based virtual world with user-owned regions",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.secondlife.com/",
+        "evidence_snippet": "Bounded setting or mechanics described: Continent-based virtual world with user-owned regions",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Virtual land, economy, events, and user-created experiences",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.secondlife.com/",
+        "evidence_snippet": "Mechanics from public documentation",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "platforms": [
+      {
+        "entity_type": "platform",
+        "label": {
+          "value": "Second Life viewer",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://www.secondlife.com/",
+            "evidence_snippet": "Second Life viewer",
+            "confidence": 0.85,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ]
+  }
+}

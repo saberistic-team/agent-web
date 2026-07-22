@@ -1,0 +1,352 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "world_id": {
+      "value": "wg-corpus-020",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://docs.vrchat.com/",
+        "evidence_snippet": "Corpus id wg-corpus-020",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "name": {
+      "value": "VRChat AI Companion Worlds",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://docs.vrchat.com/",
+        "evidence_snippet": "VRChat AI Companion Worlds",
+        "confidence": 0.9,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://docs.vrchat.com/",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://docs.vrchat.com/",
+        "evidence_snippet": "https://docs.vrchat.com/",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "User-created VRChat worlds integrating AI NPC/chat tools in social 3D spaces.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://docs.vrchat.com/",
+        "evidence_snippet": "User-created VRChat worlds integrating AI NPC/chat tools in social 3D spaces.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://docs.vrchat.com/",
+        "evidence_snippet": "Public entry documented",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "ai_game_ugc",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://docs.vrchat.com/",
+        "evidence_snippet": "ai_game_ugc",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "VRChat creators (platform by VRChat Inc.)",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://docs.vrchat.com/",
+        "evidence_snippet": "Creator/operator: VRChat creators (platform by VRChat Inc.)",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "operator": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "modalities": [
+      {
+        "value": "3d",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://docs.vrchat.com/",
+          "evidence_snippet": "3d",
+          "confidence": 0.7,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      },
+      {
+        "value": "vr",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://docs.vrchat.com/",
+          "evidence_snippet": "vr",
+          "confidence": 0.7,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      },
+      {
+        "value": "voice",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://docs.vrchat.com/",
+          "evidence_snippet": "voice",
+          "confidence": 0.7,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://hello.vrchat.com/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://docs.vrchat.com/",
+          "evidence_snippet": "https://hello.vrchat.com/",
+          "confidence": 0.9,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "social_vr_world",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://docs.vrchat.com/",
+        "evidence_snippet": "social_vr_world",
+        "confidence": 0.82,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "world_instances_and_persistence_layers",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://docs.vrchat.com/",
+        "evidence_snippet": "world_instances_and_persistence_layers",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "vrchat_account_and_client",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://docs.vrchat.com/",
+        "evidence_snippet": "vrchat_account_and_client",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "age_guidance": {
+      "value": "VRChat trust and safety docs",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://docs.vrchat.com/",
+        "evidence_snippet": "VRChat trust and safety docs",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Third-party and official integrations add AI-driven NPCs/chat in worlds.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://docs.vrchat.com/",
+        "evidence_snippet": "Third-party and official integrations add AI-driven NPCs/chat in worlds.",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://docs.vrchat.com/",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "human_control_boundaries": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "VRChat terms",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://docs.vrchat.com/",
+        "evidence_snippet": "VRChat terms",
+        "confidence": 0.6,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "moderation_contact": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Per-world themes and rules.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://docs.vrchat.com/",
+        "evidence_snippet": "Per-world themes and rules.",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Social VR interactions with optional AI NPC plugins.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://docs.vrchat.com/",
+        "evidence_snippet": "Social VR interactions with optional AI NPC plugins.",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "entity_type": "character",
+        "label": {
+          "value": "AI-augmented avatars/NPCs",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://docs.vrchat.com/",
+            "evidence_snippet": "AI-augmented avatars/NPCs",
+            "confidence": 0.7,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "canonical_ref": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "entity_type": "platform",
+        "label": {
+          "value": "VRChat",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://docs.vrchat.com/",
+            "evidence_snippet": "VRChat",
+            "confidence": 0.7,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "canonical_ref": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "ai_game_ugc",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://docs.vrchat.com/",
+          "evidence_snippet": "ai_game_ugc",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "User-created VRChat worlds integrating AI NPC/chat tools in social 3D spaces.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://docs.vrchat.com/",
+        "evidence_snippet": "User-created VRChat worlds integrating AI NPC/chat tools in social 3D spaces.",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

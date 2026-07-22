@@ -266,6 +266,7 @@ def test_required_privileged_scripts_are_manifest_protected() -> None:
         "scripts/github_api.py",
         "scripts/copilot_agent.py",
         "scripts/dispatch_queue.py",
+        "scripts/issue_deps.py",
         "scripts/require_planner_plan.py",
         "scripts/priority.py",
         "scripts/project_sync.py",

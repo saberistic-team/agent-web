@@ -27,7 +27,11 @@ _FIXABLE_RE = re.compile(
     r"return to Docs|agent-updates stub|docs PR|type:docs PR",
     re.I,
 )
-_TERMINAL_RE = re.compile(r"terminal:\s*true|worklog-only", re.I)
+_TERMINAL_RE = re.compile(
+    r"terminal:\s*true|worklog-only|open dependencies|unstructured dependencies|"
+    r"machine-readable",
+    re.I,
+)
 
 
 def is_fixable_changes_requested(body: str) -> bool:

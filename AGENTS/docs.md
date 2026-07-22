@@ -8,6 +8,11 @@ it matches the product and any related implementation.
 
 Preserve any `priority:*` label on the issue; do not strip or change it.
 
+**Before editing:** if dependencies are open or unstructured
+(`scripts/issue_deps.py`), escalate with `status:blocked` — do not draft
+provisional docs that guess upstream issues (learned from
+[#204](https://github.com/saberistic-team/agent-web/issues/204)).
+
 In-scope paths:
 
 - `docs/`
