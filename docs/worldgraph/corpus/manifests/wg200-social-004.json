@@ -1,0 +1,247 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "Horizon Worlds",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.meta.com/horizon-worlds/",
+        "evidence_snippet": "Horizon Worlds",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://www.meta.com/horizon-worlds/",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.meta.com/horizon-worlds/",
+        "evidence_snippet": "https://www.meta.com/horizon-worlds/",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "persistent_social",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.meta.com/horizon-worlds/",
+        "evidence_snippet": "persistent_social",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.meta.com/horizon-worlds/",
+        "evidence_snippet": "qualifies",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Meta's social VR world platform with user-created worlds and events.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.meta.com/horizon-worlds/",
+        "evidence_snippet": "Meta's social VR world platform with user-created worlds and events.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Meta Platforms, Inc.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.meta.com/horizon-worlds/",
+        "evidence_snippet": "Meta Platforms, Inc.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://www.meta.com/horizon-worlds/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.meta.com/horizon-worlds/",
+          "evidence_snippet": "https://www.meta.com/horizon-worlds/",
+          "confidence": 0.85,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "multiplayer_social_interaction",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.meta.com/horizon-worlds/",
+        "evidence_snippet": "multiplayer_social_interaction",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "Worlds and avatars persist per Meta account.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.meta.com/horizon-worlds/",
+        "evidence_snippet": "Worlds and avatars persist per Meta account.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "Meta account and supported headset/app",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.meta.com/horizon-worlds/",
+        "evidence_snippet": "Meta account and supported headset/app",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "User-generated worlds inside Horizon",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.meta.com/horizon-worlds/",
+        "evidence_snippet": "User-generated worlds inside Horizon",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "World building, events, commerce experiments",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.meta.com/horizon-worlds/",
+        "evidence_snippet": "World building, events, commerce experiments",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "value": "Avatars and AI NPC characters",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.meta.com/horizon-worlds/",
+          "evidence_snippet": "Avatars and AI NPC characters",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "value": "Quest/VR and mobile companion apps",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.meta.com/horizon-worlds/",
+          "evidence_snippet": "Quest/VR and mobile companion apps",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Meta AI characters and builder assistants integrated into worlds.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.meta.com/horizon-worlds/",
+        "evidence_snippet": "Meta AI characters and builder assistants integrated into worlds.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.meta.com/horizon-worlds/",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "Meta Terms and Horizon content guidelines",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.meta.com/horizon-worlds/",
+        "evidence_snippet": "Meta Terms and Horizon content guidelines",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "safety_categories": [
+      {
+        "value": "Age requirements per Meta accounts; Horizon safety center",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.meta.com/horizon-worlds/",
+          "evidence_snippet": "Age requirements per Meta accounts; Horizon safety center",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "persistent_social",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://www.meta.com/horizon-worlds/",
+          "evidence_snippet": "persistent_social",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Meta's social VR world platform with user-created worlds and events.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.meta.com/horizon-worlds/",
+        "evidence_snippet": "Meta's social VR world platform with user-created worlds and events.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

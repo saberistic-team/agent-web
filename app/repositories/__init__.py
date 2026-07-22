@@ -3,6 +3,7 @@
 from app.repositories.postgres import (
     PostgresActionQueueRepository,
     PostgresAcquisitionDashboardRepository,
+    PostgresAnalyticsDashboardRepository,
     PostgresActivityRepository,
     PostgresAdminUserRepository,
     PostgresAuditEventRepository,
@@ -22,6 +23,7 @@ from app.repositories.postgres import (
 from app.repositories.protocols import (
     ActionQueueRepository,
     AcquisitionDashboardRepository,
+    AnalyticsDashboardRepository,
     ActivityRepository,
     AdminUserRepository,
     AuditEventRepository,
@@ -39,6 +41,7 @@ from app.repositories.protocols import (
 __all__ = [
     "ActionQueueRepository",
     "AcquisitionDashboardRepository",
+    "AnalyticsDashboardRepository",
     "ActivityRepository",
     "AdminUserRepository",
     "AuditEventRepository",
@@ -53,6 +56,7 @@ __all__ = [
     "SourceRecordRepository",
     "PostgresActionQueueRepository",
     "PostgresAcquisitionDashboardRepository",
+    "PostgresAnalyticsDashboardRepository",
     "PostgresActivityRepository",
     "PostgresAdminUserRepository",
     "PostgresAuditEventRepository",

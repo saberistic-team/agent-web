@@ -1,0 +1,125 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "Verified Unknown Demo",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/bad/verified-unknown",
+        "evidence_snippet": "invalid unknown handling",
+        "confidence": 0.5,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://example-worlds.test/bad/verified-unknown",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/bad/verified-unknown",
+        "evidence_snippet": "https://example-worlds.test/bad/verified-unknown",
+        "confidence": 0.5,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "interactive_narrative",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/bad/verified-unknown",
+        "evidence_snippet": "narrative",
+        "confidence": 0.5,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "review",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/bad/verified-unknown",
+        "evidence_snippet": "review",
+        "confidence": 0.5,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "operator": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "domain_verified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://example-worlds.test/bad/verified-unknown",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example-worlds.test/bad/verified-unknown",
+          "evidence_snippet": "entry",
+          "confidence": 0.5,
+          "observed_at": "2026-07-15T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "interactive_session",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/bad/verified-unknown",
+        "evidence_snippet": "session",
+        "confidence": 0.5,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "runtime_character_dialogue",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/bad/verified-unknown",
+        "evidence_snippet": "runtime",
+        "confidence": 0.5,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/bad/verified-unknown",
+        "evidence_snippet": "runtime",
+        "confidence": 0.5,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "pending_review",
+    "claim_status": "unclaimed"
+  }
+}

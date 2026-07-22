@@ -1,0 +1,247 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "Skybox Blockade Labs",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://skybox.blockadelabs.com/",
+        "evidence_snippet": "Skybox Blockade Labs",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://skybox.blockadelabs.com/",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://skybox.blockadelabs.com/",
+        "evidence_snippet": "https://skybox.blockadelabs.com/",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "ai_spatial",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://skybox.blockadelabs.com/",
+        "evidence_snippet": "ai_spatial",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://skybox.blockadelabs.com/",
+        "evidence_snippet": "qualifies",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "AI-generated 360\u00b0 skybox environments explorable in-browser and exportable to game engines.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://skybox.blockadelabs.com/",
+        "evidence_snippet": "AI-generated 360\u00b0 skybox environments explorable in-browser and exportable to game engines.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Blockade Labs",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://skybox.blockadelabs.com/",
+        "evidence_snippet": "Blockade Labs",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://skybox.blockadelabs.com/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://skybox.blockadelabs.com/",
+          "evidence_snippet": "https://skybox.blockadelabs.com/",
+          "confidence": 0.85,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "spatial_exploration",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://skybox.blockadelabs.com/",
+        "evidence_snippet": "spatial_exploration",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "Skyboxes persist in user galleries with share links.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://skybox.blockadelabs.com/",
+        "evidence_snippet": "Skyboxes persist in user galleries with share links.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "Freemium web app; account for saves",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://skybox.blockadelabs.com/",
+        "evidence_snippet": "Freemium web app; account for saves",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Prompt-defined environments",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://skybox.blockadelabs.com/",
+        "evidence_snippet": "Prompt-defined environments",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Look-around navigation, export formats",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://skybox.blockadelabs.com/",
+        "evidence_snippet": "Look-around navigation, export formats",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "value": "None",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://skybox.blockadelabs.com/",
+          "evidence_snippet": "None",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "value": "Web WebGL viewer",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://skybox.blockadelabs.com/",
+          "evidence_snippet": "Web WebGL viewer",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Generative models synthesize panoramic worlds from text prompts.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://skybox.blockadelabs.com/",
+        "evidence_snippet": "Generative models synthesize panoramic worlds from text prompts.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "build_time",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://skybox.blockadelabs.com/",
+        "evidence_snippet": "build_time",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "Blockade Labs terms; commercial license tiers advertised",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://skybox.blockadelabs.com/",
+        "evidence_snippet": "Blockade Labs terms; commercial license tiers advertised",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "safety_categories": [
+      {
+        "value": "Not prominently disclosed",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://skybox.blockadelabs.com/",
+          "evidence_snippet": "Not prominently disclosed",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "ai_spatial",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://skybox.blockadelabs.com/",
+          "evidence_snippet": "ai_spatial",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "AI-generated 360\u00b0 skybox environments explorable in-browser and exportable to game engines.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://skybox.blockadelabs.com/",
+        "evidence_snippet": "AI-generated 360\u00b0 skybox environments explorable in-browser and exportable to game engines.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

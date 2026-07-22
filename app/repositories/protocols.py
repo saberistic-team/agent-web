@@ -423,6 +423,46 @@ class AcquisitionDashboardRepository(Protocol):
     ) -> list[dict[str, Any]]: ...
 
 
+class AnalyticsDashboardRepository(Protocol):
+    def count_events_in_range(
+        self,
+        conn: psycopg.Connection,
+        *,
+        period_start: datetime,
+        period_end: datetime,
+        event_names: tuple[str, ...],
+    ) -> list[tuple[str, int]]: ...
+
+    def count_attribution_in_range(
+        self,
+        conn: psycopg.Connection,
+        *,
+        period_start: datetime,
+        period_end: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]: ...
+
+    def count_content_engagement(
+        self,
+        conn: psycopg.Connection,
+        *,
+        period_start: datetime,
+        period_end: datetime,
+        event_name: str,
+        slug_property: str,
+        limit: int,
+    ) -> list[tuple[str, int]]: ...
+
+    def count_leads_by_utm_source(
+        self,
+        conn: psycopg.Connection,
+        *,
+        period_start: datetime,
+        period_end: datetime,
+        limit: int,
+    ) -> list[tuple[str, int]]: ...
+
+
 class ActionQueueRepository(Protocol):
     def list_overdue_next_actions(
         self,

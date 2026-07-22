@@ -30,7 +30,12 @@ from github_api import (
     post_issue_comment,
     split_repo,
 )
-from issue_deps import dependency_block_reason
+from issue_deps import (
+    add_sub_issue_link,
+    dependency_block_reason,
+    reconcile_comment,
+    reconcile_issue_dependencies,
+)
 from milestones import (
     ensure_open_milestone,
     issue_milestone_number,
@@ -724,8 +729,16 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
     body = data.get("body") or ""
     labels = {label["name"] for label in data.get("labels") or []}
 
-    # Fail closed on open / unstructured dependencies before queue (#204).
-    dep_reason = dependency_block_reason(repo, issue, body=body)
+    # Derive missing blockedBy / parent-child / Depends-on, then fail closed
+    # if anything is still open or unstructured (#204).
+    reconcile_summary = reconcile_issue_dependencies(
+        repo, issue, body=body, write=True
+    )
+    note = reconcile_comment(reconcile_summary)
+    if note:
+        post_issue_comment(repo, issue, note)
+    body = str(reconcile_summary.get("body") or body)
+    dep_reason = dependency_block_reason(repo, issue, body=body, reconcile=False)
     if dep_reason:
         escalate(
             repo,
@@ -794,6 +807,9 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
                 body=child_body,
             )
             children.append(int(child["number"]))
+            # GitHub parent/child link so dispatcher treats open children as
+            # blockers for any later parent work.
+            sub_status = add_sub_issue_link(repo, issue, int(child["number"]))
             post_issue_comment(
                 repo,
                 child["number"],
@@ -804,6 +820,7 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
                     f"- priority: `{priority_label}`\n"
                     f"- milestone: `{milestone_title}`\n"
                     f"- intended_agent: `{agent_label}`\n"
+                    f"- parent_link: `{sub_status}`\n"
                     "- awaiting: dispatcher (priority queue)\n"
                 ),
             )
@@ -864,6 +881,27 @@ def is_landing_issue(title: str, body: str) -> bool:
         re.search(r"\blanding\b|\babout page\b|saberistic\.com", text)
         and re.search(r"\bamirs?aber\b|\bsharifi\b|\blinkedin\b|\bwebsite\b|\bsite\b", text)
     )
+
+
+def docs_out_of_scope_product_paths(filenames: list[str]) -> list[str]:
+    """Return paths that a ``type:docs`` PR must not change.
+
+    Docs issues may ship markdown/specs plus supporting research fixtures under
+    ``docs/``, agent briefs, orchestration ``scripts/``, tests, and WorldGraph
+    ``spike/`` helpers that keep schema fixtures honest. Product surfaces
+    (``app/``, ``site/``, ``migrations/``) and other unexpected executable code
+    remain hard fails.
+    """
+    allowed_prefixes = ("docs/", "AGENTS/", "scripts/", "tests/", "spike/")
+    return [
+        name
+        for name in filenames
+        if name.startswith(("app/", "site/", "migrations/"))
+        or (
+            name.endswith((".py", ".ts", ".js"))
+            and not name.startswith(allowed_prefixes)
+        )
+    ]
 
 
 def role_builder(repo: str, issue: int, brief: Path) -> None:
@@ -1368,15 +1406,7 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
                 "docs PR is agent-updates stub only — required deliverable "
                 "files missing; return to Docs"
             )
-        product_paths = [
-            name
-            for name in filenames
-            if name.startswith(("app/", "site/", "migrations/"))
-            or (
-                name.endswith((".py", ".ts", ".js"))
-                and not name.startswith(("docs/", "AGENTS/", "scripts/", "tests/"))
-            )
-        ]
+        product_paths = docs_out_of_scope_product_paths(filenames)
         if product_paths:
             hard_fail_reasons.append(
                 "type:docs PR includes product code paths "

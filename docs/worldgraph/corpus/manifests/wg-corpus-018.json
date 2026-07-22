@@ -1,0 +1,330 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "world_id": {
+      "value": "wg-corpus-018",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://create.roblox.com/docs/ai-inference",
+        "evidence_snippet": "Corpus id wg-corpus-018",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "name": {
+      "value": "Roblox AI NPC Experiences",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://create.roblox.com/docs/ai-inference",
+        "evidence_snippet": "Roblox AI NPC Experiences",
+        "confidence": 0.9,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://create.roblox.com/docs/ai-inference",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://create.roblox.com/docs/ai-inference",
+        "evidence_snippet": "https://create.roblox.com/docs/ai-inference",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "UGC Roblox experiences using platform AI inference for NPC behavior.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://create.roblox.com/docs/ai-inference",
+        "evidence_snippet": "UGC Roblox experiences using platform AI inference for NPC behavior.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://create.roblox.com/docs/ai-inference",
+        "evidence_snippet": "Public entry documented",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "ai_game_ugc",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://create.roblox.com/docs/ai-inference",
+        "evidence_snippet": "ai_game_ugc",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Roblox creators (platform docs by Roblox)",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://create.roblox.com/docs/ai-inference",
+        "evidence_snippet": "Creator/operator: Roblox creators (platform docs by Roblox)",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "operator": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "modalities": [
+      {
+        "value": "3d",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://create.roblox.com/docs/ai-inference",
+          "evidence_snippet": "3d",
+          "confidence": 0.7,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://create.roblox.com/docs/ai-inference",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://create.roblox.com/docs/ai-inference",
+          "evidence_snippet": "https://create.roblox.com/docs/ai-inference",
+          "confidence": 0.9,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "ugc_game_session",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://create.roblox.com/docs/ai-inference",
+        "evidence_snippet": "ugc_game_session",
+        "confidence": 0.82,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "experience_save_data",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://create.roblox.com/docs/ai-inference",
+        "evidence_snippet": "experience_save_data",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "roblox_account_required_for_play",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://create.roblox.com/docs/ai-inference",
+        "evidence_snippet": "roblox_account_required_for_play",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "age_guidance": {
+      "value": "Roblox community standards",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://create.roblox.com/docs/ai-inference",
+        "evidence_snippet": "Roblox community standards",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Roblox AI inference powers NPC dialogue/decisions in published experiences.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://create.roblox.com/docs/ai-inference",
+        "evidence_snippet": "Roblox AI inference powers NPC dialogue/decisions in published experiences.",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://create.roblox.com/docs/ai-inference",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "human_control_boundaries": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "Roblox terms",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://create.roblox.com/docs/ai-inference",
+        "evidence_snippet": "Roblox terms",
+        "confidence": 0.6,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "moderation_contact": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Creator-defined Roblox places.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://create.roblox.com/docs/ai-inference",
+        "evidence_snippet": "Creator-defined Roblox places.",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Game mechanics with AI NPC modules.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://create.roblox.com/docs/ai-inference",
+        "evidence_snippet": "Game mechanics with AI NPC modules.",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "entity_type": "character",
+        "label": {
+          "value": "AI NPCs in experiences",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://create.roblox.com/docs/ai-inference",
+            "evidence_snippet": "AI NPCs in experiences",
+            "confidence": 0.7,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "canonical_ref": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "entity_type": "platform",
+        "label": {
+          "value": "Roblox",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://create.roblox.com/docs/ai-inference",
+            "evidence_snippet": "Roblox",
+            "confidence": 0.7,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "canonical_ref": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "ai_game_ugc",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://create.roblox.com/docs/ai-inference",
+          "evidence_snippet": "ai_game_ugc",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "UGC Roblox experiences using platform AI inference for NPC behavior.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://create.roblox.com/docs/ai-inference",
+        "evidence_snippet": "UGC Roblox experiences using platform AI inference for NPC behavior.",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

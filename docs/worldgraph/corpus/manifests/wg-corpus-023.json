@@ -1,0 +1,314 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "world_id": {
+      "value": "wg-corpus-023",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://recroom.com/",
+        "evidence_snippet": "Corpus id wg-corpus-023",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "name": {
+      "value": "Rec Room",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://recroom.com/",
+        "evidence_snippet": "Rec Room",
+        "confidence": 0.9,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://recroom.com/",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://recroom.com/",
+        "evidence_snippet": "https://recroom.com/",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Cross-platform social VR/game world with user-created rooms and economies.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://recroom.com/",
+        "evidence_snippet": "Cross-platform social VR/game world with user-created rooms and economies.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://recroom.com/",
+        "evidence_snippet": "Public entry documented",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "persistent_social",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://recroom.com/",
+        "evidence_snippet": "persistent_social",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Rec Room Inc.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://recroom.com/",
+        "evidence_snippet": "Creator/operator: Rec Room Inc.",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "operator": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "modalities": [
+      {
+        "value": "3d",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://recroom.com/",
+          "evidence_snippet": "3d",
+          "confidence": 0.7,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      },
+      {
+        "value": "vr",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://recroom.com/",
+          "evidence_snippet": "vr",
+          "confidence": 0.7,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://recroom.com/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://recroom.com/",
+          "evidence_snippet": "https://recroom.com/",
+          "confidence": 0.9,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "persistent_social_world",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://recroom.com/",
+        "evidence_snippet": "persistent_social_world",
+        "confidence": 0.82,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "user_rooms_inventory_progression",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://recroom.com/",
+        "evidence_snippet": "user_rooms_inventory_progression",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "free_account_multiplatform",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://recroom.com/",
+        "evidence_snippet": "free_account_multiplatform",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "age_guidance": {
+      "value": "youth safety features documented",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://recroom.com/",
+        "evidence_snippet": "youth safety features documented",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "AI moderation and experimental creator AI tools referenced in product updates.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://recroom.com/",
+        "evidence_snippet": "AI moderation and experimental creator AI tools referenced in product updates.",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://recroom.com/",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "human_control_boundaries": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "moderation_contact": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "User-created rooms and official hubs.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://recroom.com/",
+        "evidence_snippet": "User-created rooms and official hubs.",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Room creation, social games, and cosmetics economy.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://recroom.com/",
+        "evidence_snippet": "Room creation, social games, and cosmetics economy.",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "platforms": [
+      {
+        "entity_type": "platform",
+        "label": {
+          "value": "VR and flatscreen clients",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://recroom.com/",
+            "evidence_snippet": "VR and flatscreen clients",
+            "confidence": 0.7,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "canonical_ref": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "persistent_social",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://recroom.com/",
+          "evidence_snippet": "persistent_social",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Cross-platform social VR/game world with user-created rooms and economies.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://recroom.com/",
+        "evidence_snippet": "Cross-platform social VR/game world with user-created rooms and economies.",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

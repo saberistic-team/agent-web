@@ -3,8 +3,13 @@ name: Browser LinkedIn Import Suite
 # Playwright-driven browser coverage for the client-side LinkedIn export ZIP
 # parser (see site/assets/linkedin-import.js and tests/test_linkedin_import_browser.py,
 # issue #224). Isolated from the fast unit/integration job (which has no
-# Chromium/Playwright install) so it only runs when the relevant surfaces
-# change, and always runs on pushes to main to catch drift after merge.
+# Chromium/Playwright install) so it only runs when the LinkedIn import surfaces
+# change, and always runs on pushes to main that touch those paths.
+#
+# Deliberately does NOT path-trigger on requirements.txt: dependency bumps
+# (e.g. docs PRs adding jsonschema) must not pull in unrelated admin browser
+# suites. The job also runs only test_linkedin_import_browser.py — not every
+# test marked `browser`.
 
 on:
   push:
@@ -15,7 +20,6 @@ on:
       - "app/admin_imports.py"
       - "tests/test_linkedin_import_browser.py"
       - "pytest.ini"
-      - "requirements.txt"
       - ".github/workflows/browser-linkedin-import.yml"
   pull_request:
     paths:
@@ -24,7 +28,6 @@ on:
       - "app/admin_imports.py"
       - "tests/test_linkedin_import_browser.py"
       - "pytest.ini"
-      - "requirements.txt"
       - ".github/workflows/browser-linkedin-import.yml"
 
 jobs:
@@ -51,4 +54,6 @@ jobs:
           pip install playwright==1.49.1
           python -m playwright install --with-deps chromium
       - name: Run LinkedIn import browser suite
-        run: pytest -q -m browser -ra --tb=short -p no:cacheprovider
+        run: >-
+          pytest -q -m browser -ra --tb=short -p no:cacheprovider
+          tests/test_linkedin_import_browser.py

@@ -1,0 +1,247 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "AI Dungeon",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "AI Dungeon",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://play.aidungeon.com/",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "https://play.aidungeon.com/",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "interactive_narrative",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "interactive_narrative",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "qualifies",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Interactive AI-driven text adventure where players co-author branching stories inside persistent adventure sessions.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "Interactive AI-driven text adventure where players co-author branching stories inside persistent adventure sessions.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Latitude (Latitude Games)",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "Latitude (Latitude Games)",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://play.aidungeon.com/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://play.aidungeon.com/",
+          "evidence_snippet": "https://play.aidungeon.com/",
+          "confidence": 0.85,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "choice_driven_narrative",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "choice_driven_narrative",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "Adventure sessions and world state persist per save slot; scenarios are reusable templates.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "Adventure sessions and world state persist per save slot; scenarios are reusable templates.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "Free tier with account; premium tiers; web and mobile clients",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "Free tier with account; premium tiers; web and mobile clients",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "User-selected scenarios spanning fantasy, sci-fi, and custom settings",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "User-selected scenarios spanning fantasy, sci-fi, and custom settings",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Text commands, story cards, multiplayer party mode",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "Text commands, story cards, multiplayer party mode",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "value": "Player-defined characters and AI-controlled NPCs with memory within a session.",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://play.aidungeon.com/",
+          "evidence_snippet": "Player-defined characters and AI-controlled NPCs with memory within a session.",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "value": "Web, iOS, Android (Latitude stack)",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://play.aidungeon.com/",
+          "evidence_snippet": "Web, iOS, Android (Latitude stack)",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Large language models generate narrative, NPC dialogue, and world reactions at runtime based on player actions.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "Large language models generate narrative, NPC dialogue, and world reactions at runtime based on player actions.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "Platform Terms of Service; user-generated story ownership governed by Latitude policies",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "Platform Terms of Service; user-generated story ownership governed by Latitude policies",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "safety_categories": [
+      {
+        "value": "Teen rating on app stores; content filters and safety settings documented in product",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://play.aidungeon.com/",
+          "evidence_snippet": "Teen rating on app stores; content filters and safety settings documented in product",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "interactive_narrative",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://play.aidungeon.com/",
+          "evidence_snippet": "interactive_narrative",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Interactive AI-driven text adventure where players co-author branching stories inside persistent adventure sessions.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "Interactive AI-driven text adventure where players co-author branching stories inside persistent adventure sessions.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

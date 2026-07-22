@@ -1,0 +1,303 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "world_id": {
+      "value": "wg-corpus-006",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.worldlabs.ai/",
+        "evidence_snippet": "Corpus id wg-corpus-006",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "name": {
+      "value": "World Labs Marble",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.worldlabs.ai/",
+        "evidence_snippet": "World Labs Marble",
+        "confidence": 0.9,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://www.worldlabs.ai/",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.worldlabs.ai/",
+        "evidence_snippet": "https://www.worldlabs.ai/",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "AI-generated explorable 3D environments users can navigate as spatial worlds.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.worldlabs.ai/",
+        "evidence_snippet": "AI-generated explorable 3D environments users can navigate as spatial worlds.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.worldlabs.ai/",
+        "evidence_snippet": "Public entry documented",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "ai_spatial",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.worldlabs.ai/",
+        "evidence_snippet": "ai_spatial",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "World Labs",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.worldlabs.ai/",
+        "evidence_snippet": "Creator/operator: World Labs",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "operator": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "modalities": [
+      {
+        "value": "3d",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.worldlabs.ai/",
+          "evidence_snippet": "3d",
+          "confidence": 0.7,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://www.worldlabs.ai/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.worldlabs.ai/",
+          "evidence_snippet": "https://www.worldlabs.ai/",
+          "confidence": 0.9,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "spatial_exploration",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.worldlabs.ai/",
+        "evidence_snippet": "spatial_exploration",
+        "confidence": 0.82,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "saved_world_versions",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.worldlabs.ai/",
+        "evidence_snippet": "saved_world_versions",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "public_waitlist_and_demos",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.worldlabs.ai/",
+        "evidence_snippet": "public_waitlist_and_demos",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "age_guidance": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Generative world models produce explorable 3D scenes from prompts or images.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.worldlabs.ai/",
+        "evidence_snippet": "Generative world models produce explorable 3D scenes from prompts or images.",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.worldlabs.ai/",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "human_control_boundaries": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "moderation_contact": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "User-authored or prompt-defined spatial scenes.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.worldlabs.ai/",
+        "evidence_snippet": "User-authored or prompt-defined spatial scenes.",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Spatial exploration with generated geometry and materials.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.worldlabs.ai/",
+        "evidence_snippet": "Spatial exploration with generated geometry and materials.",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "platforms": [
+      {
+        "entity_type": "platform",
+        "label": {
+          "value": "Web",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://www.worldlabs.ai/",
+            "evidence_snippet": "Web",
+            "confidence": 0.7,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "canonical_ref": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "ai_spatial",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://www.worldlabs.ai/",
+          "evidence_snippet": "ai_spatial",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "AI-generated explorable 3D environments users can navigate as spatial worlds.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.worldlabs.ai/",
+        "evidence_snippet": "AI-generated explorable 3D environments users can navigate as spatial worlds.",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

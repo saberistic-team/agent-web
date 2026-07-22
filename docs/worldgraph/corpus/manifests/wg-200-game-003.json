@@ -1,0 +1,294 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "world_id": {
+      "value": "urn:worldgraph:corpus:wg-200-game-003",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://rosebud.ai/",
+        "evidence_snippet": "Derived corpus id wg-200-game-003",
+        "confidence": 1.0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "name": {
+      "value": "Rosebud AI",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://rosebud.ai/",
+        "evidence_snippet": "Rosebud AI",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://rosebud.ai/",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://rosebud.ai/",
+        "evidence_snippet": "https://rosebud.ai/",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "AI-assisted game creation platform with persistent published playable worlds.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://rosebud.ai/",
+        "evidence_snippet": "AI assists asset and logic generation; runtime behavior in published games",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://rosebud.ai/",
+        "evidence_snippet": "Public product or documentation page reviewed",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "ai_game_ugc",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://rosebud.ai/",
+        "evidence_snippet": "ai_game_ugc",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Rosebud AI",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://rosebud.ai/",
+        "evidence_snippet": "Rosebud AI",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "operator": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://rosebud.ai/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://rosebud.ai/",
+          "evidence_snippet": "Web creation platform with playable published games",
+          "confidence": 0.9,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "interactive_session",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://rosebud.ai/",
+        "evidence_snippet": "Users affect outcomes via documented interaction: Create and play 2D/3D games with AI-generated assets and scripts",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "persistent_session_state",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://rosebud.ai/",
+        "evidence_snippet": "Published games persist with shareable URLs",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "age_guidance": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "AI assists asset and logic generation; runtime behavior in published games",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://rosebud.ai/",
+        "evidence_snippet": "AI assists asset and logic generation; runtime behavior in published games",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://rosebud.ai/",
+        "evidence_snippet": "runtime",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "human_control_boundaries": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "provenance_evidence": [
+      {
+        "value": "https://rosebud.ai/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://rosebud.ai/",
+          "evidence_snippet": "Primary research source URL",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "content_safety_categories": [
+      {
+        "value": "unknown",
+        "provenance": {
+          "source_kind": "unknown",
+          "source_url": null,
+          "evidence_snippet": null,
+          "confidence": 0,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "ai_game_ugc",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://rosebud.ai/",
+          "evidence_snippet": "ai_game_ugc",
+          "confidence": 0.85,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "UGC platform where playable outputs qualify as worlds.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://rosebud.ai/",
+        "evidence_snippet": "Corpus research synthesis",
+        "confidence": 0.6,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "User-defined game scenes with mechanics and win conditions",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://rosebud.ai/",
+        "evidence_snippet": "Bounded setting or mechanics described: User-defined game scenes with mechanics and win conditions",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Create and play 2D/3D games with AI-generated assets and scripts",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://rosebud.ai/",
+        "evidence_snippet": "Mechanics from public documentation",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "platforms": [
+      {
+        "entity_type": "platform",
+        "label": {
+          "value": "Web",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://rosebud.ai/",
+            "evidence_snippet": "Web",
+            "confidence": 0.85,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ]
+  }
+}
