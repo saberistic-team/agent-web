@@ -202,9 +202,9 @@ def test_company_page_shows_associated_contacts(authenticated_admin: dict[str, A
         )
 
     assert response.status_code == 200
-    assert "Contacts" in response.text
+    assert "Buying-group coverage" in response.text
     assert "Pat Example" in response.text
-    assert "Technical buyer" in response.text
+    assert "CTO" in response.text
 
 
 @pytest.mark.unit

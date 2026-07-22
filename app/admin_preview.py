@@ -140,6 +140,11 @@ PREVIEW_COMPANY_POPULATED_ID = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 PREVIEW_COMPANY_ARCHIVED_ID = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa02")
 PREVIEW_CONTACT_POPULATED_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
 PREVIEW_CONTACT_ARCHIVED_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbc")
+PREVIEW_CONTACT_FOUNDER_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbd1")
+PREVIEW_CONTACT_STALE_CTO_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbd2")
+PREVIEW_CONTACT_INVESTOR_POSSIBLE_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbd3")
+PREVIEW_CONTACT_INVESTOR_CONFIRMED_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbd4")
+PREVIEW_CONTACT_INTRODUCER_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbd5")
 PREVIEW_COMPANY_VALIDATION_ERROR = "Name must be at least 2 characters."
 PREVIEW_PIPELINE_EXPECTED_VALUE_ERROR = (
     "Enter a whole number of cents (0 or greater)."
@@ -870,12 +875,85 @@ def build_preview_company_contacts(
     company_id: UUID,
     *,
     rng: random.Random | None = None,
+    now: datetime | None = None,
 ) -> list[dict[str, object]]:
     """Contacts linked to a preview company detail page."""
-    if company_id == PREVIEW_COMPANY_POPULATED_ID:
-        contact = build_preview_contact(PREVIEW_CONTACT_POPULATED_ID, rng=rng)
-        return [contact] if contact is not None else []
-    return []
+    if company_id != PREVIEW_COMPANY_POPULATED_ID:
+        return []
+    rng = _resolve_rng(rng, "company_contacts:populated")
+    now = _resolve_now(now)
+    populated = build_preview_contact(PREVIEW_CONTACT_POPULATED_ID, rng=rng, now=now)
+    assert populated is not None
+    first = rng.choice(CONTACT_FIRST)
+    last = rng.choice(CONTACT_LAST)
+    return [
+        {
+            "id": str(PREVIEW_CONTACT_FOUNDER_ID),
+            "full_name": f"{first} {last}",
+            "title": "Co-founder & CEO",
+            "profile_url": f"https://linkedin.com/in/{first.lower()}-{last.lower()}-founder",
+            "email": _slug_email(first, last, "Northwind", rng),
+            "email_permission": "permitted",
+            "company_id": str(company_id),
+            "buying_roles": ["founder"],
+            "relationship_strength": "strong",
+            "last_interaction_at": (now - timedelta(days=3)).date().isoformat(),
+            "archived_at": None,
+        },
+        populated,
+        {
+            "id": str(PREVIEW_CONTACT_STALE_CTO_ID),
+            "full_name": "Morgan Ellis",
+            "title": "Former CTO",
+            "profile_url": "https://linkedin.com/in/morgan-ellis-former",
+            "email": None,
+            "email_permission": "unknown",
+            "company_id": str(company_id),
+            "buying_roles": ["technical_buyer"],
+            "relationship_strength": "cold",
+            "last_interaction_at": None,
+            "archived_at": None,
+        },
+        {
+            "id": str(PREVIEW_CONTACT_INVESTOR_POSSIBLE_ID),
+            "full_name": "Riley Park",
+            "title": "Partner",
+            "profile_url": "https://linkedin.com/in/riley-park",
+            "email": None,
+            "email_permission": "unknown",
+            "company_id": str(company_id),
+            "buying_roles": ["investor"],
+            "relationship_strength": "developing",
+            "last_interaction_at": None,
+            "archived_at": None,
+        },
+        {
+            "id": str(PREVIEW_CONTACT_INVESTOR_CONFIRMED_ID),
+            "full_name": "Casey Berg",
+            "title": "Board observer",
+            "profile_url": "https://linkedin.com/in/casey-berg",
+            "email": "casey.berg@sequoia.example",
+            "email_permission": "inferred",
+            "company_id": str(company_id),
+            "buying_roles": ["investor"],
+            "relationship_strength": "warm",
+            "last_interaction_at": (now - timedelta(days=12)).date().isoformat(),
+            "archived_at": None,
+        },
+        {
+            "id": str(PREVIEW_CONTACT_INTRODUCER_ID),
+            "full_name": "Avery Silva",
+            "title": "Advisor",
+            "profile_url": "https://linkedin.com/in/avery-silva",
+            "email": "avery.silva@example.com",
+            "email_permission": "permitted",
+            "company_id": str(company_id),
+            "buying_roles": ["introducer"],
+            "relationship_strength": "warm",
+            "last_interaction_at": (now - timedelta(days=9)).date().isoformat(),
+            "archived_at": None,
+        },
+    ]
 
 
 def build_preview_company_research(
@@ -910,6 +988,45 @@ def build_preview_company_research(
             "confidence": 0.78,
             "review_at": (now + timedelta(days=14)).isoformat(),
             "expires_at": (now + timedelta(days=60)).isoformat(),
+        },
+        {
+            "record_type": "verified_fact",
+            "body": "Casey Berg listed as lead investor on the Series B announcement.",
+            "contact_id": str(PREVIEW_CONTACT_INVESTOR_CONFIRMED_ID),
+            "source_name": "Press release",
+            "source_url": "https://northwindlabs.io/news/series-b",
+            "observed_value": "Lead investor: Casey Berg",
+            "observed_at": (now - timedelta(days=20)).isoformat(),
+            "confidence": 0.95,
+            "review_at": (now + timedelta(days=40)).isoformat(),
+            "expires_at": (now + timedelta(days=180)).isoformat(),
+        },
+        {
+            "record_type": "verified_fact",
+            "body": "Morgan Ellis departed the CTO role; platform lead now interim.",
+            "contact_id": str(PREVIEW_CONTACT_STALE_CTO_ID),
+            "source_name": "Company blog",
+            "source_url": "https://northwindlabs.io/blog/leadership-update",
+            "observed_value": "CTO departed",
+            "observed_at": (now - timedelta(days=45)).isoformat(),
+            "confidence": 0.88,
+            "review_at": (now + timedelta(days=30)).isoformat(),
+            "expires_at": (now + timedelta(days=120)).isoformat(),
+        },
+        {
+            "record_type": "relationship_context",
+            "body": (
+                "Former colleague at Cedar Protocol — worked together on payments "
+                "platform for three years; offered to intro VP Engineering."
+            ),
+            "contact_id": str(PREVIEW_CONTACT_INTRODUCER_ID),
+            "source_name": None,
+            "source_url": None,
+            "observed_value": None,
+            "observed_at": None,
+            "confidence": None,
+            "review_at": None,
+            "expires_at": None,
         },
         {
             "record_type": "hypothesis",
@@ -948,7 +1065,7 @@ def build_preview_contact(
             "email_permission": "permitted",
             "company_id": PREVIEW_COMPANY_POPULATED_ID,
             "company_name": company_name,
-            "buying_roles": ["technical_buyer", "executive_buyer"],
+            "buying_roles": ["technical_buyer"],
             "relationship_strength": "warm",
             "last_interaction_at": (now - timedelta(days=6)).date().isoformat(),
             "notes": "Primary technical buyer; prefers async email before calls.",

@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 from typing import Any
 
+from app.admin_buying_group_pages import render_buying_group_section
 from app.admin_layout import render_admin_archive_action_button, render_admin_shell
 from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES, TARGET_STATUSES
 from app.contacts import EMAIL_PERMISSIONS, RELATIONSHIP_STRENGTHS, format_buying_roles
@@ -215,22 +216,7 @@ def render_admin_company_research_page(
         error_html = (
             f'<p class="form-error" role="alert">{html.escape(error_message)}</p>'
         )
-    contact_links = ""
-    for contact in contacts:
-        contact_id = html.escape(str(contact["id"]), quote=True)
-        label = html.escape(
-            str(contact.get("full_name") or contact.get("email") or contact.get("profile_url") or contact["id"])
-        )
-        title = html.escape(str(contact.get("title") or ""))
-        roles = html.escape(format_buying_roles(contact.get("buying_roles")))
-        meta = " · ".join(part for part in (title, roles) if part and part != "—")
-        meta_html = f' <span class="admin-meta">({meta})</span>' if meta else ""
-        contact_links += (
-            f'<li><a href="/admin/contacts/{contact_id}">{label}</a>'
-            f"{meta_html}</li>"
-        )
-    if not contact_links:
-        contact_links = "<li>No contacts linked.</li>"
+    buying_group_html = render_buying_group_section(contacts, records)
     contact_options = "\n".join(
         f'              <option value="{html.escape(str(contact["id"]), quote=True)}">'
         f'{html.escape(str(contact.get("full_name") or contact.get("email") or contact["id"]))}</option>'
@@ -255,10 +241,8 @@ def render_admin_company_research_page(
             <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}" />
             {archive_button}
           </form>
-          <h2 class="admin-section-heading">Contacts</h2>
+          {buying_group_html}
           <p><a class="cta" href="/admin/contacts/new">Add contact</a></p>
-          <ul class="admin-list">{contact_links}
-          </ul>
           <h2 class="admin-section-heading">Attach record</h2>
           {error_html}
           <form class="admin-form admin-form--editor research-form" method="post" action="/admin/companies/{company_id}/research">
