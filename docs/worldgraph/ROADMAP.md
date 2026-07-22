@@ -121,8 +121,8 @@ machine-readable JSON.
 ### Dependencies
 
 - Gate G1 complete
-- [#202](https://github.com/saberistic-team/agent-web/issues/202) supply signal: ≥70%
-  concierge creators complete claim (or owner waiver)
+- [#202](./VALIDATION_READOUT.md) supply signal: ≥70% concierge creators complete claim
+  (or owner waiver; current readout = Iterate / 0 fieldwork)
 
 ### Exit criteria (Gate G2)
 

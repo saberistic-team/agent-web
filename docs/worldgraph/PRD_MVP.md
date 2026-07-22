@@ -12,10 +12,10 @@ public marketing claims ship from this file.
 | Issue | Artifact | Role in this PRD |
 |-------|----------|------------------|
 | [#198](https://github.com/saberistic-team/agent-web/issues/198) | [MARKET_POSITION.md](./MARKET_POSITION.md) | Category, ICP, JTBD, invalidation criteria |
-| [#199](https://github.com/saberistic-team/agent-web/issues/199) | Issue spec + [MANIFEST_V0.md](./MANIFEST_V0.md) | World qualification, Manifest v0 |
-| [#200](https://github.com/saberistic-team/agent-web/issues/200) | [spike/corpus_sources.json](./spike/corpus_sources.json), [research-corpus.json](./research-corpus.json) | Corpus coverage, field gaps |
-| [#201](https://github.com/saberistic-team/agent-web/issues/201) | Journey spec (issue body) | Creator/discovery flows, lifecycle states |
-| [#202](https://github.com/saberistic-team/agent-web/issues/202) | Validation plan (issue body) | Two-sided demand gate |
+| [#199](https://github.com/saberistic-team/agent-web/issues/199) | [WORLD_DEFINITION.md](./WORLD_DEFINITION.md), [WORLD_MANIFEST_V0.md](./WORLD_MANIFEST_V0.md), [world-manifest-v0.schema.json](./world-manifest-v0.schema.json) | World qualification, Manifest v0 |
+| [#200](https://github.com/saberistic-team/agent-web/issues/200) | [CORPUS_REPORT.md](./CORPUS_REPORT.md), [corpus/](./corpus/), [spike/corpus_sources.json](./spike/corpus_sources.json) | Corpus coverage, field gaps |
+| [#201](https://github.com/saberistic-team/agent-web/issues/201) | [UX_JOURNEYS.md](./UX_JOURNEYS.md) | Creator/discovery/admin flows, lifecycle states |
+| [#202](https://github.com/saberistic-team/agent-web/issues/202) | [VALIDATION_PLAN.md](./VALIDATION_PLAN.md), [VALIDATION_READOUT.md](./VALIDATION_READOUT.md) | Two-sided demand gate |
 | [#204](https://github.com/saberistic-team/agent-web/issues/204) | [TECHNICAL_SPIKE.md](./TECHNICAL_SPIKE.md), [ADR_INGESTION_AND_SEARCH.md](./ADR_INGESTION_AND_SEARCH.md) | Architecture, search, security |
 
 ---
@@ -102,22 +102,24 @@ authors remain out of MVP-first scope per [#198](./MARKET_POSITION.md).
 
 ### World definition and Manifest v0 (#199, #204)
 
-- An **AI-native world** requires stable entry, meaningful interaction, bounded
-  rules/setting, persistence, material AI role, identifiable creator/operator, and
-  evaluable access/safety metadata (issue #199 spec).
+- An **AI-native world** requires all seven qualification rules in
+  [WORLD_DEFINITION.md](./WORLD_DEFINITION.md) (stable entry, meaningful interaction,
+  bounded setting, persistence/reproducibility, material AI role, identifiable
+  creator/operator, evaluable access/safety metadata).
 - Manifest v0 enforces field-level provenance, unknown handling, and separated
-  trust concepts ([MANIFEST_V0.md](./MANIFEST_V0.md)).
+  trust concepts ([WORLD_MANIFEST_V0.md](./WORLD_MANIFEST_V0.md);
+  spike pointer [MANIFEST_V0.md](./MANIFEST_V0.md)).
 - CRM entities (`project_briefs`, `companies`, etc.) must not absorb world records.
 
-### Corpus (#200, spike subset)
+### Corpus (#200)
 
 | Signal | Evidence | Implication for MVP |
 |--------|----------|---------------------|
-| Qualification consistency | 12/12 spike qualifying sources extract; 5/5 negative controls excluded | Qualification rules are testable; admin review still required for edge cases |
-| Category coverage | Narrative, spatial, simulation, game, social, hybrid, open-source in [corpus_sources.json](./spike/corpus_sources.json) | One world definition spans product categories without collapsing to “chatbot” |
-| Unknown fields | ~3 unknown optional fields per deterministic extraction ([benchmark_results.json](./spike/benchmark_results.json)) | Creator attestation required for rights, safety, and ambiguous metadata |
-| Source types | HTML landing, README, structured JSON reliably extract; thin marketing fails | Deterministic extraction primary; model-assisted optional overlay |
-| Full 30-entry corpus | Issue #200 in progress | Pilot index seeds from curated subset; do not auto-publish research records |
+| Qualification consistency | 25/30 corpus candidates qualify; 5/5 negative controls excluded ([CORPUS_REPORT.md](./CORPUS_REPORT.md)); spike 12/12 extract | Qualification rules are testable; admin review still required for edge cases |
+| Category coverage | Narrative, spatial, simulation, game/UGC, persistent social across [corpus/](./corpus/) | One world definition spans product categories without collapsing to “chatbot” |
+| Unknown fields | Weakest columns: model disclosures, moderation contact, age guidance; ~3 unknown optional fields per spike deterministic extraction ([benchmark_results.json](./spike/benchmark_results.json)) | Creator attestation required for rights, safety, and ambiguous metadata |
+| Source types | GitHub README/docs safe; marketing HTML partial; logged-in / app-store not ingested | Deterministic extraction primary; model-assisted optional overlay |
+| Addressable supply | 25 qualifying Worlds above the 20-World minimum | Pilot index seeds from curated qualifying subset; **do not auto-publish** research records |
 
 ### Technical spike (#204)
 
@@ -129,13 +131,17 @@ authors remain out of MVP-first scope per [#198](./MARKET_POSITION.md).
 
 ### Journeys (#201)
 
+Per [UX_JOURNEYS.md](./UX_JOURNEYS.md):
+
 - Operator-assisted, creator-first registry — no unrestricted crawler or consumer feed.
 - Admin review before first publication; creator claim distinct from Saberistic review.
 - `/brief` (paid consulting intake) remains separate; never auto-publishes as a World.
 
 ### Two-sided validation (#202) — gate status
 
-**Fieldwork not yet committed.** The validation plan defines minimum evidence:
+[VALIDATION_READOUT.md](./VALIDATION_READOUT.md) is landed and currently recommends
+**Iterate** — fieldwork is **not** complete (0/8 supply, 0/6 demand, 0/10 concierge,
+0/6 discovery). The plan’s minimum evidence remains:
 
 | Side | Minimum | Success signal |
 |------|---------|----------------|
@@ -143,9 +149,9 @@ authors remain out of MVP-first scope per [#198](./MARKET_POSITION.md).
 | Demand | 6 discovery interviews; structured search tasks | Task completion + stated repeat-use context |
 | Monetization | Ranked package tests (no charge) | At least one segment names budget owner for a concrete package |
 
-Until [VALIDATION_READOUT.md](./VALIDATION_READOUT.md) exists (issue #202 deliverable),
-pilot metric **targets** below derive from the validation plan and spike baselines —
-not achieved results.
+Pilot metric **targets** below derive from [VALIDATION_PLAN.md](./VALIDATION_PLAN.md)
+and spike/corpus baselines — **not** achieved fieldwork results. Phase 2+ stays gated
+on an updated readout (or owner waiver).
 
 ---
 
@@ -338,7 +344,7 @@ Each requirement includes measurable acceptance criteria (AC). IDs map to
 /admin/worlds/{id}         → Draft detail, extraction, publish actions
 ```
 
-### Creator journey (from #201)
+### Creator journey (from [UX_JOURNEYS.md](./UX_JOURNEYS.md))
 
 1. Submit canonical URL + contact → private draft
 2. Extraction proposes manifest with confidence/unknown markers
@@ -348,7 +354,7 @@ Each requirement includes measurable acceptance criteria (AC). IDs map to
 6. Admin publishes → canonical profile + manifest URL
 7. Update, unpublish, or dispute paths available post-publish
 
-### Discovery journey (from #201)
+### Discovery journey (from [UX_JOURNEYS.md](./UX_JOURNEYS.md))
 
 1. Search by language or filters
 2. Compare results on profile card (type, AI role, access, claim tier)
@@ -427,7 +433,9 @@ See [RELEASE_MEASUREMENT_CHECKLIST.md](./RELEASE_MEASUREMENT_CHECKLIST.md) for l
 
 ### Success framework (five groups)
 
-Pilot **targets** cite validation plan ([#202](https://github.com/saberistic-team/agent-web/issues/202)) and spike baselines — not invented vanity goals.
+Pilot **targets** cite [VALIDATION_PLAN.md](./VALIDATION_PLAN.md) and spike/corpus
+baselines — not invented vanity goals. Field evidence in
+[VALIDATION_READOUT.md](./VALIDATION_READOUT.md) is still zero.
 
 #### 1. Supply activation
 
@@ -505,9 +513,9 @@ Pilot **targets** cite validation plan ([#202](https://github.com/saberistic-tea
 
 | Dependency | Risk | Mitigation |
 |------------|------|------------|
-| #202 validation readout | Build without demand proof | Gate Phase 2+ on readout; Phase 1 is infra + admin review |
-| #199 schema finalization | Manifest drift | Pin `schema_version`; migration path documented |
-| #200 full corpus | Thin pilot index | Start with 12–20 curated qualifying worlds |
+| #202 fieldwork (readout = Iterate) | Build without demand proof | Gate Phase 2+ on updated readout or owner waiver; Phase 1 is infra + admin review |
+| #199 Manifest v0 (landed) | Manifest drift after schema pin | Pin `schema_version`; migration path documented |
+| #200 corpus (25 qualifying) | Thin public pilot if claims lag | Seed 12–20 curated qualifying worlds; never auto-publish research rows |
 | Render worker capacity | Ingestion backlog | Job queue + retry; rate limits |
 | MSF Web of Worlds | Standards leapfrog | Track alignment; do not claim Manifest v0 as standard |
 | Legal rights display | Misinterpretation as legal advice | Declarative copy + dispute path |
@@ -538,7 +546,7 @@ Explicitly excluded from MVP:
 
 ## Acceptance criteria (issue #203)
 
-- [x] PRD uses evidence from Product Definition issues #198–#204 and open #199–#202 specs.
+- [x] PRD uses evidence from Product Definition issues #198–#204, including landed #199–#202 artifacts.
 - [x] One MVP release defined with phased delivery; Phase 1 independently buildable and testable.
 - [x] Every functional requirement has measurable acceptance criteria.
 - [x] Trust, rights, safety, disputes, and stale data are first-class requirements.

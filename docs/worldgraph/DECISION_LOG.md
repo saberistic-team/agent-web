@@ -27,14 +27,14 @@ recorded at the bottom.
 | D-011 | 2026-07-15 | Separate verification methods with non-interchangeable trust levels | [#204](./ADR_INGESTION_AND_SEARCH.md) | Accepted |
 | D-012 | 2026-07-15 | Spike security baseline carries forward unchanged | [#204](./ADR_INGESTION_AND_SEARCH.md) | Accepted |
 | D-013 | 2026-07-15 | No production implementation from spike milestone | [#204](./TECHNICAL_SPIKE.md) | Accepted |
-| D-014 | 2026-07-22 | AI-native world qualification rules per issue #199 spec | [#199](https://github.com/saberistic-team/agent-web/issues/199) | Accepted (spec) |
-| D-015 | 2026-07-22 | Operator-assisted registry; no unrestricted crawler | [#201](https://github.com/saberistic-team/agent-web/issues/201) | Accepted (spec) |
-| D-016 | 2026-07-22 | `/brief` Project Brief intake never auto-publishes as World | [#201](https://github.com/saberistic-team/agent-web/issues/201), [PRD](./PRD_MVP.md) | Accepted |
-| D-017 | 2026-07-22 | Admin review before first publication | [#201](https://github.com/saberistic-team/agent-web/issues/201) | Accepted |
-| D-018 | 2026-07-22 | Creator claim distinct from Saberistic verification | [#201](https://github.com/saberistic-team/agent-web/issues/201) | Accepted |
+| D-014 | 2026-07-22 | AI-native world qualification rules (seven-rule checklist) | [#199](./WORLD_DEFINITION.md) | Accepted |
+| D-015 | 2026-07-22 | Operator-assisted registry; no unrestricted crawler | [#201](./UX_JOURNEYS.md) | Accepted |
+| D-016 | 2026-07-22 | `/brief` Project Brief intake never auto-publishes as World | [#201](./UX_JOURNEYS.md), [PRD](./PRD_MVP.md) | Accepted |
+| D-017 | 2026-07-22 | Admin review before first publication | [#201](./UX_JOURNEYS.md) | Accepted |
+| D-018 | 2026-07-22 | Creator claim distinct from Saberistic verification | [#201](./UX_JOURNEYS.md) | Accepted |
 | D-019 | 2026-07-22 | MVP scoped per [PRD_MVP.md](./PRD_MVP.md); phased per [ROADMAP.md](./ROADMAP.md) | [#203](https://github.com/saberistic-team/agent-web/issues/203) | Proposed |
 | D-020 | 2026-07-22 | Phase 1 engineering issues only after owner PRD approval | [#203](https://github.com/saberistic-team/agent-web/issues/203) | Proposed |
-| D-021 | 2026-07-22 | Phase 2+ gated on #202 validation readout unless owner waives | [#202](https://github.com/saberistic-team/agent-web/issues/202) | Proposed |
+| D-021 | 2026-07-22 | Phase 2+ gated on #202 fieldwork readout (currently Iterate) unless owner waives | [#202](./VALIDATION_READOUT.md) | Proposed |
 | D-022 | 2026-07-22 | Public search opens at ≥20 published worlds | [PRD](./PRD_MVP.md) | Proposed |
 | D-023 | 2026-07-22 | Phase 1 creator intake admin-only; public submit in Phase 2 | [PRD](./PRD_MVP.md) | Proposed |
 | D-024 | 2026-07-22 | Model-assisted extraction off by default in Phase 1 | [PRD](./PRD_MVP.md) | Proposed |
@@ -91,10 +91,10 @@ Phase 1 alone is sufficient for first engineering milestone.
 
 | ID | Question | Options | Recommendation |
 |----|----------|---------|----------------|
-| OQ-1 | Approve PRD before #202 readout? | Wait / Proceed Phase 1 only | Proceed Phase 1 only after sign-off |
+| OQ-1 | Approve PRD while #202 readout is Iterate (no fieldwork)? | Wait / Proceed Phase 1 only | Proceed Phase 1 only after sign-off |
 | OQ-2 | Public creator submit timing | Phase 1 admin-only / Phase 2 public | Phase 2 |
 | OQ-3 | Scout contact mechanism | Relay form / mailto | Relay with abuse controls |
-| OQ-4 | WorldGraph standalone vs services-led | Standalone product / GTM support | Decide after #202 monetization |
+| OQ-4 | WorldGraph standalone vs services-led | Standalone product / GTM support | Decide after #202 monetization fieldwork |
 
 ---
 
@@ -109,7 +109,7 @@ Phase 1 alone is sufficient for first engineering milestone.
 | Approval status | **PENDING** |
 | Approved by | _Owner name_ |
 | Approval date | _YYYY-MM-DD_ |
-| Notes | Record link to #202 readout when available |
+| Notes | [VALIDATION_READOUT.md](./VALIDATION_READOUT.md) currently Iterate; record fieldwork update or waiver |
 
 ### Approval checklist
 
@@ -129,3 +129,4 @@ Phase 1 alone is sufficient for first engineering milestone.
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-07-22 | Initial log for #203; consolidates #198–#204 decisions | Docs agent |
+| 2026-07-22 | Sync decision sources to landed #199–#202 artifacts after merge of #410–#413 | Docs agent |
