@@ -1030,54 +1030,6 @@ body.admin-app {
   color: var(--ink);
 }
 
-.analytics-filter-form {
-  margin: 1.25rem 0 1.5rem;
-}
-
-.analytics-filter-fieldset {
-  border: 0;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  align-items: end;
-}
-
-.analytics-filter-fieldset label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.85rem;
-  color: var(--muted);
-}
-
-.analytics-source-server,
-.analytics-source-browser {
-  display: inline-block;
-  padding: 0.1rem 0.45rem;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.analytics-source-browser {
-  background: rgba(216, 135, 48, 0.18);
-  color: var(--accent);
-}
-
-.analytics-source-server {
-  background: rgba(120, 160, 255, 0.12);
-  color: #9db7ff;
-}
-
-.analytics-rate-def {
-  max-width: 28rem;
-  font-size: 0.85rem;
-  color: var(--muted);
-}
-
 @media (min-width: 769px) {
   .dashboard-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1362,4 +1314,32 @@ body.admin-app {
 
 .contact-crm-context {
   margin-top: 1rem;
+}
+
+.analytics-range-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  margin: 1rem 0 1.5rem;
+}
+
+.analytics-range-form label {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.analytics-bar {
+  display: inline-block;
+  height: 0.55rem;
+  margin-right: 0.5rem;
+  vertical-align: middle;
+  background: color-mix(in srgb, var(--accent) 75%, transparent);
+  border-radius: 1px;
+}
+
+.analytics-rate-def {
+  font-size: 0.78rem;
+  color: var(--muted);
 }
