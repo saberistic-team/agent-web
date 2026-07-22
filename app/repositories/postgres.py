@@ -2349,6 +2349,7 @@ def default_repositories() -> dict[str, Any]:
         "audit_events": repos.audit_events,
         "project_briefs": repos.project_briefs,
         "acquisition_dashboard": repos.acquisition_dashboard,
+        "analytics_dashboard": repos.analytics_dashboard,
         "action_queue": repos.action_queue,
         "pipeline": repos.pipeline,
         "import_batches": repos.import_batches,
