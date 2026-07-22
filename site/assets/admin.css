@@ -900,6 +900,31 @@ body.admin-app {
   word-break: break-all;
 }
 
+.analytics-filter-form {
+  margin: 1.25rem 0 1.5rem;
+}
+
+.analytics-grid {
+  margin-top: 1rem;
+}
+
+.analytics-bar-cell {
+  min-width: 8rem;
+}
+
+.analytics-bar {
+  display: block;
+  height: 0.65rem;
+  background: var(--accent);
+  border-radius: 2px;
+  min-width: 0;
+}
+
+.analytics-def-row td {
+  padding-top: 0;
+  border-top: 0;
+}
+
 @media (min-width: 769px) {
   .dashboard-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

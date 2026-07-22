@@ -78,27 +78,6 @@ def _empty_dashboard_for_layout():
     )
 
 
-def _empty_marketing_dashboard_for_layout():
-    from app.marketing_analytics_dashboard import (
-        BriefFunnelCounts,
-        MarketingAnalyticsDashboardData,
-        parse_analytics_date_range,
-    )
-
-    window = parse_analytics_date_range(days=7)
-    return MarketingAnalyticsDashboardData(
-        date_range=window,
-        engagement_events=(),
-        server_events=(),
-        brief_funnel=BriefFunnelCounts(leads=0, checkouts_opened=0, payments=0),
-        conversion_rates=(),
-        attribution=(),
-        case_study_engagement=(),
-        article_engagement=(),
-        generated_at=datetime.now(timezone.utc),
-    )
-
-
 @pytest.mark.unit
 def test_admin_nav_links_include_required_destinations() -> None:
     assert ADMIN_HREFS == (
@@ -452,7 +431,7 @@ def test_admin_nav_links_present(path: str) -> None:
         ("/admin/pipeline", "Pipeline", "pipeline-title", "Pipeline"),
         ("/admin/imports", "LinkedIn export preview", "imports-title", "Imports"),
         ("/admin/discovery", "Discovery", "admin-empty-title", "Discovery"),
-        ("/admin/analytics", "Funnel &amp; attribution", "analytics-title", "Analytics"),
+        ("/admin/analytics", "Analytics", "analytics-title", "Analytics"),
         ("/admin/content", "Content", "admin-empty-title", "Content"),
         ("/admin/settings", "Settings", "admin-empty-title", "Settings"),
     ],
@@ -490,10 +469,12 @@ def test_admin_active_nav(path: str, heading: str, title_id: str, nav_label: str
             patchers.append(patch("app.admin_icp_routes._crm.list_company_icp_scores", return_value=[]))
             patchers.append(patch("app.admin_icp_routes._crm.get_active_icp_version", return_value=None))
         if path == "/admin/analytics":
+            from app.marketing_analytics_dashboard import empty_marketing_analytics_dashboard
+
             patchers.append(
                 patch(
-                    "app.admin_analytics_routes.load_marketing_analytics_dashboard",
-                    return_value=_empty_marketing_dashboard_for_layout(),
+                    "app.admin_routes.load_marketing_analytics_dashboard",
+                    return_value=empty_marketing_analytics_dashboard(),
                 )
             )
         with patchers[0]:

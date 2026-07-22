@@ -25,6 +25,7 @@ from app.admin_preview import (
     build_preview_company_detail,
     build_preview_contact_detail,
     build_preview_acquisition_dashboard_data,
+    build_preview_marketing_analytics_dashboard_data,
     build_preview_companies,
     build_preview_company,
     build_preview_company_research,
@@ -72,6 +73,34 @@ def test_preview_acquisition_dashboard_html_includes_sections() -> None:
     assert "Missing decision-maker" in html
     assert "qualifying" in html.lower()
     assert data.without_decision_maker[0].company_name in html
+
+
+@pytest.mark.unit
+def test_preview_marketing_analytics_seed_stable() -> None:
+    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
+    a = build_preview_marketing_analytics_dashboard_data(rng=random.Random(42), now=now)
+    b = build_preview_marketing_analytics_dashboard_data(rng=random.Random(42), now=now)
+    assert a == b
+    assert len(a.engagement_counts) >= 5
+    assert len(a.attribution_rows) >= 3
+
+
+@pytest.mark.unit
+def test_preview_marketing_analytics_html_includes_sections() -> None:
+    from app.admin_analytics_pages import render_marketing_analytics_page
+
+    data = build_preview_marketing_analytics_dashboard_data(rng=random.Random(99))
+    html = render_marketing_analytics_page(
+        data=data,
+        admin_username="preview",
+        preview_banner="Preview data — not production",
+    )
+    assert "Preview data — not production" in html
+    assert "Browser engagement" in html
+    assert "Server conversions" in html
+    assert "Attribution" in html
+    assert data.attribution_rows[0].utm_source in html
+    assert data.article_engagement[0].slug in html
 
 
 @pytest.mark.unit
@@ -766,29 +795,6 @@ def test_preview_acquisition_dashboard_data_is_populated() -> None:
     assert data.recent_evidence
     assert data.without_decision_maker
     assert data.without_decision_maker[0].company_name == "Meridian Stack"
-
-
-@pytest.mark.unit
-def test_preview_marketing_analytics_data_is_populated() -> None:
-    import random
-
-    from app.admin_analytics_pages import render_marketing_analytics_page
-    from app.admin_preview import build_preview_marketing_analytics_data
-
-    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
-    a = build_preview_marketing_analytics_data(rng=random.Random(42), now=now)
-    b = build_preview_marketing_analytics_data(rng=random.Random(42), now=now)
-    assert a.engagement_events == b.engagement_events
-    assert a.attribution
-    assert a.case_study_engagement
-    html = render_marketing_analytics_page(
-        data=a,
-        admin_username="preview",
-        preview_banner="Preview data — not production",
-    )
-    assert "Landing Viewed" in html
-    assert "linkedin" in html
-    assert 'id="analytics-title"' in html
 
 
 @pytest.mark.unit

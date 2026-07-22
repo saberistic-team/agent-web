@@ -24,19 +24,6 @@ from app.acquisition_dashboard import (
     EvidenceRow,
     NextActionRow,
 )
-from app.marketing_analytics_dashboard import (
-    AnalyticsDateRange,
-    AttributionRow,
-    BriefFunnelCounts,
-    ContentEngagementRow,
-    ConversionRateRow,
-    EventCountRow,
-    MarketingAnalyticsDashboardData,
-    BROWSER_ENGAGEMENT_EVENTS,
-    SERVER_CONVERSION_EVENTS,
-    conversion_rate_percent,
-    parse_analytics_date_range,
-)
 from app.pipeline_stages import PIPELINE_STAGES
 from app.companies import COMPANY_CATEGORIES, COMPANY_STAGES, TARGET_STATUSES
 from app.icp_scoring import default_icp_rules
@@ -332,99 +319,149 @@ def build_preview_acquisition_dashboard_data(
     )
 
 
-def build_preview_marketing_analytics_data(
+def build_preview_marketing_analytics_dashboard_data(
     *,
     rng: random.Random | None = None,
     now: datetime | None = None,
-    date_range: AnalyticsDateRange | None = None,
-) -> MarketingAnalyticsDashboardData:
+) -> "MarketingAnalyticsDashboardData":
     """Randomized marketing analytics dashboard for ADMIN_PREVIEW_MODE screenshots."""
+    from app.marketing_analytics_dashboard import (
+        AttributionRow,
+        ContentEngagementRow,
+        ConversionRate,
+        EventCount,
+        MarketingAnalyticsDashboardData,
+        ENGAGEMENT_EVENT_LABELS,
+        ENGAGEMENT_EVENT_NAMES,
+        SERVER_CONVERSION_EVENT_NAMES,
+        SERVER_EVENT_LABELS,
+        SUPPLEMENTARY_CLIENT_EVENT_NAMES,
+        SUPPLEMENTARY_EVENT_LABELS,
+        parse_date_range,
+    )
+
     rng = _resolve_rng(rng, "marketing_analytics")
     now = _resolve_now(now)
-    window = date_range or parse_analytics_date_range(days=7, now=now)
+    date_range = parse_date_range(now=now)
 
-    engagement_counts: dict[str, int] = {}
-    for event_name in BROWSER_ENGAGEMENT_EVENTS:
-        engagement_counts[event_name] = rng.randint(12, 420)
-
-    server_counts = {
-        "Lead Persisted": rng.randint(3, 24),
-        "Checkout Opened": rng.randint(2, 18),
-        "Payment Completed": rng.randint(1, 14),
-    }
-    brief_funnel = BriefFunnelCounts(
-        leads=server_counts["Lead Persisted"] + rng.randint(0, 2),
-        checkouts_opened=server_counts["Checkout Opened"],
-        payments=server_counts["Payment Completed"],
-    )
-
-    conversion_rates = (
-        ConversionRateRow(
-            name="Brief view → lead",
-            numerator=brief_funnel.leads,
-            denominator=engagement_counts["Brief Viewed"],
-            rate_percent=conversion_rate_percent(
-                brief_funnel.leads,
-                engagement_counts["Brief Viewed"],
-            ),
-            numerator_definition="Server `Lead Persisted` events (authoritative)",
-            denominator_definition="Browser `Brief Viewed` events (engagement)",
-        ),
-        ConversionRateRow(
-            name="Lead → payment (CRM)",
-            numerator=brief_funnel.payments,
-            denominator=brief_funnel.leads,
-            rate_percent=conversion_rate_percent(
-                brief_funnel.payments,
-                brief_funnel.leads,
-            ),
-            numerator_definition="project_briefs with status paid and paid_at in window",
-            denominator_definition="project_briefs with created_at in window",
-        ),
-    )
-
-    attribution: list[AttributionRow] = []
-    for _ in range(rng.randint(4, 7)):
-        source = rng.choice(UTM_SOURCES)
-        medium = rng.choice([m for m in UTM_MEDIUMS if m is not None] + ["(none)"])
-        campaign = rng.choice([c for c in UTM_CAMPAIGNS if c is not None] + ["(none)"])
-        attribution.append(
-            AttributionRow(
+    def _counts(
+        event_names: tuple[str, ...],
+        labels: dict[str, str],
+        *,
+        source: str,
+        low: int,
+        high: int,
+    ) -> tuple[EventCount, ...]:
+        return tuple(
+            EventCount(
+                event_name=name,
+                label=labels.get(name, name),
+                count=rng.randint(low, high),
                 source=source,
-                medium=medium,
-                campaign=campaign,
-                engagement_events=rng.randint(20, 180),
-                leads=rng.randint(1, 12),
-                payments=rng.randint(0, 6),
             )
+            for name in event_names
         )
 
-    case_slugs = list(("payments-platform", "edge-migration", "billing-monolith", "crm-sync"))
-    article_slugs = list(("diagnostic-playbook", "architecture-review", "rollout-sequencing"))
-    rng.shuffle(case_slugs)
-    rng.shuffle(article_slugs)
+    engagement = _counts(
+        ENGAGEMENT_EVENT_NAMES,
+        ENGAGEMENT_EVENT_LABELS,
+        source="browser",
+        low=12,
+        high=240,
+    )
+    server = _counts(
+        SERVER_CONVERSION_EVENT_NAMES,
+        SERVER_EVENT_LABELS,
+        source="server",
+        low=3,
+        high=48,
+    )
+    supplementary = _counts(
+        SUPPLEMENTARY_CLIENT_EVENT_NAMES,
+        SUPPLEMENTARY_EVENT_LABELS,
+        source="browser",
+        low=0,
+        high=12,
+    )
+
+    counts = {row.event_name: row.count for row in (*engagement, *server)}
+    landing = counts.get("Landing Viewed", 100)
+    brief_start = counts.get("Brief Form Started", 40)
+    lead = counts.get("Lead Persisted", 20)
+    checkout = counts.get("Checkout Opened", 12)
+    payment = counts.get("Payment Completed", 8)
+
+    conversion_rates = (
+        ConversionRate(
+            label="Brief start rate",
+            numerator=brief_start,
+            denominator=landing,
+            rate_pct=round(100.0 * brief_start / landing, 1) if landing else None,
+            numerator_label="Brief form started",
+            denominator_label="Landing views",
+            numerator_definition="analytics_events Brief Form Started",
+            denominator_definition="analytics_events Landing Viewed",
+        ),
+        ConversionRate(
+            label="Lead rate",
+            numerator=lead,
+            denominator=brief_start,
+            rate_pct=round(100.0 * lead / brief_start, 1) if brief_start else None,
+            numerator_label="Lead persisted",
+            denominator_label="Brief form started",
+            numerator_definition="server Lead Persisted",
+            denominator_definition="analytics_events Brief Form Started",
+        ),
+        ConversionRate(
+            label="Payment rate",
+            numerator=payment,
+            denominator=checkout,
+            rate_pct=round(100.0 * payment / checkout, 1) if checkout else None,
+            numerator_label="Paid diagnostic",
+            denominator_label="Checkout opened",
+            numerator_definition="server Payment Completed",
+            denominator_definition="server Checkout Opened",
+        ),
+    )
+
+    sources = ("linkedin", "newsletter", "google", "(direct)")
+    mediums = ("social", "email", "cpc", "—")
+    campaigns = ("q2-launch", "diagnostic-offer", "insights-feature", "—")
+    attribution_rows = tuple(
+        AttributionRow(
+            utm_source=rng.choice(sources),
+            utm_medium=rng.choice(mediums),
+            utm_campaign=rng.choice(campaigns),
+            landing_views=rng.randint(20, 180),
+            leads=rng.randint(2, 24),
+            payments=rng.randint(0, 8),
+        )
+        for _ in range(rng.randint(4, 7))
+    )
+
+    article_slugs = (
+        "postgres-indexing",
+        "stripe-webhooks",
+        "first-party-analytics",
+        "crm-pipeline",
+    )
+    case_slugs = ("fintech-replatform", "logistics-dashboard", "ai-diagnostics")
 
     return MarketingAnalyticsDashboardData(
-        date_range=window,
-        engagement_events=tuple(
-            EventCountRow(event_name=name, count=engagement_counts[name], source="browser")
-            for name in BROWSER_ENGAGEMENT_EVENTS
-        ),
-        server_events=tuple(
-            EventCountRow(event_name=name, count=server_counts[name], source="server")
-            for name in SERVER_CONVERSION_EVENTS
-        ),
-        brief_funnel=brief_funnel,
+        engagement_counts=engagement,
+        server_counts=server,
+        supplementary_counts=supplementary,
         conversion_rates=conversion_rates,
-        attribution=tuple(attribution),
-        case_study_engagement=tuple(
-            ContentEngagementRow(slug=slug, content_type="case_study", views=rng.randint(8, 96))
-            for slug in case_slugs[: rng.randint(2, 4)]
-        ),
+        attribution_rows=attribution_rows,
         article_engagement=tuple(
-            ContentEngagementRow(slug=slug, content_type="article", views=rng.randint(5, 72))
-            for slug in article_slugs[: rng.randint(2, 3)]
+            ContentEngagementRow(slug=slug, views=rng.randint(8, 96), content_type="article")
+            for slug in rng.sample(article_slugs, k=3)
         ),
+        case_study_engagement=tuple(
+            ContentEngagementRow(slug=slug, views=rng.randint(6, 72), content_type="case_study")
+            for slug in rng.sample(case_slugs, k=2)
+        ),
+        date_range=date_range,
         generated_at=now,
     )
 

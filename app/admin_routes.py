@@ -11,8 +11,13 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from pydantic import ValidationError
 
-from app import admin, admin_auth, admin_companies as company_pages, admin_contacts as contact_pages, admin_dashboard_pages, admin_import_batches, admin_imports as import_pages, admin_pages, admin_research_pages, audit_service, brief_service, db
+from app import admin, admin_auth, admin_companies as company_pages, admin_contacts as contact_pages, admin_analytics_pages, admin_dashboard_pages, admin_import_batches, admin_imports as import_pages, admin_pages, admin_research_pages, audit_service, brief_service, db
 from app.acquisition_dashboard import AcquisitionDashboardData, load_acquisition_dashboard
+from app.marketing_analytics_dashboard import (
+    empty_marketing_analytics_dashboard,
+    load_marketing_analytics_dashboard,
+    serialize_dashboard_csv,
+)
 from app.companies import (
     COMPANY_CATEGORIES,
     COMPANY_STAGES,
@@ -2036,9 +2041,105 @@ async def admin_imports_reconcile_preview(request: Request) -> JSONResponse:
     return JSONResponse(preview)
 
 
+@router.get("/analytics", response_class=HTMLResponse)
+def admin_marketing_analytics(
+    request: Request,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> Response:
+    session = require_admin_session(request)
+    settings = get_settings()
+    csrf_token = _session_csrf_for_forms(request, settings)
+    if settings.admin_preview_enabled:
+        from app.admin_preview import build_preview_marketing_analytics_dashboard_data
+
+        try:
+            preview_data = build_preview_marketing_analytics_dashboard_data()
+        except Exception:
+            logger.exception("Failed to build preview marketing analytics dashboard")
+            return JSONResponse({"detail": "Internal Server Error"}, status_code=500)
+        return HTMLResponse(
+            admin_analytics_pages.render_marketing_analytics_page(
+                data=preview_data,
+                admin_username=session.admin_username,
+                csrf_token=csrf_token,
+                preview_banner="Preview data — not production",
+            )
+        )
+
+    db_error = False
+    dashboard_data = empty_marketing_analytics_dashboard(
+        date_from=date_from,
+        date_to=date_to,
+    )
+    if settings.database_url:
+        try:
+            with db.db_connection(settings.database_url) as conn:
+                dashboard_data = load_marketing_analytics_dashboard(
+                    conn,
+                    get_repositories().marketing_analytics,
+                    date_from=date_from,
+                    date_to=date_to,
+                )
+        except Exception:
+            logger.exception("Failed to load marketing analytics dashboard")
+            db_error = True
+
+    return HTMLResponse(
+        admin_analytics_pages.render_marketing_analytics_page(
+            data=dashboard_data,
+            admin_username=session.admin_username,
+            csrf_token=csrf_token,
+            db_error=db_error,
+        )
+    )
+
+
+@router.get("/analytics/export.csv")
+def admin_marketing_analytics_export(
+    request: Request,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> Response:
+    require_admin_session(request)
+    settings = get_settings()
+    if settings.admin_preview_enabled:
+        from app.admin_preview import build_preview_marketing_analytics_dashboard_data
+
+        data = build_preview_marketing_analytics_dashboard_data()
+    elif not settings.database_url:
+        data = empty_marketing_analytics_dashboard(
+            date_from=date_from,
+            date_to=date_to,
+        )
+    else:
+        try:
+            with db.db_connection(settings.database_url) as conn:
+                data = load_marketing_analytics_dashboard(
+                    conn,
+                    get_repositories().marketing_analytics,
+                    date_from=date_from,
+                    date_to=date_to,
+                )
+        except Exception:
+            logger.exception("Failed to export marketing analytics dashboard")
+            return JSONResponse(
+                {"detail": "Analytics export temporarily unavailable."},
+                status_code=503,
+            )
+
+    filename = f"marketing-analytics-{data.date_range.date_from_raw}-{data.date_range.date_to_raw}.csv"
+    return Response(
+        content=serialize_dashboard_csv(data),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 for _link in ADMIN_NAV_LINKS:
     if _link["href"] in {
         "/admin",
+        "/admin/analytics",
         "/admin/audit",
         "/admin/briefs",
         "/admin/companies",
@@ -2046,7 +2147,6 @@ for _link in ADMIN_NAV_LINKS:
         "/admin/imports",
         "/admin/pipeline",
         "/admin/signals",
-        "/admin/analytics",
     }:
         continue
     _section = _link["href"].removeprefix("/admin/")

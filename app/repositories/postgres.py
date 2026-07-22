@@ -1209,17 +1209,7 @@ class PostgresAcquisitionDashboardRepository:
 
 
 class PostgresMarketingAnalyticsRepository:
-    """Bounded marketing analytics queries against analytics_events and briefs."""
-
-    _ATTRIBUTION_SOURCE_SQL = (
-        "COALESCE(NULLIF(TRIM(attribution->>'utm_source'), ''), '(direct)')"
-    )
-    _ATTRIBUTION_MEDIUM_SQL = (
-        "COALESCE(NULLIF(TRIM(attribution->>'utm_medium'), ''), '(none)')"
-    )
-    _ATTRIBUTION_CAMPAIGN_SQL = (
-        "COALESCE(NULLIF(TRIM(attribution->>'utm_campaign'), ''), '(none)')"
-    )
+    _ALLOWED_SLUG_PROPERTIES = frozenset({"article_slug", "case_study_slug"})
 
     def count_events_by_name(
         self,
@@ -1228,59 +1218,26 @@ class PostgresMarketingAnalyticsRepository:
         start: datetime,
         end: datetime,
         event_names: tuple[str, ...],
-    ) -> list[tuple[str, int]]:
+        authoritative_only: bool,
+    ) -> dict[str, int]:
         if not event_names:
-            return []
+            return {}
+        consent_filter = "" if authoritative_only else "AND consent_state != 'declined'"
         with conn.cursor() as cur:
             cur.execute(
-                """
+                f"""
                 SELECT event_name, COUNT(*)::int AS total
                 FROM analytics_events
                 WHERE occurred_at >= %s
                   AND occurred_at < %s
                   AND event_name = ANY(%s)
+                  {consent_filter}
                 GROUP BY event_name
-                ORDER BY total DESC, event_name ASC
                 """,
                 (start, end, list(event_names)),
             )
             rows = cur.fetchall()
-        return [(str(row["event_name"]), int(row["total"])) for row in rows]
-
-    def count_brief_funnel(
-        self,
-        conn: psycopg.Connection,
-        *,
-        start: datetime,
-        end: datetime,
-    ) -> dict[str, int]:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT
-                  COUNT(*) FILTER (
-                    WHERE created_at >= %s AND created_at < %s
-                  )::int AS leads,
-                  COUNT(*) FILTER (
-                    WHERE created_at >= %s AND created_at < %s
-                      AND stripe_session_id IS NOT NULL
-                  )::int AS checkouts_opened,
-                  COUNT(*) FILTER (
-                    WHERE status = 'paid'
-                      AND paid_at >= %s AND paid_at < %s
-                  )::int AS payments
-                FROM project_briefs
-                """,
-                (start, end, start, end, start, end),
-            )
-            row = cur.fetchone()
-        if row is None:
-            return {"leads": 0, "checkouts_opened": 0, "payments": 0}
-        return {
-            "leads": int(row["leads"]),
-            "checkouts_opened": int(row["checkouts_opened"]),
-            "payments": int(row["payments"]),
-        }
+        return {str(row["event_name"]): int(row["total"]) for row in rows}
 
     def list_attribution_summary(
         self,
@@ -1292,44 +1249,57 @@ class PostgresMarketingAnalyticsRepository:
     ) -> list[dict[str, Any]]:
         with conn.cursor() as cur:
             cur.execute(
-                f"""
-                WITH engagement AS (
-                  SELECT
-                    {self._ATTRIBUTION_SOURCE_SQL} AS source,
-                    {self._ATTRIBUTION_MEDIUM_SQL} AS medium,
-                    {self._ATTRIBUTION_CAMPAIGN_SQL} AS campaign,
-                    COUNT(*)::int AS engagement_events
-                  FROM analytics_events
-                  WHERE occurred_at >= %s AND occurred_at < %s
-                  GROUP BY 1, 2, 3
+                """
+                WITH landing AS (
+                    SELECT
+                        COALESCE(NULLIF(TRIM(attribution->>'utm_source'), ''), '(direct)') AS utm_source,
+                        COALESCE(NULLIF(TRIM(attribution->>'utm_medium'), ''), '—') AS utm_medium,
+                        COALESCE(NULLIF(TRIM(attribution->>'utm_campaign'), ''), '—') AS utm_campaign,
+                        COUNT(*)::int AS landing_views
+                    FROM analytics_events
+                    WHERE occurred_at >= %s
+                      AND occurred_at < %s
+                      AND consent_state != 'declined'
+                      AND event_name = 'Landing Viewed'
+                    GROUP BY 1, 2, 3
                 ),
                 briefs AS (
-                  SELECT
-                    COALESCE(NULLIF(TRIM(utm_source), ''), '(direct)') AS source,
-                    COALESCE(NULLIF(TRIM(utm_medium), ''), '(none)') AS medium,
-                    COALESCE(NULLIF(TRIM(utm_campaign), ''), '(none)') AS campaign,
-                    COUNT(*)::int AS leads,
-                    COUNT(*) FILTER (WHERE status = 'paid')::int AS payments
-                  FROM project_briefs
-                  WHERE created_at >= %s AND created_at < %s
-                  GROUP BY 1, 2, 3
+                    SELECT
+                        COALESCE(NULLIF(TRIM(utm_source), ''), '(direct)') AS utm_source,
+                        COALESCE(NULLIF(TRIM(utm_medium), ''), '—') AS utm_medium,
+                        COALESCE(NULLIF(TRIM(utm_campaign), ''), '—') AS utm_campaign,
+                        COUNT(*)::int AS leads,
+                        COUNT(*) FILTER (
+                            WHERE status = 'paid'
+                              AND paid_at >= %s
+                              AND paid_at < %s
+                        )::int AS payments
+                    FROM project_briefs
+                    WHERE created_at >= %s
+                      AND created_at < %s
+                    GROUP BY 1, 2, 3
+                ),
+                combined AS (
+                    SELECT
+                        COALESCE(l.utm_source, b.utm_source) AS utm_source,
+                        COALESCE(l.utm_medium, b.utm_medium) AS utm_medium,
+                        COALESCE(l.utm_campaign, b.utm_campaign) AS utm_campaign,
+                        COALESCE(l.landing_views, 0) AS landing_views,
+                        COALESCE(b.leads, 0) AS leads,
+                        COALESCE(b.payments, 0) AS payments
+                    FROM landing l
+                    FULL OUTER JOIN briefs b
+                      ON l.utm_source = b.utm_source
+                     AND l.utm_medium = b.utm_medium
+                     AND l.utm_campaign = b.utm_campaign
                 )
-                SELECT
-                  COALESCE(e.source, b.source) AS source,
-                  COALESCE(e.medium, b.medium) AS medium,
-                  COALESCE(e.campaign, b.campaign) AS campaign,
-                  COALESCE(e.engagement_events, 0)::int AS engagement_events,
-                  COALESCE(b.leads, 0)::int AS leads,
-                  COALESCE(b.payments, 0)::int AS payments
-                FROM engagement e
-                FULL OUTER JOIN briefs b
-                  ON e.source = b.source
-                 AND e.medium = b.medium
-                 AND e.campaign = b.campaign
-                ORDER BY engagement_events DESC, leads DESC, source ASC
+                SELECT *
+                FROM combined
+                WHERE landing_views > 0 OR leads > 0 OR payments > 0
+                ORDER BY leads DESC, landing_views DESC, utm_source ASC
                 LIMIT %s
                 """,
-                (start, end, start, end, limit),
+                (start, end, start, end, start, end, limit),
             )
             rows = cur.fetchall()
         return [dict(row) for row in rows]
@@ -1344,7 +1314,7 @@ class PostgresMarketingAnalyticsRepository:
         slug_property: str,
         limit: int,
     ) -> list[dict[str, Any]]:
-        if slug_property not in {"case_study_slug", "article_slug"}:
+        if slug_property not in self._ALLOWED_SLUG_PROPERTIES:
             raise ValueError(f"unsupported slug property: {slug_property}")
         with conn.cursor() as cur:
             cur.execute(
@@ -1353,22 +1323,14 @@ class PostgresMarketingAnalyticsRepository:
                 FROM analytics_events
                 WHERE occurred_at >= %s
                   AND occurred_at < %s
+                  AND consent_state != 'declined'
                   AND event_name = %s
-                  AND properties->>%s IS NOT NULL
-                  AND TRIM(properties->>%s) <> ''
-                GROUP BY slug
+                  AND COALESCE(properties->>%s, '') <> ''
+                GROUP BY 1
                 ORDER BY views DESC, slug ASC
                 LIMIT %s
                 """,
-                (
-                    slug_property,
-                    start,
-                    end,
-                    event_name,
-                    slug_property,
-                    slug_property,
-                    limit,
-                ),
+                (slug_property, start, end, event_name, slug_property, limit),
             )
             rows = cur.fetchall()
         return [dict(row) for row in rows]

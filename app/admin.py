@@ -73,6 +73,16 @@ def render_admin_page(
             )
             # render_acquisition_dashboard_page returns full shell; short-circuit.
             return main
+        if active_path == "/admin/analytics":
+            from app.admin_analytics_pages import render_marketing_analytics_page
+            from app.admin_preview import build_preview_marketing_analytics_dashboard_data
+
+            return render_marketing_analytics_page(
+                data=build_preview_marketing_analytics_dashboard_data(),
+                admin_username=admin_username,
+                csrf_token=csrf_token,
+                preview_banner="Preview data — not production",
+            )
         if active_path == "/admin/imports":
             from app.admin_preview import render_preview_imports_main
 
