@@ -78,9 +78,12 @@ not apply; **do** enforce objectives.
 3. Reject stub-only heads: if the PR is only `docs/agent-updates/<n>.md` (or
    equivalent placeholder) without the deliverable files the issue required,
    `REQUEST_CHANGES` citing “return to Docs”.
-4. Reject product-scoped changes on a docs issue (`app/`, routes, DB,
-   migrations, public marketing routes) — `REQUEST_CHANGES` / escalate to
-   Planner unless the issue explicitly allowed them.
+4. Reject product-scoped changes on a docs issue (`app/`, `site/`, routes via
+   those trees, DB migrations, public marketing surfaces) — `REQUEST_CHANGES` /
+   escalate to Planner unless the issue explicitly allowed them. Supporting
+   WorldGraph research code under `spike/` (and `docs/` / `tests/` / `scripts/`
+   / `AGENTS/`) is in scope for docs issues when it keeps schema fixtures
+   honest; do not hard-fail solely for `spike/` edits.
 5. Reject invented APIs or behavior that the repo does not implement when the
    issue asked to document current/research decisions only.
 
@@ -143,8 +146,9 @@ Any of these is an automatic request-changes — do not approve:
   glitch.
 - **Docs stub-only** (`type:docs`): PR lacks the issue’s required deliverable
   files (only `docs/agent-updates/` placeholder) — return to Docs
-- **Docs out-of-scope product code** (`type:docs`): unexpected `app/` / route /
-  migration changes — return to Docs or escalate
+- **Docs out-of-scope product code** (`type:docs`): unexpected `app/` / `site/` /
+  migration changes (or other executable code outside `docs/`, `AGENTS/`,
+  `scripts/`, `tests/`, and `spike/`) — return to Docs or escalate
 
 ### Product / Builder-only hard fails
 

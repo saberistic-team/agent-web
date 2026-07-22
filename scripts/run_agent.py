@@ -866,6 +866,27 @@ def is_landing_issue(title: str, body: str) -> bool:
     )
 
 
+def docs_out_of_scope_product_paths(filenames: list[str]) -> list[str]:
+    """Return paths that a ``type:docs`` PR must not change.
+
+    Docs issues may ship markdown/specs plus supporting research fixtures under
+    ``docs/``, agent briefs, orchestration ``scripts/``, tests, and WorldGraph
+    ``spike/`` helpers that keep schema fixtures honest. Product surfaces
+    (``app/``, ``site/``, ``migrations/``) and other unexpected executable code
+    remain hard fails.
+    """
+    allowed_prefixes = ("docs/", "AGENTS/", "scripts/", "tests/", "spike/")
+    return [
+        name
+        for name in filenames
+        if name.startswith(("app/", "site/", "migrations/"))
+        or (
+            name.endswith((".py", ".ts", ".js"))
+            and not name.startswith(allowed_prefixes)
+        )
+    ]
+
+
 def role_builder(repo: str, issue: int, brief: Path) -> None:
     data = get_issue(repo, issue)
     title = data.get("title") or f"issue-{issue}"
@@ -1368,15 +1389,7 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
                 "docs PR is agent-updates stub only — required deliverable "
                 "files missing; return to Docs"
             )
-        product_paths = [
-            name
-            for name in filenames
-            if name.startswith(("app/", "site/", "migrations/"))
-            or (
-                name.endswith((".py", ".ts", ".js"))
-                and not name.startswith(("docs/", "AGENTS/", "scripts/", "tests/"))
-            )
-        ]
+        product_paths = docs_out_of_scope_product_paths(filenames)
         if product_paths:
             hard_fail_reasons.append(
                 "type:docs PR includes product code paths "
