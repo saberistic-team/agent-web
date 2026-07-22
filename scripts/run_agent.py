@@ -30,6 +30,7 @@ from github_api import (
     post_issue_comment,
     split_repo,
 )
+from issue_deps import dependency_block_reason
 from milestones import (
     ensure_open_milestone,
     issue_milestone_number,
@@ -723,6 +724,19 @@ def role_planner(repo: str, issue: int, brief: Path) -> None:
     body = data.get("body") or ""
     labels = {label["name"] for label in data.get("labels") or []}
 
+    # Fail closed on open / unstructured dependencies before queue (#204).
+    dep_reason = dependency_block_reason(repo, issue, body=body)
+    if dep_reason:
+        escalate(
+            repo,
+            issue,
+            (
+                "Cannot queue until dependencies are machine-readable and closed.\n\n"
+                f"{dep_reason}"
+            ),
+        )
+        return
+
     type_label = next((l for l in labels if l.startswith("type:")), None)
     if type_label is None:
         if re.search(r"\bdocs?\b", title + "\n" + body, re.I):
@@ -856,6 +870,13 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
     data = get_issue(repo, issue)
     title = data.get("title") or f"issue-{issue}"
     body = data.get("body") or ""
+
+    # Do not invent stand-in schemas while upstream issues are still open (#204).
+    dep_reason = dependency_block_reason(repo, issue, body=body)
+    if dep_reason:
+        escalate(repo, issue, dep_reason)
+        write_builder_handoff("blocked")
+        return
 
     # Ops / verify issues: run smoke against production; no stub PR (avoids
     # reviewer↔builder loops on worklog-only PRs).
@@ -1031,6 +1052,13 @@ def role_docs(repo: str, issue: int, brief: Path) -> None:
     data = get_issue(repo, issue)
     title = data.get("title") or f"issue-{issue}"
     body = data.get("body") or ""
+
+    dep_reason = dependency_block_reason(repo, issue, body=body)
+    if dep_reason:
+        escalate(repo, issue, dep_reason)
+        write_docs_handoff("blocked")
+        return
+
     # Prefer existing linked PR head (including after review:changes-requested).
     prs = linked_open_prs(repo, issue)
     if prs:
@@ -1178,6 +1206,31 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
     }
     is_docs_issue = "type:docs" in issue_labels
     implementer = "Docs" if is_docs_issue else "Builder"
+
+    # Open / unstructured dependencies: terminal block, do not requeue Builder (#204).
+    dep_reason = dependency_block_reason(
+        repo, issue, body=issue_data_early.get("body") or ""
+    )
+    if dep_reason:
+        body = (
+            "### reviewer_decision\n"
+            "- decision: `blocked`\n"
+            "- terminal: true\n"
+            f"- brief: `{brief}`\n"
+            "- hard_fails:\n"
+            f"  - open dependencies: {dep_reason}\n"
+        )
+        api(
+            "POST",
+            f"/repos/{owner}/{name}/pulls/{pr_number}/reviews",
+            body={
+                "commit_id": pr["head"]["sha"],
+                "event": "REQUEST_CHANGES",
+                "body": body,
+            },
+        )
+        post_issue_comment(repo, issue, body)
+        return
 
     # Merge conflicts first — return to implementing agent; skip the rest.
     try:

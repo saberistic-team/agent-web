@@ -1056,6 +1056,224 @@ class PostgresPipelineRepository:
             rows = cur.fetchall()
         return [(str(row["bucket"]), int(row["total"])) for row in rows]
 
+    def list_due_today_next_actions(
+        self,
+        conn: psycopg.Connection,
+        *,
+        day_start: datetime,
+        day_end: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, name, pipeline_stage, next_action, next_action_due_at,
+                       pipeline_owner, expected_value_cents
+                FROM companies
+                WHERE archived_at IS NULL
+                  AND pipeline_stage IS NOT NULL
+                  AND next_action IS NOT NULL
+                  AND BTRIM(next_action) <> ''
+                  AND next_action_due_at IS NOT NULL
+                  AND next_action_due_at >= %s
+                  AND next_action_due_at < %s
+                ORDER BY next_action_due_at ASC
+                LIMIT %s
+                """,
+                (day_start, day_end, limit),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+
+class PostgresActionQueueRepository:
+    """Acquisition action queue queries — composes pipeline repo where needed."""
+
+    _PUBLIC_EVIDENCE_TYPES = ("verified_fact", "public_signal")
+    _WARM_STRENGTHS = ("warm", "strong", "champion")
+    _TIER_A_STAGES = ("qualified", "ready_for_outreach")
+    _DECISION_MAKER_ROLES = ("founder", "technical_buyer", "executive_buyer")
+
+    def __init__(
+        self,
+        pipeline_repo: PostgresPipelineRepository | None = None,
+    ) -> None:
+        self._pipeline = pipeline_repo or PostgresPipelineRepository()
+
+    def list_overdue_next_actions(
+        self,
+        conn: psycopg.Connection,
+        *,
+        reference: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        return self._pipeline.list_overdue_next_actions(
+            conn, reference=reference, limit=limit
+        )
+
+    def list_due_today_next_actions(
+        self,
+        conn: psycopg.Connection,
+        *,
+        day_start: datetime,
+        day_end: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        return self._pipeline.list_due_today_next_actions(
+            conn, day_start=day_start, day_end=day_end, limit=limit
+        )
+
+    def list_recently_qualified_tier_a(
+        self,
+        conn: psycopg.Connection,
+        *,
+        since: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT DISTINCT ON (c.id)
+                       c.id, c.name, c.pipeline_stage, c.pipeline_owner,
+                       c.expected_value_cents, h.changed_at AS qualified_at
+                FROM companies c
+                INNER JOIN pipeline_stage_history h ON h.company_id = c.id
+                WHERE c.archived_at IS NULL
+                  AND c.target_status = 'target'
+                  AND c.pipeline_stage = ANY(%s)
+                  AND h.to_stage = 'qualified'
+                  AND h.changed_at >= %s
+                ORDER BY c.id, h.changed_at DESC
+                LIMIT %s
+                """,
+                (list(self._TIER_A_STAGES), since, limit),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def list_warm_introduction_opportunities(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT ct.id AS contact_id, ct.full_name AS contact_name,
+                       ct.relationship_strength, c.id AS company_id, c.name AS company_name,
+                       c.pipeline_stage, c.expected_value_cents
+                FROM contacts ct
+                INNER JOIN companies c ON c.id = ct.company_id
+                WHERE c.archived_at IS NULL
+                  AND ct.archived_at IS NULL
+                  AND (
+                      'introducer' = ANY(ct.buying_roles)
+                      OR ct.relationship_strength = ANY(%s)
+                  )
+                  AND (
+                      c.pipeline_stage IS NOT NULL
+                      OR c.target_status IN ('target', 'watching')
+                  )
+                ORDER BY ct.relationship_strength DESC, c.name ASC, ct.full_name ASC
+                LIMIT %s
+                """,
+                (list(self._WARM_STRENGTHS), limit),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def list_stale_high_value_evidence(
+        self,
+        conn: psycopg.Connection,
+        *,
+        reference: datetime,
+        min_value_cents: int,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT rr.*, c.name AS company_name, c.pipeline_stage,
+                       c.expected_value_cents
+                FROM research_records rr
+                INNER JOIN companies c ON c.id = rr.company_id
+                WHERE rr.record_type = ANY(%s)
+                  AND rr.expires_at IS NOT NULL
+                  AND rr.expires_at <= %s
+                  AND c.archived_at IS NULL
+                  AND (
+                      c.expected_value_cents >= %s
+                      OR c.target_status = 'target'
+                  )
+                ORDER BY rr.expires_at ASC, c.expected_value_cents DESC NULLS LAST
+                LIMIT %s
+                """,
+                (
+                    list(self._PUBLIC_EVIDENCE_TYPES),
+                    reference,
+                    min_value_cents,
+                    limit,
+                ),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def list_export_candidates(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT c.name AS company_name, c.domain, c.pipeline_stage,
+                       c.target_status, c.expected_value_cents, c.next_action,
+                       c.next_action_due_at, c.category,
+                       ct.full_name AS contact_name, ct.title AS contact_title,
+                       ct.buying_roles, ct.relationship_strength,
+                       ev.source_url AS evidence_source_url,
+                       ev.confidence AS evidence_confidence,
+                       ev.record_type AS evidence_type,
+                       EXISTS (
+                           SELECT 1 FROM contacts dm
+                           WHERE dm.company_id = c.id
+                             AND dm.archived_at IS NULL
+                             AND dm.buying_roles && %s::text[]
+                       ) AS has_decision_maker
+                FROM companies c
+                LEFT JOIN LATERAL (
+                    SELECT ct2.*
+                    FROM contacts ct2
+                    WHERE ct2.company_id = c.id AND ct2.archived_at IS NULL
+                    ORDER BY ct2.updated_at DESC NULLS LAST
+                    LIMIT 1
+                ) ct ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT rr.source_url, rr.confidence, rr.record_type
+                    FROM research_records rr
+                    WHERE rr.company_id = c.id
+                      AND rr.record_type = ANY(%s)
+                      AND rr.source_url IS NOT NULL
+                    ORDER BY rr.created_at DESC
+                    LIMIT 1
+                ) ev ON TRUE
+                WHERE c.archived_at IS NULL
+                  AND c.pipeline_stage IS NOT NULL
+                  AND c.pipeline_stage NOT IN ('lost', 'nurture')
+                ORDER BY c.name ASC
+                LIMIT %s
+                """,
+                (
+                    list(self._DECISION_MAKER_ROLES),
+                    list(self._PUBLIC_EVIDENCE_TYPES),
+                    limit,
+                ),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
 
 class PostgresAcquisitionDashboardRepository:
     _COMPANY_DIMENSIONS = frozenset({"stage", "category"})
@@ -2004,6 +2222,7 @@ class PostgresRepositories:
         self.audit_events = PostgresAuditEventRepository()
         self.project_briefs = PostgresProjectBriefRepository()
         self.acquisition_dashboard = PostgresAcquisitionDashboardRepository()
+        self.action_queue = PostgresActionQueueRepository()
         self.pipeline = PostgresPipelineRepository()
         self.import_batches = PostgresImportBatchRepository()
         self.icp_scoring = PostgresIcpScoringRepository()
@@ -2029,6 +2248,7 @@ def default_repositories() -> dict[str, Any]:
         "audit_events": repos.audit_events,
         "project_briefs": repos.project_briefs,
         "acquisition_dashboard": repos.acquisition_dashboard,
+        "action_queue": repos.action_queue,
         "pipeline": repos.pipeline,
         "import_batches": repos.import_batches,
         "icp_scoring": repos.icp_scoring,
