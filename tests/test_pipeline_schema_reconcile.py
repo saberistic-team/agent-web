@@ -328,7 +328,7 @@ def test_frozen_migration_digests_match_and_form_prefix() -> None:
 @pytest.mark.unit
 def test_reconcile_migration_is_registered_after_import_batches() -> None:
     versions = [m.version for m in MIGRATIONS]
-    assert versions[-1] == "023"
+    assert versions[-1] == "024"
     reconcile = next(m for m in MIGRATIONS if m.name == "reconcile_acquisition_pipeline_schema")
     assert reconcile.version == "015"
     assert "pipeline_owner" in reconcile.up_sql
@@ -484,7 +484,7 @@ def test_fresh_database_applies_001_through_015_idempotently(
 ) -> None:
     first = apply_migrations(pg_conn)
     assert first == [m.version for m in MIGRATIONS]
-    assert first[-1] == "022"
+    assert first[-1] == "023"
 
     columns = _company_columns(pg_conn)
     for name in (

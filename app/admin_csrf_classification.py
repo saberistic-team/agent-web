@@ -75,6 +75,10 @@ ADMIN_CSRF_ROUTE_POLICIES: dict[tuple[str, str], tuple[CsrfPolicy, str]] = {
         "session_csrf_required",
         "Import rollback requires a session-bound CSRF token in the form body.",
     ),
+    ("POST", "/admin/discovery/run"): (
+        "session_csrf_required",
+        "Manual discovery run requires a session-bound CSRF token in the form body.",
+    ),
     ("POST", "/admin/api/imports/linkedin/commit"): (
         "session_csrf_required",
         "LinkedIn import commit requires the session-bound CSRF token in the X-CSRF-Token header "
@@ -108,9 +112,9 @@ ADMIN_CSRF_ROUTE_POLICIES: dict[tuple[str, str], tuple[CsrfPolicy, str]] = {
         "session_csrf_required",
         "ICP score override requires a session-bound CSRF token in the form body.",
     ),
-    ("POST", "/admin/discovery/run"): (
+    ("POST", "/admin/targets/working-list"): (
         "session_csrf_required",
-        "Manual discovery run requires a session-bound CSRF token in the form body.",
+        "Qualification working-list save requires a session-bound CSRF token in the form body.",
     ),
 }
 

@@ -75,6 +75,11 @@ ADMIN_MUTATION_ROUTE_CLASSIFICATIONS: dict[tuple[str, str], tuple[MutationClassi
         "required_immutable_business_audit",
         "Import rollback emits import.batch.rollback with bounded batch metadata.",
     ),
+    ("POST", "/admin/discovery/run"): (
+        "intentionally_unaudited",
+        "Manual discovery runs persist auditable history in discovery_runs / "
+        "discovery_run_sources; no audit_events entry in this release.",
+    ),
     ("POST", "/admin/api/imports/linkedin/commit"): (
         "required_immutable_business_audit",
         "LinkedIn import commit emits import.batch with bounded batch metadata.",
@@ -111,10 +116,10 @@ ADMIN_MUTATION_ROUTE_CLASSIFICATIONS: dict[tuple[str, str], tuple[MutationClassi
         "Override reason/actor are captured directly on the append-only "
         "company_icp_score_snapshots row; no separate audit_events entry in this release.",
     ),
-    ("POST", "/admin/discovery/run"): (
+    ("POST", "/admin/targets/working-list"): (
         "intentionally_unaudited",
-        "Discovery run trigger is recorded in discovery_runs with actor and "
-        "correlation_id; no separate audit_events entry in this release.",
+        "Working-list save persists company IDs only on qualification_working_lists / "
+        "qualification_working_list_items; no audit_events entry in this release.",
     ),
 }
 

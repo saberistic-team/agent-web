@@ -87,6 +87,7 @@ def test_admin_nav_links_include_required_destinations() -> None:
         "/admin/companies",
         "/admin/contacts",
         "/admin/signals",
+        "/admin/targets",
         "/admin/pipeline",
         "/admin/imports",
         "/admin/discovery",
@@ -101,6 +102,7 @@ def test_admin_nav_links_include_required_destinations() -> None:
         "Companies",
         "Contacts",
         "Signals",
+        "Targets",
         "Pipeline",
         "Imports",
         "Discovery",
@@ -428,6 +430,7 @@ def test_admin_nav_links_present(path: str) -> None:
         ("/admin", "Today's attention", "dashboard-title", "Dashboard"),
         ("/admin/contacts", "Contacts", "contacts-title", "Contacts"),
         ("/admin/signals", "ICP scores", "icp-scores-title", "Signals"),
+        ("/admin/targets", "Target lists", "targets-title", "Targets"),
         ("/admin/pipeline", "Pipeline", "pipeline-title", "Pipeline"),
         ("/admin/imports", "LinkedIn export preview", "imports-title", "Imports"),
         ("/admin/discovery", "Discovery runs", "discovery-runs-title", "Discovery"),
@@ -468,6 +471,16 @@ def test_admin_active_nav(path: str, heading: str, title_id: str, nav_label: str
         if path == "/admin/signals":
             patchers.append(patch("app.admin_icp_routes._crm.list_company_icp_scores", return_value=[]))
             patchers.append(patch("app.admin_icp_routes._crm.get_active_icp_version", return_value=None))
+        if path == "/admin/targets":
+            patchers.append(patch("app.admin_qualification_routes._crm.list_qualification_targets", return_value=[]))
+            patchers.append(patch("app.admin_qualification_routes._crm.list_qualification_working_lists", return_value=[]))
+        if path == "/admin/discovery":
+            patchers.append(
+                patch(
+                    "app.admin_discovery_routes.get_discovery_run_service",
+                    return_value=MagicMock(list_runs=MagicMock(return_value=([], 0))),
+                )
+            )
         with patchers[0]:
             for extra in patchers[1:]:
                 extra.start()
