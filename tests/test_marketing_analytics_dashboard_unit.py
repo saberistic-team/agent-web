@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from unittest.mock import MagicMock
 
 import pytest
@@ -16,16 +16,33 @@ from app.analytics_event_schema import (
     EVENT_PAYMENT_COMPLETED,
 )
 from app.marketing_analytics_dashboard import (
-    ATTRIBUTION_ROW_LIMIT,
     DASHBOARD_TIMEZONE,
-    MAX_RANGE_DAYS,
-    compute_rate_pct,
+    METRIC_ATTRIBUTION,
+    METRIC_CONVERSION_RATES,
+    METRIC_EVENT_COUNTS,
+    AnalyticsDateRange,
+    EventCountRow,
+    MarketingAnalyticsDashboardData,
+    compute_conversion_rates,
+    dashboard_has_data,
+    empty_dashboard_data,
     load_marketing_analytics_dashboard,
-    normalize_filters,
+    parse_analytics_date_range,
+    render_analytics_export_csv,
 )
-from app.repositories.marketing_analytics import PostgresMarketingAnalyticsRepository
+from app.repositories.postgres import PostgresMarketingAnalyticsRepository
 
 NOW = datetime(2026, 7, 15, 12, 0, tzinfo=timezone.utc)
+DATE_FROM = date(2026, 7, 8)
+DATE_TO = date(2026, 7, 14)
+RANGE = AnalyticsDateRange(
+    start=datetime.combine(DATE_FROM, time.min, tzinfo=timezone.utc),
+    end=datetime.combine(DATE_TO + timedelta(days=1), time.min, tzinfo=timezone.utc),
+    date_from=DATE_FROM,
+    date_to=DATE_TO,
+    date_from_raw=DATE_FROM.isoformat(),
+    date_to_raw=DATE_TO.isoformat(),
+)
 
 
 def _mock_conn(rows: list | None = None) -> MagicMock:
@@ -37,168 +54,174 @@ def _mock_conn(rows: list | None = None) -> MagicMock:
     return conn
 
 
-class _FakeMarketingAnalyticsRepository:
-    def __init__(self) -> None:
-        self.event_counts = [
-            (EVENT_LANDING_VIEWED, 100),
-            (EVENT_BRIEF_VIEWED, 40),
-            (EVENT_BRIEF_FORM_STARTED, 10),
-        ]
-        self.server_counts = [
-            (EVENT_LEAD_PERSISTED, 5),
-            (EVENT_CHECKOUT_OPENED, 4),
-            (EVENT_PAYMENT_COMPLETED, 3),
-        ]
-        self.engagement_attribution = [
-            {
-                "utm_source": "linkedin",
-                "utm_medium": "social",
-                "utm_campaign": "launch",
-                "engagement_events": 20,
-            }
-        ]
-        self.brief_attribution = [
-            {
-                "utm_source": "linkedin",
-                "utm_medium": "social",
-                "utm_campaign": "launch",
-                "leads": 2,
-                "payments": 1,
-            }
-        ]
-        self.case_study_views = [("northwind-labs", 12)]
-        self.article_views = [("first-party-analytics", 8)]
-
-    def count_events_by_name(self, conn, *, start, end_exclusive, event_names):
-        source = (
-            self.server_counts
-            if EVENT_LEAD_PERSISTED in event_names
-            else self.event_counts
-        )
-        allowed = set(event_names)
-        return [(name, count) for name, count in source if name in allowed]
-
-    def count_content_views(
-        self, conn, *, start, end_exclusive, event_name, slug_property, limit
-    ):
-        if slug_property == "case_study_slug":
-            return self.case_study_views[:limit]
-        return self.article_views[:limit]
-
-    def count_engagement_attribution(self, conn, *, start, end_exclusive, limit):
-        return self.engagement_attribution[:limit]
-
-    def count_brief_attribution(self, conn, *, start, end_exclusive, limit):
-        return self.brief_attribution[:limit]
+@pytest.mark.unit
+def test_metric_definitions_are_explicit() -> None:
+    data = empty_dashboard_data(RANGE)
+    assert "occurred_at" in data.metric_definitions["event_counts"]
+    assert "authoritative" in data.metric_definitions["event_counts"].lower()
+    assert "numerator" in data.metric_definitions["conversion_rates"].lower()
+    assert METRIC_EVENT_COUNTS == data.metric_definitions["event_counts"]
+    assert METRIC_CONVERSION_RATES == data.metric_definitions["conversion_rates"]
+    assert METRIC_ATTRIBUTION == data.metric_definitions["attribution"]
+    assert DASHBOARD_TIMEZONE in data.metric_definitions["event_counts"]
 
 
 @pytest.mark.unit
-def test_normalize_filters_defaults_to_seven_day_window() -> None:
-    filters = normalize_filters(reference=NOW)
-    assert filters.end_date == date(2026, 7, 15)
-    assert filters.start_date == date(2026, 7, 9)
-    assert filters.end_exclusive == datetime(2026, 7, 16, 0, 0, tzinfo=timezone.utc)
+def test_parse_analytics_date_range_defaults_last_seven_days() -> None:
+    dr = parse_analytics_date_range(now=NOW)
+    assert dr.date_to == NOW.date()
+    assert (dr.date_to - dr.date_from).days == 6
+    assert dr.start.tzinfo == timezone.utc
+    assert dr.end > dr.start
 
 
 @pytest.mark.unit
-def test_normalize_filters_swaps_inverted_dates() -> None:
-    filters = normalize_filters(
-        date_from="2026-07-20",
-        date_to="2026-07-10",
-        reference=NOW,
+def test_parse_analytics_date_range_swaps_inverted_bounds() -> None:
+    dr = parse_analytics_date_range(
+        date_from="2026-07-14",
+        date_to="2026-07-08",
+        now=NOW,
     )
-    assert filters.start_date == date(2026, 7, 10)
-    assert filters.end_date == date(2026, 7, 20)
+    assert dr.date_from == date(2026, 7, 8)
+    assert dr.date_to == date(2026, 7, 14)
 
 
 @pytest.mark.unit
-def test_normalize_filters_caps_range_at_max_days() -> None:
-    filters = normalize_filters(
+def test_parse_analytics_date_range_caps_at_max_window() -> None:
+    dr = parse_analytics_date_range(
         date_from="2026-01-01",
-        date_to="2026-07-15",
-        reference=NOW,
+        date_to="2026-07-14",
+        now=NOW,
     )
-    span = (filters.end_date - filters.start_date).days + 1
-    assert span == MAX_RANGE_DAYS
+    assert (dr.date_to - dr.date_from).days + 1 <= 90
 
 
 @pytest.mark.unit
-def test_compute_rate_pct_handles_zero_denominator() -> None:
-    assert compute_rate_pct(3, 0) is None
-    assert compute_rate_pct(1, 4) == 25.0
+def test_compute_conversion_rates_zero_denominator() -> None:
+    rates = compute_conversion_rates(
+        {
+            EVENT_LANDING_VIEWED: 100,
+            EVENT_BRIEF_VIEWED: 0,
+        }
+    )
+    landing_to_brief = next(row for row in rates if row.key == "landing_to_brief")
+    assert landing_to_brief.denominator == 100
+    assert landing_to_brief.numerator == 0
+    assert landing_to_brief.rate_pct == 0.0
+
+    brief_to_form = next(row for row in rates if row.key == "brief_to_form")
+    assert brief_to_form.rate_pct is None
 
 
 @pytest.mark.unit
-def test_load_marketing_analytics_dashboard_builds_conversion_rates() -> None:
-    data = load_marketing_analytics_dashboard(
-        MagicMock(),
-        _FakeMarketingAnalyticsRepository(),
-        date_from="2026-07-09",
-        date_to="2026-07-15",
-        reference=NOW,
+def test_compute_conversion_rates_rounds_to_one_decimal() -> None:
+    rates = compute_conversion_rates(
+        {
+            EVENT_BRIEF_FORM_STARTED: 1,
+            EVENT_LEAD_PERSISTED: 1,
+            EVENT_CHECKOUT_OPENED: 1,
+            EVENT_PAYMENT_COMPLETED: 1,
+            EVENT_BRIEF_VIEWED: 3,
+        }
     )
-    assert data.filters.start_raw == "2026-07-09"
-    assert data.filters.end_raw == "2026-07-15"
-    assert DASHBOARD_TIMEZONE in data.metric_definitions["event_window"]
-    assert any(row.event_name == EVENT_LANDING_VIEWED for row in data.engagement_events)
-    assert any(row.event_name == EVENT_PAYMENT_COMPLETED for row in data.server_events)
-    brief_rate = next(row for row in data.conversion_rates if "Brief view" in row.label)
-    assert brief_rate.numerator == 10
-    assert brief_rate.denominator == 40
-    assert brief_rate.rate_pct == 25.0
+    form_to_lead = next(row for row in rates if row.key == "form_to_lead")
+    assert form_to_lead.rate_pct == 100.0
+
+
+@pytest.mark.unit
+def test_dashboard_has_data() -> None:
+    empty = empty_dashboard_data(RANGE)
+    assert not dashboard_has_data(empty)
+    populated = MarketingAnalyticsDashboardData(
+        date_range=RANGE,
+        event_counts=(
+            EventCountRow(
+                label="Landing",
+                event_name=EVENT_LANDING_VIEWED,
+                count=1,
+                authoritative=False,
+            ),
+        ),
+        conversion_rates=(),
+        attribution=(),
+        case_study_engagement=(),
+        insight_engagement=(),
+        generated_at=NOW,
+    )
+    assert dashboard_has_data(populated)
+
+
+@pytest.mark.unit
+def test_load_marketing_analytics_dashboard_from_repo() -> None:
+    repo = MagicMock()
+    repo.count_events_by_name.return_value = [
+        (EVENT_LANDING_VIEWED, 50),
+        (EVENT_BRIEF_VIEWED, 20),
+        (EVENT_BRIEF_FORM_STARTED, 10),
+        (EVENT_LEAD_PERSISTED, 8),
+        (EVENT_CHECKOUT_OPENED, 6),
+        (EVENT_PAYMENT_COMPLETED, 4),
+    ]
+    repo.list_attribution_breakdown.return_value = [
+        {
+            "utm_source": "linkedin",
+            "utm_medium": "social",
+            "utm_campaign": "launch",
+            "event_count": 12,
+        }
+    ]
+    repo.list_content_engagement.side_effect = [
+        [{"slug": "platform-migration", "view_count": 9}],
+        [{"slug": "first-party-analytics", "view_count": 7}],
+    ]
+    conn = _mock_conn()
+    data = load_marketing_analytics_dashboard(conn, repo, date_range=RANGE, now=NOW)
+    assert data.event_counts[0].count == 50
     assert data.attribution[0].utm_source == "linkedin"
-    assert data.attribution[0].engagement_events == 20
-    assert data.attribution[0].leads == 2
-    assert data.case_study_views[0].slug == "northwind-labs"
+    assert data.case_study_engagement[0].slug == "platform-migration"
+    assert data.conversion_rates
+    repo.count_events_by_name.assert_called_once()
+    assert repo.list_content_engagement.call_count == 2
 
 
 @pytest.mark.unit
-def test_postgres_repository_event_count_query_is_bounded() -> None:
+def test_postgres_count_events_by_name_query() -> None:
     repo = PostgresMarketingAnalyticsRepository()
-    start = NOW - timedelta(days=7)
-    end_exclusive = NOW + timedelta(days=1)
-    conn = _mock_conn(
-        [
-            {"event_name": EVENT_LANDING_VIEWED, "total": 12},
-        ]
-    )
+    conn = _mock_conn([{"event_name": EVENT_LANDING_VIEWED, "total": 3}])
     rows = repo.count_events_by_name(
         conn,
-        start=start,
-        end_exclusive=end_exclusive,
+        start=RANGE.start,
+        end=RANGE.end,
         event_names=(EVENT_LANDING_VIEWED,),
     )
+    assert rows == [(EVENT_LANDING_VIEWED, 3)]
     sql = conn.cursor.return_value.__enter__.return_value.execute.call_args[0][0]
+    assert "analytics_events" in sql
     assert "occurred_at >=" in sql
-    assert "occurred_at <" in sql
-    assert rows == [(EVENT_LANDING_VIEWED, 12)]
 
 
 @pytest.mark.unit
-def test_postgres_repository_content_views_requires_allowlisted_slug() -> None:
+def test_postgres_list_content_engagement_rejects_unknown_slug() -> None:
     repo = PostgresMarketingAnalyticsRepository()
+    conn = _mock_conn()
     with pytest.raises(ValueError, match="unsupported slug property"):
-        repo.count_content_views(
-            MagicMock(),
-            start=NOW,
-            end_exclusive=NOW + timedelta(days=1),
+        repo.list_content_engagement(
+            conn,
+            start=RANGE.start,
+            end=RANGE.end,
             event_name="Case Study Viewed",
-            slug_property="visitor_id",
+            slug_property="evil_slug",
             limit=10,
         )
 
 
 @pytest.mark.unit
-def test_postgres_repository_attribution_rollup_limits_rows() -> None:
-    repo = PostgresMarketingAnalyticsRepository()
-    conn = _mock_conn([{"utm_source": "linkedin", "utm_medium": "social", "utm_campaign": "x", "engagement_events": 3}])
-    rows = repo.count_engagement_attribution(
-        conn,
-        start=NOW,
-        end_exclusive=NOW + timedelta(days=1),
-        limit=ATTRIBUTION_ROW_LIMIT,
-    )
-    sql = conn.cursor.return_value.__enter__.return_value.execute.call_args[0][0]
-    assert "attribution->>'utm_source'" in sql
-    assert "LIMIT" in sql
-    assert rows[0]["utm_source"] == "linkedin"
+def test_render_analytics_export_csv_aggregated_only() -> None:
+    data = empty_dashboard_data(RANGE)
+    csv_body = render_analytics_export_csv(data)
+    assert "Marketing analytics export" in csv_body
+    assert "date_from" in csv_body
+    assert "anonymous_session" not in csv_body.lower()
+    assert "Event counts" in csv_body
+    assert "Conversion rates" in csv_body
+    assert "Attribution" in csv_body

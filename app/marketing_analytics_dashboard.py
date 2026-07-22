@@ -1,10 +1,10 @@
-"""Marketing funnel, attribution, and content analytics — explicit metric definitions."""
+"""Marketing analytics dashboard — funnel, attribution, and content engagement."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
-from typing import Any, Literal
+from typing import Any
 
 import psycopg
 
@@ -15,94 +15,132 @@ from app.analytics_event_schema import (
     EVENT_CASE_STUDY_VIEWED,
     EVENT_CHECKOUT_OPENED,
     EVENT_CONTACT_INITIATED,
-    EVENT_INSIGHT_VIEWED,
     EVENT_INSIGHTS_VIEWED,
+    EVENT_INSIGHT_VIEWED,
     EVENT_LANDING_VIEWED,
     EVENT_LEAD_PERSISTED,
     EVENT_PAYMENT_COMPLETED,
     EVENT_SERVICES_VIEWED,
+    UTM_ATTRIBUTION_KEYS,
 )
 from app.repositories.protocols import MarketingAnalyticsRepository
 
+DEFAULT_DATE_RANGE_DAYS = 7
+MAX_DATE_RANGE_DAYS = 90
+DEFAULT_LIST_LIMIT = 20
 DASHBOARD_TIMEZONE = "UTC"
-DEFAULT_RANGE_DAYS = 7
-MAX_RANGE_DAYS = 90
-ATTRIBUTION_ROW_LIMIT = 50
-CONTENT_SLUG_LIMIT = 30
 
-METRIC_EVENT_WINDOW = (
-    f"Events counted when occurred_at falls in the selected inclusive UTC date range "
-    f"({DASHBOARD_TIMEZONE}). Late-arriving rows use occurred_at, not received_at. "
-    "Duplicates are prevented at ingest via idempotency_key; bots and DNT traffic are "
-    "dropped before persistence."
+# Dashboard event rows in display order (label, event_name, authoritative).
+DASHBOARD_EVENT_ROWS: tuple[tuple[str, str, bool], ...] = (
+    ("Landing views", EVENT_LANDING_VIEWED, False),
+    ("Services views", EVENT_SERVICES_VIEWED, False),
+    ("Case studies index", EVENT_CASE_STUDIES_VIEWED, False),
+    ("Case study views", EVENT_CASE_STUDY_VIEWED, False),
+    ("Insights index", EVENT_INSIGHTS_VIEWED, False),
+    ("Insight views", EVENT_INSIGHT_VIEWED, False),
+    ("Brief views", EVENT_BRIEF_VIEWED, False),
+    ("Brief form starts", EVENT_BRIEF_FORM_STARTED, False),
+    ("Leads persisted", EVENT_LEAD_PERSISTED, True),
+    ("Checkouts opened", EVENT_CHECKOUT_OPENED, True),
+    ("Payments completed", EVENT_PAYMENT_COMPLETED, True),
+    ("Contact initiated", EVENT_CONTACT_INITIATED, False),
 )
-METRIC_BROWSER_ENGAGEMENT = (
-    "Non-authoritative browser engagement events from analytics_events. "
-    "These measure interest only — not CRM or payment truth."
+
+DASHBOARD_EVENT_NAMES = frozenset(name for _, name, _ in DASHBOARD_EVENT_ROWS)
+
+METRIC_EVENT_COUNTS = (
+    "Distinct analytics_events rows grouped by event_name within the selected UTC "
+    f"date range on occurred_at (inclusive bounds). Browser events are non-authoritative; "
+    "server events (Lead Persisted, Checkout Opened, Payment Completed) are authoritative "
+    "for funnel conversion truth. Duplicates are prevented at ingest via idempotency_key."
 )
-METRIC_SERVER_CONVERSION = (
-    "Authoritative server conversion events from analytics_events "
-    "(Lead Persisted, Checkout Opened, Payment Completed). "
-    "These are the source of truth for funnel steps 5–7."
+METRIC_CONVERSION_RATES = (
+    "Each rate is numerator ÷ denominator × 100 within the same UTC date window on "
+    "occurred_at. Denominator zero yields no rate (—). Server events are used for "
+    "steps 5–7; browser events are engagement-only for earlier steps."
 )
 METRIC_ATTRIBUTION = (
-    "Allowlisted utm_source, utm_medium, and utm_campaign only. "
-    "Engagement counts come from analytics_events.attribution; "
-    "leads and payments come from project_briefs UTM columns in the same window."
+    "Aggregated counts from allowlisted UTM keys in analytics_events.attribution "
+    f"({', '.join(sorted(UTM_ATTRIBUTION_KEYS))}). No per-session browsing trails."
 )
-METRIC_CONTENT_ENGAGEMENT = (
-    "Aggregated view counts by slug — no per-visitor session history is shown."
+METRIC_CASE_STUDY_ENGAGEMENT = (
+    "Aggregated Case Study Viewed counts grouped by server-known case_study_slug "
+    "property — no individual visitor history."
 )
-
-BROWSER_ENGAGEMENT_EVENTS: tuple[str, ...] = (
-    EVENT_LANDING_VIEWED,
-    EVENT_SERVICES_VIEWED,
-    EVENT_CASE_STUDIES_VIEWED,
-    EVENT_INSIGHTS_VIEWED,
-    EVENT_BRIEF_VIEWED,
-    EVENT_BRIEF_FORM_STARTED,
-    EVENT_CONTACT_INITIATED,
+METRIC_INSIGHT_ENGAGEMENT = (
+    "Aggregated Insight Viewed counts grouped by server-known article_slug property "
+    "— no individual visitor history."
 )
 
-SERVER_CONVERSION_EVENTS: tuple[str, ...] = (
-    EVENT_LEAD_PERSISTED,
-    EVENT_CHECKOUT_OPENED,
-    EVENT_PAYMENT_COMPLETED,
+CONVERSION_RATE_SPECS: tuple[tuple[str, str, str, str], ...] = (
+    (
+        "landing_to_brief",
+        "Landing → brief view",
+        EVENT_BRIEF_VIEWED,
+        EVENT_LANDING_VIEWED,
+    ),
+    (
+        "brief_to_form",
+        "Brief view → form start",
+        EVENT_BRIEF_FORM_STARTED,
+        EVENT_BRIEF_VIEWED,
+    ),
+    (
+        "form_to_lead",
+        "Form start → lead persisted",
+        EVENT_LEAD_PERSISTED,
+        EVENT_BRIEF_FORM_STARTED,
+    ),
+    (
+        "lead_to_checkout",
+        "Lead → checkout opened",
+        EVENT_CHECKOUT_OPENED,
+        EVENT_LEAD_PERSISTED,
+    ),
+    (
+        "checkout_to_payment",
+        "Checkout → payment completed",
+        EVENT_PAYMENT_COMPLETED,
+        EVENT_CHECKOUT_OPENED,
+    ),
+    (
+        "form_to_payment",
+        "Form start → payment completed",
+        EVENT_PAYMENT_COMPLETED,
+        EVENT_BRIEF_FORM_STARTED,
+    ),
 )
-
-CONTENT_EVENTS: tuple[tuple[str, str], ...] = (
-    (EVENT_CASE_STUDY_VIEWED, "case_study_slug"),
-    (EVENT_INSIGHT_VIEWED, "article_slug"),
-)
-
-EventSource = Literal["browser", "server"]
 
 
 @dataclass(frozen=True)
-class MarketingAnalyticsFilters:
+class AnalyticsDateRange:
+    """Bounded UTC window for dashboard queries."""
+
     start: datetime
-    end_exclusive: datetime
-    start_date: date
-    end_date: date
-    start_raw: str
-    end_raw: str
+    end: datetime
+    date_from: date
+    date_to: date
+    date_from_raw: str
+    date_to_raw: str
 
 
 @dataclass(frozen=True)
 class EventCountRow:
+    label: str
     event_name: str
     count: int
-    source: EventSource
+    authoritative: bool
 
 
 @dataclass(frozen=True)
 class ConversionRateRow:
+    key: str
     label: str
     numerator: int
     denominator: int
     rate_pct: float | None
-    numerator_definition: str
-    denominator_definition: str
+    numerator_event: str
+    denominator_event: str
 
 
 @dataclass(frozen=True)
@@ -110,36 +148,31 @@ class AttributionRow:
     utm_source: str
     utm_medium: str
     utm_campaign: str
-    engagement_events: int
-    leads: int
-    payments: int
+    event_count: int
 
 
 @dataclass(frozen=True)
 class ContentEngagementRow:
     slug: str
-    views: int
+    view_count: int
 
 
 @dataclass(frozen=True)
 class MarketingAnalyticsDashboardData:
-    filters: MarketingAnalyticsFilters
-    engagement_events: tuple[EventCountRow, ...]
-    server_events: tuple[EventCountRow, ...]
+    date_range: AnalyticsDateRange
+    event_counts: tuple[EventCountRow, ...]
     conversion_rates: tuple[ConversionRateRow, ...]
     attribution: tuple[AttributionRow, ...]
-    case_study_views: tuple[ContentEngagementRow, ...]
-    article_views: tuple[ContentEngagementRow, ...]
+    case_study_engagement: tuple[ContentEngagementRow, ...]
+    insight_engagement: tuple[ContentEngagementRow, ...]
     generated_at: datetime
-    metric_definitions: dict[str, str] = field(
-        default_factory=lambda: {
-            "event_window": METRIC_EVENT_WINDOW,
-            "browser_engagement": METRIC_BROWSER_ENGAGEMENT,
-            "server_conversion": METRIC_SERVER_CONVERSION,
-            "attribution": METRIC_ATTRIBUTION,
-            "content_engagement": METRIC_CONTENT_ENGAGEMENT,
-        }
-    )
+    metric_definitions: dict[str, str] = field(default_factory=lambda: {
+        "event_counts": METRIC_EVENT_COUNTS,
+        "conversion_rates": METRIC_CONVERSION_RATES,
+        "attribution": METRIC_ATTRIBUTION,
+        "case_study_engagement": METRIC_CASE_STUDY_ENGAGEMENT,
+        "insight_engagement": METRIC_INSIGHT_ENGAGEMENT,
+    })
 
 
 def _parse_date_param(value: str | None) -> date | None:
@@ -154,157 +187,70 @@ def _parse_date_param(value: str | None) -> date | None:
         return None
 
 
-def _default_end_date(reference: datetime) -> date:
-    return reference.astimezone(timezone.utc).date()
-
-
-def normalize_filters(
+def parse_analytics_date_range(
     *,
     date_from: str | None = None,
     date_to: str | None = None,
-    reference: datetime | None = None,
-) -> MarketingAnalyticsFilters:
-    """Validate and bound the analytics date range (UTC, inclusive calendar dates)."""
-    now = reference or datetime.now(timezone.utc)
-    end_date = _parse_date_param(date_to) or _default_end_date(now)
-    start_date = _parse_date_param(date_from) or (end_date - timedelta(days=DEFAULT_RANGE_DAYS - 1))
-    if start_date > end_date:
-        start_date, end_date = end_date, start_date
-    span_days = (end_date - start_date).days + 1
-    if span_days > MAX_RANGE_DAYS:
-        start_date = end_date - timedelta(days=MAX_RANGE_DAYS - 1)
-    start = datetime.combine(start_date, time.min, tzinfo=timezone.utc)
-    end_exclusive = datetime.combine(end_date + timedelta(days=1), time.min, tzinfo=timezone.utc)
-    return MarketingAnalyticsFilters(
+    now: datetime | None = None,
+) -> AnalyticsDateRange:
+    """Parse and bound date range params; default last 7 days in UTC."""
+    reference = now or datetime.now(timezone.utc)
+    today = reference.date()
+    parsed_to = _parse_date_param(date_to) or today
+    parsed_from = _parse_date_param(date_from) or (
+        parsed_to - timedelta(days=DEFAULT_DATE_RANGE_DAYS - 1)
+    )
+    if parsed_from > parsed_to:
+        parsed_from, parsed_to = parsed_to, parsed_from
+    if (parsed_to - parsed_from).days + 1 > MAX_DATE_RANGE_DAYS:
+        parsed_from = parsed_to - timedelta(days=MAX_DATE_RANGE_DAYS - 1)
+    start = datetime.combine(parsed_from, time.min, tzinfo=timezone.utc)
+    end = datetime.combine(parsed_to + timedelta(days=1), time.min, tzinfo=timezone.utc)
+    return AnalyticsDateRange(
         start=start,
-        end_exclusive=end_exclusive,
-        start_date=start_date,
-        end_date=end_date,
-        start_raw=start_date.isoformat(),
-        end_raw=end_date.isoformat(),
+        end=end,
+        date_from=parsed_from,
+        date_to=parsed_to,
+        date_from_raw=parsed_from.isoformat(),
+        date_to_raw=parsed_to.isoformat(),
     )
 
 
-def compute_rate_pct(numerator: int, denominator: int) -> float | None:
+def _format_rate(numerator: int, denominator: int) -> float | None:
     if denominator <= 0:
         return None
     return round(100.0 * numerator / denominator, 1)
 
 
-def _event_count(rows: tuple[EventCountRow, ...], event_name: str) -> int:
-    for row in rows:
-        if row.event_name == event_name:
-            return row.count
-    return 0
+def compute_conversion_rates(counts: dict[str, int]) -> tuple[ConversionRateRow, ...]:
+    """Build conversion rate rows from event name → count map."""
+    rows: list[ConversionRateRow] = []
+    for key, label, num_event, den_event in CONVERSION_RATE_SPECS:
+        numerator = counts.get(num_event, 0)
+        denominator = counts.get(den_event, 0)
+        rows.append(
+            ConversionRateRow(
+                key=key,
+                label=label,
+                numerator=numerator,
+                denominator=denominator,
+                rate_pct=_format_rate(numerator, denominator),
+                numerator_event=num_event,
+                denominator_event=den_event,
+            )
+        )
+    return tuple(rows)
 
 
-def _build_conversion_rates(
-    engagement: tuple[EventCountRow, ...],
-    server: tuple[EventCountRow, ...],
-) -> tuple[ConversionRateRow, ...]:
-    landing = _event_count(engagement, EVENT_LANDING_VIEWED)
-    brief_viewed = _event_count(engagement, EVENT_BRIEF_VIEWED)
-    form_started = _event_count(engagement, EVENT_BRIEF_FORM_STARTED)
-    leads = _event_count(server, EVENT_LEAD_PERSISTED)
-    checkouts = _event_count(server, EVENT_CHECKOUT_OPENED)
-    payments = _event_count(server, EVENT_PAYMENT_COMPLETED)
-
-    specs: list[tuple[str, int, int, str, str]] = [
-        (
-            "Brief view → form start",
-            form_started,
-            brief_viewed,
-            f"Count of `{EVENT_BRIEF_FORM_STARTED}` browser events",
-            f"Count of `{EVENT_BRIEF_VIEWED}` browser events",
-        ),
-        (
-            "Form start → lead",
-            leads,
-            form_started,
-            f"Count of `{EVENT_LEAD_PERSISTED}` server events",
-            f"Count of `{EVENT_BRIEF_FORM_STARTED}` browser events",
-        ),
-        (
-            "Lead → checkout",
-            checkouts,
-            leads,
-            f"Count of `{EVENT_CHECKOUT_OPENED}` server events",
-            f"Count of `{EVENT_LEAD_PERSISTED}` server events",
-        ),
-        (
-            "Checkout → payment",
-            payments,
-            checkouts,
-            f"Count of `{EVENT_PAYMENT_COMPLETED}` server events",
-            f"Count of `{EVENT_CHECKOUT_OPENED}` server events",
-        ),
-        (
-            "Landing → lead",
-            leads,
-            landing,
-            f"Count of `{EVENT_LEAD_PERSISTED}` server events",
-            f"Count of `{EVENT_LANDING_VIEWED}` browser events",
-        ),
-    ]
+def _build_event_counts(counts: dict[str, int]) -> tuple[EventCountRow, ...]:
     return tuple(
-        ConversionRateRow(
+        EventCountRow(
             label=label,
-            numerator=numerator,
-            denominator=denominator,
-            rate_pct=compute_rate_pct(numerator, denominator),
-            numerator_definition=numerator_def,
-            denominator_definition=denominator_def,
+            event_name=event_name,
+            count=counts.get(event_name, 0),
+            authoritative=authoritative,
         )
-        for label, numerator, denominator, numerator_def, denominator_def in specs
-    )
-
-
-def _merge_attribution(
-    engagement_rows: list[dict[str, Any]],
-    brief_rows: list[dict[str, Any]],
-) -> tuple[AttributionRow, ...]:
-    merged: dict[tuple[str, str, str], dict[str, int]] = {}
-    for row in engagement_rows:
-        key = (
-            str(row.get("utm_source") or "(direct)"),
-            str(row.get("utm_medium") or "(none)"),
-            str(row.get("utm_campaign") or "(none)"),
-        )
-        bucket = merged.setdefault(
-            key,
-            {"engagement_events": 0, "leads": 0, "payments": 0},
-        )
-        bucket["engagement_events"] += int(row.get("engagement_events") or 0)
-    for row in brief_rows:
-        key = (
-            str(row.get("utm_source") or "(direct)"),
-            str(row.get("utm_medium") or "(none)"),
-            str(row.get("utm_campaign") or "(none)"),
-        )
-        bucket = merged.setdefault(
-            key,
-            {"engagement_events": 0, "leads": 0, "payments": 0},
-        )
-        bucket["leads"] += int(row.get("leads") or 0)
-        bucket["payments"] += int(row.get("payments") or 0)
-    ordered = sorted(
-        merged.items(),
-        key=lambda item: (
-            -item[1]["leads"],
-            -item[1]["engagement_events"],
-            item[0],
-        ),
-    )[:ATTRIBUTION_ROW_LIMIT]
-    return tuple(
-        AttributionRow(
-            utm_source=key[0],
-            utm_medium=key[1],
-            utm_campaign=key[2],
-            engagement_events=values["engagement_events"],
-            leads=values["leads"],
-            payments=values["payments"],
-        )
-        for key, values in ordered
+        for label, event_name, authoritative in DASHBOARD_EVENT_ROWS
     )
 
 
@@ -312,83 +258,137 @@ def load_marketing_analytics_dashboard(
     conn: psycopg.Connection,
     repo: MarketingAnalyticsRepository,
     *,
-    date_from: str | None = None,
-    date_to: str | None = None,
-    reference: datetime | None = None,
+    date_range: AnalyticsDateRange,
+    now: datetime | None = None,
+    list_limit: int = DEFAULT_LIST_LIMIT,
 ) -> MarketingAnalyticsDashboardData:
-    """Load marketing analytics dashboard sections from the repository."""
-    filters = normalize_filters(
-        date_from=date_from,
-        date_to=date_to,
-        reference=reference,
-    )
-    generated = reference or datetime.now(timezone.utc)
-
-    engagement_counts = repo.count_events_by_name(
+    """Load marketing analytics aggregates for the selected date range."""
+    raw_counts = repo.count_events_by_name(
         conn,
-        start=filters.start,
-        end_exclusive=filters.end_exclusive,
-        event_names=BROWSER_ENGAGEMENT_EVENTS,
+        start=date_range.start,
+        end=date_range.end,
+        event_names=tuple(DASHBOARD_EVENT_NAMES),
     )
-    server_counts = repo.count_events_by_name(
+    counts = dict(raw_counts)
+    attribution_rows = repo.list_attribution_breakdown(
         conn,
-        start=filters.start,
-        end_exclusive=filters.end_exclusive,
-        event_names=SERVER_CONVERSION_EVENTS,
+        start=date_range.start,
+        end=date_range.end,
+        limit=list_limit,
     )
-
-    engagement = tuple(
-        EventCountRow(event_name=name, count=count, source="browser")
-        for name, count in engagement_counts
-    )
-    server = tuple(
-        EventCountRow(event_name=name, count=count, source="server")
-        for name, count in server_counts
-    )
-
-    case_study_rows = repo.count_content_views(
+    case_study_rows = repo.list_content_engagement(
         conn,
-        start=filters.start,
-        end_exclusive=filters.end_exclusive,
+        start=date_range.start,
+        end=date_range.end,
         event_name=EVENT_CASE_STUDY_VIEWED,
         slug_property="case_study_slug",
-        limit=CONTENT_SLUG_LIMIT,
+        limit=list_limit,
     )
-    article_rows = repo.count_content_views(
+    insight_rows = repo.list_content_engagement(
         conn,
-        start=filters.start,
-        end_exclusive=filters.end_exclusive,
+        start=date_range.start,
+        end=date_range.end,
         event_name=EVENT_INSIGHT_VIEWED,
         slug_property="article_slug",
-        limit=CONTENT_SLUG_LIMIT,
+        limit=list_limit,
     )
-
-    attribution = _merge_attribution(
-        repo.count_engagement_attribution(
-            conn,
-            start=filters.start,
-            end_exclusive=filters.end_exclusive,
-            limit=ATTRIBUTION_ROW_LIMIT,
-        ),
-        repo.count_brief_attribution(
-            conn,
-            start=filters.start,
-            end_exclusive=filters.end_exclusive,
-            limit=ATTRIBUTION_ROW_LIMIT,
-        ),
-    )
-
     return MarketingAnalyticsDashboardData(
-        filters=filters,
-        engagement_events=engagement,
-        server_events=server,
-        conversion_rates=_build_conversion_rates(engagement, server),
-        attribution=attribution,
-        case_study_views=tuple(
-            ContentEngagementRow(slug=slug, views=views) for slug, views in case_study_rows
+        date_range=date_range,
+        event_counts=_build_event_counts(counts),
+        conversion_rates=compute_conversion_rates(counts),
+        attribution=tuple(
+            AttributionRow(
+                utm_source=str(row["utm_source"]),
+                utm_medium=str(row["utm_medium"]),
+                utm_campaign=str(row["utm_campaign"]),
+                event_count=int(row["event_count"]),
+            )
+            for row in attribution_rows
         ),
-        article_views=tuple(
-            ContentEngagementRow(slug=slug, views=views) for slug, views in article_rows
+        case_study_engagement=tuple(
+            ContentEngagementRow(slug=str(row["slug"]), view_count=int(row["view_count"]))
+            for row in case_study_rows
         ),
-        generated_at=generated,
+        insight_engagement=tuple(
+            ContentEngagementRow(slug=str(row["slug"]), view_count=int(row["view_count"]))
+            for row in insight_rows
+        ),
+        generated_at=now or datetime.now(timezone.utc),
     )
+
+
+def empty_dashboard_data(date_range: AnalyticsDateRange) -> MarketingAnalyticsDashboardData:
+    """Zeroed dashboard shell for missing DB or empty ranges."""
+    return MarketingAnalyticsDashboardData(
+        date_range=date_range,
+        event_counts=_build_event_counts({}),
+        conversion_rates=compute_conversion_rates({}),
+        attribution=(),
+        case_study_engagement=(),
+        insight_engagement=(),
+        generated_at=datetime.now(timezone.utc),
+    )
+
+
+def dashboard_has_data(data: MarketingAnalyticsDashboardData) -> bool:
+    """True when any section has non-zero aggregates."""
+    if any(row.count > 0 for row in data.event_counts):
+        return True
+    if data.attribution:
+        return True
+    if data.case_study_engagement or data.insight_engagement:
+        return True
+    return False
+
+
+def render_analytics_export_csv(data: MarketingAnalyticsDashboardData) -> str:
+    """CSV export with aggregated results only."""
+    import csv
+    import io
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    dr = data.date_range
+    writer.writerow(["Marketing analytics export"])
+    writer.writerow(["date_from", dr.date_from_raw])
+    writer.writerow(["date_to", dr.date_to_raw])
+    writer.writerow(["timezone", DASHBOARD_TIMEZONE])
+    writer.writerow([])
+    writer.writerow(["Event counts"])
+    writer.writerow(["label", "event_name", "source", "count"])
+    for row in data.event_counts:
+        source = "server" if row.authoritative else "browser"
+        writer.writerow([row.label, row.event_name, source, row.count])
+    writer.writerow([])
+    writer.writerow(["Conversion rates"])
+    writer.writerow(
+        ["label", "numerator_event", "numerator", "denominator_event", "denominator", "rate_pct"]
+    )
+    for row in data.conversion_rates:
+        rate = "" if row.rate_pct is None else row.rate_pct
+        writer.writerow(
+            [
+                row.label,
+                row.numerator_event,
+                row.numerator,
+                row.denominator_event,
+                row.denominator,
+                rate,
+            ]
+        )
+    writer.writerow([])
+    writer.writerow(["Attribution"])
+    writer.writerow(["utm_source", "utm_medium", "utm_campaign", "event_count"])
+    for row in data.attribution:
+        writer.writerow([row.utm_source, row.utm_medium, row.utm_campaign, row.event_count])
+    writer.writerow([])
+    writer.writerow(["Case study engagement"])
+    writer.writerow(["slug", "view_count"])
+    for row in data.case_study_engagement:
+        writer.writerow([row.slug, row.view_count])
+    writer.writerow([])
+    writer.writerow(["Insight engagement"])
+    writer.writerow(["slug", "view_count"])
+    for row in data.insight_engagement:
+        writer.writerow([row.slug, row.view_count])
+    return buffer.getvalue()
