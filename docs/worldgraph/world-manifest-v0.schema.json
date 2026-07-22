@@ -6,6 +6,28 @@
   "type": "object",
   "required": ["schema_version", "identity", "experience", "ai_role", "trust"],
   "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "required": ["trust"],
+        "properties": {
+          "trust": {
+            "required": ["qualification_status"],
+            "properties": {
+              "qualification_status": { "const": "excluded" }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "trust": {
+            "required": ["exclusion_reason"]
+          }
+        }
+      }
+    }
+  ],
   "properties": {
     "schema_version": {
       "type": "string",

@@ -151,7 +151,7 @@
     "qualification_status": "excluded",
     "claim_status": "unclaimed",
     "exclusion_reason": {
-      "value": "rule_2_platform_engine_product_not_world_experience",
+      "value": "platform_product_not_world",
       "provenance": {
         "source_kind": "derived",
         "source_url": "https://example-worlds.test/negative/engine",
