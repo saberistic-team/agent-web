@@ -1,8 +1,4 @@
-"""Central admin response security-header and CSP policy (#308).
-
-Admin cache isolation (``Cache-Control: no-store, private``) is owned by issue
-#337 — this module must not emit cache directives.
-"""
+"""Central admin response security-header, CSP, and cache policy (#308, #337)."""
 
 from __future__ import annotations
 
@@ -171,3 +167,16 @@ def apply_admin_security_headers(
 def apply_static_asset_headers(response: Response) -> None:
     """Attach MIME-sniff protection to static asset responses."""
     apply_response_headers(response, static_asset_security_headers())
+
+
+ADMIN_CACHE_CONTROL = "no-store, private"
+
+
+def admin_cache_headers() -> dict[str, str]:
+    """Return the admin cache-isolation directive (#337)."""
+    return {"Cache-Control": ADMIN_CACHE_CONTROL}
+
+
+def apply_admin_cache_headers(response: Response) -> None:
+    """Attach no-store cache isolation; replaces weaker downstream directives."""
+    apply_response_headers(response, admin_cache_headers())

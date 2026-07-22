@@ -34,6 +34,10 @@ RELATIONSHIP_STRENGTHS: dict[str, str] = {
     "strong": "Strong",
     "champion": "Champion",
 }
+CRM_CONTEXT_TAGS: dict[str, str] = {
+    "former_colleague": "Former colleague",
+    "warm_introducer": "Warm introducer",
+}
 EMAIL_PERMISSIONS: dict[str, str] = {
     "unknown": "Unknown",
     "inferred": "Inferred from public source",
@@ -121,6 +125,20 @@ def _validate_buying_roles(values: list[str] | None) -> list[str]:
     return normalized
 
 
+def _validate_crm_context_tags(values: list[str] | None) -> list[str]:
+    if not values:
+        return []
+    normalized: list[str] = []
+    for value in values:
+        if not value or not value.strip():
+            continue
+        if value not in CRM_CONTEXT_TAGS:
+            raise ValueError(f"unknown CRM context tag: {value}")
+        if value not in normalized:
+            normalized.append(value)
+    return normalized
+
+
 class ContactCreate(BaseModel):
     full_name: str = Field(min_length=1, max_length=500)
     title: str | None = Field(default=None, max_length=500)
@@ -132,6 +150,7 @@ class ContactCreate(BaseModel):
     relationship_strength: str | None = None
     notes: str | None = Field(default=None, max_length=10000)
     buying_roles: list[str] = Field(default_factory=list)
+    crm_context_tags: list[str] = Field(default_factory=list)
 
     @field_validator("full_name")
     @classmethod
@@ -171,28 +190,45 @@ class ContactCreate(BaseModel):
     def validate_roles(cls, value: list[str] | None) -> list[str]:
         return _validate_buying_roles(value)
 
+    @field_validator("crm_context_tags")
+    @classmethod
+    def validate_crm_context_tags(cls, value: list[str] | None) -> list[str]:
+        return _validate_crm_context_tags(value)
+
 
 def contact_audit_summary(contact: dict[str, Any]) -> dict[str, Any]:
     """Compact contact snapshot for audit events.
 
-    Email is intentionally omitted — it is sensitive and not required to
-    distinguish clear/replace/unchanged semantics for the other patch fields.
+    Email, profile URLs, and free-form notes are omitted; presence flags and
+    normalized registry fields are stored instead.
     """
     company_id = contact.get("company_id")
     last_interaction = contact.get("last_interaction_at")
+    archived_at = contact.get("archived_at")
     buying_roles = contact.get("buying_roles") or []
+    profile_url = contact.get("profile_url")
+    notes = contact.get("notes")
+    email = contact.get("email")
     return {
         "full_name": contact.get("full_name"),
         "title": contact.get("title"),
-        "profile_url": contact.get("profile_url"),
         "email_permission": contact.get("email_permission"),
         "company_id": str(company_id) if company_id else None,
         "last_interaction_at": (
-            last_interaction.isoformat() if last_interaction is not None else None
+            last_interaction.isoformat()
+            if hasattr(last_interaction, "isoformat")
+            else last_interaction
         ),
         "relationship_strength": contact.get("relationship_strength"),
-        "notes": contact.get("notes"),
         "buying_roles": list(buying_roles),
+        "archived_at": (
+            archived_at.isoformat()
+            if hasattr(archived_at, "isoformat")
+            else archived_at
+        ),
+        "has_email": bool(email and str(email).strip()),
+        "has_profile_url": bool(profile_url and str(profile_url).strip()),
+        "has_notes": bool(notes and str(notes).strip()),
     }
 
 
@@ -337,3 +373,9 @@ def format_buying_roles(values: list[str] | None) -> str:
     if not values:
         return "—"
     return ", ".join(BUYING_ROLES.get(role, role) for role in values)
+
+
+def format_crm_context_tags(values: list[str] | None) -> str:
+    if not values:
+        return "—"
+    return ", ".join(CRM_CONTEXT_TAGS.get(tag, tag) for tag in values)

@@ -21,6 +21,7 @@ from app.acquisition_pipeline import (
 )
 from app.actor_context import ActorContext
 from app.brief_conversion import (
+    ARCHIVED_CONTACT_ACK_REQUIRED_MESSAGE,
     BriefConversionError,
     BriefConversionIdempotencyRace,
     BriefConversionValidationError,
@@ -31,7 +32,6 @@ from app.brief_conversion_lock import acquire_brief_conversion_lock
 from app.companies import (
     CompanyCreate,
     CompanyUpdate,
-    company_audit_summary,
     find_domain_duplicate_warnings,
     normalize_domain,
 )
@@ -39,7 +39,6 @@ from app.contacts import (
     ContactCreate,
     ContactEmailConflictError,
     ContactUpdate,
-    contact_audit_summary,
     find_email_duplicate_warnings,
     find_name_company_duplicate_warnings,
     find_profile_url_duplicate_warnings,
@@ -47,6 +46,14 @@ from app.contacts import (
     ContactSafeSummary,
     contact_safe_summary,
     normalize_email,
+)
+from app.crm_lifecycle_audit import (
+    company_transition_summary,
+    contact_transition_summary,
+    record_company_create,
+    record_company_update_if_changed,
+    record_contact_create,
+    record_contact_update_if_changed,
 )
 from app.crm_uow import crm_transaction
 from app.patch import UNSET
@@ -65,30 +72,61 @@ from app.linkedin_import import (
 from app.linkedin_reconcile import (
     MatchResolution,
     compute_importable_updates,
+    is_field_user_owned,
+    parse_field_sources,
     preview_connection_row,
     resolve_company_id,
     resolve_connection_match,
+)
+from app.linkedin_relationship_metrics import (
+    assert_no_message_bodies,
+    build_connection_date_index,
+    merge_relationship_metrics,
+    metrics_last_interaction_date,
+    strip_message_bodies,
 )
 from app.pipeline_stages import (
     initial_pipeline_stage_for_brief_status,
     pipeline_stage_label,
     validate_stage,
 )
+from app.icp_scoring import (
+    IcpScoringRule,
+    calculate_icp_score,
+    default_icp_rules,
+    rule_from_row,
+)
+from app.qualification_targets import (
+    MAX_WORKING_LIST_ITEMS,
+    QualificationTargetFilters,
+    QualificationTargetRow,
+    WorkingListCreate,
+    build_target_row,
+    filter_target_rows,
+    rules_from_rows,
+    score_company_with_rules,
+    sort_target_rows,
+    tier_change_metadata,
+)
 from app.repositories import (
     ActivityRepository,
     AdminUserRepository,
     CompanyRepository,
     ContactRepository,
+    IcpScoringRepository,
     ImportBatchRepository,
     PipelineRepository,
     PostgresActivityRepository,
     PostgresAdminUserRepository,
     PostgresCompanyRepository,
     PostgresContactRepository,
+    PostgresIcpScoringRepository,
     PostgresImportBatchRepository,
     PostgresPipelineRepository,
+    PostgresQualificationRepository,
     PostgresResearchRecordRepository,
     PostgresSourceRecordRepository,
+    QualificationRepository,
     ResearchRecordRepository,
     SourceRecordRepository,
 )
@@ -104,6 +142,8 @@ class CrmRepositories:
     admin_users: AdminUserRepository
     pipeline: PipelineRepository
     import_batches: ImportBatchRepository
+    icp_scoring: IcpScoringRepository
+    qualification: QualificationRepository
 
 
 def default_crm_repositories() -> CrmRepositories:
@@ -116,6 +156,8 @@ def default_crm_repositories() -> CrmRepositories:
         admin_users=PostgresAdminUserRepository(),
         pipeline=PostgresPipelineRepository(),
         import_batches=PostgresImportBatchRepository(),
+        icp_scoring=PostgresIcpScoringRepository(),
+        qualification=PostgresQualificationRepository(),
     )
 
 
@@ -265,6 +307,7 @@ class CrmService:
         contact_choice: str,
         selected_company_id: UUID | None = None,
         selected_contact_id: UUID | None = None,
+        acknowledge_archived_identity: bool = False,
     ) -> dict[str, Any]:
         """Create or link CRM records and pipeline state for one project brief."""
         brief_id = int(brief["id"])
@@ -283,11 +326,18 @@ class CrmService:
             else []
         )
         contact_match = self._repos.contacts.get_active_by_email(conn, email)
+        archived_match = (
+            None
+            if contact_match
+            else self._repos.contacts.get_archived_by_email(conn, email)
+        )
         self._validate_conversion_choices(
             company_choice=company_choice,
             contact_choice=contact_choice,
             company_matches=company_matches,
             contact_match=contact_match,
+            archived_match=archived_match,
+            acknowledge_archived_identity=acknowledge_archived_identity,
             selected_company_id=selected_company_id,
             selected_contact_id=selected_contact_id,
         )
@@ -615,6 +665,8 @@ class CrmService:
         contact_choice: str,
         company_matches: list[dict[str, Any]],
         contact_match: dict[str, Any] | None,
+        archived_match: dict[str, Any] | None = None,
+        acknowledge_archived_identity: bool = False,
         selected_company_id: UUID | None,
         selected_contact_id: UUID | None,
     ) -> None:
@@ -622,6 +674,10 @@ class CrmService:
             raise BriefConversionValidationError("Choose whether to create or link a company.")
         if contact_choice not in {"new", "existing"}:
             raise BriefConversionValidationError("Choose whether to create or link a contact.")
+
+        if archived_match is not None and contact_choice == "new":
+            if not acknowledge_archived_identity:
+                raise BriefConversionValidationError(ARCHIVED_CONTACT_ACK_REQUIRED_MESSAGE)
 
         if company_matches and company_choice == "existing":
             if selected_company_id is None:
@@ -709,10 +765,16 @@ class CrmService:
         conn: psycopg.Connection,
         *,
         company: CompanyCreate,
+        actor_context: ActorContext,
     ) -> dict[str, Any]:
         with crm_transaction(conn):
             duplicates = self._repos.companies.find_by_domain(conn, company.domain) if company.domain else []
             created = self._repos.companies.create(conn, **company.model_dump())
+            record_company_create(
+                conn,
+                actor_context=actor_context,
+                company=created,
+            )
         return {
             "company": created,
             "duplicate_warnings": find_domain_duplicate_warnings(
@@ -726,15 +788,12 @@ class CrmService:
         company_id: UUID,
         *,
         company: CompanyUpdate,
-        actor_context: ActorContext | None = None,
+        actor_context: ActorContext,
     ) -> dict[str, Any] | None:
         with crm_transaction(conn):
             existing = self._repos.companies.get_by_id(conn, company_id)
             if existing is None:
                 return None
-            summary_before = (
-                company_audit_summary(existing) if actor_context is not None else None
-            )
             duplicates = (
                 self._repos.companies.find_by_domain(
                     conn, company.domain, exclude_company_id=company_id
@@ -747,14 +806,13 @@ class CrmService:
             )
             if updated is None:
                 return None
-            if actor_context is not None:
-                audit_service.record_company_update(
-                    conn,
-                    actor_context=actor_context,
-                    entity_id=str(company_id),
-                    summary_before=summary_before,
-                    summary_after=company_audit_summary(updated),
-                )
+            record_company_update_if_changed(
+                conn,
+                actor_context=actor_context,
+                entity_id=str(company_id),
+                before_row=existing,
+                after_row=updated,
+            )
         return {
             "company": updated,
             "duplicate_warnings": find_domain_duplicate_warnings(
@@ -763,16 +821,51 @@ class CrmService:
         }
 
     def archive_company(
-        self, conn: psycopg.Connection, company_id: UUID
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        actor_context: ActorContext,
     ) -> dict[str, Any] | None:
         with crm_transaction(conn):
-            return self._repos.companies.archive(conn, company_id)
+            existing = self._repos.companies.get_by_id(conn, company_id)
+            if existing is None or existing.get("archived_at") is not None:
+                return None
+            summary_before = company_transition_summary(existing)
+            archived = self._repos.companies.archive(conn, company_id)
+            if archived is None:
+                return None
+            audit_service.record_company_archive(
+                conn,
+                actor_context=actor_context,
+                entity_id=str(company_id),
+                summary_before=summary_before,
+                summary_after=company_transition_summary(archived),
+            )
+            return archived
 
     def restore_company(
-        self, conn: psycopg.Connection, company_id: UUID
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        actor_context: ActorContext,
     ) -> dict[str, Any] | None:
+        archived = self._repos.companies.get_by_id(conn, company_id)
+        if archived is None or archived.get("archived_at") is None:
+            return None
         with crm_transaction(conn):
-            return self._repos.companies.restore(conn, company_id)
+            restored = self._repos.companies.restore(conn, company_id)
+            if restored is None:
+                return None
+            audit_service.record_company_restore(
+                conn,
+                actor_context=actor_context,
+                entity_id=str(company_id),
+                summary_before=company_transition_summary(archived),
+                summary_after=company_transition_summary(restored),
+            )
+            return restored
 
     def list_contacts_for_company(
         self,
@@ -817,6 +910,7 @@ class CrmService:
         conn: psycopg.Connection,
         *,
         contact: ContactCreate,
+        actor_context: ActorContext,
     ) -> dict[str, Any]:
         with crm_transaction(conn):
             profile_matches = (
@@ -845,6 +939,11 @@ class CrmService:
                 if not _is_contact_email_unique_violation(exc):
                     raise
                 raise ContactEmailConflictError(contact.email) from exc
+            record_contact_create(
+                conn,
+                actor_context=actor_context,
+                contact=created,
+            )
         duplicate_warnings = [
             *find_profile_url_duplicate_warnings(profile_matches, profile_url=contact.profile_url),
             *find_email_duplicate_warnings(email_matches, email=contact.email),
@@ -862,15 +961,12 @@ class CrmService:
         contact_id: UUID,
         *,
         contact: ContactUpdate,
-        actor_context: ActorContext | None = None,
+        actor_context: ActorContext,
     ) -> dict[str, Any] | None:
         with crm_transaction(conn):
             existing = self._repos.contacts.get_by_id(conn, contact_id)
             if existing is None:
                 return None
-            summary_before = (
-                contact_audit_summary(existing) if actor_context is not None else None
-            )
             profile_matches = (
                 self._repos.contacts.find_by_profile_url(
                     conn, contact.profile_url, exclude_contact_id=contact_id
@@ -905,14 +1001,13 @@ class CrmService:
                 raise ContactEmailConflictError(contact.email) from exc
             if updated is None:
                 return None
-            if actor_context is not None:
-                audit_service.record_contact_update(
-                    conn,
-                    actor_context=actor_context,
-                    entity_id=str(contact_id),
-                    summary_before=summary_before,
-                    summary_after=contact_audit_summary(updated),
-                )
+            record_contact_update_if_changed(
+                conn,
+                actor_context=actor_context,
+                entity_id=str(contact_id),
+                before_row=existing,
+                after_row=updated,
+            )
         duplicate_warnings = [
             *find_profile_url_duplicate_warnings(
                 profile_matches, profile_url=contact.profile_url, exclude_contact_id=contact_id
@@ -934,10 +1029,28 @@ class CrmService:
         return self.list_contacts(*args, **kwargs)
 
     def archive_contact(
-        self, conn: psycopg.Connection, contact_id: UUID
+        self,
+        conn: psycopg.Connection,
+        contact_id: UUID,
+        *,
+        actor_context: ActorContext,
     ) -> dict[str, Any] | None:
         with crm_transaction(conn):
-            return self._repos.contacts.archive(conn, contact_id)
+            existing = self._repos.contacts.get_by_id(conn, contact_id)
+            if existing is None or existing.get("archived_at") is not None:
+                return None
+            summary_before = contact_transition_summary(existing)
+            archived = self._repos.contacts.archive(conn, contact_id)
+            if archived is None:
+                return None
+            audit_service.record_contact_archive(
+                conn,
+                actor_context=actor_context,
+                entity_id=str(contact_id),
+                summary_before=summary_before,
+                summary_after=contact_transition_summary(archived),
+            )
+            return archived
 
     def restore_contact(
         self,
@@ -971,14 +1084,8 @@ class CrmService:
                     conn,
                     actor_context=actor_context,
                     contact_id=str(contact_id),
-                    summary_before={
-                        "archived_at": archived.get("archived_at"),
-                        "full_name": archived.get("full_name"),
-                    },
-                    summary_after={
-                        "archived_at": None,
-                        "full_name": restored.get("full_name"),
-                    },
+                    summary_before=contact_transition_summary(archived),
+                    summary_after=contact_transition_summary(restored),
                 )
                 return ContactRestoreResult(outcome="success", contact=restored)
         except pg_errors.UniqueViolation as exc:
@@ -1068,6 +1175,7 @@ class CrmService:
         self,
         conn: psycopg.Connection,
         *,
+        actor_context: ActorContext,
         record_type: str,
         company_id: UUID,
         body: str,
@@ -1097,6 +1205,24 @@ class CrmService:
                 review_at=review_at,
                 expires_at=expires_at,
                 metadata=metadata,
+            )
+            audit_service.record_research_record_create(
+                conn,
+                actor_context=actor_context,
+                research_record_id=str(record["id"]),
+                summary_after=audit_service.research_record_audit_summary(
+                    research_record_id=str(record["id"]),
+                    company_id=str(company_id),
+                    contact_id=str(contact_id) if contact_id is not None else None,
+                    record_type=record_type,
+                    source_name=source_name,
+                    source_url=source_url,
+                    observed_value=observed_value,
+                    observed_at=observed_at,
+                    confidence=confidence,
+                    review_at=review_at,
+                    expires_at=expires_at,
+                ),
             )
         return record
 
@@ -1249,6 +1375,8 @@ class CrmService:
         connections: list[dict[str, Any]],
         export_date: Any | None = None,
         checksum: str | None = None,
+        message_metadata: list[dict[str, Any]] | None = None,
+        owner_name: str | None = None,
     ) -> dict[str, Any]:
         """Merge LinkedIn connections incrementally without deleting absent records."""
         resolved_checksum = checksum or compute_import_checksum(connections)
@@ -1453,6 +1581,21 @@ class CrmService:
                     payload={"source_kind": SOURCE_KIND_CONNECTION, **identity},
                 )
 
+            if message_metadata and owner_name:
+                self._apply_linkedin_relationship_metrics(
+                    conn,
+                    connections=connections,
+                    message_rows=message_metadata,
+                    owner_name=owner_name,
+                    export_date=export_date,
+                    touched_contact_ids={
+                        UUID(str(record["entity_id"]))
+                        for record in row_records
+                        if record.get("entity_id") is not None
+                    },
+                    seen_at=seen_at,
+                )
+
             persisted_rows: list[dict[str, Any]] = []
             for record in row_records:
                 persisted_rows.append(
@@ -1496,6 +1639,51 @@ class CrmService:
             "idempotent": False,
             "summary_counts": summary,
         }
+
+    def _apply_linkedin_relationship_metrics(
+        self,
+        conn: psycopg.Connection,
+        *,
+        connections: list[dict[str, Any]],
+        message_rows: list[dict[str, Any]],
+        owner_name: str,
+        export_date: Any | None,
+        touched_contact_ids: set[UUID],
+        seen_at: datetime,
+    ) -> None:
+        assert_no_message_bodies(message_rows)
+        safe_rows = strip_message_bodies(message_rows)
+        reference_date = parse_export_date(export_date) or seen_at.date()
+        connection_index = build_connection_date_index(connections)
+
+        for contact_id in touched_contact_ids:
+            contact = self._repos.contacts.get_by_id(conn, contact_id)
+            if contact is None or contact.get("archived_at") is not None:
+                continue
+            contact_name = str(contact.get("full_name") or "")
+            if not contact_name.strip():
+                continue
+            profile_url = contact.get("profile_url")
+            connection_date = connection_index.get(str(profile_url)) if profile_url else None
+            existing_metrics = contact.get("relationship_metrics")
+            if not isinstance(existing_metrics, dict):
+                existing_metrics = {}
+            merged = merge_relationship_metrics(
+                existing_metrics,
+                contact_name=contact_name,
+                owner_name=owner_name,
+                connection_date=connection_date,
+                message_rows=safe_rows,
+                reference_date=reference_date,
+            )
+            updates: dict[str, Any] = {"relationship_metrics": merged}
+            field_sources = parse_field_sources(contact.get("field_sources"))
+            metrics_last = metrics_last_interaction_date(merged)
+            if metrics_last is not None and not is_field_user_owned(field_sources, "last_interaction_at"):
+                current_last = contact.get("last_interaction_at")
+                if current_last is None or metrics_last > current_last:
+                    updates["last_interaction_at"] = metrics_last
+            self._repos.contacts.update(conn, contact_id, **updates)
 
     def get_import_batch(
         self,
@@ -1839,6 +2027,7 @@ class CrmService:
         self,
         conn: psycopg.Connection,
         *,
+        actor_context: ActorContext,
         company_id: UUID,
         activity: PipelineActivityCreate,
     ) -> dict[str, Any]:
@@ -1851,6 +2040,18 @@ class CrmService:
                 company_id=company_id,
                 contact_id=contact_id,
                 metadata=activity.metadata,
+            )
+            audit_service.record_pipeline_activity_create(
+                conn,
+                actor_context=actor_context,
+                activity_id=str(created["id"]),
+                summary_after=audit_service.pipeline_activity_audit_summary(
+                    activity_id=str(created["id"]),
+                    company_id=str(company_id),
+                    contact_id=str(contact_id) if contact_id is not None else None,
+                    activity_type=activity.activity_type,
+                    created_at=created.get("created_at"),
+                ),
             )
         return created
 
@@ -1888,6 +2089,195 @@ class CrmService:
                 summary_after=summary_after,
             )
         return {"rule_id": rule_id, "summary_after": summary_after}
+
+    def list_active_icp_rules(self, conn: psycopg.Connection) -> list[dict[str, Any]]:
+        version = self._repos.icp_scoring.get_active_version(conn)
+        if version is None:
+            return []
+        return self._repos.icp_scoring.list_rules_for_version(conn, version["id"])
+
+    def get_active_icp_version(self, conn: psycopg.Connection) -> dict[str, Any] | None:
+        return self._repos.icp_scoring.get_active_version(conn)
+
+    def publish_icp_rule_version(
+        self,
+        conn: psycopg.Connection,
+        *,
+        actor_context: ActorContext,
+        rules: list[IcpScoringRule],
+        label: str | None = None,
+    ) -> dict[str, Any]:
+        active = self._repos.icp_scoring.get_active_version(conn)
+        if active is None:
+            raise ValueError("No active ICP scoring version configured.")
+        current_rules = [
+            rule_from_row(row)
+            for row in self._repos.icp_scoring.list_rules_for_version(conn, active["id"])
+        ]
+        current_by_id = {rule.id: rule for rule in current_rules}
+        next_number = int(active["version_number"]) + 1
+        version_label = label or f"ICP rules v{next_number}"
+
+        with crm_transaction(conn):
+            self._repos.icp_scoring.deactivate_all_versions(conn)
+            created_version = self._repos.icp_scoring.create_version(
+                conn,
+                version_number=next_number,
+                label=version_label,
+                created_by=actor_context.actor,
+                activate=True,
+            )
+            stored_rules: list[dict[str, Any]] = []
+            for rule in sorted(rules, key=lambda item: (item.sort_order, item.id)):
+                stored = self._repos.icp_scoring.insert_rule(
+                    conn,
+                    version_id=created_version["id"],
+                    rule_id=rule.id,
+                    dimension=rule.dimension,
+                    label=rule.label,
+                    weight=rule.weight,
+                    threshold=rule.threshold.model_dump(),
+                    enabled=rule.enabled,
+                    accept_hypothesis=rule.accept_hypothesis,
+                    sort_order=rule.sort_order,
+                )
+                stored_rules.append(stored)
+                prior = current_by_id.get(rule.id)
+                if prior is None or prior.model_dump() != rule.model_dump():
+                    audit_service.record_scoring_rule_update(
+                        conn,
+                        actor_context=actor_context,
+                        rule_id=rule.id,
+                        summary_before=prior.model_dump() if prior else None,
+                        summary_after=rule.model_dump(),
+                    )
+        return {"version": created_version, "rules": stored_rules}
+
+    def calculate_company_icp_score(
+        self,
+        conn: psycopg.Connection,
+        *,
+        actor_context: ActorContext,
+        company_id: UUID,
+        calculated_at: datetime | None = None,
+    ) -> dict[str, Any]:
+        company = self._repos.companies.get_by_id(conn, company_id)
+        if company is None:
+            raise ValueError("Company not found.")
+        version = self._repos.icp_scoring.get_active_version(conn)
+        if version is None:
+            raise ValueError("No active ICP scoring version configured.")
+        rules = [
+            rule_from_row(row)
+            for row in self._repos.icp_scoring.list_rules_for_version(conn, version["id"])
+        ]
+        contacts = self._repos.contacts.list_for_company(conn, company_id)
+        research_records = self._repos.research_records.list_for_company(conn, company_id)
+        result = calculate_icp_score(
+            company=company,
+            contacts=contacts,
+            research_records=research_records,
+            rules=rules,
+            version_number=int(version["version_number"]),
+            calculated_at=calculated_at,
+        )
+        with crm_transaction(conn):
+            snapshot = self._repos.icp_scoring.insert_snapshot(
+                conn,
+                company_id=company_id,
+                version_id=version["id"],
+                version_number=result.version_number,
+                total_score=result.total_score,
+                computed_score=result.computed_score,
+                breakdown=[item.model_dump() for item in result.breakdown],
+                missing_inputs=result.missing_inputs,
+                calculated_at=result.calculated_at,
+            )
+        return {"company": company, "result": result, "snapshot": snapshot}
+
+    def override_company_icp_score(
+        self,
+        conn: psycopg.Connection,
+        *,
+        actor_context: ActorContext,
+        company_id: UUID,
+        override_score: float,
+        reason: str,
+        calculated_at: datetime | None = None,
+    ) -> dict[str, Any]:
+        stripped_reason = reason.strip()
+        if not stripped_reason:
+            raise ValueError("Override reason is required.")
+        if override_score < 0 or override_score > 10:
+            raise ValueError("Override score must be between 0 and 10.")
+        company = self._repos.companies.get_by_id(conn, company_id)
+        if company is None:
+            raise ValueError("Company not found.")
+        version = self._repos.icp_scoring.get_active_version(conn)
+        if version is None:
+            raise ValueError("No active ICP scoring version configured.")
+        rules = [
+            rule_from_row(row)
+            for row in self._repos.icp_scoring.list_rules_for_version(conn, version["id"])
+        ]
+        contacts = self._repos.contacts.list_for_company(conn, company_id)
+        research_records = self._repos.research_records.list_for_company(conn, company_id)
+        result = calculate_icp_score(
+            company=company,
+            contacts=contacts,
+            research_records=research_records,
+            rules=rules,
+            version_number=int(version["version_number"]),
+            calculated_at=calculated_at,
+            is_override=True,
+            override_reason=stripped_reason,
+            override_by=actor_context.actor,
+            override_score=override_score,
+        )
+        with crm_transaction(conn):
+            snapshot = self._repos.icp_scoring.insert_snapshot(
+                conn,
+                company_id=company_id,
+                version_id=version["id"],
+                version_number=result.version_number,
+                total_score=result.total_score,
+                computed_score=result.computed_score,
+                breakdown=[item.model_dump() for item in result.breakdown],
+                missing_inputs=result.missing_inputs,
+                calculated_at=result.calculated_at,
+                is_override=True,
+                override_reason=stripped_reason,
+                override_by=actor_context.actor,
+            )
+        return {"company": company, "result": result, "snapshot": snapshot}
+
+    def get_company_icp_score_detail(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+    ) -> dict[str, Any] | None:
+        company = self._repos.companies.get_by_id(conn, company_id)
+        if company is None:
+            return None
+        snapshot = self._repos.icp_scoring.get_latest_snapshot_for_company(conn, company_id)
+        version = self._repos.icp_scoring.get_active_version(conn)
+        rules = []
+        if version is not None:
+            rules = self._repos.icp_scoring.list_rules_for_version(conn, version["id"])
+        return {
+            "company": company,
+            "snapshot": snapshot,
+            "active_version": version,
+            "active_rules": rules,
+        }
+
+    def list_company_icp_scores(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        return self._repos.icp_scoring.list_latest_snapshots(conn, limit=limit)
 
     def update_analytics_config(
         self,
@@ -2052,4 +2442,150 @@ class CrmService:
                 metadata={"item_key": item_key},
             )
         return {"item_key": item_key, "status": "replaced"}
+
+    @staticmethod
+    def _target_row_to_dict(row: QualificationTargetRow) -> dict[str, Any]:
+        return {
+            "company_id": row.company_id,
+            "id": row.company_id,
+            "name": row.name,
+            "score": row.score,
+            "tier": row.tier,
+            "stage": row.stage,
+            "vertical": row.vertical,
+            "strongest_signals": list(row.strongest_signals),
+            "warm_path": row.warm_path,
+            "has_warm_path": row.has_warm_path,
+            "next_action": row.next_action,
+            "evidence_freshness": row.evidence_freshness,
+            "missing_fields": list(row.missing_fields),
+            "pipeline_stage": row.pipeline_stage,
+            "pipeline_owner": row.pipeline_owner,
+            "score_calculated_at": row.score_calculated_at,
+            "stale_evidence": row.stale_evidence,
+        }
+
+    def list_qualification_targets(
+        self,
+        conn: psycopg.Connection,
+        *,
+        filters: QualificationTargetFilters | None = None,
+        actor: str | None = None,
+        persist_scores: bool = True,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        """Build tier A/B/C target rows from deterministic ICP scores."""
+        active_version = self._repos.icp_scoring.get_active_version(conn)
+        if active_version is None:
+            return []
+        version_id = UUID(str(active_version["id"]))
+        version_number = int(active_version["version_number"])
+        rules = rules_from_rows(
+            self._repos.icp_scoring.list_rules_for_version(conn, version_id)
+        )
+        companies = self._repos.qualification.list_active_companies(conn, limit=limit)
+        rows: list[QualificationTargetRow] = []
+        with crm_transaction(conn):
+            for company in companies:
+                company_id = UUID(str(company["id"]))
+                contacts = self._repos.contacts.list_for_company(conn, company_id, limit=200)
+                research = self._repos.research_records.list_for_company(
+                    conn, company_id, limit=200
+                )
+                score_result = score_company_with_rules(
+                    company=company,
+                    contacts=contacts,
+                    research_records=research,
+                    rules=rules,
+                    version_number=version_number,
+                )
+                target_row = build_target_row(company=company, score_result=score_result)
+                if target_row is None:
+                    continue
+                if persist_scores and actor:
+                    snapshot = self._repos.icp_scoring.insert_snapshot(
+                        conn,
+                        company_id=company_id,
+                        version_id=version_id,
+                        version_number=version_number,
+                        total_score=score_result.total_score,
+                        computed_score=score_result.computed_score,
+                        breakdown=[item.model_dump() for item in score_result.breakdown],
+                        missing_inputs=score_result.missing_inputs,
+                        calculated_at=score_result.calculated_at,
+                        is_override=score_result.is_override,
+                        override_reason=score_result.override_reason,
+                        override_by=score_result.override_by,
+                    )
+                    new_tier = target_row.tier
+                    previous_tier = self._repos.qualification.get_latest_tier_for_company(
+                        conn, company_id
+                    )
+                    if previous_tier != new_tier:
+                        self._repos.qualification.record_tier_change(
+                            conn,
+                            company_id=company_id,
+                            from_tier=previous_tier,
+                            to_tier=new_tier,
+                            score=score_result.total_score,
+                            changed_by=actor,
+                            snapshot_id=UUID(str(snapshot["id"])),
+                            metadata=tier_change_metadata(
+                                previous_tier=previous_tier,
+                                new_tier=new_tier,
+                                score=score_result.total_score,
+                            ),
+                        )
+                rows.append(target_row)
+        sorted_rows = sort_target_rows(rows)
+        if filters:
+            sorted_rows = filter_target_rows(sorted_rows, filters)
+        return [self._target_row_to_dict(row) for row in sorted_rows]
+
+    def list_qualification_tier_history(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        return self._repos.qualification.list_tier_history(conn, company_id, limit=limit)
+
+    def save_qualification_working_list(
+        self,
+        conn: psycopg.Connection,
+        *,
+        owner: str,
+        payload: WorkingListCreate,
+    ) -> dict[str, Any]:
+        company_ids = [UUID(value) for value in payload.company_ids]
+        if len(company_ids) > MAX_WORKING_LIST_ITEMS:
+            raise ValueError(f"working list cannot exceed {MAX_WORKING_LIST_ITEMS} companies")
+        with crm_transaction(conn):
+            return self._repos.qualification.create_working_list(
+                conn,
+                name=payload.name.strip(),
+                owner=owner,
+                company_ids=company_ids,
+                max_items=MAX_WORKING_LIST_ITEMS,
+            )
+
+    def list_qualification_working_lists(
+        self,
+        conn: psycopg.Connection,
+        *,
+        owner: str,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        return self._repos.qualification.list_working_lists_for_owner(
+            conn, owner=owner, limit=limit
+        )
+
+    def get_qualification_working_list_items(
+        self,
+        conn: psycopg.Connection,
+        list_id: UUID,
+    ) -> list[dict[str, Any]]:
+        return self._repos.qualification.get_working_list_items(conn, list_id)
+
 

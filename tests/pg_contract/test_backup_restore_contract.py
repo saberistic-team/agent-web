@@ -16,6 +16,12 @@ from scripts.crm_backup import (
     verify_restore,
 )
 
+# Migration 021 seeds the default Saberistic ICP version and ten rules.
+MIGRATION_SEEDED_TABLE_COUNTS: dict[str, int] = {
+    "icp_scoring_versions": 1,
+    "icp_scoring_rules": 10,
+}
+
 
 @pytest.mark.contract
 def test_export_manifest_structure_on_migrated_database(
@@ -26,13 +32,14 @@ def test_export_manifest_structure_on_migrated_database(
 
     snapshot = build_snapshot(pg_conn)
     assert validate_snapshot_structure(snapshot) == []
-    assert snapshot["schema_version"] == "018"
+    assert snapshot["schema_version"] == MIGRATIONS[-1].version
     assert set(snapshot["table_counts"]) == set(CRM_BACKUP_TABLES)
     assert snapshot["table_counts"]["schema_migrations"] == len(MIGRATIONS)
     for table in CRM_BACKUP_TABLES:
         if table == "schema_migrations":
             continue
-        assert snapshot["table_counts"][table] == 0
+        expected = MIGRATION_SEEDED_TABLE_COUNTS.get(table, 0)
+        assert snapshot["table_counts"][table] == expected
 
 
 @pytest.mark.contract

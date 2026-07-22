@@ -205,6 +205,98 @@ approval to the protected files. CI validates the repository-side inventory,
 workflow discovery, transitive helper coverage, and ownership mapping, but it
 cannot replace GitHub's review authorization.
 
+## Ruleset drift alerting
+
+The live ruleset has drifted from the checked-in policy **twice** now: once
+before the "Proof PR" evidence above was gathered (`require_code_owner_review`
+silently `false`), and again on 2026-07-16 when the ruleset's `enforcement`
+itself was found `disabled` via `gh api repos/saberistic-team/agent-web/rulesets`
+— the checked-in `.github/rulesets/independent-workflow-review.json` says
+`"enforcement": "active"`. Both times, the only visible symptom was the
+`test` job's "Validate workflow-governance ownership" step failing with
+`FAIL: live ruleset: ruleset enforcement must be active` — a bare CI red X on
+`main`, indistinguishable among the dozens of Builder/Reviewer bot pushes this
+repository runs per day. Nothing paged a human, so it can recur silently for
+hours (the second drift ran red across 6+ consecutive pushes to `main` before
+being noticed).
+
+`scripts/validate_workflow_governance.py`'s `report_ruleset_drift()` closes
+that gap: when the live-ruleset check fails specifically because of drift
+(not a code-side ownership/manifest problem this validator also checks), and
+`REPORT_GOVERNANCE_DRIFT=1` is set (`ci.yml` sets it only for `push` to
+`main`, never for PR runs), it files — or comments on, if already open — a
+single plain tracking issue titled *"Live ruleset drift: workflow-governance
+enforcement is not active"*. That issue deliberately carries **no**
+`status:*` / `type:*` / `priority:*` / `agent:*` label: this is a repository
+**settings** problem, and the Planner/Builder/dispatcher pipeline must never
+try to "fix" it with a code PR. Only a human repository admin can restore
+enforcement (see **Recovery and break-glass** below); the filed issue links
+straight to that procedure and to the exact validation command to run before
+closing it.
+
+## Automated commits must go through a PR (issue #362)
+
+Restoring live enforcement (above) immediately broke a *different* piece of
+automation that had quietly depended on the ruleset being drifted: the
+`Freeze shipped migrations` CI job pushed its `deploy: freeze …` commit
+**directly** to `main` via a minted Builder GitHub App token. With
+enforcement active and zero bypass actors, GitHub correctly rejects that:
+
+```
+422: {"message":"Repository rule violations found\n\nChanges must be made through a pull request.\n\n"}
+```
+
+This is not a bug in the ruleset — a bot pushing straight to a protected
+branch is exactly what "zero bypass actors" is supposed to stop, and adding
+one for this bot would reopen the hole #229/#252/#284 closed. The fix instead
+changed the automation itself (`scripts/freeze_shipped_migrations.py`,
+`scripts/github_api.py`): it now commits onto a deterministic
+`deploy/freeze-<versions>` branch, opens a PR against `main`, and enables
+GitHub's native auto-merge (`enablePullRequestAutoMerge`, GraphQL — there is
+no REST endpoint for it) so the PR merges itself the instant one human
+CODEOWNER approves. No further click needed, and no permanent ruleset bypass
+introduced. Re-running against the same missing digests reuses the existing
+branch/PR (`find_open_pr_for_branch`) instead of opening a duplicate each
+deploy.
+
+Any other automation that currently pushes straight to `main` (check for
+other direct `put_files(repo, "main", ...)` / `git/refs/heads/main` PATCH
+call sites before adding new ones) will hit the identical 422 and should use
+the same open-PR-with-auto-merge pattern rather than a bypass actor.
+
+### Post-deploy screenshots hit the same 422 (issue #366)
+
+The prior audit for this section checked `scripts/screenshot_deploy.py` and
+`scripts/codegen_models.py`'s `put_files()` call sites and found both only
+ever target `builder/*` PR head branches — but missed
+`scripts/post_deploy_visual.py`, a separate script that *imports*
+`upload_to_branch()` from `screenshot_deploy.py` and calls it (and
+`record_health()`) with the **default branch** (`main`) as the target. The
+`Post-deploy screenshots` CI job hit the identical
+`Changes must be made through a pull request` 422 once live enforcement was
+restored, for the same structural reason as issue #362.
+
+The fix follows the exact same pattern: `post_deploy_visual.py` now commits
+`/health` JSON and screenshot uploads onto a deterministic
+`deploy/screenshots-<sha>` branch (`record_branch_name()`), opens a PR
+against `main` (or reuses one via `find_open_pr_for_branch` if a rerun for
+the same deploy sha already has one open), and enables native auto-merge
+(`open_or_reuse_record_pr()`) — one human CODEOWNER approval lands it, no
+extra click. The PR title starts with `deploy: record post-deploy artifacts`
+so the eventual squash-merge commit on `main` still matches the `test` /
+`deploy` jobs' `startsWith(..., 'deploy: record')` skip filter and does not
+re-trigger the deploy pipeline.
+
+A separate bug compounded the same CI run: `ci.yml` interpolated
+`${{ github.event.head_commit.message }}` directly into the
+`--commit-message "..."` shell string. A commit message that itself quoted a
+422 error (containing a literal `"`) closed that string early and spilled the
+remainder into unrecognized `argv`, failing the job before it ever reached
+the push. Commit messages (and any other untrusted `github.event.*` text) must
+be passed to `run:` steps via `env:` and referenced as `"$VAR"`, never
+interpolated straight into the script string — this avoids both the quoting
+break and generic Actions script-injection risk.
+
 ## Recovery and break-glass
 
 Use break-glass only when a protected workflow blocks a production incident or

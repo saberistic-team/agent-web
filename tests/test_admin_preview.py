@@ -9,6 +9,8 @@ from uuid import UUID
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.conftest import enable_admin_preview_env
+
 from app.admin_preview import (
     COMPANY_NAMES,
     PREVIEW_COMPANY_ARCHIVED_ID,
@@ -26,6 +28,7 @@ from app.admin_preview import (
     build_preview_acquisition_dashboard_data,
     build_preview_companies,
     build_preview_company,
+    build_preview_company_contacts,
     build_preview_company_research,
     build_preview_contact,
     build_preview_contacts,
@@ -238,6 +241,60 @@ def test_preview_brief_rows_randomized_and_seed_stable() -> None:
 
 
 @pytest.mark.unit
+def test_preview_brief_rows_include_empty_and_no_email_convert_fixtures() -> None:
+    """Ids 6/7 (#276) are always present and legibly empty/no-email for convert previews."""
+    from app.admin_preview import (
+        PREVIEW_BRIEF_CONVERT_EMPTY_ID,
+        PREVIEW_BRIEF_CONVERT_NO_EMAIL_ID,
+        build_preview_brief_detail,
+        build_preview_brief_rows,
+    )
+
+    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
+    for seed in (1, 2, 3, 4, 5):
+        rows = build_preview_brief_rows(rng=random.Random(seed), now=now)
+        ids = {int(row["id"]) for row in rows}  # type: ignore[arg-type]
+        assert PREVIEW_BRIEF_CONVERT_EMPTY_ID in ids
+        assert PREVIEW_BRIEF_CONVERT_NO_EMAIL_ID in ids
+
+    empty = build_preview_brief_detail(PREVIEW_BRIEF_CONVERT_EMPTY_ID, rng=random.Random(5), now=now)
+    assert empty is not None
+    assert empty["website"] == ""
+    assert empty["contact_value"] == ""
+
+    no_email = build_preview_brief_detail(
+        PREVIEW_BRIEF_CONVERT_NO_EMAIL_ID, rng=random.Random(5), now=now
+    )
+    assert no_email is not None
+    assert no_email["website"] != ""
+    assert no_email["contact_value"] == ""
+
+
+@pytest.mark.unit
+def test_preview_brief_convert_matches_empty_and_no_email_have_no_matches() -> None:
+    from app.admin_preview import (
+        PREVIEW_BRIEF_CONVERT_EMPTY_ID,
+        PREVIEW_BRIEF_CONVERT_NO_EMAIL_ID,
+        preview_brief_convert_matches,
+    )
+
+    empty = preview_brief_convert_matches(PREVIEW_BRIEF_CONVERT_EMPTY_ID, price_cents=20_000)
+    assert empty["company_matches"] == []
+    assert empty["contact_matches"] == []
+    assert empty["archived_contact_match"] is None
+    assert empty["proposal"]["company_name"] == "Unknown company"
+    assert empty["proposal"]["domain"] is None
+    assert empty["proposal"]["contact_email"] == ""
+
+    no_email = preview_brief_convert_matches(PREVIEW_BRIEF_CONVERT_NO_EMAIL_ID, price_cents=20_000)
+    assert no_email["company_matches"] == []
+    assert no_email["contact_matches"] == []
+    assert no_email["archived_contact_match"] is None
+    assert no_email["proposal"]["company_name"] != "Unknown company"
+    assert no_email["proposal"]["contact_email"] == ""
+
+
+@pytest.mark.unit
 def test_preview_audit_events_seed_stable() -> None:
     from app.admin_preview import build_preview_audit_events
 
@@ -283,7 +340,7 @@ def test_admin_preview_briefs_list_and_detail_have_mock_data(
 
     from app.main import app
 
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch)
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
     monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
     monkeypatch.setenv(
@@ -292,7 +349,6 @@ def test_admin_preview_briefs_list_and_detail_have_mock_data(
     )
     monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
     monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "preview-limiter-secret-32chars-minimum!!")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     client = TestClient(app, follow_redirects=False)
     listing = client.get("/admin/briefs")
@@ -322,27 +378,14 @@ def test_admin_preview_briefs_list_and_detail_have_mock_data(
 
 @pytest.mark.unit
 def test_preview_restore_conflict_html_includes_mock_contacts(monkeypatch: pytest.MonkeyPatch) -> None:
-    import random
-
-    from argon2 import PasswordHasher
-
     from app.admin_preview import (
         PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID,
         preview_contact_restore_conflict,
     )
 
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "7")
-    monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
-    monkeypatch.setenv(
-        "ADMIN_PASSWORD_HASH",
-        PasswordHasher().hash("preview"),
-    )
-    monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
-    monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "preview-limiter-secret-32chars-minimum!!")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    enable_admin_preview_env(monkeypatch, preview_seed="7")
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    preview = preview_contact_restore_conflict(rng=random.Random(7))
+    preview = preview_contact_restore_conflict()
     client = TestClient(app, follow_redirects=False)
     response = client.get(
         f"/admin/contacts/{PREVIEW_CONTACT_RESTORE_CONFLICT_ARCHIVED_ID}/restore-conflict"
@@ -360,9 +403,9 @@ def test_preview_company_detail_archive_and_restore_actions(
     from argon2 import PasswordHasher
 
     from app.admin_auth import SESSION_COOKIE_NAME
+    from app.admin_preview_context import reset_preview_context_cache
 
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "11")
+    enable_admin_preview_env(monkeypatch, preview_seed="11")
     monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
     monkeypatch.setenv(
         "ADMIN_PASSWORD_HASH",
@@ -370,15 +413,13 @@ def test_preview_company_detail_archive_and_restore_actions(
     )
     monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
     monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "preview-limiter-secret-32chars-minimum!!")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
     monkeypatch.delenv("DATABASE_URL", raising=False)
+    reset_preview_context_cache()
     company, _contacts, _records = build_preview_company_detail(
         PREVIEW_COMPANY_DETAIL_ARCHIVE_ID,
-        rng=random.Random(11),
     )
     archived_company, _contacts2, _records2 = build_preview_company_detail(
         PREVIEW_COMPANY_DETAIL_RESTORE_ID,
-        rng=random.Random(11),
     )
     client = TestClient(app, follow_redirects=False)
     cookies = {SESSION_COOKIE_NAME: "preview-screenshot-session"}
@@ -411,9 +452,9 @@ def test_preview_contact_detail_and_edit_archive_restore_actions(
     from argon2 import PasswordHasher
 
     from app.admin_auth import SESSION_COOKIE_NAME
+    from app.admin_preview_context import reset_preview_context_cache
 
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("ADMIN_PREVIEW_SEED", "12")
+    enable_admin_preview_env(monkeypatch, preview_seed="12")
     monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
     monkeypatch.setenv(
         "ADMIN_PASSWORD_HASH",
@@ -421,15 +462,13 @@ def test_preview_contact_detail_and_edit_archive_restore_actions(
     )
     monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
     monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "preview-limiter-secret-32chars-minimum!!")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
     monkeypatch.delenv("DATABASE_URL", raising=False)
+    reset_preview_context_cache()
     contact, _company, _records = build_preview_contact_detail(
         PREVIEW_CONTACT_DETAIL_ARCHIVE_ID,
-        rng=random.Random(12),
     )
     archived_contact, _company2, _records2 = build_preview_contact_detail(
         PREVIEW_CONTACT_DETAIL_RESTORE_ID,
-        rng=random.Random(12),
     )
     client = TestClient(app, follow_redirects=False)
     cookies = {SESSION_COOKIE_NAME: "preview-screenshot-session"}
@@ -531,7 +570,7 @@ def test_preview_contacts_seed_stable() -> None:
 def test_preview_companies_uses_production_renderer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch)
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     client = TestClient(app, follow_redirects=False)
@@ -559,7 +598,7 @@ def test_preview_companies_uses_production_renderer(
 def test_preview_contacts_uses_production_renderer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch)
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     client = TestClient(app, follow_redirects=False)
@@ -630,12 +669,19 @@ def test_preview_company_contact_fixtures_resolve_and_render_markup() -> None:
 
     company_detail = render_admin_company_research_page(
         company=populated_company,
-        contacts=[populated_contact],
+        contacts=build_preview_company_contacts(
+            PREVIEW_COMPANY_POPULATED_ID, rng=rng
+        ),
         records=build_preview_company_research(PREVIEW_COMPANY_POPULATED_ID),
         csrf_token="csrf",
         admin_username="preview",
     )
     assert "Archive company" in company_detail
+    assert "Buying-group coverage" in company_detail
+    assert "Warm introduction paths" in company_detail
+    assert "Former colleague" in company_detail
+    assert "Stale employment" in company_detail
+    assert "Research gap" in company_detail
     assert 'id="source_url"' in company_detail
     assert 'type="url"' in company_detail
     assert 'type="number"' in company_detail
@@ -660,6 +706,9 @@ def test_preview_company_contact_fixtures_resolve_and_render_markup() -> None:
         admin_username="preview",
     )
     assert "Archive contact" in contact_detail
+    assert "LinkedIn-derived metrics" in contact_detail
+    assert "Operator judgment" in contact_detail
+    assert "Computed from export metadata" in contact_detail
 
     archived_contact_edit = render_contact_form_page(
         csrf_token="csrf",
@@ -677,7 +726,7 @@ def test_preview_company_contact_routes_return_expected_status(
 ) -> None:
     from argon2 import PasswordHasher
 
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch)
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
     monkeypatch.setenv("ADMIN_USERNAME", "preview-admin")
     monkeypatch.setenv(
@@ -686,7 +735,6 @@ def test_preview_company_contact_routes_return_expected_status(
     )
     monkeypatch.setenv("ADMIN_SESSION_SECRET", "preview-session-secret-32chars-minimum")
     monkeypatch.setenv("ADMIN_LOGIN_LIMITER_SECRET", "preview-limiter-secret-32chars-minimum!!")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     client = TestClient(app, follow_redirects=False)
 
@@ -800,6 +848,7 @@ def test_preview_import_batches_seed_stable() -> None:
 def test_preview_brief_conversion_states() -> None:
     from app.admin_preview import (
         PREVIEW_BRIEF_CONVERTED_ID,
+        PREVIEW_BRIEF_CONVERT_ARCHIVED_MATCH_ID,
         PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR,
         preview_brief_conversion_state,
         preview_brief_convert_matches,
@@ -816,7 +865,83 @@ def test_preview_brief_conversion_states() -> None:
     matches = preview_brief_convert_matches(4, price_cents=20_000)
     assert matches["company_matches"]
     assert matches["contact_matches"]
+    assert matches["archived_contact_match"] is None
     assert matches["proposal"]["pipeline_stage"] in {"qualified", "diagnostic_paid"}
+    archived_only = preview_brief_convert_matches(
+        PREVIEW_BRIEF_CONVERT_ARCHIVED_MATCH_ID,
+        price_cents=20_000,
+    )
+    assert archived_only["contact_matches"] == []
+    assert archived_only["archived_contact_match"] is not None
+    assert archived_only["archived_contact_match"]["full_name"]
+
+
+@pytest.mark.unit
+def test_preview_icp_score_rows_are_stable() -> None:
+    from app.admin_preview import build_preview_icp_score_rows
+
+    now = datetime(2026, 7, 15, 12, 0, tzinfo=timezone.utc)
+    a = build_preview_icp_score_rows(rng=random.Random(42), now=now)
+    b = build_preview_icp_score_rows(rng=random.Random(42), now=now)
+    assert a == b
+    assert len(a) >= 3
+    assert any(row["is_override"] for row in a)
+
+
+@pytest.mark.unit
+def test_preview_icp_detail_includes_breakdown_and_override() -> None:
+    from app.admin_preview import (
+        PREVIEW_PIPELINE_COMPANY_IDS,
+        build_preview_icp_score_detail,
+    )
+
+    now = datetime(2026, 7, 15, 12, 0, tzinfo=timezone.utc)
+    detail = build_preview_icp_score_detail(
+        PREVIEW_PIPELINE_COMPANY_IDS[1],
+        rng=random.Random(7),
+        now=now,
+    )
+    assert detail is not None
+    snapshot = detail["snapshot"]
+    assert snapshot["is_override"] is True
+    assert snapshot["override_reason"]
+    assert len(snapshot["breakdown"]) == 10
+
+
+@pytest.mark.unit
+def test_preview_qualification_targets_seed_stable() -> None:
+    import random
+
+    from app.admin_preview import build_preview_qualification_targets
+
+    now = datetime(2026, 7, 16, 12, 0, tzinfo=timezone.utc)
+    a = build_preview_qualification_targets(rng=random.Random(42), now=now)
+    b = build_preview_qualification_targets(rng=random.Random(42), now=now)
+    assert a == b
+    assert len(a) >= 3
+    assert all(row["tier"] in {"A", "B", "C"} for row in a)
+    assert all(int(row["score"]) >= 4 for row in a)
+
+
+@pytest.mark.unit
+def test_preview_qualification_targets_html_route() -> None:
+    import random
+
+    from app.admin_preview import build_preview_qualification_targets
+    from app.admin_qualification_pages import render_targets_list_page
+
+    rows = build_preview_qualification_targets(rng=random.Random(7))
+    html = render_targets_list_page(
+        targets=rows,
+        filters={key: None for key in ("tier", "category", "stage", "pipeline_stage", "owner", "freshness", "warm_path")},
+        working_lists=[],
+        csrf_token="csrf",
+        admin_username="preview",
+        preview_banner="Preview data — not production",
+    )
+    assert rows[0]["name"] in html
+    assert "Target lists" in html
+    assert "Preview data — not production" in html
 
 
 @pytest.mark.unit

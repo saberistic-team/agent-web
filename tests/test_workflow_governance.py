@@ -6,13 +6,17 @@ from pathlib import Path
 
 import pytest
 
+import github_api
 from validate_workflow_governance import (
+    GOVERNANCE_DRIFT_ISSUE_TITLE,
     PullRequestReview,
     discover_workflow_entrypoints,
     independent_codeowner_approval_satisfied,
     load_manifest,
     path_matches_any_pattern,
+    report_ruleset_drift,
     repository_files,
+    ruleset_drift_errors,
     transitive_script_closure,
     validate,
     validate_ruleset_payload,
@@ -188,11 +192,11 @@ def test_author_self_approval_is_rejected() -> None:
 
 def test_stale_approval_after_material_change_is_rejected() -> None:
     ok, reason = independent_codeowner_approval_satisfied(
-        pr_author="saberistic",
+        pr_author="builder-bot",
         head_sha="new-head",
         reviews=[
             PullRequestReview(
-                author_login="mehdidehdar",
+                author_login="saberistic",
                 state="APPROVED",
                 commit_oid="old-head",
             )
@@ -204,11 +208,11 @@ def test_stale_approval_after_material_change_is_rejected() -> None:
 
 def test_independent_human_codeowner_approval_succeeds() -> None:
     ok, reason = independent_codeowner_approval_satisfied(
-        pr_author="saberistic",
+        pr_author="builder-bot",
         head_sha="abc123",
         reviews=[
             PullRequestReview(
-                author_login="mehdidehdar",
+                author_login="saberistic",
                 state="APPROVED",
                 commit_oid="abc123",
             )
@@ -291,3 +295,97 @@ def test_all_workflow_discovered_scripts_are_manifest_protected() -> None:
         if not path_matches_any_pattern(script, patterns)
     ]
     assert unprotected == []
+
+
+def test_ruleset_drift_errors_filters_out_ownership_failures() -> None:
+    errors = [
+        "missing CODEOWNERS: .github/CODEOWNERS",
+        "live ruleset: ruleset enforcement must be active",
+        "unable to fetch live ruleset: ruleset not found: Require independent review",
+        "scripts/dispatch_queue.py has no human CODEOWNERS",
+    ]
+    assert ruleset_drift_errors(errors) == [
+        "live ruleset: ruleset enforcement must be active",
+        "unable to fetch live ruleset: ruleset not found: Require independent review",
+    ]
+
+
+def test_report_ruleset_drift_noop_without_drift_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("REPORT_GOVERNANCE_DRIFT", "1")
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        github_api, "api", lambda method, path, **kw: calls.append((method, path))
+    )
+    report_ruleset_drift("owner/repo", ["missing CODEOWNERS: .github/CODEOWNERS"])
+    assert calls == []
+
+
+def test_report_ruleset_drift_noop_when_not_opted_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("REPORT_GOVERNANCE_DRIFT", raising=False)
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        github_api, "api", lambda method, path, **kw: calls.append((method, path))
+    )
+    report_ruleset_drift(
+        "owner/repo", ["live ruleset: ruleset enforcement must be active"]
+    )
+    assert calls == []
+
+
+def test_report_ruleset_drift_creates_issue_when_none_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("REPORT_GOVERNANCE_DRIFT", "1")
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    calls: list[tuple[str, str, dict | None]] = []
+
+    def fake_api(method: str, path: str, *, body: dict | None = None, **kw: object) -> object:
+        calls.append((method, path, body))
+        if method == "GET":
+            return []
+        return {"number": 999}
+
+    monkeypatch.setattr(github_api, "api", fake_api)
+    report_ruleset_drift(
+        "owner/repo", ["live ruleset: ruleset enforcement must be active"]
+    )
+    creates = [c for c in calls if c[0] == "POST" and c[1].endswith("/issues")]
+    assert len(creates) == 1
+    assert creates[0][2]["title"] == GOVERNANCE_DRIFT_ISSUE_TITLE
+    assert "ruleset enforcement must be active" in creates[0][2]["body"]
+    for label_prefix in ("status:", "type:", "priority:", "agent:"):
+        assert label_prefix not in creates[0][2]["body"].split("@saberistic")[0]
+
+
+def test_report_ruleset_drift_comments_on_existing_open_issue(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("REPORT_GOVERNANCE_DRIFT", "1")
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    calls: list[tuple[str, str, dict | None]] = []
+
+    def fake_api(method: str, path: str, *, body: dict | None = None, **kw: object) -> object:
+        calls.append((method, path, body))
+        if method == "GET":
+            return [
+                {
+                    "number": 42,
+                    "title": GOVERNANCE_DRIFT_ISSUE_TITLE,
+                }
+            ]
+        raise AssertionError("must not create a duplicate issue")
+
+    monkeypatch.setattr(github_api, "api", fake_api)
+    monkeypatch.setattr(
+        github_api,
+        "post_issue_comment",
+        lambda repo, issue, body: calls.append(("COMMENT", str(issue), {"body": body})),
+    )
+    report_ruleset_drift(
+        "owner/repo", ["live ruleset: ruleset enforcement must be active"]
+    )
+    comments = [c for c in calls if c[0] == "COMMENT"]
+    assert len(comments) == 1
+    assert comments[0][1] == "42"

@@ -99,6 +99,13 @@ def test_contacts_route_requires_authentication() -> None:
 
 
 @pytest.mark.unit
+def test_company_research_page_requires_authentication() -> None:
+    response = client.get(f"/admin/companies/{COMPANY_ID}")
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/admin/login")
+
+
+@pytest.mark.unit
 def test_contacts_route_lists_contacts_when_authenticated() -> None:
     with patch("app.admin_routes.require_admin_session", return_value=_fake_session()):
         response = client.get("/admin/contacts")
@@ -245,4 +252,5 @@ def test_company_research_page_shows_associated_contacts() -> None:
         response = client.get(f"/admin/companies/{COMPANY_ID}")
     assert response.status_code == 200
     assert "Ada Lovelace" in response.text
-    assert "Technical buyer" in response.text
+    assert "Buying-group coverage" in response.text
+    assert "CTO" in response.text

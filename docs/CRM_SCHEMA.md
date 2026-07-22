@@ -332,7 +332,7 @@ Stores hashed limiter keys only — no raw usernames or client IPs.
 | `locked_until` | `TIMESTAMPTZ` | Lockout expiry when limit exceeded |
 | `updated_at` | `TIMESTAMPTZ` | Last mutation; used for cleanup |
 
-Indexes: `locked_until`, `updated_at`. See [ADMIN_AUTH.md](ADMIN_AUTH.md).
+Indexes: `locked_until`, `updated_at`, cleanup index on `(updated_at, limiter_key)` (migration `019`). See [ADMIN_AUTH.md](ADMIN_AUTH.md).
 
 ## Migrations
 

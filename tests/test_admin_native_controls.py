@@ -16,6 +16,7 @@ from app.admin_preview import PREVIEW_PIPELINE_COMPANY_IDS
 from app.admin_routes import PREVIEW_SESSION_TOKEN
 from app.brief_service import BriefListFilters
 from app.main import app
+from tests.conftest import enable_admin_preview_env
 
 ADMIN_CSS = Path(__file__).resolve().parents[1] / "site/assets/admin.css"
 SITE_CSS = Path(__file__).resolve().parents[1] / "site/assets/site.css"
@@ -62,7 +63,7 @@ def _rule_block(css: str, selector_fragment: str) -> str:
 
 
 def _preview_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    enable_admin_preview_env(monkeypatch)
     monkeypatch.setenv("ADMIN_PREVIEW_SEED", "42")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     return client
@@ -129,6 +130,18 @@ def test_admin_checkbox_label_and_fieldset_styles() -> None:
     fieldset_block = _rule_block(css, ".admin-form fieldset.field,")
     assert "border: 1px solid var(--line)" in fieldset_block
     assert ".brief-convert-fieldset" in fieldset_block
+
+
+@pytest.mark.unit
+def test_brief_convert_archived_panel_styles() -> None:
+    css = _admin_css()
+    panel_block = _rule_block(css, ".brief-convert-archived {")
+    assert "border: 1px solid" in panel_block
+    assert "var(--accent)" in panel_block
+    # The ack checkbox reuses the shared .admin-checkbox flex/cursor styling
+    # (tested separately) and only adds spacing here.
+    ack_block = _rule_block(css, ".brief-convert-archived-ack {")
+    assert "margin-top" in ack_block
 
 
 @pytest.mark.unit
@@ -283,6 +296,49 @@ def test_brief_convert_renders_native_radios_inside_labels() -> None:
 
 
 @pytest.mark.unit
+def test_brief_convert_renders_archived_panel_without_preselecting_new() -> None:
+    html = admin_pages.render_admin_brief_convert_page(
+        admin_username="operator",
+        brief={"id": 5, "status": "paid"},
+        back_filters=BriefListFilters(
+            page=1,
+            per_page=20,
+            query=None,
+            status=None,
+            date_from=None,
+            date_to=None,
+            date_from_raw=None,
+            date_to_raw=None,
+        ),
+        preview={
+            "proposal": {
+                "company_name": "Northwind",
+                "website": "https://northwind.example",
+                "domain": "northwind.example",
+                "contact_email": "ops@northwind.example",
+                "pipeline_stage_label": "Diagnostic paid",
+                "brief_status": "paid",
+                "expected_value": 200.0,
+            },
+            "company_matches": [],
+            "contact_matches": [],
+            "archived_contact_match": {
+                "id": "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+                "full_name": "Jordan Lee",
+                "email": "ops@northwind.example",
+                "company_name": "Northwind Labs",
+                "archived_at": "2026-01-15T12:00:00Z",
+            },
+        },
+        csrf_token="csrf",
+    )
+    assert 'class="brief-convert-archived"' in html
+    assert "Archived contact match" in html
+    assert "acknowledge_archived_identity" in html
+    assert 'name="contact_choice" value="new" checked' not in html
+
+
+@pytest.mark.unit
 @pytest.mark.integration
 def test_preview_briefs_page_includes_date_filters(
     monkeypatch: pytest.MonkeyPatch,
@@ -397,7 +453,24 @@ def test_contacts_list_renders_themed_archived_checkbox() -> None:
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_preview_convert_existing_company_radio_post(
+def test_preview_convert_archived_only_page_includes_panel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _preview_client(monkeypatch)
+    response = client.get(
+        "/admin/briefs/5/convert",
+        cookies={SESSION_COOKIE_NAME: PREVIEW_SESSION_TOKEN},
+    )
+    assert response.status_code == 200
+    body = response.text
+    assert 'class="brief-convert-archived"' in body
+    assert "Archived contact match" in body
+    assert "acknowledge_archived_identity" in body
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_preview_convert_existing_company_radio_post_denied(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _preview_client(monkeypatch)
@@ -410,16 +483,16 @@ def test_preview_convert_existing_company_radio_post(
         },
         cookies={SESSION_COOKIE_NAME: PREVIEW_SESSION_TOKEN},
     )
-    assert response.status_code == 303
-    assert response.headers["location"] == "/admin/briefs/4?converted=1"
+    assert response.status_code == 405
+    assert response.headers.get("allow") == "GET, HEAD"
 
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_preview_convert_keyboard_existing_contact_radio_post(
+def test_preview_convert_keyboard_existing_contact_radio_post_denied(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Simulate keyboard radio selection by posting the native value string."""
+    """Unsafe preview POST is denied centrally before route handlers run."""
     _preview_client(monkeypatch)
     response = client.post(
         "/admin/briefs/4/convert",
@@ -430,5 +503,5 @@ def test_preview_convert_keyboard_existing_contact_radio_post(
         },
         cookies={SESSION_COOKIE_NAME: PREVIEW_SESSION_TOKEN},
     )
-    assert response.status_code == 303
-    assert response.headers["location"] == "/admin/briefs/4?converted=1"
+    assert response.status_code == 405
+    assert response.headers.get("allow") == "GET, HEAD"

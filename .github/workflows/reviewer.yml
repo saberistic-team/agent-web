@@ -49,19 +49,42 @@ jobs:
         id: prhead
         env:
           GH_TOKEN: ${{ steps.reviewer.outputs.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
           ISSUE="${{ github.event.issue.number }}"
-          PR="$(gh pr list --repo "${{ github.repository }}" --state open --json number,title,body,headRefName,headRefOid \
-            --jq "[.[] | select((.title|contains(\"#${ISSUE}\")) or (.body|contains(\"#${ISSUE}\")) or (.body|test(\"Closes #${ISSUE}\";\"i\")))] | .[0]")"
-          if [[ -z "${PR}" || "${PR}" == "null" ]]; then
-            echo "No open PR linked to #${ISSUE}."
+          export ISSUE
+          # Use intentional link rules (builder/{issue}-*, (#issue), Closes/Fixes)
+          # — never bare "#N" prose. Casual mentions in sibling PRs (e.g. #355
+          # referencing issue 123) used to steal pr-head and fail coverage.
+          mapfile -t LINKED < <(python - <<'PY'
+          import os
+          import sys
+
+          sys.path.insert(0, "scripts")
+          from github_api import linked_open_prs, pr_head_ref
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          issue = int(os.environ["ISSUE"])
+          linked = linked_open_prs(repo, issue)
+          if not linked:
+              sys.exit(0)
+          pr = linked[0]
+          head = pr.get("head") or {}
+          print(pr_head_ref(pr))
+          print(head.get("sha") or "")
+          print(pr.get("number") or "")
+          PY
+          )
+          if [[ "${#LINKED[@]}" -lt 2 || -z "${LINKED[0]:-}" || -z "${LINKED[1]:-}" ]]; then
+            echo "No open PR intentionally linked to #${ISSUE}."
             echo "has_pr=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          REF="$(echo "${PR}" | jq -r .headRefName)"
-          SHA="$(echo "${PR}" | jq -r .headRefOid)"
-          echo "Fetching PR head ${REF} @ ${SHA} into pr-head/"
+          REF="${LINKED[0]}"
+          SHA="${LINKED[1]}"
+          PR_NUMBER="${LINKED[2]:-}"
+          echo "Fetching intentionally linked PR #${PR_NUMBER} head ${REF} @ ${SHA} into pr-head/"
           rm -rf pr-head
           git fetch origin "${REF}"
           git worktree add --detach pr-head "${SHA}"
@@ -72,6 +95,7 @@ jobs:
           echo "has_pr=true" >> "$GITHUB_OUTPUT"
           echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
           echo "ref=${REF}" >> "$GITHUB_OUTPUT"
+          echo "pr=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
 
       - name: Run reviewer agent
         env:

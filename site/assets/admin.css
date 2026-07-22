@@ -757,6 +757,37 @@ body.admin-app {
   cursor: not-allowed;
 }
 
+.brief-convert-archived {
+  margin-top: 1rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  background: color-mix(in srgb, var(--surface) 40%, transparent);
+}
+
+.brief-convert-archived-title {
+  margin: 0 0 0.5rem;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.brief-convert-archived-note {
+  margin: 0 0 0.85rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.brief-convert-archived-dl {
+  margin: 0 0 0.85rem;
+}
+
+.brief-convert-archived-ack {
+  margin-top: 0.75rem;
+}
+
 .research-evidence-fields {
   border: 1px solid var(--line);
   padding: 1rem 1.25rem;
@@ -867,6 +898,136 @@ body.admin-app {
 .research-source-link {
   color: var(--accent);
   word-break: break-all;
+}
+
+.buying-group-grid {
+  display: grid;
+  gap: 1.25rem;
+  margin: 1rem 0 2rem;
+}
+
+.buying-group-slot {
+  border: 1px solid var(--line);
+  padding: 1rem 1.1rem;
+  background: rgba(12, 15, 24, 0.35);
+}
+
+.buying-group-slot-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.buying-group-slot-header .admin-section-heading {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.coverage-badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border: 1px solid var(--line);
+}
+
+.coverage-badge--confirmed {
+  border-color: #4a9fd4;
+  color: #7ec8f0;
+}
+
+.coverage-badge--possible {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.coverage-badge--missing {
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+.coverage-badge--stale_employment {
+  border-color: #e88a6a;
+  color: #e88a6a;
+}
+
+.coverage-entry-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.coverage-entry-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.75rem;
+}
+
+.coverage-note,
+.coverage-gap,
+.coverage-also-roles {
+  margin: 0.35rem 0 0;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.coverage-gap {
+  margin: 0;
+}
+
+.buying-profile-link {
+  color: var(--accent);
+  word-break: break-all;
+}
+
+.warm-intro-list {
+  display: grid;
+  gap: 1rem;
+  margin: 1rem 0 2rem;
+}
+
+.warm-intro-path {
+  border: 1px solid var(--line);
+  padding: 1rem 1.1rem;
+  background: rgba(12, 15, 24, 0.35);
+}
+
+.warm-intro-path-header .admin-section-heading {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.warm-intro-metrics {
+  margin: 0.5rem 0 0;
+  display: grid;
+  gap: 0.5rem;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+}
+
+.warm-intro-metrics div {
+  display: grid;
+  grid-template-columns: 10rem 1fr;
+  gap: 0.5rem;
+}
+
+.warm-intro-metrics dt {
+  margin: 0;
+  color: var(--muted);
+}
+
+.warm-intro-metrics dd {
+  margin: 0;
+  color: var(--ink);
 }
 
 @media (min-width: 769px) {
@@ -1064,4 +1225,93 @@ body.admin-app {
 
 .linkedin-import-stats {
   margin-bottom: 1.25rem;
+}
+
+.icp-score-display {
+  border: 1px solid var(--line);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+  max-width: 18rem;
+}
+
+.icp-score-display--override {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.icp-score-value {
+  font-family: var(--display);
+  font-size: 2.4rem;
+  line-height: 1;
+  margin: 0.25rem 0;
+}
+
+.icp-score-cell--override {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.icp-status {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid var(--line);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.icp-status--scored {
+  border-color: color-mix(in srgb, #4caf7d 45%, var(--line));
+}
+
+.icp-status--expired,
+.icp-status--hypothesis {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+
+.icp-override-note {
+  border-left: 3px solid var(--accent);
+  padding-left: 0.75rem;
+}
+
+.icp-evidence-list {
+  margin: 1rem 0 1.5rem;
+  padding-left: 1.25rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.admin-subtitle {
+  font-family: var(--display);
+  font-size: 1.1rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.contact-metrics-section,
+.contact-judgment-section {
+  margin: 1.5rem 0;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--line);
+}
+
+.contact-metrics-section {
+  border-left: 3px solid var(--accent);
+}
+
+.contact-judgment-section {
+  border-left: 3px solid color-mix(in srgb, var(--muted) 60%, var(--line));
+}
+
+.contact-metrics-pre {
+  margin: 0.75rem 0 0;
+  padding: 0.75rem;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  border: 1px solid var(--line);
+}
+
+.contact-crm-context {
+  margin-top: 1rem;
 }

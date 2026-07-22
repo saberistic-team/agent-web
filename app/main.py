@@ -21,8 +21,10 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import case_studies, db, email_service, insights, page_service, server_analytics, stripe_service
 from app.admin_auth import AdminLoginRequired, login_redirect_url
+from app.admin_icp_routes import router as admin_icp_router
 from app.admin_pipeline_routes import router as admin_pipeline_router
 from app.admin_action_queue_routes import router as admin_action_queue_router
+from app.admin_qualification_routes import router as admin_qualification_router
 from app.admin_routes import router as admin_router
 from app.actor_context import CORRELATION_HEADER
 from app.analytics_ingest import (
@@ -31,7 +33,13 @@ from app.analytics_ingest import (
     IngestRejectReason,
     ingest_browser_event,
 )
+from app.admin_preview_guard import (
+    AdminPreviewConfigError,
+    AdminPreviewReadOnlyMiddleware,
+    validate_admin_preview_config,
+)
 from app.admin_response_policy import (
+    apply_admin_cache_headers,
     apply_admin_security_headers,
     apply_static_asset_headers,
     csp_nonce_from_request,
@@ -39,6 +47,7 @@ from app.admin_response_policy import (
     is_admin_path,
 )
 from app.admin_security import AdminSecurityConfigError, validate_admin_security_config
+from app.admin_preview_security import log_admin_preview_posture
 from app.client_source import admin_proxy_trust_summary, client_source_policy_summary, resolve_client_source
 from app.config import get_settings
 from app.models import BriefCreateRequest, BriefCreateResponse
@@ -248,6 +257,16 @@ def _send_paid_notifications(
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
+    log_admin_preview_posture(admin_preview_enabled=settings.admin_preview_enabled)
+    try:
+        validate_admin_preview_config(settings)
+    except AdminPreviewConfigError:
+        logger.exception("Admin preview configuration is invalid")
+        raise
+    if settings.admin_preview_enabled:
+        logger.info("admin preview mode active — /admin mutations disabled; database unused")
+        yield
+        return
     if settings.database_configured:
         try:
             validate_admin_security_config(settings)
@@ -265,7 +284,10 @@ app = FastAPI(title="agent-web", version="0.3.0", lifespan=lifespan)
 app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
 app.include_router(admin_pipeline_router)
 app.include_router(admin_action_queue_router)
+app.include_router(admin_icp_router)
+app.include_router(admin_qualification_router)
 app.include_router(admin_router)
+app.add_middleware(AdminPreviewReadOnlyMiddleware)
 
 
 @app.exception_handler(AdminLoginRequired)
@@ -298,17 +320,19 @@ async def redirect_www_to_apex(request: Request, call_next):
 
 @app.middleware("http")
 async def admin_response_security_policy(request: Request, call_next):
-    """Attach admin CSP and supporting headers; nosniff on static assets."""
+    """Attach admin CSP, cache isolation, and supporting headers; nosniff on static assets."""
     path = request.url.path
-    if is_admin_path(path):
+    admin = is_admin_path(path)
+    if admin:
         request.state.csp_nonce = generate_csp_nonce()
     response = await call_next(request)
-    if is_admin_path(path):
+    if admin:
         apply_admin_security_headers(
             response,
             get_settings(),
             nonce=csp_nonce_from_request(request),
         )
+        apply_admin_cache_headers(response)
     elif path.startswith("/assets/"):
         apply_static_asset_headers(response)
     return response

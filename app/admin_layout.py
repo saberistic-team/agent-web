@@ -48,6 +48,12 @@ ADMIN_NAV_LINKS: tuple[dict[str, str], ...] = (
         "summary": "Inbound triggers and intent scoring",
     },
     {
+        "label": "Targets",
+        "href": "/admin/targets",
+        "milestone": "Qualification workspace",
+        "summary": "Tier A/B/C lists with evidence gaps and freshness",
+    },
+    {
         "label": "Pipeline",
         "href": "/admin/pipeline",
         "milestone": "Pipeline operations",
@@ -97,6 +103,9 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/briefs/4",
     "/admin/briefs/4/convert",
     "/admin/briefs/4/convert?error=validation",
+    "/admin/briefs/5/convert",
+    "/admin/briefs/6/convert",
+    "/admin/briefs/7/convert",
     "/admin/briefs/503",
     "/admin/companies/dddddddd-dddd-dddd-dddd-dddddddddd01",
     "/admin/companies/dddddddd-dddd-dddd-dddd-dddddddddd02",
@@ -123,6 +132,11 @@ ADMIN_SCREENSHOT_PATHS: tuple[str, ...] = (
     "/admin/pipeline/11111111-1111-1111-1111-111111111111?error=validation&focus=expected_value_cents",
     # Daily action queue (prioritized work list + export).
     "/admin/queue",
+    "/admin/targets/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa01",
+    # ICP scoring list, rules editor, and company score detail fixtures.
+    "/admin/signals/rules",
+    "/admin/signals/11111111-1111-1111-1111-111111111111",
+    "/admin/signals/22222222-2222-2222-2222-222222222222",
 )
 
 # Non-200 HTML fixtures for Reviewer evidence (route → expected HTTP status).

@@ -139,6 +139,7 @@ def test_acquisition_lifecycle_end_to_end(lifecycle_env: dict[str, Any]) -> None
             domain="lifecycle.example",
             category="ai_infrastructure",
         ),
+        actor_context=ACTOR,
     )
     company = created["company"]
     company_id = UUID(str(company["id"]))
@@ -152,6 +153,7 @@ def test_acquisition_lifecycle_end_to_end(lifecycle_env: dict[str, Any]) -> None
             company_id=company_id,
             title="CTO",
         ),
+        actor_context=ACTOR,
     )
     contact = contact_result["contact"]
     contact_id = UUID(str(contact["id"]))
@@ -160,6 +162,7 @@ def test_acquisition_lifecycle_end_to_end(lifecycle_env: dict[str, Any]) -> None
     # 3. Evidence (research record)
     record = crm.attach_research_record(
         conn,
+        actor_context=ACTOR,
         record_type="public_signal",
         company_id=company_id,
         contact_id=contact_id,
@@ -208,6 +211,10 @@ def test_acquisition_lifecycle_end_to_end(lifecycle_env: dict[str, Any]) -> None
     api_response = client.post(
         "/admin/api/imports/linkedin/commit",
         cookies=session_cookies,
+        headers={
+            admin_auth.CSRF_HEADER_NAME: csrf,
+            "Content-Type": "application/json",
+        },
         json={"connections": connections, "checksum": checksum},
     )
     assert api_response.status_code == 200
@@ -235,6 +242,7 @@ def test_acquisition_lifecycle_end_to_end(lifecycle_env: dict[str, Any]) -> None
             category=category,
             notes="Promoted from discovery candidate review",
         ),
+        actor_context=ACTOR,
     )
     conn.commit()
     assert promoted["company"]["name"] == "Nimbus Analytics"

@@ -16,6 +16,9 @@ jobs:
         !startsWith(github.event.head_commit.message, 'deploy: freeze')
       )
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     services:
       postgres:
         image: postgres:16-alpine
@@ -51,11 +54,19 @@ jobs:
         # and this step silently no-op'd for a long time because none of
         # these were wired in (see docs/WORKFLOW_GOVERNANCE.md's
         # "Non-bootstrap proof PR" section for the incident writeup).
+        # REPORT_GOVERNANCE_DRIFT only files/refreshes a plain tracking issue
+        # when the live-ruleset check itself fails (repo-settings drift, not
+        # a code bug in this PR's diff) — gated to push-to-main only so PR
+        # runs never open issues, and scoped so it cannot mask as a status
+        # the Planner/Builder pipeline would try to "fix" with codegen (see
+        # docs/WORKFLOW_GOVERNANCE.md "Ruleset drift alerting").
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
           VALIDATE_LIVE_RULESET: "1"
           VERIFY_LIVE_GOVERNANCE_RULESET: "1"
+          REPORT_GOVERNANCE_DRIFT: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && '1' || '' }}
         run: python scripts/validate_workflow_governance.py --check-live-ruleset
       - name: Run tests
         # The live-PostgreSQL contract suite (marker: contract) runs in its own
@@ -113,6 +124,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -125,6 +137,10 @@ jobs:
           app-id: ${{ secrets.BUILDER_APP_ID }}
           private-key: ${{ secrets.BUILDER_PRIVATE_KEY }}
       - name: Freeze digests after live deploy
+        # Commits onto a deploy/freeze-* branch and opens a PR with
+        # auto-merge enabled instead of pushing straight to main — a direct
+        # push is rejected by the workflow-governance ruleset's independent-
+        # review requirement (zero bypass actors, issue #359/#362).
         env:
           GITHUB_TOKEN: ${{ steps.builder.outputs.token }}
           DEPLOY_BASE_URL: ${{ vars.DEPLOY_BASE_URL }}
@@ -168,7 +184,7 @@ jobs:
         with:
           app-id: ${{ secrets.BUILDER_APP_ID }}
           private-key: ${{ secrets.BUILDER_PRIVATE_KEY }}
-      - name: Capture post screenshots + visual check
+      - name: Capture post-deploy screenshots + record health
         env:
           GITHUB_TOKEN: ${{ steps.builder.outputs.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -176,8 +192,18 @@ jobs:
           CURSOR_MODEL: ${{ vars.CURSOR_MODEL }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
-          VISUAL_PROVIDER: ${{ vars.VISUAL_PROVIDER }}
           DEPLOY_BASE_URL: ${{ vars.DEPLOY_BASE_URL }}
+          # Bounded post-deploy log inspection (#280). Owner id is optional —
+          # crm_deploy_health resolves it from the service when unset.
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          RENDER_OWNER_ID: ${{ secrets.RENDER_OWNER_ID }}
+          # Passed via env, not interpolated straight into the run: string —
+          # a commit message containing a `"` (e.g. quoting a 422 error
+          # message) previously closed the --commit-message string early and
+          # spilled the rest of the message into unrecognized argv, failing
+          # this job before it ever captured a screenshot.
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           set -euo pipefail
           # Deploy job already waited for Render to go live; short pause then
@@ -186,7 +212,7 @@ jobs:
           python scripts/post_deploy_visual.py \
             --repo "${{ github.repository }}" \
             --sha "${{ github.sha }}" \
-            --commit-message "${{ github.event.head_commit.message }}"
+            --commit-message "$HEAD_COMMIT_MESSAGE"
       - name: Upload deploy health JSON
         if: always()
         uses: actions/upload-artifact@v4

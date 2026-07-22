@@ -84,6 +84,7 @@ def test_admin_nav_links_include_required_destinations() -> None:
         "/admin/companies",
         "/admin/contacts",
         "/admin/signals",
+        "/admin/targets",
         "/admin/pipeline",
         "/admin/imports",
         "/admin/discovery",
@@ -163,8 +164,12 @@ def test_admin_render_helpers() -> None:
 
 @pytest.mark.unit
 @pytest.mark.integration
-def test_admin_placeholder_sections_still_render(authenticated_admin: dict[str, str]) -> None:
-    response = client.get("/admin/signals", cookies=authenticated_admin)
+def test_admin_icp_scores_page_renders(authenticated_admin: dict[str, str]) -> None:
+    with (
+        patch("app.admin_icp_routes._crm.list_company_icp_scores", return_value=[]),
+        patch("app.admin_icp_routes._crm.get_active_icp_version", return_value=None),
+    ):
+        response = client.get("/admin/signals", cookies=authenticated_admin)
     assert response.status_code == 200
-    assert "Signals" in response.text
+    assert "ICP scores" in response.text
     assert "Signal intelligence" in response.text

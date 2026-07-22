@@ -42,6 +42,8 @@ def test_transition_pipeline_stage_persists_history_activity_and_audit() -> None
             admin_users=MagicMock(),
             pipeline=pipeline_repo,
             import_batches=MagicMock(),
+            icp_scoring=MagicMock(),
+            qualification=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -78,6 +80,8 @@ def test_transition_pipeline_stage_rejects_invalid_transition() -> None:
             admin_users=MagicMock(),
             pipeline=pipeline_repo,
             import_batches=MagicMock(),
+            icp_scoring=MagicMock(),
+            qualification=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -105,6 +109,8 @@ def test_list_pipeline_overdue_actions_delegates_to_repo() -> None:
             admin_users=MagicMock(),
             pipeline=pipeline_repo,
             import_batches=MagicMock(),
+            icp_scoring=MagicMock(),
+            qualification=MagicMock(),
         )
     )
     ref = datetime(2026, 7, 14, tzinfo=timezone.utc)
@@ -131,6 +137,8 @@ def test_update_pipeline_next_action_audits_change() -> None:
             admin_users=MagicMock(),
             pipeline=pipeline_repo,
             import_batches=MagicMock(),
+            icp_scoring=MagicMock(),
+            qualification=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -160,16 +168,22 @@ def test_record_pipeline_activity_commits() -> None:
             admin_users=MagicMock(),
             pipeline=MagicMock(),
             import_batches=MagicMock(),
+            icp_scoring=MagicMock(),
+            qualification=MagicMock(),
         )
     )
     conn = MagicMock()
     from app.acquisition_pipeline import PipelineActivityCreate
+    from app.actor_context import ActorContext
 
-    row = service.record_pipeline_activity(
-        conn,
-        company_id=COMPANY_ID,
-        activity=PipelineActivityCreate(activity_type="outreach", summary="Called CEO"),
-    )
+    actor = ActorContext(actor="admin", correlation_id="test")
+    with patch("app.crm_service.audit_service.record_pipeline_activity_create"):
+        row = service.record_pipeline_activity(
+            conn,
+            actor_context=actor,
+            company_id=COMPANY_ID,
+            activity=PipelineActivityCreate(activity_type="outreach", summary="Called CEO"),
+        )
     assert row["summary"] == "Called CEO"
     conn.commit.assert_called_once()
 

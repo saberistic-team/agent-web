@@ -21,9 +21,11 @@ from app import admin_auth
 from app import db
 from app.admin_auth import LOGIN_FLOW_COOKIE_NAME, SESSION_COOKIE_NAME
 from app.admin_routes import _issue_session
+from app.admin_preview_security import AdminPreviewConfigError
 from app.config import get_settings
 from app.crm_uow import crm_transaction
 from app.main import app
+from tests.conftest import enable_admin_preview_env
 
 TEST_TRUSTED_PROXY_CIDRS = "10.0.0.0/8"
 TEST_TRUSTED_EDGE_CIDRS = "172.68.0.0/16"
@@ -83,13 +85,16 @@ class FakeRateLimitStore:
         limiter_keys: tuple[str, ...],
         now: datetime,
         *,
+        guard_keys: tuple[str, ...] = (),
         rate_limit: int,
         window_seconds: int,
         lockout_seconds: int,
     ) -> db.AdminLoginAdmission:
         with self._lock:
-            ordered_keys = tuple(sorted(limiter_keys))
-            for limiter_key in ordered_keys:
+            ordered_limiter_keys = tuple(sorted(limiter_keys))
+            ordered_guard_keys = tuple(sorted(set(guard_keys)))
+
+            for limiter_key in ordered_limiter_keys:
                 if limiter_key not in self.rows:
                     self.rows[limiter_key] = {
                         "failure_count": 0,
@@ -98,7 +103,20 @@ class FakeRateLimitStore:
                         "updated_at": now,
                     }
 
-            for limiter_key in ordered_keys:
+            for guard_key in ordered_guard_keys:
+                row = self.rows.get(guard_key)
+                if row is None:
+                    continue
+                locked_until = row.get("locked_until")
+                if locked_until is not None and locked_until > now:
+                    return db.AdminLoginAdmission(
+                        admitted=False,
+                        throttled=True,
+                        already_locked=True,
+                        lockout_transition=False,
+                    )
+
+            for limiter_key in ordered_limiter_keys:
                 row = self.rows[limiter_key]
                 locked_until = row.get("locked_until")
                 if locked_until is not None and locked_until > now:
@@ -110,7 +128,7 @@ class FakeRateLimitStore:
                     )
 
             lockout_transition = False
-            for limiter_key in ordered_keys:
+            for limiter_key in ordered_limiter_keys:
                 row = self.rows[limiter_key]
                 window_start = now - timedelta(seconds=window_seconds)
                 if row["window_started_at"] < window_start:
@@ -167,16 +185,17 @@ class FakeRateLimitStore:
         *,
         window_seconds: int,
         lockout_seconds: int,
+        batch_size: int,
     ) -> int:
         with self._lock:
             retention = max(window_seconds, lockout_seconds) * 2
             cutoff = now - timedelta(seconds=retention)
-            expired = [
+            expired = sorted(
                 key
                 for key, row in self.rows.items()
                 if row["updated_at"] < cutoff
                 and (row["locked_until"] is None or row["locked_until"] < now)
-            ]
+            )[:batch_size]
             for key in expired:
                 del self.rows[key]
             return len(expired)
@@ -198,6 +217,7 @@ def shared_rate_limiter(store: FakeRateLimitStore) -> Generator[None, None, None
         conn: Any,
         *,
         limiter_keys: tuple[str, ...],
+        guard_keys: tuple[str, ...] = (),
         now: datetime,
         rate_limit: int,
         window_seconds: int,
@@ -206,6 +226,7 @@ def shared_rate_limiter(store: FakeRateLimitStore) -> Generator[None, None, None
         return store.try_admit(
             limiter_keys,
             now,
+            guard_keys=guard_keys,
             rate_limit=rate_limit,
             window_seconds=window_seconds,
             lockout_seconds=lockout_seconds,
@@ -229,11 +250,13 @@ def shared_rate_limiter(store: FakeRateLimitStore) -> Generator[None, None, None
         now: datetime,
         window_seconds: int,
         lockout_seconds: int,
+        batch_size: int,
     ) -> int:
         return store.cleanup(
             now,
             window_seconds=window_seconds,
             lockout_seconds=lockout_seconds,
+            batch_size=batch_size,
         )
 
     with (
@@ -554,8 +577,7 @@ def _request_with_client(host: str) -> Request:
 def test_admin_preview_mode_allows_dashboard_without_login(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    enable_admin_preview_env(monkeypatch)
     monkeypatch.delenv("ADMIN_USERNAME", raising=False)
     monkeypatch.delenv("ADMIN_PASSWORD_HASH", raising=False)
     monkeypatch.delenv("ADMIN_SESSION_SECRET", raising=False)
@@ -571,14 +593,39 @@ def test_admin_preview_mode_allows_dashboard_without_login(
 
 
 @pytest.mark.unit
-def test_admin_preview_mode_disabled_on_production_base_url(
+def test_admin_preview_mode_rejected_on_production_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("SERVER_BIND_HOST", "127.0.0.1")
     monkeypatch.setenv("BASE_URL", "https://saberistic.com")
+
+    with pytest.raises(AdminPreviewConfigError):
+        get_settings()
+
+
+@pytest.mark.unit
+def test_admin_preview_host_header_spoofing_cannot_enable_bypass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("BASE_URL", "https://saberistic.com")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
+    monkeypatch.setenv("ADMIN_USERNAME", TEST_USERNAME)
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", TEST_HASH)
+    monkeypatch.setenv("ADMIN_SESSION_SECRET", TEST_SECRET)
+    monkeypatch.delenv("ADMIN_PREVIEW_MODE", raising=False)
+    monkeypatch.delenv("SERVER_BIND_HOST", raising=False)
     settings = get_settings()
-    assert settings.admin_preview_mode is True
     assert settings.admin_preview_enabled is False
+
+    response = client.get(
+        "/admin",
+        headers={"Host": "127.0.0.1:8765"},
+    )
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/admin/login")
 
 
 @pytest.mark.unit
