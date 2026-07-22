@@ -149,10 +149,10 @@ All qualifying entries were validated against [world-manifest-v0.schema.json](./
 Per-entry results: [corpus/validation_results.json](./corpus/validation_results.json)  
 Per-entry manifests: [corpus/manifests/](./corpus/manifests/)
 
-Regenerate:
+Validate in CI:
 
 ```bash
-PYTHONPATH=. python scripts/build_worldgraph_corpus.py
+python -m pytest tests/test_worldgraph_corpus.py -v
 ```
 
 ---
@@ -263,8 +263,7 @@ Optional 0–1 confidence that AI is material to the experience, separate from t
 | [MANIFEST_V0.md](./MANIFEST_V0.md) | Manifest v0 field spec |
 | [world-manifest-v0.schema.json](./world-manifest-v0.schema.json) | JSON Schema |
 | [TECHNICAL_SPIKE.md](./TECHNICAL_SPIKE.md) | Ingestion/extraction architecture evidence |
-| [spike/worldgraph/research_corpus.py](../spike/worldgraph/research_corpus.py) | Corpus loader/validator |
-| [scripts/build_worldgraph_corpus.py](../scripts/build_worldgraph_corpus.py) | Regenerate manifests + validation |
+| [tests/test_worldgraph_corpus.py](../../tests/test_worldgraph_corpus.py) | Corpus structure + Manifest v0 validation tests |
 
 ---
 
