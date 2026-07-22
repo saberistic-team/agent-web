@@ -1,0 +1,330 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "world_id": {
+      "value": "wg-corpus-025",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "Corpus id wg-corpus-025",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "name": {
+      "value": "EVE Online",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "EVE Online",
+        "confidence": 0.9,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://www.eveonline.com/",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "https://www.eveonline.com/",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Persistent sci-fi MMO with player-driven economy and emergent political outcomes.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "Persistent sci-fi MMO with player-driven economy and emergent political outcomes.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "Public entry documented",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "persistent_social",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "persistent_social",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "CCP Games",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "Creator/operator: CCP Games",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "operator": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "modalities": [
+      {
+        "value": "3d",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.eveonline.com/",
+          "evidence_snippet": "3d",
+          "confidence": 0.7,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://www.eveonline.com/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.eveonline.com/",
+          "evidence_snippet": "https://www.eveonline.com/",
+          "confidence": 0.9,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "persistent_mmo",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "persistent_mmo",
+        "confidence": 0.82,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "single_shard_universe_state",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "single_shard_universe_state",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "subscription_client",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "subscription_client",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "age_guidance": {
+      "value": "PEGI/ESRB ratings",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "PEGI/ESRB ratings",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "NPC factions and market agents driven by simulation systems; AI research tools adjacent.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "NPC factions and market agents driven by simulation systems; AI research tools adjacent.",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "human_control_boundaries": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "EULA",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "EULA",
+        "confidence": 0.6,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "moderation_contact": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "New Eden universe.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "New Eden universe.",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Economy, combat, and territory control.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "Economy, combat, and territory control.",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "entity_type": "character",
+        "label": {
+          "value": "NPC factions and players",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://www.eveonline.com/",
+            "evidence_snippet": "NPC factions and players",
+            "confidence": 0.7,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "canonical_ref": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "entity_type": "platform",
+        "label": {
+          "value": "Desktop client",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://www.eveonline.com/",
+            "evidence_snippet": "Desktop client",
+            "confidence": 0.7,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "canonical_ref": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "persistent_social",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://www.eveonline.com/",
+          "evidence_snippet": "persistent_social",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Persistent sci-fi MMO with player-driven economy and emergent political outcomes.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.eveonline.com/",
+        "evidence_snippet": "Persistent sci-fi MMO with player-driven economy and emergent political outcomes.",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

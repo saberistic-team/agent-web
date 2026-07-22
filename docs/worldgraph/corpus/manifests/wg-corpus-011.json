@@ -1,0 +1,341 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "world_id": {
+      "value": "wg-corpus-011",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://github.com/a16z-infra/ai-town",
+        "evidence_snippet": "Corpus id wg-corpus-011",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "name": {
+      "value": "AI Town",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/a16z-infra/ai-town",
+        "evidence_snippet": "AI Town",
+        "confidence": 0.9,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://github.com/a16z-infra/ai-town",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/a16z-infra/ai-town",
+        "evidence_snippet": "https://github.com/a16z-infra/ai-town",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Multi-agent sandbox where LLM characters interact in a persistent game map.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/a16z-infra/ai-town",
+        "evidence_snippet": "Multi-agent sandbox where LLM characters interact in a persistent game map.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://github.com/a16z-infra/ai-town",
+        "evidence_snippet": "Public entry documented",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "agent_simulation",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://github.com/a16z-infra/ai-town",
+        "evidence_snippet": "agent_simulation",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "a16z-infra (open source)",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/a16z-infra/ai-town",
+        "evidence_snippet": "Creator/operator: a16z-infra (open source)",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "operator": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "modalities": [
+      {
+        "value": "2d",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://github.com/a16z-infra/ai-town",
+          "evidence_snippet": "2d",
+          "confidence": 0.7,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      },
+      {
+        "value": "text",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://github.com/a16z-infra/ai-town",
+          "evidence_snippet": "text",
+          "confidence": 0.7,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://github.com/a16z-infra/ai-town",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://github.com/a16z-infra/ai-town",
+          "evidence_snippet": "https://github.com/a16z-infra/ai-town",
+          "confidence": 0.9,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "observer_and_debug_interaction",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/a16z-infra/ai-town",
+        "evidence_snippet": "observer_and_debug_interaction",
+        "confidence": 0.82,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "convex_backend_world_state",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/a16z-infra/ai-town",
+        "evidence_snippet": "convex_backend_world_state",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "open_source_clone_and_deploy",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/a16z-infra/ai-town",
+        "evidence_snippet": "open_source_clone_and_deploy",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "age_guidance": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "LLM agents plan actions and dialogue for simulated townspeople.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/a16z-infra/ai-town",
+        "evidence_snippet": "LLM agents plan actions and dialogue for simulated townspeople.",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://github.com/a16z-infra/ai-town",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "human_control_boundaries": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "MIT",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/a16z-infra/ai-town",
+        "evidence_snippet": "MIT",
+        "confidence": 0.6,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "moderation_contact": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Small-town simulation map.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://github.com/a16z-infra/ai-town",
+        "evidence_snippet": "Small-town simulation map.",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Top-down map with agent schedules and conversations.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://github.com/a16z-infra/ai-town",
+        "evidence_snippet": "Top-down map with agent schedules and conversations.",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "entity_type": "character",
+        "label": {
+          "value": "Autonomous LLM townspeople",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://github.com/a16z-infra/ai-town",
+            "evidence_snippet": "Autonomous LLM townspeople",
+            "confidence": 0.7,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "canonical_ref": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "entity_type": "platform",
+        "label": {
+          "value": "Web (self-hosted)",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://github.com/a16z-infra/ai-town",
+            "evidence_snippet": "Web (self-hosted)",
+            "confidence": 0.7,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "canonical_ref": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "agent_simulation",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://github.com/a16z-infra/ai-town",
+          "evidence_snippet": "agent_simulation",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Multi-agent sandbox where LLM characters interact in a persistent game map.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://github.com/a16z-infra/ai-town",
+        "evidence_snippet": "Multi-agent sandbox where LLM characters interact in a persistent game map.",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

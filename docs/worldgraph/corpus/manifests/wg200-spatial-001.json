@@ -1,0 +1,247 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "World Labs Marble",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.worldlabs.ai/",
+        "evidence_snippet": "World Labs Marble",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://www.worldlabs.ai/",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.worldlabs.ai/",
+        "evidence_snippet": "https://www.worldlabs.ai/",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "ai_spatial",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.worldlabs.ai/",
+        "evidence_snippet": "ai_spatial",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.worldlabs.ai/",
+        "evidence_snippet": "qualifies",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Generates explorable 3D worlds from text, images, and video with browser-navigable spatial environments.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.worldlabs.ai/",
+        "evidence_snippet": "Generates explorable 3D worlds from text, images, and video with browser-navigable spatial environments.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "World Labs, Inc.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.worldlabs.ai/",
+        "evidence_snippet": "World Labs, Inc.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://www.worldlabs.ai/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.worldlabs.ai/",
+          "evidence_snippet": "https://www.worldlabs.ai/",
+          "confidence": 0.85,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "spatial_exploration",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.worldlabs.ai/",
+        "evidence_snippet": "spatial_exploration",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "Generated worlds persist in user accounts; API returns reusable world assets.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.worldlabs.ai/",
+        "evidence_snippet": "Generated worlds persist in user accounts; API returns reusable world assets.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "Platform signup for world generation; API documented separately",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.worldlabs.ai/",
+        "evidence_snippet": "Platform signup for world generation; API documented separately",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "User-prompted environments",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.worldlabs.ai/",
+        "evidence_snippet": "User-prompted environments",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Navigate, export, embed via API",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.worldlabs.ai/",
+        "evidence_snippet": "Navigate, export, embed via API",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "value": "None native; worlds support downstream agent integration per API docs.",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.worldlabs.ai/",
+          "evidence_snippet": "None native; worlds support downstream agent integration per API docs.",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "value": "Web viewer, World API exports",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.worldlabs.ai/",
+          "evidence_snippet": "Web viewer, World API exports",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Multimodal world model constructs geometry, layout, lighting, and navigable space.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.worldlabs.ai/",
+        "evidence_snippet": "Multimodal world model constructs geometry, layout, lighting, and navigable space.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "build_and_runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.worldlabs.ai/",
+        "evidence_snippet": "build_and_runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "World Labs Terms; API usage terms on platform",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.worldlabs.ai/",
+        "evidence_snippet": "World Labs Terms; API usage terms on platform",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "safety_categories": [
+      {
+        "value": "General platform terms; no child-specific product rating published",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.worldlabs.ai/",
+          "evidence_snippet": "General platform terms; no child-specific product rating published",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "ai_spatial",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://www.worldlabs.ai/",
+          "evidence_snippet": "ai_spatial",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Generates explorable 3D worlds from text, images, and video with browser-navigable spatial environments.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.worldlabs.ai/",
+        "evidence_snippet": "Generates explorable 3D worlds from text, images, and video with browser-navigable spatial environments.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

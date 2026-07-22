@@ -1,0 +1,330 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "world_id": {
+      "value": "wg-corpus-015",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://github.com/camel-ai/camel",
+        "evidence_snippet": "Corpus id wg-corpus-015",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "name": {
+      "value": "CAMEL",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/camel-ai/camel",
+        "evidence_snippet": "CAMEL",
+        "confidence": 0.9,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://github.com/camel-ai/camel",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/camel-ai/camel",
+        "evidence_snippet": "https://github.com/camel-ai/camel",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Communicative agents framework for role-playing society simulations.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/camel-ai/camel",
+        "evidence_snippet": "Communicative agents framework for role-playing society simulations.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://github.com/camel-ai/camel",
+        "evidence_snippet": "Public entry documented",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "agent_simulation",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://github.com/camel-ai/camel",
+        "evidence_snippet": "agent_simulation",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "CAMEL-AI.org",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/camel-ai/camel",
+        "evidence_snippet": "Creator/operator: CAMEL-AI.org",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "operator": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "modalities": [
+      {
+        "value": "text",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://github.com/camel-ai/camel",
+          "evidence_snippet": "text",
+          "confidence": 0.7,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://github.com/camel-ai/camel",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://github.com/camel-ai/camel",
+          "evidence_snippet": "https://github.com/camel-ai/camel",
+          "confidence": 0.9,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "multi_agent_roleplay",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/camel-ai/camel",
+        "evidence_snippet": "multi_agent_roleplay",
+        "confidence": 0.82,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "session_and_task_logs",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/camel-ai/camel",
+        "evidence_snippet": "session_and_task_logs",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "open_source",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/camel-ai/camel",
+        "evidence_snippet": "open_source",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "age_guidance": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Multi-agent role-playing with LLM actors cooperating on tasks.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/camel-ai/camel",
+        "evidence_snippet": "Multi-agent role-playing with LLM actors cooperating on tasks.",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://github.com/camel-ai/camel",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "human_control_boundaries": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "Apache-2.0",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/camel-ai/camel",
+        "evidence_snippet": "Apache-2.0",
+        "confidence": 0.6,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "moderation_contact": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Task-specific simulated societies.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://github.com/camel-ai/camel",
+        "evidence_snippet": "Task-specific simulated societies.",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Role-playing agent societies and task decomposition.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://github.com/camel-ai/camel",
+        "evidence_snippet": "Role-playing agent societies and task decomposition.",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "entity_type": "character",
+        "label": {
+          "value": "Role-playing agents",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://github.com/camel-ai/camel",
+            "evidence_snippet": "Role-playing agents",
+            "confidence": 0.7,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "canonical_ref": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "entity_type": "platform",
+        "label": {
+          "value": "Python",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://github.com/camel-ai/camel",
+            "evidence_snippet": "Python",
+            "confidence": 0.7,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "canonical_ref": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "agent_simulation",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://github.com/camel-ai/camel",
+          "evidence_snippet": "agent_simulation",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Communicative agents framework for role-playing society simulations.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://github.com/camel-ai/camel",
+        "evidence_snippet": "Communicative agents framework for role-playing society simulations.",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

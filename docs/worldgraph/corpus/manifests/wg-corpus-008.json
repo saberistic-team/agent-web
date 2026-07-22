@@ -1,0 +1,303 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "world_id": {
+      "value": "wg-corpus-008",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://lumalabs.ai/dream-machine",
+        "evidence_snippet": "Corpus id wg-corpus-008",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "name": {
+      "value": "Luma Dream Machine",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://lumalabs.ai/dream-machine",
+        "evidence_snippet": "Luma Dream Machine",
+        "confidence": 0.9,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://lumalabs.ai/dream-machine",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://lumalabs.ai/dream-machine",
+        "evidence_snippet": "https://lumalabs.ai/dream-machine",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Generative video/spatial clips arranged into explorable creative sequences.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://lumalabs.ai/dream-machine",
+        "evidence_snippet": "Generative video/spatial clips arranged into explorable creative sequences.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://lumalabs.ai/dream-machine",
+        "evidence_snippet": "Public entry documented",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "ai_spatial",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://lumalabs.ai/dream-machine",
+        "evidence_snippet": "ai_spatial",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Luma AI",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://lumalabs.ai/dream-machine",
+        "evidence_snippet": "Creator/operator: Luma AI",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "operator": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "modalities": [
+      {
+        "value": "video",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://lumalabs.ai/dream-machine",
+          "evidence_snippet": "video",
+          "confidence": 0.7,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      },
+      {
+        "value": "3d",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://lumalabs.ai/dream-machine",
+          "evidence_snippet": "3d",
+          "confidence": 0.7,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://lumalabs.ai/dream-machine",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://lumalabs.ai/dream-machine",
+          "evidence_snippet": "https://lumalabs.ai/dream-machine",
+          "confidence": 0.9,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "generative_scene_playback",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://lumalabs.ai/dream-machine",
+        "evidence_snippet": "generative_scene_playback",
+        "confidence": 0.82,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "generation_history",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://lumalabs.ai/dream-machine",
+        "evidence_snippet": "generation_history",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "free_account_required",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://lumalabs.ai/dream-machine",
+        "evidence_snippet": "free_account_required",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "age_guidance": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Video world model generates motion scenes from prompts and references.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://lumalabs.ai/dream-machine",
+        "evidence_snippet": "Video world model generates motion scenes from prompts and references.",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://lumalabs.ai/dream-machine",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "human_control_boundaries": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "moderation_contact": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Prompt-bound generative clips.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://lumalabs.ai/dream-machine",
+        "evidence_snippet": "Prompt-bound generative clips.",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "platforms": [
+      {
+        "entity_type": "platform",
+        "label": {
+          "value": "Web",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://lumalabs.ai/dream-machine",
+            "evidence_snippet": "Web",
+            "confidence": 0.7,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "canonical_ref": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "ai_spatial",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://lumalabs.ai/dream-machine",
+          "evidence_snippet": "ai_spatial",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Generative video/spatial clips arranged into explorable creative sequences.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://lumalabs.ai/dream-machine",
+        "evidence_snippet": "Generative video/spatial clips arranged into explorable creative sequences.",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

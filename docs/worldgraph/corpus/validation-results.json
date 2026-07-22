@@ -1,0 +1,184 @@
+{
+  "schema_version": "worldgraph-corpus-validation-v1",
+  "validated_at": "2026-07-22T12:00:00+00:00",
+  "schema_path": "docs/worldgraph/world-manifest-v0.schema.json",
+  "total_qualifying": 25,
+  "all_valid": true,
+  "results": [
+    {
+      "candidate_id": "wg-200-narrative-001",
+      "manifest_path": "manifests/wg-200-narrative-001.json",
+      "json_schema_valid": true,
+      "spike_validator_valid": true,
+      "errors": []
+    },
+    {
+      "candidate_id": "wg-200-narrative-002",
+      "manifest_path": "manifests/wg-200-narrative-002.json",
+      "json_schema_valid": true,
+      "spike_validator_valid": true,
+      "errors": []
+    },
+    {
+      "candidate_id": "wg-200-narrative-003",
+      "manifest_path": "manifests/wg-200-narrative-003.json",
+      "json_schema_valid": true,
+      "spike_validator_valid": true,
+      "errors": []
+    },
+    {
+      "candidate_id": "wg-200-narrative-004",
+      "manifest_path": "manifests/wg-200-narrative-004.json",
+      "json_schema_valid": true,
+      "spike_validator_valid": true,
+      "errors": []
+    },
+    {
+      "candidate_id": "wg-200-narrative-005",
+      "manifest_path": "manifests/wg-200-narrative-005.json",
+      "json_schema_valid": true,
+      "spike_validator_valid": true,
+      "errors": []
+    },
+    {
+      "candidate_id": "wg-200-spatial-001",
+      "manifest_path": "manifests/wg-200-spatial-001.json",
+      "json_schema_valid": true,
+      "spike_validator_valid": true,
+      "errors": []
+    },
+    {
+      "candidate_id": "wg-200-spatial-002",
+      "manifest_path": "manifests/wg-200-spatial-002.json",
+      "json_schema_valid": true,
+      "spike_validator_valid": true,
+      "errors": []
+    },
+    {
+      "candidate_id": "wg-200-spatial-003",
+      "manifest_path": "manifests/wg-200-spatial-003.json",
+      "json_schema_valid": true,
+      "spike_validator_valid": true,
+      "errors": []
+    },
+    {
+      "candidate_id": "wg-200-spatial-004",
+      "manifest_path": "manifests/wg-200-spatial-004.json",
+      "json_schema_valid": true,
+      "spike_validator_valid": true,
+      "errors": []
+    },
+    {
+      "candidate_id": "wg-200-spatial-005",
+      "manifest_path": "manifests/wg-200-spatial-005.json",
+      "json_schema_valid": true,
+      "spike_validator_valid": true,
+      "errors": []
+    },
+    {
+      "candidate_id": "wg-200-simulation-001",
+      "manifest_path": "manifests/wg-200-simulation-001.json",
+      "json_schema_valid": true,
+      "spike_validator_valid": true,
+      "errors": []
+    },
+    {
+      "candidate_id": "wg-200-simulation-002",
+      "manifest_path": "manifests/wg-200-simulation-002.json",
+      "json_schema_valid": true,
+      "spike_validator_valid": true,
+      "errors": []
+    },
+    {
+      "candidate_id": "wg-200-simulation-003",
+      "manifest_path": "manifests/wg-200-simulation-003.json",
+      "json_schema_valid": true,
+      "spike_validator_valid": true,
+      "errors": []
+    },
+    {
+      "candidate_id": "wg-200-simulation-004",
+      "manifest_path": "manifests/wg-200-simulation-004.json",
+      "json_schema_valid": true,
+      "spike_validator_valid": true,
+      "errors": []
+    },
+    {
+      "candidate_id": "wg-200-simulation-005",
+      "manifest_path": "manifests/wg-200-simulation-005.json",
+      "json_schema_valid": true,
+      "spike_validator_valid": true,
+      "errors": []
+    },
+    {
+      "candidate_id": "wg-200-game-001",
+      "manifest_path": "manifests/wg-200-game-001.json",
+      "json_schema_valid": true,
+      "spike_validator_valid": true,
+      "errors": []
+    },
+    {
+      "candidate_id": "wg-200-game-002",
+      "manifest_path": "manifests/wg-200-game-002.json",
+      "json_schema_valid": true,
+      "spike_validator_valid": true,
+      "errors": []
+    },
+    {
+      "candidate_id": "wg-200-game-003",
+      "manifest_path": "manifests/wg-200-game-003.json",
+      "json_schema_valid": true,
+      "spike_validator_valid": true,
+      "errors": []
+    },
+    {
+      "candidate_id": "wg-200-game-004",
+      "manifest_path": "manifests/wg-200-game-004.json",
+      "json_schema_valid": true,
+      "spike_validator_valid": true,
+      "errors": []
+    },
+    {
+      "candidate_id": "wg-200-game-005",
+      "manifest_path": "manifests/wg-200-game-005.json",
+      "json_schema_valid": true,
+      "spike_validator_valid": true,
+      "errors": []
+    },
+    {
+      "candidate_id": "wg-200-social-001",
+      "manifest_path": "manifests/wg-200-social-001.json",
+      "json_schema_valid": true,
+      "spike_validator_valid": true,
+      "errors": []
+    },
+    {
+      "candidate_id": "wg-200-social-002",
+      "manifest_path": "manifests/wg-200-social-002.json",
+      "json_schema_valid": true,
+      "spike_validator_valid": true,
+      "errors": []
+    },
+    {
+      "candidate_id": "wg-200-social-003",
+      "manifest_path": "manifests/wg-200-social-003.json",
+      "json_schema_valid": true,
+      "spike_validator_valid": true,
+      "errors": []
+    },
+    {
+      "candidate_id": "wg-200-social-004",
+      "manifest_path": "manifests/wg-200-social-004.json",
+      "json_schema_valid": true,
+      "spike_validator_valid": true,
+      "errors": []
+    },
+    {
+      "candidate_id": "wg-200-social-005",
+      "manifest_path": "manifests/wg-200-social-005.json",
+      "json_schema_valid": true,
+      "spike_validator_valid": true,
+      "errors": []
+    }
+  ]
+}

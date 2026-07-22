@@ -1,0 +1,235 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "Odyssey",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.odyssey.ml/",
+        "evidence_snippet": "Odyssey",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://www.odyssey.ml/",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.odyssey.ml/",
+        "evidence_snippet": "https://www.odyssey.ml/",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "ai_spatial",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.odyssey.ml/",
+        "evidence_snippet": "ai_spatial",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.odyssey.ml/",
+        "evidence_snippet": "qualifies",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Interactive AI video worlds that simulate explorable environments from visual models.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.odyssey.ml/",
+        "evidence_snippet": "Interactive AI video worlds that simulate explorable environments from visual models.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Odyssey",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.odyssey.ml/",
+        "evidence_snippet": "Odyssey",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://www.odyssey.ml/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.odyssey.ml/",
+          "evidence_snippet": "https://www.odyssey.ml/",
+          "confidence": 0.85,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "spatial_exploration",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.odyssey.ml/",
+        "evidence_snippet": "spatial_exploration",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "Session-based demos; long-term persistence unclear",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.odyssey.ml/",
+        "evidence_snippet": "Session-based demos; long-term persistence unclear",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "Waitlist/demo requests via site",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.odyssey.ml/",
+        "evidence_snippet": "Waitlist/demo requests via site",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Simulated real and fantasy environments",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.odyssey.ml/",
+        "evidence_snippet": "Simulated real and fantasy environments",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Interactive video navigation",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.odyssey.ml/",
+        "evidence_snippet": "Interactive video navigation",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "value": "None",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.odyssey.ml/",
+          "evidence_snippet": "None",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "value": "Web/desktop demo clients",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.odyssey.ml/",
+          "evidence_snippet": "Web/desktop demo clients",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "World simulation models generate interactive video the user navigates.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.odyssey.ml/",
+        "evidence_snippet": "World simulation models generate interactive video the user navigates.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.odyssey.ml/",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "Site privacy/terms links",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.odyssey.ml/",
+        "evidence_snippet": "Site privacy/terms links",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "safety_categories": []
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "ai_spatial",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://www.odyssey.ml/",
+          "evidence_snippet": "ai_spatial",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Interactive AI video worlds that simulate explorable environments from visual models.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.odyssey.ml/",
+        "evidence_snippet": "Interactive AI video worlds that simulate explorable environments from visual models.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

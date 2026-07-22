@@ -1,0 +1,279 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "world_id": {
+      "value": "wg-corpus-026",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.midjourney.com/explore",
+        "evidence_snippet": "Corpus id wg-corpus-026",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "name": {
+      "value": "Midjourney Explore",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.midjourney.com/explore",
+        "evidence_snippet": "Midjourney Explore",
+        "confidence": 0.9,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://www.midjourney.com/explore",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.midjourney.com/explore",
+        "evidence_snippet": "https://www.midjourney.com/explore",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "AI image gallery for browsing generated artwork.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.midjourney.com/explore",
+        "evidence_snippet": "AI image gallery for browsing generated artwork.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.midjourney.com/explore",
+        "evidence_snippet": "Public entry documented",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "excluded_candidate",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.midjourney.com/explore",
+        "evidence_snippet": "excluded_candidate",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Midjourney",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.midjourney.com/explore",
+        "evidence_snippet": "Creator/operator: Midjourney",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "operator": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://www.midjourney.com/explore",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.midjourney.com/explore",
+          "evidence_snippet": "https://www.midjourney.com/explore",
+          "confidence": 0.9,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "passive_gallery_browsing",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.midjourney.com/explore",
+        "evidence_snippet": "passive_gallery_browsing",
+        "confidence": 0.82,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "account_required",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.midjourney.com/explore",
+        "evidence_snippet": "account_required",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "age_guidance": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Image generation only; no interactive world loop.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.midjourney.com/explore",
+        "evidence_snippet": "Image generation only; no interactive world loop.",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.midjourney.com/explore",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "human_control_boundaries": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "excluded",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "moderation_contact": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "exclusion_reason": {
+      "value": "rule_2_no_meaningful_interaction",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.midjourney.com/explore",
+        "evidence_snippet": "Gallery of generated images without interactive world state.",
+        "confidence": 0.9,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "platforms": [
+      {
+        "entity_type": "platform",
+        "label": {
+          "value": "Web",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://www.midjourney.com/explore",
+            "evidence_snippet": "Web",
+            "confidence": 0.7,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "canonical_ref": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "negative_control",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://www.midjourney.com/explore",
+          "evidence_snippet": "negative_control",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "AI image gallery for browsing generated artwork.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.midjourney.com/explore",
+        "evidence_snippet": "AI image gallery for browsing generated artwork.",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

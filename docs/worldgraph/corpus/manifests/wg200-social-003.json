@@ -1,0 +1,247 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "Rec Room",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://rec.net/",
+        "evidence_snippet": "Rec Room",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://rec.net/",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://rec.net/",
+        "evidence_snippet": "https://rec.net/",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "persistent_social",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://rec.net/",
+        "evidence_snippet": "persistent_social",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://rec.net/",
+        "evidence_snippet": "qualifies",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Cross-platform social VR/game world with user-created rooms and persistent avatars.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://rec.net/",
+        "evidence_snippet": "Cross-platform social VR/game world with user-created rooms and persistent avatars.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Rec Room Inc.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://rec.net/",
+        "evidence_snippet": "Rec Room Inc.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://rec.net/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://rec.net/",
+          "evidence_snippet": "https://rec.net/",
+          "confidence": 0.85,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "multiplayer_social_interaction",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://rec.net/",
+        "evidence_snippet": "multiplayer_social_interaction",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "Player inventory and creations persist.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://rec.net/",
+        "evidence_snippet": "Player inventory and creations persist.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "Free client; account required; cross-platform",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://rec.net/",
+        "evidence_snippet": "Free client; account required; cross-platform",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Hub plus user rooms",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://rec.net/",
+        "evidence_snippet": "Hub plus user rooms",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Room creation, cosmetics economy, events",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://rec.net/",
+        "evidence_snippet": "Room creation, cosmetics economy, events",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "value": "Player avatars; room NPCs",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://rec.net/",
+          "evidence_snippet": "Player avatars; room NPCs",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "value": "Rec Room client (VR/screen)",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://rec.net/",
+          "evidence_snippet": "Rec Room client (VR/screen)",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Platform moderation ML; creator tools adding AI assistants in rooms.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://rec.net/",
+        "evidence_snippet": "Platform moderation ML; creator tools adding AI assistants in rooms.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://rec.net/",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "Rec Room Terms",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://rec.net/",
+        "evidence_snippet": "Rec Room Terms",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "safety_categories": [
+      {
+        "value": "Teen rating; parental controls documented",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://rec.net/",
+          "evidence_snippet": "Teen rating; parental controls documented",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "persistent_social",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://rec.net/",
+          "evidence_snippet": "persistent_social",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Cross-platform social VR/game world with user-created rooms and persistent avatars.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://rec.net/",
+        "evidence_snippet": "Cross-platform social VR/game world with user-created rooms and persistent avatars.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}
