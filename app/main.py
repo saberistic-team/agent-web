@@ -22,6 +22,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app import case_studies, db, email_service, insights, page_service, server_analytics, stripe_service
 from app.admin_auth import AdminLoginRequired, login_redirect_url
 from app.admin_icp_routes import router as admin_icp_router
+from app.admin_analytics_routes import router as admin_analytics_router
 from app.admin_pipeline_routes import router as admin_pipeline_router
 from app.admin_routes import router as admin_router
 from app.actor_context import CORRELATION_HEADER
@@ -282,6 +283,7 @@ app = FastAPI(title="agent-web", version="0.3.0", lifespan=lifespan)
 app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
 app.include_router(admin_pipeline_router)
 app.include_router(admin_icp_router)
+app.include_router(admin_analytics_router)
 app.include_router(admin_router)
 app.add_middleware(AdminPreviewReadOnlyMiddleware)
 

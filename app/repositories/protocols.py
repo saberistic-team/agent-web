@@ -359,6 +359,45 @@ class PipelineRepository(Protocol):
     ) -> list[tuple[str, int]]: ...
 
 
+class MarketingAnalyticsRepository(Protocol):
+    def count_events_by_name(
+        self,
+        conn: psycopg.Connection,
+        *,
+        start: datetime,
+        end: datetime,
+        event_names: tuple[str, ...],
+    ) -> list[tuple[str, int]]: ...
+
+    def count_brief_funnel(
+        self,
+        conn: psycopg.Connection,
+        *,
+        start: datetime,
+        end: datetime,
+    ) -> dict[str, int]: ...
+
+    def list_attribution_summary(
+        self,
+        conn: psycopg.Connection,
+        *,
+        start: datetime,
+        end: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]: ...
+
+    def list_content_engagement(
+        self,
+        conn: psycopg.Connection,
+        *,
+        start: datetime,
+        end: datetime,
+        event_name: str,
+        slug_property: str,
+        limit: int,
+    ) -> list[dict[str, Any]]: ...
+
+
 class AcquisitionDashboardRepository(Protocol):
     def count_companies_by_dimension(
         self,

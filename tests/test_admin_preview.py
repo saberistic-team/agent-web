@@ -769,6 +769,29 @@ def test_preview_acquisition_dashboard_data_is_populated() -> None:
 
 
 @pytest.mark.unit
+def test_preview_marketing_analytics_data_is_populated() -> None:
+    import random
+
+    from app.admin_analytics_pages import render_marketing_analytics_page
+    from app.admin_preview import build_preview_marketing_analytics_data
+
+    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
+    a = build_preview_marketing_analytics_data(rng=random.Random(42), now=now)
+    b = build_preview_marketing_analytics_data(rng=random.Random(42), now=now)
+    assert a.engagement_events == b.engagement_events
+    assert a.attribution
+    assert a.case_study_engagement
+    html = render_marketing_analytics_page(
+        data=a,
+        admin_username="preview",
+        preview_banner="Preview data — not production",
+    )
+    assert "Landing Viewed" in html
+    assert "linkedin" in html
+    assert 'id="analytics-title"' in html
+
+
+@pytest.mark.unit
 def test_preview_import_batches_seed_stable() -> None:
     from app.admin_preview import build_preview_import_batch_detail, build_preview_import_batches
 
