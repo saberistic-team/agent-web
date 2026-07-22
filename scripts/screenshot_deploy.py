@@ -292,6 +292,10 @@ ADMIN_SCREENSHOT_ROUTES: tuple[str, ...] = (
     "/admin/signals/11111111-1111-1111-1111-111111111111",
     "/admin/signals/22222222-2222-2222-2222-222222222222",
     "/admin/discovery/runs/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1",
+    "/admin/discovery/inbox",
+    "/admin/discovery/inbox/11111111-1111-1111-1111-111111111101",
+    "/admin/discovery/inbox/11111111-1111-1111-1111-111111111102",
+    "/admin/discovery/inbox/11111111-1111-1111-1111-111111111103",
 )
 
 # Fallback when app.admin_layout import fails (keep in sync).

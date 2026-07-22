@@ -159,7 +159,7 @@ def render_discovery_inbox_page(
     return render_admin_shell(
         title="Discovery inbox",
         main=main,
-        active_path="/admin/discovery/inbox",
+        active_path="/admin/discovery",
         admin_username=admin_username,
         csrf_token=csrf_token,
     )
@@ -337,7 +337,7 @@ def render_discovery_candidate_page(
     return render_admin_shell(
         title=f"Discovery · {_esc(candidate.get('name'))}",
         main=main,
-        active_path="/admin/discovery/inbox",
+        active_path="/admin/discovery",
         admin_username=admin_username,
         csrf_token=csrf_token,
     )
@@ -424,7 +424,7 @@ def render_discovery_bulk_preview_page(
     return render_admin_shell(
         title="Bulk preview",
         main=main,
-        active_path="/admin/discovery/inbox",
+        active_path="/admin/discovery",
         admin_username=admin_username,
         csrf_token=csrf_token,
     )

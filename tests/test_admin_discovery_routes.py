@@ -274,3 +274,322 @@ def test_discovery_accept_preview_mode_rejects_mutation(monkeypatch: pytest.Monk
             data={"csrf_token": "ignored", "company_choice": "new"},
         )
     assert response.status_code == 405
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_discovery_inbox_db_load_and_filter_validation(authenticated_admin: dict[str, Any], monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql://test:test@127.0.0.1:5432/agent_web_test")
+    inbox = MagicMock()
+    inbox.list_candidates.return_value = []
+    inbox.list_filter_metadata.return_value = {"sources": [], "runs": []}
+    with patch("app.admin_discovery_routes._inbox", inbox), patch(
+        "app.admin_discovery_routes.db.db_connection"
+    ) as db_conn:
+        db_conn.return_value.__enter__.return_value = MagicMock()
+        response = client.get(
+            "/admin/discovery/inbox",
+            params={"confidence": "not-a-bucket", "review_state": "pending"},
+            cookies=authenticated_admin["cookies"],
+        )
+    assert response.status_code == 200
+    assert "Review inbox" in response.text
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_discovery_inbox_db_failure_is_soft(authenticated_admin: dict[str, Any], monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql://test:test@127.0.0.1:5432/agent_web_test")
+    inbox = MagicMock()
+    inbox.list_candidates.side_effect = RuntimeError("db down")
+    with patch("app.admin_discovery_routes._inbox", inbox), patch(
+        "app.admin_discovery_routes.db.db_connection"
+    ) as db_conn:
+        db_conn.return_value.__enter__.return_value = MagicMock()
+        response = client.get("/admin/discovery/inbox", cookies=authenticated_admin["cookies"])
+    assert response.status_code == 200
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_discovery_bulk_preview_limit_error(authenticated_admin: dict[str, Any], monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.discovery_inbox import DiscoveryBulkLimitError
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql://test:test@127.0.0.1:5432/agent_web_test")
+    inbox = MagicMock()
+    inbox.preview_bulk_action.side_effect = DiscoveryBulkLimitError("too many")
+    with patch("app.admin_discovery_routes._inbox", inbox), patch(
+        "app.admin_discovery_routes.db.db_connection"
+    ) as db_conn:
+        db_conn.return_value.__enter__.return_value = MagicMock()
+        response = client.post(
+            "/admin/discovery/inbox/bulk/preview",
+            data={
+                "csrf_token": authenticated_admin["csrf_token"],
+                "action": "reject",
+                "candidate_ids": [str(CANDIDATE_ID)],
+            },
+            cookies=authenticated_admin["cookies"],
+        )
+    assert response.status_code == 400
+    assert "too many" in response.text
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_discovery_bulk_commit_and_mutations(authenticated_admin: dict[str, Any], monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql://test:test@127.0.0.1:5432/agent_web_test")
+    inbox = MagicMock()
+    with patch("app.admin_discovery_routes._inbox", inbox), patch(
+        "app.admin_discovery_routes.db.db_connection"
+    ) as db_conn:
+        db_conn.return_value.__enter__.return_value = MagicMock()
+        response = client.post(
+            "/admin/discovery/inbox/bulk/commit",
+            data={
+                "csrf_token": authenticated_admin["csrf_token"],
+                "action": "reject",
+                "preview_token": "token",
+                "candidate_ids": [str(CANDIDATE_ID)],
+                "rejection_reason": "Not ICP",
+            },
+            cookies=authenticated_admin["cookies"],
+        )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/admin/discovery/inbox?saved=1"
+    inbox.commit_bulk_action.assert_called_once()
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_discovery_candidate_detail_db(authenticated_admin: dict[str, Any], monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql://test:test@127.0.0.1:5432/agent_web_test")
+    inbox = MagicMock()
+    inbox.get_candidate_detail.return_value = {
+        "id": CANDIDATE_ID,
+        "name": "Northwind Labs",
+        "source_id": "fixture_api",
+        "external_id": "fixture:1",
+        "evidence_fingerprint": "fp",
+        "domain": "northwind.example",
+        "website": "https://northwind.example",
+        "category": "fintech",
+        "confidence": 0.9,
+        "freshness": "fresh",
+        "review_state": "pending",
+        "discovered_at": datetime.now(timezone.utc),
+        "signals": [],
+        "evidence": {"snippet": "x", "observations": []},
+        "conflicts": [],
+        "match_suggestions": [],
+    }
+    with patch("app.admin_discovery_routes._inbox", inbox), patch(
+        "app.admin_discovery_routes.db.db_connection"
+    ) as db_conn:
+        db_conn.return_value.__enter__.return_value = MagicMock()
+        response = client.get(
+            f"/admin/discovery/inbox/{CANDIDATE_ID}",
+            cookies=authenticated_admin["cookies"],
+        )
+    assert response.status_code == 200
+    assert "Northwind Labs" in response.text
+
+    inbox.get_candidate_detail.return_value = None
+    with patch("app.admin_discovery_routes._inbox", inbox), patch(
+        "app.admin_discovery_routes.db.db_connection"
+    ) as db_conn:
+        db_conn.return_value.__enter__.return_value = MagicMock()
+        missing = client.get(
+            f"/admin/discovery/inbox/{CANDIDATE_ID}",
+            cookies=authenticated_admin["cookies"],
+        )
+    assert missing.status_code == 404
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_discovery_bulk_preview_get_redirect(authenticated_admin: dict[str, Any]) -> None:
+    response = client.get("/admin/discovery/inbox/bulk/preview", cookies=authenticated_admin["cookies"])
+    assert response.status_code == 303
+    assert response.headers["location"] == "/admin/discovery/inbox"
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_discovery_reject_and_defer_preview_mode_blocked(monkeypatch: pytest.MonkeyPatch) -> None:
+    enable_admin_preview_env(monkeypatch)
+    with patch("app.admin_discovery_routes._verify_session_csrf"):
+        reject = client.post(
+            f"/admin/discovery/inbox/{CANDIDATE_ID}/reject",
+            data={"csrf_token": "x", "rejection_reason": "nope"},
+        )
+        defer = client.post(
+            f"/admin/discovery/inbox/{CANDIDATE_ID}/defer",
+            data={"csrf_token": "x", "deferred_until": "2099-01-01T00:00"},
+        )
+        bulk = client.post(
+            "/admin/discovery/inbox/bulk/commit",
+            data={
+                "csrf_token": "x",
+                "action": "reject",
+                "preview_token": "t",
+                "candidate_ids": [str(CANDIDATE_ID)],
+            },
+        )
+    assert reject.status_code == 405
+    assert defer.status_code == 405
+    assert bulk.status_code == 405
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_discovery_mutations_require_database(authenticated_admin: dict[str, Any]) -> None:
+    import dataclasses
+
+    from app.config import get_settings
+
+    settings = dataclasses.replace(get_settings(), database_url="", admin_preview_enabled=False)
+    with patch("app.admin_discovery_routes.get_settings", return_value=settings):
+        response = client.post(
+            f"/admin/discovery/inbox/{CANDIDATE_ID}/accept",
+            data={
+                "csrf_token": authenticated_admin["csrf_token"],
+                "company_choice": "new",
+            },
+            cookies=authenticated_admin["cookies"],
+        )
+        assert response.status_code == 503
+        response = client.post(
+            f"/admin/discovery/inbox/{CANDIDATE_ID}/reject",
+            data={
+                "csrf_token": authenticated_admin["csrf_token"],
+                "rejection_reason": "Not ICP",
+            },
+            cookies=authenticated_admin["cookies"],
+        )
+        assert response.status_code == 503
+        response = client.post(
+            f"/admin/discovery/inbox/{CANDIDATE_ID}/defer",
+            data={
+                "csrf_token": authenticated_admin["csrf_token"],
+                "deferred_until": "2099-01-01T00:00",
+            },
+            cookies=authenticated_admin["cookies"],
+        )
+        assert response.status_code == 503
+        response = client.post(
+            "/admin/discovery/inbox/bulk/preview",
+            data={
+                "csrf_token": authenticated_admin["csrf_token"],
+                "action": "reject",
+                "candidate_ids": [str(CANDIDATE_ID)],
+            },
+            cookies=authenticated_admin["cookies"],
+        )
+        assert response.status_code == 503
+        response = client.post(
+            "/admin/discovery/inbox/bulk/commit",
+            data={
+                "csrf_token": authenticated_admin["csrf_token"],
+                "action": "reject",
+                "preview_token": "t",
+                "candidate_ids": [str(CANDIDATE_ID)],
+            },
+            cookies=authenticated_admin["cookies"],
+        )
+        assert response.status_code == 503
+        response = client.get(
+            f"/admin/discovery/inbox/{CANDIDATE_ID}",
+            cookies=authenticated_admin["cookies"],
+        )
+        assert response.status_code == 503
+
+
+@pytest.mark.unit
+def test_discovery_pages_helper_branches() -> None:
+    from app.admin_discovery_pages import (
+        _format_timestamp,
+        _run_options,
+        _source_options,
+        render_discovery_bulk_preview_page,
+        render_discovery_candidate_page,
+        render_discovery_inbox_page,
+    )
+
+    assert _format_timestamp(None) == "—"
+    assert "2026" in _format_timestamp(datetime(2026, 2, 3, 4, 5, tzinfo=timezone.utc))
+    assert _format_timestamp("raw-stamp") == "raw-stamp"
+    assert "fixture_api" in _source_options(["fixture_api"], "fixture_api")
+    assert "selected" in _run_options(
+        [
+            {
+                "id": "run-1",
+                "source_id": "yc",
+                "started_at": datetime(2026, 2, 3, tzinfo=timezone.utc),
+                "candidate_count": 2,
+                "status": "completed",
+            }
+        ],
+        "run-1",
+    )
+    html = render_discovery_inbox_page(
+        candidates=[],
+        filters={"review_state": "accepted", "source": "yc", "category": "fintech"},
+        filter_metadata={"sources": ["yc"], "runs": []},
+        csrf_token="csrf",
+        admin_username="ops",
+        error_message="boom",
+        status_message="saved",
+        preview_banner="Preview data — not production",
+    )
+    assert "saved" in html
+    assert "Preview data — not production" in html
+    # error_message is only shown when status_message is absent
+    html_err = render_discovery_inbox_page(
+        candidates=[],
+        filters={"review_state": "pending"},
+        filter_metadata={"sources": [], "runs": []},
+        csrf_token="csrf",
+        admin_username="ops",
+        error_message="boom",
+    )
+    assert "boom" in html_err
+    detail = render_discovery_candidate_page(
+        candidate={
+            "id": CANDIDATE_ID,
+            "name": "Northwind Labs",
+            "source_id": "fixture_api",
+            "external_id": "x",
+            "evidence_fingerprint": "fp",
+            "domain": None,
+            "website": None,
+            "category": None,
+            "confidence": None,
+            "freshness": "stale",
+            "review_state": "deferred",
+            "discovered_at": None,
+            "signals": None,
+            "evidence": {"snippet": None, "observations": [{"value": "v"}]},
+            "conflicts": None,
+            "match_suggestions": None,
+        },
+        csrf_token="csrf",
+        admin_username="ops",
+        preview_banner="Preview data — not production",
+    )
+    assert "Northwind Labs" in detail
+    preview = render_discovery_bulk_preview_page(
+        preview={
+            "action": "defer",
+            "count": 0,
+            "candidates": [],
+            "invalid_state_ids": [str(CANDIDATE_ID)],
+            "preview_token": "tok",
+            "rejection_reason": None,
+            "deferred_until": "2099-01-01T00:00:00+00:00",
+        },
+        csrf_token="csrf",
+        admin_username="ops",
+        preview_banner="Preview data — not production",
+    )
+    assert "Bulk action preview" in preview
