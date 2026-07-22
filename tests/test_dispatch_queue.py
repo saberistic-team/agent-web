@@ -200,3 +200,72 @@ def test_list_awaiting_dispatch_orders_by_earliest_due(
 
     assert [i["number"] for i in awaiting] == [202, 201]
     assert skipped == []
+
+
+@pytest.mark.unit
+def test_dispatch_next_skips_open_dependencies(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from dispatch_queue import dispatch_next
+
+    monkeypatch.setattr(
+        "dispatch_queue.list_awaiting_dispatch",
+        lambda repo: (
+            [
+                {
+                    "number": 204,
+                    "body": "Depends on: #199\n",
+                    "labels": [
+                        {"name": "status:queued"},
+                        {"name": "type:feature"},
+                        {"name": "priority:low"},
+                    ],
+                    "milestone": {"title": "WorldGraph"},
+                },
+                {
+                    "number": 210,
+                    "body": "## Dependencies\nNone\n",
+                    "labels": [
+                        {"name": "status:queued"},
+                        {"name": "type:feature"},
+                        {"name": "priority:normal"},
+                    ],
+                    "milestone": {"title": "WorldGraph"},
+                },
+            ],
+            [],
+        ),
+    )
+    monkeypatch.setattr("dispatch_queue.agent_in_progress", lambda *_a, **_k: False)
+    monkeypatch.setattr(
+        "dispatch_queue.dependency_block_reason",
+        lambda repo, number, body="": (
+            f"#{number} is blocked by open dependencies: #199"
+            if number == 204
+            else None
+        ),
+    )
+    monkeypatch.setattr("dispatch_queue._recent_dispatcher_skip", lambda *_a, **_k: False)
+    comments: list[tuple[int, str]] = []
+    monkeypatch.setattr(
+        "dispatch_queue.post_issue_comment",
+        lambda repo, number, body: comments.append((number, body)),
+    )
+    monkeypatch.setattr("dispatch_queue.ensure_priority", lambda *_a, **_k: "priority:normal")
+    monkeypatch.setattr("dispatch_queue.delete_label", lambda *_a, **_k: None)
+    monkeypatch.setattr("dispatch_queue.add_labels", lambda *_a, **_k: None)
+
+    result = dispatch_next("o/r", dry_run=False)
+
+    assert result["skipped_deps"][0]["issue"] == 204
+    assert result["dispatched"] == [
+        {
+            "issue": 210,
+            "agent": "agent:builder",
+            "priority": "priority:normal",
+            "milestone": "WorldGraph",
+        }
+    ]
+    assert comments[0][0] == 204
+    assert "### dispatcher_skip" in comments[0][1]
+    assert any("### dispatcher_dispatch" in body for _, body in comments)
