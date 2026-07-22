@@ -120,13 +120,16 @@ def test_world_manifest_v0_doc_references_standards_mapping() -> None:
 
 
 @pytest.mark.unit
-def test_spike_manifests_remain_valid_under_expanded_schema() -> None:
+def test_spike_qualifying_manifests_remain_valid_under_expanded_schema() -> None:
+    """Spike extractor output is a subset of Manifest v0; qualifying entries must validate."""
     from spike.worldgraph.corpus import load_corpus, read_fixture
     from spike.worldgraph.deterministic_extractor import DeterministicExtractor
 
     schema = load_schema()
     extractor = DeterministicExtractor()
-    for entry in load_corpus():
+    qualifying = [entry for entry in load_corpus() if entry["qualification"] == "qualifies"]
+    assert qualifying, "expected qualifying spike corpus entries"
+    for entry in qualifying:
         content = read_fixture(entry["fixture"])
         content_type = "text/html"
         if entry["fixture"].endswith(".md"):

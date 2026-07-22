@@ -29,10 +29,10 @@ Source: [A2A Agent Discovery and Agent Card fields](https://a2a-protocol.org/lat
 
 | A2A Agent Card field | World Manifest v0 field | Mapping notes |
 |----------------------|-------------------------|---------------|
-| `name` | `linked_entities[].display_name` | When entity_type is `agent` or `character` |
-| `description` | `discovery.semantic_description` or agent-specific extension | World-level summary may aggregate multiple agents |
-| `url` | `linked_entities[].reference_url` | Point to `/.well-known/agent-card.json` or card URL |
-| `capabilities` | `world_structure.protocols[]`, `linked_entities[].capabilities` | Store as proven strings; do not invent capabilities |
+| `name` | `world_structure.agents_and_characters[].display_name` | When `entity_type` is `agent` or `character` |
+| `description` | `discovery.semantic_description` or `extensions` | World-level summary may aggregate multiple agents |
+| `url` | `world_structure.agents_and_characters[].reference_url` | Point to `/.well-known/agent-card.json` or card URL |
+| `capabilities` | `identity.modalities[]`, `ai_role.model_disclosures[]` | Store as proven strings; do not invent capabilities |
 | `skills` / tool metadata | `world_structure.agents_and_characters[]` | Human-readable agent roles in world context |
 | `authentication` | `experience.access_requirements` | World entry auth may differ from agent auth |
 | `defaultInputModes` / `defaultOutputModes` | `identity.modalities[]` | Map modes to modality vocabulary |
@@ -67,26 +67,34 @@ Source: [Official MCP Registry metadata model](https://modelcontextprotocol.io/r
 
 | MCP Registry field | World Manifest v0 field | Mapping notes |
 |--------------------|-------------------------|---------------|
-| `name` | `linked_entities[].display_name` | entity_type `platform` or `engine` when MCP server supports a world |
+| `name` | `world_structure.platforms[].display_name` | `entity_type` `platform` when MCP server supports a world |
 | `description` | `discovery.semantic_description` | World-scoped description, not server README duplicate |
 | `homepage` / repository URL | `identity.canonical_url` or `experience.entry_points[]` | Prefer world entry URL over package homepage |
-| `capabilities` / `tools` | `world_structure.protocols[]` | Record `mcp` protocol claim; link registry ID |
-| Registry package ID | `linked_entities[].external_id` | `external_standard: "mcp_registry"` |
+| `capabilities` / `tools` | `world_structure.engines_models_protocols[]` | Record MCP protocol claim; link registry ID in `entity_id` |
+| Registry package ID | `world_structure.engines_models_protocols[].entity_id` | `external_standard: "mcp_registry"` |
 | Server config / env | **Not copied** | Fetch from registry at runtime |
 
 MCP servers index **tools**, not **worlds**. A world manifest may reference MCP servers
-that power agents inside the world via `linked_entities` and `world_structure.protocols`.
+that power agents inside the world via `world_structure.platforms[]` and
+`world_structure.engines_models_protocols[]`.
 
 Example (from spike `corpus-003-mcp-registry.json` pattern):
 
 ```json
 {
   "entity_type": "platform",
-  "entity_id": "orbit-sanctuary-mcp",
+  "entity_id": "io.example/orbit-sanctuary",
   "external_standard": "mcp_registry",
-  "external_id": {
-    "value": "io.example/orbit-sanctuary",
-    "provenance": { "source_kind": "source_observation", "confidence": 0.85, "observed_at": "2026-07-15T00:00:00+00:00" }
+  "reference_url": {
+    "value": "https://orbit-sanctuary.example.com/",
+    "provenance": {
+      "source_kind": "source_observation",
+      "source_url": "https://orbit-sanctuary.example.com/",
+      "evidence_snippet": "MCP registry homepage",
+      "confidence": 0.85,
+      "observed_at": "2026-07-15T00:00:00+00:00",
+      "verification_status": "unverified"
+    }
   }
 }
 ```
@@ -99,24 +107,13 @@ Source: [C2PA specifications 2.4](https://spec.c2pa.org/specifications/specifica
 
 | C2PA concept | World Manifest v0 field | Mapping notes |
 |--------------|-------------------------|---------------|
-| Manifest store (JUMBF) | `discovery.representative_media[].c2pa_manifest_url` | URL to credential or embedded manifest reference |
-| `claim_generator` | `discovery.representative_media[].provenance` | Map generator info to evidence_snippet when parsed |
-| Ingredient assertions | `world_structure.assets_and_dependencies[]` | Link assets with credential refs |
-| Validation status | `discovery.representative_media[].c2pa_validation` | `valid`, `invalid`, `unknown` — never verified without check |
+| Manifest store (JUMBF) | `discovery.representative_media[]` | URL to credential-bearing asset; validation is separate |
+| `claim_generator` | `trust.source_evidence[]` | Map generator info to `evidence_snippet` when parsed |
+| Ingredient assertions | `world_structure.assets_and_dependencies[]` | Link assets with `external_standard: "c2pa_manifest"` |
+| Validation status | `extensions.c2pa_validation` (optional) | `valid`, `invalid`, `unknown` — never verified without check |
 
-Representative media entry shape:
-
-```json
-{
-  "media_url": {
-    "value": "https://cdn.example/worlds/scene-alpha/hero.webp",
-    "provenance": { "source_kind": "source_observation", "confidence": 0.9, "observed_at": "2026-07-15T00:00:00+00:00" }
-  },
-  "media_type": { "value": "image/webp", "provenance": { "…" } },
-  "c2pa_manifest_url": { "value": "unknown", "provenance": { "source_kind": "unknown", "confidence": 0, "observed_at": "2026-07-15T00:00:00+00:00" } },
-  "c2pa_validation": { "value": "unknown", "provenance": { "…" } }
-}
-```
+Representative media uses proven URL wrappers. C2PA-specific validation state belongs in
+`extensions` until a future schema version adds typed media objects.
 
 Do not represent unsigned media as C2PA-validated.
 
@@ -131,11 +128,11 @@ Sources:
 
 | Standard / claim | World Manifest v0 field | Mapping notes |
 |------------------|-------------------------|---------------|
-| Web of Worlds linked experience | `discovery.related_worlds[]`, `world_structure.protocols[]` | Acknowledge MSF direction; use `protocol: "msf_web_of_worlds"` when declared |
-| glTF assets | `world_structure.assets_and_dependencies[]`, `protocols[]` | `gltf_2` capability |
-| USD / OpenUSD | `world_structure.assets_and_dependencies[]`, `protocols[]` | `openusd` capability |
-| WebXR session | `experience.supported_devices[]`, `protocols[]` | `webxr` when entry supports immersive API |
-| World Labs Marble / World API | `world_structure.engines[]`, `platforms[]` | Engine/platform links, not conflation with World entity |
+| Web of Worlds linked experience | `discovery.related_worlds[]` | Acknowledge MSF direction; cross-link `entity_type: "world"` |
+| glTF assets | `world_structure.assets_and_dependencies[]` | `external_standard: "gltf"` |
+| USD / OpenUSD | `world_structure.assets_and_dependencies[]` | `external_standard: "usd"` |
+| WebXR session | `experience.supported_devices[]`, `identity.modalities[]` | Declare immersive entry when claimed |
+| World Labs Marble / World API | `world_structure.platforms[]`, `engines_models_protocols[]` | Engine/platform links, not conflation with World entity |
 | Universal manifest (MSF / vendor) | `extensions.msf` or future `linked_manifest_url` | Reference external manifest URL; do not claim v0 == universal standard |
 
 ---
@@ -144,11 +141,11 @@ Sources:
 
 | Standard | Reuse strategy | Primary manifest location |
 |----------|----------------|---------------------------|
-| A2A Agent Card | Link card URL; map name/capabilities | `linked_entities[]` |
-| MCP Registry | Link registry ID; no config copy | `linked_entities[]`, `protocols[]` |
-| C2PA | Optional media credential URLs + validation state | `discovery.representative_media[]` |
-| glTF / USD / WebXR | Declared protocol strings + asset deps | `world_structure.protocols[]`, assets |
-| MSF Web of Worlds | Related-world edges + protocol claim | `discovery.related_worlds[]`, `protocols[]` |
+| A2A Agent Card | Link card URL; map name/capabilities | `world_structure.agents_and_characters[]` |
+| MCP Registry | Link registry ID; no config copy | `world_structure.platforms[]`, `engines_models_protocols[]` |
+| C2PA | Optional media credential URLs + validation state | `discovery.representative_media[]`, `assets_and_dependencies[]` |
+| glTF / USD / WebXR | Declared `external_standard` on asset refs | `world_structure.assets_and_dependencies[]` |
+| MSF Web of Worlds | Related-world edges | `discovery.related_worlds[]` |
 
 ---
 
@@ -159,4 +156,4 @@ Sources:
 | `tests/fixtures/worldgraph/corpus-002-agent-card.json` | A2A-shaped agent metadata |
 | `tests/fixtures/worldgraph/corpus-003-mcp-registry.json` | MCP registry-shaped metadata |
 | `tests/fixtures/worldgraph/corpus-011-jsonld.html` | Structured web discovery (adjacent) |
-| `docs/worldgraph/fixtures/positive/spatial-marble-demo.json` | WebXR + spatial protocols |
+| `docs/worldgraph/fixtures/positive/003-spatial-marble-demo.json` | WebXR + spatial protocols |
