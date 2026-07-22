@@ -19,6 +19,11 @@ from scripts.check_crm_schema_docs import (
     PAYMENT_DETAIL_COLUMNS,
     check_crm_schema_docs,
 )
+from scripts.crm_schema_doc_contract import (
+    expected_migration_ledger,
+    migrations_through,
+    validate_crm_schema_doc,
+)
 
 _REQUIRED = (os.environ.get("REQUIRE_TEST_DATABASE") or "").strip() in {"1", "true", "yes"}
 _DATABASE_URL = (os.environ.get("TEST_DATABASE_URL") or "").strip()
@@ -104,6 +109,25 @@ def _brief_columns(conn: psycopg.Connection) -> set[str]:
 def test_crm_schema_docs_passes() -> None:
     result = check_crm_schema_docs()
     assert result.ok, "\n".join(result.errors)
+
+
+@pytest.mark.unit
+def test_crm_schema_doc_contract_passes() -> None:
+    errors = validate_crm_schema_doc()
+    assert errors == [], "\n".join(errors)
+    ledger = expected_migration_ledger()
+    assert list(ledger) == [f"{index:03d}" for index in range(1, 17)]
+    through_016 = migrations_through("016")
+    assert through_016[-1].version == "016"
+
+
+@pytest.mark.unit
+def test_crm_schema_doc_contract_flags_stub(tmp_path: Any) -> None:
+    schema = tmp_path / "CRM_SCHEMA.md"
+    schema.write_text("# stub\n", encoding="utf-8")
+    errors = validate_crm_schema_doc(path=schema)
+    assert errors
+    assert any("migration ledger missing" in err for err in errors)
 
 
 @pytest.mark.unit

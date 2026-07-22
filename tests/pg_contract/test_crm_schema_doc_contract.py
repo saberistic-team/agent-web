@@ -9,7 +9,7 @@ from uuid import uuid4
 import psycopg
 import pytest
 
-from app.crm_schema_doc_contract import (
+from scripts.crm_schema_doc_contract import (
     CANONICAL_COMPANY_PIPELINE_COLUMNS,
     COMPANIES_COLUMNS_THROUGH_016,
     LEGACY_COMPANY_PIPELINE_COLUMNS,
