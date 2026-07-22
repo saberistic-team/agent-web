@@ -38,17 +38,25 @@ Prose-only “start after Manifest / corpus …” is **not** enough (learned fr
 [#204](https://github.com/saberistic-team/agent-web/issues/204)). Before
 `status:queued`:
 
-1. Prefer GitHub **blocked by** links on the issue, **and/or**
+1. Prefer GitHub **blocked by** / **blocking** and **parent / sub-issue** links
 2. Add an explicit body line: `Depends on: #199, #200` (or
-   `## Dependencies` containing only those refs / `None` / `N/A`).
+   `## Dependencies` containing only those refs / `None` / `N/A`)
+3. When spawning children, GitHub parent/child must be set (`addSubIssue`) so
+   open children block the parent from dequeue
 
-If a `## Dependencies` section has narrative text but **no** `#N` refs, do
-**not** queue — rewrite to `Depends on:` or set `status:blocked` with
-`@human-review`. Do not invent stand-in schemas so a later spike can “guess”
-upstream docs.
+Planner and Dispatcher run `reconcile_issue_dependencies` (`scripts/issue_deps.py`):
+they read related issues/PRs, derive missing deps from strong ordering phrases
+and linked PR bodies, then **write** missing `blockedBy` / sub-issue links and
+sync `Depends on:` before queue / dequeue. A `### dependency_reconcile` comment
+records what was added.
 
-Dispatcher (`scripts/dispatch_queue.py`) and Builder/Docs/Reviewer/Gate all
-enforce the same rules via `scripts/issue_deps.py`.
+If a `## Dependencies` section has narrative text but **no** `#N` refs (and
+reconcile cannot infer any), do **not** queue — rewrite to `Depends on:` or set
+`status:blocked` with `@human-review`. Do not invent stand-in schemas so a later
+spike can “guess” upstream docs.
+
+Builder/Docs/Reviewer/Gate enforce the same closed-deps rules via
+`scripts/issue_deps.py`.
 
 Humans open/close milestones to mark the current phase. You assign issues to an
 open milestone (prefer the parent’s open milestone, else the earliest-due open
