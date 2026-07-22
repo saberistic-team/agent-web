@@ -15,7 +15,7 @@ from app import analytics_ingest
 from app.analytics_dashboard import load_analytics_dashboard
 from app.analytics_event_schema import ConsentState
 from app.config import get_settings
-from app.repositories.postgres import PostgresAnalyticsDashboardRepository
+from app.repositories.postgres_analytics_dashboard import PostgresAnalyticsDashboardRepository
 
 UTC = timezone.utc
 NOW = datetime(2026, 7, 15, 12, 0, tzinfo=UTC)

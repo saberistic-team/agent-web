@@ -423,22 +423,31 @@ class AcquisitionDashboardRepository(Protocol):
     ) -> list[dict[str, Any]]: ...
 
 
-class MarketingAnalyticsRepository(Protocol):
+class AnalyticsDashboardRepository(Protocol):
     def count_events_by_name(
         self,
         conn: psycopg.Connection,
         *,
         start: datetime,
         end: datetime,
-        event_names: tuple[str, ...],
-    ) -> list[tuple[str, int]]: ...
+        event_names: list[str],
+    ) -> dict[str, int]: ...
 
-    def list_attribution_breakdown(
+    def count_crm_funnel(
         self,
         conn: psycopg.Connection,
         *,
         start: datetime,
         end: datetime,
+    ) -> dict[str, int]: ...
+
+    def list_attribution_buckets(
+        self,
+        conn: psycopg.Connection,
+        *,
+        start: datetime,
+        end: datetime,
+        dimension: str,
         limit: int,
     ) -> list[dict[str, Any]]: ...
 

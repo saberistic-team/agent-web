@@ -283,23 +283,6 @@ def build_conversion_rates(
     )
 
 
-def dashboard_has_activity(data: AnalyticsDashboardData) -> bool:
-    """True when any dashboard section has non-zero counts."""
-    if any(row.count for row in data.event_counts):
-        return True
-    if any(
-        (
-            data.crm_counts.leads,
-            data.crm_counts.checkouts,
-            data.crm_counts.payments,
-        )
-    ):
-        return True
-    if data.attribution or data.case_study_engagement or data.article_engagement:
-        return True
-    return False
-
-
 def load_analytics_dashboard(
     conn: psycopg.Connection,
     repo: AnalyticsDashboardRepository,
@@ -375,19 +358,11 @@ def load_analytics_dashboard(
         ),
         attribution=tuple(attribution_rows),
         case_study_engagement=tuple(
-            ContentEngagementRow(
-                content_type="case_study",
-                slug=str(row["slug"]),
-                views=int(row["views"]),
-            )
+            ContentEngagementRow(content_type="case_study", slug=str(row["slug"]), views=int(row["views"]))
             for row in case_rows
         ),
         article_engagement=tuple(
-            ContentEngagementRow(
-                content_type="article",
-                slug=str(row["slug"]),
-                views=int(row["views"]),
-            )
+            ContentEngagementRow(content_type="article", slug=str(row["slug"]), views=int(row["views"]))
             for row in article_rows
         ),
         generated_at=reference,

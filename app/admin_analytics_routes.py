@@ -1,4 +1,4 @@
-"""Marketing analytics admin dashboard routes."""
+"""Marketing analytics admin routes."""
 
 from __future__ import annotations
 
@@ -9,114 +9,149 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 
 from app import db
-from app.config import get_settings
-from app.marketing_analytics_dashboard import (
-    MarketingAnalyticsDashboardData,
-    load_marketing_analytics_dashboard,
+from app.actor_context import actor_context_from_request
+from app.analytics_dashboard import (
+    AnalyticsDashboardData,
+    AnalyticsDateRange,
+    CrmFunnelCounts,
+    load_analytics_dashboard,
     parse_analytics_date_range,
-    render_analytics_export_csv,
 )
+from app.analytics_export import render_analytics_dashboard_csv
+from app.admin_analytics_pages import render_analytics_dashboard_page
+from app.config import get_settings
+from app.crm_service import CrmService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin/analytics", tags=["admin-analytics"])
+_crm = CrmService()
+
+
+def _parse_range_from_request(request: Request) -> tuple[AnalyticsDateRange, str | None]:
+    params = request.query_params
+    try:
+        return parse_analytics_date_range(
+            days=params.get("days"),
+            start=params.get("start"),
+            end=params.get("end"),
+        ), None
+    except ValueError as exc:
+        date_range = parse_analytics_date_range()
+        return date_range, str(exc)
+
+
+def _empty_dashboard(date_range: AnalyticsDateRange) -> AnalyticsDashboardData:
+    return AnalyticsDashboardData(
+        date_range=date_range,
+        event_counts=(),
+        crm_counts=CrmFunnelCounts(leads=0, checkouts=0, payments=0),
+        conversion_rates=(),
+        attribution=(),
+        case_study_engagement=(),
+        article_engagement=(),
+        generated_at=datetime.now(timezone.utc),
+    )
 
 
 @router.get("", response_class=HTMLResponse)
 @router.get("/", response_class=HTMLResponse)
-def admin_marketing_analytics(
-    request: Request,
-    date_from: str | None = None,
-    date_to: str | None = None,
-) -> HTMLResponse:
-    from app.admin_analytics_pages import render_marketing_analytics_page
+def admin_analytics_dashboard(request: Request) -> HTMLResponse:
     from app.admin_routes import _session_csrf_for_forms, require_admin_session
 
     session = require_admin_session(request)
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
-    date_range = parse_analytics_date_range(date_from=date_from, date_to=date_to)
+    date_range, range_error = _parse_range_from_request(request)
 
     if settings.admin_preview_enabled:
-        from app.admin_preview import build_preview_marketing_analytics_data
+        from app.admin_preview import build_preview_analytics_dashboard_data
 
         return HTMLResponse(
-            render_marketing_analytics_page(
-                data=build_preview_marketing_analytics_data(date_range=date_range),
+            render_analytics_dashboard_page(
+                data=build_preview_analytics_dashboard_data(date_range=date_range),
                 admin_username=session.admin_username,
                 csrf_token=csrf_token,
                 preview_banner="Preview data — not production",
+                range_error=range_error,
             )
         )
 
-    dashboard_data: MarketingAnalyticsDashboardData | None = None
+    dashboard_data: AnalyticsDashboardData | None = None
     db_error = False
     if settings.database_url:
         try:
             from app.repositories.postgres import get_repositories
 
             with db.db_connection(settings.database_url) as conn:
-                dashboard_data = load_marketing_analytics_dashboard(
+                dashboard_data = load_analytics_dashboard(
                     conn,
-                    get_repositories().marketing_analytics,
+                    get_repositories().analytics_dashboard,
                     date_range=date_range,
                 )
         except Exception:
-            logger.exception("Failed to load marketing analytics dashboard")
+            logger.exception("Failed to load analytics dashboard")
             db_error = True
 
     if dashboard_data is None:
-        from app.marketing_analytics_dashboard import empty_dashboard_data
-
-        dashboard_data = empty_dashboard_data(date_range)
+        dashboard_data = _empty_dashboard(date_range)
 
     return HTMLResponse(
-        render_marketing_analytics_page(
+        render_analytics_dashboard_page(
             data=dashboard_data,
             admin_username=session.admin_username,
             csrf_token=csrf_token,
             db_error=db_error,
+            range_error=range_error,
         )
     )
 
 
 @router.get("/export.csv")
-def admin_marketing_analytics_export(
-    request: Request,
-    date_from: str | None = None,
-    date_to: str | None = None,
-) -> Response:
+def admin_analytics_export(request: Request) -> Response:
     from app.admin_routes import require_admin_session
+    from app.repositories.postgres import get_repositories
 
-    require_admin_session(request)
+    session = require_admin_session(request)
     settings = get_settings()
-    date_range = parse_analytics_date_range(date_from=date_from, date_to=date_to)
+    date_range, _range_error = _parse_range_from_request(request)
 
     if settings.admin_preview_enabled:
-        from app.admin_preview import build_preview_marketing_analytics_data
+        from app.admin_preview import build_preview_analytics_dashboard_data
 
-        csv_body = render_analytics_export_csv(
-            build_preview_marketing_analytics_data(date_range=date_range)
+        csv_text = render_analytics_dashboard_csv(
+            build_preview_analytics_dashboard_data(date_range=date_range)
         )
         return Response(
-            content=csv_body,
+            content=csv_text,
             media_type="text/csv",
-            headers={"Content-Disposition": 'attachment; filename="marketing-analytics.csv"'},
+            headers={"Content-Disposition": 'attachment; filename="analytics-export.csv"'},
         )
 
     if not settings.database_url:
         raise HTTPException(status_code=503, detail="Database not configured")
 
-    from app.repositories.postgres import get_repositories
-
+    actor = actor_context_from_request(request, actor=session.admin_username)
     with db.db_connection(settings.database_url) as conn:
-        dashboard_data = load_marketing_analytics_dashboard(
+        _crm.request_export(
             conn,
-            get_repositories().marketing_analytics,
-            date_range=date_range,
+            actor_context=actor,
+            export_type="analytics_dashboard_csv",
+            filters={
+                "start": date_range.start.isoformat(),
+                "end": date_range.end.isoformat(),
+                "preset_days": date_range.preset_days,
+            },
+        )
+        csv_text = render_analytics_dashboard_csv(
+            load_analytics_dashboard(
+                conn,
+                get_repositories().analytics_dashboard,
+                date_range=date_range,
+            )
         )
     return Response(
-        content=render_analytics_export_csv(dashboard_data),
+        content=csv_text,
         media_type="text/csv",
-        headers={"Content-Disposition": 'attachment; filename="marketing-analytics.csv"'},
+        headers={"Content-Disposition": 'attachment; filename="analytics-export.csv"'},
     )
