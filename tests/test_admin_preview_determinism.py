@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from app.admin_preview import (
     build_preview_acquisition_dashboard_data,
+    build_preview_analytics_dashboard_data,
     build_preview_brief_rows,
     build_preview_companies,
     build_preview_section_rows,
@@ -132,10 +133,9 @@ def test_namespace_change_affects_only_target_fixture() -> None:
         now=ctx.reference_time,
         rng=preview_rng_for_namespace("companies", context=ctx),
     )
-    _ = build_preview_section_rows(
-        "/admin/analytics",
+    _ = build_preview_analytics_dashboard_data(
         now=ctx.reference_time,
-        rng=preview_rng_for_namespace("section:/admin/analytics", context=ctx),
+        rng=preview_rng_for_namespace("analytics_dashboard", context=ctx),
     )
     companies_b = build_preview_companies(
         now=ctx.reference_time,

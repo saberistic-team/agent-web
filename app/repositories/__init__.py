@@ -1,7 +1,9 @@
 """CRM repository exports."""
 
 from app.repositories.postgres import (
+    PostgresActionQueueRepository,
     PostgresAcquisitionDashboardRepository,
+    PostgresAnalyticsDashboardRepository,
     PostgresActivityRepository,
     PostgresAdminUserRepository,
     PostgresAuditEventRepository,
@@ -11,6 +13,7 @@ from app.repositories.postgres import (
     PostgresIcpScoringRepository,
     PostgresPipelineRepository,
     PostgresProjectBriefRepository,
+    PostgresQualificationRepository,
     PostgresRepositories,
     PostgresResearchRecordRepository,
     PostgresSourceRecordRepository,
@@ -18,7 +21,9 @@ from app.repositories.postgres import (
     get_repositories,
 )
 from app.repositories.protocols import (
+    ActionQueueRepository,
     AcquisitionDashboardRepository,
+    AnalyticsDashboardRepository,
     ActivityRepository,
     AdminUserRepository,
     AuditEventRepository,
@@ -28,12 +33,15 @@ from app.repositories.protocols import (
     ImportBatchRepository,
     PipelineRepository,
     ProjectBriefRepository,
+    QualificationRepository,
     ResearchRecordRepository,
     SourceRecordRepository,
 )
 
 __all__ = [
+    "ActionQueueRepository",
     "AcquisitionDashboardRepository",
+    "AnalyticsDashboardRepository",
     "ActivityRepository",
     "AdminUserRepository",
     "AuditEventRepository",
@@ -43,9 +51,12 @@ __all__ = [
     "ImportBatchRepository",
     "PipelineRepository",
     "ProjectBriefRepository",
+    "QualificationRepository",
     "ResearchRecordRepository",
     "SourceRecordRepository",
+    "PostgresActionQueueRepository",
     "PostgresAcquisitionDashboardRepository",
+    "PostgresAnalyticsDashboardRepository",
     "PostgresActivityRepository",
     "PostgresAdminUserRepository",
     "PostgresAuditEventRepository",
@@ -55,6 +66,7 @@ __all__ = [
     "PostgresIcpScoringRepository",
     "PostgresPipelineRepository",
     "PostgresProjectBriefRepository",
+    "PostgresQualificationRepository",
     "PostgresRepositories",
     "PostgresResearchRecordRepository",
     "PostgresSourceRecordRepository",

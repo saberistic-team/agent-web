@@ -1,0 +1,247 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "Inworld Origins",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://inworld.ai/arcade",
+        "evidence_snippet": "Inworld Origins",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://inworld.ai/arcade",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://inworld.ai/arcade",
+        "evidence_snippet": "https://inworld.ai/arcade",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "ai_game",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://inworld.ai/arcade",
+        "evidence_snippet": "ai_game",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://inworld.ai/arcade",
+        "evidence_snippet": "qualifies",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Playable demos showcasing AI NPC-driven game worlds built on Inworld runtime.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://inworld.ai/arcade",
+        "evidence_snippet": "Playable demos showcasing AI NPC-driven game worlds built on Inworld runtime.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Inworld AI",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://inworld.ai/arcade",
+        "evidence_snippet": "Inworld AI",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://inworld.ai/arcade",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://inworld.ai/arcade",
+          "evidence_snippet": "https://inworld.ai/arcade",
+          "confidence": 0.85,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "gameplay_with_ai_npcs",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://inworld.ai/arcade",
+        "evidence_snippet": "gameplay_with_ai_npcs",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "Demo session state; creator projects persist in Inworld studio.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://inworld.ai/arcade",
+        "evidence_snippet": "Demo session state; creator projects persist in Inworld studio.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "Web demos; account may be required",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://inworld.ai/arcade",
+        "evidence_snippet": "Web demos; account may be required",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Per-demo fictional worlds",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://inworld.ai/arcade",
+        "evidence_snippet": "Per-demo fictional worlds",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Quest loops, NPC conversation, actions",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://inworld.ai/arcade",
+        "evidence_snippet": "Quest loops, NPC conversation, actions",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "value": "NPC cast with distinct personalities per demo.",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://inworld.ai/arcade",
+          "evidence_snippet": "NPC cast with distinct personalities per demo.",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "value": "Web, Unreal/Unity integrations",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://inworld.ai/arcade",
+          "evidence_snippet": "Web, Unreal/Unity integrations",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Inworld brains power NPC dialogue, goals, and memory in demo game loops.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://inworld.ai/arcade",
+        "evidence_snippet": "Inworld brains power NPC dialogue, goals, and memory in demo game loops.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://inworld.ai/arcade",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "Inworld Terms of Service",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://inworld.ai/arcade",
+        "evidence_snippet": "Inworld Terms of Service",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "safety_categories": [
+      {
+        "value": "Developer platform policies; demo-specific ratings vary",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://inworld.ai/arcade",
+          "evidence_snippet": "Developer platform policies; demo-specific ratings vary",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "ai_game_ugc",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://inworld.ai/arcade",
+          "evidence_snippet": "ai_game_ugc",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Playable demos showcasing AI NPC-driven game worlds built on Inworld runtime.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://inworld.ai/arcade",
+        "evidence_snippet": "Playable demos showcasing AI NPC-driven game worlds built on Inworld runtime.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

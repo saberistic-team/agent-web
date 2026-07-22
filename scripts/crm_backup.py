@@ -57,6 +57,9 @@ CRM_BACKUP_TABLES: tuple[str, ...] = (
     "icp_scoring_versions",
     "icp_scoring_rules",
     "company_icp_score_snapshots",
+    "qualification_tier_history",
+    "qualification_working_lists",
+    "qualification_working_list_items",
 )
 
 # Distribution queries: (key, sql) — aggregates only, no row-level PII.

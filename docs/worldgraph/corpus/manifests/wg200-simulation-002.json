@@ -1,0 +1,247 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "Generative Agents (Smallville)",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/joonspk-research/generative_agents",
+        "evidence_snippet": "Generative Agents (Smallville)",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://github.com/joonspk-research/generative_agents",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/joonspk-research/generative_agents",
+        "evidence_snippet": "https://github.com/joonspk-research/generative_agents",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "agent_simulation",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://github.com/joonspk-research/generative_agents",
+        "evidence_snippet": "agent_simulation",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://github.com/joonspk-research/generative_agents",
+        "evidence_snippet": "qualifies",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Research simulation of 25 agents living in a sandbox town with emergent social behavior.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/joonspk-research/generative_agents",
+        "evidence_snippet": "Research simulation of 25 agents living in a sandbox town with emergent social behavior.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Stanford HCI / joonspk-research",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/joonspk-research/generative_agents",
+        "evidence_snippet": "Stanford HCI / joonspk-research",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://github.com/joonspk-research/generative_agents",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://github.com/joonspk-research/generative_agents",
+          "evidence_snippet": "https://github.com/joonspk-research/generative_agents",
+          "confidence": 0.85,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "simulation_observation",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/joonspk-research/generative_agents",
+        "evidence_snippet": "simulation_observation",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "Simulation logs and environment state stored during runs.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/joonspk-research/generative_agents",
+        "evidence_snippet": "Simulation logs and environment state stored during runs.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "Research repo; local simulation",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/joonspk-research/generative_agents",
+        "evidence_snippet": "Research repo; local simulation",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Smallville town map",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/joonspk-research/generative_agents",
+        "evidence_snippet": "Smallville town map",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Daily plans, conversations, memory stream",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/joonspk-research/generative_agents",
+        "evidence_snippet": "Daily plans, conversations, memory stream",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "value": "25 named agents with profiles and relationships.",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://github.com/joonspk-research/generative_agents",
+          "evidence_snippet": "25 named agents with profiles and relationships.",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "value": "Python simulation, Phaser frontend",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://github.com/joonspk-research/generative_agents",
+          "evidence_snippet": "Python simulation, Phaser frontend",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "LLM-driven memory, planning, and reflection loops for each agent.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/joonspk-research/generative_agents",
+        "evidence_snippet": "LLM-driven memory, planning, and reflection loops for each agent.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://github.com/joonspk-research/generative_agents",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "MIT License",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/joonspk-research/generative_agents",
+        "evidence_snippet": "MIT License",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "safety_categories": [
+      {
+        "value": "Academic research artifact",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://github.com/joonspk-research/generative_agents",
+          "evidence_snippet": "Academic research artifact",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "agent_simulation",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://github.com/joonspk-research/generative_agents",
+          "evidence_snippet": "agent_simulation",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Research simulation of 25 agents living in a sandbox town with emergent social behavior.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/joonspk-research/generative_agents",
+        "evidence_snippet": "Research simulation of 25 agents living in a sandbox town with emergent social behavior.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

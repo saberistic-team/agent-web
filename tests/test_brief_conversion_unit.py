@@ -74,8 +74,9 @@ def _service_with_mocks(**repos: MagicMock) -> tuple[CrmService, MagicMock, dict
         "research_records": MagicMock(),
         "admin_users": MagicMock(),
         "pipeline": MagicMock(),
-    "import_batches": MagicMock(),
-    "icp_scoring": MagicMock(),
+        "import_batches": MagicMock(),
+        "icp_scoring": MagicMock(),
+        "qualification": MagicMock(),
     }
     defaults.update(repos)
     defaults["contacts"].get_archived_by_email.return_value = None

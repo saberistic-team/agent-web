@@ -1,0 +1,330 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "world_id": {
+      "value": "wg-corpus-001",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "Corpus id wg-corpus-001",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "name": {
+      "value": "AI Dungeon",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "AI Dungeon",
+        "confidence": 0.9,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://play.aidungeon.com/",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "https://play.aidungeon.com/",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Text-first interactive fiction where player actions and AI narration co-author persistent adventures.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "Text-first interactive fiction where player actions and AI narration co-author persistent adventures.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "Public entry documented",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "interactive_narrative",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "interactive_narrative",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Latitude",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "Creator/operator: Latitude",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "operator": {
+      "value": "Latitude",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "Operator: Latitude",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "modalities": [
+      {
+        "value": "text",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://play.aidungeon.com/",
+          "evidence_snippet": "text",
+          "confidence": 0.7,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://play.aidungeon.com/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://play.aidungeon.com/",
+          "evidence_snippet": "https://play.aidungeon.com/",
+          "confidence": 0.9,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "text_command_narrative",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "text_command_narrative",
+        "confidence": 0.82,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "saved_adventures_and_scenario_state",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "saved_adventures_and_scenario_state",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "free_account_required",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "free_account_required",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "age_guidance": {
+      "value": "13+ terms referenced on parent site",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "13+ terms referenced on parent site",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Runtime LLM generates story branches, NPC dialogue, and world reactions to player commands.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "Runtime LLM generates story branches, NPC dialogue, and world reactions to player commands.",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "human_control_boundaries": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "moderation_contact": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "User-selected or custom scenarios with defined lore prompts.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "User-selected or custom scenarios with defined lore prompts.",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Turn-based text commands with scenario memory and character state.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "Turn-based text commands with scenario memory and character state.",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "entity_type": "character",
+        "label": {
+          "value": "AI narrator and scenario NPCs",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://play.aidungeon.com/",
+            "evidence_snippet": "AI narrator and scenario NPCs",
+            "confidence": 0.7,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "canonical_ref": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "entity_type": "platform",
+        "label": {
+          "value": "Web",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://play.aidungeon.com/",
+            "evidence_snippet": "Web",
+            "confidence": 0.7,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "canonical_ref": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "interactive_narrative",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://play.aidungeon.com/",
+          "evidence_snippet": "interactive_narrative",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Text-first interactive fiction where player actions and AI narration co-author persistent adventures.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://play.aidungeon.com/",
+        "evidence_snippet": "Text-first interactive fiction where player actions and AI narration co-author persistent adventures.",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

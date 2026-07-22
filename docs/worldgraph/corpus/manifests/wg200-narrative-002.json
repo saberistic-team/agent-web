@@ -1,0 +1,247 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "Character.AI",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "Character.AI",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://character.ai/",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "https://character.ai/",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "interactive_narrative",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "interactive_narrative",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "qualifies",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Platform of interactive character and scene experiences where users role-play inside bounded conversational worlds.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "Platform of interactive character and scene experiences where users role-play inside bounded conversational worlds.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Character Technologies, Inc.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "Character Technologies, Inc.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://character.ai/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://character.ai/",
+          "evidence_snippet": "https://character.ai/",
+          "confidence": 0.85,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "character_dialogue_roleplay",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "character_dialogue_roleplay",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "Chat histories and user-created Characters/Scenes persist per account.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "Chat histories and user-created Characters/Scenes persist per account.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "Account required; web and mobile apps; regional availability varies",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "Account required; web and mobile apps; regional availability varies",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Per-character or Scene-defined fictional settings",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "Per-character or Scene-defined fictional settings",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Turn-based chat, group scenes, voice mode on supported clients",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "Turn-based chat, group scenes, voice mode on supported clients",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "value": "User-created and official Characters; group Scenes with multiple agents.",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://character.ai/",
+          "evidence_snippet": "User-created and official Characters; group Scenes with multiple agents.",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "value": "Web, iOS, Android",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://character.ai/",
+          "evidence_snippet": "Web, iOS, Android",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Character models power dialogue, persona consistency, and multi-character scene interactions at runtime.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "Character models power dialogue, persona consistency, and multi-character scene interactions at runtime.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "Character.AI Terms of Service and Community Guidelines",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "Character.AI Terms of Service and Community Guidelines",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "safety_categories": [
+      {
+        "value": "Minimum age 13; teen safety features documented in support articles",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://character.ai/",
+          "evidence_snippet": "Minimum age 13; teen safety features documented in support articles",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "interactive_narrative",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://character.ai/",
+          "evidence_snippet": "interactive_narrative",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Platform of interactive character and scene experiences where users role-play inside bounded conversational worlds.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://character.ai/",
+        "evidence_snippet": "Platform of interactive character and scene experiences where users role-play inside bounded conversational worlds.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

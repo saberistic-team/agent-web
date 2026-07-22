@@ -1,0 +1,5 @@
+# Keep this directory tracked for layout + README only.
+# Raw PII, notes, recordings, and exports must stay local.
+*
+!.gitignore
+!README.md

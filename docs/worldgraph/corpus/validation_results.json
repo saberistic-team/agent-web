@@ -1,0 +1,505 @@
+{
+  "generated_at": "2026-07-22T12:00:00+00:00",
+  "schema_version": "world-manifest-v0",
+  "total_candidates": 30,
+  "qualifying_count": 25,
+  "qualifying_validation": [
+    {
+      "id": "wg-corpus-001",
+      "name": "AI Dungeon",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-001.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-002",
+      "name": "Character.AI",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-002.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-003",
+      "name": "Hidden Door",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-003.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-004",
+      "name": "Friends & Fables",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-004.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-005",
+      "name": "Charisma.ai",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-005.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-006",
+      "name": "World Labs Marble",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-006.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-007",
+      "name": "Blockade Labs Skybox",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-007.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-008",
+      "name": "Luma Dream Machine",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-008.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-009",
+      "name": "Polycam",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-009.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-010",
+      "name": "NVIDIA Isaac Sim",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-010.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-011",
+      "name": "AI Town",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-011.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-012",
+      "name": "Generative Agents",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-012.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-013",
+      "name": "Voyager",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-013.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-014",
+      "name": "Concordia",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-014.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-015",
+      "name": "CAMEL",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-015.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-016",
+      "name": "Inworld Arcade",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-016.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-017",
+      "name": "Convai Playground",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-017.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-018",
+      "name": "Roblox AI NPC Experiences",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-018.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-019",
+      "name": "UEFN Verse Sample Experiences",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-019.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-020",
+      "name": "VRChat AI Companion Worlds",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-020.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-021",
+      "name": "Decentraland",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-021.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-022",
+      "name": "Second Life",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-022.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-023",
+      "name": "Rec Room",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-023.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-024",
+      "name": "Habbo Hotel",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-024.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-025",
+      "name": "EVE Online",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-025.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    }
+  ],
+  "all_results": [
+    {
+      "id": "wg-corpus-001",
+      "name": "AI Dungeon",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-001.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-002",
+      "name": "Character.AI",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-002.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-003",
+      "name": "Hidden Door",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-003.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-004",
+      "name": "Friends & Fables",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-004.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-005",
+      "name": "Charisma.ai",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-005.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-006",
+      "name": "World Labs Marble",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-006.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-007",
+      "name": "Blockade Labs Skybox",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-007.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-008",
+      "name": "Luma Dream Machine",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-008.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-009",
+      "name": "Polycam",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-009.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-010",
+      "name": "NVIDIA Isaac Sim",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-010.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-011",
+      "name": "AI Town",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-011.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-012",
+      "name": "Generative Agents",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-012.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-013",
+      "name": "Voyager",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-013.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-014",
+      "name": "Concordia",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-014.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-015",
+      "name": "CAMEL",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-015.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-016",
+      "name": "Inworld Arcade",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-016.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-017",
+      "name": "Convai Playground",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-017.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-018",
+      "name": "Roblox AI NPC Experiences",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-018.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-019",
+      "name": "UEFN Verse Sample Experiences",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-019.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-020",
+      "name": "VRChat AI Companion Worlds",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-020.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-021",
+      "name": "Decentraland",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-021.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-022",
+      "name": "Second Life",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-022.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-023",
+      "name": "Rec Room",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-023.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-024",
+      "name": "Habbo Hotel",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-024.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-025",
+      "name": "EVE Online",
+      "qualification": "qualifies",
+      "manifest_file": "manifests/wg-corpus-025.json",
+      "schema_valid": true,
+      "spike_valid": true,
+      "error": null
+    },
+    {
+      "id": "wg-corpus-026",
+      "name": "Midjourney Explore",
+      "qualification": "excluded",
+      "manifest_file": "manifests/wg-corpus-026.json",
+      "schema_valid": true,
+      "spike_valid": false,
+      "error": "trust.exclusion_reason required when excluded"
+    },
+    {
+      "id": "wg-corpus-027",
+      "name": "ChatGPT",
+      "qualification": "excluded",
+      "manifest_file": "manifests/wg-corpus-027.json",
+      "schema_valid": true,
+      "spike_valid": false,
+      "error": "trust.exclusion_reason required when excluded"
+    },
+    {
+      "id": "wg-corpus-028",
+      "name": "Unreal Engine",
+      "qualification": "excluded",
+      "manifest_file": "manifests/wg-corpus-028.json",
+      "schema_valid": true,
+      "spike_valid": false,
+      "error": "trust.exclusion_reason required when excluded"
+    },
+    {
+      "id": "wg-corpus-029",
+      "name": "Meta Llama Model Card",
+      "qualification": "excluded",
+      "manifest_file": "manifests/wg-corpus-029.json",
+      "schema_valid": true,
+      "spike_valid": false,
+      "error": "trust.exclusion_reason required when excluded"
+    },
+    {
+      "id": "wg-corpus-030",
+      "name": "World Labs Private Beta",
+      "qualification": "excluded",
+      "manifest_file": "manifests/wg-corpus-030.json",
+      "schema_valid": true,
+      "spike_valid": false,
+      "error": "trust.exclusion_reason required when excluded"
+    }
+  ]
+}

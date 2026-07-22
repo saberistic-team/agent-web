@@ -136,6 +136,7 @@ def test_record_company_with_contact_commits_once_on_success() -> None:
             pipeline=MagicMock(),
             import_batches=MagicMock(),
             icp_scoring=MagicMock(),
+            qualification=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -170,6 +171,7 @@ def test_record_company_with_contact_rolls_back_when_contact_fails() -> None:
             pipeline=MagicMock(),
             import_batches=MagicMock(),
             icp_scoring=MagicMock(),
+            qualification=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -206,6 +208,7 @@ def test_single_record_service_operations_commit_once() -> None:
             pipeline=MagicMock(),
             import_batches=MagicMock(),
             icp_scoring=MagicMock(),
+            qualification=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -242,6 +245,7 @@ def test_read_methods_do_not_change_transaction_state() -> None:
             pipeline=MagicMock(),
             import_batches=MagicMock(),
             icp_scoring=MagicMock(),
+            qualification=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -288,6 +292,7 @@ def test_import_batch_commits_once_with_audit() -> None:
             pipeline=MagicMock(),
             import_batches=MagicMock(),
             icp_scoring=MagicMock(),
+            qualification=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -327,6 +332,7 @@ def test_import_batch_rolls_back_business_writes_when_audit_fails() -> None:
             pipeline=MagicMock(),
             import_batches=MagicMock(),
             icp_scoring=MagicMock(),
+            qualification=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -366,6 +372,7 @@ def test_import_batch_rolls_back_when_business_write_fails() -> None:
             pipeline=MagicMock(),
             import_batches=MagicMock(),
             icp_scoring=MagicMock(),
+            qualification=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -406,6 +413,7 @@ def test_import_batch_retry_after_rollback() -> None:
             pipeline=MagicMock(),
             import_batches=MagicMock(),
             icp_scoring=MagicMock(),
+            qualification=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -450,6 +458,7 @@ def test_delete_entity_rolls_back_when_audit_fails() -> None:
             pipeline=MagicMock(),
             import_batches=MagicMock(),
             icp_scoring=MagicMock(),
+            qualification=MagicMock(),
         )
     )
     conn = MagicMock()

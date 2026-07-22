@@ -1315,3 +1315,31 @@ body.admin-app {
 .contact-crm-context {
   margin-top: 1rem;
 }
+
+.analytics-range-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  margin: 1rem 0 1.5rem;
+}
+
+.analytics-range-form label {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.analytics-bar {
+  display: inline-block;
+  height: 0.55rem;
+  margin-right: 0.5rem;
+  vertical-align: middle;
+  background: color-mix(in srgb, var(--accent) 75%, transparent);
+  border-radius: 1px;
+}
+
+.analytics-rate-def {
+  font-size: 0.78rem;
+  color: var(--muted);
+}

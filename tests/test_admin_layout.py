@@ -43,9 +43,14 @@ def admin_env(monkeypatch: pytest.MonkeyPatch) -> None:
 @contextmanager
 def mock_db_connection() -> Generator[MagicMock, None, None]:
     conn = MagicMock()
-    with patch("app.admin_routes.db.db_connection") as db_conn:
-        db_conn.return_value.__enter__.return_value = conn
-        db_conn.return_value.__exit__.return_value = None
+    with (
+        patch("app.admin_routes.db.db_connection") as admin_db_conn,
+        patch("app.admin_analytics_routes.db.db_connection") as analytics_db_conn,
+    ):
+        admin_db_conn.return_value.__enter__.return_value = conn
+        admin_db_conn.return_value.__exit__.return_value = None
+        analytics_db_conn.return_value.__enter__.return_value = conn
+        analytics_db_conn.return_value.__exit__.return_value = None
         yield conn
 
 
@@ -78,15 +83,33 @@ def _empty_dashboard_for_layout():
     )
 
 
+def _empty_analytics_dashboard_for_layout():
+    from app.analytics_dashboard import AnalyticsDashboardData, AnalyticsDateRange
+
+    now = datetime.now(timezone.utc)
+    return AnalyticsDashboardData(
+        date_range=AnalyticsDateRange(start=now, end=now, label="Last 7 days (UTC)"),
+        engagement_events=(),
+        conversion_events=(),
+        conversion_rates=(),
+        attribution_rows=(),
+        case_study_engagement=(),
+        article_engagement=(),
+        generated_at=now,
+    )
+
+
 @pytest.mark.unit
 def test_admin_nav_links_include_required_destinations() -> None:
     assert ADMIN_HREFS == (
         "/admin",
+        "/admin/queue",
         "/admin/audit",
         "/admin/briefs",
         "/admin/companies",
         "/admin/contacts",
         "/admin/signals",
+        "/admin/targets",
         "/admin/pipeline",
         "/admin/imports",
         "/admin/discovery",
@@ -96,11 +119,13 @@ def test_admin_nav_links_include_required_destinations() -> None:
     )
     assert ADMIN_LABELS == (
         "Dashboard",
+        "Queue",
         "Audit",
         "Briefs",
         "Companies",
         "Contacts",
         "Signals",
+        "Targets",
         "Pipeline",
         "Imports",
         "Discovery",
@@ -428,10 +453,11 @@ def test_admin_nav_links_present(path: str) -> None:
         ("/admin", "Today's attention", "dashboard-title", "Dashboard"),
         ("/admin/contacts", "Contacts", "contacts-title", "Contacts"),
         ("/admin/signals", "ICP scores", "icp-scores-title", "Signals"),
+        ("/admin/targets", "Target lists", "targets-title", "Targets"),
         ("/admin/pipeline", "Pipeline", "pipeline-title", "Pipeline"),
         ("/admin/imports", "LinkedIn export preview", "imports-title", "Imports"),
-        ("/admin/discovery", "Discovery", "admin-empty-title", "Discovery"),
-        ("/admin/analytics", "Analytics", "admin-empty-title", "Analytics"),
+        ("/admin/discovery", "Discovery runs", "discovery-runs-title", "Discovery"),
+        ("/admin/analytics", "Analytics", "analytics-title", "Analytics"),
         ("/admin/content", "Content", "admin-empty-title", "Content"),
         ("/admin/settings", "Settings", "admin-empty-title", "Settings"),
     ],
@@ -468,6 +494,25 @@ def test_admin_active_nav(path: str, heading: str, title_id: str, nav_label: str
         if path == "/admin/signals":
             patchers.append(patch("app.admin_icp_routes._crm.list_company_icp_scores", return_value=[]))
             patchers.append(patch("app.admin_icp_routes._crm.get_active_icp_version", return_value=None))
+        if path == "/admin/targets":
+            patchers.append(patch("app.admin_qualification_routes._crm.list_qualification_targets", return_value=[]))
+            patchers.append(patch("app.admin_qualification_routes._crm.list_qualification_working_lists", return_value=[]))
+        if path == "/admin/discovery":
+            service = MagicMock()
+            service.list_runs.return_value = ([], 0)
+            patchers.append(
+                patch(
+                    "app.admin_discovery_routes.get_discovery_run_service",
+                    return_value=service,
+                )
+            )
+        if path == "/admin/analytics":
+            patchers.append(
+                patch(
+                    "app.admin_analytics_routes.load_analytics_dashboard",
+                    return_value=_empty_analytics_dashboard_for_layout(),
+                )
+            )
         with patchers[0]:
             for extra in patchers[1:]:
                 extra.start()

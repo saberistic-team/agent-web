@@ -101,6 +101,27 @@ ADMIN_MUTATION_ROUTE_CLASSIFICATIONS: dict[tuple[str, str], tuple[MutationClassi
         "required_immutable_business_audit",
         "Pipeline activity creation emits pipeline_activity.create with bounded metadata.",
     ),
+    ("POST", "/admin/queue/complete"): (
+        "required_immutable_business_audit",
+        "Queue complete logs task_completion activity and may emit pipeline.update when clearing next action.",
+    ),
+    ("POST", "/admin/queue/snooze"): (
+        "required_immutable_business_audit",
+        "Queue snooze updates next-action due date (pipeline.update) and logs task_completion activity.",
+    ),
+    ("POST", "/admin/queue/reschedule"): (
+        "required_immutable_business_audit",
+        "Queue reschedule updates next-action due date (pipeline.update) and logs task_completion activity.",
+    ),
+    ("POST", "/admin/queue/replace"): (
+        "required_immutable_business_audit",
+        "Queue replace updates next action (pipeline.update) and logs task_completion activity.",
+    ),
+    ("POST", "/admin/discovery/run"): (
+        "intentionally_unaudited",
+        "Discovery runs persist operational history in discovery_runs / discovery_run_sources; "
+        "no separate audit_events entry in this release.",
+    ),
     ("POST", "/admin/signals/rules"): (
         "required_immutable_business_audit",
         "Publishing an ICP rule version emits scoring_rule.update per changed rule with "

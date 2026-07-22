@@ -10,6 +10,7 @@ from uuid import UUID
 import psycopg
 
 from app.contacts import DECISION_MAKER_BUYING_ROLES
+from app.discovery.repository import PostgresDiscoveryRunRepository
 from app.patch import UNSET, MaybeUnset
 from app.repositories.protocols import (
     ActivityRepository,
@@ -1119,6 +1120,224 @@ class PostgresPipelineRepository:
             rows = cur.fetchall()
         return [(str(row["bucket"]), int(row["total"])) for row in rows]
 
+    def list_due_today_next_actions(
+        self,
+        conn: psycopg.Connection,
+        *,
+        day_start: datetime,
+        day_end: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, name, pipeline_stage, next_action, next_action_due_at,
+                       pipeline_owner, expected_value_cents
+                FROM companies
+                WHERE archived_at IS NULL
+                  AND pipeline_stage IS NOT NULL
+                  AND next_action IS NOT NULL
+                  AND BTRIM(next_action) <> ''
+                  AND next_action_due_at IS NOT NULL
+                  AND next_action_due_at >= %s
+                  AND next_action_due_at < %s
+                ORDER BY next_action_due_at ASC
+                LIMIT %s
+                """,
+                (day_start, day_end, limit),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+
+class PostgresActionQueueRepository:
+    """Acquisition action queue queries — composes pipeline repo where needed."""
+
+    _PUBLIC_EVIDENCE_TYPES = ("verified_fact", "public_signal")
+    _WARM_STRENGTHS = ("warm", "strong", "champion")
+    _TIER_A_STAGES = ("qualified", "ready_for_outreach")
+    _DECISION_MAKER_ROLES = ("founder", "technical_buyer", "executive_buyer")
+
+    def __init__(
+        self,
+        pipeline_repo: PostgresPipelineRepository | None = None,
+    ) -> None:
+        self._pipeline = pipeline_repo or PostgresPipelineRepository()
+
+    def list_overdue_next_actions(
+        self,
+        conn: psycopg.Connection,
+        *,
+        reference: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        return self._pipeline.list_overdue_next_actions(
+            conn, reference=reference, limit=limit
+        )
+
+    def list_due_today_next_actions(
+        self,
+        conn: psycopg.Connection,
+        *,
+        day_start: datetime,
+        day_end: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        return self._pipeline.list_due_today_next_actions(
+            conn, day_start=day_start, day_end=day_end, limit=limit
+        )
+
+    def list_recently_qualified_tier_a(
+        self,
+        conn: psycopg.Connection,
+        *,
+        since: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT DISTINCT ON (c.id)
+                       c.id, c.name, c.pipeline_stage, c.pipeline_owner,
+                       c.expected_value_cents, h.changed_at AS qualified_at
+                FROM companies c
+                INNER JOIN pipeline_stage_history h ON h.company_id = c.id
+                WHERE c.archived_at IS NULL
+                  AND c.target_status = 'target'
+                  AND c.pipeline_stage = ANY(%s)
+                  AND h.to_stage = 'qualified'
+                  AND h.changed_at >= %s
+                ORDER BY c.id, h.changed_at DESC
+                LIMIT %s
+                """,
+                (list(self._TIER_A_STAGES), since, limit),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def list_warm_introduction_opportunities(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT ct.id AS contact_id, ct.full_name AS contact_name,
+                       ct.relationship_strength, c.id AS company_id, c.name AS company_name,
+                       c.pipeline_stage, c.expected_value_cents
+                FROM contacts ct
+                INNER JOIN companies c ON c.id = ct.company_id
+                WHERE c.archived_at IS NULL
+                  AND ct.archived_at IS NULL
+                  AND (
+                      'introducer' = ANY(ct.buying_roles)
+                      OR ct.relationship_strength = ANY(%s)
+                  )
+                  AND (
+                      c.pipeline_stage IS NOT NULL
+                      OR c.target_status IN ('target', 'watching')
+                  )
+                ORDER BY ct.relationship_strength DESC, c.name ASC, ct.full_name ASC
+                LIMIT %s
+                """,
+                (list(self._WARM_STRENGTHS), limit),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def list_stale_high_value_evidence(
+        self,
+        conn: psycopg.Connection,
+        *,
+        reference: datetime,
+        min_value_cents: int,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT rr.*, c.name AS company_name, c.pipeline_stage,
+                       c.expected_value_cents
+                FROM research_records rr
+                INNER JOIN companies c ON c.id = rr.company_id
+                WHERE rr.record_type = ANY(%s)
+                  AND rr.expires_at IS NOT NULL
+                  AND rr.expires_at <= %s
+                  AND c.archived_at IS NULL
+                  AND (
+                      c.expected_value_cents >= %s
+                      OR c.target_status = 'target'
+                  )
+                ORDER BY rr.expires_at ASC, c.expected_value_cents DESC NULLS LAST
+                LIMIT %s
+                """,
+                (
+                    list(self._PUBLIC_EVIDENCE_TYPES),
+                    reference,
+                    min_value_cents,
+                    limit,
+                ),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def list_export_candidates(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT c.name AS company_name, c.domain, c.pipeline_stage,
+                       c.target_status, c.expected_value_cents, c.next_action,
+                       c.next_action_due_at, c.category,
+                       ct.full_name AS contact_name, ct.title AS contact_title,
+                       ct.buying_roles, ct.relationship_strength,
+                       ev.source_url AS evidence_source_url,
+                       ev.confidence AS evidence_confidence,
+                       ev.record_type AS evidence_type,
+                       EXISTS (
+                           SELECT 1 FROM contacts dm
+                           WHERE dm.company_id = c.id
+                             AND dm.archived_at IS NULL
+                             AND dm.buying_roles && %s::text[]
+                       ) AS has_decision_maker
+                FROM companies c
+                LEFT JOIN LATERAL (
+                    SELECT ct2.*
+                    FROM contacts ct2
+                    WHERE ct2.company_id = c.id AND ct2.archived_at IS NULL
+                    ORDER BY ct2.updated_at DESC NULLS LAST
+                    LIMIT 1
+                ) ct ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT rr.source_url, rr.confidence, rr.record_type
+                    FROM research_records rr
+                    WHERE rr.company_id = c.id
+                      AND rr.record_type = ANY(%s)
+                      AND rr.source_url IS NOT NULL
+                    ORDER BY rr.created_at DESC
+                    LIMIT 1
+                ) ev ON TRUE
+                WHERE c.archived_at IS NULL
+                  AND c.pipeline_stage IS NOT NULL
+                  AND c.pipeline_stage NOT IN ('lost', 'nurture')
+                ORDER BY c.name ASC
+                LIMIT %s
+                """,
+                (
+                    list(self._DECISION_MAKER_ROLES),
+                    list(self._PUBLIC_EVIDENCE_TYPES),
+                    limit,
+                ),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
 
 class PostgresAcquisitionDashboardRepository:
     _COMPANY_DIMENSIONS = frozenset({"stage", "category"})
@@ -1283,6 +1502,144 @@ class PostgresAcquisitionDashboardRepository:
         limit: int,
     ) -> list[dict[str, Any]]:
         return self._pipeline.list_companies_without_next_action(conn, limit=limit)
+
+
+class PostgresAnalyticsDashboardRepository:
+    _ATTRIBUTION_EVENT_NAMES = (
+        "Landing Viewed",
+        "Services Viewed",
+        "Case Studies Viewed",
+        "Case Study Viewed",
+        "Insights Viewed",
+        "Insight Viewed",
+        "Brief Viewed",
+        "Brief Form Started",
+        "Lead Persisted",
+        "Checkout Opened",
+        "Payment Completed",
+        "Contact Initiated",
+    )
+
+    def count_events_in_range(
+        self,
+        conn: psycopg.Connection,
+        *,
+        period_start: datetime,
+        period_end: datetime,
+        event_names: tuple[str, ...],
+    ) -> list[tuple[str, int]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT event_name, COUNT(*)::int AS total
+                FROM analytics_events
+                WHERE occurred_at >= %s
+                  AND occurred_at < %s
+                  AND event_name = ANY(%s)
+                GROUP BY event_name
+                ORDER BY total DESC, event_name ASC
+                """,
+                (period_start, period_end, list(event_names)),
+            )
+            rows = cur.fetchall()
+        return [(str(row["event_name"]), int(row["total"])) for row in rows]
+
+    def count_attribution_in_range(
+        self,
+        conn: psycopg.Connection,
+        *,
+        period_start: datetime,
+        period_end: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    COALESCE(NULLIF(TRIM(attribution->>'utm_source'), ''), '(direct)') AS source,
+                    COALESCE(NULLIF(TRIM(attribution->>'utm_medium'), ''), '(none)') AS medium,
+                    COALESCE(NULLIF(TRIM(attribution->>'utm_campaign'), ''), '(none)') AS campaign,
+                    COUNT(*)::int AS event_count
+                FROM analytics_events
+                WHERE occurred_at >= %s
+                  AND occurred_at < %s
+                  AND event_name = ANY(%s)
+                GROUP BY 1, 2, 3
+                ORDER BY event_count DESC, source ASC, medium ASC, campaign ASC
+                LIMIT %s
+                """,
+                (
+                    period_start,
+                    period_end,
+                    list(self._ATTRIBUTION_EVENT_NAMES),
+                    limit,
+                ),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def count_content_engagement(
+        self,
+        conn: psycopg.Connection,
+        *,
+        period_start: datetime,
+        period_end: datetime,
+        event_name: str,
+        slug_property: str,
+        limit: int,
+    ) -> list[tuple[str, int]]:
+        if slug_property not in {"case_study_slug", "article_slug"}:
+            raise ValueError(f"unsupported slug property: {slug_property}")
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT properties->>%s AS slug, COUNT(*)::int AS views
+                FROM analytics_events
+                WHERE occurred_at >= %s
+                  AND occurred_at < %s
+                  AND event_name = %s
+                  AND COALESCE(TRIM(properties->>%s), '') <> ''
+                GROUP BY 1
+                ORDER BY views DESC, slug ASC
+                LIMIT %s
+                """,
+                (
+                    slug_property,
+                    period_start,
+                    period_end,
+                    event_name,
+                    slug_property,
+                    limit,
+                ),
+            )
+            rows = cur.fetchall()
+        return [(str(row["slug"]), int(row["views"])) for row in rows]
+
+    def count_leads_by_utm_source(
+        self,
+        conn: psycopg.Connection,
+        *,
+        period_start: datetime,
+        period_end: datetime,
+        limit: int,
+    ) -> list[tuple[str, int]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    COALESCE(NULLIF(TRIM(utm_source), ''), '(direct)') AS source,
+                    COUNT(*)::int AS total
+                FROM project_briefs
+                WHERE created_at >= %s
+                  AND created_at < %s
+                GROUP BY 1
+                ORDER BY total DESC, source ASC
+                LIMIT %s
+                """,
+                (period_start, period_end, limit),
+            )
+            rows = cur.fetchall()
+        return [(str(row["source"]), int(row["total"])) for row in rows]
 
 
 class PostgresAdminUserRepository:
@@ -2067,10 +2424,13 @@ class PostgresRepositories:
         self.audit_events = PostgresAuditEventRepository()
         self.project_briefs = PostgresProjectBriefRepository()
         self.acquisition_dashboard = PostgresAcquisitionDashboardRepository()
+        self.analytics_dashboard = PostgresAnalyticsDashboardRepository()
+        self.action_queue = PostgresActionQueueRepository()
         self.pipeline = PostgresPipelineRepository()
         self.import_batches = PostgresImportBatchRepository()
         self.icp_scoring = PostgresIcpScoringRepository()
         self.qualification = PostgresQualificationRepository()
+        self.discovery_runs = PostgresDiscoveryRunRepository()
 
 
 _default_repositories = PostgresRepositories()
@@ -2092,10 +2452,13 @@ def default_repositories() -> dict[str, Any]:
         "audit_events": repos.audit_events,
         "project_briefs": repos.project_briefs,
         "acquisition_dashboard": repos.acquisition_dashboard,
+        "analytics_dashboard": repos.analytics_dashboard,
+        "action_queue": repos.action_queue,
         "pipeline": repos.pipeline,
         "import_batches": repos.import_batches,
         "icp_scoring": repos.icp_scoring,
         "qualification": repos.qualification,
+        "discovery_runs": repos.discovery_runs,
     }
 
 

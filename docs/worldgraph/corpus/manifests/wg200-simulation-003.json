@@ -1,0 +1,247 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "Voyager",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://voyager.minedojo.org/",
+        "evidence_snippet": "Voyager",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://voyager.minedojo.org/",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://voyager.minedojo.org/",
+        "evidence_snippet": "https://voyager.minedojo.org/",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "agent_simulation",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://voyager.minedojo.org/",
+        "evidence_snippet": "agent_simulation",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://voyager.minedojo.org/",
+        "evidence_snippet": "qualifies",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "LLM-powered lifelong learning agent exploring and acquiring skills in Minecraft world.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://voyager.minedojo.org/",
+        "evidence_snippet": "LLM-powered lifelong learning agent exploring and acquiring skills in Minecraft world.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "MineDojo / NVIDIA researchers",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://voyager.minedojo.org/",
+        "evidence_snippet": "MineDojo / NVIDIA researchers",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://voyager.minedojo.org/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://voyager.minedojo.org/",
+          "evidence_snippet": "https://voyager.minedojo.org/",
+          "confidence": 0.85,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "simulation_tick_actions",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://voyager.minedojo.org/",
+        "evidence_snippet": "simulation_tick_actions",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "Skill library and world progress persist across Minecraft sessions.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://voyager.minedojo.org/",
+        "evidence_snippet": "Skill library and world progress persist across Minecraft sessions.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "Open-source project site with code links",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://voyager.minedojo.org/",
+        "evidence_snippet": "Open-source project site with code links",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Minecraft open world",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://voyager.minedojo.org/",
+        "evidence_snippet": "Minecraft open world",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Skill acquisition, code-as-action, exploration",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://voyager.minedojo.org/",
+        "evidence_snippet": "Skill acquisition, code-as-action, exploration",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "value": "Single Voyager agent with growing skill set",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://voyager.minedojo.org/",
+          "evidence_snippet": "Single Voyager agent with growing skill set",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "value": "Minecraft (Java), Python controller",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://voyager.minedojo.org/",
+          "evidence_snippet": "Minecraft (Java), Python controller",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "GPT-4 driven skill library, curriculum, and code generation for in-world actions.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://voyager.minedojo.org/",
+        "evidence_snippet": "GPT-4 driven skill library, curriculum, and code generation for in-world actions.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://voyager.minedojo.org/",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "Project license on GitHub",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://voyager.minedojo.org/",
+        "evidence_snippet": "Project license on GitHub",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "safety_categories": [
+      {
+        "value": "Research software",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://voyager.minedojo.org/",
+          "evidence_snippet": "Research software",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "agent_simulation",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://voyager.minedojo.org/",
+          "evidence_snippet": "agent_simulation",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "LLM-powered lifelong learning agent exploring and acquiring skills in Minecraft world.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://voyager.minedojo.org/",
+        "evidence_snippet": "LLM-powered lifelong learning agent exploring and acquiring skills in Minecraft world.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

@@ -78,11 +78,13 @@ def authenticated_admin() -> Generator[dict[str, str], None, None]:
 def test_admin_nav_links_include_required_destinations() -> None:
     assert ADMIN_HREFS == (
         "/admin",
+        "/admin/queue",
         "/admin/audit",
         "/admin/briefs",
         "/admin/companies",
         "/admin/contacts",
         "/admin/signals",
+        "/admin/targets",
         "/admin/pipeline",
         "/admin/imports",
         "/admin/discovery",
@@ -92,6 +94,7 @@ def test_admin_nav_links_include_required_destinations() -> None:
     )
     assert "Contacts" in ADMIN_LABELS
     assert "Companies" in ADMIN_LABELS
+    assert "Queue" in ADMIN_LABELS
 
 
 @pytest.mark.unit

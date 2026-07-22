@@ -1,0 +1,247 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "AI Roguelite",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://leafsoft.itch.io/ai-roguelite",
+        "evidence_snippet": "AI Roguelite",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://leafsoft.itch.io/ai-roguelite",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://leafsoft.itch.io/ai-roguelite",
+        "evidence_snippet": "https://leafsoft.itch.io/ai-roguelite",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "ai_game",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://leafsoft.itch.io/ai-roguelite",
+        "evidence_snippet": "ai_game",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://leafsoft.itch.io/ai-roguelite",
+        "evidence_snippet": "qualifies",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Indie roguelite game where AI-generated elements shape runs, encounters, and narrative events.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://leafsoft.itch.io/ai-roguelite",
+        "evidence_snippet": "Indie roguelite game where AI-generated elements shape runs, encounters, and narrative events.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Leafsoft (itch.io creator)",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://leafsoft.itch.io/ai-roguelite",
+        "evidence_snippet": "Leafsoft (itch.io creator)",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://leafsoft.itch.io/ai-roguelite",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://leafsoft.itch.io/ai-roguelite",
+          "evidence_snippet": "https://leafsoft.itch.io/ai-roguelite",
+          "confidence": 0.85,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "gameplay_with_ai_npcs",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://leafsoft.itch.io/ai-roguelite",
+        "evidence_snippet": "gameplay_with_ai_npcs",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "Run seeds and meta-progression persist locally between sessions.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://leafsoft.itch.io/ai-roguelite",
+        "evidence_snippet": "Run seeds and meta-progression persist locally between sessions.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "Browser/download via itch.io; free/pay-what-you-want",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://leafsoft.itch.io/ai-roguelite",
+        "evidence_snippet": "Browser/download via itch.io; free/pay-what-you-want",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Procedural dungeon runs",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://leafsoft.itch.io/ai-roguelite",
+        "evidence_snippet": "Procedural dungeon runs",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Roguelite combat, AI-generated events",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://leafsoft.itch.io/ai-roguelite",
+        "evidence_snippet": "Roguelite combat, AI-generated events",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "value": "Procedural enemies and NPC events",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://leafsoft.itch.io/ai-roguelite",
+          "evidence_snippet": "Procedural enemies and NPC events",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "value": "itch.io web/download builds",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://leafsoft.itch.io/ai-roguelite",
+          "evidence_snippet": "itch.io web/download builds",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Generative AI produces run content, enemy behaviors, or narrative beats during gameplay.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://leafsoft.itch.io/ai-roguelite",
+        "evidence_snippet": "Generative AI produces run content, enemy behaviors, or narrative beats during gameplay.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://leafsoft.itch.io/ai-roguelite",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "itch.io page lists license and attribution",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://leafsoft.itch.io/ai-roguelite",
+        "evidence_snippet": "itch.io page lists license and attribution",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "safety_categories": [
+      {
+        "value": "Not rated; indie game page content warnings if present",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://leafsoft.itch.io/ai-roguelite",
+          "evidence_snippet": "Not rated; indie game page content warnings if present",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "ai_game_ugc",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://leafsoft.itch.io/ai-roguelite",
+          "evidence_snippet": "ai_game_ugc",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Indie roguelite game where AI-generated elements shape runs, encounters, and narrative events.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://leafsoft.itch.io/ai-roguelite",
+        "evidence_snippet": "Indie roguelite game where AI-generated elements shape runs, encounters, and narrative events.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

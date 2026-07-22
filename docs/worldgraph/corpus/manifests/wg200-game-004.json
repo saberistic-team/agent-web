@@ -1,0 +1,247 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "Convai Playground",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://convai.com/",
+        "evidence_snippet": "Convai Playground",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://convai.com/",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://convai.com/",
+        "evidence_snippet": "https://convai.com/",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "ai_game",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://convai.com/",
+        "evidence_snippet": "ai_game",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://convai.com/",
+        "evidence_snippet": "qualifies",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Interactive playground worlds demonstrating AI NPC conversations in 3D scenes.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://convai.com/",
+        "evidence_snippet": "Interactive playground worlds demonstrating AI NPC conversations in 3D scenes.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Convai Technologies",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://convai.com/",
+        "evidence_snippet": "Convai Technologies",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://convai.com/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://convai.com/",
+          "evidence_snippet": "https://convai.com/",
+          "confidence": 0.85,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "gameplay_with_ai_npcs",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://convai.com/",
+        "evidence_snippet": "gameplay_with_ai_npcs",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "Character configs persist in Convai dashboard.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://convai.com/",
+        "evidence_snippet": "Character configs persist in Convai dashboard.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "Web playground and SDK demos",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://convai.com/",
+        "evidence_snippet": "Web playground and SDK demos",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Sample 3D environments",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://convai.com/",
+        "evidence_snippet": "Sample 3D environments",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Voice/text interaction with NPCs",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://convai.com/",
+        "evidence_snippet": "Voice/text interaction with NPCs",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "value": "Demo NPCs with backstories",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://convai.com/",
+          "evidence_snippet": "Demo NPCs with backstories",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "value": "WebGL playground, game engine plugins",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://convai.com/",
+          "evidence_snippet": "WebGL playground, game engine plugins",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Convai NPC runtime handles speech, animation triggers, and knowledge retrieval.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://convai.com/",
+        "evidence_snippet": "Convai NPC runtime handles speech, animation triggers, and knowledge retrieval.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://convai.com/",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "Convai terms and API license",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://convai.com/",
+        "evidence_snippet": "Convai terms and API license",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "safety_categories": [
+      {
+        "value": "Developer terms; limited consumer age info",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://convai.com/",
+          "evidence_snippet": "Developer terms; limited consumer age info",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "ai_game_ugc",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://convai.com/",
+          "evidence_snippet": "ai_game_ugc",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Interactive playground worlds demonstrating AI NPC conversations in 3D scenes.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://convai.com/",
+        "evidence_snippet": "Interactive playground worlds demonstrating AI NPC conversations in 3D scenes.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

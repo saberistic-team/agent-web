@@ -1,0 +1,279 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "world_id": {
+      "value": "wg-corpus-027",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://chatgpt.com/",
+        "evidence_snippet": "Corpus id wg-corpus-027",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "name": {
+      "value": "ChatGPT",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://chatgpt.com/",
+        "evidence_snippet": "ChatGPT",
+        "confidence": 0.9,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://chatgpt.com/",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://chatgpt.com/",
+        "evidence_snippet": "https://chatgpt.com/",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "General-purpose conversational assistant.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://chatgpt.com/",
+        "evidence_snippet": "General-purpose conversational assistant.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://chatgpt.com/",
+        "evidence_snippet": "Public entry documented",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "excluded_candidate",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://chatgpt.com/",
+        "evidence_snippet": "excluded_candidate",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "OpenAI",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://chatgpt.com/",
+        "evidence_snippet": "Creator/operator: OpenAI",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "operator": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://chatgpt.com/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://chatgpt.com/",
+          "evidence_snippet": "https://chatgpt.com/",
+          "confidence": 0.9,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "single_turn_qa",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://chatgpt.com/",
+        "evidence_snippet": "single_turn_qa",
+        "confidence": 0.82,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "chat_threads",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://chatgpt.com/",
+        "evidence_snippet": "chat_threads",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "free_and_paid_tiers",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://chatgpt.com/",
+        "evidence_snippet": "free_and_paid_tiers",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "age_guidance": {
+      "value": "usage policies",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://chatgpt.com/",
+        "evidence_snippet": "usage policies",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "General chat completion.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://chatgpt.com/",
+        "evidence_snippet": "General chat completion.",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://chatgpt.com/",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "human_control_boundaries": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "excluded",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "OpenAI terms",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://chatgpt.com/",
+        "evidence_snippet": "OpenAI terms",
+        "confidence": 0.6,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "moderation_contact": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "exclusion_reason": {
+      "value": "rule_3_no_bounded_world_context",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://chatgpt.com/",
+        "evidence_snippet": "General assistant without bounded world context.",
+        "confidence": 0.9,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "platforms": [
+      {
+        "entity_type": "platform",
+        "label": {
+          "value": "Web and apps",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://chatgpt.com/",
+            "evidence_snippet": "Web and apps",
+            "confidence": 0.7,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "canonical_ref": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "negative_control",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://chatgpt.com/",
+          "evidence_snippet": "negative_control",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "General-purpose conversational assistant.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://chatgpt.com/",
+        "evidence_snippet": "General-purpose conversational assistant.",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}
