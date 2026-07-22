@@ -10,6 +10,7 @@ from uuid import UUID
 import psycopg
 
 from app.contacts import DECISION_MAKER_BUYING_ROLES
+from app.discovery.repository import PostgresDiscoveryRunRepository
 from app.patch import UNSET, MaybeUnset
 from app.repositories.protocols import (
     ActivityRepository,
@@ -1821,6 +1822,7 @@ class PostgresRepositories:
         self.pipeline = PostgresPipelineRepository()
         self.import_batches = PostgresImportBatchRepository()
         self.icp_scoring = PostgresIcpScoringRepository()
+        self.discovery_runs = PostgresDiscoveryRunRepository()
 
 
 _default_repositories = PostgresRepositories()
@@ -1845,6 +1847,7 @@ def default_repositories() -> dict[str, Any]:
         "pipeline": repos.pipeline,
         "import_batches": repos.import_batches,
         "icp_scoring": repos.icp_scoring,
+        "discovery_runs": repos.discovery_runs,
     }
 
 

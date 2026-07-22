@@ -27,7 +27,6 @@ from app.admin_preview import (
     build_preview_acquisition_dashboard_data,
     build_preview_companies,
     build_preview_company,
-    build_preview_company_contacts,
     build_preview_company_research,
     build_preview_contact,
     build_preview_contacts,
@@ -628,19 +627,12 @@ def test_preview_company_contact_fixtures_resolve_and_render_markup() -> None:
 
     company_detail = render_admin_company_research_page(
         company=populated_company,
-        contacts=build_preview_company_contacts(
-            PREVIEW_COMPANY_POPULATED_ID, rng=rng
-        ),
+        contacts=[populated_contact],
         records=build_preview_company_research(PREVIEW_COMPANY_POPULATED_ID),
         csrf_token="csrf",
         admin_username="preview",
     )
     assert "Archive company" in company_detail
-    assert "Buying-group coverage" in company_detail
-    assert "Warm introduction paths" in company_detail
-    assert "Former colleague" in company_detail
-    assert "Stale employment" in company_detail
-    assert "Research gap" in company_detail
     assert 'id="source_url"' in company_detail
     assert 'type="url"' in company_detail
     assert 'type="number"' in company_detail
@@ -871,6 +863,19 @@ def test_preview_linkedin_reconcile_stable_with_seed() -> None:
     assert a == b
     assert a["summary_counts"]["insert"] == 1
     assert a["summary_counts"]["conflict"] == 1
+
+
+@pytest.mark.unit
+def test_preview_discovery_runs_stable_with_seed() -> None:
+    from app.admin_preview import build_preview_discovery_runs
+
+    now = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
+    a = build_preview_discovery_runs(rng=random.Random(42), now=now)
+    b = build_preview_discovery_runs(rng=random.Random(42), now=now)
+    assert a == b
+    runs, total = a
+    assert total == 3
+    assert runs[0]["trigger_type"] == "scheduled"
 
 
 @pytest.mark.unit

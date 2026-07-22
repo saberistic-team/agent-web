@@ -46,6 +46,12 @@ class Settings:
     analytics_ingest_rate_limit: int = 60
     analytics_ingest_rate_window_seconds: int = 60
     analytics_ingest_lockout_seconds: int = 300
+    discovery_scheduler_enabled: bool = False
+    discovery_schedule_interval_days: int = 7
+    discovery_enabled_sources: str = "ycombinator"
+    discovery_retry_max_attempts: int = 5
+    discovery_retry_base_seconds: float = 1.0
+    discovery_retry_cap_seconds: float = 30.0
 
     @property
     def database_configured(self) -> bool:
@@ -79,6 +85,23 @@ class Settings:
     # that only checked ADMIN_PREVIEW_MODE + a saberistic.com base-URL
     # denylist; #330 additionally requires a validated loopback bind host
     # and no public-facing proxy/edge CIDRs.
+
+    @property
+    def discovery_enabled_source_ids(self) -> list[str]:
+        """Normalized discovery source ids from DISCOVERY_ENABLED_SOURCES."""
+        raw = self.discovery_enabled_sources.strip()
+        if not raw:
+            return []
+        return [part.strip() for part in raw.split(",") if part.strip()]
+
+    @property
+    def discovery_schedule_active(self) -> bool:
+        """True when scheduled discovery runs are allowed in this process."""
+        return (
+            self.discovery_scheduler_enabled
+            and self.app_environment == AppEnvironment.PRODUCTION
+            and self.database_configured
+        )
 
     @property
     def first_party_analytics_enabled(self) -> bool:
@@ -149,6 +172,25 @@ def get_settings() -> Settings:
         ),
         analytics_ingest_lockout_seconds=int(
             os.environ.get("ANALYTICS_INGEST_LOCKOUT_SECONDS", "300")
+        ),
+        discovery_scheduler_enabled=os.environ.get(
+            "DISCOVERY_SCHEDULER_ENABLED", ""
+        ).lower()
+        in ("1", "true", "yes"),
+        discovery_schedule_interval_days=int(
+            os.environ.get("DISCOVERY_SCHEDULE_INTERVAL_DAYS", "7")
+        ),
+        discovery_enabled_sources=os.environ.get(
+            "DISCOVERY_ENABLED_SOURCES", "ycombinator"
+        ).strip(),
+        discovery_retry_max_attempts=int(
+            os.environ.get("DISCOVERY_RETRY_MAX_ATTEMPTS", "5")
+        ),
+        discovery_retry_base_seconds=float(
+            os.environ.get("DISCOVERY_RETRY_BASE_SECONDS", "1.0")
+        ),
+        discovery_retry_cap_seconds=float(
+            os.environ.get("DISCOVERY_RETRY_CAP_SECONDS", "30.0")
         ),
         admin_trust_proxy_headers=os.environ.get(
             "ADMIN_TRUST_PROXY_HEADERS", ""
