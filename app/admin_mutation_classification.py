@@ -28,41 +28,36 @@ ADMIN_MUTATION_ROUTE_CLASSIFICATIONS: dict[tuple[str, str], tuple[MutationClassi
         "performs no audit append.",
     ),
     ("POST", "/admin/companies"): (
-        "intentionally_unaudited",
-        "Company creation persists the canonical business row only; immutable audit "
-        "covers updates via company.update.",
+        "required_immutable_business_audit",
+        "Company creation emits company.create with bounded after summary.",
     ),
     ("POST", "/admin/companies/{company_id}/edit"): (
         "required_immutable_business_audit",
         "Company field updates emit company.update with bounded before/after summaries.",
     ),
     ("POST", "/admin/companies/{company_id}/archive"): (
-        "intentionally_unaudited",
-        "Archive toggles lifecycle columns on the canonical company row without an "
-        "append-only audit event in this release.",
+        "required_immutable_business_audit",
+        "Company archive emits company.archive with bounded lifecycle transition.",
     ),
     ("POST", "/admin/companies/{company_id}/restore"): (
-        "intentionally_unaudited",
-        "Restore toggles lifecycle columns on the canonical company row without an "
-        "append-only audit event in this release.",
+        "required_immutable_business_audit",
+        "Company restore emits company.restore with bounded lifecycle transition.",
     ),
     ("POST", "/admin/companies/{company_id}/research"): (
         "required_immutable_business_audit",
         "Research evidence append emits research_record.create with bounded metadata.",
     ),
     ("POST", "/admin/contacts"): (
-        "intentionally_unaudited",
-        "Contact creation persists the canonical business row only; immutable audit "
-        "covers updates via contact.update.",
+        "required_immutable_business_audit",
+        "Contact creation emits contact.create with bounded after summary.",
     ),
     ("POST", "/admin/contacts/{contact_id}/edit"): (
         "required_immutable_business_audit",
         "Contact field updates emit contact.update with bounded before/after summaries.",
     ),
     ("POST", "/admin/contacts/{contact_id}/archive"): (
-        "intentionally_unaudited",
-        "Archive toggles lifecycle columns on the canonical contact row without an "
-        "append-only audit event in this release.",
+        "required_immutable_business_audit",
+        "Contact archive emits contact.archive with bounded lifecycle transition.",
     ),
     ("POST", "/admin/contacts/{contact_id}/restore"): (
         "required_immutable_business_audit",
@@ -100,6 +95,21 @@ ADMIN_MUTATION_ROUTE_CLASSIFICATIONS: dict[tuple[str, str], tuple[MutationClassi
     ("POST", "/admin/pipeline/{company_id}/activities"): (
         "required_immutable_business_audit",
         "Pipeline activity creation emits pipeline_activity.create with bounded metadata.",
+    ),
+    ("POST", "/admin/signals/rules"): (
+        "required_immutable_business_audit",
+        "Publishing an ICP rule version emits scoring_rule.update per changed rule with "
+        "bounded before/after summaries.",
+    ),
+    ("POST", "/admin/signals/{company_id}/recalculate"): (
+        "intentionally_unaudited",
+        "Recalculation only inserts an append-only company_icp_score_snapshots row; no "
+        "audit_events entry in this release.",
+    ),
+    ("POST", "/admin/signals/{company_id}/override"): (
+        "intentionally_unaudited",
+        "Override reason/actor are captured directly on the append-only "
+        "company_icp_score_snapshots row; no separate audit_events entry in this release.",
     ),
 }
 

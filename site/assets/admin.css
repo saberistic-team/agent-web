@@ -1226,3 +1226,63 @@ body.admin-app {
 .linkedin-import-stats {
   margin-bottom: 1.25rem;
 }
+
+.icp-score-display {
+  border: 1px solid var(--line);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+  max-width: 18rem;
+}
+
+.icp-score-display--override {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.icp-score-value {
+  font-family: var(--display);
+  font-size: 2.4rem;
+  line-height: 1;
+  margin: 0.25rem 0;
+}
+
+.icp-score-cell--override {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.icp-status {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid var(--line);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.icp-status--scored {
+  border-color: color-mix(in srgb, #4caf7d 45%, var(--line));
+}
+
+.icp-status--expired,
+.icp-status--hypothesis {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+
+.icp-override-note {
+  border-left: 3px solid var(--accent);
+  padding-left: 0.75rem;
+}
+
+.icp-evidence-list {
+  margin: 1rem 0 1.5rem;
+  padding-left: 1.25rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.admin-subtitle {
+  font-family: var(--display);
+  font-size: 1.1rem;
+  margin: 1.5rem 0 0.5rem;
+}

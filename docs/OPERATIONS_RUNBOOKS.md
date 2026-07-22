@@ -144,7 +144,7 @@ audited commit.
 | Step | Surface | Notes |
 |------|---------|-------|
 | Preview | `GET /admin/imports` | Client parses ZIP via `site/assets/linkedin-import.js` |
-| Commit | `POST /admin/api/imports/linkedin/commit` | Session auth; persists batch |
+| Commit | `POST /admin/api/imports/linkedin/commit` | Session auth + `X-CSRF-Token` header; JSON body only |
 | History | `GET /admin/imports/batches` | Committed batches + per-row outcomes |
 | Rollback | `POST /admin/imports/batches/{id}/rollback` | Reverts insert/update rows |
 | Replay | Same commit with identical checksum | Idempotent — returns existing batch |
@@ -163,7 +163,7 @@ No LinkedIn API keys — imports use operator-uploaded official exports only.
 1. Sign in → **Imports** (`/admin/imports`).
 2. Upload official LinkedIn connections ZIP; review preview (duplicates, skips).
 3. Approve commit (browser POSTs JSON with `connections`, optional `export_date`,
-   `checksum`).
+   `checksum`, and the session CSRF token in the `X-CSRF-Token` header).
 4. Open **Import batches** to confirm `committed` status and row outcomes.
 5. On bad commit, use **Rollback** on the batch detail page.
 
@@ -173,6 +173,7 @@ No LinkedIn API keys — imports use operator-uploaded official exports only.
 # Authenticated session cookie required
 curl -sS -b "$ADMIN_SESSION_COOKIE" \
   -H "Content-Type: application/json" \
+  -H "X-CSRF-Token: $ADMIN_CSRF_TOKEN" \
   -d '{"connections":[{"profile_url":"https://linkedin.com/in/example","full_name":"Example"}]}' \
   https://saberistic.com/admin/api/imports/linkedin/commit | jq .
 

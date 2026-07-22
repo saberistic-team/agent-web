@@ -53,6 +53,24 @@ def test_classification_reasons_are_non_empty() -> None:
 
 
 @pytest.mark.unit
+def test_lifecycle_routes_require_business_audit() -> None:
+    audited = {
+        key
+        for key, (classification, _reason) in ADMIN_MUTATION_ROUTE_CLASSIFICATIONS.items()
+        if classification == "required_immutable_business_audit"
+    }
+    lifecycle = {
+        ("POST", "/admin/companies"),
+        ("POST", "/admin/companies/{company_id}/archive"),
+        ("POST", "/admin/companies/{company_id}/restore"),
+        ("POST", "/admin/contacts"),
+        ("POST", "/admin/contacts/{contact_id}/archive"),
+        ("POST", "/admin/contacts/{contact_id}/restore"),
+    }
+    assert lifecycle <= audited
+
+
+@pytest.mark.unit
 def test_research_and_pipeline_routes_require_business_audit() -> None:
     audited = {
         key

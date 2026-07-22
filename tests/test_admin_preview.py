@@ -833,6 +833,38 @@ def test_preview_brief_conversion_states() -> None:
 
 
 @pytest.mark.unit
+def test_preview_icp_score_rows_are_stable() -> None:
+    from app.admin_preview import build_preview_icp_score_rows
+
+    now = datetime(2026, 7, 15, 12, 0, tzinfo=timezone.utc)
+    a = build_preview_icp_score_rows(rng=random.Random(42), now=now)
+    b = build_preview_icp_score_rows(rng=random.Random(42), now=now)
+    assert a == b
+    assert len(a) >= 3
+    assert any(row["is_override"] for row in a)
+
+
+@pytest.mark.unit
+def test_preview_icp_detail_includes_breakdown_and_override() -> None:
+    from app.admin_preview import (
+        PREVIEW_PIPELINE_COMPANY_IDS,
+        build_preview_icp_score_detail,
+    )
+
+    now = datetime(2026, 7, 15, 12, 0, tzinfo=timezone.utc)
+    detail = build_preview_icp_score_detail(
+        PREVIEW_PIPELINE_COMPANY_IDS[1],
+        rng=random.Random(7),
+        now=now,
+    )
+    assert detail is not None
+    snapshot = detail["snapshot"]
+    assert snapshot["is_override"] is True
+    assert snapshot["override_reason"]
+    assert len(snapshot["breakdown"]) == 10
+
+
+@pytest.mark.unit
 def test_preview_linkedin_reconcile_stable_with_seed() -> None:
     a = build_preview_linkedin_reconcile(rng=random.Random(42))
     b = build_preview_linkedin_reconcile(rng=random.Random(42))

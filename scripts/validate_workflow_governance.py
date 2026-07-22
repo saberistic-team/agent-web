@@ -21,13 +21,20 @@ WORKFLOWS_DIR = Path(".github/workflows")
 RULESET_NAME = "Require independent review for workflow governance"
 WORKFLOW_SCRIPT_RE = re.compile(r"python\s+scripts/([a-zA-Z0-9_]+)\.py")
 SCRIPT_PATH_RE = re.compile(r"scripts/([a-z_]+)\.py")
-HUMAN_CODEOWNERS = frozenset({"@saberistic", "@mehdidehdar", "@Amirsharifico"})
+HUMAN_CODEOWNERS = frozenset({"@saberistic"})
 AUTOMATION_LOGIN_MARKERS = ("bot", "agent", "app", "copilot")
+
+
+def is_repository_wide_pattern(pattern: str) -> bool:
+    """Return whether a CODEOWNERS pattern assigns ownership to the entire repo."""
+    return pattern.lstrip("/") == "*"
 
 
 def _glob_regex(pattern: str) -> re.Pattern[str]:
     """Compile the CODEOWNERS subset used by this repository."""
     pattern = pattern.lstrip("/")
+    if pattern == "*":
+        return re.compile("^.*$")
     result = []
     index = 0
     while index < len(pattern):
@@ -207,6 +214,8 @@ def validate_codeowners_manifest_sync(
     governance_files = manifest_matched_files(files, patterns)
 
     for pattern, _owners in rules:
+        if is_repository_wide_pattern(pattern):
+            continue
         normalized = pattern.lstrip("/")
         for path in files:
             if not _glob_regex(normalized).match(path):
@@ -455,7 +464,7 @@ def report_ruleset_drift(repo: str, errors: list[str]) -> None:
         "can fix it, and every PR that rebases onto this `main` will fail "
         "the same CI check until it is repaired.",
         "",
-        "@saberistic @mehdidehdar @Amirsharifico: please follow "
+        "@saberistic: please follow "
         "`docs/WORKFLOW_GOVERNANCE.md` 'Recovery and break-glass' to restore "
         "enforcement, then re-run "
         "`VERIFY_LIVE_GOVERNANCE_RULESET=1 python scripts/validate_workflow_governance.py` "

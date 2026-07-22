@@ -710,7 +710,11 @@ def admin_company_create(
     except (ValueError, TypeError, ValidationError) as exc:
         return RedirectResponse(url=f"/admin/companies/new?error={quote(str(exc))}", status_code=303)
     with db.db_connection(get_settings().database_url) as conn:
-        result = _crm.create_company(conn, company=company)
+        result = _crm.create_company(
+            conn,
+            company=company,
+            actor_context=actor_context_from_request(request, actor=session.admin_username),
+        )
     warnings = result["duplicate_warnings"]
     warning = f"{len(warnings)} possible domain duplicate(s)" if warnings else ""
     return RedirectResponse(
@@ -848,8 +852,9 @@ def admin_company_update(
 def admin_company_archive(request: Request, company_id: UUID, csrf_token: str = Form(...)) -> Response:
     session = require_admin_session(request)
     _verify_session_csrf(request, session, csrf_token)
+    actor_context = actor_context_from_request(request, actor=session.admin_username)
     with db.db_connection(get_settings().database_url) as conn:
-        if _crm.archive_company(conn, company_id) is None:
+        if _crm.archive_company(conn, company_id, actor_context=actor_context) is None:
             raise HTTPException(status_code=404, detail="Company not found")
     return RedirectResponse(url="/admin/companies", status_code=303)
 
@@ -858,8 +863,9 @@ def admin_company_archive(request: Request, company_id: UUID, csrf_token: str = 
 def admin_company_restore(request: Request, company_id: UUID, csrf_token: str = Form(...)) -> Response:
     session = require_admin_session(request)
     _verify_session_csrf(request, session, csrf_token)
+    actor_context = actor_context_from_request(request, actor=session.admin_username)
     with db.db_connection(get_settings().database_url) as conn:
-        if _crm.restore_company(conn, company_id) is None:
+        if _crm.restore_company(conn, company_id, actor_context=actor_context) is None:
             raise HTTPException(status_code=404, detail="Company not found")
     return RedirectResponse(url=f"/admin/companies/{company_id}", status_code=303)
 
@@ -1054,7 +1060,11 @@ def admin_contact_create(
         return RedirectResponse(url=f"/admin/contacts/new?error={quote(str(exc))}", status_code=303)
     try:
         with db.db_connection(get_settings().database_url) as conn:
-            result = _crm.create_contact(conn, contact=contact)
+            result = _crm.create_contact(
+                conn,
+                contact=contact,
+                actor_context=actor_context_from_request(request, actor=session.admin_username),
+            )
     except ContactEmailConflictError as exc:
         return RedirectResponse(url=f"/admin/contacts/new?error={quote(str(exc))}", status_code=303)
     warnings = result["duplicate_warnings"]
@@ -1156,8 +1166,9 @@ def admin_contact_update(
 def admin_contact_archive(request: Request, contact_id: UUID, csrf_token: str = Form(...)) -> Response:
     session = require_admin_session(request)
     _verify_session_csrf(request, session, csrf_token)
+    actor_context = actor_context_from_request(request, actor=session.admin_username)
     with db.db_connection(get_settings().database_url) as conn:
-        if _crm.archive_contact(conn, contact_id) is None:
+        if _crm.archive_contact(conn, contact_id, actor_context=actor_context) is None:
             raise HTTPException(status_code=404, detail="Contact not found")
     return RedirectResponse(url="/admin/contacts", status_code=303)
 
@@ -1929,15 +1940,34 @@ def admin_import_batch_rollback(
 async def admin_linkedin_import_commit(request: Request) -> JSONResponse:
     session = require_admin_session(request)
     settings = get_settings()
+    from app.admin_json_request import (
+        read_bounded_json_object,
+        read_session_csrf_header,
+        reject_duplicate_csrf_field,
+        verify_session_csrf_header_or_reject,
+    )
+    from app.admin_linkedin_commit import (
+        LINKEDIN_COMMIT_MAX_BODY_BYTES,
+        LINKEDIN_COMMIT_MAX_CONNECTIONS,
+    )
+
+    verify_session_csrf_header_or_reject(
+        request,
+        settings,
+        submitted_csrf_token=read_session_csrf_header(request),
+    )
     if not settings.database_url:
         raise HTTPException(status_code=503, detail="Database unavailable")
-    try:
-        payload = await request.json()
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
+    payload = await read_bounded_json_object(
+        request,
+        max_body_bytes=LINKEDIN_COMMIT_MAX_BODY_BYTES,
+    )
+    reject_duplicate_csrf_field(payload)
     connections = payload.get("connections")
     if not isinstance(connections, list):
         raise HTTPException(status_code=400, detail="connections must be a list")
+    if len(connections) > LINKEDIN_COMMIT_MAX_CONNECTIONS:
+        raise HTTPException(status_code=400, detail="connections list too large")
     with db.db_connection(settings.database_url) as conn:
         result = _crm.commit_linkedin_import(
             conn,
@@ -2017,6 +2047,7 @@ for _link in ADMIN_NAV_LINKS:
         "/admin/contacts",
         "/admin/imports",
         "/admin/pipeline",
+        "/admin/signals",
     }:
         continue
     _section = _link["href"].removeprefix("/admin/")
