@@ -238,8 +238,30 @@ def test_dispatch_next_skips_open_dependencies(
     )
     monkeypatch.setattr("dispatch_queue.agent_in_progress", lambda *_a, **_k: False)
     monkeypatch.setattr(
+        "dispatch_queue.reconcile_issue_dependencies",
+        lambda repo, number, body="", write=True: {
+            "issue": number,
+            "ok": True,
+            "blockers": [{"number": 199}] if number == 204 else [],
+            "added_blocked_by": (
+                [{"blocking": 199, "status": "ok"}] if number == 204 else []
+            ),
+            "added_sub_issues": [],
+            "body_updated": number == 204,
+            "body": body,
+        },
+    )
+    monkeypatch.setattr(
+        "dispatch_queue.reconcile_comment",
+        lambda summary: (
+            "### dependency_reconcile\n- added_blocked_by: #199\n"
+            if summary.get("added_blocked_by")
+            else None
+        ),
+    )
+    monkeypatch.setattr(
         "dispatch_queue.dependency_block_reason",
-        lambda repo, number, body="": (
+        lambda repo, number, body="", reconcile=False: (
             f"#{number} is blocked by open dependencies: #199"
             if number == 204
             else None
@@ -266,6 +288,6 @@ def test_dispatch_next_skips_open_dependencies(
             "milestone": "WorldGraph",
         }
     ]
-    assert comments[0][0] == 204
-    assert "### dispatcher_skip" in comments[0][1]
+    assert any("### dependency_reconcile" in body for _, body in comments)
+    assert any("### dispatcher_skip" in body for number, body in comments if number == 204)
     assert any("### dispatcher_dispatch" in body for _, body in comments)

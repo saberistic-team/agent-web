@@ -112,8 +112,9 @@ def test_exclusion_fixtures_validate_but_are_excluded(
     assert not errors, [error.message for error in errors]
     validate_manifest_v0(manifest)
     assert manifest["trust"]["qualification_status"] == "excluded"
-    assert isinstance(manifest["trust"]["exclusion_reason"], str)
-    assert manifest["trust"]["exclusion_reason"]
+    exclusion_reason = manifest["trust"]["exclusion_reason"]
+    assert isinstance(exclusion_reason, dict)
+    assert exclusion_reason["value"]
 
 
 @pytest.mark.unit
@@ -143,7 +144,7 @@ def test_schema_version_constant() -> None:
 @pytest.mark.unit
 def test_schema_entity_types_are_distinct() -> None:
     schema = _load_schema()
-    entity_types = schema["$defs"]["linkedEntityRef"]["properties"]["entity_type"]["enum"]
+    entity_types = schema["$defs"]["entityLink"]["properties"]["entity_type"]["enum"]
     assert "world" in entity_types
     assert "platform" in entity_types
     assert "agent" in entity_types

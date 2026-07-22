@@ -36,6 +36,16 @@ class ManifestValidationError(ValueError):
     pass
 
 
+def _exclusion_reason_value(value: Any) -> str | None:
+    """Accept spike string reasons or schema proven-string objects."""
+    if isinstance(value, str):
+        return value
+    if _is_proven_field(value, allow_unknown=False):
+        raw = value.get("value")
+        return raw if isinstance(raw, str) else None
+    return None
+
+
 def _is_proven_field(value: Any, *, allow_unknown: bool = False) -> bool:
     if not isinstance(value, dict):
         return False
@@ -106,7 +116,8 @@ def validate_manifest_v0(manifest: dict[str, Any]) -> None:
     qualification_status = trust.get("qualification_status")
     exclusion_reason = trust.get("exclusion_reason")
     if qualification_status == "excluded":
-        if not isinstance(exclusion_reason, str) or exclusion_reason not in ALLOWED_EXCLUSION_REASON:
+        reason_value = _exclusion_reason_value(exclusion_reason)
+        if reason_value not in ALLOWED_EXCLUSION_REASON:
             raise ManifestValidationError("trust.exclusion_reason required when excluded")
     elif exclusion_reason is not None:
         raise ManifestValidationError("trust.exclusion_reason only allowed when excluded")

@@ -30,6 +30,8 @@ from github_api import (
 from issue_deps import (
     dependency_block_reason,
     dispatcher_skip_comment,
+    reconcile_comment,
+    reconcile_issue_dependencies,
 )
 from milestones import (
     dispatch_sort_key,
@@ -190,9 +192,33 @@ def dispatch_next(repo: str, *, dry_run: bool = False) -> dict[str, Any]:
             )
             continue
 
-        dep_reason = dependency_block_reason(
-            repo, number, body=issue.get("body") or ""
-        )
+        # Derive + write missing blockedBy / parent-child / Depends-on before
+        # deciding whether this queued issue may start.
+        reconcile_summary: dict[str, Any]
+        if dry_run:
+            reconcile_summary = {
+                "body": issue.get("body") or "",
+                "blockers": [],
+                "added_blocked_by": [],
+                "added_sub_issues": [],
+                "body_updated": False,
+            }
+            dep_reason = dependency_block_reason(
+                repo, number, body=issue.get("body") or "", reconcile=False
+            )
+        else:
+            reconcile_summary = reconcile_issue_dependencies(
+                repo, number, body=issue.get("body") or "", write=True
+            )
+            note = reconcile_comment(reconcile_summary)
+            if note:
+                post_issue_comment(repo, number, note)
+            dep_reason = dependency_block_reason(
+                repo,
+                number,
+                body=str(reconcile_summary.get("body") or issue.get("body") or ""),
+                reconcile=False,
+            )
         if dep_reason:
             skipped_deps.append(
                 {
@@ -200,6 +226,11 @@ def dispatch_next(repo: str, *, dry_run: bool = False) -> dict[str, Any]:
                     "agent": agent,
                     "reason": "open_dependencies",
                     "detail": dep_reason,
+                    "reconcile": {
+                        "added_blocked_by": reconcile_summary.get("added_blocked_by"),
+                        "added_sub_issues": reconcile_summary.get("added_sub_issues"),
+                        "body_updated": reconcile_summary.get("body_updated"),
+                    },
                 }
             )
             if not dry_run and not _recent_dispatcher_skip(repo, number):

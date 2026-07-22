@@ -122,7 +122,7 @@
     "qualification_status": "excluded",
     "claim_status": "unclaimed",
     "exclusion_reason": {
-      "value": "rule_2_3_foundation_artifact_not_interactive_world",
+      "value": "foundation_model_or_tool_not_world",
       "provenance": {
         "source_kind": "derived",
         "source_url": "https://huggingface.co/example/omnibase-7b",

@@ -155,13 +155,20 @@ before Dispatcher starts Builder/Docs:
 
 | Form | Example |
 |------|---------|
-| GitHub blockedBy | Issue A “blocked by” issue B in the GitHub UI |
+| GitHub blockedBy / blocking | Issue A “blocked by” issue B in the GitHub UI |
+| Parent / sub-issue | Child linked under parent; open children block the parent |
 | Body line | `Depends on: #199, #200` |
 | Section | `## Dependencies` containing `#199` refs, or `None` / `N/A` |
 
-A `## Dependencies` section with narrative prose and **no** `#N` refs is
-unstructured — Planner sets `status:blocked`; Dispatcher skips; Gate refuses
-merge (`scripts/issue_deps.py`, learned from #204).
+Planner and Dispatcher **reconcile** missing links before queue/dequeue: they
+read the issue, related issues, and linked PRs, derive blockers from strong
+ordering phrases, then add GitHub `blockedBy` / sub-issue edges and sync
+`Depends on:` (`scripts/issue_deps.py`). A `### dependency_reconcile` comment
+records writes.
+
+A `## Dependencies` section with narrative prose and **no** `#N` refs (and no
+inferable numbers) is unstructured — Planner sets `status:blocked`; Dispatcher
+skips; Gate refuses merge (learned from #204).
 
 ---
 
