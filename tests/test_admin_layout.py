@@ -78,23 +78,18 @@ def _empty_dashboard_for_layout():
     )
 
 
-def _empty_marketing_analytics_for_layout():
-    from app.marketing_analytics_dashboard import (
-        MarketingAnalyticsDashboardData,
-        parse_analytics_date_range,
-    )
+def _empty_analytics_for_layout():
+    from app.analytics_dashboard import AnalyticsDashboardData, parse_date_range
 
-    return MarketingAnalyticsDashboardData(
-        date_range=parse_analytics_date_range(),
-        engagement_events=(),
-        server_conversion_events=(),
-        client_supplementary_events=(),
+    return AnalyticsDashboardData(
+        engagement_counts=(),
+        server_counts=(),
         conversion_rates=(),
-        event_attribution=(),
-        lead_attribution=(),
-        case_study_engagement=(),
-        article_engagement=(),
+        attribution=(),
+        case_studies=(),
+        articles=(),
         generated_at=datetime.now(timezone.utc),
+        date_range=parse_date_range(),
     )
 
 
@@ -451,7 +446,7 @@ def test_admin_nav_links_present(path: str) -> None:
         ("/admin/pipeline", "Pipeline", "pipeline-title", "Pipeline"),
         ("/admin/imports", "LinkedIn export preview", "imports-title", "Imports"),
         ("/admin/discovery", "Discovery", "admin-empty-title", "Discovery"),
-        ("/admin/analytics", "Marketing analytics", "analytics-title", "Analytics"),
+        ("/admin/analytics", "Analytics", "analytics-title", "Analytics"),
         ("/admin/content", "Content", "admin-empty-title", "Content"),
         ("/admin/settings", "Settings", "admin-empty-title", "Settings"),
     ],
@@ -491,8 +486,8 @@ def test_admin_active_nav(path: str, heading: str, title_id: str, nav_label: str
         if path == "/admin/analytics":
             patchers.append(
                 patch(
-                    "app.admin_routes.load_marketing_analytics_dashboard",
-                    return_value=_empty_marketing_analytics_for_layout(),
+                    "app.admin_routes.load_analytics_dashboard",
+                    return_value=_empty_analytics_for_layout(),
                 )
             )
         with patchers[0]:

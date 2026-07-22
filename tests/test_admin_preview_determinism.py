@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from app.admin_preview import (
     build_preview_acquisition_dashboard_data,
+    build_preview_analytics_dashboard_data,
     build_preview_brief_rows,
     build_preview_companies,
     build_preview_section_rows,
@@ -189,6 +190,29 @@ def test_frozen_time_controls_overdue_and_upcoming_boundaries() -> None:
     for row in data.upcoming_actions:
         assert row.next_action_due_at > frozen
         assert row.next_action_due_at <= frozen + timedelta(days=10)
+
+
+@pytest.mark.unit
+def test_analytics_preview_dashboard_is_deterministic() -> None:
+    ctx = PreviewContext(
+        root_seed=116,
+        reference_time=DEFAULT_PREVIEW_REFERENCE_TIME,
+        fixture_version=PREVIEW_FIXTURE_VERSION,
+    )
+    rng = preview_rng_for_namespace("analytics_dashboard", context=ctx)
+    first = build_preview_analytics_dashboard_data(
+        now=ctx.reference_time,
+        rng=rng,
+    )
+    second = build_preview_analytics_dashboard_data(
+        now=ctx.reference_time,
+        rng=preview_rng_for_namespace("analytics_dashboard", context=ctx),
+    )
+    assert first == second
+    assert first.engagement_counts[0].count > 0
+    assert first.attribution
+    assert first.case_studies
+    assert first.articles
 
 
 @pytest.mark.unit

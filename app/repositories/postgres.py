@@ -1056,162 +1056,6 @@ class PostgresPipelineRepository:
         return [(str(row["bucket"]), int(row["total"])) for row in rows]
 
 
-class PostgresMarketingAnalyticsRepository:
-    _UTM_SOURCE_EXPR = (
-        "COALESCE(NULLIF(TRIM(attribution->>'utm_source'), ''), '(direct)')"
-    )
-    _UTM_MEDIUM_EXPR = (
-        "COALESCE(NULLIF(TRIM(attribution->>'utm_medium'), ''), '(none)')"
-    )
-    _UTM_CAMPAIGN_EXPR = (
-        "COALESCE(NULLIF(TRIM(attribution->>'utm_campaign'), ''), '(none)')"
-    )
-    _BRIEF_UTM_SOURCE_EXPR = "COALESCE(NULLIF(TRIM(utm_source), ''), '(direct)')"
-    _BRIEF_UTM_MEDIUM_EXPR = "COALESCE(NULLIF(TRIM(utm_medium), ''), '(none)')"
-    _BRIEF_UTM_CAMPAIGN_EXPR = "COALESCE(NULLIF(TRIM(utm_campaign), ''), '(none)')"
-
-    def count_events_by_name(
-        self,
-        conn: psycopg.Connection,
-        *,
-        window_start: datetime,
-        window_end: datetime,
-        event_names: tuple[str, ...] | list[str],
-    ) -> list[tuple[str, int]]:
-        if not event_names:
-            return []
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT event_name, COUNT(*)::int AS total
-                FROM analytics_events
-                WHERE occurred_at >= %s
-                  AND occurred_at < %s
-                  AND event_name = ANY(%s)
-                GROUP BY event_name
-                ORDER BY total DESC, event_name ASC
-                """,
-                (window_start, window_end, list(event_names)),
-            )
-            rows = cur.fetchall()
-        return [(str(row["event_name"]), int(row["total"])) for row in rows]
-
-    def list_event_attribution(
-        self,
-        conn: psycopg.Connection,
-        *,
-        window_start: datetime,
-        window_end: datetime,
-        limit: int,
-    ) -> list[dict[str, Any]]:
-        with conn.cursor() as cur:
-            cur.execute(
-                f"""
-                SELECT
-                    {self._UTM_SOURCE_EXPR} AS utm_source,
-                    {self._UTM_MEDIUM_EXPR} AS utm_medium,
-                    {self._UTM_CAMPAIGN_EXPR} AS utm_campaign,
-                    COUNT(*)::int AS event_count
-                FROM analytics_events
-                WHERE occurred_at >= %s
-                  AND occurred_at < %s
-                GROUP BY utm_source, utm_medium, utm_campaign
-                ORDER BY event_count DESC, utm_source ASC
-                LIMIT %s
-                """,
-                (window_start, window_end, limit),
-            )
-            rows = cur.fetchall()
-        return [dict(row) for row in rows]
-
-    def list_lead_attribution(
-        self,
-        conn: psycopg.Connection,
-        *,
-        window_start: datetime,
-        window_end: datetime,
-        limit: int,
-    ) -> list[dict[str, Any]]:
-        with conn.cursor() as cur:
-            cur.execute(
-                f"""
-                SELECT
-                    {self._BRIEF_UTM_SOURCE_EXPR} AS utm_source,
-                    {self._BRIEF_UTM_MEDIUM_EXPR} AS utm_medium,
-                    {self._BRIEF_UTM_CAMPAIGN_EXPR} AS utm_campaign,
-                    COUNT(*)::int AS leads,
-                    COUNT(*) FILTER (
-                        WHERE status = 'paid'
-                          AND paid_at >= %s
-                          AND paid_at < %s
-                    )::int AS payments
-                FROM project_briefs
-                WHERE created_at >= %s
-                  AND created_at < %s
-                GROUP BY utm_source, utm_medium, utm_campaign
-                ORDER BY leads DESC, utm_source ASC
-                LIMIT %s
-                """,
-                (window_start, window_end, window_start, window_end, limit),
-            )
-            rows = cur.fetchall()
-        return [dict(row) for row in rows]
-
-    def list_case_study_engagement(
-        self,
-        conn: psycopg.Connection,
-        *,
-        window_start: datetime,
-        window_end: datetime,
-        limit: int,
-    ) -> list[dict[str, Any]]:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT properties->>'case_study_slug' AS slug, COUNT(*)::int AS views
-                FROM analytics_events
-                WHERE occurred_at >= %s
-                  AND occurred_at < %s
-                  AND event_name = 'Case Study Viewed'
-                  AND properties ? 'case_study_slug'
-                  AND NULLIF(TRIM(properties->>'case_study_slug'), '') IS NOT NULL
-                GROUP BY slug
-                ORDER BY views DESC, slug ASC
-                LIMIT %s
-                """,
-                (window_start, window_end, limit),
-            )
-            rows = cur.fetchall()
-        return [dict(row) for row in rows]
-
-    def list_article_engagement(
-        self,
-        conn: psycopg.Connection,
-        *,
-        window_start: datetime,
-        window_end: datetime,
-        limit: int,
-    ) -> list[dict[str, Any]]:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT properties->>'article_slug' AS slug, COUNT(*)::int AS views
-                FROM analytics_events
-                WHERE occurred_at >= %s
-                  AND occurred_at < %s
-                  AND event_name = 'Insight Viewed'
-                  AND properties ? 'article_slug'
-                  AND NULLIF(TRIM(properties->>'article_slug'), '') IS NOT NULL
-                GROUP BY slug
-                ORDER BY views DESC, slug ASC
-                LIMIT %s
-                """,
-                (window_start, window_end, limit),
-            )
-            rows = cur.fetchall()
-        return [dict(row) for row in rows]
-
-
 class PostgresAcquisitionDashboardRepository:
     _COMPANY_DIMENSIONS = frozenset({"stage", "category"})
     _PUBLIC_EVIDENCE_TYPES = ("verified_fact", "public_signal")
@@ -1974,6 +1818,107 @@ class PostgresImportBatchRepository:
         return [dict(row) for row in rows]
 
 
+class PostgresAnalyticsDashboardRepository:
+    _ALLOWED_SLUG_PROPERTIES = frozenset({"case_study_slug", "article_slug"})
+
+    def count_events_by_name(
+        self,
+        conn: psycopg.Connection,
+        *,
+        start: datetime,
+        end: datetime,
+        event_names: tuple[str, ...],
+    ) -> dict[str, int]:
+        if not event_names:
+            return {}
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT event_name, COUNT(*)::int AS total
+                FROM analytics_events
+                WHERE occurred_at >= %s
+                  AND occurred_at < %s
+                  AND event_name = ANY(%s)
+                GROUP BY event_name
+                """,
+                (start, end, list(event_names)),
+            )
+            rows = cur.fetchall()
+        return {str(row["event_name"]): int(row["total"]) for row in rows}
+
+    def list_attribution_breakdown(
+        self,
+        conn: psycopg.Connection,
+        *,
+        start: datetime,
+        end: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(limit, 100))
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    COALESCE(NULLIF(TRIM(attribution->>'utm_source'), ''), '(direct)') AS source,
+                    COALESCE(NULLIF(TRIM(attribution->>'utm_medium'), ''), '(none)') AS medium,
+                    COALESCE(NULLIF(TRIM(attribution->>'utm_campaign'), ''), '(none)') AS campaign,
+                    COUNT(*)::int AS total_events,
+                    COUNT(*) FILTER (
+                        WHERE event_name = 'Lead Persisted'
+                    )::int AS leads
+                FROM analytics_events
+                WHERE occurred_at >= %s
+                  AND occurred_at < %s
+                GROUP BY 1, 2, 3
+                ORDER BY total_events DESC, source ASC, medium ASC, campaign ASC
+                LIMIT %s
+                """,
+                (start, end, safe_limit),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def list_content_engagement(
+        self,
+        conn: psycopg.Connection,
+        *,
+        start: datetime,
+        end: datetime,
+        event_name: str,
+        slug_property: str,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        if slug_property not in self._ALLOWED_SLUG_PROPERTIES:
+            raise ValueError(f"unsupported slug property: {slug_property}")
+        safe_limit = max(1, min(limit, 100))
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT properties->>%s AS slug, COUNT(*)::int AS views
+                FROM analytics_events
+                WHERE occurred_at >= %s
+                  AND occurred_at < %s
+                  AND event_name = %s
+                  AND properties->>%s IS NOT NULL
+                  AND TRIM(properties->>%s) <> ''
+                GROUP BY 1
+                ORDER BY views DESC, slug ASC
+                LIMIT %s
+                """,
+                (
+                    slug_property,
+                    start,
+                    end,
+                    event_name,
+                    slug_property,
+                    slug_property,
+                    safe_limit,
+                ),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+
 class PostgresRepositories:
     """Bundle of Postgres repository implementations including CRM + audit."""
 
@@ -1987,7 +1932,7 @@ class PostgresRepositories:
         self.audit_events = PostgresAuditEventRepository()
         self.project_briefs = PostgresProjectBriefRepository()
         self.acquisition_dashboard = PostgresAcquisitionDashboardRepository()
-        self.marketing_analytics = PostgresMarketingAnalyticsRepository()
+        self.analytics_dashboard = PostgresAnalyticsDashboardRepository()
         self.pipeline = PostgresPipelineRepository()
         self.import_batches = PostgresImportBatchRepository()
         self.icp_scoring = PostgresIcpScoringRepository()
@@ -2012,7 +1957,7 @@ def default_repositories() -> dict[str, Any]:
         "audit_events": repos.audit_events,
         "project_briefs": repos.project_briefs,
         "acquisition_dashboard": repos.acquisition_dashboard,
-        "marketing_analytics": repos.marketing_analytics,
+        "analytics_dashboard": repos.analytics_dashboard,
         "pipeline": repos.pipeline,
         "import_batches": repos.import_batches,
         "icp_scoring": repos.icp_scoring,
