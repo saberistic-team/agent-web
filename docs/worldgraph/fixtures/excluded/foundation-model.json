@@ -1,0 +1,147 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "OmniBase 7B Weights",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/negative/foundation-model",
+        "evidence_snippet": "Foundation model weights",
+        "confidence": 0.92,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://huggingface.co/example/omnibase-7b",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://huggingface.co/example/omnibase-7b",
+        "evidence_snippet": "huggingface.co/example/omnibase-7b",
+        "confidence": 0.95,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "excluded_candidate",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://huggingface.co/example/omnibase-7b",
+        "evidence_snippet": "model card",
+        "confidence": 0.9,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://huggingface.co/example/omnibase-7b",
+        "evidence_snippet": "Download weights",
+        "confidence": 0.85,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Example AI Lab",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://huggingface.co/example/omnibase-7b",
+        "evidence_snippet": "Example AI Lab",
+        "confidence": 0.8,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://huggingface.co/example/omnibase-7b",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://huggingface.co/example/omnibase-7b",
+          "evidence_snippet": "model repository",
+          "confidence": 0.9,
+          "observed_at": "2026-07-15T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "download_artifact",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://huggingface.co/example/omnibase-7b",
+        "evidence_snippet": "Download weights",
+        "confidence": 0.88,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "versioned_model_checkpoint",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://huggingface.co/example/omnibase-7b",
+        "evidence_snippet": "checkpoint revision hash",
+        "confidence": 0.75,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "foundation_model_weights_not_runtime_world",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://huggingface.co/example/omnibase-7b",
+        "evidence_snippet": "base model only",
+        "confidence": 0.9,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "build_time",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://huggingface.co/example/omnibase-7b",
+        "evidence_snippet": "training artifact",
+        "confidence": 0.8,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "excluded",
+    "claim_status": "unclaimed",
+    "exclusion_reason": {
+      "value": "rule_2_3_foundation_artifact_not_interactive_world",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://huggingface.co/example/omnibase-7b",
+        "evidence_snippet": "foundation model weights",
+        "confidence": 0.95,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "license_status": {
+      "value": "apache-2.0",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://huggingface.co/example/omnibase-7b",
+        "evidence_snippet": "Apache 2.0",
+        "confidence": 0.85,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

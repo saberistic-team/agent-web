@@ -2,15 +2,13 @@
 
 Parent issue: [#199](https://github.com/saberistic-team/agent-web/issues/199).
 
-**Status:** Versioned interchange schema for WorldGraph. Defines required, optional,
-derived, and verified fields for describing AI-native worlds. Not deployed to production
-tables or routes in this milestone.
+**Status:** Versioned schema for WorldGraph indexing. Not deployed to production tables or
+routes. **Not an industry standard** — Saberistic product schema aligned with A2A, MCP,
+C2PA, and spatial-web interoperability claims.
 
-**Related:** [WORLD_DEFINITION.md](./WORLD_DEFINITION.md) (qualification rules),
-[world-manifest-v0.schema.json](./world-manifest-v0.schema.json) (machine-readable schema),
-[fixtures/](./fixtures/) (validation examples).
-
-**Last updated:** 2026-07-22
+**Related:** [WORLD_DEFINITION.md](./WORLD_DEFINITION.md) (qualification),
+[world-manifest-v0.schema.json](./world-manifest-v0.schema.json) (machine-readable),
+[MARKET_POSITION.md](./MARKET_POSITION.md).
 
 ---
 
@@ -19,89 +17,161 @@ tables or routes in this milestone.
 | Field | Value |
 |-------|-------|
 | `schema_version` | `"world-manifest-v0"` (required, immutable per snapshot) |
-| Extension bucket | `extensions` (optional object; forward-compatible vendor fields) |
+| Extension policy | Add optional fields and `$defs` entries; do not rename or remove required fields without `world-manifest-v1`. |
 
-Future versions will use new `schema_version` constants. Parsers must reject unknown
-required top-level sections but may preserve unknown keys under `extensions`.
+Backwards-compatible extension: unknown top-level keys are rejected (`additionalProperties: false`);
+new optional properties may be added in minor doc revisions while keeping the same
+`schema_version` const until a breaking v1.
 
 ---
 
 ## Design principles
 
-1. **Evidence or declaration** — Every populated factual field uses a **proven value**
-   wrapper: `{ "value", "provenance" }`. Provenance records `source_kind`, `confidence`,
-   `observed_at`, and optional `verification_status`.
-2. **Unknown stays unknown** — Missing facts use `"value": "unknown"` with
-   `source_kind: "unknown"` and `confidence: 0`. Extractors must not invent values.
-3. **Verified facts require proof** — `verification_status` beyond `unverified` is
-   forbidden on unknown values. Model-assisted extraction cannot escalate verification.
-4. **Distinct entity types** — Worlds link to platforms, agents, characters, creators,
-   organizations, assets, and IP; they do not subsume those types.
-5. **Optional economy and governance** — `world_structure.economy` and
-   `world_structure.governance` are optional and never block MVP publication.
-6. **Standards by reference** — Prefer A2A Agent Card URLs, MCP registry IDs, and C2PA
-   manifest references over copying upstream payloads.
-
-Spike-era notes remain in [MANIFEST_V0.md](./MANIFEST_V0.md) for [#204](https://github.com/saberistic-team/agent-web/issues/204) evidence; this file is the canonical v0 spec.
+1. **Evidence or declaration** — Every populated factual field uses a proven value object
+   (`value` + `provenance`). Allowed `source_kind`: `source_observation`, `creator_declared`,
+   `derived`, `unknown`.
+2. **Unknown stays unknown** — Optional fields use `"value": "unknown"` with
+   `source_kind: "unknown"` and `confidence: 0`. Extractors must not invent missing data.
+3. **Verified ≠ observed** — `provenance.verification_status` tracks claim workflows
+   (`unverified`, `domain_verified`, `github_verified`, `email_domain_verified`,
+   `saberistic_verified`). Fetching a page does not verify ownership.
+4. **Linked entities** — Platforms, agents, assets, and IP are references (`entityLink`),
+   not duplicated vendor catalogs. Prefer URIs to A2A Agent Cards and MCP Registry entries.
+5. **Minimal required set** — Independent creators can publish with identity, experience,
+   AI role, and trust sections only. Economy and governance are optional.
+6. **CRM boundary** — WorldGraph entities do not overload Saberistic CRM tables
+   (`companies`, `contacts`, `research_records`, `project_briefs`).
 
 ---
 
-## Top-level structure
+## Top-level sections
 
 | Section | Required | Purpose |
 |---------|----------|---------|
 | `schema_version` | yes | Version gate |
-| `identity` | yes | Canonical IDs, naming, type, creator/owner |
-| `experience` | yes | Entry, access, interaction, persistence |
-| `ai_role` | yes | Material AI participation |
+| `identity` | yes | Canonical ID, name, type, status, claimant |
+| `experience` | yes | Entry, interaction, persistence, access |
+| `world_structure` | no | Setting, rules, linked agents/assets/platforms |
+| `ai_role` | yes | Build/runtime AI participation |
 | `trust` | yes | Qualification, claims, rights, safety |
-| `world_structure` | no | Setting, rules, linked entities |
-| `discovery` | no | Tags, media, relationships, CTAs |
-| `extensions` | no | Forward-compatible vendor fields |
+| `discovery` | no | Tags, media, relations, CTAs |
 
 ---
 
-## Provenance and proven values
+## Field reference
 
-### Provenance object
+### Identity (required)
+
+| Field | Req | Tier | Description |
+|-------|-----|------|-------------|
+| `world_id` | no | derived | Stable WorldGraph ID (e.g. `wg:world:scene-alpha`). |
+| `canonical_url` | **yes** | verified | Primary address for this world record. |
+| `name` | **yes** | verified | Public world name. |
+| `summary` | no | derived | Short description. |
+| `status` | **yes** | observed | e.g. `published`, `beta`, `archived`, `review`. |
+| `version` | no | observed | Experience or config version string. |
+| `created_at` | no | observed | ISO-8601 date or datetime. |
+| `updated_at` | no | observed | ISO-8601 date or datetime. |
+| `world_type` | **yes** | derived | e.g. `interactive_narrative`, `ai_spatial`, `agent_simulation`. |
+| `modalities` | no | observed | e.g. `text`, `voice`, `3d`, `vr`. |
+| `creator` | no | observed | Primary creator name or handle. |
+| `operator` | no | observed | Runtime operator if different from creator. |
+| `claimed_owner` | no | verified | Rights claimant after claim workflow. |
+
+### Experience (required)
+
+| Field | Req | Tier | Description |
+|-------|-----|------|-------------|
+| `entry_points` | **yes** | verified | ≥1 URL or deep link to enter/play. |
+| `supported_devices` | no | observed | e.g. `desktop_web`, `mobile_web`, `vr_headset`. |
+| `access_requirements` | no | observed | Login, wallet, invite, or `unknown`. |
+| `pricing` | no | observed | Free, subscription, token-gated, etc. |
+| `availability` | no | observed | `public`, `waitlist`, `private_beta`. |
+| `region_restrictions` | no | observed | Region codes or `unknown`. |
+| `age_guidance` | no | observed | e.g. `13+`, `18+`, or content rating ref. |
+| `interaction_model` | **yes** | observed | How users/agents act (choices, spatial, social). |
+| `persistence_model` | **yes** | observed | State persistence or reproducibility story. |
+| `supported_languages` | no | observed | BCP-47 tags or proven strings. |
+
+### World structure (optional)
+
+| Field | Req | Tier | Description |
+|-------|-----|------|-------------|
+| `setting` | no | derived | Bounded setting description. |
+| `lore_or_canon` | no | derived | Canon constraints. |
+| `rules_or_mechanics` | no | derived | Mechanics or simulation rules. |
+| `state_model` | no | derived | What state exists and where it lives. |
+| `agents_and_characters` | no | linked | `entityLink[]`; A2A Agent Card refs encouraged. |
+| `assets_and_dependencies` | no | linked | Art, audio, datasets; C2PA refs on media when known. |
+| `platforms` | no | linked | Host platforms (not the world itself). |
+| `engines_models_protocols` | no | linked | Engines, models, MCP servers — reference URIs. |
+| `economy` | no | optional | Token/currency design; **not required for MVP**. |
+| `governance` | no | optional | Community rules/moderation structure; **optional**. |
+
+### AI role (required)
+
+| Field | Req | Tier | Description |
+|-------|-----|------|-------------|
+| `material_ai_role` | **yes** | observed | Describable AI participation. |
+| `ai_usage_phase` | **yes** | derived | `build_time`, `runtime`, `build_and_runtime`, `unknown_phase`. |
+| `generated_or_agent_controlled` | no | observed | Elements under AI control. |
+| `model_disclosures` | no | observed | Model/provider names when known. |
+| `human_control_boundaries` | no | observed | Human override, kill switches, moderation. |
+
+### Trust — rights, safety, qualification (required)
+
+| Field | Req | Tier | Description |
+|-------|-----|------|-------------|
+| `qualification_status` | **yes** | verified | `qualifies`, `excluded`, `pending_review`. |
+| `claim_status` | **yes** | verified | Claim workflow state (see schema enum). |
+| `exclusion_reason` | no | derived | When excluded, which rule failed (proven string). |
+| `license_status` | no | observed | SPDX or plain-language license. |
+| `commercial_use_status` | no | observed | Commercial use permissions. |
+| `ip_declarations` | no | observed | Rightsholder statements. |
+| `provenance_evidence` | no | observed | URLs to source artifacts. |
+| `content_safety_categories` | no | observed | Safety taxonomy tags. |
+| `moderation_contact` | no | observed | Email or URL for moderation. |
+| `data_privacy_notes` | no | observed | Data retention / privacy notes. |
+
+### Discovery (optional)
+
+| Field | Req | Tier | Description |
+|-------|-----|------|-------------|
+| `tags` | no | derived | Free-form tags with provenance. |
+| `facets` | no | derived | Structured facet key/value pairs. |
+| `representative_media` | no | linked | Images/trailers with optional C2PA credential ref. |
+| `semantic_description` | no | derived | Embedding-friendly description. |
+| `related_worlds` | no | linked | Related world entity links. |
+| `inspirations` | no | linked | Inspiration links (not necessarily worlds). |
+| `forks` | no | linked | Fork lineage. |
+| `imports` | no | linked | Imported assets/worlds. |
+| `dependencies` | no | linked | Required other worlds/tools. |
+| `primary_call_to_action` | no | observed | `enter`, `play`, `integrate`, `contact`, `request_rights`. |
+
+**Tier legend:** `observed` = from source fetch; `derived` = inferred; `verified` = claim or
+review confirmed; `linked` = pointer to another entity or external standard record.
+
+---
+
+## Provenance shape
+
+Every proven field:
 
 ```json
 {
-  "source_kind": "source_observation",
-  "source_url": "https://example.com/worlds/scene-alpha",
-  "evidence_snippet": "Enter world — persistent character sessions",
-  "confidence": 0.82,
-  "observed_at": "2026-07-22T00:00:00+00:00",
-  "verification_status": "unverified"
+  "value": "Scene Alpha",
+  "provenance": {
+    "source_kind": "source_observation",
+    "source_url": "https://example-worlds.test/narrative/scene-alpha",
+    "evidence_snippet": "Interactive AI Character World",
+    "confidence": 0.82,
+    "observed_at": "2026-07-15T12:00:00+00:00",
+    "verification_status": "unverified"
+  }
 }
 ```
 
-| `source_kind` | Meaning |
-|---------------|---------|
-| `source_observation` | Fetched or human-observed from a URL, repo, or artifact |
-| `creator_declared` | Publisher attestation (form, README, signed manifest) |
-| `derived` | Inferred from other proven fields (must cite evidence) |
-| `unknown` | Fact not available; pairs with `"value": "unknown"` only |
-
-| `verification_status` | Meaning |
-|-----------------------|---------|
-| `unverified` | Default; observation or declaration not independently proven |
-| `domain_verified` | Domain control proven (well-known, DNS TXT, etc.) |
-| `github_verified` | Repository ownership proven |
-| `email_domain_verified` | Email domain magic-link confirmed |
-| `saberistic_verified` | Saberistic editorial verification |
-
-`trust.claim_status` tracks ownership workflow separately from per-field
-`verification_status`.
-
-### Proven value shapes
-
-**Required string** — `provenString`: non-empty `value` + provenance.
-
-**Required URL** — `provenUrl`: URI `value` + provenance.
-
-**Optional / unknown allowed** — `provenStringOrUnknown`: either a normal
-`provenString` or the strict unknown sentinel:
+Unknown optional field:
 
 ```json
 {
@@ -111,229 +181,120 @@ Spike-era notes remain in [MANIFEST_V0.md](./MANIFEST_V0.md) for [#204](https://
     "source_url": null,
     "evidence_snippet": null,
     "confidence": 0,
-    "observed_at": "2026-07-22T00:00:00+00:00",
+    "observed_at": "2026-07-15T12:00:00+00:00",
     "verification_status": "unverified"
   }
 }
 ```
 
----
-
-## Section: Identity
-
-| Field | Req | Type | Notes |
-|-------|-----|------|-------|
-| `world_id` | opt | provenString | Stable WorldGraph ID when assigned; derived from canonical URL pre-registration |
-| `name` | **yes** | provenString | Display name |
-| `canonical_url` | **yes** | provenUrl | Primary registry URL |
-| `summary` | opt | provenStringOrUnknown | One-paragraph description |
-| `status` | **yes** | provenString | e.g. `published`, `beta`, `archived`, `review` |
-| `version` | opt | provenStringOrUnknown | World semver or content generation |
-| `created_at` | opt | provenStringOrUnknown | ISO-8601 when first observed or declared |
-| `updated_at` | opt | provenStringOrUnknown | ISO-8601 last content or manifest change |
-| `world_type` | **yes** | provenString | Controlled vocabulary (see below) |
-| `modalities` | opt | provenString[] | e.g. `text`, `voice`, `3d_spatial`, `multiplayer` |
-| `creator` | opt | provenStringOrUnknown | Individual creator handle |
-| `operator` | opt | provenStringOrUnknown | Operating org or service |
-| `claimed_owner` | opt | provenStringOrUnknown | Rights claimant when distinct from creator |
-
-**Suggested `world_type` values:** `interactive_narrative`, `ai_spatial`,
-`agent_simulation`, `ai_game`, `persistent_social`, `research_simulation`, `hybrid`.
+**Hard rule:** `"value": "unknown"` cannot pair with any `verification_status` other than
+`unverified` (enforced in schema and `spike/worldgraph/manifest_schema.py`).
 
 ---
 
-## Section: Experience
+## Entity link shape
 
-| Field | Req | Type | Notes |
-|-------|-----|------|-------|
-| `entry_points` | **yes** | provenUrl[] (min 1) | Play, embed, or deploy URLs |
-| `supported_devices` | opt | provenString[] | e.g. `web`, `mobile`, `vr_headset` |
-| `interaction_model` | **yes** | provenString | e.g. `interactive_session`, `turn_based`, `ambient_agent` |
-| `persistence_model` | **yes** | provenStringOrUnknown | Saves, world DB, reproducible config |
-| `access_requirements` | opt | provenStringOrUnknown | Login, wallet, invite |
-| `pricing` | opt | provenStringOrUnknown | Free, subscription, one-time |
-| `availability` | opt | provenStringOrUnknown | Live hours, beta cohort |
-| `region` | opt | provenStringOrUnknown | Geo restrictions |
-| `age_guidance` | opt | provenStringOrUnknown | e.g. `13+`, `18+`, `unknown` |
-| `supported_languages` | opt | provenString[] | BCP-47 tags as proven strings |
-
----
-
-## Section: World structure (optional)
-
-| Field | Type | Notes |
-|-------|------|-------|
-| `setting` | provenStringOrUnknown | Premise, genre, place |
-| `lore_or_canon` | provenStringOrUnknown | Canon boundaries |
-| `rules_or_mechanics` | provenStringOrUnknown | Gameplay or simulation rules |
-| `state_model` | provenStringOrUnknown | What persists (inventory, relationships, map) |
-| `agents_and_characters` | linkedEntityRef[] | Agents/NPCs; prefer A2A refs |
-| `assets_and_dependencies` | linkedEntityRef[] | Media, models, scenes |
-| `platforms` | linkedEntityRef[] | Host platforms — not the World itself |
-| `engines_models_protocols` | linkedEntityRef[] | Runtimes, model IDs, MCP/A2A endpoints |
-| `economy` | provenStringOrUnknown | Optional; tokens, shops — non-blocking |
-| `governance` | provenStringOrUnknown | Optional; community rules, DAO — non-blocking |
-
-### Linked entity reference
+Use for agents, platforms, assets, and related worlds:
 
 ```json
 {
   "entity_type": "agent",
-  "entity_id": "urn:worldgraph:agent:scene-alpha-npc-1",
-  "display_name": { "value": "Lyra", "provenance": { "...": "..." } },
-  "reference_url": { "value": "https://example.com/.well-known/agent-card.json", "provenance": { "...": "..." } },
-  "external_standard": "a2a_agent_card"
+  "label": {
+    "value": "Guide NPC",
+    "provenance": { "...": "..." }
+  },
+  "canonical_ref": {
+    "value": "https://example.com/.well-known/agent-card.json",
+    "provenance": { "...": "..." }
+  },
+  "standards_ref": {
+    "standard": "a2a_agent_card",
+    "ref_url": "https://example.com/.well-known/agent-card.json"
+  }
 }
 ```
 
-Allowed `entity_type`: `world`, `platform`, `agent`, `character`, `creator`,
-`organization`, `asset`, `ip`.
-
-Allowed `external_standard`: `a2a_agent_card`, `mcp_registry`, `c2pa_manifest`,
-`gltf`, `usd`, `webxr`, `other`.
-
----
-
-## Section: AI role
-
-| Field | Req | Type | Notes |
-|-------|-----|------|-------|
-| `material_ai_role` | **yes** | provenString | Plain-language AI participation |
-| `ai_usage_phase` | **yes** | provenString | `build_time`, `runtime`, or `build_and_runtime` |
-| `generated_or_agent_controlled` | opt | provenStringOrUnknown | What AI generates or controls |
-| `model_disclosures` | opt | provenStringOrUnknown[] | Provider/model when known |
-| `human_control_boundaries` | opt | provenStringOrUnknown | Moderation, kill switches, human-in-loop |
-
----
-
-## Section: Trust (rights, safety, qualification)
-
-| Field | Req | Type | Notes |
-|-------|-----|------|-------|
-| `qualification_status` | **yes** | enum | `qualifies`, `excluded`, `pending_review` |
-| `exclusion_reason` | opt | enum | Required when `excluded`; see WORLD_DEFINITION.md |
-| `claim_status` | **yes** | enum | Ownership workflow state |
-| `license_status` | opt | provenStringOrUnknown | SPDX or plain terms |
-| `commercial_use_status` | opt | provenStringOrUnknown | Commercial use allowed/denied/unknown |
-| `ip_declarations` | opt | provenStringOrUnknown[] | Franchise, trademark, rightsholder notes |
-| `source_evidence` | opt | provenUrl[] | Primary evidence URLs |
-| `safety_categories` | opt | provenStringOrUnknown[] | Content safety tags |
-| `moderation_contact` | opt | provenStringOrUnknown | Email or URL for abuse reports |
-| `data_privacy_notes` | opt | provenStringOrUnknown | Data retention, training use |
-
----
-
-## Section: Discovery (optional)
-
-| Field | Type | Notes |
-|-------|------|-------|
-| `tags` | provenString[] | Free-form tags |
-| `facets` | object | Structured key → provenStringOrUnknown |
-| `semantic_description` | provenStringOrUnknown | Embedding-friendly summary |
-| `representative_media` | provenUrl[] | Screenshots, trailers (C2PA refs encouraged) |
-| `related_worlds` | linkedEntityRef[] | Sequels, same universe |
-| `inspirations` | linkedEntityRef[] | Non-world inspirations |
-| `forks_imports_dependencies` | linkedEntityRef[] | Lineage |
-| `primary_call_to_action` | provenStringOrUnknown | `enter`, `play`, `integrate`, `contact`, `request_rights` |
-
----
-
-## Derived fields
-
-These may be computed at index time but, when stored in a manifest snapshot, must
-still carry provenance with `source_kind: "derived"`:
-
-| Field | Derivation |
-|-------|------------|
-| `identity.world_id` | Hash or registry slug from `canonical_url` |
-| `identity.modalities` | Parsed from experience copy or structured manifest |
-| `discovery.semantic_description` | Summarization from `summary` + tags (model output stays `unverified`) |
-| `trust.qualification_status` | Rules engine over requirements 1–7 |
-
-Derived values must not set `verification_status` beyond `unverified` unless a
-verification workflow completes.
+`entity_type` enum: `platform`, `agent`, `character`, `creator`, `organization`, `asset`, `ip`, `world`.
 
 ---
 
 ## Standards field mapping
 
-World Manifest v0 **references** external standards rather than copying their payloads.
+Reuse external metadata by reference. Do not copy full Agent Cards, MCP server configs, or
+C2PA manifests into World Manifest snapshots.
 
 ### A2A Agent Card
 
 | World Manifest field | A2A Agent Card field | Strategy |
-|---------------------|----------------------|----------|
-| `world_structure.agents_and_characters[]` | Agent Card URL / `name`, `description`, `skills` | Store `reference_url` to `.well-known/agent-card.json`; map `display_name` ← `name` |
-| `ai_role.model_disclosures` | `capabilities`, provider extensions | Reference only; do not duplicate full card |
-| `experience.entry_points` | `url` (service endpoint) | World entry points may differ from agent service URL — keep both |
-| `trust.source_evidence` | Card discovery URL | Link to observed card |
+|----------------------|----------------------|----------|
+| `world_structure.agents_and_characters[].canonical_ref` | Agent Card URL | Store URL; fetch card at index time. |
+| `world_structure.agents_and_characters[].label` | `name` | Copy only with `source_observation` provenance from card fetch. |
+| `world_structure.agents_and_characters[].standards_ref` | — | `standard: "a2a_agent_card"`. |
+| `ai_role.human_control_boundaries` | `capabilities`, human-input modes | Summarize; link card for detail. |
+| `experience.entry_points` | `url` (if agent is entry) | Prefer world entry URL; agent URL as secondary link. |
 
-Source: [A2A Agent Discovery](https://a2a-protocol.org/latest/topics/agent-discovery/) (2025).
+Reference: [A2A Agent Discovery](https://a2a-protocol.org/latest/topics/agent-discovery/).
 
 ### MCP Registry
 
 | World Manifest field | MCP Registry field | Strategy |
-|---------------------|-------------------|----------|
-| `world_structure.engines_models_protocols[]` | Registry server name, `repository`, `version` | `external_standard: "mcp_registry"` + registry URL/id in `reference_url` |
-| `world_structure.platforms[]` | Transport/host metadata | Link platform record; do not embed `mcp.json` config |
-| `discovery.tags` | Registry tags/categories | Copy only as proven observation from registry page |
+|----------------------|-------------------|----------|
+| `world_structure.engines_models_protocols[]` | Server name, repository, homepage | `standards_ref.standard: "mcp_server"`, `ref_url` = registry or `mcp://` URI. |
+| `world_structure.platforms[]` | — | Do not list MCP as a World; link as tool dependency. |
+| `discovery.dependencies[]` | Package/version metadata | Reference registry entry; do not embed package.json. |
 
-Source: [MCP Registry metadata model](https://modelcontextprotocol.io/registry/about) (2025).
+Reference: [MCP Registry metadata model](https://modelcontextprotocol.io/registry/about).
 
 ### C2PA Content Credentials
 
 | World Manifest field | C2PA concept | Strategy |
-|---------------------|--------------|----------|
-| `discovery.representative_media[]` | Content Credentials manifest | Prefer URLs to C2PA-enabled assets; optional sidecar reference |
-| `trust.source_evidence` | `claim_generator`, ingredient assertions | Link manifest JSON; do not assert verification without validation |
-| `world_structure.assets_and_dependencies[]` | Signed assets | `external_standard: "c2pa_manifest"` on media assets |
+|----------------------|--------------|----------|
+| `discovery.representative_media[].c2pa_manifest_ref` | Content Credentials manifest | URI to credential or JUMBF blob reference. |
+| `world_structure.assets_and_dependencies[]` | Ingredient / assertion store | Link asset + optional `standards_ref.standard: "c2pa_content_credentials"`. |
+| `trust.provenance_evidence` | Claim generator, signature | Store observation URL only; no signature parsing in v0. |
 
-Source: [C2PA specifications 2.4](https://spec.c2pa.org/specifications/specifications/2.4/index.html).
+Reference: [C2PA specifications 2.4](https://spec.c2pa.org/specifications/specifications/2.4/index.html).
 
-### Spatial web and interoperability
+### Spatial web and interoperability claims
 
-| World Manifest field | Standard | Strategy |
-|---------------------|----------|----------|
-| `experience.supported_devices` | WebXR device labels | Declare `webxr` in modalities/devices when claimed |
-| `world_structure.assets_and_dependencies[]` | glTF 2.0, USD | `external_standard: "gltf"` or `"usd"` on asset refs |
-| `discovery.related_worlds[]` | MSF Web of Worlds linked experiences | Cross-link `entity_type: "world"` with canonical URLs |
-| `identity.canonical_url` | Addressable experience URI | Align with MSF direction for linked spatial experiences |
+| World Manifest field | Standard / forum concept | Strategy |
+|----------------------|---------------------------|----------|
+| `experience.supported_devices` | WebXR device requirements | Declare capability; link spec if creator publishes. |
+| `world_structure.engines_models_protocols[]` | glTF, USD, OpenXR | `standards_ref.standard` ∈ `gltf`, `usd`, `webxr`, `openxr`. |
+| `identity.canonical_url` | MSF Web of Worlds linked experience | Treat as world address; acknowledge forum work in docs only. |
+| `discovery.related_worlds[]` | Linked spatial experiences | Graph edges between world IDs. |
 
-Source: [Metaverse Standards Forum — Web of Worlds](https://metaverse-standards.org/news/blog/linked-spatial-experiences-the-web-of-worlds/) (2024+).
+Reference: [Metaverse Standards Forum — Web of Worlds](https://metaverse-standards.org/news/blog/linked-spatial-experiences-the-web-of-worlds/).
 
-### World Labs World API (adjacent)
+### World Labs / spatial APIs (informative)
 
-| World Manifest field | World API concept | Strategy |
-|---------------------|-------------------|----------|
-| `world_structure.state_model` | Marble / world state handles | Reference API docs or world IDs; platform is linked `Platform` entity |
-| `experience.persistence_model` | Reproducible world configurations | Cite versioned API responses as `source_observation` |
+| World Manifest field | Typical World API signal | Strategy |
+|----------------------|-------------------------|----------|
+| `world_type` | `ai_spatial` | Set when spatial AI environment is primary. |
+| `experience.interaction_model` | exploration / embodiment | Observe from landing copy or API docs. |
+| `ai_role.ai_usage_phase` | build-time generation + runtime | Often `build_and_runtime` for generated worlds. |
 
-Source: [World Labs World API announcement](https://www.worldlabs.ai/blog/announcing-the-world-api) (2025-03).
+Reference: [World Labs World API announcement](https://www.worldlabs.ai/blog/announcing-the-world-api).
 
 ---
 
-## Validation
+## Machine-readable schema and validation
 
-| Artifact | Role |
+| Artifact | Path |
 |----------|------|
-| [world-manifest-v0.schema.json](./world-manifest-v0.schema.json) | JSON Schema Draft 2020-12 |
-| [fixtures/positive/](./fixtures/positive/) | Must validate |
-| [fixtures/negative/](./fixtures/negative/) | Must fail structural validation |
-| `spike/worldgraph/manifest_schema.py` | Spike runtime checks (provenance + unknown rules) |
-| `tests/test_world_manifest_v0.py` | Schema + fixture CI gate |
+| JSON Schema | [world-manifest-v0.schema.json](./world-manifest-v0.schema.json) |
+| Spike validator (minimal parity) | `spike/worldgraph/manifest_schema.py` |
+| Tests | `tests/test_worldgraph_manifest_v0.py`, `tests/test_worldgraph_spike.py` |
+| Qualifying fixtures | [fixtures/positive/](./fixtures/positive/) |
+| Excluded fixtures | [fixtures/excluded/](./fixtures/excluded/) |
+| Structural negatives | [fixtures/negative-structural/](./fixtures/negative-structural/) |
 
 ---
 
-## CRM boundary
+## Spike note
 
-WorldGraph manifests do not overload CRM tables (`companies`, `contacts`,
-`research_records`, `project_briefs`). Cross-links may appear in future integrations but
-are out of scope for v0 storage.
+The technical spike ([#204](https://github.com/saberistic-team/agent-web/issues/204)) produced
+a slimmer manifest subset. Extractors under `spike/worldgraph/` emit manifests compatible with
+this schema’s **required** fields. Optional sections are populated as evidence allows.
 
----
-
-## Explicit non-goals
-
-- Claiming World Manifest v0 as an external industry standard
-- Production database migration or public ingestion API (see issue #199)
-- Paid placement, token economics, or marketplace transactions
+Legacy spike doc: [MANIFEST_V0.md](./MANIFEST_V0.md) (redirects here).

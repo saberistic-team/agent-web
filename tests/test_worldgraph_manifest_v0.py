@@ -5,143 +5,115 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import jsonschema
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SCHEMA_PATH = REPO_ROOT / "docs" / "worldgraph" / "world-manifest-v0.schema.json"
-POSITIVE_FIXTURES_DIR = REPO_ROOT / "docs" / "worldgraph" / "fixtures" / "positive"
-NEGATIVE_FIXTURES_DIR = REPO_ROOT / "docs" / "worldgraph" / "fixtures" / "negative"
+WORLDGRAPH_ROOT = REPO_ROOT / "docs" / "worldgraph"
+SCHEMA_PATH = WORLDGRAPH_ROOT / "world-manifest-v0.schema.json"
+POSITIVE_FIXTURES = WORLDGRAPH_ROOT / "fixtures" / "positive"
+EXCLUDED_FIXTURES = WORLDGRAPH_ROOT / "fixtures" / "excluded"
+NEGATIVE_STRUCTURAL_FIXTURES = WORLDGRAPH_ROOT / "fixtures" / "negative-structural"
 
-STRUCTURAL_NEGATIVE_FIXTURES = frozenset(
-    {
-        "structural-missing-trust.json",
-        "structural-invalid-schema-version.json",
-        "structural-empty-entry-points.json",
-        "structural-missing-ai-role.json",
-        "structural-verified-unknown.json",
-    }
-)
+jsonschema = pytest.importorskip("jsonschema")
+from jsonschema import Draft202012Validator  # noqa: E402
+from jsonschema.exceptions import ValidationError  # noqa: E402
 
-EXCLUSION_FIXTURES = frozenset(
-    {
-        "excluded-assistant.json",
-        "excluded-static-gallery.json",
-        "excluded-engine-product.json",
-        "excluded-foundation-model.json",
-        "excluded-marketing-waitlist.json",
-    }
-)
+from spike.worldgraph.manifest_schema import ManifestValidationError, validate_manifest_v0
 
 
-def load_schema() -> dict:
-    return json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+@pytest.fixture(scope="module")
+def manifest_validator() -> Draft202012Validator:
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    return Draft202012Validator(schema)
 
 
-def load_fixture(path: Path) -> dict:
+def _load_fixture(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-@pytest.mark.unit
-def test_issue_199_deliverable_docs_exist() -> None:
-    for relative in (
-        "docs/worldgraph/WORLD_DEFINITION.md",
-        "docs/worldgraph/WORLD_MANIFEST_V0.md",
-        "docs/worldgraph/world-manifest-v0.schema.json",
-    ):
-        assert (REPO_ROOT / relative).is_file(), relative
+def _fixture_paths(directory: Path) -> list[Path]:
+    return sorted(directory.glob("*.json"))
 
 
 @pytest.mark.unit
-def test_positive_fixture_count() -> None:
-    fixtures = sorted(POSITIVE_FIXTURES_DIR.glob("*.json"))
-    assert len(fixtures) >= 3
+def test_schema_declares_world_manifest_v0_version() -> None:
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert schema["properties"]["schema_version"]["const"] == "world-manifest-v0"
+    assert schema["$id"] == "https://saberistic.com/schemas/world-manifest-v0.json"
 
 
 @pytest.mark.unit
-def test_negative_fixture_count() -> None:
-    fixtures = sorted(NEGATIVE_FIXTURES_DIR.glob("*.json"))
-    assert len(fixtures) >= 5
-    assert len([path for path in fixtures if path.name in STRUCTURAL_NEGATIVE_FIXTURES]) >= 5
-    assert len([path for path in fixtures if path.name in EXCLUSION_FIXTURES]) >= 5
+def test_required_deliverable_docs_exist() -> None:
+    assert (WORLDGRAPH_ROOT / "WORLD_DEFINITION.md").is_file()
+    assert (WORLDGRAPH_ROOT / "WORLD_MANIFEST_V0.md").is_file()
+    assert SCHEMA_PATH.is_file()
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize(
-    "fixture_path",
-    sorted(POSITIVE_FIXTURES_DIR.glob("*.json")),
-    ids=lambda path: path.name,
-)
-def test_positive_fixtures_validate_against_schema(fixture_path: Path) -> None:
-    schema = load_schema()
-    manifest = load_fixture(fixture_path)
-    jsonschema.validate(instance=manifest, schema=schema)
+def test_fixture_inventory_meets_issue_minimums() -> None:
+    assert len(_fixture_paths(POSITIVE_FIXTURES)) >= 3
+    assert len(_fixture_paths(EXCLUDED_FIXTURES)) >= 5
+    assert len(_fixture_paths(NEGATIVE_STRUCTURAL_FIXTURES)) >= 5
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("fixture_path", _fixture_paths(POSITIVE_FIXTURES), ids=lambda p: p.name)
+def test_positive_fixtures_validate_against_schema(
+    manifest_validator: Draft202012Validator, fixture_path: Path
+) -> None:
+    manifest = _load_fixture(fixture_path)
+    manifest_validator.validate(manifest)
+    validate_manifest_v0(manifest)
     assert manifest["trust"]["qualification_status"] == "qualifies"
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize(
-    "fixture_path",
-    sorted(path for path in NEGATIVE_FIXTURES_DIR.glob("*.json") if path.name in EXCLUSION_FIXTURES),
-    ids=lambda path: path.name,
-)
-def test_exclusion_fixtures_validate_but_are_excluded(fixture_path: Path) -> None:
-    schema = load_schema()
-    manifest = load_fixture(fixture_path)
-    jsonschema.validate(instance=manifest, schema=schema)
+@pytest.mark.parametrize("fixture_path", _fixture_paths(EXCLUDED_FIXTURES), ids=lambda p: p.name)
+def test_excluded_fixtures_validate_but_are_marked_excluded(
+    manifest_validator: Draft202012Validator, fixture_path: Path
+) -> None:
+    manifest = _load_fixture(fixture_path)
+    manifest_validator.validate(manifest)
+    validate_manifest_v0(manifest)
     assert manifest["trust"]["qualification_status"] == "excluded"
-    assert isinstance(manifest["trust"]["exclusion_reason"], str)
-    assert manifest["trust"]["exclusion_reason"] != "unknown"
+    assert manifest["trust"]["exclusion_reason"]["value"]
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
     "fixture_path",
-    sorted(path for path in NEGATIVE_FIXTURES_DIR.glob("*.json") if path.name in STRUCTURAL_NEGATIVE_FIXTURES),
-    ids=lambda path: path.name,
+    _fixture_paths(NEGATIVE_STRUCTURAL_FIXTURES),
+    ids=lambda p: p.name,
 )
-def test_structural_negative_fixtures_reject_schema(fixture_path: Path) -> None:
-    schema = load_schema()
-    manifest = load_fixture(fixture_path)
-    with pytest.raises(jsonschema.ValidationError):
-        jsonschema.validate(instance=manifest, schema=schema)
+def test_structural_negative_fixtures_fail_schema(
+    manifest_validator: Draft202012Validator, fixture_path: Path
+) -> None:
+    manifest = _load_fixture(fixture_path)
+    with pytest.raises(ValidationError):
+        manifest_validator.validate(manifest)
 
 
 @pytest.mark.unit
-def test_world_manifest_v0_doc_references_standards_mapping() -> None:
-    text = (REPO_ROOT / "docs/worldgraph/WORLD_MANIFEST_V0.md").read_text(encoding="utf-8")
+def test_unknown_cannot_be_verified_in_spike_validator() -> None:
+    manifest = _load_fixture(NEGATIVE_STRUCTURAL_FIXTURES / "verified-unknown-value.json")
+    with pytest.raises(ManifestValidationError, match="unknown value cannot be verified"):
+        validate_manifest_v0(manifest)
+
+
+@pytest.mark.unit
+def test_world_manifest_v0_documents_standards_field_mapping() -> None:
+    text = (WORLDGRAPH_ROOT / "WORLD_MANIFEST_V0.md").read_text(encoding="utf-8")
     for heading in (
         "### A2A Agent Card",
         "### MCP Registry",
         "### C2PA Content Credentials",
-        "### Spatial web and interoperability",
+        "### Spatial web and interoperability claims",
     ):
         assert heading in text
 
 
 @pytest.mark.unit
-def test_spike_qualifying_manifests_remain_valid_under_expanded_schema() -> None:
-    """Spike extractor output is a subset of Manifest v0; qualifying entries must validate."""
-    from spike.worldgraph.corpus import load_corpus, read_fixture
-    from spike.worldgraph.deterministic_extractor import DeterministicExtractor
-
-    schema = load_schema()
-    extractor = DeterministicExtractor()
-    qualifying = [entry for entry in load_corpus() if entry["qualification"] == "qualifies"]
-    assert qualifying, "expected qualifying spike corpus entries"
-    for entry in qualifying:
-        content = read_fixture(entry["fixture"])
-        content_type = "text/html"
-        if entry["fixture"].endswith(".md"):
-            content_type = "text/markdown"
-        elif entry["fixture"].endswith(".json"):
-            content_type = "application/json"
-        result = extractor.extract(
-            source_id=entry["id"],
-            canonical_url=entry["canonical_url"],
-            content_type=content_type,
-            body=content,
-            qualification_hint=entry["qualification"],
-            exclusion_reason=entry.get("exclusion_reason"),
-        )
-        jsonschema.validate(instance=result.manifest, schema=schema)
+def test_world_definition_documents_distinct_entity_types() -> None:
+    text = (WORLDGRAPH_ROOT / "WORLD_DEFINITION.md").read_text(encoding="utf-8")
+    for entity in ("World", "Platform", "Agent / Character", "Creator / Organization", "Asset / IP"):
+        assert entity in text

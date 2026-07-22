@@ -24,6 +24,7 @@ def run_agent_module():
 def test_docs_out_of_scope_allows_spike_and_docs_support(run_agent_module) -> None:
     allowed = [
         "docs/worldgraph/WORLD_DEFINITION.md",
+        "docs/worldgraph/WORLD_MANIFEST_V0.md",
         "docs/worldgraph/world-manifest-v0.schema.json",
         "spike/worldgraph/deterministic_extractor.py",
         "spike/worldgraph/manifest_schema.py",
