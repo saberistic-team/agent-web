@@ -124,6 +124,25 @@ def test_resolve_blocks_terminal_marker() -> None:
     )
 
 
+def test_resolve_blocks_open_dependencies() -> None:
+    body = (
+        "### reviewer_decision\n"
+        "- decision: `blocked`\n"
+        "- terminal: true\n"
+        "- hard_fails:\n"
+        "  - open dependencies: #204 is blocked by open dependencies: #199\n"
+    )
+    assert not is_fixable_changes_requested(body)
+    assert (
+        resolve_decision(
+            latest_state="CHANGES_REQUESTED",
+            latest_body=body,
+            prior_changes_requested=0,
+        )
+        == "blocked"
+    )
+
+
 def test_resolve_blocks_judgment_ping_pong() -> None:
     body = "### reviewer_decision\n- hard_fails:\n  - product judgment: wrong positioning\n"
     assert (

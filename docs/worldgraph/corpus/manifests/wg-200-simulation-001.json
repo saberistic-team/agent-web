@@ -1,0 +1,294 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "world_id": {
+      "value": "urn:worldgraph:corpus:wg-200-simulation-001",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.convex.dev/ai-town",
+        "evidence_snippet": "Derived corpus id wg-200-simulation-001",
+        "confidence": 1.0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "name": {
+      "value": "AI Town",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.convex.dev/ai-town",
+        "evidence_snippet": "AI Town",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://www.convex.dev/ai-town",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.convex.dev/ai-town",
+        "evidence_snippet": "https://www.convex.dev/ai-town",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Persistent multi-agent village simulation with LLM-driven behavior.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.convex.dev/ai-town",
+        "evidence_snippet": "LLM agents plan actions, converse, and update world state each game tick",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.convex.dev/ai-town",
+        "evidence_snippet": "Public product or documentation page reviewed",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "agent_simulation",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.convex.dev/ai-town",
+        "evidence_snippet": "agent_simulation",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Convex (a16z-infra open-source example)",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.convex.dev/ai-town",
+        "evidence_snippet": "Convex (a16z-infra open-source example)",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "operator": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://github.com/a16z-infra/ai-town",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.convex.dev/ai-town",
+          "evidence_snippet": "Open-source repo with local deploy instructions and hosted demo links",
+          "confidence": 0.9,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "interactive_session",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.convex.dev/ai-town",
+        "evidence_snippet": "Users affect outcomes via documented interaction: Multi-agent village simulation with movement, conversation, and memory",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "persistent_session_state",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.convex.dev/ai-town",
+        "evidence_snippet": "Convex database stores agent memories and world positions",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "age_guidance": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "LLM agents plan actions, converse, and update world state each game tick",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.convex.dev/ai-town",
+        "evidence_snippet": "LLM agents plan actions, converse, and update world state each game tick",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.convex.dev/ai-town",
+        "evidence_snippet": "runtime",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "human_control_boundaries": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "MIT License on repository",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.convex.dev/ai-town",
+        "evidence_snippet": "MIT License on repository",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "provenance_evidence": [
+      {
+        "value": "https://www.convex.dev/ai-town",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.convex.dev/ai-town",
+          "evidence_snippet": "Primary research source URL",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "content_safety_categories": [
+      {
+        "value": "unknown",
+        "provenance": {
+          "source_kind": "unknown",
+          "source_url": null,
+          "evidence_snippet": null,
+          "confidence": 0,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "agent_simulation",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://www.convex.dev/ai-town",
+          "evidence_snippet": "agent_simulation",
+          "confidence": 0.85,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Canonical open-source agent society reference implementation.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.convex.dev/ai-town",
+        "evidence_snippet": "Corpus research synthesis",
+        "confidence": 0.6,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Small-town map with scheduled agent activities and social rules",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.convex.dev/ai-town",
+        "evidence_snippet": "Bounded setting or mechanics described: Small-town map with scheduled agent activities and social rules",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Multi-agent village simulation with movement, conversation, and memory",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.convex.dev/ai-town",
+        "evidence_snippet": "Mechanics from public documentation",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "platforms": [
+      {
+        "entity_type": "platform",
+        "label": {
+          "value": "Web (Convex backend)",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://www.convex.dev/ai-town",
+            "evidence_snippet": "Web (Convex backend)",
+            "confidence": 0.85,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ]
+  }
+}

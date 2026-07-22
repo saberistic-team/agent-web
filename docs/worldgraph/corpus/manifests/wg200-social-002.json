@@ -1,0 +1,247 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "Decentraland",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://decentraland.org/",
+        "evidence_snippet": "Decentraland",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://decentraland.org/",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://decentraland.org/",
+        "evidence_snippet": "https://decentraland.org/",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "persistent_social",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://decentraland.org/",
+        "evidence_snippet": "persistent_social",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://decentraland.org/",
+        "evidence_snippet": "qualifies",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Persistent browser-based virtual world with land parcels, events, and tokenized economy.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://decentraland.org/",
+        "evidence_snippet": "Persistent browser-based virtual world with land parcels, events, and tokenized economy.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Decentraland Foundation",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://decentraland.org/",
+        "evidence_snippet": "Decentraland Foundation",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://decentraland.org/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://decentraland.org/",
+          "evidence_snippet": "https://decentraland.org/",
+          "confidence": 0.85,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "multiplayer_social_interaction",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://decentraland.org/",
+        "evidence_snippet": "multiplayer_social_interaction",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "On-chain land records plus cloud-hosted scenes.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://decentraland.org/",
+        "evidence_snippet": "On-chain land records plus cloud-hosted scenes.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "Web and client; wallet optional for commerce parcels",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://decentraland.org/",
+        "evidence_snippet": "Web and client; wallet optional for commerce parcels",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Parcel-based metaverse grid",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://decentraland.org/",
+        "evidence_snippet": "Parcel-based metaverse grid",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Land ownership, wearables, events",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://decentraland.org/",
+        "evidence_snippet": "Land ownership, wearables, events",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "value": "Avatar residents; event NPCs",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://decentraland.org/",
+          "evidence_snippet": "Avatar residents; event NPCs",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "value": "Web, desktop client",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://decentraland.org/",
+          "evidence_snippet": "Web, desktop client",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Community-built AI guides; foundation exploring AI NPC tooling.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://decentraland.org/",
+        "evidence_snippet": "Community-built AI guides; foundation exploring AI NPC tooling.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://decentraland.org/",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "Terms of use and content policy published",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://decentraland.org/",
+        "evidence_snippet": "Terms of use and content policy published",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "safety_categories": [
+      {
+        "value": "13+ terms; community guidelines",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://decentraland.org/",
+          "evidence_snippet": "13+ terms; community guidelines",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "persistent_social",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://decentraland.org/",
+          "evidence_snippet": "persistent_social",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Persistent browser-based virtual world with land parcels, events, and tokenized economy.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://decentraland.org/",
+        "evidence_snippet": "Persistent browser-based virtual world with land parcels, events, and tokenized economy.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

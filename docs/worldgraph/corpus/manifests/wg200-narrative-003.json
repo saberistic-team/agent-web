@@ -1,0 +1,247 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "NovelAI",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://novelai.net/",
+        "evidence_snippet": "NovelAI",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://novelai.net/",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://novelai.net/",
+        "evidence_snippet": "https://novelai.net/",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "interactive_narrative",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://novelai.net/",
+        "evidence_snippet": "interactive_narrative",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://novelai.net/",
+        "evidence_snippet": "qualifies",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "AI-assisted interactive storytelling with persistent story projects, lorebooks, and image generation in shared canon.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://novelai.net/",
+        "evidence_snippet": "AI-assisted interactive storytelling with persistent story projects, lorebooks, and image generation in shared canon.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Anlatan SP. Z O.O.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://novelai.net/",
+        "evidence_snippet": "Anlatan SP. Z O.O.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://novelai.net/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://novelai.net/",
+          "evidence_snippet": "https://novelai.net/",
+          "confidence": 0.85,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "choice_driven_narrative",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://novelai.net/",
+        "evidence_snippet": "choice_driven_narrative",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "Story projects, lorebooks, and settings persist per subscriber account.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://novelai.net/",
+        "evidence_snippet": "Story projects, lorebooks, and settings persist per subscriber account.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "Subscription required for full features; web client",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://novelai.net/",
+        "evidence_snippet": "Subscription required for full features; web client",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "User-authored fictional worlds via lorebooks",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://novelai.net/",
+        "evidence_snippet": "User-authored fictional worlds via lorebooks",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Prompted story continuation, memory keys, image generation",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://novelai.net/",
+        "evidence_snippet": "Prompted story continuation, memory keys, image generation",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "value": "User-defined characters tracked via lorebook entries.",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://novelai.net/",
+          "evidence_snippet": "User-defined characters tracked via lorebook entries.",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "value": "Web",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://novelai.net/",
+          "evidence_snippet": "Web",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Models continue prose, maintain lorebook context, and generate scene illustrations.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://novelai.net/",
+        "evidence_snippet": "Models continue prose, maintain lorebook context, and generate scene illustrations.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://novelai.net/",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "NovelAI Terms of Service; AI-generated content ownership terms disclosed",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://novelai.net/",
+        "evidence_snippet": "NovelAI Terms of Service; AI-generated content ownership terms disclosed",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "safety_categories": [
+      {
+        "value": "18+ age affirmation required; content guidelines published",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://novelai.net/",
+          "evidence_snippet": "18+ age affirmation required; content guidelines published",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "interactive_narrative",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://novelai.net/",
+          "evidence_snippet": "interactive_narrative",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "AI-assisted interactive storytelling with persistent story projects, lorebooks, and image generation in shared canon.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://novelai.net/",
+        "evidence_snippet": "AI-assisted interactive storytelling with persistent story projects, lorebooks, and image generation in shared canon.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

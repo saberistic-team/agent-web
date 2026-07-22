@@ -1,0 +1,341 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "world_id": {
+      "value": "wg-corpus-010",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://developer.nvidia.com/isaac/sim",
+        "evidence_snippet": "Corpus id wg-corpus-010",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "name": {
+      "value": "NVIDIA Isaac Sim",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://developer.nvidia.com/isaac/sim",
+        "evidence_snippet": "NVIDIA Isaac Sim",
+        "confidence": 0.9,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://developer.nvidia.com/isaac/sim",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://developer.nvidia.com/isaac/sim",
+        "evidence_snippet": "https://developer.nvidia.com/isaac/sim",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Robotics simulation environments with reproducible scenes and AI-driven agents.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://developer.nvidia.com/isaac/sim",
+        "evidence_snippet": "Robotics simulation environments with reproducible scenes and AI-driven agents.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://developer.nvidia.com/isaac/sim",
+        "evidence_snippet": "Public entry documented",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "ai_spatial",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://developer.nvidia.com/isaac/sim",
+        "evidence_snippet": "ai_spatial",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "NVIDIA",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://developer.nvidia.com/isaac/sim",
+        "evidence_snippet": "Creator/operator: NVIDIA",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "operator": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "modalities": [
+      {
+        "value": "3d",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://developer.nvidia.com/isaac/sim",
+          "evidence_snippet": "3d",
+          "confidence": 0.7,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      },
+      {
+        "value": "simulation",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://developer.nvidia.com/isaac/sim",
+          "evidence_snippet": "simulation",
+          "confidence": 0.7,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://developer.nvidia.com/isaac/sim",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://developer.nvidia.com/isaac/sim",
+          "evidence_snippet": "https://developer.nvidia.com/isaac/sim",
+          "confidence": 0.9,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "simulation_control",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://developer.nvidia.com/isaac/sim",
+        "evidence_snippet": "simulation_control",
+        "confidence": 0.82,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "versioned_sim_configs_and_scenes",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://developer.nvidia.com/isaac/sim",
+        "evidence_snippet": "versioned_sim_configs_and_scenes",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "download_and_documentation",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://developer.nvidia.com/isaac/sim",
+        "evidence_snippet": "download_and_documentation",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "age_guidance": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Simulation AI for perception, control, and multi-agent robotics scenarios.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://developer.nvidia.com/isaac/sim",
+        "evidence_snippet": "Simulation AI for perception, control, and multi-agent robotics scenarios.",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://developer.nvidia.com/isaac/sim",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "human_control_boundaries": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "NVIDIA software license terms",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://developer.nvidia.com/isaac/sim",
+        "evidence_snippet": "NVIDIA software license terms",
+        "confidence": 0.6,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "moderation_contact": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Factory, warehouse, and lab simulation scenes.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://developer.nvidia.com/isaac/sim",
+        "evidence_snippet": "Factory, warehouse, and lab simulation scenes.",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Physics simulation with robot agents and sensors.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://developer.nvidia.com/isaac/sim",
+        "evidence_snippet": "Physics simulation with robot agents and sensors.",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "entity_type": "character",
+        "label": {
+          "value": "Simulated robots and actors",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://developer.nvidia.com/isaac/sim",
+            "evidence_snippet": "Simulated robots and actors",
+            "confidence": 0.7,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "canonical_ref": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "entity_type": "platform",
+        "label": {
+          "value": "Desktop Linux/Windows",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://developer.nvidia.com/isaac/sim",
+            "evidence_snippet": "Desktop Linux/Windows",
+            "confidence": 0.7,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "canonical_ref": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "ai_spatial",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://developer.nvidia.com/isaac/sim",
+          "evidence_snippet": "ai_spatial",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Robotics simulation environments with reproducible scenes and AI-driven agents.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://developer.nvidia.com/isaac/sim",
+        "evidence_snippet": "Robotics simulation environments with reproducible scenes and AI-driven agents.",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

@@ -66,8 +66,9 @@ Optional overrides:
   automatically when the `playwright` package isn't installed (`pip install
   playwright==1.49.1 && python -m playwright install chromium`). Isolated in
   its own workflow, `.github/workflows/browser-linkedin-import.yml`, path-
-  scoped to the importer surfaces so the fast unit/integration job stays
-  free of a Chromium install.
+  scoped to the importer surfaces (not `requirements.txt`) and running only
+  `tests/test_linkedin_import_browser.py`, so the fast unit/integration job
+  stays free of a Chromium install and unrelated browser suites stay out.
 
 ## Live PostgreSQL contract suite (#228)
 

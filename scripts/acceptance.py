@@ -703,6 +703,11 @@ def latest_checklist(repo: str, issue: int) -> dict[str, Any] | None:
 
 def require_checklist_complete(repo: str, issue: int) -> dict[str, Any]:
     """Gate helper: fail unless latest acceptance_checklist has all_done true."""
+    from issue_deps import require_dependencies_met
+
+    # Fail closed on open / unstructured dependencies before merge (#204).
+    require_dependencies_met(repo, issue)
+
     latest = latest_checklist(repo, issue)
     if not latest:
         raise GitHubError(

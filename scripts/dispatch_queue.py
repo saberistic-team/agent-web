@@ -4,9 +4,10 @@
 Queued work carries ``status:queued`` + ``type:*`` + ``priority:*`` without
 ``agent:builder`` / ``agent:docs``. This script lists those issues, keeps only
 issues on an **open** GitHub milestone (or ``priority:critical`` hotfixes),
-sorts by earliest milestone due date, then priority, then issue number, and
-applies the intended agent label when that agent is not already
-``status:in-progress``.
+skips issues with open or unstructured dependencies
+(``scripts/issue_deps.py``), sorts by earliest milestone due date, then
+priority, then issue number, and applies the intended agent label when that
+agent is not already ``status:in-progress``.
 """
 
 from __future__ import annotations
@@ -22,8 +23,15 @@ from github_api import (
     add_labels,
     api,
     delete_label,
+    list_issue_comments,
     post_issue_comment,
     split_repo,
+)
+from issue_deps import (
+    dependency_block_reason,
+    dispatcher_skip_comment,
+    reconcile_comment,
+    reconcile_issue_dependencies,
 )
 from milestones import (
     dispatch_sort_key,
@@ -151,11 +159,21 @@ def ensure_priority(repo: str, issue: dict[str, Any]) -> str:
     return priority
 
 
+def _recent_dispatcher_skip(repo: str, issue_number: int) -> bool:
+    """True when the newest issue comment is already a deps skip (avoid cron spam)."""
+    comments = list_issue_comments(repo, issue_number)
+    if not comments:
+        return False
+    body = comments[-1].get("body") or ""
+    return "### dispatcher_skip" in body and "open_dependencies" in body
+
+
 def dispatch_next(repo: str, *, dry_run: bool = False) -> dict[str, Any]:
     """Dispatch at most one builder and one docs issue per run."""
     awaiting, skipped_milestone = list_awaiting_dispatch(repo)
     dispatched: list[dict[str, Any]] = []
     skipped_busy: list[dict[str, Any]] = []
+    skipped_deps: list[dict[str, Any]] = []
     busy_agents: set[str] = set()
 
     for issue in awaiting:
@@ -172,6 +190,55 @@ def dispatch_next(repo: str, *, dry_run: bool = False) -> dict[str, Any]:
             skipped_busy.append(
                 {"issue": number, "agent": agent, "reason": "already_dispatched_this_run"}
             )
+            continue
+
+        # Derive + write missing blockedBy / parent-child / Depends-on before
+        # deciding whether this queued issue may start.
+        reconcile_summary: dict[str, Any]
+        if dry_run:
+            reconcile_summary = {
+                "body": issue.get("body") or "",
+                "blockers": [],
+                "added_blocked_by": [],
+                "added_sub_issues": [],
+                "body_updated": False,
+            }
+            dep_reason = dependency_block_reason(
+                repo, number, body=issue.get("body") or "", reconcile=False
+            )
+        else:
+            reconcile_summary = reconcile_issue_dependencies(
+                repo, number, body=issue.get("body") or "", write=True
+            )
+            note = reconcile_comment(reconcile_summary)
+            if note:
+                post_issue_comment(repo, number, note)
+            dep_reason = dependency_block_reason(
+                repo,
+                number,
+                body=str(reconcile_summary.get("body") or issue.get("body") or ""),
+                reconcile=False,
+            )
+        if dep_reason:
+            skipped_deps.append(
+                {
+                    "issue": number,
+                    "agent": agent,
+                    "reason": "open_dependencies",
+                    "detail": dep_reason,
+                    "reconcile": {
+                        "added_blocked_by": reconcile_summary.get("added_blocked_by"),
+                        "added_sub_issues": reconcile_summary.get("added_sub_issues"),
+                        "body_updated": reconcile_summary.get("body_updated"),
+                    },
+                }
+            )
+            if not dry_run and not _recent_dispatcher_skip(repo, number):
+                post_issue_comment(
+                    repo,
+                    number,
+                    dispatcher_skip_comment(number, dep_reason),
+                )
             continue
 
         priority = (
@@ -212,6 +279,7 @@ def dispatch_next(repo: str, *, dry_run: bool = False) -> dict[str, Any]:
         "awaiting": [int(i["number"]) for i in awaiting],
         "dispatched": dispatched,
         "skipped_busy": skipped_busy,
+        "skipped_deps": skipped_deps,
         "skipped_milestone": skipped_milestone,
     }
 

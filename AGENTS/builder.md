@@ -8,6 +8,13 @@ that issue’s acceptance criteria.
 
 Preserve any `priority:*` label on the issue; do not strip or change it.
 
+**Before codegen:** if the issue has open GitHub `blockedBy` links, a
+`Depends on: #N` line whose targets are still open, or a prose-only
+`## Dependencies` section without issue refs, stop — escalate with
+`status:blocked` (`scripts/issue_deps.py`). Do **not** invent stand-in
+schemas/corpuses so work can proceed early (learned from
+[#204](https://github.com/saberistic-team/agent-web/issues/204)).
+
 Workflow will move you through `status:in-progress`, then hand off with
 `status:needs-review`, `review:needs-review`, and `agent:reviewer`. Project
 board Status / Priority / Review are synced automatically from those labels

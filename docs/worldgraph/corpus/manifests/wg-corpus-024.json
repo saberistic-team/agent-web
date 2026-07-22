@@ -1,0 +1,330 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "world_id": {
+      "value": "wg-corpus-024",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.habbo.com/",
+        "evidence_snippet": "Corpus id wg-corpus-024",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "name": {
+      "value": "Habbo Hotel",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.habbo.com/",
+        "evidence_snippet": "Habbo Hotel",
+        "confidence": 0.9,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://www.habbo.com/",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.habbo.com/",
+        "evidence_snippet": "https://www.habbo.com/",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Persistent isometric social world with rooms, economy, and official bot characters.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.habbo.com/",
+        "evidence_snippet": "Persistent isometric social world with rooms, economy, and official bot characters.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.habbo.com/",
+        "evidence_snippet": "Public entry documented",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "persistent_social",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.habbo.com/",
+        "evidence_snippet": "persistent_social",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Sulake",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.habbo.com/",
+        "evidence_snippet": "Creator/operator: Sulake",
+        "confidence": 0.8,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "operator": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "modalities": [
+      {
+        "value": "2d",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.habbo.com/",
+          "evidence_snippet": "2d",
+          "confidence": 0.7,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://www.habbo.com/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://www.habbo.com/",
+          "evidence_snippet": "https://www.habbo.com/",
+          "confidence": 0.9,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "persistent_social_world",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.habbo.com/",
+        "evidence_snippet": "persistent_social_world",
+        "confidence": 0.82,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "room_layouts_and_economy",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.habbo.com/",
+        "evidence_snippet": "room_layouts_and_economy",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "free_account_web_client",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.habbo.com/",
+        "evidence_snippet": "free_account_web_client",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "age_guidance": {
+      "value": "13+ and safety center",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.habbo.com/",
+        "evidence_snippet": "13+ and safety center",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Official bots and automated characters facilitate events and moderation.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://www.habbo.com/",
+        "evidence_snippet": "Official bots and automated characters facilitate events and moderation.",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.habbo.com/",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "human_control_boundaries": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "moderation_contact": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Hotel-themed persistent rooms.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.habbo.com/",
+        "evidence_snippet": "Hotel-themed persistent rooms.",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Room decorating, trading, and social games.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.habbo.com/",
+        "evidence_snippet": "Room decorating, trading, and social games.",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "entity_type": "character",
+        "label": {
+          "value": "Official Habbo bots",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://www.habbo.com/",
+            "evidence_snippet": "Official Habbo bots",
+            "confidence": 0.7,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "canonical_ref": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "entity_type": "platform",
+        "label": {
+          "value": "Web",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://www.habbo.com/",
+            "evidence_snippet": "Web",
+            "confidence": 0.7,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        },
+        "canonical_ref": {
+          "value": "unknown",
+          "provenance": {
+            "source_kind": "unknown",
+            "source_url": null,
+            "evidence_snippet": null,
+            "confidence": 0,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "persistent_social",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://www.habbo.com/",
+          "evidence_snippet": "persistent_social",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Persistent isometric social world with rooms, economy, and official bot characters.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://www.habbo.com/",
+        "evidence_snippet": "Persistent isometric social world with rooms, economy, and official bot characters.",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}
