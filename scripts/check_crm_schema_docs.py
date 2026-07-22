@@ -47,7 +47,9 @@ PAYMENT_DETAIL_COLUMNS = frozenset(
 
 LEDGER_MAX_VERSION = "016"
 
-COMPATIBILITY_HEADING = "#### Compatibility artifacts"
+COMPATIBILITY_HEADING = "#### Legacy pipeline compatibility artifacts"
+MIGRATION_015_HEADING = "#### Migration `015`"
+MIGRATION_016_HEADING = "#### Migration `016`"
 MIGRATION_TABLE_HEADING = "## Migrations"
 
 
@@ -91,7 +93,7 @@ def _table_column_names(section: str) -> set[str]:
 
 
 def _migration_ledger_rows(text: str) -> dict[str, str]:
-    section = _section(text, MIGRATION_TABLE_HEADING, stop_at="### Migration 015")
+    section = _section(text, MIGRATION_TABLE_HEADING, stop_at=MIGRATION_015_HEADING)
     rows: dict[str, str] = {}
     for match in re.finditer(
         r"^\|\s*`(\d{3})`\s*\|\s*`([^`]+)`\s*\|", section, flags=re.M
@@ -103,19 +105,20 @@ def _migration_ledger_rows(text: str) -> dict[str, str]:
 def _legacy_outside_compatibility(text: str) -> list[str]:
     """Return legacy pipeline identifiers used outside allowed documentation zones."""
     compat_start = text.find(COMPATIBILITY_HEADING)
-    migration_015_start = text.find("### Migration 015")
-    migration_016_end = text.find("### Schema documentation drift check")
-    if migration_016_end < 0:
-        migration_016_end = text.find("### Concurrent startup")
+    migration_015_start = text.find(MIGRATION_015_HEADING)
+    migration_015_end = text.find(MIGRATION_016_HEADING)
+    if migration_015_end < 0:
+        migration_015_end = text.find("### Concurrent startup")
 
     exclude_spans: list[tuple[int, int]] = []
     if compat_start >= 0:
-        exclude_spans.append((compat_start, len(text)))
-    if migration_015_start >= 0 and migration_016_end > migration_015_start:
-        exclude_spans.append((migration_015_start, migration_016_end))
-
-    def _is_excluded(index: int) -> bool:
-        return any(start <= index < end for start, end in exclude_spans)
+        # Compatibility subsection ends at the next ### table heading.
+        compat_end = text.find("\n### `", compat_start + 1)
+        if compat_end < 0:
+            compat_end = len(text)
+        exclude_spans.append((compat_start, compat_end))
+    if migration_015_start >= 0 and migration_015_end > migration_015_start:
+        exclude_spans.append((migration_015_start, migration_015_end))
 
     operational_parts: list[str] = []
     last = 0
@@ -133,16 +136,19 @@ def _legacy_outside_compatibility(text: str) -> list[str]:
         (r"(?<![\w_])expected_value(?![\w_])", "expected_value"),
         (r"\bstage_reason\b", "stage_reason"),
         (r"\bcompany_stage_history\b", "company_stage_history"),
+        (r"\bidx_companies_owner\b", "idx_companies_owner"),
     )
     for pattern, label in patterns:
-        for match in re.finditer(pattern, operational):
-            if not _is_excluded(match.start()):
-                offenders.append(label)
-                break
+        if re.search(pattern, operational):
+            offenders.append(label)
 
-    compat = text[compat_start:] if compat_start >= 0 else ""
+    if compat_start < 0:
+        offenders.append("missing compatibility mention: section")
+        return offenders
+
+    compat = text[compat_start : exclude_spans[0][1]]
     for label in LEGACY_PIPELINE_COLUMNS:
-        if compat and label not in compat:
+        if label not in compat:
             offenders.append(f"missing compatibility mention: {label}")
     if "company_stage_history" not in compat:
         offenders.append("missing compatibility mention: company_stage_history")
@@ -185,7 +191,7 @@ def check_crm_schema_docs(
     companies_section = _section(
         text,
         "### `companies`",
-        stop_at="#### Compatibility artifacts",
+        stop_at=COMPATIBILITY_HEADING,
     )
     if not companies_section.strip():
         errors.append("companies table section not found")

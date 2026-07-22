@@ -73,7 +73,9 @@ _MIGRATION_TABLE_ROW = re.compile(
 _TABLE_COLUMN = re.compile(r"^\|\s*`([^`]+)`\s*\|", re.MULTILINE)
 _SECTION = re.compile(r"^### `([^`]+)`\s*$", re.MULTILINE)
 _LEGACY_SECTION = re.compile(
-    r"^## Legacy compatibility\b|^### Legacy compatibility\b",
+    r"^#### Legacy pipeline compatibility artifacts\b"
+    r"|^## Legacy compatibility\b"
+    r"|^### Legacy compatibility\b",
     re.MULTILINE | re.IGNORECASE,
 )
 _LEGACY_PIPELINE_REF = re.compile(
@@ -195,7 +197,10 @@ def validate_crm_schema_doc(path: Path | None = None) -> list[str]:
         companies_start = companies_end = 0
 
     if companies_section:
-        documented_columns = _table_columns(companies_section)
+        canonical_block = companies_section.split(
+            "#### Legacy pipeline compatibility", 1
+        )[0]
+        documented_columns = _table_columns(canonical_block)
         missing_pipeline = CANONICAL_COMPANY_PIPELINE_COLUMNS - documented_columns
         if missing_pipeline:
             errors.append(
@@ -211,9 +216,15 @@ def validate_crm_schema_doc(path: Path | None = None) -> list[str]:
 
     legacy_start = _legacy_section_start(text)
     if legacy_start is None:
-        errors.append("missing `Legacy compatibility` section for migration 015 artifacts")
+        errors.append(
+            "missing `Legacy pipeline compatibility artifacts` section "
+            "for migration 015 artifacts"
+        )
     else:
-        legacy_section = text[legacy_start:]
+        legacy_end = text.find("\n### `", legacy_start + 1)
+        if legacy_end < 0:
+            legacy_end = len(text)
+        legacy_section = text[legacy_start:legacy_end]
         for column in LEGACY_COMPANY_PIPELINE_COLUMNS:
             if f"`{column}`" not in legacy_section:
                 errors.append(
@@ -244,7 +255,10 @@ def validate_crm_schema_doc(path: Path | None = None) -> list[str]:
     # recommend legacy ids (companies may mention them in "do not query" guidance).
     skip_regions: list[tuple[int, int]] = []
     if legacy_start is not None:
-        skip_regions.append((legacy_start, len(text)))
+        legacy_end = text.find("\n### `", legacy_start + 1)
+        if legacy_end < 0:
+            legacy_end = len(text)
+        skip_regions.append((legacy_start, legacy_end))
     try:
         migrations_start, migrations_end = _h2_section_bounds(text, "Migrations")
         skip_regions.append((migrations_start, migrations_end))

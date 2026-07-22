@@ -235,9 +235,11 @@ def validate_crm_schema_doc(path: Path = CRM_SCHEMA_PATH) -> list[str]:
 
     if "`pipeline_stage_history`" not in text:
         errors.append("docs/CRM_SCHEMA.md must document `pipeline_stage_history`")
-    if "idx_companies_owner" in text:
+    scrubbed = _strip_allowed_legacy_blocks(text)
+    if "idx_companies_owner" in scrubbed:
         errors.append(
-            "docs/CRM_SCHEMA.md references legacy index idx_companies_owner"
+            "docs/CRM_SCHEMA.md references legacy index idx_companies_owner "
+            "outside compatibility/reconciliation sections"
         )
     return errors
 
