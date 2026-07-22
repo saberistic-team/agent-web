@@ -1,41 +1,55 @@
 # WorldGraph research corpus report
 
 **Issue:** [#200](https://github.com/saberistic-team/agent-web/issues/200)  
-**Status:** Research-only product-definition dataset. **Not production content. Not automatically published.**  
-**Last updated:** 2026-07-22  
-**Qualification rules:** Issue [#199](https://github.com/saberistic-team/agent-web/issues/199) criteria in [WORLD_DEFINITION.md](./WORLD_DEFINITION.md) / [WORLD_MANIFEST_V0.md](./WORLD_MANIFEST_V0.md)  
-
-**Corpus artifact:** [corpus/candidates.json](./corpus/candidates.json)  
-**Schema validation output:** [corpus/validation_results.json](./corpus/validation_results.json)
+**Depends on:** [#199](https://github.com/saberistic-team/agent-web/issues/199) (World definition + Manifest v0)  
+**Status:** Research-only product-definition dataset — **not production content** and **not automatically published**.  
+**Last updated:** 2026-07-22
 
 ---
 
 ## Executive summary
 
-This corpus collects **30 publicly reviewable candidates** across six buckets (five positive research categories plus negative controls). **25 qualify** as Worlds under the documented rules; **5 are excluded** negative controls (static media, assistant, engine, foundation model, marketing-without-entry).
+This corpus collects **30 publicly reviewable market candidates** across six groups (five positive
+categories plus negative controls). After applying the seven qualification rules in
+[WORLD_DEFINITION.md](./WORLD_DEFINITION.md):
 
-Each record cites a **stable HTTPS source URL**, **last-checked date (2026-07-22)**, and **evidence-backed qualification decisions**. Unknown manifest fields remain explicitly unknown. All 25 qualifying entries produce Manifest v0 snapshots that pass `spike/worldgraph/manifest_schema.py` validation (see validation output).
+| Metric | Count |
+|--------|------:|
+| Total candidates | 30 |
+| Qualifying Worlds | **25** |
+| Excluded controls | 5 |
+| Pending review | 0 |
 
-No authenticated, paywalled, or robots-prohibited sources were ingested beyond what is necessary for manual classification from public pages.
+**Category coverage (5 candidates each):**
 
----
+| Category | Qualifying | Excluded |
+|----------|----------:|---------:|
+| Interactive narrative / character worlds | 5 | 0 |
+| AI-generated spatial worlds | 5 | 0 |
+| Autonomous-agent / simulation worlds | 5 | 0 |
+| AI-enabled game / UGC experiences | 5 | 0 |
+| Persistent social / economic worlds | 5 | 0 |
+| Negative controls | 0 | 5 |
 
-## Corpus inventory
+Platforms and engines (Roblox, Unreal Engine, GPT-4) appear as **linked research entities**
+with explicit `exclusion_reason` — they are **not** counted toward the 25 qualifying Worlds.
 
-| Category | Count | Qualifies | Excluded |
-|----------|------:|----------:|---------:|
-| `interactive_narrative` | 5 | 5 | 0 |
-| `ai_spatial` | 5 | 5 | 0 |
-| `ai_game_ugc` | 5 | 5 | 0 |
-| `agent_simulation` | 5 | 5 | 0 |
-| `persistent_social` | 5 | 5 | 0 |
-| `negative_control` | 5 | 0 | 5 |
-| **Total** | **30** | **25** | **5** |
+**Artifacts:**
 
-Representative qualifying entries: AI Dungeon, World Labs Marble, AI Town, Brookhaven RP, Second Life.  
-Representative exclusions: Midjourney Explore, ChatGPT, Unity Engine, GPT-4 model page, World Labs Careers page.
+| File | Purpose |
+|------|---------|
+| [corpus/candidates.yaml](./corpus/candidates.yaml) | Source-backed candidate records |
+| [corpus/manifests/](./corpus/manifests/) | Manifest v0 payloads for qualifying entries |
+| [corpus/validation-results.json](./corpus/validation-results.json) | JSON Schema + spike validator output |
+| [WORLD_DEFINITION.md](./WORLD_DEFINITION.md) | Qualification rules applied here |
+| [world-manifest-v0.schema.json](./world-manifest-v0.schema.json) | Schema used for validation |
 
-Platforms and engines (Roblox, Unity, Inworld, Convai, Minecraft) appear as **`linked_entities`** where relevant and are **not silently counted** as Worlds.
+Regenerate manifests and validation:
+
+```bash
+python scripts/build_worldgraph_corpus.py
+python -m pytest tests/test_worldgraph_corpus.py -v
+```
 
 ---
 
@@ -43,234 +57,227 @@ Platforms and engines (Roblox, Unity, Inworld, Convai, Minecraft) appear as **`l
 
 ### 1. Does one World definition cover narrative, spatial, game, and simulation products without becoming meaningless?
 
-**Yes, with boundaries.** The issue #199 definition (bounded setting/rules, meaningful interaction, persistence/reproducibility, material AI role, stable entry, identifiable operator) discriminates effectively:
+**Yes, with discipline.** All 25 qualifying entries share:
 
-- **Qualifies:** AI Dungeon (narrative), Marble (spatial), AI Town (simulation), Mindcraft (game), Second Life (persistent social).
-- **Excluded:** Midjourney gallery (passive media), ChatGPT (unbounded assistant), Unity (engine), GPT-4 page (model), careers marketing page (no entry).
+- A **bounded setting or rule system** (canon, map, simulation tick, game mechanics),
+- **Meaningful interaction** that changes state,
+- **Material runtime AI** (not marketing-only),
+- A **stable entry point** (URL, repo, or reproducible artifact).
 
-The definition fails when stretched to **platform storefronts** or **creation tools** without a specific addressable experience. Those remain linked entities. Hybrid products (Friends & Fables, Inworld Arcade demos) fit by anchoring to a **specific entry URL** and documented mechanics.
+The definition excludes generic assistants and static media without collapsing distinct
+product shapes. Narrative (AI Dungeon), spatial (Marble), simulation (AI Town), game/UGC
+(Inworld Arcade), and persistent social (Character.AI) all pass the same seven-rule checklist
+while retaining different `world_type` values.
+
+**Risk:** Platform-scale hosts (VRChat, Second Life) qualify at the **host-product** level only
+when AI behavior is documented; individual UGC worlds inside those platforms should be indexed
+as separate World records linked via `world_structure.platforms[]`.
 
 ### 2. Which manifest fields are reliably observable versus creator-supplied?
 
-| Observability | Fields | Corpus evidence |
-|---------------|--------|-----------------|
-| **High (public pages)** | `identity.name`, `canonical_url`, `entry_points`, coarse `interaction_model`, marketing `summary` | HTML titles, meta descriptions, README headings, store pages |
-| **Medium (derived/inferred)** | `world_type`, `ai_usage_phase`, coarse `material_ai_role`, `platforms` | Keyword inference; risk of misclassification without creator confirmation |
-| **Low (usually unknown from crawl)** | `license_status`, detailed `safety_categories`, exact model providers, commercial-use rights, moderation contacts | 18/25 qualifying entries leave ≥1 rights/safety field unknown |
-| **Creator-supplied only** | Domain ownership claims, accurate AI stack, reproducible version pins, child-safety attestations | Cannot be verified from marketing copy alone |
+| Observability | Example fields | Corpus observation rate (qualifying, n=25) |
+|---------------|----------------|--------------------------------------------|
+| **High from public pages** | `identity.name`, `identity.canonical_url`, `experience.entry_points`, `identity.creator`, `ai_role.material_ai_role` (when marketed) | ~90–100% |
+| **Medium — partial public docs** | `experience.access_requirements`, `experience.age_guidance`, `world_structure.setting`, `world_structure.rules_or_mechanics` | ~40–70% |
+| **Low — rarely on marketing pages** | `trust.license_status`, `ai_role.model_disclosures`, `ai_role.human_control_boundaries`, `world_structure.economy`, `trust.moderation_contact` | ~10–30% disclosed; remainder honestly `unknown` |
+| **Creator-supplied only** | Domain verification, commercial-use grants, exact model weights/version pins | Requires claim workflow |
+
+Public marketing pages reliably establish **existence and entry**; legal, moderation, and model
+boundary fields require creator attestation or authenticated dashboards.
 
 ### 3. Which fields should be required for indexing, required for verification, or optional?
 
-| Tier | Proposed fields | Rationale from corpus |
-|------|-----------------|----------------------|
-| **Required for indexing** | `name`, `canonical_url`, `world_type`, `entry_points[]`, `interaction_model`, `material_ai_role`, `qualification_status`, `claim_status` | Minimum scout utility; all qualifying manifests include these today |
-| **Required for verification badge** | Creator attestation of control + at least one verification method (domain, GitHub, email-domain) + non-unknown `license_status` or explicit "unknown" with review | Public pages rarely prove ownership or rights |
-| **Optional / enrich later** | `persistence_model`, `agents_and_characters`, `rules_or_mechanics`, `safety_categories`, `model_disclosures`, `discovery.tags` | Valuable but frequently sparse; forcing them blocks indexing |
+| Tier | Fields | Rationale |
+|------|--------|-----------|
+| **Required for indexing** (already in Manifest v0 required sections) | `identity.name`, `identity.canonical_url`, `identity.world_type`, `experience.entry_points`, `experience.interaction_model`, `ai_role.material_ai_role`, `trust.qualification_status` | Minimum graph node + qualification decision |
+| **Required for verification** (claim workflow) | `identity.claimed_owner`, `trust.claim_status` progression, `trust.provenance_evidence`, optional standards refs (A2A, MCP) | Trust elevation beyond `unverified` observation |
+| **Optional for MVP index** | `world_structure.economy`, `world_structure.governance`, `discovery.facets`, `experience.pricing`, `world_structure.assets_and_dependencies[]` | Valuable for social/economic worlds but sparse in corpus |
 
 ### 4. What entity relationships recur often enough for the MVP graph?
 
-| Relationship | Frequency in corpus | MVP recommendation |
-|--------------|--------------------:|--------------------|
-| `world → platform` | 8 entries | **Include** (Roblox, Minecraft, itch.io, Character.AI platform) |
-| `world → engine/tool` | 4 entries | **Include** as linked entity, not World |
-| `world → creator/organization` | 30/30 | **Include** |
-| `world → agent/character` | ~15 | **Include** optional array |
-| `world → model/provider` | Rarely disclosed | **Defer**; optional disclosure field |
-| `world → fork/inspiration` | Not observable | **Defer** |
+| Relationship | Frequency in corpus | MVP graph edge |
+|--------------|--------------------:|----------------|
+| World → Platform | 25/25 | `world_structure.platforms[]` |
+| World → Creator/Organization | 25/25 | `identity.creator` / `identity.operator` |
+| World → Agent/Character | ~18/25 | `world_structure.agents_and_characters[]` |
+| World → Engine/Model/Protocol | ~8/25 (simulation + API-heavy) | `world_structure.engines_models_protocols[]` |
+| Platform → World (inverse) | 3 platform negatives + 2 social hosts | Separate Platform entity; do not flatten |
+| World → World (related/fork) | Rare in public docs | `discovery.related_worlds[]` optional Phase 2 |
 
 ### 5. Which sources support safe automated extraction?
 
-| Source pattern | Examples | Extraction suitability |
-|----------------|----------|------------------------|
-| GitHub README | AI Town, Concordia, Mindcraft | **High** — structured headings, license, entry commands |
-| Product marketing HTML | AI Dungeon, World Labs, Second Life | **Medium** — title/meta/CTA; sparse mechanics |
-| Platform experience pages | Brookhaven RP, itch.io | **Medium** — stable URLs; ToS/login walls for live metadata |
-| Research project sites | Voyager, CAMEL | **Medium** — narrative docs; demo URLs vary |
-| App/login-gated products | Character.AI, NovelAI | **Low for automated crawl** — classify from public marketing only |
-| Static/model/engine pages | Negative controls | **High for exclusion detection** |
+| Source pattern | Safe automated extraction | Examples in corpus |
+|----------------|---------------------------|-------------------|
+| Open-source README + LICENSE | **Yes** — static fetch, robots-friendly | AI Town, Generative Agents, Voyager, Concordia, CAMEL Oasis |
+| Public marketing HTML | **Partial** — title, meta, CTA links; rate-limit and ToS | Marble, AI Dungeon, Inworld |
+| Authenticated SaaS dashboards | **No** — login wall | NovelAI full lorebook, Character.AI session state |
+| App-store-only mobile | **No** for full manifest — landing page only | Chai (mobile-first) |
+| API/model cards | **Yes** for metadata, **not** for world qualification alone | GPT-4 (negative control) |
 
-Aligns with spike findings in [TECHNICAL_SPIKE.md](./TECHNICAL_SPIKE.md): deterministic extractors work on structured README/JSON/HTML; model-assisted extraction needed for unstructured marketing copy.
+Aligns with [#204](./TECHNICAL_SPIKE.md) spike: bounded fetcher + deterministic extractor for public URLs; no paywall bypass.
 
 ### 6. What cannot be crawled or inferred reliably?
 
-- Exact **LLM/model versions** and runtime provider routing  
-- **Commercial licensing** compatible with scout use (most entries: unknown)  
-- **Child safety / age** specifics beyond platform-wide policies  
-- **Persistence guarantees** for session/streaming products (Decart, Odyssey)  
-- **Distinction platform vs world instance** without creator confirmation (Horizon, Character.AI)  
-- **UGC rights** for characters, scenes, and generated assets  
-- Live **player counts**, engagement, moderation response SLAs  
+- **Exact model names/versions** in runtime (often undisclosed or obfuscated)
+- **Commercial license grants** for generated assets
+- **Moderation contacts** and **human-in-the-loop boundaries**
+- **In-world economy parameters** (drop rates, currency sinks) without game client access
+- **Per-instance UGC** inside platform hosts (Roblox experiences, individual VRChat worlds)
+- **Session-private state** (saved games behind auth)
+
+Extractors must emit `unknown` with zero confidence — never invent values to pass qualification rules.
 
 ### 7. Are there enough addressable worlds for a useful initial index?
 
-**Yes.** This sample alone yields 25 qualifying Worlds with diverse categories. The market includes many more addressable experiences on Roblox, itch.io, GitHub, Hugging Face Spaces, and creator domains. The limiting factor for MVP is **metadata quality and verification**, not supply absence.
+**Yes.** This sample alone yields **25 qualifying Worlds** with stable URLs across five product
+shapes. The market is fragmented (many require accounts or client installs), but the addressable
+set is large enough for an MVP index focused on **discoverability and qualification**, not
+comprehensive catalog completeness. Open-source simulations and public web demos provide the
+highest-ingestion-yield family (~40% of qualifying entries).
 
 ---
 
-## Field gap matrix (by category)
+## Gap matrix
 
-Legend: **O** = observed in ≥80% of category entries, **P** = partial (20–79%), **R** = rare/unknown (<20%), **N/A** = not applicable.
+Field coverage by category among **qualifying** candidates (✓ = disclosed in public source,
+~ = partial/indirect, ✗ = recorded as unknown). Percentages are rounded.
 
-| Manifest / corpus field | Narrative | Spatial | Simulation | Game/UGC | Social | Negative |
-|-------------------------|:---------:|:-------:|:----------:|:--------:|:------:|:--------:|
-| `identity.name` | O | O | O | O | O | O |
-| `identity.canonical_url` | O | O | O | O | O | O |
-| `identity.creator` | O | O | O | O | O | O |
-| `experience.entry_points` | O | O | O | O | O | P |
-| `experience.interaction_model` | O | O | O | O | O | R |
-| `experience.persistence_model` | O | P | O | O | O | N/A |
-| `experience.access_requirements` | O | O | P | O | O | O |
-| `ai_role.material_ai_role` | O | O | O | O | P | R |
-| `ai_role.model_disclosures` | R | R | P | R | R | N/A |
-| `world_structure.setting` | O | O | O | O | O | N/A |
-| `world_structure.rules_or_mechanics` | O | P | O | O | O | N/A |
-| `world_structure.agents_and_characters` | O | R | O | O | O | N/A |
-| `world_structure.platforms` | O | O | O | O | O | O |
-| `trust.license_status` | P | P | O | P | O | P |
-| `trust.safety_categories` | P | R | R | R | O | P |
-| `trust.claim_status` (verified) | R | R | R | R | R | R |
-| Criteria: stable entry | O | O | O | O | O | R |
-| Criteria: material AI | O | O | O | O | P | R |
+| Manifest field | Narrative (5) | Spatial (5) | Simulation (5) | Game/UGC (5) | Social (5) |
+|----------------|:-------------:|:-----------:|:--------------:|:------------:|:----------:|
+| `identity.name` | 100% ✓ | 100% ✓ | 100% ✓ | 100% ✓ | 100% ✓ |
+| `identity.creator` | 100% ✓ | 100% ✓ | 100% ✓ | 100% ✓ | 100% ✓ |
+| `experience.entry_points` | 100% ✓ | 100% ✓ | 100% ✓ | 80% ~ | 80% ~ |
+| `experience.interaction_model` | 100% ✓ | 100% ✓ | 100% ✓ | 100% ✓ | 100% ✓ |
+| `experience.persistence_model` | 100% ✓ | 80% ~ | 100% ✓ | 80% ~ | 100% ✓ |
+| `experience.age_guidance` | 60% ~ | 20% ✗ | 0% ✗ | 20% ✗ | 60% ~ |
+| `experience.access_requirements` | 40% ~ | 40% ~ | 60% ~ | 40% ~ | 60% ~ |
+| `world_structure.setting` | 100% ✓ | 100% ✓ | 100% ✓ | 80% ~ | 80% ~ |
+| `world_structure.rules_or_mechanics` | 100% ✓ | 60% ~ | 100% ✓ | 60% ~ | 60% ~ |
+| `world_structure.agents_and_characters` | 100% ✓ | 20% ✗ | 100% ✓ | 80% ~ | 80% ~ |
+| `world_structure.platforms` | 100% ✓ | 100% ✓ | 80% ~ | 100% ✓ | 100% ✓ |
+| `ai_role.material_ai_role` | 100% ✓ | 100% ✓ | 100% ✓ | 100% ✓ | 80% ~ |
+| `ai_role.model_disclosures` | 20% ✗ | 20% ✗ | 40% ~ | 20% ✗ | 0% ✗ |
+| `ai_role.human_control_boundaries` | 0% ✗ | 0% ✗ | 0% ✗ | 0% ✗ | 0% ✗ |
+| `trust.license_status` | 20% ✗ | 20% ✗ | 60% ~ | 20% ✗ | 0% ✗ |
+| `trust.moderation_contact` | 0% ✗ | 0% ✗ | 0% ✗ | 0% ✗ | 40% ~ |
+| `world_structure.economy` | 0% ✗ | 0% ✗ | 0% ✗ | 20% ✗ | 60% ~ |
 
-**Takeaway:** Identity, entry, interaction, and coarse AI role are observable across positive categories. **Rights, safety taxonomy, and verified claims** are systematically sparse — consistent with spike corpus gaps.
+**Cross-category gaps:** `human_control_boundaries`, `model_disclosures`, and `license_status`
+are the weakest globally — expect creator attestation for verification-tier indexing.
 
 ---
 
-## Schema validation output
+## Schema validation
 
-All qualifying entries were validated against [world-manifest-v0.schema.json](./world-manifest-v0.schema.json) using `validate_manifest_v0`.
+All **25 qualifying** manifests were validated against
+[world-manifest-v0.schema.json](./world-manifest-v0.schema.json) (JSON Schema Draft 2020-12)
+and the spike semantic validator in `spike/worldgraph/manifest_schema.py`.
 
-| Metric | Value |
-|--------|------:|
-| Qualifying worlds | 25 |
-| Manifests validated | 25 |
-| Passed | 25 |
-| Failed | 0 |
+| Check | Result |
+|-------|--------|
+| Total qualifying manifests | 25 |
+| JSON Schema valid | 25 / 25 |
+| Spike validator valid | 25 / 25 |
+| Overall | **PASS** |
 
-Per-entry results: [corpus/validation_results.json](./corpus/validation_results.json)  
-Per-entry manifests: [corpus/manifests/](./corpus/manifests/)
+Full per-entry output: [corpus/validation-results.json](./corpus/validation-results.json)
 
-Validate in CI:
-
-```bash
-python -m pytest tests/test_worldgraph_corpus.py -v
-```
+Negative controls are **not** represented as Manifest v0 qualifying payloads; exclusion decisions
+are recorded in [corpus/candidates.yaml](./corpus/candidates.yaml) with rule-level evidence.
 
 ---
 
 ## Fields requiring creator attestation
 
-These fields **cannot** be promoted beyond `unverified` from public crawl alone:
+These fields cannot be inferred reliably from public marketing pages alone:
 
-1. **Ownership / control** — legal operator vs contributor vs fan repost  
-2. **Domain ↔ world binding** — especially platform-hosted experiences  
-3. **License and commercial-use rights** — UGC, AI-generated assets, third-party IP (Hidden Door)  
-4. **Exact AI stack** — model IDs, hosting, fine-tuning, data retention  
-5. **Safety / age gating** — product-wide ToS ≠ world-specific maturity  
-6. **Persistence SLA** — session-only vs durable world state  
-7. **Platform-vs-world classification** — Character.AI, Horizon, Roblox experiences  
+1. **`ai_role.model_disclosures[]`** — runtime model IDs, routing, fine-tune lineage
+2. **`ai_role.human_control_boundaries`** — moderation escalation, override paths
+3. **`trust.license_status` / `trust.commercial_use_status`** — grants beyond generic ToS links
+4. **`trust.moderation_contact`** — abuse reporting endpoints
+5. **`identity.claimed_owner` with verified `trust.claim_status`** — domain/GitHub/email proof
+6. **`world_structure.economy`** — currency rules unless publicly documented (common in social worlds)
+7. **Per-world AI behavior on platform hosts** — VRChat/Second Life need world-specific claims
 
-Attestation workflow should mirror spike verification prototypes (domain well-known, GitHub repo, email-domain magic link) documented in [TECHNICAL_SPIKE.md](./TECHNICAL_SPIKE.md).
-
----
-
-## Crawling, terms, copyright, privacy, and safety constraints
-
-| Constraint | Policy for this corpus | Implications for automated ingestion |
-|------------|------------------------|--------------------------------------|
-| **Research-only use** | Manual classification; no bulk republishing of third-party content | Corpus stores evidence snippets ≤200 chars, not full page mirrors |
-| **Authentication / paywalls** | Not bypassed; entries may note login-required play | Ingestion marks `access_requirements`; no credential scraping |
-| **robots.txt / rate limits** | Respect directives; spike fetcher supports robots gate | Platform pages (Roblox, Character.AI) likely **manual review-first** |
-| **Copyright / ToS** | Facts and short snippets only; no asset redistribution | Media, lore bibles, and generated content stay at source URLs |
-| **Privacy** | No collection of user-generated content or player data | Index world metadata only, not player graphs |
-| **Safety** | Record only **publicly disclosed** age/safety info | Do not infer child suitability from content samples |
-| **SSRF / security** | Follow [TECHNICAL_SPIKE.md](./TECHNICAL_SPIKE.md) fetch policy for any live crawl | CI uses fixtures; live worker validates URLs |
-
-**Platform-specific notes:**
-
-- **Roblox / VRChat / Fortnite:** experience pages are reviewable; live APIs require platform keys — out of scope.  
-- **GitHub:** favorable for open-source worlds; LICENSE file may satisfy `license_status` when present.  
-- **Character.AI / NovelAI:** account walls limit automated observation — creator attestation required for verified profiles.
+WorldGraph should treat these as **verification-tier** fields populated through the claim workflow
+described in [ADR_INGESTION_AND_SEARCH.md](./ADR_INGESTION_AND_SEARCH.md), not crawler defaults.
 
 ---
 
-## Proposed changes to Manifest v0 (review section)
+## Crawling and access constraints
 
-These proposals are **review-only** for issue #199 convergence; they are not implemented in the schema file by this issue.
+| Constraint | Impact on corpus |
+|------------|------------------|
+| **Terms of service** | No automated login, paywall bypass, or scraping where prohibited |
+| **Rate limits** | Marketing sites (Character.AI, OpenAI) require conservative fetch scheduling |
+| **Robots directives** | Spike fetcher respects robots.txt; some docs block training crawlers |
+| **Copyright** | Evidence snippets only — no bulk copying of creative content |
+| **Privacy** | No ingestion of user-generated chat logs or private session data |
+| **Safety** | Age gates and NSFW policies noted where public; otherwise `unknown` |
+| **Authentication** | NovelAI, Midjourney, ChatGPT require accounts — metadata only from public pages |
 
-### P1 — Clarify platform vs world instance
-
-Add optional:
-
-```json
-"identity": {
-  "instance_of_platform": { "value": "Roblox", "provenance": { "...": "..." } },
-  "world_scope": { "value": "single_experience | platform_ecosystem | research_artifact" }
-}
-```
-
-**Evidence:** Brookhaven vs Roblox platform; Character.AI Scenes vs platform.
-
-### P1 — Exclusion reason enum alignment
-
-Add `trust.exclusion_reason` when `qualification_status=excluded`, using spike enums:
-
-`static_ai_media_only`, `single_purpose_assistant`, `platform_product_not_world`, `foundation_model_not_world`, `no_stable_entry_point`
-
-**Evidence:** Negative controls in this corpus map 1:1 to spike exclusions.
-
-### P2 — Linked entities block
-
-Add top-level `linked_entities[]` with `{ "entity_type", "name", "url" }` for engines, platforms, models referenced by a world.
-
-**Evidence:** 8+ corpus entries need explicit platform links to avoid double-counting.
-
-### P2 — Field requirement tiers
-
-Document in WORLD_MANIFEST_V0.md (not JSON Schema enum): `indexing_required[]` vs `verification_required[]` vs `optional[]` per analysis §3 above.
-
-### P3 — Safety and license partial disclosure
-
-Allow `safety_categories` entries with `value: "platform_default_only"` and provenance citing platform ToS — distinguishes weak disclosure from `unknown`.
-
-**Evidence:** Decart, Luma Genie, Skybox lack standalone age ratings.
-
-### P3 — `ai_role.ai_materiality` scalar
-
-Optional 0–1 confidence that AI is material to the experience, separate from text description — helps rank borderline social worlds (EVE Online, Brookhaven).
+No candidate in this corpus required authentication or prohibited automated access for the
+**metadata recorded here**. Live ingestion workers must re-check robots and ToS before fetch.
 
 ---
 
-## Qualification decision patterns
+## Proposed Manifest v0 changes
 
-| Pattern | Decision | Example |
-|---------|----------|---------|
-| Playable/explorable entry + rules + AI runtime | **Qualifies** | AI Dungeon, AI Town |
-| Explorable spatial artifact from generative model | **Qualifies** | Marble, Skybox |
-| Open-source deployable simulation | **Qualifies** | Concordia, Generative Agents |
-| Platform storefront without specific experience | **Excluded** (linked entity) | Unity |
-| Static generated media gallery | **Excluded** | Midjourney Explore |
-| Marketing page about future worlds | **Excluded** | World Labs Careers |
+Separate review section — **not implemented in #199**; recommended after corpus review:
+
+### P0 — Clarify qualification metadata
+
+1. **Normalize `trust.exclusion_reason`** — JSON Schema allows `provenStringOrUnknown` objects,
+   but the spike validator expects string enums. Align on one shape (recommend proven object with
+   enum `value` matching `WORLD_DEFINITION.md` exclusion table).
+
+2. **Add optional `research.corpus_category`** facet under `discovery.facets[]` for benchmark
+   stratification (`interactive_narrative`, `ai_spatial`, etc.) without overloading `world_type`.
+
+### P1 — Platform vs World disambiguation
+
+3. **Add `identity.entity_role`** enum: `world | platform | engine | model` for linked research
+   entities that share URL structure but must not receive `qualification_status: qualifies`.
+
+4. **Require `world_structure.platforms[]` link** when `identity.entity_role=world` and entry
+   point is a subdomain of a known platform host (e.g. Roblox experience vs Roblox.com).
+
+### P1 — Observability hints
+
+5. **Add optional `provenance.extraction_method`** enum (`html_meta`, `readme`, `json_ld`,
+   `creator_form`, `manual_review`) to score automated vs attested fields in gap reports.
+
+6. **Document `experience.access_requirements` enum values** in WORLD_MANIFEST_V0.md (`free_web_entry`,
+   `account_required`, `subscription_required`, `client_required`) — used informally in corpus.
+
+### P2 — Verification tier
+
+7. **Split `trust.claim_status` verification paths** into documented sub-workflows (domain
+   well-known, GitHub repo match, email magic link) with required evidence artifact URLs.
+
+8. **Add optional `trust.index_tier`** enum: `observed | verified | creator_attested` mapping to
+   which fields are required for public index rows vs internal review queue.
 
 ---
 
-## Related artifacts
+## Negative control summary
 
-| Path | Purpose |
-|------|---------|
-| [corpus/candidates.json](./corpus/candidates.json) | Authoritative 30-entry research corpus |
-| [corpus/manifests/](./corpus/manifests/) | Manifest v0 snapshot per qualifying world |
-| [corpus/validation_results.json](./corpus/validation_results.json) | Schema validation output |
-| [WORLD_MANIFEST_V0.md](./WORLD_MANIFEST_V0.md) | Manifest v0 field spec |
-| [world-manifest-v0.schema.json](./world-manifest-v0.schema.json) | JSON Schema |
-| [TECHNICAL_SPIKE.md](./TECHNICAL_SPIKE.md) | Ingestion/extraction architecture evidence |
-| [tests/test_worldgraph_corpus.py](../../tests/test_worldgraph_corpus.py) | Corpus structure + Manifest v0 validation tests |
+| ID | Name | Exclusion reason | Failed rule(s) |
+|----|------|------------------|----------------|
+| wg-200-negative-001 | ChatGPT | `single_purpose_assistant` | 3 |
+| wg-200-negative-002 | Midjourney Explore | `static_ai_media_only` | 2 |
+| wg-200-negative-003 | Unreal Engine | `platform_product_not_world` | 2 |
+| wg-200-negative-004 | OpenAI GPT-4 | `foundation_model_or_tool_not_world` | 2, 3 |
+| wg-200-negative-005 | Roblox Platform | `platform_product_not_world` | 2 |
 
 ---
 
-## Explicit non-goals
+## Reviewer notes
 
-- This corpus is **not** published to production routes or CRM tables.  
-- No live network crawl was executed in CI; classifications use public documentation review.  
-- No credentials, paywall bypass, or copyrighted asset copies are included.  
-- Exact platform API identifiers (Roblox place IDs, VRChat `wrld_*`) may require re-verification at ingestion time — flagged per entry in `unknown_manifest_fields`.
+- **Overlaps:** Character.AI appears in both narrative (Scenes) and social categories intentionally
+  to test definition boundaries.
+- **Borderline entries:** Blockade Skybox (spatial slices), Scenario (asset pipeline), VRChat/Second
+  Life (platform hosts with variable AI) are retained with lower confidence scores and explicit notes.
+- **Confidence:** Median reviewer confidence among qualifying entries ≈ 0.84; lowest = 0.72 (Scenario).
+
+For qualification checklist and entity types, see [WORLD_DEFINITION.md](./WORLD_DEFINITION.md).

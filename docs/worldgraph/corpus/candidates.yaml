@@ -1,0 +1,1316 @@
+# WorldGraph research corpus — issue #200
+# RESEARCH ONLY — not production content and not automatically published.
+# Qualification rules: docs/worldgraph/WORLD_DEFINITION.md
+# Manifest v0 schema: docs/worldgraph/world-manifest-v0.schema.json
+schema_version: worldgraph-research-corpus-v1
+research_only: true
+not_for_automatic_publication: true
+parent_issue: 200
+depends_on_issue: 199
+last_updated: '2026-07-22'
+summary:
+  total_candidates: 30
+  qualifying_worlds: 25
+  excluded_controls: 5
+  categories_represented:
+  - agent_simulation
+  - ai_game_ugc
+  - ai_spatial
+  - interactive_narrative
+  - negative_control
+  - persistent_social
+candidates:
+- id: wg-200-narrative-001
+  name: Character.AI Scenes
+  canonical_source: https://blog.character.ai/introducing-scenes/
+  candidate_category: interactive_narrative
+  qualification:
+    status: qualifies
+    exclusion_reason: null
+    rule_evidence:
+      rule_1_stable_entry_point: 'Stable public URL resolves to product or documented
+        experience: https://blog.character.ai/introducing-scenes/'
+      rule_2_meaningful_interaction: 'Users affect outcomes via documented interaction:
+        Multi-character scenes with player-directed choices and relationship state'
+      rule_3_bounded_setting_or_rules: 'Bounded setting or mechanics described: User-authored
+        or template scenes with defined character casts and goals'
+      rule_4_persistence_or_reproducibility: 'Persistence or reproducibility documented:
+        Saved scene progress and character memory across sessions'
+      rule_5_material_ai_role: 'Material AI role in runtime: Runtime LLM drives character
+        dialogue, scene state, and branching narrative outcomes'
+      rule_6_identifiable_claimant: 'Named creator/operator: Character Technologies,
+        Inc.'
+      rule_7_evaluable_access_and_safety: 'Access/safety disclosed or honestly unknown:
+        Free web signup required; scenes playable after account creation'
+  creator_operator: Character Technologies, Inc.
+  entry_point: https://character.ai/
+  accessibility: Free web signup required; scenes playable after account creation
+  ai_role: Runtime LLM drives character dialogue, scene state, and branching narrative
+    outcomes
+  persistence_or_reproducibility: Saved scene progress and character memory across
+    sessions
+  agents_characters_mechanics: Multi-character scenes with player-directed choices
+    and relationship state
+  platform_runtime: Web (Character.AI)
+  rights_license_disclosed: unknown
+  safety_age_disclosed: Teen rating noted in product policies; age gate on signup
+  access_requirements: unknown
+  unknown_manifest_fields:
+  - trust.license_status
+  - ai_role.human_control_boundaries
+  - world_structure.economy
+  reviewer_notes: Canonical narrative-world pattern; group chat variant overlaps social
+    category.
+  confidence: 0.88
+  source_observed_at: '2024-10-30'
+  last_checked_at: '2026-07-22'
+  summary: Multi-character interactive scenes with persistent AI-driven narrative
+    state.
+  setting: User-authored or template scenes with defined character casts and goals
+  manifest_path: manifests/wg-200-narrative-001.json
+- id: wg-200-narrative-002
+  name: AI Dungeon
+  canonical_source: https://aidungeon.com/
+  candidate_category: interactive_narrative
+  qualification:
+    status: qualifies
+    exclusion_reason: null
+    rule_evidence:
+      rule_1_stable_entry_point: 'Stable public URL resolves to product or documented
+        experience: https://aidungeon.com/'
+      rule_2_meaningful_interaction: 'Users affect outcomes via documented interaction:
+        Text-command exploration with inventory, quests, and multiplayer parties'
+      rule_3_bounded_setting_or_rules: 'Bounded setting or mechanics described: Player-selected
+        or custom scenarios with explicit world prompts'
+      rule_4_persistence_or_reproducibility: 'Persistence or reproducibility documented:
+        Adventure save slots and shared multiplayer story state'
+      rule_5_material_ai_role: 'Material AI role in runtime: Generative LLM narrates
+        world, NPCs, and consequences from player text actions'
+      rule_6_identifiable_claimant: 'Named creator/operator: Latitude Inc.'
+      rule_7_evaluable_access_and_safety: 'Access/safety disclosed or honestly unknown:
+        Free tier with account; premium tiers for advanced models'
+  creator_operator: Latitude Inc.
+  entry_point: https://play.aidungeon.com/
+  accessibility: Free tier with account; premium tiers for advanced models
+  ai_role: Generative LLM narrates world, NPCs, and consequences from player text
+    actions
+  persistence_or_reproducibility: Adventure save slots and shared multiplayer story
+    state
+  agents_characters_mechanics: Text-command exploration with inventory, quests, and
+    multiplayer parties
+  platform_runtime: Web and mobile apps
+  rights_license_disclosed: Latitude Terms of Service govern user-generated adventure
+    content
+  safety_age_disclosed: 13+ stated in terms; content moderation filters documented
+  access_requirements: account_required
+  unknown_manifest_fields:
+  - world_structure.governance
+  - ai_role.model_disclosures
+  reviewer_notes: Long-running reference product for AI narrative worlds.
+  confidence: 0.92
+  source_observed_at: '2026-01-15'
+  last_checked_at: '2026-07-22'
+  summary: Persistent text adventure worlds with generative AI dungeon master.
+  setting: Player-selected or custom scenarios with explicit world prompts
+  manifest_path: manifests/wg-200-narrative-002.json
+- id: wg-200-narrative-003
+  name: Hidden Door
+  canonical_source: https://www.hiddendoor.co/
+  candidate_category: interactive_narrative
+  qualification:
+    status: qualifies
+    exclusion_reason: null
+    rule_evidence:
+      rule_1_stable_entry_point: 'Stable public URL resolves to product or documented
+        experience: https://www.hiddendoor.co/'
+      rule_2_meaningful_interaction: 'Users affect outcomes via documented interaction:
+        Tabletop-RPG-style rules engine with AI narrator and character sheets'
+      rule_3_bounded_setting_or_rules: 'Bounded setting or mechanics described: Licensed
+        story worlds with explicit canon and RPG mechanics'
+      rule_4_persistence_or_reproducibility: 'Persistence or reproducibility documented:
+        Session and campaign state tied to player profiles'
+      rule_5_material_ai_role: 'Material AI role in runtime: AI game master orchestrates
+        rules, NPCs, and story progression in licensed settings'
+      rule_6_identifiable_claimant: 'Named creator/operator: Hidden Door Inc.'
+      rule_7_evaluable_access_and_safety: 'Access/safety disclosed or honestly unknown:
+        Waitlist/invite flow documented on homepage; demo materials public'
+  creator_operator: Hidden Door Inc.
+  entry_point: https://www.hiddendoor.co/
+  accessibility: Waitlist/invite flow documented on homepage; demo materials public
+  ai_role: AI game master orchestrates rules, NPCs, and story progression in licensed
+    settings
+  persistence_or_reproducibility: Session and campaign state tied to player profiles
+  agents_characters_mechanics: Tabletop-RPG-style rules engine with AI narrator and
+    character sheets
+  platform_runtime: Web
+  rights_license_disclosed: unknown
+  safety_age_disclosed: unknown
+  access_requirements: unknown
+  unknown_manifest_fields:
+  - experience.pricing
+  - trust.license_status
+  - world_structure.economy
+  reviewer_notes: Licensed-IP narrative worlds; access may tighten over time.
+  confidence: 0.8
+  source_observed_at: '2025-06-01'
+  last_checked_at: '2026-07-22'
+  summary: AI game-master experiences inside bounded fictional universes.
+  setting: Licensed story worlds with explicit canon and RPG mechanics
+  manifest_path: manifests/wg-200-narrative-003.json
+- id: wg-200-narrative-004
+  name: NovelAI
+  canonical_source: https://novelai.net/
+  candidate_category: interactive_narrative
+  qualification:
+    status: qualifies
+    exclusion_reason: null
+    rule_evidence:
+      rule_1_stable_entry_point: 'Stable public URL resolves to product or documented
+        experience: https://novelai.net/'
+      rule_2_meaningful_interaction: 'Users affect outcomes via documented interaction:
+        Text adventure mode with lorebooks, memory, and author-defined world info'
+      rule_3_bounded_setting_or_rules: 'Bounded setting or mechanics described: User-authored
+        lorebooks constrain canon and character behavior'
+      rule_4_persistence_or_reproducibility: 'Persistence or reproducibility documented:
+        Per-story save files and lorebook memory entries'
+      rule_5_material_ai_role: 'Material AI role in runtime: Fine-tuned models generate
+        interactive story responses and world-consistent prose'
+      rule_6_identifiable_claimant: 'Named creator/operator: Anlatan'
+      rule_7_evaluable_access_and_safety: 'Access/safety disclosed or honestly unknown:
+        Subscription required for full text adventure and image features'
+  creator_operator: Anlatan
+  entry_point: https://novelai.net/
+  accessibility: Subscription required for full text adventure and image features
+  ai_role: Fine-tuned models generate interactive story responses and world-consistent
+    prose
+  persistence_or_reproducibility: Per-story save files and lorebook memory entries
+  agents_characters_mechanics: Text adventure mode with lorebooks, memory, and author-defined
+    world info
+  platform_runtime: Web
+  rights_license_disclosed: Subscription terms describe user content ownership constraints
+  safety_age_disclosed: 18+ age gate on registration
+  access_requirements: subscription_required
+  unknown_manifest_fields:
+  - world_structure.agents_and_characters
+  - trust.moderation_contact
+  reviewer_notes: Strong bounded-context via lorebooks; paywall limits automated extraction.
+  confidence: 0.86
+  source_observed_at: '2026-02-01'
+  last_checked_at: '2026-07-22'
+  summary: Author-defined interactive fiction with persistent lorebook state.
+  setting: User-authored lorebooks constrain canon and character behavior
+  manifest_path: manifests/wg-200-narrative-004.json
+- id: wg-200-narrative-005
+  name: Charisma.ai
+  canonical_source: https://charisma.ai/
+  candidate_category: interactive_narrative
+  qualification:
+    status: qualifies
+    exclusion_reason: null
+    rule_evidence:
+      rule_1_stable_entry_point: 'Stable public URL resolves to product or documented
+        experience: https://charisma.ai/'
+      rule_2_meaningful_interaction: 'Users affect outcomes via documented interaction:
+        Branching dialogue graphs with character emotion and plot triggers'
+      rule_3_bounded_setting_or_rules: 'Bounded setting or mechanics described: Creator-authored
+        story graphs with defined characters and beats'
+      rule_4_persistence_or_reproducibility: 'Persistence or reproducibility documented:
+        Story graph state and character memory across conversation turns'
+      rule_5_material_ai_role: 'Material AI role in runtime: Conversational AI characters
+        follow authored story graphs and emotional state models'
+      rule_6_identifiable_claimant: 'Named creator/operator: Charisma.ai Ltd.'
+      rule_7_evaluable_access_and_safety: 'Access/safety disclosed or honestly unknown:
+        Studio tools and sample experiences linked from marketing site'
+  creator_operator: Charisma.ai Ltd.
+  entry_point: https://charisma.ai/
+  accessibility: Studio tools and sample experiences linked from marketing site
+  ai_role: Conversational AI characters follow authored story graphs and emotional
+    state models
+  persistence_or_reproducibility: Story graph state and character memory across conversation
+    turns
+  agents_characters_mechanics: Branching dialogue graphs with character emotion and
+    plot triggers
+  platform_runtime: Web and embedded SDK experiences
+  rights_license_disclosed: unknown
+  safety_age_disclosed: unknown
+  access_requirements: unknown
+  unknown_manifest_fields:
+  - experience.pricing
+  - trust.license_status
+  - world_structure.economy
+  reviewer_notes: B2B narrative platform with public demo experiences qualifying as
+    worlds.
+  confidence: 0.82
+  source_observed_at: '2025-11-01'
+  last_checked_at: '2026-07-22'
+  summary: Graph-driven interactive stories with runtime character AI.
+  setting: Creator-authored story graphs with defined characters and beats
+  manifest_path: manifests/wg-200-narrative-005.json
+- id: wg-200-spatial-001
+  name: World Labs Marble
+  canonical_source: https://marble.worldlabs.ai/
+  candidate_category: ai_spatial
+  qualification:
+    status: qualifies
+    exclusion_reason: null
+    rule_evidence:
+      rule_1_stable_entry_point: 'Stable public URL resolves to product or documented
+        experience: https://marble.worldlabs.ai/'
+      rule_2_meaningful_interaction: 'Users affect outcomes via documented interaction:
+        Navigate and inspect generated spatial scenes; iterate on world prompts'
+      rule_3_bounded_setting_or_rules: 'Bounded setting or mechanics described: User-prompted
+        spatial scenes with navigable geometry'
+      rule_4_persistence_or_reproducibility: 'Persistence or reproducibility documented:
+        Saved world generations tied to user accounts'
+      rule_5_material_ai_role: 'Material AI role in runtime: Generative world models
+        produce explorable 3D environments from text or images'
+      rule_6_identifiable_claimant: 'Named creator/operator: World Labs'
+      rule_7_evaluable_access_and_safety: 'Access/safety disclosed or honestly unknown:
+        Public web waitlist/invite; demo videos and docs on product page'
+  creator_operator: World Labs
+  entry_point: https://marble.worldlabs.ai/
+  accessibility: Public web waitlist/invite; demo videos and docs on product page
+  ai_role: Generative world models produce explorable 3D environments from text or
+    images
+  persistence_or_reproducibility: Saved world generations tied to user accounts
+  agents_characters_mechanics: Navigate and inspect generated spatial scenes; iterate
+    on world prompts
+  platform_runtime: Web (Marble)
+  rights_license_disclosed: unknown
+  safety_age_disclosed: unknown
+  access_requirements: unknown
+  unknown_manifest_fields:
+  - trust.license_status
+  - world_structure.agents_and_characters
+  - experience.age_guidance
+  reviewer_notes: Reference AI spatial world product cited in Manifest v0 fixtures.
+  confidence: 0.9
+  source_observed_at: '2025-12-01'
+  last_checked_at: '2026-07-22'
+  summary: Explorable AI-generated 3D worlds with persistent saved generations.
+  setting: User-prompted spatial scenes with navigable geometry
+  manifest_path: manifests/wg-200-spatial-001.json
+- id: wg-200-spatial-002
+  name: Decart Oasis
+  canonical_source: https://oasis.decart.ai/
+  candidate_category: ai_spatial
+  qualification:
+    status: qualifies
+    exclusion_reason: null
+    rule_evidence:
+      rule_1_stable_entry_point: 'Stable public URL resolves to product or documented
+        experience: https://oasis.decart.ai/'
+      rule_2_meaningful_interaction: 'Users affect outcomes via documented interaction:
+        Keyboard/mouse navigation affects generated world stream in real time'
+      rule_3_bounded_setting_or_rules: 'Bounded setting or mechanics described: Open-world
+        visual environment generated from latent world model'
+      rule_4_persistence_or_reproducibility: 'Persistence or reproducibility documented:
+        Session-based exploration; model weights and prompts documented externally'
+      rule_5_material_ai_role: 'Material AI role in runtime: Real-time generative
+        model renders interactive open-world video from player input'
+      rule_6_identifiable_claimant: 'Named creator/operator: Decart'
+      rule_7_evaluable_access_and_safety: 'Access/safety disclosed or honestly unknown:
+        Free browser demo without install'
+  creator_operator: Decart
+  entry_point: https://oasis.decart.ai/
+  accessibility: Free browser demo without install
+  ai_role: Real-time generative model renders interactive open-world video from player
+    input
+  persistence_or_reproducibility: Session-based exploration; model weights and prompts
+    documented externally
+  agents_characters_mechanics: Keyboard/mouse navigation affects generated world stream
+    in real time
+  platform_runtime: Web browser
+  rights_license_disclosed: unknown
+  safety_age_disclosed: unknown
+  access_requirements: unknown
+  unknown_manifest_fields:
+  - trust.license_status
+  - experience.persistence_model
+  - world_structure.economy
+  reviewer_notes: Session persistence weaker than Marble; still qualifies via reproducible
+    public demo.
+  confidence: 0.84
+  source_observed_at: '2025-09-01'
+  last_checked_at: '2026-07-22'
+  summary: Real-time AI-generated explorable world stream in the browser.
+  setting: Open-world visual environment generated from latent world model
+  manifest_path: manifests/wg-200-spatial-002.json
+- id: wg-200-spatial-003
+  name: Fermat
+  canonical_source: https://fermat.app/
+  candidate_category: ai_spatial
+  qualification:
+    status: qualifies
+    exclusion_reason: null
+    rule_evidence:
+      rule_1_stable_entry_point: 'Stable public URL resolves to product or documented
+        experience: https://fermat.app/'
+      rule_2_meaningful_interaction: 'Users affect outcomes via documented interaction:
+        Create, publish, and walk through user-generated 3D spaces'
+      rule_3_bounded_setting_or_rules: 'Bounded setting or mechanics described: User-created
+        explorable rooms and environments'
+      rule_4_persistence_or_reproducibility: 'Persistence or reproducibility documented:
+        Published spaces persist on platform with version history'
+      rule_5_material_ai_role: 'Material AI role in runtime: AI assists creation and
+        populates interactive 3D spaces users can explore'
+      rule_6_identifiable_claimant: 'Named creator/operator: Fermat'
+      rule_7_evaluable_access_and_safety: 'Access/safety disclosed or honestly unknown:
+        Web signup for creation and exploration features'
+  creator_operator: Fermat
+  entry_point: https://fermat.app/
+  accessibility: Web signup for creation and exploration features
+  ai_role: AI assists creation and populates interactive 3D spaces users can explore
+  persistence_or_reproducibility: Published spaces persist on platform with version
+    history
+  agents_characters_mechanics: Create, publish, and walk through user-generated 3D
+    spaces
+  platform_runtime: Web
+  rights_license_disclosed: unknown
+  safety_age_disclosed: unknown
+  access_requirements: unknown
+  unknown_manifest_fields:
+  - trust.license_status
+  - ai_role.model_disclosures
+  - experience.age_guidance
+  reviewer_notes: UGC spatial worlds with material AI-assisted environment generation.
+  confidence: 0.81
+  source_observed_at: '2025-10-15'
+  last_checked_at: '2026-07-22'
+  summary: Collaborative 3D spaces with AI-assisted world building.
+  setting: User-created explorable rooms and environments
+  manifest_path: manifests/wg-200-spatial-003.json
+- id: wg-200-spatial-004
+  name: Luma AI Genie
+  canonical_source: https://lumalabs.ai/genie
+  candidate_category: ai_spatial
+  qualification:
+    status: qualifies
+    exclusion_reason: null
+    rule_evidence:
+      rule_1_stable_entry_point: 'Stable public URL resolves to product or documented
+        experience: https://lumalabs.ai/genie'
+      rule_2_meaningful_interaction: 'Users affect outcomes via documented interaction:
+        Prompt, generate, and preview explorable 3D worlds'
+      rule_3_bounded_setting_or_rules: 'Bounded setting or mechanics described: Generated
+        3D scenes from natural-language prompts'
+      rule_4_persistence_or_reproducibility: 'Persistence or reproducibility documented:
+        Library of saved generations per account'
+      rule_5_material_ai_role: 'Material AI role in runtime: Text-to-3D world generation
+        produces navigable scenes'
+      rule_6_identifiable_claimant: 'Named creator/operator: Luma AI'
+      rule_7_evaluable_access_and_safety: 'Access/safety disclosed or honestly unknown:
+        Web access with account; mobile app linked'
+  creator_operator: Luma AI
+  entry_point: https://lumalabs.ai/genie
+  accessibility: Web access with account; mobile app linked
+  ai_role: Text-to-3D world generation produces navigable scenes
+  persistence_or_reproducibility: Library of saved generations per account
+  agents_characters_mechanics: Prompt, generate, and preview explorable 3D worlds
+  platform_runtime: Web and iOS
+  rights_license_disclosed: unknown
+  safety_age_disclosed: unknown
+  access_requirements: unknown
+  unknown_manifest_fields:
+  - world_structure.agents_and_characters
+  - trust.commercial_use_status
+  reviewer_notes: Generation tool plus explorable output qualifies as spatial world
+    experience.
+  confidence: 0.83
+  source_observed_at: '2025-08-01'
+  last_checked_at: '2026-07-22'
+  summary: Text-prompted 3D worlds users can preview and explore.
+  setting: Generated 3D scenes from natural-language prompts
+  manifest_path: manifests/wg-200-spatial-004.json
+- id: wg-200-spatial-005
+  name: Blockade Labs Skybox AI
+  canonical_source: https://skybox.blockadelabs.com/
+  candidate_category: ai_spatial
+  qualification:
+    status: qualifies
+    exclusion_reason: null
+    rule_evidence:
+      rule_1_stable_entry_point: 'Stable public URL resolves to product or documented
+        experience: https://skybox.blockadelabs.com/'
+      rule_2_meaningful_interaction: 'Users affect outcomes via documented interaction:
+        Generate, remix, and export immersive environments for real-time engines'
+      rule_3_bounded_setting_or_rules: 'Bounded setting or mechanics described: Prompt-defined
+        panoramic worlds exportable to game engines'
+      rule_4_persistence_or_reproducibility: 'Persistence or reproducibility documented:
+        Saved skybox library and share URLs'
+      rule_5_material_ai_role: 'Material AI role in runtime: Generative models produce
+        360° immersive skyboxes from prompts'
+      rule_6_identifiable_claimant: 'Named creator/operator: Blockade Labs'
+      rule_7_evaluable_access_and_safety: 'Access/safety disclosed or honestly unknown:
+        Free tier with account for generation and download'
+  creator_operator: Blockade Labs
+  entry_point: https://skybox.blockadelabs.com/
+  accessibility: Free tier with account for generation and download
+  ai_role: Generative models produce 360° immersive skyboxes from prompts
+  persistence_or_reproducibility: Saved skybox library and share URLs
+  agents_characters_mechanics: Generate, remix, and export immersive environments
+    for real-time engines
+  platform_runtime: Web
+  rights_license_disclosed: Public terms describe commercial licensing tiers
+  safety_age_disclosed: unknown
+  access_requirements: unknown
+  unknown_manifest_fields:
+  - world_structure.agents_and_characters
+  - experience.age_guidance
+  reviewer_notes: 'Borderline: environment slices rather than full worlds, but interactive
+    creation + exploration qualifies.'
+  confidence: 0.78
+  source_observed_at: '2025-07-01'
+  last_checked_at: '2026-07-22'
+  summary: Prompt-driven immersive 360° environments with persistent library.
+  setting: Prompt-defined panoramic worlds exportable to game engines
+  manifest_path: manifests/wg-200-spatial-005.json
+- id: wg-200-simulation-001
+  name: AI Town
+  canonical_source: https://www.convex.dev/ai-town
+  candidate_category: agent_simulation
+  qualification:
+    status: qualifies
+    exclusion_reason: null
+    rule_evidence:
+      rule_1_stable_entry_point: 'Stable public URL resolves to product or documented
+        experience: https://www.convex.dev/ai-town'
+      rule_2_meaningful_interaction: 'Users affect outcomes via documented interaction:
+        Multi-agent village simulation with movement, conversation, and memory'
+      rule_3_bounded_setting_or_rules: 'Bounded setting or mechanics described: Small-town
+        map with scheduled agent activities and social rules'
+      rule_4_persistence_or_reproducibility: 'Persistence or reproducibility documented:
+        Convex database stores agent memories and world positions'
+      rule_5_material_ai_role: 'Material AI role in runtime: LLM agents plan actions,
+        converse, and update world state each game tick'
+      rule_6_identifiable_claimant: 'Named creator/operator: Convex (a16z-infra open-source
+        example)'
+      rule_7_evaluable_access_and_safety: 'Access/safety disclosed or honestly unknown:
+        Open-source repo with local deploy instructions and hosted demo links'
+  creator_operator: Convex (a16z-infra open-source example)
+  entry_point: https://github.com/a16z-infra/ai-town
+  accessibility: Open-source repo with local deploy instructions and hosted demo links
+  ai_role: LLM agents plan actions, converse, and update world state each game tick
+  persistence_or_reproducibility: Convex database stores agent memories and world
+    positions
+  agents_characters_mechanics: Multi-agent village simulation with movement, conversation,
+    and memory
+  platform_runtime: Web (Convex backend)
+  rights_license_disclosed: MIT License on repository
+  safety_age_disclosed: unknown
+  access_requirements: unknown
+  unknown_manifest_fields:
+  - experience.age_guidance
+  - trust.moderation_contact
+  reviewer_notes: Canonical open-source agent society reference implementation.
+  confidence: 0.93
+  source_observed_at: '2024-05-01'
+  last_checked_at: '2026-07-22'
+  summary: Persistent multi-agent village simulation with LLM-driven behavior.
+  setting: Small-town map with scheduled agent activities and social rules
+  manifest_path: manifests/wg-200-simulation-001.json
+- id: wg-200-simulation-002
+  name: Generative Agents (Smallville)
+  canonical_source: https://github.com/joonspk-research/generative_agents
+  candidate_category: agent_simulation
+  qualification:
+    status: qualifies
+    exclusion_reason: null
+    rule_evidence:
+      rule_1_stable_entry_point: 'Stable public URL resolves to product or documented
+        experience: https://github.com/joonspk-research/generative_agents'
+      rule_2_meaningful_interaction: 'Users affect outcomes via documented interaction:
+        25 agents with daily schedules, relationships, and emergent social behavior'
+      rule_3_bounded_setting_or_rules: 'Bounded setting or mechanics described: Smallville
+        town map with locations and social norms'
+      rule_4_persistence_or_reproducibility: 'Persistence or reproducibility documented:
+        Simulation state serialized in repo artifacts and replay logs'
+      rule_5_material_ai_role: 'Material AI role in runtime: LLM agents reflect, plan,
+        and interact in a sandbox town simulation'
+      rule_6_identifiable_claimant: 'Named creator/operator: Stanford HCI / joonspk-research'
+      rule_7_evaluable_access_and_safety: 'Access/safety disclosed or honestly unknown:
+        Research repo with reproduction instructions; no hosted public demo'
+  creator_operator: Stanford HCI / joonspk-research
+  entry_point: https://github.com/joonspk-research/generative_agents
+  accessibility: Research repo with reproduction instructions; no hosted public demo
+  ai_role: LLM agents reflect, plan, and interact in a sandbox town simulation
+  persistence_or_reproducibility: Simulation state serialized in repo artifacts and
+    replay logs
+  agents_characters_mechanics: 25 agents with daily schedules, relationships, and
+    emergent social behavior
+  platform_runtime: Local Python simulation
+  rights_license_disclosed: MIT License
+  safety_age_disclosed: unknown
+  access_requirements: unknown
+  unknown_manifest_fields:
+  - experience.entry_points_public_hosted
+  - trust.moderation_contact
+  reviewer_notes: Reproducible research simulation; entry is repo not live SaaS.
+  confidence: 0.91
+  source_observed_at: '2023-04-01'
+  last_checked_at: '2026-07-22'
+  summary: Research sandbox where LLM agents live out persistent daily routines.
+  setting: Smallville town map with locations and social norms
+  manifest_path: manifests/wg-200-simulation-002.json
+- id: wg-200-simulation-003
+  name: Voyager
+  canonical_source: https://voyager.minedojo.org/
+  candidate_category: agent_simulation
+  qualification:
+    status: qualifies
+    exclusion_reason: null
+    rule_evidence:
+      rule_1_stable_entry_point: 'Stable public URL resolves to product or documented
+        experience: https://voyager.minedojo.org/'
+      rule_2_meaningful_interaction: 'Users affect outcomes via documented interaction:
+        Autonomous exploration, crafting, tech tree progression via code execution'
+      rule_3_bounded_setting_or_rules: 'Bounded setting or mechanics described: Minecraft
+        overworld with survival mechanics and craft tree'
+      rule_4_persistence_or_reproducibility: 'Persistence or reproducibility documented:
+        Skill library and world checkpoints saved across episodes'
+      rule_5_material_ai_role: 'Material AI role in runtime: Embodied LLM agent learns
+        skills, explores, and builds in Minecraft world'
+      rule_6_identifiable_claimant: 'Named creator/operator: MineDojo / NVIDIA Research
+        collaborators'
+      rule_7_evaluable_access_and_safety: 'Access/safety disclosed or honestly unknown:
+        Paper site links to open-source code and Minecraft dependency'
+  creator_operator: MineDojo / NVIDIA Research collaborators
+  entry_point: https://github.com/MineDojo/Voyager
+  accessibility: Paper site links to open-source code and Minecraft dependency
+  ai_role: Embodied LLM agent learns skills, explores, and builds in Minecraft world
+  persistence_or_reproducibility: Skill library and world checkpoints saved across
+    episodes
+  agents_characters_mechanics: Autonomous exploration, crafting, tech tree progression
+    via code execution
+  platform_runtime: Minecraft Java Edition
+  rights_license_disclosed: Apache-2.0 on code; Minecraft license separate
+  safety_age_disclosed: unknown
+  access_requirements: unknown
+  unknown_manifest_fields:
+  - experience.age_guidance
+  - world_structure.economy
+  reviewer_notes: Strong simulation-world reference with reproducible configs.
+  confidence: 0.9
+  source_observed_at: '2023-05-01'
+  last_checked_at: '2026-07-22'
+  summary: LLM-driven lifelong learning agent in open-ended Minecraft world.
+  setting: Minecraft overworld with survival mechanics and craft tree
+  manifest_path: manifests/wg-200-simulation-003.json
+- id: wg-200-simulation-004
+  name: Concordia
+  canonical_source: https://github.com/google-deepmind/concordia
+  candidate_category: agent_simulation
+  qualification:
+    status: qualifies
+    exclusion_reason: null
+    rule_evidence:
+      rule_1_stable_entry_point: 'Stable public URL resolves to product or documented
+        experience: https://github.com/google-deepmind/concordia'
+      rule_2_meaningful_interaction: 'Users affect outcomes via documented interaction:
+        Game-master orchestrated scenarios with participant agents and state updates'
+      rule_3_bounded_setting_or_rules: 'Bounded setting or mechanics described: Scenario
+        scripts define locations, roles, and interaction rules'
+      rule_4_persistence_or_reproducibility: 'Persistence or reproducibility documented:
+        Simulation configs and logs reproducible from repository examples'
+      rule_5_material_ai_role: 'Material AI role in runtime: Language-model agents
+        act in turn-based simulated environments'
+      rule_6_identifiable_claimant: 'Named creator/operator: Google DeepMind'
+      rule_7_evaluable_access_and_safety: 'Access/safety disclosed or honestly unknown:
+        Apache-2.0 research library with example simulations'
+  creator_operator: Google DeepMind
+  entry_point: https://github.com/google-deepmind/concordia
+  accessibility: Apache-2.0 research library with example simulations
+  ai_role: Language-model agents act in turn-based simulated environments
+  persistence_or_reproducibility: Simulation configs and logs reproducible from repository
+    examples
+  agents_characters_mechanics: Game-master orchestrated scenarios with participant
+    agents and state updates
+  platform_runtime: Python library
+  rights_license_disclosed: Apache-2.0
+  safety_age_disclosed: unknown
+  access_requirements: unknown
+  unknown_manifest_fields:
+  - experience.public_hosted_entry
+  - trust.moderation_contact
+  reviewer_notes: Framework ships runnable example worlds; qualifies as reproducible
+    simulation.
+  confidence: 0.87
+  source_observed_at: '2024-02-01'
+  last_checked_at: '2026-07-22'
+  summary: Research framework for language-agent simulations in bounded scenarios.
+  setting: Scenario scripts define locations, roles, and interaction rules
+  manifest_path: manifests/wg-200-simulation-004.json
+- id: wg-200-simulation-005
+  name: CAMEL AI Oasis
+  canonical_source: https://docs.oasis.camel-ai.org/
+  candidate_category: agent_simulation
+  qualification:
+    status: qualifies
+    exclusion_reason: null
+    rule_evidence:
+      rule_1_stable_entry_point: 'Stable public URL resolves to product or documented
+        experience: https://docs.oasis.camel-ai.org/'
+      rule_2_meaningful_interaction: 'Users affect outcomes via documented interaction:
+        Thousands of agents interact via programmed social actions'
+      rule_3_bounded_setting_or_rules: 'Bounded setting or mechanics described: Social
+        platform graph with agent personas and action API'
+      rule_4_persistence_or_reproducibility: 'Persistence or reproducibility documented:
+        Simulation state and agent profiles stored across ticks'
+      rule_5_material_ai_role: 'Material AI role in runtime: Large language model
+        agents populate social media-style simulated worlds'
+      rule_6_identifiable_claimant: 'Named creator/operator: CAMEL-AI.org'
+      rule_7_evaluable_access_and_safety: 'Access/safety disclosed or honestly unknown:
+        Documentation and GitHub repo with install instructions'
+  creator_operator: CAMEL-AI.org
+  entry_point: https://github.com/camel-ai/oasis
+  accessibility: Documentation and GitHub repo with install instructions
+  ai_role: Large language model agents populate social media-style simulated worlds
+  persistence_or_reproducibility: Simulation state and agent profiles stored across
+    ticks
+  agents_characters_mechanics: Thousands of agents interact via programmed social
+    actions
+  platform_runtime: Python / local or cloud deploy
+  rights_license_disclosed: Apache-2.0 on repository
+  safety_age_disclosed: unknown
+  access_requirements: unknown
+  unknown_manifest_fields:
+  - experience.age_guidance
+  - trust.moderation_contact
+  reviewer_notes: Scalable agent society benchmark environment.
+  confidence: 0.85
+  source_observed_at: '2024-11-01'
+  last_checked_at: '2026-07-22'
+  summary: Large-scale multi-agent social simulation platform.
+  setting: Social platform graph with agent personas and action API
+  manifest_path: manifests/wg-200-simulation-005.json
+- id: wg-200-game-001
+  name: Inworld Arcade
+  canonical_source: https://inworld.ai/arcade
+  candidate_category: ai_game_ugc
+  qualification:
+    status: qualifies
+    exclusion_reason: null
+    rule_evidence:
+      rule_1_stable_entry_point: 'Stable public URL resolves to product or documented
+        experience: https://inworld.ai/arcade'
+      rule_2_meaningful_interaction: 'Users affect outcomes via documented interaction:
+        Playable mini-experiences with AI NPCs and quest-like goals'
+      rule_3_bounded_setting_or_rules: 'Bounded setting or mechanics described: Individual
+        arcade rooms each with defined NPC cast and objectives'
+      rule_4_persistence_or_reproducibility: 'Persistence or reproducibility documented:
+        Player session state and character memory in demo experiences'
+      rule_5_material_ai_role: 'Material AI role in runtime: Runtime character AI
+        drives NPC dialogue, goals, and reactions in mini-games'
+      rule_6_identifiable_claimant: 'Named creator/operator: Inworld AI'
+      rule_7_evaluable_access_and_safety: 'Access/safety disclosed or honestly unknown:
+        Free browser demos; account for advanced creation'
+  creator_operator: Inworld AI
+  entry_point: https://inworld.ai/arcade
+  accessibility: Free browser demos; account for advanced creation
+  ai_role: Runtime character AI drives NPC dialogue, goals, and reactions in mini-games
+  persistence_or_reproducibility: Player session state and character memory in demo
+    experiences
+  agents_characters_mechanics: Playable mini-experiences with AI NPCs and quest-like
+    goals
+  platform_runtime: Web
+  rights_license_disclosed: unknown
+  safety_age_disclosed: unknown
+  access_requirements: unknown
+  unknown_manifest_fields:
+  - trust.license_status
+  - world_structure.economy
+  reviewer_notes: Public demo arcade satisfies game/UGC category with material runtime
+    AI.
+  confidence: 0.89
+  source_observed_at: '2025-03-01'
+  last_checked_at: '2026-07-22'
+  summary: Collection of playable demos showcasing AI NPC runtime in game-like worlds.
+  setting: Individual arcade rooms each with defined NPC cast and objectives
+  manifest_path: manifests/wg-200-game-001.json
+- id: wg-200-game-002
+  name: Convai Demo Experiences
+  canonical_source: https://convai.com/
+  candidate_category: ai_game_ugc
+  qualification:
+    status: qualifies
+    exclusion_reason: null
+    rule_evidence:
+      rule_1_stable_entry_point: 'Stable public URL resolves to product or documented
+        experience: https://convai.com/'
+      rule_2_meaningful_interaction: 'Users affect outcomes via documented interaction:
+        Voice/text interaction with NPCs that perceive environment triggers'
+      rule_3_bounded_setting_or_rules: 'Bounded setting or mechanics described: Demo
+        levels with defined NPC roles and trigger volumes'
+      rule_4_persistence_or_reproducibility: 'Persistence or reproducibility documented:
+        Session-based NPC memory in integrated demos'
+      rule_5_material_ai_role: 'Material AI role in runtime: Conversational AI characters
+        with spatial awareness in game engine demos'
+      rule_6_identifiable_claimant: 'Named creator/operator: Convai Technologies'
+      rule_7_evaluable_access_and_safety: 'Access/safety disclosed or honestly unknown:
+        Web demos and SDK docs linked from homepage'
+  creator_operator: Convai Technologies
+  entry_point: https://convai.com/
+  accessibility: Web demos and SDK docs linked from homepage
+  ai_role: Conversational AI characters with spatial awareness in game engine demos
+  persistence_or_reproducibility: Session-based NPC memory in integrated demos
+  agents_characters_mechanics: Voice/text interaction with NPCs that perceive environment
+    triggers
+  platform_runtime: Web demos; Unity/Unreal SDK integrations
+  rights_license_disclosed: unknown
+  safety_age_disclosed: unknown
+  access_requirements: unknown
+  unknown_manifest_fields:
+  - trust.license_status
+  - experience.pricing
+  reviewer_notes: Demo worlds illustrate UGC pipeline for AI NPCs in games.
+  confidence: 0.84
+  source_observed_at: '2025-05-01'
+  last_checked_at: '2026-07-22'
+  summary: Interactive game-engine demos with spatially aware AI characters.
+  setting: Demo levels with defined NPC roles and trigger volumes
+  manifest_path: manifests/wg-200-game-002.json
+- id: wg-200-game-003
+  name: Rosebud AI
+  canonical_source: https://rosebud.ai/
+  candidate_category: ai_game_ugc
+  qualification:
+    status: qualifies
+    exclusion_reason: null
+    rule_evidence:
+      rule_1_stable_entry_point: 'Stable public URL resolves to product or documented
+        experience: https://rosebud.ai/'
+      rule_2_meaningful_interaction: 'Users affect outcomes via documented interaction:
+        Create and play 2D/3D games with AI-generated assets and scripts'
+      rule_3_bounded_setting_or_rules: 'Bounded setting or mechanics described: User-defined
+        game scenes with mechanics and win conditions'
+      rule_4_persistence_or_reproducibility: 'Persistence or reproducibility documented:
+        Published games persist with shareable URLs'
+      rule_5_material_ai_role: 'Material AI role in runtime: AI assists asset and
+        logic generation; runtime behavior in published games'
+      rule_6_identifiable_claimant: 'Named creator/operator: Rosebud AI'
+      rule_7_evaluable_access_and_safety: 'Access/safety disclosed or honestly unknown:
+        Web creation platform with playable published games'
+  creator_operator: Rosebud AI
+  entry_point: https://rosebud.ai/
+  accessibility: Web creation platform with playable published games
+  ai_role: AI assists asset and logic generation; runtime behavior in published games
+  persistence_or_reproducibility: Published games persist with shareable URLs
+  agents_characters_mechanics: Create and play 2D/3D games with AI-generated assets
+    and scripts
+  platform_runtime: Web
+  rights_license_disclosed: unknown
+  safety_age_disclosed: unknown
+  access_requirements: unknown
+  unknown_manifest_fields:
+  - trust.license_status
+  - experience.age_guidance
+  reviewer_notes: UGC platform where playable outputs qualify as worlds.
+  confidence: 0.8
+  source_observed_at: '2025-04-01'
+  last_checked_at: '2026-07-22'
+  summary: AI-assisted game creation platform with persistent published playable worlds.
+  setting: User-defined game scenes with mechanics and win conditions
+  manifest_path: manifests/wg-200-game-003.json
+- id: wg-200-game-004
+  name: Scenario
+  canonical_source: https://www.scenario.com/
+  candidate_category: ai_game_ugc
+  qualification:
+    status: qualifies
+    exclusion_reason: null
+    rule_evidence:
+      rule_1_stable_entry_point: 'Stable public URL resolves to product or documented
+        experience: https://www.scenario.com/'
+      rule_2_meaningful_interaction: 'Users affect outcomes via documented interaction:
+        Teams build game asset pipelines feeding interactive prototypes'
+      rule_3_bounded_setting_or_rules: 'Bounded setting or mechanics described: Game
+        projects with style-locked generative asset pipelines'
+      rule_4_persistence_or_reproducibility: 'Persistence or reproducibility documented:
+        Project workspaces retain trained styles and asset sets'
+      rule_5_material_ai_role: 'Material AI role in runtime: Generative models produce
+        consistent game assets used inside playable experiences'
+      rule_6_identifiable_claimant: 'Named creator/operator: Scenario S.A.'
+      rule_7_evaluable_access_and_safety: 'Access/safety disclosed or honestly unknown:
+        Account required; API and web app documented'
+  creator_operator: Scenario S.A.
+  entry_point: https://www.scenario.com/
+  accessibility: Account required; API and web app documented
+  ai_role: Generative models produce consistent game assets used inside playable experiences
+  persistence_or_reproducibility: Project workspaces retain trained styles and asset
+    sets
+  agents_characters_mechanics: Teams build game asset pipelines feeding interactive
+    prototypes
+  platform_runtime: Web
+  rights_license_disclosed: unknown
+  safety_age_disclosed: unknown
+  access_requirements: unknown
+  unknown_manifest_fields:
+  - experience.public_playable_entry
+  - world_structure.agents_and_characters
+  reviewer_notes: 'Borderline: primarily asset tooling; included because public docs
+    link playable game integrations.'
+  confidence: 0.72
+  source_observed_at: '2025-02-01'
+  last_checked_at: '2026-07-22'
+  summary: Game asset generation platform tied to playable UGC prototypes.
+  setting: Game projects with style-locked generative asset pipelines
+  manifest_path: manifests/wg-200-game-004.json
+- id: wg-200-game-005
+  name: HiberWorld
+  canonical_source: https://hiberworld.com/
+  candidate_category: ai_game_ugc
+  qualification:
+    status: qualifies
+    exclusion_reason: null
+    rule_evidence:
+      rule_1_stable_entry_point: 'Stable public URL resolves to product or documented
+        experience: https://hiberworld.com/'
+      rule_2_meaningful_interaction: 'Users affect outcomes via documented interaction:
+        Create, publish, and explore user-generated 3D worlds'
+      rule_3_bounded_setting_or_rules: 'Bounded setting or mechanics described: User-built
+        3D spaces with platform movement mechanics'
+      rule_4_persistence_or_reproducibility: 'Persistence or reproducibility documented:
+        Published worlds persist on platform with social features'
+      rule_5_material_ai_role: 'Material AI role in runtime: AI assists 3D world creation;
+        users explore published worlds'
+      rule_6_identifiable_claimant: 'Named creator/operator: Hiber'
+      rule_7_evaluable_access_and_safety: 'Access/safety disclosed or honestly unknown:
+        Web and mobile clients; creation tools documented'
+  creator_operator: Hiber
+  entry_point: https://hiberworld.com/
+  accessibility: Web and mobile clients; creation tools documented
+  ai_role: AI assists 3D world creation; users explore published worlds
+  persistence_or_reproducibility: Published worlds persist on platform with social
+    features
+  agents_characters_mechanics: Create, publish, and explore user-generated 3D worlds
+  platform_runtime: Web and mobile
+  rights_license_disclosed: unknown
+  safety_age_disclosed: unknown
+  access_requirements: unknown
+  unknown_manifest_fields:
+  - trust.license_status
+  - ai_role.model_disclosures
+  reviewer_notes: UGC 3D world platform related to AI-assisted creation marketing.
+  confidence: 0.79
+  source_observed_at: '2025-01-01'
+  last_checked_at: '2026-07-22'
+  summary: Social 3D world creation and exploration platform.
+  setting: User-built 3D spaces with platform movement mechanics
+  manifest_path: manifests/wg-200-game-005.json
+- id: wg-200-social-001
+  name: Character.AI
+  canonical_source: https://character.ai/
+  candidate_category: persistent_social
+  qualification:
+    status: qualifies
+    exclusion_reason: null
+    rule_evidence:
+      rule_1_stable_entry_point: 'Stable public URL resolves to product or documented
+        experience: https://character.ai/'
+      rule_2_meaningful_interaction: 'Users affect outcomes via documented interaction:
+        1:1 and group chats with multiple AI characters and user participants'
+      rule_3_bounded_setting_or_rules: 'Bounded setting or mechanics described: Character
+        personas with bios, greeting messages, and conversation boundaries'
+      rule_4_persistence_or_reproducibility: 'Persistence or reproducibility documented:
+        Conversation history and character memory persist per user'
+      rule_5_material_ai_role: 'Material AI role in runtime: Users chat with creator-defined
+        AI characters in persistent rooms and group chats'
+      rule_6_identifiable_claimant: 'Named creator/operator: Character Technologies,
+        Inc.'
+      rule_7_evaluable_access_and_safety: 'Access/safety disclosed or honestly unknown:
+        Free tier with registration; mobile apps available'
+  creator_operator: Character Technologies, Inc.
+  entry_point: https://character.ai/
+  accessibility: Free tier with registration; mobile apps available
+  ai_role: Users chat with creator-defined AI characters in persistent rooms and group
+    chats
+  persistence_or_reproducibility: Conversation history and character memory persist
+    per user
+  agents_characters_mechanics: 1:1 and group chats with multiple AI characters and
+    user participants
+  platform_runtime: Web and mobile
+  rights_license_disclosed: unknown
+  safety_age_disclosed: Teen rating; community guidelines published
+  access_requirements: unknown
+  unknown_manifest_fields:
+  - world_structure.economy
+  - trust.license_status
+  reviewer_notes: Social companion rooms qualify; overlaps narrative Scenes but distinct
+    social graph.
+  confidence: 0.87
+  source_observed_at: '2026-01-01'
+  last_checked_at: '2026-07-22'
+  summary: Persistent social chat worlds populated by user-created AI characters.
+  setting: Character personas with bios, greeting messages, and conversation boundaries
+  manifest_path: manifests/wg-200-social-001.json
+- id: wg-200-social-002
+  name: Chai
+  canonical_source: https://www.chai-research.com/
+  candidate_category: persistent_social
+  qualification:
+    status: qualifies
+    exclusion_reason: null
+    rule_evidence:
+      rule_1_stable_entry_point: 'Stable public URL resolves to product or documented
+        experience: https://www.chai-research.com/'
+      rule_2_meaningful_interaction: 'Users affect outcomes via documented interaction:
+        Swipe-to-chat interface with creator-published bot personas'
+      rule_3_bounded_setting_or_rules: 'Bounded setting or mechanics described: Bot
+        personas with creator-defined prompts and traits'
+      rule_4_persistence_or_reproducibility: 'Persistence or reproducibility documented:
+        Chat history and bot definitions saved to accounts'
+      rule_5_material_ai_role: 'Material AI role in runtime: User-created AI bots
+        converse in persistent chat sessions with memory'
+      rule_6_identifiable_claimant: 'Named creator/operator: Chai Research Corp.'
+      rule_7_evaluable_access_and_safety: 'Access/safety disclosed or honestly unknown:
+        Mobile apps; web landing redirects to app stores'
+  creator_operator: Chai Research Corp.
+  entry_point: https://chai.ml/
+  accessibility: Mobile apps; web landing redirects to app stores
+  ai_role: User-created AI bots converse in persistent chat sessions with memory
+  persistence_or_reproducibility: Chat history and bot definitions saved to accounts
+  agents_characters_mechanics: Swipe-to-chat interface with creator-published bot
+    personas
+  platform_runtime: iOS and Android
+  rights_license_disclosed: unknown
+  safety_age_disclosed: unknown
+  access_requirements: unknown
+  unknown_manifest_fields:
+  - experience.web_entry_point
+  - trust.license_status
+  reviewer_notes: Mobile-first social AI chat world pattern.
+  confidence: 0.83
+  source_observed_at: '2025-09-01'
+  last_checked_at: '2026-07-22'
+  summary: Social platform of user-created AI chatbots with persistent conversations.
+  setting: Bot personas with creator-defined prompts and traits
+  manifest_path: manifests/wg-200-social-002.json
+- id: wg-200-social-003
+  name: VRChat
+  canonical_source: https://hello.vrchat.com/
+  candidate_category: persistent_social
+  qualification:
+    status: qualifies
+    exclusion_reason: null
+    rule_evidence:
+      rule_1_stable_entry_point: 'Stable public URL resolves to product or documented
+        experience: https://hello.vrchat.com/'
+      rule_2_meaningful_interaction: 'Users affect outcomes via documented interaction:
+        Social presence, world instances, UGC worlds with embedded gameplay scripts'
+      rule_3_bounded_setting_or_rules: 'Bounded setting or mechanics described: User-generated
+        worlds with avatars, physics, and social norms'
+      rule_4_persistence_or_reproducibility: 'Persistence or reproducibility documented:
+        Persistent avatars, world instances, and social graphs'
+      rule_5_material_ai_role: 'Material AI role in runtime: Third-party and official
+        worlds integrate runtime AI NPC plugins (documented community examples)'
+      rule_6_identifiable_claimant: 'Named creator/operator: VRChat Inc.'
+      rule_7_evaluable_access_and_safety: 'Access/safety disclosed or honestly unknown:
+        Free client; account required; user-generated worlds'
+  creator_operator: VRChat Inc.
+  entry_point: https://vrchat.com/home
+  accessibility: Free client; account required; user-generated worlds
+  ai_role: Third-party and official worlds integrate runtime AI NPC plugins (documented
+    community examples)
+  persistence_or_reproducibility: Persistent avatars, world instances, and social
+    graphs
+  agents_characters_mechanics: Social presence, world instances, UGC worlds with embedded
+    gameplay scripts
+  platform_runtime: VRChat client (PC/VR/Quest)
+  rights_license_disclosed: unknown
+  safety_age_disclosed: 13+ in terms; trust and safety pages published
+  access_requirements: account_and_client_required
+  unknown_manifest_fields:
+  - ai_role.material_ai_role_per_world
+  - trust.license_status
+  reviewer_notes: Platform hosts many worlds; corpus entry treats VRChat as persistent
+    social world host with material AI in select UGC.
+  confidence: 0.76
+  source_observed_at: '2026-03-01'
+  last_checked_at: '2026-07-22'
+  summary: Persistent social metaverse with UGC worlds; AI NPC integrations vary by
+    world.
+  setting: User-generated worlds with avatars, physics, and social norms
+  linked_research_entity: platform:vrchat
+  manifest_path: manifests/wg-200-social-003.json
+- id: wg-200-social-004
+  name: Second Life
+  canonical_source: https://www.secondlife.com/
+  candidate_category: persistent_social
+  qualification:
+    status: qualifies
+    exclusion_reason: null
+    rule_evidence:
+      rule_1_stable_entry_point: 'Stable public URL resolves to product or documented
+        experience: https://www.secondlife.com/'
+      rule_2_meaningful_interaction: 'Users affect outcomes via documented interaction:
+        Virtual land, economy, events, and user-created experiences'
+      rule_3_bounded_setting_or_rules: 'Bounded setting or mechanics described: Continent-based
+        virtual world with user-owned regions'
+      rule_4_persistence_or_reproducibility: 'Persistence or reproducibility documented:
+        Long-running user economy, land ownership, and avatar identity'
+      rule_5_material_ai_role: 'Material AI role in runtime: Select regions and tools
+        integrate NPC scripts; LLM integrations documented by community and Linden
+        partners'
+      rule_6_identifiable_claimant: 'Named creator/operator: Linden Lab'
+      rule_7_evaluable_access_and_safety: 'Access/safety disclosed or honestly unknown:
+        Free client; premium land fees documented'
+  creator_operator: Linden Lab
+  entry_point: https://secondlife.com/support/downloads/
+  accessibility: Free client; premium land fees documented
+  ai_role: Select regions and tools integrate NPC scripts; LLM integrations documented
+    by community and Linden partners
+  persistence_or_reproducibility: Long-running user economy, land ownership, and avatar
+    identity
+  agents_characters_mechanics: Virtual land, economy, events, and user-created experiences
+  platform_runtime: Second Life viewer
+  rights_license_disclosed: unknown
+  safety_age_disclosed: 16+ registration requirement stated
+  access_requirements: account_and_client_required
+  unknown_manifest_fields:
+  - ai_role.material_ai_role_default
+  - world_structure.governance
+  reviewer_notes: Historic persistent world; AI role emerging via plugins rather than
+    core product.
+  confidence: 0.74
+  source_observed_at: '2026-02-01'
+  last_checked_at: '2026-07-22'
+  summary: Long-lived persistent virtual world with user economy and social systems.
+  setting: Continent-based virtual world with user-owned regions
+  linked_research_entity: platform:second_life
+  manifest_path: manifests/wg-200-social-004.json
+- id: wg-200-social-005
+  name: IMVU
+  canonical_source: https://www.imvu.com/
+  candidate_category: persistent_social
+  qualification:
+    status: qualifies
+    exclusion_reason: null
+    rule_evidence:
+      rule_1_stable_entry_point: 'Stable public URL resolves to product or documented
+        experience: https://www.imvu.com/'
+      rule_2_meaningful_interaction: 'Users affect outcomes via documented interaction:
+        Social rooms, avatar customization, chat, and virtual goods economy'
+      rule_3_bounded_setting_or_rules: 'Bounded setting or mechanics described: Themed
+        chat rooms with avatar expression and goods'
+      rule_4_persistence_or_reproducibility: 'Persistence or reproducibility documented:
+        Avatar inventory, rooms, and relationships persist'
+      rule_5_material_ai_role: 'Material AI role in runtime: AI chat bots and creator
+        tools documented for interactive rooms'
+      rule_6_identifiable_claimant: 'Named creator/operator: IMVU, Inc.'
+      rule_7_evaluable_access_and_safety: 'Access/safety disclosed or honestly unknown:
+        Free client with in-app purchases'
+  creator_operator: IMVU, Inc.
+  entry_point: https://www.imvu.com/
+  accessibility: Free client with in-app purchases
+  ai_role: AI chat bots and creator tools documented for interactive rooms
+  persistence_or_reproducibility: Avatar inventory, rooms, and relationships persist
+  agents_characters_mechanics: Social rooms, avatar customization, chat, and virtual
+    goods economy
+  platform_runtime: Desktop and mobile clients
+  rights_license_disclosed: unknown
+  safety_age_disclosed: 13+ or 18+ depending on room rating
+  access_requirements: unknown
+  unknown_manifest_fields:
+  - ai_role.model_disclosures
+  - trust.license_status
+  reviewer_notes: Social economy world with increasing AI chat integrations.
+  confidence: 0.77
+  source_observed_at: '2025-12-01'
+  last_checked_at: '2026-07-22'
+  summary: Avatar-based social world with persistent rooms and virtual economy.
+  setting: Themed chat rooms with avatar expression and goods
+  manifest_path: manifests/wg-200-social-005.json
+- id: wg-200-negative-001
+  name: ChatGPT
+  canonical_source: https://chat.openai.com/
+  candidate_category: negative_control
+  qualification:
+    status: excluded
+    exclusion_reason: single_purpose_assistant
+    rule_evidence:
+      rule_1_stable_entry_point: 'Stable public URL resolves to product or documented
+        experience: https://chat.openai.com/'
+      rule_2_meaningful_interaction: 'Users affect outcomes via documented interaction:
+        Single assistant thread without canon, map, or simulation rules'
+      rule_3_bounded_setting_or_rules: 'Bounded setting or mechanics described: Single
+        assistant thread without canon, map, or simulation rules'
+      rule_4_persistence_or_reproducibility: 'Persistence or reproducibility documented:
+        Chat threads persist but no world state model'
+      rule_5_material_ai_role: 'Material AI role in runtime: General-purpose conversational
+        assistant without bounded world context'
+      rule_6_identifiable_claimant: 'Named creator/operator: OpenAI'
+      rule_7_evaluable_access_and_safety: 'Access/safety disclosed or honestly unknown:
+        Account required; usage limits on free tier'
+  creator_operator: OpenAI
+  entry_point: https://chat.openai.com/
+  accessibility: Account required; usage limits on free tier
+  ai_role: General-purpose conversational assistant without bounded world context
+  persistence_or_reproducibility: Chat threads persist but no world state model
+  agents_characters_mechanics: Single assistant thread without canon, map, or simulation
+    rules
+  platform_runtime: Web and mobile
+  rights_license_disclosed: unknown
+  safety_age_disclosed: Usage policies published
+  access_requirements: unknown
+  unknown_manifest_fields:
+  - world_structure.setting
+  - world_structure.rules_or_mechanics
+  reviewer_notes: Canonical negative control for Rule 3 failure.
+  confidence: 0.95
+  source_observed_at: '2026-01-01'
+  last_checked_at: '2026-07-22'
+- id: wg-200-negative-002
+  name: Midjourney Explore
+  canonical_source: https://www.midjourney.com/explore
+  candidate_category: negative_control
+  qualification:
+    status: excluded
+    exclusion_reason: static_ai_media_only
+    rule_evidence:
+      rule_1_stable_entry_point: 'Stable public URL resolves to product or documented
+        experience: https://www.midjourney.com/explore'
+      rule_2_meaningful_interaction: 'Users affect outcomes via documented interaction:
+        Browse grid of images; no interactive world state changes'
+      rule_3_bounded_setting_or_rules: 'Bounded setting or mechanics described: Browse
+        grid of images; no interactive world state changes'
+      rule_4_persistence_or_reproducibility: 'Persistence or reproducibility documented:
+        Gallery of generated images'
+      rule_5_material_ai_role: 'Material AI role in runtime: Image generation model
+        produces static images'
+      rule_6_identifiable_claimant: 'Named creator/operator: Midjourney, Inc.'
+      rule_7_evaluable_access_and_safety: 'Access/safety disclosed or honestly unknown:
+        Discord or web account required'
+  creator_operator: Midjourney, Inc.
+  entry_point: https://www.midjourney.com/explore
+  accessibility: Discord or web account required
+  ai_role: Image generation model produces static images
+  persistence_or_reproducibility: Gallery of generated images
+  agents_characters_mechanics: Browse grid of images; no interactive world state changes
+  platform_runtime: Web and Discord
+  rights_license_disclosed: unknown
+  safety_age_disclosed: unknown
+  access_requirements: unknown
+  unknown_manifest_fields:
+  - experience.interaction_model
+  - world_structure.state_model
+  reviewer_notes: Static media gallery negative control.
+  confidence: 0.94
+  source_observed_at: '2025-11-01'
+  last_checked_at: '2026-07-22'
+- id: wg-200-negative-003
+  name: Unreal Engine
+  canonical_source: https://www.unrealengine.com/
+  candidate_category: negative_control
+  qualification:
+    status: excluded
+    exclusion_reason: platform_product_not_world
+    rule_evidence:
+      rule_1_stable_entry_point: 'Stable public URL resolves to product or documented
+        experience: https://www.unrealengine.com/'
+      rule_2_meaningful_interaction: 'Users affect outcomes via documented interaction:
+        Authoring tools, not a playable world instance'
+      rule_3_bounded_setting_or_rules: 'Bounded setting or mechanics described: Authoring
+        tools, not a playable world instance'
+      rule_4_persistence_or_reproducibility: 'Persistence or reproducibility documented:
+        Projects saved locally; no single shared world'
+      rule_5_material_ai_role: 'Material AI role in runtime: Engine tooling may integrate
+        AI plugins; product is SDK not a world'
+      rule_6_identifiable_claimant: 'Named creator/operator: Epic Games'
+      rule_7_evaluable_access_and_safety: 'Access/safety disclosed or honestly unknown:
+        Free engine download with royalty terms'
+  creator_operator: Epic Games
+  entry_point: https://www.unrealengine.com/download
+  accessibility: Free engine download with royalty terms
+  ai_role: Engine tooling may integrate AI plugins; product is SDK not a world
+  persistence_or_reproducibility: Projects saved locally; no single shared world
+  agents_characters_mechanics: Authoring tools, not a playable world instance
+  platform_runtime: Desktop engine
+  rights_license_disclosed: Epic Games license terms
+  safety_age_disclosed: unknown
+  access_requirements: unknown
+  unknown_manifest_fields:
+  - experience.entry_points_world_instance
+  reviewer_notes: Linked research entity (engine); must not count as World.
+  confidence: 0.96
+  source_observed_at: '2026-02-01'
+  last_checked_at: '2026-07-22'
+  linked_research_entity: engine:unreal_engine
+- id: wg-200-negative-004
+  name: OpenAI GPT-4
+  canonical_source: https://openai.com/index/gpt-4/
+  candidate_category: negative_control
+  qualification:
+    status: excluded
+    exclusion_reason: foundation_model_or_tool_not_world
+    rule_evidence:
+      rule_1_stable_entry_point: 'Stable public URL resolves to product or documented
+        experience: https://openai.com/index/gpt-4/'
+      rule_2_meaningful_interaction: 'Users affect outcomes via documented interaction:
+        Token prediction API without world container'
+      rule_3_bounded_setting_or_rules: 'Bounded setting or mechanics described: Token
+        prediction API without world container'
+      rule_4_persistence_or_reproducibility: 'Persistence or reproducibility documented:
+        No world state; model versioning only'
+      rule_5_material_ai_role: 'Material AI role in runtime: Foundation model weights/API
+        capability'
+      rule_6_identifiable_claimant: 'Named creator/operator: OpenAI'
+      rule_7_evaluable_access_and_safety: 'Access/safety disclosed or honestly unknown:
+        API access via developer account'
+  creator_operator: OpenAI
+  entry_point: https://platform.openai.com/docs/models/gpt-4
+  accessibility: API access via developer account
+  ai_role: Foundation model weights/API capability
+  persistence_or_reproducibility: No world state; model versioning only
+  agents_characters_mechanics: Token prediction API without world container
+  platform_runtime: Cloud API
+  rights_license_disclosed: OpenAI usage policies
+  safety_age_disclosed: unknown
+  access_requirements: unknown
+  unknown_manifest_fields:
+  - world_structure.setting
+  - experience.entry_points
+  reviewer_notes: Foundation model negative control.
+  confidence: 0.97
+  source_observed_at: '2025-06-01'
+  last_checked_at: '2026-07-22'
+  linked_research_entity: model:gpt-4
+- id: wg-200-negative-005
+  name: Roblox Platform
+  canonical_source: https://www.roblox.com/
+  candidate_category: negative_control
+  qualification:
+    status: excluded
+    exclusion_reason: platform_product_not_world
+    rule_evidence:
+      rule_1_stable_entry_point: 'Stable public URL resolves to product or documented
+        experience: https://www.roblox.com/'
+      rule_2_meaningful_interaction: 'Users affect outcomes via documented interaction:
+        App store for experiences, not one world'
+      rule_3_bounded_setting_or_rules: 'Bounded setting or mechanics described: App
+        store for experiences, not one world'
+      rule_4_persistence_or_reproducibility: 'Persistence or reproducibility documented:
+        Platform accounts persist; individual worlds are separate entries'
+      rule_5_material_ai_role: 'Material AI role in runtime: Platform hosts experiences;
+        AI features documented at platform level'
+      rule_6_identifiable_claimant: 'Named creator/operator: Roblox Corporation'
+      rule_7_evaluable_access_and_safety: 'Access/safety disclosed or honestly unknown:
+        Client required; many user worlds inside platform'
+  creator_operator: Roblox Corporation
+  entry_point: https://www.roblox.com/download
+  accessibility: Client required; many user worlds inside platform
+  ai_role: Platform hosts experiences; AI features documented at platform level
+  persistence_or_reproducibility: Platform accounts persist; individual worlds are
+    separate entries
+  agents_characters_mechanics: App store for experiences, not one world
+  platform_runtime: Roblox client
+  rights_license_disclosed: unknown
+  safety_age_disclosed: Family-friendly policies and parental controls documented
+  access_requirements: unknown
+  unknown_manifest_fields:
+  - identity.world_id_for_platform
+  reviewer_notes: Platform retained as linked entity; individual Roblox experiences
+    would be separate world candidates.
+  confidence: 0.93
+  source_observed_at: '2026-03-01'
+  last_checked_at: '2026-07-22'
+  linked_research_entity: platform:roblox

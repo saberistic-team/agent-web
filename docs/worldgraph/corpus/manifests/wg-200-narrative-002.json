@@ -1,0 +1,294 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "world_id": {
+      "value": "urn:worldgraph:corpus:wg-200-narrative-002",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://aidungeon.com/",
+        "evidence_snippet": "Derived corpus id wg-200-narrative-002",
+        "confidence": 1.0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "name": {
+      "value": "AI Dungeon",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://aidungeon.com/",
+        "evidence_snippet": "AI Dungeon",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://aidungeon.com/",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://aidungeon.com/",
+        "evidence_snippet": "https://aidungeon.com/",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Persistent text adventure worlds with generative AI dungeon master.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://aidungeon.com/",
+        "evidence_snippet": "Generative LLM narrates world, NPCs, and consequences from player text actions",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://aidungeon.com/",
+        "evidence_snippet": "Public product or documentation page reviewed",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "interactive_narrative",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://aidungeon.com/",
+        "evidence_snippet": "interactive_narrative",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Latitude Inc.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://aidungeon.com/",
+        "evidence_snippet": "Latitude Inc.",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "operator": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://play.aidungeon.com/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://aidungeon.com/",
+          "evidence_snippet": "Free tier with account; premium tiers for advanced models",
+          "confidence": 0.9,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "interactive_session",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://aidungeon.com/",
+        "evidence_snippet": "Users affect outcomes via documented interaction: Text-command exploration with inventory, quests, and multiplayer parties",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "persistent_session_state",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://aidungeon.com/",
+        "evidence_snippet": "Adventure save slots and shared multiplayer story state",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "account_required",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://aidungeon.com/",
+        "evidence_snippet": "Free tier with account; premium tiers for advanced models",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "age_guidance": {
+      "value": "13+ stated in terms; content moderation filters documented",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://aidungeon.com/",
+        "evidence_snippet": "13+ stated in terms; content moderation filters documented",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Generative LLM narrates world, NPCs, and consequences from player text actions",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://aidungeon.com/",
+        "evidence_snippet": "Generative LLM narrates world, NPCs, and consequences from player text actions",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://aidungeon.com/",
+        "evidence_snippet": "runtime",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "human_control_boundaries": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "Latitude Terms of Service govern user-generated adventure content",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://aidungeon.com/",
+        "evidence_snippet": "Latitude Terms of Service govern user-generated adventure content",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "provenance_evidence": [
+      {
+        "value": "https://aidungeon.com/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://aidungeon.com/",
+          "evidence_snippet": "Primary research source URL",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "content_safety_categories": [
+      {
+        "value": "unknown",
+        "provenance": {
+          "source_kind": "unknown",
+          "source_url": null,
+          "evidence_snippet": null,
+          "confidence": 0,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "interactive_narrative",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://aidungeon.com/",
+          "evidence_snippet": "interactive_narrative",
+          "confidence": 0.85,
+          "observed_at": "2026-07-22T12:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Long-running reference product for AI narrative worlds.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://aidungeon.com/",
+        "evidence_snippet": "Corpus research synthesis",
+        "confidence": 0.6,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Player-selected or custom scenarios with explicit world prompts",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://aidungeon.com/",
+        "evidence_snippet": "Bounded setting or mechanics described: Player-selected or custom scenarios with explicit world prompts",
+        "confidence": 0.85,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Text-command exploration with inventory, quests, and multiplayer parties",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://aidungeon.com/",
+        "evidence_snippet": "Mechanics from public documentation",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "platforms": [
+      {
+        "entity_type": "platform",
+        "label": {
+          "value": "Web and mobile apps",
+          "provenance": {
+            "source_kind": "source_observation",
+            "source_url": "https://aidungeon.com/",
+            "evidence_snippet": "Web and mobile apps",
+            "confidence": 0.85,
+            "observed_at": "2026-07-22T12:00:00+00:00",
+            "verification_status": "unverified"
+          }
+        }
+      }
+    ]
+  }
+}
