@@ -67,7 +67,7 @@ Allowed `claim_status`: `unclaimed`, `creator_claimed`, `domain_verified`,
 
 - JSON Schema: [world-manifest-v0.schema.json](./world-manifest-v0.schema.json)
 - Spike validator: `spike/worldgraph/manifest_schema.py`
-- Validation tests: `tests/test_worldgraph_spike.py`
+- Validation tests: `tests/test_world_manifest_v0.py`, `tests/test_worldgraph_manifest_v0.py`, `tests/test_worldgraph_spike.py`
 
 ## Qualifying source types (spike corpus)
 

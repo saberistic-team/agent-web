@@ -17,6 +17,16 @@ ALLOWED_CLAIM = frozenset(
     }
 )
 ALLOWED_QUALIFICATION = frozenset({"qualifies", "excluded", "pending_review"})
+ALLOWED_EXCLUSION_REASON = frozenset(
+    {
+        "static_ai_media_only",
+        "single_purpose_assistant",
+        "foundation_model_or_tool_not_world",
+        "platform_product_not_world",
+        "no_stable_entry_point",
+        "marketing_only_no_experience",
+    }
+)
 ALLOWED_SOURCE_KIND = frozenset(
     {"source_observation", "creator_declared", "derived", "unknown"}
 )
@@ -92,6 +102,14 @@ def validate_manifest_v0(manifest: dict[str, Any]) -> None:
         raise ManifestValidationError("trust.qualification_status invalid")
     if trust.get("claim_status") not in ALLOWED_CLAIM:
         raise ManifestValidationError("trust.claim_status invalid")
+
+    qualification_status = trust.get("qualification_status")
+    exclusion_reason = trust.get("exclusion_reason")
+    if qualification_status == "excluded":
+        if not isinstance(exclusion_reason, str) or exclusion_reason not in ALLOWED_EXCLUSION_REASON:
+            raise ManifestValidationError("trust.exclusion_reason required when excluded")
+    elif exclusion_reason is not None:
+        raise ManifestValidationError("trust.exclusion_reason only allowed when excluded")
 
     if summary := identity.get("summary"):
         if not _is_proven_field(summary, allow_unknown=True):

@@ -7,6 +7,30 @@ import re
 from typing import Any
 
 from spike.worldgraph.extractor import ExtractionResult, proven, unknown_field
+
+ALLOWED_EXCLUSION_REASONS = frozenset(
+    {
+        "static_ai_media_only",
+        "single_purpose_assistant",
+        "foundation_model_or_tool_not_world",
+        "platform_product_not_world",
+        "no_stable_entry_point",
+        "marketing_only_no_experience",
+    }
+)
+
+_LEGACY_EXCLUSION_REASONS = {
+    "foundation_model_not_world": "foundation_model_or_tool_not_world",
+}
+
+
+def normalize_exclusion_reason(reason: str | None) -> str | None:
+    if reason is None:
+        return None
+    normalized = _LEGACY_EXCLUSION_REASONS.get(reason, reason)
+    if normalized not in ALLOWED_EXCLUSION_REASONS:
+        return None
+    return normalized
 from spike.worldgraph.fetcher import strip_html_to_text
 from spike.worldgraph.prompt_injection import detect_injection_phrases, sanitize_model_field
 
@@ -56,8 +80,19 @@ class DeterministicExtractor:
         world_type = self._infer_world_type(text, qualification_hint)
 
         qualification_status = qualification_hint
-        if exclusion_reason:
+        normalized_exclusion_reason = normalize_exclusion_reason(exclusion_reason)
+        if normalized_exclusion_reason:
             qualification_status = "excluded"
+
+        trust: dict[str, Any] = {
+            "qualification_status": qualification_status,
+            "claim_status": "unclaimed",
+            "license_status": unknown_field(),
+        }
+        if qualification_status == "excluded":
+            if not normalized_exclusion_reason:
+                raise ValueError("excluded manifests require a valid exclusion_reason")
+            trust["exclusion_reason"] = normalized_exclusion_reason
 
         manifest: dict[str, Any] = {
             "schema_version": "world-manifest-v0",
@@ -132,16 +167,7 @@ class DeterministicExtractor:
                     confidence=0.5,
                 ),
             },
-            "trust": {
-                "qualification_status": qualification_status,
-                "claim_status": "unclaimed",
-                "license_status": unknown_field(),
-                **(
-                    {"exclusion_reason": exclusion_reason}
-                    if qualification_status == "excluded" and exclusion_reason
-                    else {}
-                ),
-            },
+            "trust": trust,
             "discovery": {
                 "tags": [proven(source_id, source_kind="derived", source_url=canonical_url, evidence_snippet=source_id, confidence=1.0)],
                 "semantic_description": summary,
