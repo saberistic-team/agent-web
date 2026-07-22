@@ -28,7 +28,7 @@ LINKEDIN_IMPORTABLE_FIELDS = (
     "last_interaction_at",
 )
 USER_PROTECTED_FIELDS = frozenset(
-    {"notes", "relationship_strength", "buying_roles", "former_colleague", "warm_introducer"}
+    {"notes", "relationship_strength", "buying_roles", "crm_context_tags"}
 )
 
 

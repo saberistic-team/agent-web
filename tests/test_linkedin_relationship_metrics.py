@@ -20,6 +20,8 @@ OWNER = "Grace Hopper"
 CONTACT = "Ada Lovelace"
 REFERENCE = date(2024, 3, 15)
 
+pytestmark = pytest.mark.unit
+
 
 def _message_row(
     *,
@@ -40,7 +42,6 @@ def _message_row(
     }
 
 
-@pytest.mark.unit
 def test_normalize_message_metadata_strips_bodies() -> None:
     meta = normalize_message_metadata(
         _message_row(
@@ -57,7 +58,6 @@ def test_normalize_message_metadata_strips_bodies() -> None:
     assert meta["from"] == CONTACT
 
 
-@pytest.mark.unit
 def test_strip_message_bodies_removes_private_fields() -> None:
     rows = strip_message_bodies(
         [
@@ -73,7 +73,6 @@ def test_strip_message_bodies_removes_private_fields() -> None:
     assert "SUBJECT" not in rows[0]
 
 
-@pytest.mark.unit
 def test_assert_no_message_bodies_rejects_transmission() -> None:
     with pytest.raises(ValueError, match="must not be transmitted"):
         assert_no_message_bodies(
@@ -89,7 +88,6 @@ def test_assert_no_message_bodies_rejects_transmission() -> None:
         )
 
 
-@pytest.mark.unit
 def test_one_way_solicitation_counts_outbound_only() -> None:
     rows = [
         _message_row(
@@ -119,7 +117,6 @@ def test_one_way_solicitation_counts_outbound_only() -> None:
     assert metrics["conversation_count"] == 1
 
 
-@pytest.mark.unit
 def test_two_way_conversation_requires_inbound_and_outbound() -> None:
     rows = [
         _message_row(
@@ -148,7 +145,6 @@ def test_two_way_conversation_requires_inbound_and_outbound() -> None:
     assert metrics["two_way_conversation"] is True
 
 
-@pytest.mark.unit
 def test_duplicate_export_rows_do_not_inflate_counts() -> None:
     row = _message_row(
         conversation_id="conv-dup",
@@ -177,7 +173,6 @@ def test_duplicate_export_rows_do_not_inflate_counts() -> None:
     assert len(second["message_keys"]) == 1
 
 
-@pytest.mark.unit
 def test_timestamp_boundaries_for_recent_interaction_flags() -> None:
     rows = [
         _message_row(
@@ -210,7 +205,6 @@ def test_timestamp_boundaries_for_recent_interaction_flags() -> None:
     assert outside_30["recent_interaction_90d"] is True
 
 
-@pytest.mark.unit
 def test_scoring_inputs_are_visible_and_deterministic() -> None:
     rows = [
         _message_row(
@@ -247,7 +241,6 @@ def test_scoring_inputs_are_visible_and_deterministic() -> None:
     }
 
 
-@pytest.mark.unit
 def test_message_identity_is_stable_for_incremental_merge() -> None:
     meta = normalize_message_metadata(
         _message_row(
