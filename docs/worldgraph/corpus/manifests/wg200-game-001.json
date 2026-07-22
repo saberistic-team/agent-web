@@ -1,0 +1,247 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "Mindcraft",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/mindcraft-bots/mindcraft",
+        "evidence_snippet": "Mindcraft",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://github.com/mindcraft-bots/mindcraft",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/mindcraft-bots/mindcraft",
+        "evidence_snippet": "https://github.com/mindcraft-bots/mindcraft",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "ai_game",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://github.com/mindcraft-bots/mindcraft",
+        "evidence_snippet": "ai_game",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://github.com/mindcraft-bots/mindcraft",
+        "evidence_snippet": "qualifies",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Minecraft world where multiple LLM-controlled bots collaborate and compete with voice/chat.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/mindcraft-bots/mindcraft",
+        "evidence_snippet": "Minecraft world where multiple LLM-controlled bots collaborate and compete with voice/chat.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "mindcraft-bots maintainers",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/mindcraft-bots/mindcraft",
+        "evidence_snippet": "mindcraft-bots maintainers",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://github.com/mindcraft-bots/mindcraft",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://github.com/mindcraft-bots/mindcraft",
+          "evidence_snippet": "https://github.com/mindcraft-bots/mindcraft",
+          "confidence": 0.85,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "multiplayer_social_interaction",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/mindcraft-bots/mindcraft",
+        "evidence_snippet": "multiplayer_social_interaction",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "Minecraft world saves; bot memory modules configurable.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/mindcraft-bots/mindcraft",
+        "evidence_snippet": "Minecraft world saves; bot memory modules configurable.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "Open-source; requires Minecraft Java",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/mindcraft-bots/mindcraft",
+        "evidence_snippet": "Open-source; requires Minecraft Java",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Player-hosted Minecraft servers",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/mindcraft-bots/mindcraft",
+        "evidence_snippet": "Player-hosted Minecraft servers",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Mining, building, voice chat integration",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/mindcraft-bots/mindcraft",
+        "evidence_snippet": "Mining, building, voice chat integration",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "value": "Multiple Mindcraft bots with distinct profiles.",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://github.com/mindcraft-bots/mindcraft",
+          "evidence_snippet": "Multiple Mindcraft bots with distinct profiles.",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "value": "Minecraft Java, Node.js bot harness",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://github.com/mindcraft-bots/mindcraft",
+          "evidence_snippet": "Minecraft Java, Node.js bot harness",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "LLMs drive bot planning, block placement, and player interaction in-world.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/mindcraft-bots/mindcraft",
+        "evidence_snippet": "LLMs drive bot planning, block placement, and player interaction in-world.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://github.com/mindcraft-bots/mindcraft",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "Repository license file",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/mindcraft-bots/mindcraft",
+        "evidence_snippet": "Repository license file",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "safety_categories": [
+      {
+        "value": "Depends on Minecraft account; project research-oriented",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://github.com/mindcraft-bots/mindcraft",
+          "evidence_snippet": "Depends on Minecraft account; project research-oriented",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "ai_game_ugc",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://github.com/mindcraft-bots/mindcraft",
+          "evidence_snippet": "ai_game_ugc",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Minecraft world where multiple LLM-controlled bots collaborate and compete with voice/chat.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/mindcraft-bots/mindcraft",
+        "evidence_snippet": "Minecraft world where multiple LLM-controlled bots collaborate and compete with voice/chat.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

@@ -1,0 +1,235 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "Luma Genie",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://lumalabs.ai/genie",
+        "evidence_snippet": "Luma Genie",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://lumalabs.ai/genie",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://lumalabs.ai/genie",
+        "evidence_snippet": "https://lumalabs.ai/genie",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "ai_spatial",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://lumalabs.ai/genie",
+        "evidence_snippet": "ai_spatial",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://lumalabs.ai/genie",
+        "evidence_snippet": "qualifies",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Text-to-interactive 3D scene generation where users preview explorable micro-worlds.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://lumalabs.ai/genie",
+        "evidence_snippet": "Text-to-interactive 3D scene generation where users preview explorable micro-worlds.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Luma AI",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://lumalabs.ai/genie",
+        "evidence_snippet": "Luma AI",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://lumalabs.ai/genie",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://lumalabs.ai/genie",
+          "evidence_snippet": "https://lumalabs.ai/genie",
+          "confidence": 0.85,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "spatial_exploration",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://lumalabs.ai/genie",
+        "evidence_snippet": "spatial_exploration",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "Generated scenes saved to user accounts when available",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://lumalabs.ai/genie",
+        "evidence_snippet": "Generated scenes saved to user accounts when available",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "Web waitlist/demo flows",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://lumalabs.ai/genie",
+        "evidence_snippet": "Web waitlist/demo flows",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Prompt-defined micro-scenes",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://lumalabs.ai/genie",
+        "evidence_snippet": "Prompt-defined micro-scenes",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Orbit/explore generated geometry",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://lumalabs.ai/genie",
+        "evidence_snippet": "Orbit/explore generated geometry",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "value": "None",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://lumalabs.ai/genie",
+          "evidence_snippet": "None",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "value": "Web",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://lumalabs.ai/genie",
+          "evidence_snippet": "Web",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Generative models create 3D scenes and object interactions from prompts.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://lumalabs.ai/genie",
+        "evidence_snippet": "Generative models create 3D scenes and object interactions from prompts.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "build_time",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://lumalabs.ai/genie",
+        "evidence_snippet": "build_time",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "Luma terms of service",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://lumalabs.ai/genie",
+        "evidence_snippet": "Luma terms of service",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "safety_categories": []
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "ai_spatial",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://lumalabs.ai/genie",
+          "evidence_snippet": "ai_spatial",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Text-to-interactive 3D scene generation where users preview explorable micro-worlds.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://lumalabs.ai/genie",
+        "evidence_snippet": "Text-to-interactive 3D scene generation where users preview explorable micro-worlds.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

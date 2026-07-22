@@ -1,0 +1,214 @@
+{
+  "schema_version": "worldgraph-corpus-validation-v1",
+  "corpus_path": "docs/worldgraph/corpus/candidates.json",
+  "validated_at": "2026-07-22",
+  "summary": {
+    "total_candidates": 30,
+    "qualifying_worlds": 25,
+    "excluded_controls": 5,
+    "manifests_validated": 25,
+    "manifests_passed": 25
+  },
+  "manifest_validation": [
+    {
+      "candidate_id": "wg200-narrative-001",
+      "name": "AI Dungeon",
+      "category": "interactive_narrative",
+      "manifest_path": "docs/worldgraph/corpus/manifests/wg200-narrative-001.json",
+      "validation_status": "pass",
+      "error": null
+    },
+    {
+      "candidate_id": "wg200-narrative-002",
+      "name": "Character.AI",
+      "category": "interactive_narrative",
+      "manifest_path": "docs/worldgraph/corpus/manifests/wg200-narrative-002.json",
+      "validation_status": "pass",
+      "error": null
+    },
+    {
+      "candidate_id": "wg200-narrative-003",
+      "name": "NovelAI",
+      "category": "interactive_narrative",
+      "manifest_path": "docs/worldgraph/corpus/manifests/wg200-narrative-003.json",
+      "validation_status": "pass",
+      "error": null
+    },
+    {
+      "candidate_id": "wg200-narrative-004",
+      "name": "Hidden Door",
+      "category": "interactive_narrative",
+      "manifest_path": "docs/worldgraph/corpus/manifests/wg200-narrative-004.json",
+      "validation_status": "pass",
+      "error": null
+    },
+    {
+      "candidate_id": "wg200-narrative-005",
+      "name": "Friends & Fables",
+      "category": "interactive_narrative",
+      "manifest_path": "docs/worldgraph/corpus/manifests/wg200-narrative-005.json",
+      "validation_status": "pass",
+      "error": null
+    },
+    {
+      "candidate_id": "wg200-spatial-001",
+      "name": "World Labs Marble",
+      "category": "ai_spatial",
+      "manifest_path": "docs/worldgraph/corpus/manifests/wg200-spatial-001.json",
+      "validation_status": "pass",
+      "error": null
+    },
+    {
+      "candidate_id": "wg200-spatial-002",
+      "name": "Skybox Blockade Labs",
+      "category": "ai_spatial",
+      "manifest_path": "docs/worldgraph/corpus/manifests/wg200-spatial-002.json",
+      "validation_status": "pass",
+      "error": null
+    },
+    {
+      "candidate_id": "wg200-spatial-003",
+      "name": "Decart Oasis",
+      "category": "ai_spatial",
+      "manifest_path": "docs/worldgraph/corpus/manifests/wg200-spatial-003.json",
+      "validation_status": "pass",
+      "error": null
+    },
+    {
+      "candidate_id": "wg200-spatial-004",
+      "name": "Luma Genie",
+      "category": "ai_spatial",
+      "manifest_path": "docs/worldgraph/corpus/manifests/wg200-spatial-004.json",
+      "validation_status": "pass",
+      "error": null
+    },
+    {
+      "candidate_id": "wg200-spatial-005",
+      "name": "Odyssey",
+      "category": "ai_spatial",
+      "manifest_path": "docs/worldgraph/corpus/manifests/wg200-spatial-005.json",
+      "validation_status": "pass",
+      "error": null
+    },
+    {
+      "candidate_id": "wg200-simulation-001",
+      "name": "AI Town",
+      "category": "agent_simulation",
+      "manifest_path": "docs/worldgraph/corpus/manifests/wg200-simulation-001.json",
+      "validation_status": "pass",
+      "error": null
+    },
+    {
+      "candidate_id": "wg200-simulation-002",
+      "name": "Generative Agents (Smallville)",
+      "category": "agent_simulation",
+      "manifest_path": "docs/worldgraph/corpus/manifests/wg200-simulation-002.json",
+      "validation_status": "pass",
+      "error": null
+    },
+    {
+      "candidate_id": "wg200-simulation-003",
+      "name": "Voyager",
+      "category": "agent_simulation",
+      "manifest_path": "docs/worldgraph/corpus/manifests/wg200-simulation-003.json",
+      "validation_status": "pass",
+      "error": null
+    },
+    {
+      "candidate_id": "wg200-simulation-004",
+      "name": "Concordia",
+      "category": "agent_simulation",
+      "manifest_path": "docs/worldgraph/corpus/manifests/wg200-simulation-004.json",
+      "validation_status": "pass",
+      "error": null
+    },
+    {
+      "candidate_id": "wg200-simulation-005",
+      "name": "CAMEL AI Society",
+      "category": "agent_simulation",
+      "manifest_path": "docs/worldgraph/corpus/manifests/wg200-simulation-005.json",
+      "validation_status": "pass",
+      "error": null
+    },
+    {
+      "candidate_id": "wg200-game-001",
+      "name": "Mindcraft",
+      "category": "ai_game_ugc",
+      "manifest_path": "docs/worldgraph/corpus/manifests/wg200-game-001.json",
+      "validation_status": "pass",
+      "error": null
+    },
+    {
+      "candidate_id": "wg200-game-002",
+      "name": "Brookhaven RP",
+      "category": "ai_game_ugc",
+      "manifest_path": "docs/worldgraph/corpus/manifests/wg200-game-002.json",
+      "validation_status": "pass",
+      "error": null
+    },
+    {
+      "candidate_id": "wg200-game-003",
+      "name": "Inworld Origins",
+      "category": "ai_game_ugc",
+      "manifest_path": "docs/worldgraph/corpus/manifests/wg200-game-003.json",
+      "validation_status": "pass",
+      "error": null
+    },
+    {
+      "candidate_id": "wg200-game-004",
+      "name": "Convai Playground",
+      "category": "ai_game_ugc",
+      "manifest_path": "docs/worldgraph/corpus/manifests/wg200-game-004.json",
+      "validation_status": "pass",
+      "error": null
+    },
+    {
+      "candidate_id": "wg200-game-005",
+      "name": "AI Roguelite",
+      "category": "ai_game_ugc",
+      "manifest_path": "docs/worldgraph/corpus/manifests/wg200-game-005.json",
+      "validation_status": "pass",
+      "error": null
+    },
+    {
+      "candidate_id": "wg200-social-001",
+      "name": "Second Life",
+      "category": "persistent_social",
+      "manifest_path": "docs/worldgraph/corpus/manifests/wg200-social-001.json",
+      "validation_status": "pass",
+      "error": null
+    },
+    {
+      "candidate_id": "wg200-social-002",
+      "name": "Decentraland",
+      "category": "persistent_social",
+      "manifest_path": "docs/worldgraph/corpus/manifests/wg200-social-002.json",
+      "validation_status": "pass",
+      "error": null
+    },
+    {
+      "candidate_id": "wg200-social-003",
+      "name": "Rec Room",
+      "category": "persistent_social",
+      "manifest_path": "docs/worldgraph/corpus/manifests/wg200-social-003.json",
+      "validation_status": "pass",
+      "error": null
+    },
+    {
+      "candidate_id": "wg200-social-004",
+      "name": "Horizon Worlds",
+      "category": "persistent_social",
+      "manifest_path": "docs/worldgraph/corpus/manifests/wg200-social-004.json",
+      "validation_status": "pass",
+      "error": null
+    },
+    {
+      "candidate_id": "wg200-social-005",
+      "name": "EVE Online",
+      "category": "persistent_social",
+      "manifest_path": "docs/worldgraph/corpus/manifests/wg200-social-005.json",
+      "validation_status": "pass",
+      "error": null
+    }
+  ]
+}

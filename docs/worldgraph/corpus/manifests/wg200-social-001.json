@@ -1,0 +1,247 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "Second Life",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://secondlife.com/",
+        "evidence_snippet": "Second Life",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://secondlife.com/",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://secondlife.com/",
+        "evidence_snippet": "https://secondlife.com/",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "persistent_social",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://secondlife.com/",
+        "evidence_snippet": "persistent_social",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://secondlife.com/",
+        "evidence_snippet": "qualifies",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Long-running persistent virtual world with user economy, land ownership, and social spaces.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://secondlife.com/",
+        "evidence_snippet": "Long-running persistent virtual world with user economy, land ownership, and social spaces.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Linden Lab",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://secondlife.com/",
+        "evidence_snippet": "Linden Lab",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://secondlife.com/",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://secondlife.com/",
+          "evidence_snippet": "https://secondlife.com/",
+          "confidence": 0.85,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "multiplayer_social_interaction",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://secondlife.com/",
+        "evidence_snippet": "multiplayer_social_interaction",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "Decades-long persistent world state and economy.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://secondlife.com/",
+        "evidence_snippet": "Decades-long persistent world state and economy.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "Free download; account required; mature regions age-gated",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://secondlife.com/",
+        "evidence_snippet": "Free download; account required; mature regions age-gated",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Continent-scale user-built world",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://secondlife.com/",
+        "evidence_snippet": "Continent-scale user-built world",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Land, currency, events, UGC commerce",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://secondlife.com/",
+        "evidence_snippet": "Land, currency, events, UGC commerce",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "value": "Resident avatars; scripted NPCs in experiences",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://secondlife.com/",
+          "evidence_snippet": "Resident avatars; scripted NPCs in experiences",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "value": "Second Life viewer",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://secondlife.com/",
+          "evidence_snippet": "Second Life viewer",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "AI NPC projects and creator tools emerging; platform uses ML moderation.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://secondlife.com/",
+        "evidence_snippet": "AI NPC projects and creator tools emerging; platform uses ML moderation.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://secondlife.com/",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "Linden Lab Terms of Service and IP policies",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://secondlife.com/",
+        "evidence_snippet": "Linden Lab Terms of Service and IP policies",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "safety_categories": [
+      {
+        "value": "16+ account; Adult regions 18+",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://secondlife.com/",
+          "evidence_snippet": "16+ account; Adult regions 18+",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "persistent_social",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://secondlife.com/",
+          "evidence_snippet": "persistent_social",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Long-running persistent virtual world with user economy, land ownership, and social spaces.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://secondlife.com/",
+        "evidence_snippet": "Long-running persistent virtual world with user economy, land ownership, and social spaces.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}

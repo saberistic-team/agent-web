@@ -1,0 +1,247 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "Concordia",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/google-deepmind/concordia",
+        "evidence_snippet": "Concordia",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://github.com/google-deepmind/concordia",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/google-deepmind/concordia",
+        "evidence_snippet": "https://github.com/google-deepmind/concordia",
+        "confidence": 0.95,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "agent_simulation",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://github.com/google-deepmind/concordia",
+        "evidence_snippet": "agent_simulation",
+        "confidence": 0.7,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://github.com/google-deepmind/concordia",
+        "evidence_snippet": "qualifies",
+        "confidence": 0.65,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Generative social simulation library for language-model agents in grounded environments.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/google-deepmind/concordia",
+        "evidence_snippet": "Generative social simulation library for language-model agents in grounded environments.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "creator": {
+      "value": "Google DeepMind",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/google-deepmind/concordia",
+        "evidence_snippet": "Google DeepMind",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://github.com/google-deepmind/concordia",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://github.com/google-deepmind/concordia",
+          "evidence_snippet": "https://github.com/google-deepmind/concordia",
+          "confidence": 0.85,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "simulation_tick_actions",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/google-deepmind/concordia",
+        "evidence_snippet": "simulation_tick_actions",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "Simulation episodes logged; configs reproducible from repo.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/google-deepmind/concordia",
+        "evidence_snippet": "Simulation episodes logged; configs reproducible from repo.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "Apache-2.0 repo; local simulations",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/google-deepmind/concordia",
+        "evidence_snippet": "Apache-2.0 repo; local simulations",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Scenario-dependent (e.g., politics, markets)",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/google-deepmind/concordia",
+        "evidence_snippet": "Scenario-dependent (e.g., politics, markets)",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "Turn-based simulation components",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/google-deepmind/concordia",
+        "evidence_snippet": "Turn-based simulation components",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "value": "Configurable cast of agents with roles",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://github.com/google-deepmind/concordia",
+          "evidence_snippet": "Configurable cast of agents with roles",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "platforms": [
+      {
+        "value": "Python",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://github.com/google-deepmind/concordia",
+          "evidence_snippet": "Python",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "LLM components handle observation, action proposals, and social interaction.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/google-deepmind/concordia",
+        "evidence_snippet": "LLM components handle observation, action proposals, and social interaction.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://github.com/google-deepmind/concordia",
+        "evidence_snippet": "runtime",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "Apache License 2.0",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/google-deepmind/concordia",
+        "evidence_snippet": "Apache License 2.0",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "safety_categories": [
+      {
+        "value": "Research library",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://github.com/google-deepmind/concordia",
+          "evidence_snippet": "Research library",
+          "confidence": 0.75,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "agent_simulation",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://github.com/google-deepmind/concordia",
+          "evidence_snippet": "agent_simulation",
+          "confidence": 1.0,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Generative social simulation library for language-model agents in grounded environments.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://github.com/google-deepmind/concordia",
+        "evidence_snippet": "Generative social simulation library for language-model agents in grounded environments.",
+        "confidence": 0.75,
+        "observed_at": "2026-07-22T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  }
+}
