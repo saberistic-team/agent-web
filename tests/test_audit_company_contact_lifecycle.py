@@ -65,6 +65,7 @@ def _company_service(**repo_overrides: MagicMock) -> tuple[CrmService, MagicMock
         "pipeline": MagicMock(),
         "import_batches": MagicMock(),
         "icp_scoring": MagicMock(),
+        "qualification": MagicMock(),
     }
     repos.update(repo_overrides)
     return CrmService(repos=CrmRepositories(**repos)), MagicMock(), repos

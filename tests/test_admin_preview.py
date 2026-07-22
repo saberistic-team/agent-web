@@ -868,6 +868,42 @@ def test_preview_icp_detail_includes_breakdown_and_override() -> None:
 
 
 @pytest.mark.unit
+def test_preview_qualification_targets_seed_stable() -> None:
+    import random
+
+    from app.admin_preview import build_preview_qualification_targets
+
+    now = datetime(2026, 7, 16, 12, 0, tzinfo=timezone.utc)
+    a = build_preview_qualification_targets(rng=random.Random(42), now=now)
+    b = build_preview_qualification_targets(rng=random.Random(42), now=now)
+    assert a == b
+    assert len(a) >= 3
+    assert all(row["tier"] in {"A", "B", "C"} for row in a)
+    assert all(int(row["score"]) >= 4 for row in a)
+
+
+@pytest.mark.unit
+def test_preview_qualification_targets_html_route() -> None:
+    import random
+
+    from app.admin_preview import build_preview_qualification_targets
+    from app.admin_qualification_pages import render_targets_list_page
+
+    rows = build_preview_qualification_targets(rng=random.Random(7))
+    html = render_targets_list_page(
+        targets=rows,
+        filters={key: None for key in ("tier", "category", "stage", "pipeline_stage", "owner", "freshness", "warm_path")},
+        working_lists=[],
+        csrf_token="csrf",
+        admin_username="preview",
+        preview_banner="Preview data — not production",
+    )
+    assert rows[0]["name"] in html
+    assert "Target lists" in html
+    assert "Preview data — not production" in html
+
+
+@pytest.mark.unit
 def test_preview_linkedin_reconcile_stable_with_seed() -> None:
     a = build_preview_linkedin_reconcile(rng=random.Random(42))
     b = build_preview_linkedin_reconcile(rng=random.Random(42))

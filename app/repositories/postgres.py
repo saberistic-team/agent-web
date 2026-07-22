@@ -1566,6 +1566,178 @@ class PostgresIcpScoringRepository:
         return [dict(row) for row in rows]
 
 
+class PostgresQualificationRepository:
+    def list_active_companies(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT *
+                FROM companies
+                WHERE archived_at IS NULL
+                ORDER BY name ASC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def get_latest_tier_for_company(
+        self, conn: psycopg.Connection, company_id: UUID
+    ) -> str | None:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT to_tier
+                FROM qualification_tier_history
+                WHERE company_id = %s
+                ORDER BY changed_at DESC, id DESC
+                LIMIT 1
+                """,
+                (company_id,),
+            )
+            row = cur.fetchone()
+        return str(row["to_tier"]) if row else None
+
+    def record_tier_change(
+        self,
+        conn: psycopg.Connection,
+        *,
+        company_id: UUID,
+        from_tier: str | None,
+        to_tier: str,
+        score: float,
+        changed_by: str,
+        snapshot_id: UUID | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO qualification_tier_history (
+                    company_id, from_tier, to_tier, score, changed_by, snapshot_id, metadata
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb)
+                RETURNING *
+                """,
+                (
+                    company_id,
+                    from_tier,
+                    to_tier,
+                    score,
+                    changed_by,
+                    snapshot_id,
+                    json.dumps(metadata or {}),
+                ),
+            )
+            row = cur.fetchone()
+        return dict(row)
+
+    def list_tier_history(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT h.*, c.name AS company_name
+                FROM qualification_tier_history AS h
+                JOIN companies AS c ON c.id = h.company_id
+                WHERE h.company_id = %s
+                ORDER BY h.changed_at DESC, h.id DESC
+                LIMIT %s
+                """,
+                (company_id, limit),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def create_working_list(
+        self,
+        conn: psycopg.Connection,
+        *,
+        name: str,
+        owner: str,
+        company_ids: list[UUID],
+        max_items: int,
+    ) -> dict[str, Any]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO qualification_working_lists (name, owner, max_items)
+                VALUES (%s, %s, %s)
+                RETURNING *
+                """,
+                (name, owner, max_items),
+            )
+            list_row = cur.fetchone()
+            list_id = list_row["id"]
+            for position, company_id in enumerate(company_ids):
+                cur.execute(
+                    """
+                    INSERT INTO qualification_working_list_items (
+                        list_id, company_id, position
+                    )
+                    VALUES (%s, %s, %s)
+                    """,
+                    (list_id, company_id, position),
+                )
+        return dict(list_row)
+
+    def list_working_lists_for_owner(
+        self,
+        conn: psycopg.Connection,
+        *,
+        owner: str,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    wl.*,
+                    COUNT(wli.company_id)::int AS item_count
+                FROM qualification_working_lists AS wl
+                LEFT JOIN qualification_working_list_items AS wli
+                    ON wli.list_id = wl.id
+                WHERE wl.owner = %s
+                GROUP BY wl.id
+                ORDER BY wl.updated_at DESC, wl.created_at DESC
+                LIMIT %s
+                """,
+                (owner, limit),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+    def get_working_list_items(
+        self,
+        conn: psycopg.Connection,
+        list_id: UUID,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT wli.company_id, wli.position, wli.added_at, c.name AS company_name
+                FROM qualification_working_list_items AS wli
+                JOIN companies AS c ON c.id = wli.company_id
+                WHERE wli.list_id = %s
+                ORDER BY wli.position ASC, wli.added_at ASC
+                """,
+                (list_id,),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
+
+
 class PostgresAuditEventRepository:
     def list_page(
         self,
@@ -1834,6 +2006,7 @@ class PostgresRepositories:
         self.pipeline = PostgresPipelineRepository()
         self.import_batches = PostgresImportBatchRepository()
         self.icp_scoring = PostgresIcpScoringRepository()
+        self.qualification = PostgresQualificationRepository()
 
 
 _default_repositories = PostgresRepositories()
@@ -1858,6 +2031,7 @@ def default_repositories() -> dict[str, Any]:
         "pipeline": repos.pipeline,
         "import_batches": repos.import_batches,
         "icp_scoring": repos.icp_scoring,
+        "qualification": repos.qualification,
     }
 
 

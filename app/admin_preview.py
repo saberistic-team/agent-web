@@ -140,6 +140,13 @@ PREVIEW_COMPANY_POPULATED_ID = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 PREVIEW_COMPANY_ARCHIVED_ID = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa02")
 PREVIEW_CONTACT_POPULATED_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
 PREVIEW_CONTACT_ARCHIVED_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbc")
+PREVIEW_QUALIFICATION_TARGET_IDS = (
+    UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa01"),
+    UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa02"),
+    UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa03"),
+    UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa04"),
+    UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa05"),
+)
 PREVIEW_CONTACT_FOUNDER_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbd1")
 PREVIEW_CONTACT_STALE_CTO_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbd2")
 PREVIEW_CONTACT_INVESTOR_POSSIBLE_ID = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbd3")
@@ -153,6 +160,7 @@ _SECTION_COLUMNS: dict[str, tuple[str, ...]] = {
     "/admin/companies": ("Company", "Category", "Stage", "Target", "Verified"),
     "/admin/contacts": ("Name", "Roles", "Company", "Email", "Last touch"),
     "/admin/signals": ("Company", "Score", "Version", "Type", "Calculated"),
+    "/admin/targets": ("Tier", "Company", "Score", "Signals", "Freshness"),
     "/admin/pipeline": ("Deal", "Company", "Stage", "Value", "Next step"),
     "/admin/imports": ("Job", "Rows", "Status", "Source", "Started"),
     "/admin/discovery": ("List", "Prospects", "Filter", "Owner", "Refreshed"),
@@ -570,6 +578,139 @@ def build_preview_section_rows(
             rows.append((company, person, stamp, rng.choice(STATUSES), "preview"))
 
     return tuple(rows)
+
+
+def build_preview_qualification_targets(
+    *,
+    filters: dict[str, str | None] | None = None,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> list[dict[str, object]]:
+    """Randomized tier A/B/C targets for ADMIN_PREVIEW_MODE."""
+    rng = _resolve_rng(rng, "qualification_targets")
+    now = _resolve_now(now)
+    filters = filters or {}
+    tiers = ("A", "B", "C")
+    targets: list[dict[str, object]] = []
+    for index, company_id in enumerate(PREVIEW_QUALIFICATION_TARGET_IDS):
+        tier = tiers[index % len(tiers)]
+        score = {"A": 9, "B": 7, "C": 5}[tier]
+        category = list(COMPANY_CATEGORIES)[index % len(COMPANY_CATEGORIES)]
+        stage = list(COMPANY_STAGES)[index % len(COMPANY_STAGES)]
+        pipeline_stage = list(PIPELINE_STAGES)[index % len(PIPELINE_STAGES)]
+        owner = rng.choice(("alex", "sam", "preview"))
+        has_warm = index % 2 == 0
+        freshness = rng.choice(("fresh", "stale", "unknown", "mixed"))
+        row: dict[str, object] = {
+            "company_id": str(company_id),
+            "id": company_id,
+            "name": COMPANY_NAMES[index % len(COMPANY_NAMES)],
+            "score": score,
+            "tier": tier,
+            "stage": stage,
+            "vertical": category,
+            "strongest_signals": [
+                rng.choice(
+                    (
+                        "Target vertical",
+                        "Funding stage fit",
+                        "Warm introduction path",
+                        "Fresh verified evidence",
+                    )
+                )
+            ],
+            "warm_path": f"{rng.choice(CONTACT_FIRST)} {rng.choice(CONTACT_LAST)} (introducer)"
+            if has_warm
+            else None,
+            "has_warm_path": has_warm,
+            "next_action": rng.choice(
+                ("Review evidence gaps", "Request intro", "Validate headcount", None)
+            ),
+            "evidence_freshness": freshness,
+            "missing_fields": ["company.headcount_estimate"] if index % 3 == 0 else [],
+            "pipeline_stage": pipeline_stage,
+            "pipeline_owner": owner,
+            "score_calculated_at": now,
+            "stale_evidence": freshness in {"stale", "mixed"},
+        }
+        if filters.get("tier") and row["tier"] != filters["tier"]:
+            continue
+        if filters.get("category") and row["vertical"] != filters["category"]:
+            continue
+        if filters.get("stage") and row["stage"] != filters["stage"]:
+            continue
+        if filters.get("pipeline_stage") and row["pipeline_stage"] != filters["pipeline_stage"]:
+            continue
+        if filters.get("owner") and str(row["pipeline_owner"]).lower() != str(filters["owner"]).lower():
+            continue
+        if filters.get("freshness") and row["evidence_freshness"] != filters["freshness"]:
+            continue
+        if filters.get("warm_path") == "yes" and not row["has_warm_path"]:
+            continue
+        if filters.get("warm_path") == "no" and row["has_warm_path"]:
+            continue
+        targets.append(row)
+    return targets
+
+
+def build_preview_qualification_working_lists(
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> list[dict[str, object]]:
+    rng = _resolve_rng(rng, "qualification_working_lists")
+    now = _resolve_now(now)
+    return [
+        {
+            "id": UUID(int=rng.getrandbits(128), version=4),
+            "name": "Q3 Tier A shortlist",
+            "item_count": 3,
+            "updated_at": now - timedelta(days=2),
+        },
+        {
+            "id": UUID(int=rng.getrandbits(128), version=4),
+            "name": "Warm-path follow-ups",
+            "item_count": 2,
+            "updated_at": now - timedelta(days=5),
+        },
+    ]
+
+
+def preview_qualification_target_exists(company_id: UUID) -> bool:
+    return company_id in PREVIEW_QUALIFICATION_TARGET_IDS
+
+
+def build_preview_qualification_target_detail(
+    company_id: UUID,
+    *,
+    rng: random.Random | None = None,
+    now: datetime | None = None,
+) -> tuple[dict[str, object], dict[str, object] | None, list[dict[str, object]]]:
+    rng = _resolve_rng(rng, f"qualification_target_detail:{company_id}")
+    now = _resolve_now(now)
+    targets = build_preview_qualification_targets(rng=rng, now=now)
+    target = next((row for row in targets if row["id"] == company_id), None)
+    company = {
+        "id": company_id,
+        "name": target["name"] if target else COMPANY_NAMES[0],
+    }
+    history = [
+        {
+            "changed_at": now - timedelta(days=14),
+            "from_tier": "B",
+            "to_tier": target["tier"] if target else "A",
+            "score": target["score"] if target else 9,
+            "changed_by": "preview",
+        },
+        {
+            "changed_at": now - timedelta(days=30),
+            "from_tier": None,
+            "to_tier": "B",
+            "score": 7,
+            "changed_by": "system",
+        },
+    ]
+    return company, target, history
 
 
 def build_preview_pipeline_companies(

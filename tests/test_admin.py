@@ -83,6 +83,7 @@ def test_admin_nav_links_include_required_destinations() -> None:
         "/admin/companies",
         "/admin/contacts",
         "/admin/signals",
+        "/admin/targets",
         "/admin/pipeline",
         "/admin/imports",
         "/admin/discovery",

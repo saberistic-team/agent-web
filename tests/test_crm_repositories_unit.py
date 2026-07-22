@@ -13,6 +13,7 @@ from app.repositories.postgres import (
     PostgresCompanyRepository,
     PostgresContactRepository,
     PostgresIcpScoringRepository,
+    PostgresQualificationRepository,
     PostgresResearchRecordRepository,
     PostgresSourceRecordRepository,
 )
@@ -254,6 +255,54 @@ def test_research_record_repository_create_and_list() -> None:
     conn3 = _mock_conn([row])
     contact_records = repo.list_for_contact(conn3, CONTACT_ID, limit=10)
     assert len(contact_records) == 1
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_qualification_repository_tier_history_and_working_lists() -> None:
+    repo = PostgresQualificationRepository()
+    list_id = UUID("77777777-7777-7777-7777-777777777777")
+
+    conn = _mock_conn([{"id": COMPANY_ID, "name": "Acme"}])
+    companies = repo.list_active_companies(conn, limit=5)
+    assert companies[0]["name"] == "Acme"
+
+    conn2 = _mock_conn({"to_tier": "A"})
+    assert repo.get_latest_tier_for_company(conn2, COMPANY_ID) == "A"
+
+    conn3 = _mock_conn({"id": 1, "to_tier": "A"})
+    change = repo.record_tier_change(
+        conn3,
+        company_id=COMPANY_ID,
+        from_tier="B",
+        to_tier="A",
+        score=8.0,
+        changed_by="operator",
+    )
+    assert change["to_tier"] == "A"
+
+    conn4 = _mock_conn([{"changed_at": None, "to_tier": "A", "company_name": "Acme"}])
+    history = repo.list_tier_history(conn4, COMPANY_ID)
+    assert history[0]["to_tier"] == "A"
+
+    conn5 = _mock_conn({"id": list_id, "name": "Shortlist", "owner": "operator", "max_items": 50})
+    created = repo.create_working_list(
+        conn5,
+        name="Shortlist",
+        owner="operator",
+        company_ids=[COMPANY_ID],
+        max_items=50,
+    )
+    assert created["name"] == "Shortlist"
+    assert conn5.cursor.return_value.__enter__.return_value.execute.call_count >= 2
+
+    conn6 = _mock_conn([{"name": "Shortlist", "item_count": 1, "updated_at": None}])
+    lists = repo.list_working_lists_for_owner(conn6, owner="operator")
+    assert lists[0]["item_count"] == 1
+
+    conn7 = _mock_conn([{"company_id": COMPANY_ID, "position": 0, "company_name": "Acme"}])
+    items = repo.get_working_list_items(conn7, list_id)
+    assert items[0]["company_name"] == "Acme"
 
 
 VERSION_ID = UUID("99999999-9999-9999-9999-999999999901")
