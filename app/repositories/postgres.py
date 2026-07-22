@@ -11,6 +11,7 @@ import psycopg
 
 from app.contacts import DECISION_MAKER_BUYING_ROLES
 from app.patch import UNSET, MaybeUnset
+from app.repositories.marketing_analytics import PostgresMarketingAnalyticsRepository
 from app.repositories.protocols import (
     ActivityRepository,
     AdminUserRepository,
@@ -2208,107 +2209,6 @@ class PostgresImportBatchRepository:
         return [dict(row) for row in rows]
 
 
-class PostgresAnalyticsDashboardRepository:
-    _ALLOWED_SLUG_PROPERTIES = frozenset({"case_study_slug", "article_slug"})
-
-    def count_events_by_name(
-        self,
-        conn: psycopg.Connection,
-        *,
-        start: datetime,
-        end: datetime,
-        event_names: tuple[str, ...],
-    ) -> dict[str, int]:
-        if not event_names:
-            return {}
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT event_name, COUNT(*)::int AS total
-                FROM analytics_events
-                WHERE occurred_at >= %s
-                  AND occurred_at < %s
-                  AND event_name = ANY(%s)
-                GROUP BY event_name
-                """,
-                (start, end, list(event_names)),
-            )
-            rows = cur.fetchall()
-        return {str(row["event_name"]): int(row["total"]) for row in rows}
-
-    def list_attribution_breakdown(
-        self,
-        conn: psycopg.Connection,
-        *,
-        start: datetime,
-        end: datetime,
-        limit: int,
-    ) -> list[dict[str, Any]]:
-        safe_limit = max(1, min(limit, 100))
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT
-                    COALESCE(NULLIF(TRIM(attribution->>'utm_source'), ''), '(direct)') AS source,
-                    COALESCE(NULLIF(TRIM(attribution->>'utm_medium'), ''), '(none)') AS medium,
-                    COALESCE(NULLIF(TRIM(attribution->>'utm_campaign'), ''), '(none)') AS campaign,
-                    COUNT(*)::int AS total_events,
-                    COUNT(*) FILTER (
-                        WHERE event_name = 'Lead Persisted'
-                    )::int AS leads
-                FROM analytics_events
-                WHERE occurred_at >= %s
-                  AND occurred_at < %s
-                GROUP BY 1, 2, 3
-                ORDER BY total_events DESC, source ASC, medium ASC, campaign ASC
-                LIMIT %s
-                """,
-                (start, end, safe_limit),
-            )
-            rows = cur.fetchall()
-        return [dict(row) for row in rows]
-
-    def list_content_engagement(
-        self,
-        conn: psycopg.Connection,
-        *,
-        start: datetime,
-        end: datetime,
-        event_name: str,
-        slug_property: str,
-        limit: int,
-    ) -> list[dict[str, Any]]:
-        if slug_property not in self._ALLOWED_SLUG_PROPERTIES:
-            raise ValueError(f"unsupported slug property: {slug_property}")
-        safe_limit = max(1, min(limit, 100))
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT properties->>%s AS slug, COUNT(*)::int AS views
-                FROM analytics_events
-                WHERE occurred_at >= %s
-                  AND occurred_at < %s
-                  AND event_name = %s
-                  AND properties->>%s IS NOT NULL
-                  AND TRIM(properties->>%s) <> ''
-                GROUP BY 1
-                ORDER BY views DESC, slug ASC
-                LIMIT %s
-                """,
-                (
-                    slug_property,
-                    start,
-                    end,
-                    event_name,
-                    slug_property,
-                    slug_property,
-                    safe_limit,
-                ),
-            )
-            rows = cur.fetchall()
-        return [dict(row) for row in rows]
-
-
 class PostgresRepositories:
     """Bundle of Postgres repository implementations including CRM + audit."""
 
@@ -2322,12 +2222,12 @@ class PostgresRepositories:
         self.audit_events = PostgresAuditEventRepository()
         self.project_briefs = PostgresProjectBriefRepository()
         self.acquisition_dashboard = PostgresAcquisitionDashboardRepository()
-        self.analytics_dashboard = PostgresAnalyticsDashboardRepository()
         self.action_queue = PostgresActionQueueRepository()
         self.pipeline = PostgresPipelineRepository()
         self.import_batches = PostgresImportBatchRepository()
         self.icp_scoring = PostgresIcpScoringRepository()
         self.qualification = PostgresQualificationRepository()
+        self.marketing_analytics = PostgresMarketingAnalyticsRepository()
 
 
 _default_repositories = PostgresRepositories()
@@ -2349,12 +2249,12 @@ def default_repositories() -> dict[str, Any]:
         "audit_events": repos.audit_events,
         "project_briefs": repos.project_briefs,
         "acquisition_dashboard": repos.acquisition_dashboard,
-        "analytics_dashboard": repos.analytics_dashboard,
         "action_queue": repos.action_queue,
         "pipeline": repos.pipeline,
         "import_batches": repos.import_batches,
         "icp_scoring": repos.icp_scoring,
         "qualification": repos.qualification,
+        "marketing_analytics": repos.marketing_analytics,
     }
 
 

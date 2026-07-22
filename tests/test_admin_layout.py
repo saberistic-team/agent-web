@@ -60,6 +60,21 @@ def _session_row(*, token_hash: str) -> dict[str, Any]:
     }
 
 
+def _empty_marketing_analytics_for_layout():
+    from app.marketing_analytics_dashboard import MarketingAnalyticsDashboardData, normalize_filters
+
+    return MarketingAnalyticsDashboardData(
+        filters=normalize_filters(reference=datetime.now(timezone.utc)),
+        engagement_events=(),
+        server_events=(),
+        conversion_rates=(),
+        attribution=(),
+        case_study_views=(),
+        article_views=(),
+        generated_at=datetime.now(timezone.utc),
+    )
+
+
 def _empty_dashboard_for_layout():
     from app.acquisition_dashboard import AcquisitionDashboardData
 
@@ -74,24 +89,6 @@ def _empty_dashboard_for_layout():
         stale_evidence=(),
         without_decision_maker=(),
         without_next_action=(),
-        generated_at=datetime.now(timezone.utc),
-    )
-
-
-def _empty_analytics_dashboard_for_layout():
-    from datetime import date
-
-    from app.analytics_dashboard import AnalyticsDashboardData
-
-    today = date.today()
-    return AnalyticsDashboardData(
-        date_from=today,
-        date_to=today,
-        event_volumes=(),
-        conversion_rates=(),
-        attribution_rows=(),
-        case_study_engagement=(),
-        article_engagement=(),
         generated_at=datetime.now(timezone.utc),
     )
 
@@ -454,7 +451,7 @@ def test_admin_nav_links_present(path: str) -> None:
         ("/admin/pipeline", "Pipeline", "pipeline-title", "Pipeline"),
         ("/admin/imports", "LinkedIn export preview", "imports-title", "Imports"),
         ("/admin/discovery", "Discovery", "admin-empty-title", "Discovery"),
-        ("/admin/analytics", "Analytics", "analytics-title", "Analytics"),
+        ("/admin/analytics", "Funnel &amp; attribution", "analytics-title", "Analytics"),
         ("/admin/content", "Content", "admin-empty-title", "Content"),
         ("/admin/settings", "Settings", "admin-empty-title", "Settings"),
     ],
@@ -481,6 +478,13 @@ def test_admin_active_nav(path: str, heading: str, title_id: str, nav_label: str
                     return_value=_empty_dashboard_for_layout(),
                 )
             )
+        if path == "/admin/analytics":
+            patchers.append(
+                patch(
+                    "app.admin_analytics_routes.load_marketing_analytics_dashboard",
+                    return_value=_empty_marketing_analytics_for_layout(),
+                )
+            )
         if path == "/admin/companies":
             patchers.append(patch("app.admin_routes._crm.list_companies", return_value=[]))
         if path == "/admin/contacts":
@@ -494,13 +498,6 @@ def test_admin_active_nav(path: str, heading: str, title_id: str, nav_label: str
         if path == "/admin/targets":
             patchers.append(patch("app.admin_qualification_routes._crm.list_qualification_targets", return_value=[]))
             patchers.append(patch("app.admin_qualification_routes._crm.list_qualification_working_lists", return_value=[]))
-        if path == "/admin/analytics":
-            patchers.append(
-                patch(
-                    "app.admin_analytics_routes.load_analytics_dashboard",
-                    return_value=_empty_analytics_dashboard_for_layout(),
-                )
-            )
         with patchers[0]:
             for extra in patchers[1:]:
                 extra.start()
@@ -515,9 +512,6 @@ def test_admin_active_nav(path: str, heading: str, title_id: str, nav_label: str
         assert 'id="dashboard-title"' in body
         assert "Today&apos;s attention" in body or "Today's attention" in body
         assert "Start building your pipeline" in body
-    elif path == "/admin/analytics":
-        assert f'id="{title_id}">{heading}</h1>' in body
-        assert "No events yet" in body
     else:
         assert f'id="{title_id}">{heading}</h1>' in body
     assert body.count('aria-current="page"') == 2

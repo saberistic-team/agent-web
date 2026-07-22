@@ -23,8 +23,8 @@ from app import case_studies, db, email_service, insights, page_service, server_
 from app.admin_auth import AdminLoginRequired, login_redirect_url
 from app.admin_icp_routes import router as admin_icp_router
 from app.admin_pipeline_routes import router as admin_pipeline_router
-from app.admin_action_queue_routes import router as admin_action_queue_router
 from app.admin_analytics_routes import router as admin_analytics_router
+from app.admin_action_queue_routes import router as admin_action_queue_router
 from app.admin_qualification_routes import router as admin_qualification_router
 from app.admin_routes import router as admin_router
 from app.actor_context import CORRELATION_HEADER

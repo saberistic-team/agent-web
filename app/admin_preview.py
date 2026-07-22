@@ -24,14 +24,13 @@ from app.acquisition_dashboard import (
     EvidenceRow,
     NextActionRow,
 )
-from app.analytics_dashboard import (
-    AnalyticsDashboardData,
+from app.marketing_analytics_dashboard import (
     AttributionRow,
     ContentEngagementRow,
-    DASHBOARD_EVENT_ORDER,
-    build_conversion_rates,
-    build_event_volumes,
-    parse_analytics_date_range,
+    ConversionRateRow,
+    EventCountRow,
+    MarketingAnalyticsDashboardData,
+    normalize_filters,
 )
 from app.acquisition_action_queue import (
     QUEUE_CATEGORY_DUE_TODAY,
@@ -351,69 +350,105 @@ def build_preview_acquisition_dashboard_data(
     )
 
 
-def build_preview_analytics_dashboard_data(
+def build_preview_marketing_analytics_data(
     *,
     date_from: str | None = None,
     date_to: str | None = None,
     rng: random.Random | None = None,
     now: datetime | None = None,
-) -> AnalyticsDashboardData:
+) -> MarketingAnalyticsDashboardData:
     """Randomized marketing analytics dashboard for ADMIN_PREVIEW_MODE screenshots."""
-    rng = _resolve_rng(rng, "analytics_dashboard")
+    rng = _resolve_rng(rng, "marketing_analytics")
     now = _resolve_now(now)
-    _, _, start_day, end_day = parse_analytics_date_range(date_from, date_to, now=now)
+    filters = normalize_filters(date_from=date_from, date_to=date_to, reference=now)
 
-    counts: dict[str, int] = {}
-    for event_name, _source, _label in DASHBOARD_EVENT_ORDER:
-        counts[event_name] = (
-            rng.randint(12, 480) if event_name == "Landing Viewed" else rng.randint(2, 120)
-        )
-
-    attribution_rows: list[AttributionRow] = []
-    sources = ("linkedin", "newsletter", "(direct)", "partner")
-    mediums = ("social", "email", "—", "referral")
-    campaigns = ("q3-launch", "diagnostic-offer", "—", "case-study-retarget")
-    for index in range(rng.randint(4, 6)):
-        attribution_rows.append(
-            AttributionRow(
-                utm_source=sources[index % len(sources)],
-                utm_medium=mediums[index % len(mediums)],
-                utm_campaign=campaigns[index % len(campaigns)],
-                landing_views=rng.randint(20, 240),
-                brief_starts=rng.randint(4, 48),
-                leads=rng.randint(2, 24),
-                checkouts=rng.randint(1, 16),
-                payments=rng.randint(0, 10),
-            )
-        )
-
-    case_slugs = ("atlas-freight", "northwind-labs", "cedar-protocol", "meridian-stack")
-    article_slugs = ("pipeline-velocity", "first-party-analytics", "operator-crm")
-    case_study_engagement = tuple(
-        ContentEngagementRow(
-            content_type="case_study",
-            slug=slug,
-            views=rng.randint(8, 96),
-        )
-        for slug in rng.sample(case_slugs, k=3)
+    engagement = (
+        EventCountRow("Landing Viewed", rng.randint(120, 480), "browser"),
+        EventCountRow("Services Viewed", rng.randint(40, 180), "browser"),
+        EventCountRow("Case Studies Viewed", rng.randint(30, 120), "browser"),
+        EventCountRow("Insights Viewed", rng.randint(25, 95), "browser"),
+        EventCountRow("Brief Viewed", rng.randint(18, 72), "browser"),
+        EventCountRow("Brief Form Started", rng.randint(8, 36), "browser"),
+        EventCountRow("Contact Initiated", rng.randint(2, 14), "browser"),
     )
-    article_engagement = tuple(
-        ContentEngagementRow(
-            content_type="article",
-            slug=slug,
-            views=rng.randint(6, 72),
-        )
-        for slug in rng.sample(article_slugs, k=2)
+    server = (
+        EventCountRow("Lead Persisted", rng.randint(4, 18), "server"),
+        EventCountRow("Checkout Opened", rng.randint(3, 12), "server"),
+        EventCountRow("Payment Completed", rng.randint(2, 9), "server"),
+    )
+    landing = engagement[0].count
+    brief_viewed = engagement[4].count
+    form_started = engagement[5].count
+    leads = server[0].count
+    checkouts = server[1].count
+    payments = server[2].count
+
+    conversion_rates = (
+        ConversionRateRow(
+            "Brief view → form start",
+            form_started,
+            brief_viewed,
+            round(100.0 * form_started / brief_viewed, 1),
+            "Count of `Brief Form Started` browser events",
+            "Count of `Brief Viewed` browser events",
+        ),
+        ConversionRateRow(
+            "Form start → lead",
+            leads,
+            form_started,
+            round(100.0 * leads / form_started, 1),
+            "Count of `Lead Persisted` server events",
+            "Count of `Brief Form Started` browser events",
+        ),
+        ConversionRateRow(
+            "Lead → checkout",
+            checkouts,
+            leads,
+            round(100.0 * checkouts / leads, 1),
+            "Count of `Checkout Opened` server events",
+            "Count of `Lead Persisted` server events",
+        ),
+        ConversionRateRow(
+            "Checkout → payment",
+            payments,
+            checkouts,
+            round(100.0 * payments / checkouts, 1),
+            "Count of `Payment Completed` server events",
+            "Count of `Checkout Opened` server events",
+        ),
+        ConversionRateRow(
+            "Landing → lead",
+            leads,
+            landing,
+            round(100.0 * leads / landing, 1),
+            "Count of `Lead Persisted` server events",
+            "Count of `Landing Viewed` browser events",
+        ),
     )
 
-    return AnalyticsDashboardData(
-        date_from=start_day,
-        date_to=end_day,
-        event_volumes=build_event_volumes(counts),
-        conversion_rates=build_conversion_rates(counts),
-        attribution_rows=tuple(attribution_rows),
-        case_study_engagement=case_study_engagement,
-        article_engagement=article_engagement,
+    attribution = (
+        AttributionRow("linkedin", "social", "launch-q3", 86, 6, 3),
+        AttributionRow("(direct)", "(none)", "(none)", 142, 4, 2),
+        AttributionRow("newsletter", "email", "insights-digest", 38, 2, 1),
+    )
+    case_study_views = (
+        ContentEngagementRow("northwind-labs", rng.randint(12, 48)),
+        ContentEngagementRow("helios-rail", rng.randint(8, 32)),
+        ContentEngagementRow("cedar-protocol", rng.randint(5, 24)),
+    )
+    article_views = (
+        ContentEngagementRow("first-party-analytics", rng.randint(10, 40)),
+        ContentEngagementRow("pipeline-attention", rng.randint(6, 28)),
+    )
+
+    return MarketingAnalyticsDashboardData(
+        filters=filters,
+        engagement_events=engagement,
+        server_events=server,
+        conversion_rates=conversion_rates,
+        attribution=attribution,
+        case_study_views=case_study_views,
+        article_views=article_views,
         generated_at=now,
     )
 

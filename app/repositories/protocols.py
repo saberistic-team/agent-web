@@ -423,33 +423,42 @@ class AcquisitionDashboardRepository(Protocol):
     ) -> list[dict[str, Any]]: ...
 
 
-class AnalyticsDashboardRepository(Protocol):
+class MarketingAnalyticsRepository(Protocol):
     def count_events_by_name(
         self,
         conn: psycopg.Connection,
         *,
         start: datetime,
-        end: datetime,
+        end_exclusive: datetime,
         event_names: tuple[str, ...],
-    ) -> dict[str, int]: ...
+    ) -> list[tuple[str, int]]: ...
 
-    def list_attribution_breakdown(
+    def count_content_views(
         self,
         conn: psycopg.Connection,
         *,
         start: datetime,
-        end: datetime,
+        end_exclusive: datetime,
+        event_name: str,
+        slug_property: str,
+        limit: int,
+    ) -> list[tuple[str, int]]: ...
+
+    def count_engagement_attribution(
+        self,
+        conn: psycopg.Connection,
+        *,
+        start: datetime,
+        end_exclusive: datetime,
         limit: int,
     ) -> list[dict[str, Any]]: ...
 
-    def list_content_engagement(
+    def count_brief_attribution(
         self,
         conn: psycopg.Connection,
         *,
         start: datetime,
-        end: datetime,
-        event_name: str,
-        slug_property: str,
+        end_exclusive: datetime,
         limit: int,
     ) -> list[dict[str, Any]]: ...
 
