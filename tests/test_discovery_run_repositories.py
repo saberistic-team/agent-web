@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from unittest.mock import MagicMock
 from uuid import UUID
 
@@ -77,3 +78,61 @@ def test_discovery_checkpoint_upsert_and_load() -> None:
         success=True,
     )
     assert "INSERT INTO discovery_source_checkpoints" in cur.execute.call_args.args[0]
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_discovery_run_get_by_id_and_sources() -> None:
+    conn = MagicMock()
+    cur = conn.cursor.return_value.__enter__.return_value
+    cur.fetchone.return_value = {"id": RUN_ID, "status": "completed"}
+    cur.fetchall.return_value = [{"source_id": "ycombinator", "status": "completed"}]
+    repo = PostgresDiscoveryRunRepository()
+
+    row = repo.get_by_id(conn, RUN_ID)
+    assert row is not None
+    assert row["status"] == "completed"
+
+    cur.fetchone.return_value = None
+    assert repo.get_by_id(conn, UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")) is None
+
+    cur.fetchall.return_value = [{"source_id": "ycombinator", "status": "completed"}]
+    sources = repo.list_sources_for_run(conn, RUN_ID)
+    assert len(sources) == 1
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_discovery_run_create_source_result() -> None:
+    conn = MagicMock()
+    cur = conn.cursor.return_value.__enter__.return_value
+    cur.fetchone.return_value = {"id": UUID("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")}
+    repo = PostgresDiscoveryRunRepository()
+    row = repo.create_source_result(
+        conn,
+        run_id=RUN_ID,
+        source_id="ycombinator",
+        status="completed",
+        fetched_count=10,
+        accepted_count=8,
+        rejected_count=1,
+        error_count=1,
+        checkpoint=DiscoveryCheckpoint(cursor="5", etag='W/"etag"'),
+        errors=[{"code": "normalize_failed", "message": "bad row"}],
+    )
+    assert "INSERT INTO discovery_run_sources" in cur.execute.call_args.args[0]
+    assert row["id"] == UUID("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_discovery_run_latest_scheduled_started_at() -> None:
+    conn = MagicMock()
+    cur = conn.cursor.return_value.__enter__.return_value
+    started = datetime(2026, 7, 1, tzinfo=timezone.utc)
+    cur.fetchone.return_value = {"started_at": started}
+    repo = PostgresDiscoveryRunRepository()
+    assert repo.latest_scheduled_started_at(conn) == started.isoformat()
+
+    cur.fetchone.return_value = None
+    assert repo.latest_scheduled_started_at(conn) is None

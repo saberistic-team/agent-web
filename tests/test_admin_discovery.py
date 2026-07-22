@@ -75,12 +75,14 @@ def authenticated_admin() -> Generator[dict[str, str], None, None]:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_admin_discovery_list_requires_auth() -> None:
     response = client.get("/admin/discovery")
     assert response.status_code == 303
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_admin_discovery_list_preview(
     authenticated_admin: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -95,6 +97,7 @@ def test_admin_discovery_list_preview(
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_admin_discovery_detail_preview(
     authenticated_admin: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -110,6 +113,7 @@ def test_admin_discovery_detail_preview(
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_admin_discovery_manual_run_redirects_to_detail(
     authenticated_admin: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -141,3 +145,86 @@ def test_admin_discovery_manual_run_redirects_to_detail(
     )
     assert response.status_code == 303
     assert response.headers["location"] == f"/admin/discovery/runs/{expected_run_id}"
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_admin_discovery_list_with_database(
+    authenticated_admin: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from uuid import uuid4
+
+    run_id = uuid4()
+    mock_service = MagicMock()
+    mock_service.list_runs.return_value = (
+        [
+            {
+                "id": run_id,
+                "trigger_type": "scheduled",
+                "status": "completed",
+                "enabled_sources": ["ycombinator"],
+                "actor": "scheduler",
+                "started_at": "2026-07-01T00:00:00+00:00",
+                "finished_at": "2026-07-01T00:05:00+00:00",
+            }
+        ],
+        1,
+    )
+    monkeypatch.setattr(
+        "app.admin_discovery_routes.get_discovery_run_service",
+        lambda: mock_service,
+    )
+    response = client.get("/admin/discovery", cookies=authenticated_admin)
+    assert response.status_code == 200
+    assert "scheduled" in response.text
+    assert str(run_id)[:8] in response.text
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_admin_discovery_detail_with_database(
+    authenticated_admin: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from uuid import uuid4
+
+    run_id = uuid4()
+    mock_service = MagicMock()
+    mock_service.get_run.return_value = {
+        "run": {
+            "id": run_id,
+            "trigger_type": "manual",
+            "status": "partial",
+            "actor": "operator",
+            "started_at": "2026-07-01T00:00:00+00:00",
+            "finished_at": "2026-07-01T00:05:00+00:00",
+            "enabled_sources": ["ycombinator"],
+            "lock_acquired": True,
+            "correlation_id": "corr-1",
+            "error_message": None,
+        },
+        "sources": [
+            {
+                "source_id": "ycombinator",
+                "status": "partial",
+                "fetched_count": 5,
+                "accepted_count": 4,
+                "rejected_count": 0,
+                "error_count": 1,
+                "checkpoint_cursor": "2",
+                "checkpoint_etag": None,
+                "checkpoint_last_modified": None,
+                "errors": [{"code": "normalize_failed", "message": "bad row"}],
+            }
+        ],
+    }
+    monkeypatch.setattr(
+        "app.admin_discovery_routes.get_discovery_run_service",
+        lambda: mock_service,
+    )
+    response = client.get(f"/admin/discovery/runs/{run_id}", cookies=authenticated_admin)
+    assert response.status_code == 200
+    assert "partial" in response.text
+    assert "bad row" in response.text
+

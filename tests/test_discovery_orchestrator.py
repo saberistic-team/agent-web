@@ -131,12 +131,14 @@ class _FakeLock:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_schedule_due_when_no_prior_run() -> None:
     repo = _FakeRepo()
     assert schedule_due(object(), interval_days=7, repo=repo) is True
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_schedule_not_due_within_interval() -> None:
     repo = _FakeRepo()
     recent = datetime.now(timezone.utc) - timedelta(days=2)
@@ -145,6 +147,7 @@ def test_schedule_not_due_within_interval() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_run_source_with_retries_recovers() -> None:
     attempts = {"count": 0}
 
@@ -180,6 +183,7 @@ def test_run_source_with_retries_recovers() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_execute_discovery_run_skips_when_lock_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
     repo = _FakeRepo()
 
@@ -217,6 +221,7 @@ def test_execute_discovery_run_skips_when_lock_unavailable(monkeypatch: pytest.M
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_partial_failure_preserves_checkpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     repo = _FakeRepo()
     repo.checkpoints["good"] = DiscoveryCheckpoint(cursor="keep-me")
@@ -261,6 +266,7 @@ def test_partial_failure_preserves_checkpoint(monkeypatch: pytest.MonkeyPatch) -
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_discovery_source_retryable_failure_wraps_result() -> None:
     failed = DiscoveryRunResult(
         source_id="x",
@@ -268,3 +274,92 @@ def test_discovery_source_retryable_failure_wraps_result() -> None:
     )
     wrapped = DiscoverySourceRetryableFailure(failed)
     assert wrapped.result is failed
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_execute_discovery_run_skips_disabled_source(monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = _FakeRepo()
+    monkeypatch.setattr(
+        "app.discovery.orchestrator.DiscoveryRunLock",
+        lambda conn: _FakeLock(conn),
+    )
+    registry = DiscoverySourceRegistry()
+    registry.register(_adapter("disabled", lambda _cp: DiscoveryRunResult(source_id="disabled")))
+    result = execute_discovery_run(
+        _FakeConn(),
+        registry,
+        trigger_type="manual",
+        actor="operator",
+        correlation_id="corr-disabled",
+        config=DiscoveryRunConfig(retry_max_attempts=1, retry_base_seconds=0.0, retry_cap_seconds=0.0),
+        enabled_sources=["disabled"],
+        repo=repo,
+        sleep=lambda _delay: None,
+    )
+    assert result.status == "completed"
+    assert repo.sources[0]["status"] == "skipped"
+    assert repo.sources[0]["errors"][0]["code"] == "source_disabled"
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_execute_discovery_run_records_orchestration_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _FakeRepo()
+    monkeypatch.setattr(
+        "app.discovery.orchestrator.DiscoveryRunLock",
+        lambda conn: _FakeLock(conn),
+    )
+    monkeypatch.setattr(
+        "app.discovery.orchestrator.run_source_with_retries",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    registry = DiscoverySourceRegistry()
+    registry.register(_adapter("alpha", lambda _cp: DiscoveryRunResult(source_id="alpha")))
+    registry.enable("alpha")
+    result = execute_discovery_run(
+        _FakeConn(),
+        registry,
+        trigger_type="manual",
+        actor="operator",
+        correlation_id="corr-fail",
+        config=DiscoveryRunConfig(retry_max_attempts=1, retry_base_seconds=0.0, retry_cap_seconds=0.0),
+        enabled_sources=["alpha"],
+        repo=repo,
+        sleep=lambda _delay: None,
+    )
+    assert result.status == "failed"
+    assert repo.runs[-1]["status"] == "failed"
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_schedule_due_parses_zulu_timestamp() -> None:
+    repo = _FakeRepo()
+    repo.latest_scheduled = "2026-07-01T00:00:00Z"
+    assert schedule_due(
+        object(),
+        interval_days=7,
+        repo=repo,
+        now=datetime(2026, 7, 10, tzinfo=timezone.utc),
+    ) is True
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_run_source_with_retries_unknown_source_raises() -> None:
+    registry = DiscoverySourceRegistry()
+    with pytest.raises(KeyError, match="unknown discovery source"):
+        run_source_with_retries(
+            registry,
+            "missing",
+            checkpoint=None,
+            config=DiscoveryRunConfig(
+                retry_max_attempts=1,
+                retry_base_seconds=0.0,
+                retry_cap_seconds=0.0,
+            ),
+            sleep=lambda _delay: None,
+        )

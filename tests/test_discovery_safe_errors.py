@@ -9,6 +9,7 @@ from app.discovery.types import DiscoveryError
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_safe_error_message_redacts_secrets() -> None:
     raw = "api_key=supersecret token=abc123 bearer deadbeef"
     safe = safe_error_message(raw)
@@ -17,6 +18,7 @@ def test_safe_error_message_redacts_secrets() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_safe_discovery_errors_truncates_messages() -> None:
     errors = [
         DiscoveryError(code="adapter_failure", message="x" * 600),

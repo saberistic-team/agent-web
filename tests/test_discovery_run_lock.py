@@ -14,6 +14,7 @@ from app.discovery.run_lock import (
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_discovery_run_lock_acquire_and_release() -> None:
     conn = MagicMock()
     cur = conn.cursor.return_value.__enter__.return_value
@@ -34,6 +35,7 @@ def test_discovery_run_lock_acquire_and_release() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_discovery_run_lock_not_acquired() -> None:
     conn = MagicMock()
     cur = conn.cursor.return_value.__enter__.return_value

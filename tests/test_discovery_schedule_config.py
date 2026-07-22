@@ -30,6 +30,7 @@ def _settings(**overrides: object) -> Settings:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_discovery_schedule_active_requires_production_flag_and_db() -> None:
     assert _settings(discovery_scheduler_enabled=True).discovery_schedule_active is True
     assert _settings(discovery_scheduler_enabled=False).discovery_schedule_active is False
@@ -47,12 +48,14 @@ def test_discovery_schedule_active_requires_production_flag_and_db() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_discovery_enabled_source_ids_parsed_from_env_string() -> None:
     settings = _settings(discovery_enabled_sources="ycombinator, rss-demo ,api")
     assert settings.discovery_enabled_source_ids == ["ycombinator", "rss-demo", "api"]
 
 
 @pytest.mark.unit
+@pytest.mark.integration
 def test_default_schedule_interval_is_weekly() -> None:
     settings = _settings()
     assert settings.discovery_schedule_interval_days == 7
