@@ -184,6 +184,31 @@ def test_build_event_payload_accepts_contact_initiated() -> None:
 
 
 @pytest.mark.unit
+def test_checkout_cancelled_accepts_client_payload_without_brief_id() -> None:
+    """Browser cancel redirect sends page + funnel_step only (no brief_id)."""
+    event = schema.build_event_payload(
+        event_name=schema.EVENT_CHECKOUT_CANCELLED,
+        anonymous_session_id=VALID_SESSION,
+        pathname="/brief",
+        properties={"page": "/brief", "funnel_step": 6},
+    )
+    assert event.properties["funnel_step"] == 6
+    assert "brief_id" not in event.properties
+
+
+@pytest.mark.unit
+def test_checkout_cancelled_still_accepts_server_payload_with_brief_id() -> None:
+    event = schema.build_event_payload(
+        event_name=schema.EVENT_CHECKOUT_CANCELLED,
+        anonymous_session_id=VALID_SESSION,
+        pathname="/brief",
+        properties={"brief_id": 9, "funnel_step": 6, "linkage_source": "server_checkout_cancelled"},
+    )
+    assert event.properties["brief_id"] == 9
+    assert event.linkage_state == schema.LinkageState.CRM_BRIEF_LINKED
+
+
+@pytest.mark.unit
 def test_rejects_unknown_event_name() -> None:
     with pytest.raises(schema.AnalyticsEventValidationError, match="Unknown event name"):
         schema.build_event_payload(

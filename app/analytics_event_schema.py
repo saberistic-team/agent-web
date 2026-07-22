@@ -172,7 +172,8 @@ _EVENT_REQUIRED_PROPERTIES: dict[str, frozenset[str]] = {
     EVENT_CASE_STUDY_VIEWED: frozenset({"case_study_slug"}),
     EVENT_INSIGHT_VIEWED: frozenset({"article_slug"}),
     EVENT_CONTACT_INITIATED: frozenset({"contact_channel", "funnel_step"}),
-    EVENT_CHECKOUT_CANCELLED: frozenset({"brief_id", "funnel_step"}),
+    # Client cancel redirect has no brief_id; server Stripe expiry includes it.
+    EVENT_CHECKOUT_CANCELLED: frozenset({"funnel_step"}),
     EVENT_NOTIFICATION_OUTCOME: frozenset(
         {"brief_id", "notification_kind", "notification_outcome"}
     ),

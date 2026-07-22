@@ -10,6 +10,7 @@ from typing import Literal
 import psycopg
 
 from app.analytics_event_schema import (
+    EVENT_ABOUT_VIEWED,
     EVENT_BRIEF_FORM_STARTED,
     EVENT_BRIEF_VIEWED,
     EVENT_CASE_STUDIES_VIEWED,
@@ -37,6 +38,7 @@ _DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 DASHBOARD_EVENT_NAMES: tuple[str, ...] = (
     EVENT_LANDING_VIEWED,
+    EVENT_ABOUT_VIEWED,
     EVENT_SERVICES_VIEWED,
     EVENT_CASE_STUDIES_VIEWED,
     EVENT_CASE_STUDY_VIEWED,
@@ -313,6 +315,7 @@ def load_analytics_dashboard(
 
     engagement_order = (
         EVENT_LANDING_VIEWED,
+        EVENT_ABOUT_VIEWED,
         EVENT_SERVICES_VIEWED,
         EVENT_CASE_STUDIES_VIEWED,
         EVENT_CASE_STUDY_VIEWED,

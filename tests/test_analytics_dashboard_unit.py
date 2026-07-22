@@ -20,6 +20,7 @@ from app.analytics_dashboard import (
     render_analytics_export_csv,
 )
 from app.analytics_event_schema import (
+    EVENT_ABOUT_VIEWED,
     EVENT_BRIEF_FORM_STARTED,
     EVENT_BRIEF_VIEWED,
     EVENT_CHECKOUT_OPENED,
@@ -124,6 +125,33 @@ def test_load_analytics_dashboard_zero_denominator_rate() -> None:
     empty_den = next(row for row in data.conversion_rates if row.key == "brief_to_form")
     assert empty_den.denominator == 0
     assert empty_den.rate_pct is None
+
+
+@pytest.mark.unit
+def test_load_analytics_dashboard_includes_about_viewed_engagement() -> None:
+    repo = MagicMock()
+    repo.count_events_in_range.return_value = [
+        (EVENT_LANDING_VIEWED, 10),
+        (EVENT_ABOUT_VIEWED, 4),
+    ]
+    repo.count_attribution_in_range.return_value = []
+    repo.count_leads_by_utm_source.return_value = []
+    repo.count_content_engagement.return_value = []
+
+    data = load_analytics_dashboard(
+        MagicMock(),
+        repo,
+        date_range=AnalyticsDateRange(start=NOW - timedelta(days=7), end=NOW, label="7d"),
+        generated_at=NOW,
+    )
+    engagement_names = [row.event_name for row in data.engagement_events]
+    assert EVENT_LANDING_VIEWED in engagement_names
+    assert EVENT_ABOUT_VIEWED in engagement_names
+    about = next(row for row in data.engagement_events if row.event_name == EVENT_ABOUT_VIEWED)
+    assert about.count == 4
+    assert about.source == "browser"
+    called_names = repo.count_events_in_range.call_args.kwargs["event_names"]
+    assert EVENT_ABOUT_VIEWED in called_names
 
 
 @pytest.mark.unit
