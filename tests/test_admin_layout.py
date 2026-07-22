@@ -473,7 +473,7 @@ def test_admin_active_nav(path: str, heading: str, title_id: str, nav_label: str
 
             patchers.append(
                 patch(
-                    "app.admin_routes.load_marketing_analytics_dashboard",
+                    "app.admin_analytics_routes.load_marketing_analytics_dashboard",
                     return_value=empty_marketing_analytics_dashboard(),
                 )
             )
