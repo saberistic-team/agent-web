@@ -126,7 +126,8 @@ jobs:
           ISSUE: ${{ steps.meta.outputs.issue }}
         run: |
           set -euo pipefail
-          # Fail closed unless Reviewer posted a complete acceptance checklist.
+          # Fail closed unless Reviewer posted a complete acceptance checklist
+          # and issue dependencies are met (scripts/issue_deps.py / #204).
           python scripts/acceptance.py \
             --repo "${{ github.repository }}" \
             --issue "${ISSUE}" \

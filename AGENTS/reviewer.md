@@ -14,14 +14,20 @@ issue’s original acceptance criteria before `review:approved`.
 
 Before approving you must:
 
-1. Confirm the linked PR **merges cleanly** into its base (`mergeable` /
+1. Confirm **dependencies are met** (`scripts/issue_deps.py`): no open
+   GitHub `blockedBy`, no open `Depends on: #N` targets, and no prose-only
+   `## Dependencies` section. If unmet, request changes with
+   `terminal: true` / open-dependencies wording so orchestration sets
+   `status:blocked` — **do not** requeue Builder/Docs and **do not** approve
+   (learned from [#204](https://github.com/saberistic-team/agent-web/issues/204)).
+2. Confirm the linked PR **merges cleanly** into its base (`mergeable` /
    `mergeable_state` not dirty). If GitHub reports conflicts (e.g. another
    branch merged after Builder/Docs handed off), **request changes immediately**
    and return the issue to the implementing agent (`agent:builder` or
    `agent:docs` via the priority queue — dispatcher uses `type:*`) — do not
    approve or spend the rest of the review budget on a conflicted PR. Merge
    conflicts are always implementing-agent work on the same PR head.
-2. Capture **headless Chromium screenshots** via Actions Playwright
+3. Capture **headless Chromium screenshots** via Actions Playwright
    (`scripts/screenshot_deploy.py`, preferring the **PR-head** copy under
    `COVERAGE_ROOT` when present — see [docs/SCREENSHOTS.md](../docs/SCREENSHOTS.md))
    at **desktop and mobile** viewports (plus admin tablet / narrow-desktop /
@@ -34,18 +40,18 @@ Before approving you must:
    the PR touches no visual pages (tests/docs only). Upload all PNGs in
    **one** commit via `upload_to_branch` (never one Contents API commit per
    image — that storms CI and can dirty the PR mid-review).
-3. Check **visual readability** on the **PR branch** screenshots / live
+4. Check **visual readability** on the **PR branch** screenshots / live
    capture: hero and primary copy must stay inside the viewport (no horizontal
    overflow / text out of frame on mobile). New admin/data tables under
    ``ADMIN_PREVIEW_MODE`` must show **randomized mock rows** (not an empty
    “no records yet” shell) unless the issue is explicitly about empty states.
-4. Run **Cursor / OpenAI / Models AI review** ([docs/MODELS.md](../docs/MODELS.md),
+5. Run **Cursor / OpenAI / Models AI review** ([docs/MODELS.md](../docs/MODELS.md),
    [docs/DESIGN.md](../docs/DESIGN.md), [docs/TESTING.md](../docs/TESTING.md))
    — prefers Cursor when `CURSOR_API_KEY` is set. Do **not** request changes
    for missing saberistic.com pre shots or for `/admin` evidence that was
    already captured (or correctly skipped) under `ADMIN_PREVIEW_MODE`.
-5. Enforce **service coverage** on `app/`: unit ≥90%, integration ≥70%
-6. Post an **`### acceptance_checklist`** that marks each acceptance criterion
+6. Enforce **service coverage** on `app/`: unit ≥90%, integration ≥70%
+7. Post an **`### acceptance_checklist`** that marks each acceptance criterion
    done/not_done with links to evidence (PR, commits, files, screenshots).
    **Pre-merge “published” criteria** (e.g. launch articles live on `/insights`)
    are satisfied by **PR-head evidence** — code routes, `LAUNCH_REVIEW.md` /
