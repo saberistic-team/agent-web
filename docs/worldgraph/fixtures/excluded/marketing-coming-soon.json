@@ -122,7 +122,7 @@
     "qualification_status": "excluded",
     "claim_status": "unclaimed",
     "exclusion_reason": {
-      "value": "rule_1_4_no_stable_entry_or_reproducible_artifact",
+      "value": "marketing_only_no_experience",
       "provenance": {
         "source_kind": "derived",
         "source_url": "https://example-worlds.test/negative/coming-soon",

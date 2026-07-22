@@ -201,8 +201,7 @@
     "agents_and_characters": [
       {
         "entity_type": "character",
-        "entity_id": "urn:worldgraph:character:scene-alpha-cast",
-        "display_name": {
+        "label": {
           "value": "AI character ensemble",
           "provenance": {
             "source_kind": "source_observation",
@@ -218,8 +217,7 @@
     "platforms": [
       {
         "entity_type": "platform",
-        "entity_id": "urn:worldgraph:platform:web",
-        "display_name": {
+        "label": {
           "value": "Web",
           "provenance": {
             "source_kind": "derived",
@@ -293,7 +291,17 @@
         "verification_status": "unverified"
       }
     },
-    "exclusion_reason": "static_ai_media_only"
+    "exclusion_reason": {
+      "value": "static_ai_media_only",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/fixtures",
+        "evidence_snippet": "static_ai_media_only",
+        "confidence": 0.9,
+        "observed_at": "2026-07-15T12:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
   },
   "discovery": {
     "tags": [

@@ -17,7 +17,7 @@
       "provenance": {
         "source_kind": "source_observation",
         "source_url": "https://example.com/worldgraph-spike/narrative/scene-alpha",
-        "evidence_snippet": "Scene Alpha \u2014 Interactive AI Character World",
+        "evidence_snippet": "Scene Alpha — Interactive AI Character World",
         "confidence": 0.9,
         "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
@@ -201,8 +201,7 @@
     "agents_and_characters": [
       {
         "entity_type": "character",
-        "entity_id": "urn:worldgraph:character:scene-alpha-cast",
-        "display_name": {
+        "label": {
           "value": "AI character ensemble",
           "provenance": {
             "source_kind": "source_observation",
@@ -218,8 +217,7 @@
     "platforms": [
       {
         "entity_type": "platform",
-        "entity_id": "urn:worldgraph:platform:web",
-        "display_name": {
+        "label": {
           "value": "Web",
           "provenance": {
             "source_kind": "derived",
@@ -247,19 +245,6 @@
         "verification_status": "unverified"
       }
     },
-    "source_evidence": [
-      {
-        "value": "https://example.com/worldgraph-spike/narrative/scene-alpha",
-        "provenance": {
-          "source_kind": "source_observation",
-          "source_url": "https://example.com/worldgraph-spike/narrative/scene-alpha",
-          "evidence_snippet": "primary landing page",
-          "confidence": 1.0,
-          "observed_at": "2026-07-22T00:00:00+00:00",
-          "verification_status": "unverified"
-        }
-      }
-    ],
     "safety_categories": [
       {
         "value": "unknown",
@@ -268,6 +253,19 @@
           "source_url": null,
           "evidence_snippet": null,
           "confidence": 0,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "provenance_evidence": [
+      {
+        "value": "https://example.com/worldgraph-spike/narrative/scene-alpha",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example.com/worldgraph-spike/narrative/scene-alpha",
+          "evidence_snippet": "primary landing page",
+          "confidence": 1.0,
           "observed_at": "2026-07-22T00:00:00+00:00",
           "verification_status": "unverified"
         }
