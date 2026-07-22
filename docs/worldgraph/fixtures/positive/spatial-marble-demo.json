@@ -1,0 +1,289 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "world_id": {
+      "value": "world-marble-demo",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "world-marble-demo",
+        "confidence": 0.9,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "name": {
+      "value": "Marble Demo World",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "Marble Demo World",
+        "confidence": 0.9,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://example-worlds.test/spatial/marble-demo",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "https://example-worlds.test/spatial/marble-demo",
+        "confidence": 0.95,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Explorable AI-generated 3D spatial world with WebXR and desktop controls.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "Walk through an AI-generated spatial environment",
+        "confidence": 0.82,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "Explore link live",
+        "confidence": 0.7,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "ai_spatial",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "AI-generated 3D spatial world",
+        "confidence": 0.85,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "modalities": [
+      {
+        "value": "3d",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example-worlds.test/spatial/marble-demo",
+          "evidence_snippet": "3D spatial world",
+          "confidence": 0.8,
+          "observed_at": "2026-07-15T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      },
+      {
+        "value": "xr",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example-worlds.test/spatial/marble-demo",
+          "evidence_snippet": "Supports WebXR",
+          "confidence": 0.85,
+          "observed_at": "2026-07-15T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "creator": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://example-worlds.test/spatial/marble-demo/explore",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example-worlds.test/spatial/marble-demo",
+          "evidence_snippet": "Explore",
+          "confidence": 0.9,
+          "observed_at": "2026-07-15T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "supported_devices": [
+      {
+        "value": "desktop",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example-worlds.test/spatial/marble-demo",
+          "evidence_snippet": "desktop orbit controls",
+          "confidence": 0.8,
+          "observed_at": "2026-07-15T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      },
+      {
+        "value": "vr",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example-worlds.test/spatial/marble-demo",
+          "evidence_snippet": "WebXR",
+          "confidence": 0.85,
+          "observed_at": "2026-07-15T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "spatial_navigation",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "Walk through explorable environment",
+        "confidence": 0.8,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "exportable_world_state",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "exportable world state",
+        "confidence": 0.75,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "protocols": [
+      {
+        "value": "webxr",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example-worlds.test/spatial/marble-demo",
+          "evidence_snippet": "Supports WebXR",
+          "confidence": 0.85,
+          "observed_at": "2026-07-15T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      },
+      {
+        "value": "gltf_2",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://example-worlds.test/spatial/marble-demo",
+          "evidence_snippet": "meshes export",
+          "confidence": 0.5,
+          "observed_at": "2026-07-15T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "engines": [
+      {
+        "value": "World Labs Marble",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://example-worlds.test/spatial/marble-demo",
+          "evidence_snippet": "Marble Demo World",
+          "confidence": 0.6,
+          "observed_at": "2026-07-15T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Build-time AI generates meshes; runtime AI handles ambient NPC behavior.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "Build-time AI generates meshes",
+        "confidence": 0.85,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "build_and_runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "build-time and runtime AI",
+        "confidence": 0.8,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "generated_or_controlled_elements": [
+      {
+        "value": "room_layout",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example-worlds.test/spatial/marble-demo",
+          "evidence_snippet": "generates meshes",
+          "confidence": 0.8,
+          "observed_at": "2026-07-15T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "discovery": {
+    "primary_call_to_action": {
+      "value": "play",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/spatial/marble-demo",
+        "evidence_snippet": "Explore",
+        "confidence": 0.8,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "linked_entities": [
+    {
+      "entity_type": "engine",
+      "entity_id": "world-labs-marble",
+      "display_name": {
+        "value": "World Labs Marble",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://example-worlds.test/spatial/marble-demo",
+          "evidence_snippet": "Marble Demo",
+          "confidence": 0.6,
+          "observed_at": "2026-07-15T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      },
+      "external_standard": "msf_web_of_worlds"
+    }
+  ]
+}

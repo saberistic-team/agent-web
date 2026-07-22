@@ -1,14 +1,11 @@
 # Manifest v0 (WorldGraph)
 
-> **Canonical spec:** Issue #199 docs supersede this spike-aligned summary.
-> See [WORLD_MANIFEST_V0.md](./WORLD_MANIFEST_V0.md) and
-> [WORLD_DEFINITION.md](./WORLD_DEFINITION.md).
-
-Parent issue: [#204](https://github.com/saberistic-team/agent-web/issues/204) (spike);
-canonical definition: [#199](https://github.com/saberistic-team/agent-web/issues/199).
+Parent issue: [#204](https://github.com/saberistic-team/agent-web/issues/204) (spike evidence).
+**Canonical definition:** [#199](https://github.com/saberistic-team/agent-web/issues/199) —
+[WORLD_DEFINITION.md](./WORLD_DEFINITION.md) and [WORLD_MANIFEST_V0.md](./WORLD_MANIFEST_V0.md).
 
 **Status:** Spike-aligned schema for technical evidence. Not deployed to production tables
-or routes.
+or routes. Field definitions and qualification rules are authoritative in the #199 docs.
 
 Manifest v0 expresses the JTBD from
 [MARKET_POSITION.md](./MARKET_POSITION.md): what the world is, how to enter it, how AI
@@ -67,9 +64,7 @@ Allowed `claim_status`: `unclaimed`, `creator_claimed`, `domain_verified`,
 ## Machine-readable schema
 
 - JSON Schema: [world-manifest-v0.schema.json](./world-manifest-v0.schema.json)
-- Canonical docs: [WORLD_MANIFEST_V0.md](./WORLD_MANIFEST_V0.md)
-- Qualification rules: [WORLD_DEFINITION.md](./WORLD_DEFINITION.md)
-- Fixtures: [fixtures/](./fixtures/)
+- Canonical docs: [WORLD_MANIFEST_V0.md](./WORLD_MANIFEST_V0.md), [WORLD_DEFINITION.md](./WORLD_DEFINITION.md)
 - Spike validator: `spike/worldgraph/manifest_schema.py`
 - Validation tests: `tests/test_world_manifest_v0.py`, `tests/test_worldgraph_spike.py`
 

@@ -1,0 +1,125 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "Neon Citadel",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/negative/coming-soon",
+        "evidence_snippet": "Neon Citadel",
+        "confidence": 0.9,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://example-worlds.test/negative/coming-soon",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/negative/coming-soon",
+        "evidence_snippet": "https://example-worlds.test/negative/coming-soon",
+        "confidence": 0.95,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "marketing_page",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/negative/coming-soon",
+        "evidence_snippet": "Marketing page for an upcoming immersive world",
+        "confidence": 0.9,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "coming_soon",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/negative/coming-soon",
+        "evidence_snippet": "Coming Soon",
+        "confidence": 0.95,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://example-worlds.test/negative/coming-soon",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example-worlds.test/negative/coming-soon",
+          "evidence_snippet": "waitlist page only",
+          "confidence": 0.8,
+          "observed_at": "2026-07-15T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "waitlist_signup",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/negative/coming-soon",
+        "evidence_snippet": "Join the waitlist",
+        "confidence": 0.9,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "AI participation not yet disclosed on the marketing page.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/negative/coming-soon",
+        "evidence_snippet": "no AI role described",
+        "confidence": 0.6,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "build_time",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/negative/coming-soon",
+        "evidence_snippet": "upcoming world marketing only",
+        "confidence": 0.4,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "excluded",
+    "exclusion_reason": {
+      "value": "Marketing page with no stable playable entry point or reproducible artifact.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/negative/coming-soon",
+        "evidence_snippet": "no playable entry point yet",
+        "confidence": 0.95,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "claim_status": "unclaimed"
+  }
+}

@@ -1,0 +1,125 @@
+{
+  "schema_version": "world-manifest-v0",
+  "identity": {
+    "name": {
+      "value": "AI Image Gallery",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/negative/image-gallery",
+        "evidence_snippet": "AI Image Gallery",
+        "confidence": 0.9,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://example-worlds.test/negative/image-gallery",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/negative/image-gallery",
+        "evidence_snippet": "https://example-worlds.test/negative/image-gallery",
+        "confidence": 0.95,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "static_media",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/negative/image-gallery",
+        "evidence_snippet": "static AI-generated images",
+        "confidence": 0.9,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/negative/image-gallery",
+        "evidence_snippet": "Browse static images",
+        "confidence": 0.8,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://example-worlds.test/negative/image-gallery",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example-worlds.test/negative/image-gallery",
+          "evidence_snippet": "gallery URL",
+          "confidence": 0.9,
+          "observed_at": "2026-07-15T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "passive_playback",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/negative/image-gallery",
+        "evidence_snippet": "Browse static images",
+        "confidence": 0.85,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Images were generated with AI; no runtime AI in the experience.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/negative/image-gallery",
+        "evidence_snippet": "AI-generated images",
+        "confidence": 0.7,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "build_time",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/negative/image-gallery",
+        "evidence_snippet": "generated images only",
+        "confidence": 0.6,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "excluded",
+    "exclusion_reason": {
+      "value": "Static AI media gallery without interactive world or persistent state.",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/negative/image-gallery",
+        "evidence_snippet": "No interactive world or persistent state",
+        "confidence": 0.95,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "claim_status": "unclaimed"
+  }
+}

@@ -1,0 +1,365 @@
+{
+  "schema_version": "world-manifest-v0",
+  "manifest_version": {
+    "value": "1.0.0",
+    "provenance": {
+      "source_kind": "creator_declared",
+      "source_url": "https://example-worlds.test/narrative/scene-alpha",
+      "evidence_snippet": "initial manifest publication",
+      "confidence": 1.0,
+      "observed_at": "2026-07-15T00:00:00+00:00",
+      "verification_status": "unverified"
+    }
+  },
+  "identity": {
+    "world_id": {
+      "value": "world-scene-alpha",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "evidence_snippet": "world-scene-alpha",
+        "confidence": 0.9,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "name": {
+      "value": "Scene Alpha",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "evidence_snippet": "Scene Alpha — Interactive AI Character World",
+        "confidence": 0.92,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "canonical_url": {
+      "value": "https://example-worlds.test/narrative/scene-alpha",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "evidence_snippet": "https://example-worlds.test/narrative/scene-alpha",
+        "confidence": 0.95,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "summary": {
+      "value": "Interactive narrative world with AI-driven characters and persistent session state.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "evidence_snippet": "persistent character world where your choices reshape relationships",
+        "confidence": 0.78,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "status": {
+      "value": "published",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "evidence_snippet": "Enter world link present",
+        "confidence": 0.7,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "world_type": {
+      "value": "interactive_narrative",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "evidence_snippet": "world:type interactive_narrative",
+        "confidence": 0.85,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "modalities": [
+      {
+        "value": "text",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://example-worlds.test/narrative/scene-alpha",
+          "evidence_snippet": "character dialogue",
+          "confidence": 0.6,
+          "observed_at": "2026-07-15T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "creator": {
+      "value": "Aurora Labs",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "evidence_snippet": "Creator: Aurora Labs",
+        "confidence": 0.8,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "operator": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "claimed_owner": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "experience": {
+    "entry_points": [
+      {
+        "value": "https://example-worlds.test/narrative/scene-alpha/play",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example-worlds.test/narrative/scene-alpha",
+          "evidence_snippet": "Enter world",
+          "confidence": 0.9,
+          "observed_at": "2026-07-15T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "supported_devices": [
+      {
+        "value": "desktop",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://example-worlds.test/narrative/scene-alpha",
+          "evidence_snippet": "web entry link",
+          "confidence": 0.55,
+          "observed_at": "2026-07-15T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "interaction_model": {
+      "value": "interactive_session",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "evidence_snippet": "choices reshape relationships and story arcs",
+        "confidence": 0.75,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "persistence_model": {
+      "value": "persistent_session_state",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "evidence_snippet": "persistent session state",
+        "confidence": 0.7,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "access_requirements": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "age_guidance": {
+      "value": "13+",
+      "provenance": {
+        "source_kind": "creator_declared",
+        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "evidence_snippet": "Teen-friendly narrative content",
+        "confidence": 0.5,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "world_structure": {
+    "setting": {
+      "value": "Character-driven narrative arcs with relationship state",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "evidence_snippet": "relationships and story arcs",
+        "confidence": 0.65,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "rules_or_mechanics": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "agents_and_characters": [
+      {
+        "value": "AI-driven characters with emotional state",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example-worlds.test/narrative/scene-alpha",
+          "evidence_snippet": "Runtime AI controls character dialogue and emotional state",
+          "confidence": 0.8,
+          "observed_at": "2026-07-15T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ]
+  },
+  "ai_role": {
+    "material_ai_role": {
+      "value": "Runtime AI controls character dialogue and emotional state.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "evidence_snippet": "Runtime AI controls character dialogue",
+        "confidence": 0.85,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "ai_usage_phase": {
+      "value": "runtime",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "evidence_snippet": "runtime AI controls",
+        "confidence": 0.7,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "generated_or_controlled_elements": [
+      {
+        "value": "character_dialogue",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example-worlds.test/narrative/scene-alpha",
+          "evidence_snippet": "character dialogue",
+          "confidence": 0.8,
+          "observed_at": "2026-07-15T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "human_control_boundaries": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "trust": {
+    "qualification_status": "qualifies",
+    "claim_status": "unclaimed",
+    "license_status": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "moderation_contact": {
+      "value": "unknown",
+      "provenance": {
+        "source_kind": "unknown",
+        "source_url": null,
+        "evidence_snippet": null,
+        "confidence": 0,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "discovery": {
+    "tags": [
+      {
+        "value": "interactive_narrative",
+        "provenance": {
+          "source_kind": "derived",
+          "source_url": "https://example-worlds.test/narrative/scene-alpha",
+          "evidence_snippet": "interactive_narrative",
+          "confidence": 0.9,
+          "observed_at": "2026-07-15T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
+    "semantic_description": {
+      "value": "Enter a persistent character world where your choices reshape relationships and story arcs.",
+      "provenance": {
+        "source_kind": "source_observation",
+        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "evidence_snippet": "og:description",
+        "confidence": 0.75,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    },
+    "primary_call_to_action": {
+      "value": "enter",
+      "provenance": {
+        "source_kind": "derived",
+        "source_url": "https://example-worlds.test/narrative/scene-alpha",
+        "evidence_snippet": "Enter world",
+        "confidence": 0.85,
+        "observed_at": "2026-07-15T00:00:00+00:00",
+        "verification_status": "unverified"
+      }
+    }
+  },
+  "linked_entities": [
+    {
+      "entity_type": "creator",
+      "entity_id": "aurora-labs",
+      "display_name": {
+        "value": "Aurora Labs",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example-worlds.test/narrative/scene-alpha",
+          "evidence_snippet": "Creator: Aurora Labs",
+          "confidence": 0.8,
+          "observed_at": "2026-07-15T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    }
+  ]
+}
