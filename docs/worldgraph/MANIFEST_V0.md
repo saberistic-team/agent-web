@@ -1,13 +1,13 @@
 # Manifest v0 (WorldGraph)
 
-Parent issue: [#204](https://github.com/saberistic-team/agent-web/issues/204).
+Parent issue: [#204](https://github.com/saberistic-team/agent-web/issues/204) (spike evidence).
 
-**Status:** Spike-aligned shorthand for technical evidence. Not deployed to production
-tables or routes.
+**Canonical spec (issue #199):** [WORLD_MANIFEST_V0.md](./WORLD_MANIFEST_V0.md) and
+[WORLD_DEFINITION.md](./WORLD_DEFINITION.md).
 
-**Canonical product definition:** [#199](https://github.com/saberistic-team/agent-web/issues/199)
-— [WORLD_DEFINITION.md](./WORLD_DEFINITION.md), [WORLD_MANIFEST_V0.md](./WORLD_MANIFEST_V0.md),
-and [fixtures/](./fixtures/).
+**Status:** Spike-aligned schema for technical evidence. Not deployed to production tables
+or routes. The JSON Schema and fixtures under [fixtures/](./fixtures/) are authoritative
+for World Manifest v0.
 
 Manifest v0 expresses the JTBD from
 [MARKET_POSITION.md](./MARKET_POSITION.md): what the world is, how to enter it, how AI

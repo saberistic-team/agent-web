@@ -5,32 +5,32 @@
       "value": "Excluded Without Reason",
       "provenance": {
         "source_kind": "source_observation",
-        "source_url": "https://example.com",
-        "evidence_snippet": "missing exclusion_reason",
+        "source_url": "https://example.com/bad/excluded",
+        "evidence_snippet": "bad",
         "confidence": 0.5,
-        "observed_at": "2026-07-15T00:00:00+00:00",
+        "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }
     },
     "canonical_url": {
-      "value": "https://example.com",
+      "value": "https://example.com/bad/excluded",
       "provenance": {
         "source_kind": "source_observation",
-        "source_url": "https://example.com",
-        "evidence_snippet": "https://example.com",
+        "source_url": "https://example.com/bad/excluded",
+        "evidence_snippet": "https://example.com/bad/excluded",
         "confidence": 0.5,
-        "observed_at": "2026-07-15T00:00:00+00:00",
+        "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }
     },
     "world_type": {
-      "value": "assistant",
+      "value": "interactive_narrative",
       "provenance": {
         "source_kind": "derived",
-        "source_url": "https://example.com",
-        "evidence_snippet": "test",
+        "source_url": "https://example.com/bad/excluded",
+        "evidence_snippet": "interactive_narrative",
         "confidence": 0.5,
-        "observed_at": "2026-07-15T00:00:00+00:00",
+        "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }
     },
@@ -38,10 +38,10 @@
       "value": "published",
       "provenance": {
         "source_kind": "derived",
-        "source_url": "https://example.com",
-        "evidence_snippet": "test",
+        "source_url": "https://example.com/bad/excluded",
+        "evidence_snippet": "published",
         "confidence": 0.5,
-        "observed_at": "2026-07-15T00:00:00+00:00",
+        "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }
     }
@@ -49,25 +49,25 @@
   "experience": {
     "entry_points": [
       {
-        "value": "https://example.com/chat",
+        "value": "https://example.com/bad/excluded/play",
         "provenance": {
           "source_kind": "source_observation",
-          "source_url": "https://example.com",
-          "evidence_snippet": "chat",
+          "source_url": "https://example.com/bad/excluded",
+          "evidence_snippet": "play",
           "confidence": 0.5,
-          "observed_at": "2026-07-15T00:00:00+00:00",
+          "observed_at": "2026-07-22T00:00:00+00:00",
           "verification_status": "unverified"
         }
       }
     ],
     "interaction_model": {
-      "value": "general_chat",
+      "value": "passive_playback",
       "provenance": {
         "source_kind": "source_observation",
-        "source_url": "https://example.com",
-        "evidence_snippet": "chat",
+        "source_url": "https://example.com/bad/excluded",
+        "evidence_snippet": "passive_playback",
         "confidence": 0.5,
-        "observed_at": "2026-07-15T00:00:00+00:00",
+        "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }
     },
@@ -78,31 +78,31 @@
         "source_url": null,
         "evidence_snippet": null,
         "confidence": 0,
-        "observed_at": "2026-07-15T00:00:00+00:00",
+        "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }
     }
   },
   "ai_role": {
     "material_ai_role": {
-      "value": "General assistant",
+      "value": "decorative metadata only",
       "provenance": {
         "source_kind": "source_observation",
-        "source_url": "https://example.com",
-        "evidence_snippet": "assistant",
+        "source_url": "https://example.com/bad/excluded",
+        "evidence_snippet": "decorative metadata only",
         "confidence": 0.5,
-        "observed_at": "2026-07-15T00:00:00+00:00",
+        "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }
     },
     "ai_usage_phase": {
-      "value": "runtime",
+      "value": "build_time",
       "provenance": {
         "source_kind": "derived",
-        "source_url": "https://example.com",
-        "evidence_snippet": "runtime",
+        "source_url": "https://example.com/bad/excluded",
+        "evidence_snippet": "build_time",
         "confidence": 0.5,
-        "observed_at": "2026-07-15T00:00:00+00:00",
+        "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
       }
     }

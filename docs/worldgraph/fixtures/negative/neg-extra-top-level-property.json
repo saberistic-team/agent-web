@@ -1,11 +1,12 @@
 {
   "schema_version": "world-manifest-v0",
+  "unexpected_top_level_field": true,
   "identity": {
     "name": {
-      "value": "Empty Entry Points",
+      "value": "Extra Top Level Property",
       "provenance": {
         "source_kind": "source_observation",
-        "source_url": "https://example.com/bad/no-entry",
+        "source_url": "https://example.com/bad/extra",
         "evidence_snippet": "bad",
         "confidence": 0.5,
         "observed_at": "2026-07-22T00:00:00+00:00",
@@ -13,11 +14,11 @@
       }
     },
     "canonical_url": {
-      "value": "https://example.com/bad/no-entry",
+      "value": "https://example.com/bad/extra",
       "provenance": {
         "source_kind": "source_observation",
-        "source_url": "https://example.com/bad/no-entry",
-        "evidence_snippet": "https://example.com/bad/no-entry",
+        "source_url": "https://example.com/bad/extra",
+        "evidence_snippet": "https://example.com/bad/extra",
         "confidence": 0.5,
         "observed_at": "2026-07-22T00:00:00+00:00",
         "verification_status": "unverified"
@@ -27,7 +28,7 @@
       "value": "interactive_narrative",
       "provenance": {
         "source_kind": "derived",
-        "source_url": "https://example.com/bad/no-entry",
+        "source_url": "https://example.com/bad/extra",
         "evidence_snippet": "interactive_narrative",
         "confidence": 0.5,
         "observed_at": "2026-07-22T00:00:00+00:00",
@@ -38,7 +39,7 @@
       "value": "published",
       "provenance": {
         "source_kind": "derived",
-        "source_url": "https://example.com/bad/no-entry",
+        "source_url": "https://example.com/bad/extra",
         "evidence_snippet": "published",
         "confidence": 0.5,
         "observed_at": "2026-07-22T00:00:00+00:00",
@@ -47,12 +48,24 @@
     }
   },
   "experience": {
-    "entry_points": [],
+    "entry_points": [
+      {
+        "value": "https://example.com/bad/extra/play",
+        "provenance": {
+          "source_kind": "source_observation",
+          "source_url": "https://example.com/bad/extra",
+          "evidence_snippet": "play",
+          "confidence": 0.5,
+          "observed_at": "2026-07-22T00:00:00+00:00",
+          "verification_status": "unverified"
+        }
+      }
+    ],
     "interaction_model": {
       "value": "interactive_session",
       "provenance": {
         "source_kind": "source_observation",
-        "source_url": "https://example.com/bad/no-entry",
+        "source_url": "https://example.com/bad/extra",
         "evidence_snippet": "interactive_session",
         "confidence": 0.5,
         "observed_at": "2026-07-22T00:00:00+00:00",
@@ -76,7 +89,7 @@
       "value": "runtime agents",
       "provenance": {
         "source_kind": "source_observation",
-        "source_url": "https://example.com/bad/no-entry",
+        "source_url": "https://example.com/bad/extra",
         "evidence_snippet": "runtime agents",
         "confidence": 0.5,
         "observed_at": "2026-07-22T00:00:00+00:00",
@@ -87,7 +100,7 @@
       "value": "runtime",
       "provenance": {
         "source_kind": "derived",
-        "source_url": "https://example.com/bad/no-entry",
+        "source_url": "https://example.com/bad/extra",
         "evidence_snippet": "runtime",
         "confidence": 0.5,
         "observed_at": "2026-07-22T00:00:00+00:00",
