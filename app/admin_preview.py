@@ -366,6 +366,7 @@ def build_preview_analytics_dashboard_data(
 
     engagement_events = (
         EventCountRow("Landing Viewed", rng.randint(120, 480), "browser"),
+        EventCountRow("About Viewed", rng.randint(35, 160), "browser"),
         EventCountRow("Services Viewed", rng.randint(40, 180), "browser"),
         EventCountRow("Case Studies Viewed", rng.randint(30, 120), "browser"),
         EventCountRow("Case Study Viewed", rng.randint(20, 90), "browser"),

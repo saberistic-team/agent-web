@@ -75,7 +75,6 @@ Only these properties may appear on stored events:
 | `funnel_step` | int (1–8) | Conversion funnel events |
 | `brief_id` | int | Server events (steps 5–7) |
 | `price_cents` | int | `Checkout Opened`, `Payment Completed` |
-| `discount_cents` | int | `Payment Completed` (when discounted) |
 | `environment` | string | Server events (`production`, `staging`, `development`) |
 | `linkage_source` | string | Server CRM-linked events |
 | `utm_source` | string | Attribution / all events when present |
