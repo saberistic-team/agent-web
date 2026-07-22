@@ -8,7 +8,8 @@ benchmarks, or this document as validation evidence.
 **Last updated:** 2026-07-22
 
 **Related docs:** [MARKET_POSITION.md](./MARKET_POSITION.md),
-[MANIFEST_V0.md](./MANIFEST_V0.md), [TECHNICAL_SPIKE.md](./TECHNICAL_SPIKE.md),
+[WORLD_MANIFEST_V0.md](./WORLD_MANIFEST_V0.md), [TECHNICAL_SPIKE.md](./TECHNICAL_SPIKE.md),
+[CORPUS_REPORT.md](./CORPUS_REPORT.md), [UX_JOURNEYS.md](./UX_JOURNEYS.md),
 [VALIDATION_READOUT.md](./VALIDATION_READOUT.md)
 
 ---
@@ -165,8 +166,9 @@ Tasks and success criteria are **fixed before sessions** — see
 
 | Mode | When to use |
 |------|-------------|
-| Curated static corpus | Minimum viable; spike fixtures + research corpus entries |
-| Journey prototype | Preferred when available; records filter usage and click paths |
+| Research corpus (`corpus-research-v0`) | **Default** — [#200](https://github.com/saberistic-team/agent-web/issues/200) [CORPUS_REPORT.md](./CORPUS_REPORT.md) + `docs/worldgraph/corpus/` |
+| Spike fixtures (`corpus-spike-v1`) | Smaller facilitator set when research corpus is impractical |
+| Journey specification (`journey-spec-v0`) | [#201](https://github.com/saberistic-team/agent-web/issues/201) [UX_JOURNEYS.md](./UX_JOURNEYS.md) success states / filters — record commit SHA; production UI not required for first cohort |
 
 Participants receive the same corpus version ID documented in the session log.
 
@@ -264,12 +266,14 @@ Document in the readout for each recommendation:
 
 ## Dependencies
 
-| Dependency | Owner | Blocks |
-|------------|-------|--------|
-| Research corpus + journey prototype | Engineering / product (#199–#201) | Discovery test realism |
-| Human recruitment | Saberistic operators | All interviews and concierge |
-| Spike ingestion (private) | Engineering | Concierge manifest generation |
-| Legal review of consent copy | Operator / counsel | Production recruitment at scale |
+| Dependency | Owner | Status | Blocks |
+|------------|-------|--------|--------|
+| World definition + Manifest v0 (#199) | Product / docs | Closed | Schema for concierge + discovery |
+| Research corpus (#200) | Product / docs | Closed — [CORPUS_REPORT.md](./CORPUS_REPORT.md) | Discovery test realism |
+| Creator / discovery journeys (#201) | Product / docs | Closed — [UX_JOURNEYS.md](./UX_JOURNEYS.md) | Journey success states for sessions |
+| Human recruitment | Saberistic operators | Open (external) | All interviews and concierge |
+| Spike ingestion (private) | Engineering | Available for private profiles | Concierge manifest generation |
+| Legal review of consent copy | Operator / counsel | Open (external) | Production recruitment at scale |
 
 ---
 

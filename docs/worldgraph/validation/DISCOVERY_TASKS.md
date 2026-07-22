@@ -10,10 +10,13 @@ Do not change mid-cohort without noting a protocol version bump in the readout.
 | Version ID | Description |
 |------------|-------------|
 | `corpus-spike-v1` | Spike fixtures — 12 qualifying worlds (`docs/worldgraph/spike/corpus_sources.json`) |
-| `corpus-research-v0` | Extended research corpus when #200 lands |
-| `prototype-journey-v*` | Journey prototype when available — record exact build hash |
+| `corpus-research-v0` | Research corpus from [#200](https://github.com/saberistic-team/agent-web/issues/200) — [CORPUS_REPORT.md](../CORPUS_REPORT.md), `docs/worldgraph/corpus/` (25 qualifying Worlds + 5 negative controls) |
+| `journey-spec-v0` | Creator/discovery journey specification from [#201](https://github.com/saberistic-team/agent-web/issues/201) — [UX_JOURNEYS.md](../UX_JOURNEYS.md) (wireframes + success states; no production UI yet) |
 
-Default for first cohort: **`corpus-spike-v1`** unless journey prototype is ready.
+Default for first cohort: **`corpus-research-v0`** (preferred now that #200 closed). Use
+`corpus-spike-v1` only if a facilitator needs the smaller spike set. Record the journey
+spec revision (`journey-spec-v0` + commit SHA) in each session log even when sessions use
+a static corpus UI.
 
 ---
 

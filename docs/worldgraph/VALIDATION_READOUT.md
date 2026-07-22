@@ -135,11 +135,15 @@ above status quo.
 
 ## Cross-cutting findings
 
-### What desk research and spike already show
+### What desk research, corpus, and journeys already show
 
 - Market fragmentation and adjacency are real ([MARKET_POSITION.md](./MARKET_POSITION.md)).
 - Manifest v0 + ingestion + lexical search are technically feasible
   ([TECHNICAL_SPIKE.md](./TECHNICAL_SPIKE.md)).
+- Research corpus (#200) classifies 25 qualifying Worlds + 5 negative controls
+  ([CORPUS_REPORT.md](./CORPUS_REPORT.md)) for discovery sessions.
+- Creator and discovery journeys (#201) define success states and filters
+  ([UX_JOURNEYS.md](./UX_JOURNEYS.md)); no production UI ships from that issue.
 - These do **not** substitute for two-sided field validation.
 
 ### Contradictions and negative evidence
@@ -191,8 +195,11 @@ Current recommendation: **Iterate** (execute plan).
 1. Complete recruitment per [validation/RECRUITMENT_CRITERIA.md](./validation/RECRUITMENT_CRITERIA.md).
 2. Run supply and demand problem interviews using linked scripts.
 3. Execute concierge cohort (10) with consent and **no publication without approval**.
-4. Run discovery sessions against [validation/DISCOVERY_TASKS.md](./validation/DISCOVERY_TASKS.md).
-5. Aggregate anonymized notes into templates; store raw PII only outside the repo.
+4. Run discovery sessions against [validation/DISCOVERY_TASKS.md](./validation/DISCOVERY_TASKS.md)
+   using **`corpus-research-v0`** ([CORPUS_REPORT.md](./CORPUS_REPORT.md)) and journey
+   success states from [UX_JOURNEYS.md](./UX_JOURNEYS.md).
+5. Aggregate anonymized notes into templates; store raw PII only outside the repo
+   (`validation/research-data/` is gitignored except README).
 6. Replace this readout sections with measured results and a final **proceed / iterate / stop**
    recommendation.
 7. Schedule MVP PRD gate review only if recommendation is **proceed**.
