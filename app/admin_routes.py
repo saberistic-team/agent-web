@@ -40,6 +40,7 @@ from app.actor_context import (
     correlation_id_from_request,
 )
 from app.admin_layout import ADMIN_NAV_LINKS, render_admin_shell
+from app.admin_response import admin_html_response
 from app.admin_response_policy import csp_nonce_from_request
 from app.admin_preview import (
     PREVIEW_BRIEF_CONVERT_VALIDATION_ERROR,
@@ -203,10 +204,14 @@ def _contact_form_payload(**values: object) -> dict[str, object]:
 
 
 def _parse_link_choice(raw: str | None) -> tuple[str, UUID | None]:
-    """Parse ``new`` or ``existing:{uuid}`` form values."""
-    if not raw or raw.strip() == "new":
-        return "new", None
+    """Parse ``new``, ``existing:{uuid}``, or empty (no selection)."""
+    if raw is None:
+        return "", None
     text = raw.strip()
+    if text == "":
+        return "", None
+    if text == "new":
+        return "new", None
     if text.startswith("existing:"):
         try:
             return "existing", UUID(text.split(":", 1)[1])
@@ -251,7 +256,7 @@ def _load_valid_session(request: Request, settings: Settings) -> admin_auth.Admi
     raw_token = admin_auth.read_session_token(request)
     if raw_token is None:
         return None
-    if settings.admin_preview_mode and raw_token == PREVIEW_SESSION_TOKEN:
+    if settings.admin_preview_enabled and raw_token == PREVIEW_SESSION_TOKEN:
         return _preview_session(settings)
     token_hash = admin_auth.hash_session_token(raw_token)
     with db.db_connection(settings.database_url) as conn:
@@ -705,7 +710,11 @@ def admin_company_create(
     except (ValueError, TypeError, ValidationError) as exc:
         return RedirectResponse(url=f"/admin/companies/new?error={quote(str(exc))}", status_code=303)
     with db.db_connection(get_settings().database_url) as conn:
-        result = _crm.create_company(conn, company=company)
+        result = _crm.create_company(
+            conn,
+            company=company,
+            actor_context=actor_context_from_request(request, actor=session.admin_username),
+        )
     warnings = result["duplicate_warnings"]
     warning = f"{len(warnings)} possible domain duplicate(s)" if warnings else ""
     return RedirectResponse(
@@ -749,7 +758,9 @@ def admin_company_research(
         company = _crm.get_company(conn, company_id)
         if company is None:
             raise HTTPException(status_code=404, detail="Company not found")
-        contacts = _crm.list_contacts_for_company(conn, company_id)
+        contacts = _crm.list_contacts_for_company(
+            conn, company_id, include_archived=True
+        )
         records = _crm.list_research_for_company(conn, company_id)
     return HTMLResponse(
         admin_research_pages.render_admin_company_research_page(
@@ -841,8 +852,9 @@ def admin_company_update(
 def admin_company_archive(request: Request, company_id: UUID, csrf_token: str = Form(...)) -> Response:
     session = require_admin_session(request)
     _verify_session_csrf(request, session, csrf_token)
+    actor_context = actor_context_from_request(request, actor=session.admin_username)
     with db.db_connection(get_settings().database_url) as conn:
-        if _crm.archive_company(conn, company_id) is None:
+        if _crm.archive_company(conn, company_id, actor_context=actor_context) is None:
             raise HTTPException(status_code=404, detail="Company not found")
     return RedirectResponse(url="/admin/companies", status_code=303)
 
@@ -851,8 +863,9 @@ def admin_company_archive(request: Request, company_id: UUID, csrf_token: str = 
 def admin_company_restore(request: Request, company_id: UUID, csrf_token: str = Form(...)) -> Response:
     session = require_admin_session(request)
     _verify_session_csrf(request, session, csrf_token)
+    actor_context = actor_context_from_request(request, actor=session.admin_username)
     with db.db_connection(get_settings().database_url) as conn:
-        if _crm.restore_company(conn, company_id) is None:
+        if _crm.restore_company(conn, company_id, actor_context=actor_context) is None:
             raise HTTPException(status_code=404, detail="Company not found")
     return RedirectResponse(url=f"/admin/companies/{company_id}", status_code=303)
 
@@ -910,6 +923,7 @@ def admin_company_research_create(
                 )
         _crm.attach_research_record(
             conn,
+            actor_context=actor_context_from_request(request, actor=session.admin_username),
             record_type=payload.record_type,
             company_id=company_id,
             body=payload.body,
@@ -1046,7 +1060,11 @@ def admin_contact_create(
         return RedirectResponse(url=f"/admin/contacts/new?error={quote(str(exc))}", status_code=303)
     try:
         with db.db_connection(get_settings().database_url) as conn:
-            result = _crm.create_contact(conn, contact=contact)
+            result = _crm.create_contact(
+                conn,
+                contact=contact,
+                actor_context=actor_context_from_request(request, actor=session.admin_username),
+            )
     except ContactEmailConflictError as exc:
         return RedirectResponse(url=f"/admin/contacts/new?error={quote(str(exc))}", status_code=303)
     warnings = result["duplicate_warnings"]
@@ -1148,8 +1166,9 @@ def admin_contact_update(
 def admin_contact_archive(request: Request, contact_id: UUID, csrf_token: str = Form(...)) -> Response:
     session = require_admin_session(request)
     _verify_session_csrf(request, session, csrf_token)
+    actor_context = actor_context_from_request(request, actor=session.admin_username)
     with db.db_connection(get_settings().database_url) as conn:
-        if _crm.archive_contact(conn, contact_id) is None:
+        if _crm.archive_contact(conn, contact_id, actor_context=actor_context) is None:
             raise HTTPException(status_code=404, detail="Contact not found")
     return RedirectResponse(url="/admin/contacts", status_code=303)
 
@@ -1330,6 +1349,7 @@ def admin_contact_research_create(
             )
         _crm.attach_research_record(
             conn,
+            actor_context=actor_context_from_request(request, actor=session.admin_username),
             record_type=payload.record_type,
             company_id=UUID(str(company_id)),
             body=payload.body,
@@ -1676,7 +1696,8 @@ def admin_brief_convert_confirm(
     brief_id: str,
     csrf_token: str = Form(...),
     company_choice: str = Form(default="new"),
-    contact_choice: str = Form(default="new"),
+    contact_choice: str = Form(default=""),
+    acknowledge_archived_identity: str = Form(default=""),
     page: int = 1,
     q: str | None = Form(default=None),
     status: str | None = Form(default=None),
@@ -1694,6 +1715,7 @@ def admin_brief_convert_confirm(
 
     company_mode, selected_company_id = _parse_link_choice(company_choice)
     contact_mode, selected_contact_id = _parse_link_choice(contact_choice)
+    acknowledge_archived = acknowledge_archived_identity == "1"
     detail_url = f"/admin/briefs/{parsed_brief_id}?converted=1"
 
     if settings.admin_preview_enabled:
@@ -1705,6 +1727,7 @@ def admin_brief_convert_confirm(
             contact_mode=contact_mode,
             selected_company_id=selected_company_id,
             selected_contact_id=selected_contact_id,
+            acknowledge_archived_identity=acknowledge_archived,
         )
         if error:
             return RedirectResponse(
@@ -1734,6 +1757,7 @@ def admin_brief_convert_confirm(
                 contact_choice=contact_mode,
                 selected_company_id=selected_company_id,
                 selected_contact_id=selected_contact_id,
+                acknowledge_archived_identity=acknowledge_archived,
             )
     except BriefConversionValidationError as exc:
         return RedirectResponse(
@@ -1748,33 +1772,39 @@ def admin_audit_list(request: Request, page: int = 1) -> HTMLResponse:
     session = require_admin_session(request)
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
+    safe_page = max(page, 1)
+    per_page = settings.audit_page_size
+    db_error = False
     if settings.admin_preview_enabled:
         from app.admin_preview import build_preview_audit_events
 
         all_events = build_preview_audit_events()
         total = len(all_events)
-        safe_page = max(page, 1)
-        per_page = settings.audit_page_size
         start = (safe_page - 1) * per_page
         events = all_events[start : start + per_page]
-        page = safe_page
     elif not settings.database_url:
         events, total = [], 0
     else:
-        with db.db_connection(settings.database_url) as conn:
-            events, total = audit_service.list_events(
-                conn,
-                page=page,
-                per_page=settings.audit_page_size,
-            )
-    return HTMLResponse(
+        try:
+            with db.db_connection(settings.database_url) as conn:
+                events, total = audit_service.list_events(
+                    conn,
+                    page=safe_page,
+                    per_page=per_page,
+                )
+        except Exception:
+            logger.exception("Failed to load audit events")
+            events, total = [], 0
+            db_error = True
+    return admin_html_response(
         admin_pages.render_admin_audit_page(
             admin_username=session.admin_username,
             events=events,
-            page=max(page, 1),
-            per_page=settings.audit_page_size,
+            page=safe_page,
+            per_page=per_page,
             total=total,
             csrf_token=csrf_token,
+            db_error=db_error,
         )
     )
 
@@ -1910,15 +1940,34 @@ def admin_import_batch_rollback(
 async def admin_linkedin_import_commit(request: Request) -> JSONResponse:
     session = require_admin_session(request)
     settings = get_settings()
+    from app.admin_json_request import (
+        read_bounded_json_object,
+        read_session_csrf_header,
+        reject_duplicate_csrf_field,
+        verify_session_csrf_header_or_reject,
+    )
+    from app.admin_linkedin_commit import (
+        LINKEDIN_COMMIT_MAX_BODY_BYTES,
+        LINKEDIN_COMMIT_MAX_CONNECTIONS,
+    )
+
+    verify_session_csrf_header_or_reject(
+        request,
+        settings,
+        submitted_csrf_token=read_session_csrf_header(request),
+    )
     if not settings.database_url:
         raise HTTPException(status_code=503, detail="Database unavailable")
-    try:
-        payload = await request.json()
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
+    payload = await read_bounded_json_object(
+        request,
+        max_body_bytes=LINKEDIN_COMMIT_MAX_BODY_BYTES,
+    )
+    reject_duplicate_csrf_field(payload)
     connections = payload.get("connections")
     if not isinstance(connections, list):
         raise HTTPException(status_code=400, detail="connections must be a list")
+    if len(connections) > LINKEDIN_COMMIT_MAX_CONNECTIONS:
+        raise HTTPException(status_code=400, detail="connections list too large")
     with db.db_connection(settings.database_url) as conn:
         result = _crm.commit_linkedin_import(
             conn,
@@ -1936,42 +1985,6 @@ async def admin_linkedin_import_commit(request: Request) -> JSONResponse:
             "summary_counts": result.get("summary_counts"),
             "checksum": batch.get("checksum"),
         }
-    )
-
-
-@router.get("/audit", response_class=HTMLResponse)
-def admin_audit_list(request: Request, page: int = 1) -> HTMLResponse:
-    session = require_admin_session(request)
-    settings = get_settings()
-    csrf_token = _session_csrf_for_forms(request, settings)
-    if settings.admin_preview_enabled:
-        from app.admin_preview import build_preview_audit_events
-
-        all_events = build_preview_audit_events()
-        total = len(all_events)
-        safe_page = max(page, 1)
-        per_page = settings.audit_page_size
-        start = (safe_page - 1) * per_page
-        events = all_events[start : start + per_page]
-        page = safe_page
-    elif not settings.database_url:
-        events, total = [], 0
-    else:
-        with db.db_connection(settings.database_url) as conn:
-            events, total = audit_service.list_events(
-                conn,
-                page=page,
-                per_page=settings.audit_page_size,
-            )
-    return HTMLResponse(
-        admin_pages.render_admin_audit_page(
-            admin_username=session.admin_username,
-            events=events,
-            page=max(page, 1),
-            per_page=settings.audit_page_size,
-            total=total,
-            csrf_token=csrf_token,
-        )
     )
 
 
@@ -2035,6 +2048,7 @@ for _link in ADMIN_NAV_LINKS:
         "/admin/imports",
         "/admin/pipeline",
         "/admin/targets",
+        "/admin/signals",
     }:
         continue
     _section = _link["href"].removeprefix("/admin/")
@@ -2056,16 +2070,21 @@ for _link in ADMIN_NAV_LINKS:
 
 @router.get("", response_class=HTMLResponse)
 @router.get("/", response_class=HTMLResponse)
-def admin_dashboard(request: Request) -> HTMLResponse:
+def admin_dashboard(request: Request) -> Response:
     session = require_admin_session(request)
     settings = get_settings()
     csrf_token = _session_csrf_for_forms(request, settings)
     if settings.admin_preview_enabled:
         from app.admin_preview import build_preview_acquisition_dashboard_data
 
+        try:
+            preview_data = build_preview_acquisition_dashboard_data()
+        except Exception:
+            logger.exception("Failed to build preview acquisition dashboard")
+            return JSONResponse({"detail": "Internal Server Error"}, status_code=500)
         return HTMLResponse(
             admin_dashboard_pages.render_acquisition_dashboard_page(
-                data=build_preview_acquisition_dashboard_data(),
+                data=preview_data,
                 admin_username=session.admin_username,
                 csrf_token=csrf_token,
                 preview_banner="Preview data — not production",

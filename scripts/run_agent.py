@@ -963,7 +963,7 @@ def role_builder(repo: str, issue: int, brief: Path) -> None:
                     "body": (
                         f"Closes #{issue}\n\n"
                         "Screenshot infra: pre-merge Reviewer captures + post-deploy "
-                        "visual check (see docs/SCREENSHOTS.md).\n"
+                        "evidence capture (see docs/SCREENSHOTS.md).\n"
                     ),
                 },
             )
@@ -1258,9 +1258,26 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
         "GET",
         f"/repos/{owner}/{name}/commits/{sha}/check-runs",
     )
+    # Dedupe to the latest run per check name. Label churn can leave older
+    # failed Project board ``sync`` runs on the same SHA alongside later
+    # successes; treating any historical failure as a hard-fail loops Builder
+    # for non-product reasons (#338 / PR #350).
+    # Use check_name — not ``name`` — so we do not clobber the repo name from
+    # ``split_repo`` above. The CI job is literally named ``test``; shadowing
+    # turned later calls into ``/repos/{owner}/test/pulls/...`` (#280 / PR #351).
+    latest_by_name: dict[str, dict] = {}
     for run in checks.get("check_runs") or []:
+        check_name = run.get("name") or ""
+        prev = latest_by_name.get(check_name)
+        if prev is None or (run.get("started_at") or "") > (prev.get("started_at") or ""):
+            latest_by_name[check_name] = run
+    # Non-gating orchestration: project-sync.yml job is named ``sync``.
+    _IGNORE_CHECK_NAMES = frozenset({"sync"})
+    for run in latest_by_name.values():
         conclusion = (run.get("conclusion") or "").lower()
         name_l = (run.get("name") or "").lower()
+        if name_l in _IGNORE_CHECK_NAMES:
+            continue
         if conclusion in {"failure", "timed_out", "cancelled"}:
             hard_fail_reasons.append(f"check `{run.get('name')}` → {conclusion}")
         if "security" in name_l and conclusion == "failure":
@@ -1451,6 +1468,7 @@ def role_reviewer(repo: str, issue: int, brief: Path) -> None:
                     branch_url=dual.branch_url,
                     branch_urls=branch_urls,
                     targets=routes,
+                    reproducibility=dual.reproducibility,
                 )
                 comment_on_issue_or_pr(repo, pr_number, body_shots)
                 comment_on_issue_or_pr(repo, issue, body_shots)

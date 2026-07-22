@@ -49,6 +49,9 @@ FROZEN_MIGRATION_DIGESTS: dict[str, str] = {
     "016": "91e3cc23c9f19bb17834385bcfad6cbc61d484c1b0f6097583e40d67780c95b9",
     "017": "6fa2fe024a8d854ee329205cb3e9475a6e1527a1576df534611df99d6910e2f6",
     "018": "6650d3d092a41d904f2ab02f1e072876e905612a9d19d86bd605ec0db35b14b8",
+    "019": "18c21301f9c206ebf5df5f02bcf8ffbad2372c8a8b18907e426bf014fd16ae77",
+    "020": "b9d23f5ebd8293f3f2afb9a8f3241c8e94a0a8e0c8febce33816ec361a29948c",
+    "021": "e8e9cd2b5478733ca421e5848442392459a8edf88a9e6ec8899ef431bca68469",
 }
 
 
@@ -691,6 +694,14 @@ ALTER TABLE contacts ADD COLUMN IF NOT EXISTS field_sources JSONB NOT NULL DEFAU
     ),
     Migration(
         version="020",
+        name="admin_login_rate_limits_cleanup_idx",
+        up_sql="""
+CREATE INDEX IF NOT EXISTS admin_login_rate_limits_cleanup_idx
+    ON admin_login_rate_limits (updated_at, limiter_key);
+""",
+    ),
+    Migration(
+        version="021",
         name="icp_scoring",
         up_sql="""
 CREATE TABLE IF NOT EXISTS icp_scoring_versions (
@@ -787,7 +798,7 @@ ON CONFLICT (version_id, id) DO NOTHING;
 """,
     ),
     Migration(
-        version="021",
+        version="022",
         name="qualification_targets",
         up_sql="""
 CREATE TABLE IF NOT EXISTS qualification_tier_history (

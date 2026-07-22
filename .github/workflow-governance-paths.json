@@ -102,6 +102,10 @@
       "category": "deploy verification"
     },
     {
+      "path": "scripts/crm_deploy_health.py",
+      "category": "deploy verification"
+    },
+    {
       "path": "scripts/check_coverage.py",
       "category": "gate enforcement"
     },

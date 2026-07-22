@@ -31,6 +31,7 @@ from app.config import Settings
 SESSION_COOKIE_NAME = "admin_session"
 LOGIN_FLOW_COOKIE_NAME = "admin_login_flow"
 CSRF_FORM_FIELD = "csrf_token"
+CSRF_HEADER_NAME = "X-CSRF-Token"
 CSRF_MAX_AGE_SECONDS = 900
 # Authenticated session CSRF lifetime matches ``ADMIN_SESSION_TTL_SECONDS`` (see
 # ``derive_session_csrf_token``). Tokens are not rotated on navigation so forms
@@ -41,6 +42,8 @@ LOGIN_FLOW_EXPIRED_RETENTION_SECONDS = CSRF_MAX_AGE_SECONDS * 2
 # Retention after ``consumed_at`` before deleting one-time-used flows.
 LOGIN_FLOW_CONSUMED_RETENTION_SECONDS = CSRF_MAX_AGE_SECONDS
 LOGIN_FLOW_CLEANUP_BATCH_SIZE = 100
+# Opportunistic deletion batch for expired admin_login_rate_limits rows.
+LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE = 100
 INVALID_CREDENTIALS_MESSAGE = "Invalid username or password."
 INVALID_REQUEST_MESSAGE = "Invalid request."
 LOGIN_THROTTLED_MESSAGE = "Too many login attempts. Try again later."
@@ -451,28 +454,43 @@ def try_admit_login_attempt(
     now = datetime.now(timezone.utc)
     try:
         with db.db_connection(settings.database_url) as conn:
-            for rotation_key in rotation_keys:
-                if db.is_admin_login_throttled(conn, limiter_key=rotation_key, now=now):
-                    return LoginAdmissionResult(
-                        admitted=False,
-                        throttled=True,
-                        already_locked=True,
-                        lockout_transition=False,
-                    )
             admission = db.try_admit_admin_login(
                 conn,
                 limiter_keys=limiter_keys,
+                guard_keys=rotation_keys,
                 now=now,
                 rate_limit=settings.admin_login_rate_limit,
                 window_seconds=settings.admin_login_rate_window_seconds,
                 lockout_seconds=settings.admin_login_lockout_seconds,
             )
-            db.cleanup_expired_admin_login_rate_limits(
-                conn,
-                now=now,
-                window_seconds=settings.admin_login_rate_window_seconds,
-                lockout_seconds=settings.admin_login_lockout_seconds,
-            )
+            if admission.admitted:
+                try:
+                    cleanup_started = time.perf_counter()
+                    deleted = db.cleanup_expired_admin_login_rate_limits(
+                        conn,
+                        now=now,
+                        window_seconds=settings.admin_login_rate_window_seconds,
+                        lockout_seconds=settings.admin_login_lockout_seconds,
+                        batch_size=LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE,
+                    )
+                    duration_ms = (time.perf_counter() - cleanup_started) * 1000
+                    _logger.info(
+                        "Admin login rate limit cleanup completed",
+                        extra={
+                            "batch_size": LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE,
+                            "deleted_count": deleted,
+                            "duration_ms": round(duration_ms, 2),
+                            "likely_backlog_remaining": (
+                                deleted >= LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE
+                            ),
+                        },
+                    )
+                except Exception:
+                    _logger.warning(
+                        "Admin login rate limit cleanup failed; admission unchanged",
+                        extra={"batch_size": LOGIN_RATE_LIMIT_CLEANUP_BATCH_SIZE},
+                        exc_info=True,
+                    )
     except Exception:
         _logger.warning(
             "Admin login rate limiter unavailable; using conservative fallback",

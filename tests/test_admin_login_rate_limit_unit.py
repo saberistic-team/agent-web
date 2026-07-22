@@ -161,12 +161,31 @@ def test_cleanup_expired_admin_login_rate_limits_deletes_stale_rows() -> None:
         now=now,
         window_seconds=900,
         lockout_seconds=900,
+        batch_size=100,
     )
 
     sql = cur.execute.call_args.args[0]
     assert "DELETE FROM admin_login_rate_limits" in sql
+    assert "FOR UPDATE SKIP LOCKED" in sql
+    assert "ORDER BY updated_at, limiter_key" in sql
+    assert "LIMIT %s" in sql
+    assert cur.execute.call_args.args[1] == (now, 1800, now, 100)
     assert deleted == 3
     conn.commit.assert_called_once()
+
+
+@pytest.mark.unit
+def test_cleanup_expired_admin_login_rate_limits_rejects_non_positive_batch() -> None:
+    conn = MagicMock()
+    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    with pytest.raises(ValueError, match="batch_size must be positive"):
+        db.cleanup_expired_admin_login_rate_limits(
+            conn,
+            now=now,
+            window_seconds=900,
+            lockout_seconds=900,
+            batch_size=0,
+        )
 
 
 @pytest.mark.unit

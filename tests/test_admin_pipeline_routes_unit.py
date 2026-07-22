@@ -22,6 +22,7 @@ from app.admin_auth import SESSION_COOKIE_NAME
 from app.admin_preview import PREVIEW_PIPELINE_COMPANY_IDS
 from app.config import get_settings
 from app.main import app
+from tests.conftest import enable_admin_preview_env
 
 client = TestClient(app, follow_redirects=False)
 
@@ -206,8 +207,7 @@ def test_pipeline_stage_change_shows_transition_error(
 @pytest.mark.unit
 @pytest.mark.integration
 def test_pipeline_preview_mode_returns_mock_rows(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    enable_admin_preview_env(monkeypatch)
     response = client.get("/admin/pipeline")
     assert response.status_code == 200
     assert "Preview data — not production" in response.text
@@ -326,8 +326,7 @@ def test_pipeline_next_action_repeated_invalid_submission_does_not_write(
 def test_pipeline_preview_detail_validation_error_fixture(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    enable_admin_preview_env(monkeypatch, base_url="http://127.0.0.1:8765")
     company_id = PREVIEW_PIPELINE_COMPANY_IDS[0]
     response = client.get(
         f"/admin/pipeline/{company_id}?error=validation&focus=expected_value_cents"
@@ -353,12 +352,12 @@ def test_pipeline_activity_post_redirects(authenticated_admin: dict[str, Any]) -
         )
     assert response.status_code == 303
     crm.record_pipeline_activity.assert_called_once()
+    assert crm.record_pipeline_activity.call_args.kwargs["actor_context"].actor == "operator"
 
 
 @pytest.mark.unit
 def test_pipeline_preview_detail_fixed_id(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    enable_admin_preview_env(monkeypatch)
     company_id = PREVIEW_PIPELINE_COMPANY_IDS[0]
     response = client.get(f"/admin/pipeline/{company_id}")
     assert response.status_code == 200
@@ -423,8 +422,7 @@ def test_pipeline_list_swallows_crm_lookup_exception(
 def test_pipeline_preview_detail_unknown_id_returns_404(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    enable_admin_preview_env(monkeypatch, base_url="http://127.0.0.1:8765")
     unknown_id = UUID("99999999-9999-9999-9999-999999999999")
     response = client.get(f"/admin/pipeline/{unknown_id}")
     assert response.status_code == 404
@@ -461,15 +459,16 @@ def test_pipeline_detail_missing_company_returns_404(
 def test_pipeline_stage_change_preview_mode_redirects(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    # Superseded by the central AdminPreviewReadOnlyMiddleware (#331): preview
+    # mode now rejects every unsafe method under /admin with 405 before the
+    # route handler runs, instead of a per-route silent-redirect no-op.
+    enable_admin_preview_env(monkeypatch, base_url="http://127.0.0.1:8765")
     with patch("app.admin_routes._verify_session_csrf"):
         response = client.post(
             f"/admin/pipeline/{COMPANY_ID}/stage",
             data={"csrf_token": "irrelevant-in-preview", "to_stage": "qualified"},
         )
-    assert response.status_code == 303
-    assert response.headers["location"] == f"/admin/pipeline/{COMPANY_ID}"
+    assert response.status_code == 405
 
 
 @pytest.mark.unit
@@ -526,15 +525,16 @@ def test_pipeline_stage_change_transition_error_missing_company_returns_404(
 def test_pipeline_next_action_preview_mode_redirects(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    # Superseded by the central AdminPreviewReadOnlyMiddleware (#331): preview
+    # mode now rejects every unsafe method under /admin with 405 before the
+    # route handler runs, instead of a per-route silent-redirect no-op.
+    enable_admin_preview_env(monkeypatch, base_url="http://127.0.0.1:8765")
     with patch("app.admin_routes._verify_session_csrf"):
         response = client.post(
             f"/admin/pipeline/{COMPANY_ID}/next-action",
             data={"csrf_token": "irrelevant-in-preview", "next_action": "Follow up"},
         )
-    assert response.status_code == 303
-    assert response.headers["location"] == f"/admin/pipeline/{COMPANY_ID}"
+    assert response.status_code == 405
 
 
 @pytest.mark.unit
@@ -586,8 +586,10 @@ def test_pipeline_next_action_invalid_value_missing_company_returns_404(
 def test_pipeline_activity_preview_mode_redirects(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ADMIN_PREVIEW_MODE", "1")
-    monkeypatch.setenv("BASE_URL", "http://127.0.0.1:8765")
+    # Superseded by the central AdminPreviewReadOnlyMiddleware (#331): preview
+    # mode now rejects every unsafe method under /admin with 405 before the
+    # route handler runs, instead of a per-route silent-redirect no-op.
+    enable_admin_preview_env(monkeypatch, base_url="http://127.0.0.1:8765")
     with patch("app.admin_routes._verify_session_csrf"):
         response = client.post(
             f"/admin/pipeline/{COMPANY_ID}/activities",
@@ -597,8 +599,7 @@ def test_pipeline_activity_preview_mode_redirects(
                 "summary": "Left voicemail",
             },
         )
-    assert response.status_code == 303
-    assert response.headers["location"] == f"/admin/pipeline/{COMPANY_ID}"
+    assert response.status_code == 405
 
 
 @pytest.mark.unit

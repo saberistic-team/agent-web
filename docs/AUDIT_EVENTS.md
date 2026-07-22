@@ -48,6 +48,8 @@ both commit or roll back together.
 | Flow | Owner | Policy |
 |------|-------|--------|
 | CRM import, delete, pipeline, scoring, analytics, export | `CrmService` | Required audit; failure rolls back mutation |
+| Research evidence append | `CrmService.attach_research_record` | Required audit; failure rolls back research row |
+| Pipeline activity creation | `CrmService.record_pipeline_activity` | Required audit; failure rolls back activity row |
 | Brief-to-CRM linkage | `CrmService.link_project_brief_source` | Transactional write; audit ships with future routes |
 | Login success | `admin_routes._issue_session` | Prior-session revocation (if any) + new session + required audit atomically |
 | Logout (authenticated) | `admin_routes.admin_logout` | Revocation + required audit atomically when the session row transitions to revoked |
@@ -139,8 +141,38 @@ legacy rows.
 | `scoring_rule.update` | Scoring rule edits via `CrmService.update_scoring_rule` |
 | `analytics.config.update` | Analytics configuration via `CrmService.update_analytics_config` |
 | `export.request` | Export requests via `CrmService.request_export` |
+| `research_record.create` | Research evidence append via `CrmService.attach_research_record` |
+| `pipeline_activity.create` | Pipeline activity creation via `CrmService.record_pipeline_activity` |
+| `company.create` | Company creation via `CrmService.create_company` |
+| `company.update` | Company field updates via `CrmService.update_company` |
+| `company.archive` | Company archive (logical delete) via `CrmService.archive_company` |
+| `company.restore` | Company restore via `CrmService.restore_company` |
+| `contact.create` | Contact creation via `CrmService.create_contact` |
+| `contact.update` | Contact field updates via `CrmService.update_contact` |
+| `contact.archive` | Contact archive (logical delete) via `CrmService.archive_contact` |
+| `contact.restore` | Contact restore via `CrmService.restore_contact` |
+| `brief.convert` | Brief-to-CRM conversion via `CrmService.convert_project_brief` |
 
-Auth events are wired in `app/admin_routes.py`. Other mutations record audit events through `CrmService` methods that future admin UI routes will call.
+Auth events are wired in `app/admin_routes.py`. CRM mutations record audit events through `CrmService` methods called by admin routes.
+
+### Research and pipeline activity audit payloads
+
+Immutable audit rows for research evidence and pipeline activities store **bounded metadata only**:
+
+- **Research (`research_record.create`):** record ID, company ID, optional contact ID, server-defined record type, and boolean presence flags for source name/URL, observed value/date, review/expiry dates, and confidence. The canonical `research_records` row holds body text, observed values, URLs, and metadata.
+- **Pipeline activity (`pipeline_activity.create`):** activity ID, company ID, optional contact ID, allowlisted activity type, and server timestamp. The canonical `activities` row holds the free-form summary and metadata.
+
+Do not copy research bodies, activity summaries, raw source URLs/query strings, or arbitrary metadata into `audit_events`.
+
+### Company and contact lifecycle audit payloads
+
+Immutable audit rows for company/contact lifecycle mutations store **bounded metadata only**:
+
+- **Create (`company.create`, `contact.create`):** after-state summary using the same field allowlist as updates (`company_audit_summary` / `contact_audit_summary`). Contact email is never stored.
+- **Update (`company.update`, `contact.update`):** before/after snapshots using the same allowlists. When redacted before/after summaries are identical, **no event is written** (documented no-op behavior).
+- **Archive / restore (`company.archive`, `company.restore`, `contact.archive`, `contact.restore`):** transition metadata only — entity display label (`name` or `full_name`) and `archived_at` before/after. Archive/restore events never claim physical deletion.
+
+Do not copy free-form notes, raw email addresses, profile URLs, complete funding text, session/CSRF values, or request bodies into lifecycle audit rows.
 
 ## Admin UI
 
@@ -158,7 +190,7 @@ Operational expectations:
 - **Long-term:** retain archives for **7 years** to support security and business reviews
 - **Purge:** delete archived objects only after the retention window; never delete hot rows through app code
 
-Adjust windows per compliance needs; document changes in this file.
+**Canonical vs audit storage:** Free-form CRM content (research bodies, activity summaries, brief text) lives in mutable business tables (`research_records`, `activities`, `project_briefs`, …). Immutable audit rows store bounded metadata for attribution and investigation — not a second copy of that content. Adjust windows per compliance needs; document changes in this file.
 
 ## Operational queries
 

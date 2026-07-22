@@ -1365,6 +1365,21 @@ class PostgresIcpScoringRepository:
             row = cur.fetchone()
         return dict(row) if row else None
 
+    def get_version_by_number(
+        self, conn: psycopg.Connection, version_number: int
+    ) -> dict[str, Any] | None:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, version_number, label, is_active, created_at, created_by
+                FROM icp_scoring_versions
+                WHERE version_number = %s
+                """,
+                (version_number,),
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
+
     def list_rules_for_version(
         self, conn: psycopg.Connection, version_id: UUID
     ) -> list[dict[str, Any]]:
@@ -1382,6 +1397,74 @@ class PostgresIcpScoringRepository:
             )
             rows = cur.fetchall()
         return [dict(row) for row in rows]
+
+    def create_version(
+        self,
+        conn: psycopg.Connection,
+        *,
+        version_number: int,
+        label: str,
+        created_by: str,
+        activate: bool,
+    ) -> dict[str, Any]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO icp_scoring_versions (
+                    version_number, label, is_active, created_by
+                )
+                VALUES (%s, %s, %s, %s)
+                RETURNING id, version_number, label, is_active, created_at, created_by
+                """,
+                (version_number, label, activate, created_by),
+            )
+            row = cur.fetchone()
+        return dict(row)
+
+    def deactivate_all_versions(self, conn: psycopg.Connection) -> None:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE icp_scoring_versions SET is_active = FALSE WHERE is_active = TRUE")
+
+    def insert_rule(
+        self,
+        conn: psycopg.Connection,
+        *,
+        version_id: UUID,
+        rule_id: str,
+        dimension: str,
+        label: str,
+        weight: float,
+        threshold: dict[str, Any],
+        enabled: bool,
+        accept_hypothesis: bool,
+        sort_order: int,
+    ) -> dict[str, Any]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO icp_scoring_rules (
+                    id, version_id, dimension, label, weight, threshold,
+                    enabled, accept_hypothesis, sort_order
+                )
+                VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s)
+                RETURNING
+                    id, version_id, dimension, label, weight, threshold,
+                    enabled, accept_hypothesis, sort_order
+                """,
+                (
+                    rule_id,
+                    version_id,
+                    dimension,
+                    label,
+                    weight,
+                    json.dumps(threshold),
+                    enabled,
+                    accept_hypothesis,
+                    sort_order,
+                ),
+            )
+            row = cur.fetchone()
+        return dict(row)
 
     def insert_snapshot(
         self,
@@ -1445,6 +1528,29 @@ class PostgresIcpScoringRepository:
             )
             row = cur.fetchone()
         return dict(row) if row else None
+
+    def list_latest_snapshots(
+        self,
+        conn: psycopg.Connection,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT DISTINCT ON (s.company_id)
+                    s.*,
+                    c.name AS company_name
+                FROM company_icp_score_snapshots AS s
+                JOIN companies AS c ON c.id = s.company_id
+                WHERE c.archived_at IS NULL
+                ORDER BY s.company_id, s.calculated_at DESC, s.created_at DESC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            rows = cur.fetchall()
+        return [dict(row) for row in rows]
 
 
 class PostgresQualificationRepository:

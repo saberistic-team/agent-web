@@ -21,13 +21,20 @@ WORKFLOWS_DIR = Path(".github/workflows")
 RULESET_NAME = "Require independent review for workflow governance"
 WORKFLOW_SCRIPT_RE = re.compile(r"python\s+scripts/([a-zA-Z0-9_]+)\.py")
 SCRIPT_PATH_RE = re.compile(r"scripts/([a-z_]+)\.py")
-HUMAN_CODEOWNERS = frozenset({"@saberistic", "@mehdidehdar", "@Amirsharifico"})
+HUMAN_CODEOWNERS = frozenset({"@saberistic"})
 AUTOMATION_LOGIN_MARKERS = ("bot", "agent", "app", "copilot")
+
+
+def is_repository_wide_pattern(pattern: str) -> bool:
+    """Return whether a CODEOWNERS pattern assigns ownership to the entire repo."""
+    return pattern.lstrip("/") == "*"
 
 
 def _glob_regex(pattern: str) -> re.Pattern[str]:
     """Compile the CODEOWNERS subset used by this repository."""
     pattern = pattern.lstrip("/")
+    if pattern == "*":
+        return re.compile("^.*$")
     result = []
     index = 0
     while index < len(pattern):
@@ -207,6 +214,8 @@ def validate_codeowners_manifest_sync(
     governance_files = manifest_matched_files(files, patterns)
 
     for pattern, _owners in rules:
+        if is_repository_wide_pattern(pattern):
+            continue
         normalized = pattern.lstrip("/")
         for path in files:
             if not _glob_regex(normalized).match(path):
@@ -376,6 +385,110 @@ def validate_live_ruleset(root: Path = ROOT) -> list[str]:
     return [f"live ruleset: {error}" for error in validate_ruleset_payload(payload)]
 
 
+# A live-ruleset failure is repository-**settings** drift (GitHub, not this
+# checked-in policy) — no Builder codegen on any product PR can fix it, yet
+# it fails the same "test" job every product PR runs. Before this alert
+# existed, that drift produced only a bare CI red X on `main`, indistinguishable
+# among dozens of Builder/Reviewer bot pushes; it recurred silently for hours
+# (see docs/WORKFLOW_GOVERNANCE.md "Ruleset drift alerting") because nothing
+# paged a human. File (or refresh) one tracking issue instead.
+GOVERNANCE_DRIFT_ISSUE_TITLE = "Live ruleset drift: workflow-governance enforcement is not active"
+
+
+def ruleset_drift_errors(errors: list[str]) -> list[str]:
+    """Return the subset of ``errors`` caused by live-ruleset drift, not code."""
+    return [
+        error
+        for error in errors
+        if error.startswith("live ruleset:") or error.startswith("unable to fetch live ruleset:")
+    ]
+
+
+def _find_open_issue_by_title(repo: str, title: str) -> int | None:
+    from github_api import api, split_repo
+
+    owner, name = split_repo(repo)
+    page = 1
+    while page <= 5:
+        batch = api(
+            "GET",
+            f"/repos/{owner}/{name}/issues?state=open&per_page=50&page={page}",
+        )
+        if not batch:
+            return None
+        for item in batch:
+            if item.get("title") == title and "pull_request" not in item:
+                return int(item["number"])
+        if len(batch) < 50:
+            return None
+        page += 1
+    return None
+
+
+def report_ruleset_drift(repo: str, errors: list[str]) -> None:
+    """File (or refresh) a plain tracking issue when the live ruleset drifted.
+
+    Opt-in via ``REPORT_GOVERNANCE_DRIFT=1`` (set only for pushes to the
+    default branch in ci.yml) so PR runs and local/test invocations never
+    open issues. Deliberately omits every ``status:*`` / ``type:*`` /
+    ``priority:*`` / ``agent:*`` orchestration label — this is a repository
+    **settings** problem the Planner/Builder/dispatcher pipeline must not try
+    to "fix" with a code PR (see docs/WORKFLOW_GOVERNANCE.md "Recovery and
+    break-glass": only a human repository admin can restore ruleset
+    enforcement, and never via an automation token).
+    """
+    drift = ruleset_drift_errors(errors)
+    if not drift:
+        return
+    if os.environ.get("REPORT_GOVERNANCE_DRIFT", "").strip() not in {"1", "true", "yes"}:
+        return
+    if not repo or not os.environ.get("GITHUB_TOKEN", "").strip():
+        return
+
+    from github_api import GitHubError, api, post_issue_comment, split_repo
+
+    run_url = ""
+    server_url = os.environ.get("GITHUB_SERVER_URL", "").strip()
+    run_id = os.environ.get("GITHUB_RUN_ID", "").strip()
+    if server_url and run_id:
+        run_url = f"{server_url}/{repo}/actions/runs/{run_id}"
+
+    body_lines = [
+        "### governance_ruleset_drift",
+        *(f"- error: `{error}`" for error in drift),
+        f"- detected_in_run: {run_url or '(local run, no CI run URL)'}",
+        "",
+        "The **live** GitHub ruleset has drifted from the checked-in "
+        "`.github/rulesets/independent-workflow-review.json` policy. This is "
+        "a repository-settings problem — no code change on any Builder PR "
+        "can fix it, and every PR that rebases onto this `main` will fail "
+        "the same CI check until it is repaired.",
+        "",
+        "@saberistic: please follow "
+        "`docs/WORKFLOW_GOVERNANCE.md` 'Recovery and break-glass' to restore "
+        "enforcement, then re-run "
+        "`VERIFY_LIVE_GOVERNANCE_RULESET=1 python scripts/validate_workflow_governance.py` "
+        "to confirm before closing this issue.",
+    ]
+    body = "\n".join(body_lines)
+
+    try:
+        existing = _find_open_issue_by_title(repo, GOVERNANCE_DRIFT_ISSUE_TITLE)
+        if existing is None:
+            owner, name = split_repo(repo)
+            api(
+                "POST",
+                f"/repos/{owner}/{name}/issues",
+                body={"title": GOVERNANCE_DRIFT_ISSUE_TITLE, "body": body},
+            )
+        else:
+            post_issue_comment(repo, existing, body)
+    except GitHubError as exc:
+        # Alerting is best-effort: never let a notification failure mask the
+        # underlying drift as a hard crash of the validator itself.
+        print(f"warning: failed to report governance ruleset drift: {exc}", file=sys.stderr)
+
+
 def validate(root: Path = ROOT) -> list[str]:
     """Return policy errors; an empty list means ownership is complete."""
     codeowners_path = root / CODEOWNERS
@@ -403,6 +516,8 @@ def main() -> int:
     if errors:
         for error in errors:
             print(f"FAIL: {error}", file=sys.stderr)
+        repository = os.environ.get("GITHUB_REPOSITORY", "").strip()
+        report_ruleset_drift(repository, errors)
         return 1
     print(
         "PASS: workflow-governance paths are human-owned, manifest-synchronized, "

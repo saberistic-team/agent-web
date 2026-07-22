@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import os
+from typing import Any
 from unittest.mock import patch
 
-from review_models import ai_review, extract_json, reviewer_agent_cwd
+from review_models import ai_review, collect_pr_context, extract_json, reviewer_agent_cwd
 
 
 def test_extract_json_recovers_truncated_approved() -> None:
@@ -112,3 +113,104 @@ def test_reviewer_agent_cwd_falls_back_when_coverage_root_missing() -> None:
     with patch.dict(os.environ, {}, clear=False):
         os.environ.pop("COVERAGE_ROOT", None)
         assert reviewer_agent_cwd() == os.getcwd()
+
+
+def test_collect_pr_context_paginates_beyond_default_api_page(
+    monkeypatch: Any,
+) -> None:
+    """#377: PRs carrying >30 files (e.g. Reviewer screenshot evidence) must
+    not silently drop later pages of the diff — `pulls/{pr}/files` defaults
+    to a 30-item page, and an unpaginated call previously fed the AI model a
+    partial (often screenshot-only) `files` list no matter how many real
+    code/test/doc changes the PR actually contained."""
+    screenshots = [
+        {"filename": f".agent/screenshots/pr-1/branch-{i}.png", "status": "added"}
+        for i in range(45)
+    ]
+    code_files = [
+        {
+            "filename": "app/admin_cache_policy.py",
+            "status": "added",
+            "additions": 10,
+            "deletions": 0,
+            "patch": "+no-store",
+        }
+    ]
+    all_files = screenshots + code_files
+
+    def fake_api(method: str, path: str, **_kwargs: Any) -> Any:
+        assert method == "GET"
+        if path.endswith("/issues/337"):
+            return {"title": "issue", "body": "body"}
+        if path.endswith("/pulls/1"):
+            return {"title": "pr", "body": "pr body"}
+        if path.endswith("/pulls/1/commits"):
+            return []
+        if "/pulls/1/files" in path:
+            page = 1
+            if "page=" in path:
+                page = int(path.rsplit("page=", 1)[-1])
+            start = (page - 1) * 100
+            return all_files[start : start + 100]
+        raise AssertionError(f"unexpected path {path}")
+
+    # `list_pr_files` (github_api.py) resolves its own `api` call against
+    # github_api's globals, not review_models's imported name, so both call
+    # sites need patching to exercise the real pagination path end to end.
+    monkeypatch.setattr("review_models.api", fake_api)
+    monkeypatch.setattr("github_api.api", fake_api)
+    ctx = collect_pr_context("o/r", 337, 1)
+    filenames = [f["filename"] for f in ctx["files"]]
+    assert "app/admin_cache_policy.py" in filenames
+    assert ctx["screenshot_evidence_file_count"] == 45
+
+
+def test_collect_pr_context_prioritizes_code_over_screenshots_in_top_20(
+    monkeypatch: Any,
+) -> None:
+    """Even after pagination, `.agent/screenshots/...` sorts alphabetically
+    before `app/`/`docs/`/`tests/`, so a plain top-20 slice of a 130-file PR
+    can still be 100% screenshots. Real files must not be crowded out."""
+    screenshots = [
+        {"filename": f".agent/screenshots/pr-1/branch-{i}.png", "status": "added"}
+        for i in range(117)
+    ]
+    code_files = [
+        {
+            "filename": name,
+            "status": "added",
+            "additions": 1,
+            "deletions": 0,
+            "patch": "+x",
+        }
+        for name in [
+            "app/admin_cache_policy.py",
+            "app/main.py",
+            "docs/ADMIN_AUTH.md",
+            "tests/test_admin_cache_headers.py",
+        ]
+    ]
+    all_files = screenshots + code_files
+
+    def fake_api(method: str, path: str, **_kwargs: Any) -> Any:
+        if "/pulls/1/files" in path:
+            page = 1
+            if "page=" in path:
+                page = int(path.rsplit("page=", 1)[-1])
+            start = (page - 1) * 100
+            return all_files[start : start + 100]
+        if path.endswith("/pulls/1/commits"):
+            return []
+        return {"title": "t", "body": "b"}
+
+    monkeypatch.setattr("review_models.api", fake_api)
+    monkeypatch.setattr("github_api.api", fake_api)
+    ctx = collect_pr_context("o/r", 337, 1)
+    filenames = {f["filename"] for f in ctx["files"]}
+    assert filenames == {
+        "app/admin_cache_policy.py",
+        "app/main.py",
+        "docs/ADMIN_AUTH.md",
+        "tests/test_admin_cache_headers.py",
+    }
+    assert ctx["screenshot_evidence_file_count"] == 117

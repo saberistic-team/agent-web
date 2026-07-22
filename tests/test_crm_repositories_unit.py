@@ -304,35 +304,158 @@ def test_qualification_repository_tier_history_and_working_lists() -> None:
     assert items[0]["company_name"] == "Acme"
 
 
+VERSION_ID = UUID("99999999-9999-9999-9999-999999999901")
+
+
 @pytest.mark.unit
-def test_icp_scoring_repository_snapshot_and_version_queries() -> None:
+@pytest.mark.integration
+def test_icp_scoring_repository_version_queries() -> None:
     repo = PostgresIcpScoringRepository()
-    snapshot_id = UUID("88888888-8888-8888-8888-888888888888")
-    version_id = UUID("99999999-9999-9999-9999-999999999999")
+    version_row = {
+        "id": VERSION_ID,
+        "version_number": 1,
+        "label": "Default Saberistic ICP",
+        "is_active": True,
+        "created_at": None,
+        "created_by": "migration",
+    }
 
-    conn = _mock_conn({"id": version_id, "version_number": 1, "is_active": True})
-    assert repo.get_active_version(conn)["version_number"] == 1
+    conn_active = _mock_conn(version_row)
+    active = repo.get_active_version(conn_active)
+    assert active is not None
+    assert active["version_number"] == 1
+    active_sql = str(conn_active.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    assert "icp_scoring_versions" in active_sql
+    assert "is_active = TRUE" in active_sql
 
-    conn2 = _mock_conn([{"rule_id": "vertical_fit", "weight": 1.0}])
-    rules = repo.list_rules_for_version(conn2, version_id)
-    assert rules[0]["rule_id"] == "vertical_fit"
+    conn_by_number = _mock_conn(version_row)
+    by_number = repo.get_version_by_number(conn_by_number, 1)
+    assert by_number is not None
+    assert by_number["id"] == VERSION_ID
 
-    conn3 = _mock_conn({"id": snapshot_id, "total_score": 8.0})
-    snapshot = repo.insert_snapshot(
-        conn3,
-        company_id=COMPANY_ID,
-        version_id=version_id,
-        version_number=1,
-        total_score=8.0,
-        computed_score=8.0,
-        breakdown=[],
-        missing_inputs=[],
-        calculated_at=None,
+    conn_missing = _mock_conn(None)
+    conn_missing.cursor.return_value.__enter__.return_value.fetchone.return_value = None
+    assert repo.get_active_version(conn_missing) is None
+    assert repo.get_version_by_number(conn_missing, 99) is None
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_icp_scoring_repository_rules_and_versions() -> None:
+    repo = PostgresIcpScoringRepository()
+    rule_row = {
+        "id": "vertical_fit",
+        "version_id": VERSION_ID,
+        "dimension": "vertical",
+        "label": "Target vertical",
+        "weight": 1.0,
+        "threshold": {"categories": ["fintech"]},
+        "enabled": True,
+        "accept_hypothesis": False,
+        "sort_order": 1,
+    }
+    version_row = {
+        "id": VERSION_ID,
+        "version_number": 2,
+        "label": "ICP rules v2",
+        "is_active": True,
+        "created_at": None,
+        "created_by": "operator",
+    }
+
+    conn_rules = _mock_conn([rule_row])
+    rules = repo.list_rules_for_version(conn_rules, VERSION_ID)
+    assert len(rules) == 1
+    rules_sql = str(conn_rules.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    assert "icp_scoring_rules" in rules_sql
+    assert "ORDER BY sort_order ASC" in rules_sql
+
+    conn_create = _mock_conn(version_row)
+    created = repo.create_version(
+        conn_create,
+        version_number=2,
+        label="ICP rules v2",
+        created_by="operator",
+        activate=True,
     )
-    assert snapshot["total_score"] == 8.0
+    assert created["version_number"] == 2
+    create_sql = str(conn_create.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    assert "INSERT INTO icp_scoring_versions" in create_sql
 
-    conn4 = _mock_conn({"id": snapshot_id, "total_score": 8.0})
-    latest = repo.get_latest_snapshot_for_company(conn4, COMPANY_ID)
+    conn_deactivate = _mock_conn(None)
+    repo.deactivate_all_versions(conn_deactivate)
+    deactivate_sql = str(
+        conn_deactivate.cursor.return_value.__enter__.return_value.execute.call_args.args[0]
+    )
+    assert "UPDATE icp_scoring_versions SET is_active = FALSE" in deactivate_sql
+
+    conn_insert_rule = _mock_conn(rule_row)
+    inserted = repo.insert_rule(
+        conn_insert_rule,
+        version_id=VERSION_ID,
+        rule_id="vertical_fit",
+        dimension="vertical",
+        label="Target vertical",
+        weight=1.0,
+        threshold={"categories": ["fintech"]},
+        enabled=True,
+        accept_hypothesis=False,
+        sort_order=1,
+    )
+    assert inserted["id"] == "vertical_fit"
+    insert_sql = str(conn_insert_rule.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    assert "INSERT INTO icp_scoring_rules" in insert_sql
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_icp_scoring_repository_snapshots() -> None:
+    from datetime import datetime, timezone
+
+    repo = PostgresIcpScoringRepository()
+    calculated_at = datetime(2026, 7, 15, 12, 0, tzinfo=timezone.utc)
+    snapshot_row = {
+        "id": UUID("88888888-8888-8888-8888-888888888881"),
+        "company_id": COMPANY_ID,
+        "version_id": VERSION_ID,
+        "version_number": 1,
+        "total_score": 7.0,
+        "computed_score": 6.5,
+        "breakdown": [],
+        "missing_inputs": [],
+        "calculated_at": calculated_at,
+        "is_override": False,
+        "override_reason": None,
+        "override_by": None,
+    }
+    list_row = {**snapshot_row, "company_name": "Acme"}
+
+    conn_insert = _mock_conn(snapshot_row)
+    inserted = repo.insert_snapshot(
+        conn_insert,
+        company_id=COMPANY_ID,
+        version_id=VERSION_ID,
+        version_number=1,
+        total_score=7.0,
+        computed_score=6.5,
+        breakdown=[{"rule_id": "vertical_fit", "points_awarded": 1.0}],
+        missing_inputs=["company.stage"],
+        calculated_at=calculated_at,
+    )
+    assert inserted["total_score"] == 7.0
+    insert_sql = str(conn_insert.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    assert "INSERT INTO company_icp_score_snapshots" in insert_sql
+
+    conn_latest = _mock_conn(snapshot_row)
+    latest = repo.get_latest_snapshot_for_company(conn_latest, COMPANY_ID)
     assert latest is not None
-    assert latest["total_score"] == 8.0
+    latest_sql = str(conn_latest.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    assert "ORDER BY calculated_at DESC" in latest_sql
 
+    conn_list = _mock_conn([list_row])
+    rows = repo.list_latest_snapshots(conn_list, limit=25)
+    assert len(rows) == 1
+    assert rows[0]["company_name"] == "Acme"
+    list_sql = str(conn_list.cursor.return_value.__enter__.return_value.execute.call_args.args[0])
+    assert "DISTINCT ON (s.company_id)" in list_sql
+    assert conn_list.cursor.return_value.__enter__.return_value.execute.call_args.args[1] == (25,)

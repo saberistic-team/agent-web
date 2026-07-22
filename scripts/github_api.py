@@ -328,3 +328,117 @@ def put_files(
             time.sleep(0.5 * (attempt + 1))
     assert last_err is not None
     raise last_err
+
+
+def graphql(
+    query: str,
+    variables: dict[str, Any] | None = None,
+    *,
+    token_override: str | None = None,
+) -> dict[str, Any]:
+    """Minimal GraphQL client (stdlib only) for the handful of mutations the
+    REST API cannot express (e.g. enabling PR auto-merge)."""
+    payload = json.dumps({"query": query, "variables": variables or {}}).encode("utf-8")
+    req = urllib.request.Request(
+        "https://api.github.com/graphql",
+        data=payload,
+        method="POST",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token_override or token()}",
+            "Content-Type": "application/json",
+            "User-Agent": "agent-web",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise GitHubError(f"graphql HTTP {exc.code}: {detail}") from exc
+    if data.get("errors"):
+        raise GitHubError(f"graphql errors: {data['errors']}")
+    return data["data"]
+
+
+def get_branch_sha(repo: str, branch: str) -> str:
+    owner, name = split_repo(repo)
+    ref = api("GET", f"/repos/{owner}/{name}/git/ref/heads/{branch}")
+    return str(ref["object"]["sha"])
+
+
+def create_branch(repo: str, branch: str, *, base_branch: str) -> str:
+    """Create ``branch`` pointing at the current tip of ``base_branch``.
+
+    Idempotent: if ``branch`` already exists, returns its current sha
+    unchanged (a prior automated run may not have merged yet).
+    """
+    owner, name = split_repo(repo)
+    try:
+        return get_branch_sha(repo, branch)
+    except GitHubError:
+        pass
+    sha = get_branch_sha(repo, base_branch)
+    try:
+        api(
+            "POST",
+            f"/repos/{owner}/{name}/git/refs",
+            body={"ref": f"refs/heads/{branch}", "sha": sha},
+        )
+    except GitHubError as exc:
+        if "already exists" not in str(exc).lower():
+            raise
+    return sha
+
+
+def find_open_pr_for_branch(repo: str, branch: str) -> dict[str, Any] | None:
+    """Return the open PR with head ``branch``, if any (avoids duplicate PRs
+    across repeated automated runs, e.g. one per deploy)."""
+    owner, name = split_repo(repo)
+    results = api(
+        "GET",
+        f"/repos/{owner}/{name}/pulls?state=open&head={owner}:{urllib.parse.quote(branch)}",
+    )
+    return results[0] if results else None
+
+
+def open_pull_request(
+    repo: str,
+    *,
+    head: str,
+    base: str,
+    title: str,
+    body: str,
+) -> dict[str, Any]:
+    owner, name = split_repo(repo)
+    return api(
+        "POST",
+        f"/repos/{owner}/{name}/pulls",
+        body={"head": head, "base": base, "title": title, "body": body},
+    )
+
+
+def enable_auto_merge(
+    repo: str,
+    pull_request_node_id: str,
+    *,
+    merge_method: str = "SQUASH",
+) -> None:
+    """Enable native GitHub auto-merge so the PR merges itself the instant
+    branch protection is satisfied (e.g. one human CODEOWNER approval) —
+    no REST endpoint exists for this, only GraphQL.
+    """
+    graphql(
+        """
+        mutation($pullRequestId: ID!, $mergeMethod: PullRequestMergeMethod!) {
+          enablePullRequestAutoMerge(input: {
+            pullRequestId: $pullRequestId,
+            mergeMethod: $mergeMethod
+          }) {
+            pullRequest { id }
+          }
+        }
+        """,
+        {"pullRequestId": pull_request_node_id, "mergeMethod": merge_method},
+    )

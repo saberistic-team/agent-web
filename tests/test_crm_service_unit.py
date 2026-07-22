@@ -49,7 +49,7 @@ def test_crm_service_records_company_contact_and_activity() -> None:
             pipeline=MagicMock(),
             import_batches=MagicMock(),
             icp_scoring=MagicMock(),
-        qualification=MagicMock(),
+            qualification=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -92,7 +92,7 @@ def test_crm_service_links_project_brief_source() -> None:
             pipeline=MagicMock(),
             import_batches=MagicMock(),
             icp_scoring=MagicMock(),
-        qualification=MagicMock(),
+            qualification=MagicMock(),
         )
     )
     conn = MagicMock()
@@ -126,8 +126,8 @@ def test_default_crm_repositories_use_postgres_backends() -> None:
     assert isinstance(service._repos.research_records, PostgresResearchRecordRepository)
     assert isinstance(service._repos.admin_users, PostgresAdminUserRepository)
     from app.repositories.postgres import (
-        PostgresImportBatchRepository,
         PostgresIcpScoringRepository,
+        PostgresImportBatchRepository,
         PostgresPipelineRepository,
         PostgresQualificationRepository,
     )
@@ -156,7 +156,7 @@ def _service_with_mocks(
         "pipeline": MagicMock(),
         "import_batches": MagicMock(),
         "icp_scoring": MagicMock(),
-    "qualification": MagicMock(),
+        "qualification": MagicMock(),
     }
     service = CrmService(repos=CrmRepositories(**repos))
     conn = MagicMock()
@@ -308,12 +308,14 @@ def test_crm_service_research_record_helpers() -> None:
     assert len(service.list_research_for_company(conn, COMPANY_ID)) == 1
     assert len(service.list_research_for_contact(conn, CONTACT_ID)) == 1
 
-    record = service.attach_research_record(
-        conn,
-        record_type="hypothesis",
-        company_id=COMPANY_ID,
-        body="Likely buyer",
-    )
+    with patch("app.crm_service.audit_service.record_research_record_create"):
+        record = service.attach_research_record(
+            conn,
+            actor_context=ActorContext(actor="admin", correlation_id="test"),
+            record_type="hypothesis",
+            company_id=COMPANY_ID,
+            body="Likely buyer",
+        )
     assert record["body"] == "Series B"
     conn.commit.assert_called_once()
 
@@ -326,17 +328,35 @@ def test_company_crud_helpers_commit_and_return_nonblocking_domain_warnings() ->
     company_repo.update.return_value = {"id": COMPANY_ID, "name": "Acme Updated", "domain": "acme.dev"}
     company_repo.archive.return_value = {"id": COMPANY_ID, "archived_at": "now"}
     company_repo.restore.return_value = {"id": COMPANY_ID, "archived_at": None}
+    company_repo.get_by_id.side_effect = [
+        {"id": COMPANY_ID, "name": "Acme", "archived_at": None},
+        {"id": COMPANY_ID, "name": "Acme", "archived_at": None},
+        {"id": COMPANY_ID, "name": "Acme", "archived_at": "now"},
+    ]
     service, conn, _ = _service_with_mocks(company_repo=company_repo)
 
-    created = service.create_company(conn, company=CompanyCreate(name="Acme", domain="www.acme.dev"))
-    assert created["company"]["name"] == "Acme"
-    assert len(created["duplicate_warnings"]) == 1
-    updated = service.update_company(
-        conn, COMPANY_ID, company=CompanyUpdate(name="Acme Updated", domain="acme.dev")
-    )
-    assert updated is not None and updated["company"]["name"] == "Acme Updated"
-    assert service.archive_company(conn, COMPANY_ID)["archived_at"] == "now"
-    assert service.restore_company(conn, COMPANY_ID)["archived_at"] is None
+    actor = ActorContext(actor="admin", correlation_id="test")
+    with patch("app.crm_lifecycle_audit.audit_service.record_company_create"), patch(
+        "app.crm_lifecycle_audit.audit_service.record_company_update"
+    ), patch("app.crm_service.audit_service.record_company_archive"), patch(
+        "app.crm_service.audit_service.record_company_restore"
+    ):
+        created = service.create_company(
+            conn,
+            company=CompanyCreate(name="Acme", domain="www.acme.dev"),
+            actor_context=actor,
+        )
+        assert created["company"]["name"] == "Acme"
+        assert len(created["duplicate_warnings"]) == 1
+        updated = service.update_company(
+            conn,
+            COMPANY_ID,
+            company=CompanyUpdate(name="Acme Updated", domain="acme.dev"),
+            actor_context=actor,
+        )
+        assert updated is not None and updated["company"]["name"] == "Acme Updated"
+        assert service.archive_company(conn, COMPANY_ID, actor_context=actor)["archived_at"] == "now"
+        assert service.restore_company(conn, COMPANY_ID, actor_context=actor)["archived_at"] is None
     assert conn.commit.call_count == 4
 
 
@@ -346,7 +366,10 @@ def test_contact_crud_helpers_commit_and_return_nonblocking_duplicate_warnings()
     contact_repo.find_by_profile_url.return_value = [
         {"id": CONTACT_ID, "full_name": "Ada", "profile_url": "https://linkedin.com/in/ada"}
     ]
-    contact_repo.get_active_by_email.return_value = {"id": CONTACT_ID, "full_name": "Ada", "email": "ada@example.com"}
+    contact_repo.get_active_by_email.side_effect = [
+        {"id": CONTACT_ID, "full_name": "Ada", "email": "ada@example.com"},
+        None,
+    ]
     contact_repo.find_by_name_company.return_value = [
         {"id": CONTACT_ID, "full_name": "Ada", "company_id": COMPANY_ID}
     ]
@@ -361,43 +384,48 @@ def test_contact_crud_helpers_commit_and_return_nonblocking_duplicate_warnings()
         "buying_roles": ["executive_buyer"],
     }
     contact_repo.archive.return_value = {"id": CONTACT_ID, "archived_at": "now"}
-    contact_repo.get_by_id.return_value = {
-        "id": CONTACT_ID,
-        "full_name": "Ada",
-        "email": None,
-        "archived_at": "now",
-    }
-    contact_repo.restore.return_value = {"id": CONTACT_ID, "archived_at": None}
+    contact_repo.get_by_id.side_effect = [
+        {"id": CONTACT_ID, "full_name": "Ada", "email": None, "archived_at": None},
+        {"id": CONTACT_ID, "full_name": "Ada", "email": None, "archived_at": None},
+        {"id": CONTACT_ID, "full_name": "Ada", "email": None, "archived_at": "now"},
+    ]
+    contact_repo.restore.return_value = {"id": CONTACT_ID, "full_name": "Ada", "archived_at": None}
     service, conn, _ = _service_with_mocks(contact_repo=contact_repo)
     actor = ActorContext(actor="admin", correlation_id="test")
 
-    created = service.create_contact(
-        conn,
-        contact=ContactCreate(
-            full_name="Ada",
-            profile_url="https://www.linkedin.com/in/ada",
-            email="ada@example.com",
-            company_id=COMPANY_ID,
-            buying_roles=["founder"],
-        ),
-    )
-    assert created["contact"]["full_name"] == "Ada"
-    assert len(created["duplicate_warnings"]) == 3
+    with patch("app.crm_lifecycle_audit.audit_service.record_contact_create"), patch(
+        "app.crm_lifecycle_audit.audit_service.record_contact_update"
+    ), patch("app.crm_service.audit_service.record_contact_archive"), patch(
+        "app.crm_service.audit_service.record_contact_restore"
+    ):
+        created = service.create_contact(
+            conn,
+            contact=ContactCreate(
+                full_name="Ada",
+                profile_url="https://www.linkedin.com/in/ada",
+                email="ada@example.com",
+                company_id=COMPANY_ID,
+                buying_roles=["founder"],
+            ),
+            actor_context=actor,
+        )
+        assert created["contact"]["full_name"] == "Ada"
+        assert len(created["duplicate_warnings"]) == 3
 
-    updated = service.update_contact(
-        conn,
-        CONTACT_ID,
-        contact=ContactUpdate(
-            full_name="Ada Updated",
-            profile_url="https://linkedin.com/in/ada",
-            email="ada@example.com",
-            company_id=COMPANY_ID,
-            buying_roles=["executive_buyer"],
-        ),
-    )
-    assert updated is not None and updated["contact"]["full_name"] == "Ada Updated"
-    assert service.archive_contact(conn, CONTACT_ID)["archived_at"] == "now"
-    with patch("app.crm_service.audit_service.record_contact_restore"):
+        updated = service.update_contact(
+            conn,
+            CONTACT_ID,
+            contact=ContactUpdate(
+                full_name="Ada Updated",
+                profile_url="https://linkedin.com/in/ada",
+                email="ada@example.com",
+                company_id=COMPANY_ID,
+                buying_roles=["executive_buyer"],
+            ),
+            actor_context=actor,
+        )
+        assert updated is not None and updated["contact"]["full_name"] == "Ada Updated"
+        assert service.archive_contact(conn, CONTACT_ID, actor_context=actor)["archived_at"] == "now"
         restored = service.restore_contact(conn, CONTACT_ID, actor_context=actor)
     assert restored.outcome == "success"
     assert restored.contact is not None
@@ -451,10 +479,12 @@ def test_create_contact_active_email_conflict_is_safe_domain_error() -> None:
     contact_repo.create.side_effect = _contact_email_unique_violation()
     service, conn, _ = _service_with_mocks(contact_repo=contact_repo)
 
+    actor = ActorContext(actor="admin", correlation_id="test")
     with pytest.raises(ContactEmailConflictError):
         service.create_contact(
             conn,
             contact=ContactCreate(full_name="Ada", email="ada@example.com"),
+            actor_context=actor,
         )
     conn.rollback.assert_called_once()
     conn.commit.assert_not_called()
@@ -469,10 +499,12 @@ def test_create_contact_reraises_unrelated_unique_violation() -> None:
     contact_repo.create.side_effect = _other_unique_violation()
     service, conn, _ = _service_with_mocks(contact_repo=contact_repo)
 
+    actor = ActorContext(actor="admin", correlation_id="test")
     with pytest.raises(UniqueViolation):
         service.create_contact(
             conn,
             contact=ContactCreate(full_name="Ada", email="ada@example.com"),
+            actor_context=actor,
         )
 
 
@@ -485,11 +517,13 @@ def test_update_contact_active_email_conflict_is_safe_domain_error() -> None:
     contact_repo.update.side_effect = _contact_email_unique_violation()
     service, conn, _ = _service_with_mocks(contact_repo=contact_repo)
 
+    actor = ActorContext(actor="admin", correlation_id="test")
     with pytest.raises(ContactEmailConflictError):
         service.update_contact(
             conn,
             CONTACT_ID,
             contact=ContactUpdate(full_name="Ada", email="ada@example.com"),
+            actor_context=actor,
         )
     conn.rollback.assert_called_once()
     conn.commit.assert_not_called()
@@ -509,6 +543,7 @@ def test_create_contact_email_matches_use_active_lookup_only() -> None:
     result = service.create_contact(
         conn,
         contact=ContactCreate(full_name="Ada", email="ADA@example.com"),
+        actor_context=ActorContext(actor="admin", correlation_id="test"),
     )
 
     # Case-insensitive active match becomes a non-blocking duplicate warning.

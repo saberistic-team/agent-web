@@ -105,9 +105,14 @@ Any Postgres 16 reachable via `TEST_DATABASE_URL` works (a local cluster, a
 throwaway container, or a managed instance). Each test rebuilds the `public`
 schema, so point it only at a disposable database.
 - **Migration digest freeze:** after a healthy production deploy, the CI job
-  **Freeze shipped migrations** runs `scripts/freeze_shipped_migrations.py` and
-  commits any unfrozen digests with `deploy: freeze …` (skipped by Deploy so
-  Render is not retriggered).
+  **Freeze shipped migrations** runs `scripts/freeze_shipped_migrations.py`,
+  which opens a `deploy/freeze-*` PR (title `deploy: freeze …`, skipped by
+  Deploy so Render is not retriggered when it lands) with any unfrozen
+  digests and enables GitHub auto-merge. Direct pushes to `main` are rejected
+  by the workflow-governance ruleset (issue #359/#362), so this never pushes
+  straight to the branch — a single human CODEOWNER approval is enough; no
+  extra merge click needed. Re-runs against the same missing versions reuse
+  the existing branch/PR.
 - Agent/orchestration scripts under `scripts/` are **not** measured by these
   gates (they have their own tests without `app/` coverage requirements).
 
