@@ -532,6 +532,11 @@ def verify_acceptance(
     *,
     use_ai: bool = True,
 ) -> dict[str, Any]:
+    if pr_number is None:
+        # Evidence must describe the same unique PR that Reviewer/Gate use.
+        from github_api import resolve_issue_pr
+
+        pr_number = int(resolve_issue_pr(repo, issue)["pr_number"])
     evidence = gather_evidence(repo, issue, pr_number)
     criteria = parse_criteria(evidence.get("issue_body") or "")
     items: list[dict[str, Any]] = []

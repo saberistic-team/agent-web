@@ -54,36 +54,15 @@ jobs:
           set -euo pipefail
           ISSUE="${{ github.event.issue.number }}"
           export ISSUE
-          # Use intentional link rules (builder/{issue}-*, (#issue), Closes/Fixes)
-          # — never bare "#N" prose. Casual mentions in sibling PRs (e.g. #355
-          # referencing issue 123) used to steal pr-head and fail coverage.
-          mapfile -t LINKED < <(python - <<'PY'
-          import os
-          import sys
-
-          sys.path.insert(0, "scripts")
-          from github_api import linked_open_prs, pr_head_ref
-
-          repo = os.environ["GITHUB_REPOSITORY"]
-          issue = int(os.environ["ISSUE"])
-          linked = linked_open_prs(repo, issue)
-          if not linked:
-              sys.exit(0)
-          pr = linked[0]
-          head = pr.get("head") or {}
-          print(pr_head_ref(pr))
-          print(head.get("sha") or "")
-          print(pr.get("number") or "")
-          PY
-          )
-          if [[ "${#LINKED[@]}" -lt 2 || -z "${LINKED[0]:-}" || -z "${LINKED[1]:-}" ]]; then
-            echo "No open PR intentionally linked to #${ISSUE}."
+          # Strict resolver never chooses a first match: zero or multiple
+          # intentional candidates are a visible, safe stop.
+          if ! RESOLUTION="$(python scripts/resolve_issue_pr.py --repo "${GITHUB_REPOSITORY}" --issue "${ISSUE}")"; then
+            echo "No unique linked PR for #${ISSUE}: ${RESOLUTION}"
             echo "has_pr=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          REF="${LINKED[0]}"
-          SHA="${LINKED[1]}"
-          PR_NUMBER="${LINKED[2]:-}"
+          mapfile -t LINKED < <(python -c 'import json,sys; r=json.load(sys.stdin); print(r["head_ref"]); print(r["head_sha"]); print(r["pr_number"])' <<<"${RESOLUTION}")
+          REF="${LINKED[0]}"; SHA="${LINKED[1]}"; PR_NUMBER="${LINKED[2]}"
           echo "Fetching intentionally linked PR #${PR_NUMBER} head ${REF} @ ${SHA} into pr-head/"
           rm -rf pr-head
           git fetch origin "${REF}"

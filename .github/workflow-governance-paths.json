@@ -10,6 +10,10 @@
       "category": "control-plane GitHub API"
     },
     {
+      "path": "scripts/resolve_issue_pr.py",
+      "category": "strict issue-to-PR resolver"
+    },
+    {
       "path": "scripts/copilot_agent.py",
       "category": "agent dispatch adapter"
     },

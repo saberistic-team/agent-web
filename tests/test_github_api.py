@@ -261,6 +261,50 @@ def test_linked_open_prs_ranks_builder_head_first(
     assert [pr["number"] for pr in linked] == [199, 200]
 
 
+def test_resolve_issue_pr_accepts_closing_title_and_docs_branch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cases = [
+        {"number": 1, "title": "feature", "body": "Fixes #12", "head": {"ref": "feature/x", "sha": "a"}, "base": {"ref": "main"}},
+        {"number": 2, "title": "feature (#12)", "body": "", "head": {"ref": "feature/x", "sha": "b"}, "base": {"ref": "main"}},
+        {"number": 3, "title": "docs", "body": "", "head": {"ref": "docs/12-update", "sha": "c"}, "base": {"ref": "main"}},
+    ]
+    for pr in cases:
+        monkeypatch.setattr(github_api, "api", lambda *_a, pr=pr, **_k: [pr])
+        resolved = github_api.resolve_issue_pr("o/r", 12)
+        assert resolved["pr_number"] == pr["number"]
+        assert resolved["head_sha"] == pr["head"]["sha"]
+        assert resolved["candidate_count"] == 1
+
+
+def test_resolver_rejects_casual_substring_and_multiple_candidates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    casual = {"number": 1, "title": "depends on #112", "body": "quoted: Fixes #112; depends on #12", "head": {"ref": "feature/x", "sha": "a"}}
+    monkeypatch.setattr(github_api, "api", lambda *_a, **_k: [casual])
+    with pytest.raises(github_api.IssuePRResolutionError) as zero:
+        github_api.resolve_issue_pr("o/r", 12)
+    assert zero.value.resolution["candidate_count"] == 0
+
+    one = {"number": 2, "title": "one (#12)", "body": "", "head": {"ref": "feature/a", "sha": "a"}}
+    two = {"number": 3, "title": "two", "body": "Resolves #12", "head": {"ref": "feature/b", "sha": "b"}}
+    monkeypatch.setattr(github_api, "api", lambda *_a, **_k: [one, two])
+    with pytest.raises(github_api.IssuePRResolutionError) as multiple:
+        github_api.resolve_issue_pr("o/r", 12)
+    assert multiple.value.resolution["candidate_count"] == 2
+
+
+def test_resolver_paginates_before_deciding(monkeypatch: pytest.MonkeyPatch) -> None:
+    page_one = [{"number": n, "title": "other", "body": "", "head": {"ref": f"feature/{n}"}} for n in range(100)]
+    linked = {"number": 101, "title": "feature (#12)", "body": "", "head": {"ref": "feature/12", "sha": "head"}, "base": {"ref": "main"}}
+
+    def fake_api(_method: str, path: str, **_k: Any) -> Any:
+        return page_one if path.endswith("page=1") else [linked]
+
+    monkeypatch.setattr(github_api, "api", fake_api)
+    assert github_api.resolve_issue_pr("o/r", 12)["pr_number"] == 101
+
+
 def test_graphql_posts_query_and_returns_data(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GITHUB_TOKEN", "test-token")
     captured: dict[str, Any] = {}

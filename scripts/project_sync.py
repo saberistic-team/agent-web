@@ -348,12 +348,11 @@ def content_state(owner: str, repo: str, number: int) -> bool:
 
 
 def linked_open_prs(repo: str, issue: int) -> list[int]:
-    """Open PRs that intentionally link ``issue`` (not casual ``#N`` prose)."""
-    from github_api import pr_links_issue
+    """Compatibility shape backed by the strict shared resolver."""
+    from github_api import unique_open_pr_or_none
 
-    owner, name = split_repo(repo)
-    prs = _rest("GET", f"/repos/{owner}/{name}/pulls?state=open&per_page=50") or []
-    return [int(pr["number"]) for pr in prs if pr_links_issue(pr, issue)]
+    pr = unique_open_pr_or_none(repo, issue)
+    return [int(pr["number"])] if pr else []
 
 
 def sync_number(

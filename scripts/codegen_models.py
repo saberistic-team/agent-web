@@ -404,10 +404,11 @@ def put_file_batch(
 
 
 def linked_open_prs(repo: str, issue: int) -> list[dict]:
-    """Delegate to shared intentional-link matcher (anti-loop #109/#181)."""
-    from github_api import linked_open_prs as _linked_open_prs
+    """Compatibility shape backed by the strict shared resolver."""
+    from github_api import unique_open_pr_or_none
 
-    return _linked_open_prs(repo, issue)
+    pr = unique_open_pr_or_none(repo, issue)
+    return [pr] if pr else []
 
 
 def json_system_prompt(*, ui: bool) -> str:

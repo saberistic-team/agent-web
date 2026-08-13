@@ -26,7 +26,7 @@ import re
 import sys
 from typing import Any
 
-from github_api import GitHubError, api, graphql, linked_open_prs, split_repo
+from github_api import GitHubError, api, graphql, split_repo, unique_open_pr_or_none
 
 DEPENDS_ON_LINE_RE = re.compile(
     r"(?im)^(?:depends\s+on|blocked\s+by|blockers?)\s*:?\s*(.+)$"
@@ -312,7 +312,8 @@ def _collect_pr_inferred_deps(repo: str, issue: int) -> list[int]:
     found: list[int] = []
     seen: set[int] = set()
     try:
-        prs = linked_open_prs(repo, issue)
+        pr = unique_open_pr_or_none(repo, issue)
+        prs = [pr] if pr else []
     except GitHubError:
         return []
     for pr in prs:

@@ -11,6 +11,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from dataclasses import dataclass
 from typing import Any
 
 # Intentional PR↔issue links only. Bare ``#N`` in prose (e.g. “preview #109”
@@ -31,6 +32,17 @@ API_BACKOFF_CAP_S = 30.0
 
 class GitHubError(RuntimeError):
     pass
+
+
+class IssuePRResolutionError(GitHubError):
+    """An issue does not have exactly one intentionally linked open PR."""
+
+    def __init__(self, resolution: dict[str, Any]) -> None:
+        self.resolution = resolution
+        super().__init__(
+            f"issue #{resolution['issue_number']} has "
+            f"{resolution['candidate_count']} intentional open PR candidate(s)"
+        )
 
 
 def token() -> str:
@@ -60,7 +72,7 @@ def pr_links_issue(pr: dict[str, Any], issue: int) -> bool:
     """True when the PR intentionally targets ``issue``.
 
     Counts:
-    - head branch ``builder/{issue}-…`` (or exact ``builder/{issue}``)
+    - head branch ``builder/{issue}-…`` / ``docs/{issue}-…`` (or exact form)
     - title marker ``(#issue)``
     - ``Closes`` / ``Fixes`` / ``Resolves #issue`` in the body
 
@@ -70,7 +82,7 @@ def pr_links_issue(pr: dict[str, Any], issue: int) -> bool:
     """
     n = int(issue)
     head = pr_head_ref(pr)
-    if head == f"builder/{n}" or head.startswith(f"builder/{n}-"):
+    if _is_issue_branch(head, n):
         return True
     title = pr.get("title") or ""
     if any(int(match) == n for match in _TITLE_ISSUE_RE.findall(title)):
@@ -79,6 +91,30 @@ def pr_links_issue(pr: dict[str, Any], issue: int) -> bool:
     if any(int(match) == n for match in _CLOSES_ISSUE_RE.findall(body)):
         return True
     return False
+
+
+def _is_issue_branch(head: str, issue: int) -> bool:
+    """Only the documented Builder and Docs branch conventions bind an issue."""
+    return any(
+        head == f"{role}/{issue}" or head.startswith(f"{role}/{issue}-")
+        for role in ("builder", "docs")
+    )
+
+
+def pr_link_reasons(pr: dict[str, Any], issue: int) -> list[str]:
+    """Return auditable intentional-link reasons for one PR."""
+    n = int(issue)
+    reasons: list[str] = []
+    head = pr_head_ref(pr)
+    if _is_issue_branch(head, n):
+        reasons.append("branch")
+    if any(int(match) == n for match in _TITLE_ISSUE_RE.findall(pr.get("title") or "")):
+        reasons.append("title")
+    if any(int(match) == n for match in _CLOSES_ISSUE_RE.findall(pr.get("body") or "")):
+        reasons.append("closing-reference")
+    if pr.get("_graphql_closing_link"):
+        reasons.append("github-closing-relationship")
+    return reasons
 
 
 def _linked_pr_rank(pr: dict[str, Any], issue: int) -> tuple[int, int]:
@@ -98,12 +134,131 @@ def _linked_pr_rank(pr: dict[str, Any], issue: int) -> tuple[int, int]:
 
 
 def linked_open_prs(repo: str, issue: int) -> list[dict[str, Any]]:
-    """Open PRs that intentionally link ``issue``, strongest binding first."""
+    """Open PR candidates, retained only for non-selecting compatibility callers.
+
+    Privileged consumers must call :func:`resolve_issue_pr`; it refuses to pick
+    a PR when the candidate set is ambiguous.
+    """
     owner, name = split_repo(repo)
-    prs = api("GET", f"/repos/{owner}/{name}/pulls?state=open&per_page=100") or []
-    matched = [pr for pr in prs if pr_links_issue(pr, issue)]
+    # GitHub's relationship is authoritative when the token/schema exposes it;
+    # still enumerate REST pages so search/index lag and relation pagination can
+    # neither hide nor select a different open PR.
+    graphql_links = _graphql_closing_pr_numbers(repo, issue)
+    prs: list[dict[str, Any]] = []
+    for page in range(1, 101):
+        batch = api(
+            "GET", f"/repos/{owner}/{name}/pulls?state=open&per_page=100&page={page}"
+        ) or []
+        prs.extend(batch)
+        if len(batch) < 100:
+            break
+    for pr in prs:
+        if int(pr.get("number") or 0) in graphql_links:
+            pr["_graphql_closing_link"] = True
+    matched = [
+        pr
+        for pr in prs
+        if pr_links_issue(pr, issue) or pr.get("_graphql_closing_link")
+    ]
     matched.sort(key=lambda pr: _linked_pr_rank(pr, issue))
     return matched
+
+
+def _graphql_closing_pr_numbers(repo: str, issue: int) -> set[int]:
+    """Best-effort authoritative closing-relationship lookup.
+
+    Some narrowly scoped App tokens cannot query this GraphQL field, so REST
+    intentional matching remains the deterministic fallback.
+    """
+    owner, name = split_repo(repo)
+    query = """
+    query($owner: String!, $name: String!, $number: Int!) {
+      repository(owner: $owner, name: $name) {
+        issue(number: $number) {
+          closedByPullRequestsReferences(first: 100) {
+            nodes { number state }
+          }
+        }
+      }
+    }
+    """
+    try:
+        data = graphql(query, {"owner": owner, "name": name, "number": int(issue)})
+    except GitHubError:
+        return set()
+    nodes = (((data.get("repository") or {}).get("issue") or {}).get(
+        "closedByPullRequestsReferences"
+    ) or {}).get("nodes") or []
+    return {int(node["number"]) for node in nodes if node.get("state") == "OPEN"}
+
+
+def issue_pr_resolution(repo: str, issue: int) -> dict[str, Any]:
+    """Inspect all open candidates without selecting one.
+
+    REST pagination makes this deterministic even when GitHub search indexing
+    lags.  The result is deliberately safe to emit in workflow diagnostics.
+    """
+    candidates = linked_open_prs(repo, issue)
+    result: dict[str, Any] = {
+        "repository": repo,
+        "issue_number": int(issue),
+        "candidate_count": len(candidates),
+        "candidates": [
+            {
+                "pr_number": int(pr.get("number") or 0),
+                "pr_url": pr.get("html_url"),
+                "head_ref": pr_head_ref(pr),
+                "head_sha": (pr.get("head") or {}).get("sha"),
+                "linkage_reason": "+".join(pr_link_reasons(pr, issue)),
+            }
+            for pr in candidates
+        ],
+    }
+    if len(candidates) == 1:
+        pr = candidates[0]
+        head = pr.get("head") or {}
+        base = pr.get("base") or {}
+        result.update(
+            {
+                "pr_number": int(pr["number"]),
+                "pr_url": pr.get("html_url"),
+                "base_ref": base.get("ref"),
+                "head_ref": head.get("ref"),
+                "head_sha": head.get("sha"),
+                "linkage_reason": "+".join(pr_link_reasons(pr, issue)),
+            }
+        )
+    return result
+
+
+def resolve_issue_pr(repo: str, issue: int) -> dict[str, Any]:
+    """Return the single linked open PR identity or fail closed.
+
+    The head SHA is required because checkout, review, labels and merging must
+    all act on the same immutable identity, never a list position.
+    """
+    result = issue_pr_resolution(repo, issue)
+    if result["candidate_count"] != 1 or not result.get("head_sha"):
+        raise IssuePRResolutionError(result)
+    return result
+
+
+def unique_open_pr_or_none(repo: str, issue: int) -> dict[str, Any] | None:
+    """Return the one candidate PR, allow zero, and reject ambiguity.
+
+    Creation workflows use this to determine whether they need to open a PR.
+    Multiple candidates never degrade into a ranked-first selection.
+    """
+    result = issue_pr_resolution(repo, issue)
+    if result["candidate_count"] == 0:
+        return None
+    if result["candidate_count"] != 1:
+        raise IssuePRResolutionError(result)
+    number = int(result["pr_number"])
+    for pr in linked_open_prs(repo, issue):
+        if int(pr.get("number") or 0) == number:
+            return pr
+    raise GitHubError(f"resolved PR #{number} disappeared while resolving issue #{issue}")
 
 
 def _retry_delay_s(attempt: int, *, retry_after: str | None = None) -> float:
