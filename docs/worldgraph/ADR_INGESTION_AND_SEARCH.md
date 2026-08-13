@@ -1,8 +1,8 @@
 # ADR: WorldGraph ingestion and search architecture
 
-**Status:** Accepted (spike evidence, 2026-07-15)
+**Status:** Accepted (reconciled spike evidence, 2026-08-13)
 
-**Parent issue:** [#204](https://github.com/saberistic-team/agent-web/issues/204)
+**Parent issue:** [#416](https://github.com/saberistic-team/agent-web/issues/416)
 
 **Supersedes:** N/A (first ADR for WorldGraph)
 
@@ -25,7 +25,8 @@ Issue #204 required a bounded spike — not production code — to answer:
 - How manifests, evidence, and claims should be stored
 - Whether Phase 1 search needs pgvector or suffices with Postgres lexical search
 
-Evidence: 18-entry research corpus, `spike/worldgraph/`, and
+Evidence: the accepted 30-entry research corpus, its Manifest v0 artifacts,
+`spike/worldgraph/`, and
 `docs/worldgraph/spike/benchmark_results.json`.
 
 ---
@@ -68,7 +69,8 @@ claim workflow.
 
 **Rationale:**
 
-- Spike: 12/12 qualifying corpus entries pass with deterministic extractor.
+- All 30 accepted corpus manifests validate against the accepted schema; 25 are
+  qualifying Worlds and five are negative controls.
 - Deterministic paths are explainable, cheap, and testable with fixtures.
 - Model-assisted stub demonstrated injection stripping (neg-005) but adds cost and
   hallucination risk.
@@ -126,14 +128,14 @@ on display name/summary, and structured filters (`runtime_types`, `license_spdx`
 `public_access`). **pgvector embeddings are Phase 2**, triggered only by corpus scale
 and no-result metrics — not by default.
 
-**Rationale (spike benchmark, 12 qualifying documents, 10 queries):**
+**Rationale (spike benchmark, 25 qualifying documents, 10 queries):**
 
 | Signal | FTS + trigram | Embedding (pseudo) | Hybrid |
 |--------|---------------|-------------------|--------|
-| Qualifying queries (10 discovery intents) | Top-1 in expected category | Top-1 in expected category | Top-1 in expected category |
+| Relevance proxy (10 discovery intents) | 0.917 | 0.917 | 0.917 |
 | `q-no-match-engine` (negative intent) | Weak matches (fts≈3) | Fewer hits, low cosine | Weak matches |
 | `q-no-match-chatbot` (negative intent) | Weak matches (fts≈3) | False positives (cosine≈0.56) | Weak matches |
-| Avg offline latency | 1.17 ms | 0.59 ms | 1.75 ms |
+| Avg offline latency | 0.669 ms | 0.620 ms | 1.384 ms |
 | Ops complexity | Low (SQL only) | Medium (embed pipeline + HNSW) | High |
 
 At MVP scale (~500 worlds), lexical search with explainable `ts_rank` + trigram scores
@@ -200,8 +202,9 @@ remain independent. Fetching a well-known manifest does **not** equal domain ver
 - Canonical URL deduplication
 - Excerpt-only retention (no full HTML archive by default)
 
-**Rationale:** Negative controls `wg-negative-001`–`wg-negative-005` and adversarial
-`wg-security-001` demonstrate failure modes. Relaxing any control requires a new ADR.
+**Rationale:** The accepted corpus's five negative controls and the isolated adversarial
+prompt-injection regression fixture demonstrate failure modes. Relaxing any control
+requires a new ADR.
 
 ---
 

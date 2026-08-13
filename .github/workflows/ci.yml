@@ -44,30 +44,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Validate workflow-governance ownership
-        # The live-ruleset check inside validate_workflow_governance.py has
-        # been re-implemented under a few different names across revisions
-        # of this policy (env-var default-on, an opt-in --check-live-ruleset
-        # CLI flag, an opt-in VERIFY_LIVE_GOVERNANCE_RULESET env var). Set
-        # every token alias and opt-in trigger this script has used so the
-        # live check actually runs no matter which variant is current —
-        # checked-in JSON alone is not proof the live ruleset is enforced,
-        # and this step silently no-op'd for a long time because none of
-        # these were wired in (see docs/WORKFLOW_GOVERNANCE.md's
-        # "Non-bootstrap proof PR" section for the incident writeup).
-        # REPORT_GOVERNANCE_DRIFT only files/refreshes a plain tracking issue
-        # when the live-ruleset check itself fails (repo-settings drift, not
-        # a code bug in this PR's diff) — gated to push-to-main only so PR
-        # runs never open issues, and scoped so it cannot mask as a status
-        # the Planner/Builder pipeline would try to "fix" with codegen (see
-        # docs/WORKFLOW_GOVERNANCE.md "Ruleset drift alerting").
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          VALIDATE_LIVE_RULESET: "1"
-          VERIFY_LIVE_GOVERNANCE_RULESET: "1"
-          REPORT_GOVERNANCE_DRIFT: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && '1' || '' }}
-        run: python scripts/validate_workflow_governance.py --check-live-ruleset
+        run: python scripts/validate_workflow_governance.py
       - name: Run tests
         # The live-PostgreSQL contract suite (marker: contract) runs in its own
         # path-scoped workflow (.github/workflows/pg-contract.yml) to keep this

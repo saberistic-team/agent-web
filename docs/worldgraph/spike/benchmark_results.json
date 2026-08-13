@@ -1,335 +1,190 @@
 {
-  "schema_version": "worldgraph-spike-results-v1",
+  "schema_version": "worldgraph-spike-results-v2",
   "ingestion": {
-    "sources_tested": 18,
-    "qualifying_sources": 12,
+    "corpus_source": "accepted_issue_200",
+    "sources_tested": 30,
+    "qualifying_sources": 25,
     "negative_controls": 5,
-    "extractions": [
+    "manifests_validated": [
       {
-        "source_id": "wg-narrative-001",
-        "extractor": "deterministic",
+        "source_id": "wg-corpus-001",
+        "manifest_file": "manifests/wg-corpus-001.json",
         "qualification": "qualifies",
-        "warnings": [],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
+        "unknown_field_count": 5
       },
       {
-        "source_id": "wg-narrative-001",
-        "extractor": "model_assisted",
+        "source_id": "wg-corpus-002",
+        "manifest_file": "manifests/wg-corpus-002.json",
         "qualification": "qualifies",
-        "warnings": [
-          "model_derived_semantic_description"
-        ],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
+        "unknown_field_count": 5
       },
       {
-        "source_id": "wg-narrative-002",
-        "extractor": "deterministic",
+        "source_id": "wg-corpus-003",
+        "manifest_file": "manifests/wg-corpus-003.json",
         "qualification": "qualifies",
-        "warnings": [],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
+        "unknown_field_count": 7
       },
       {
-        "source_id": "wg-narrative-002",
-        "extractor": "model_assisted",
+        "source_id": "wg-corpus-004",
+        "manifest_file": "manifests/wg-corpus-004.json",
         "qualification": "qualifies",
-        "warnings": [
-          "model_derived_semantic_description"
-        ],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
+        "unknown_field_count": 7
       },
       {
-        "source_id": "wg-spatial-001",
-        "extractor": "deterministic",
+        "source_id": "wg-corpus-005",
+        "manifest_file": "manifests/wg-corpus-005.json",
         "qualification": "qualifies",
-        "warnings": [],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
+        "unknown_field_count": 7
       },
       {
-        "source_id": "wg-spatial-001",
-        "extractor": "model_assisted",
+        "source_id": "wg-corpus-006",
+        "manifest_file": "manifests/wg-corpus-006.json",
         "qualification": "qualifies",
-        "warnings": [
-          "model_derived_semantic_description"
-        ],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
+        "unknown_field_count": 6
       },
       {
-        "source_id": "wg-spatial-002",
-        "extractor": "deterministic",
+        "source_id": "wg-corpus-007",
+        "manifest_file": "manifests/wg-corpus-007.json",
         "qualification": "qualifies",
-        "warnings": [],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
+        "unknown_field_count": 5
       },
       {
-        "source_id": "wg-spatial-002",
-        "extractor": "model_assisted",
+        "source_id": "wg-corpus-008",
+        "manifest_file": "manifests/wg-corpus-008.json",
         "qualification": "qualifies",
-        "warnings": [
-          "model_derived_semantic_description"
-        ],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
+        "unknown_field_count": 6
       },
       {
-        "source_id": "wg-simulation-001",
-        "extractor": "deterministic",
+        "source_id": "wg-corpus-009",
+        "manifest_file": "manifests/wg-corpus-009.json",
         "qualification": "qualifies",
-        "warnings": [],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
+        "unknown_field_count": 6
       },
       {
-        "source_id": "wg-simulation-001",
-        "extractor": "model_assisted",
+        "source_id": "wg-corpus-010",
+        "manifest_file": "manifests/wg-corpus-010.json",
         "qualification": "qualifies",
-        "warnings": [
-          "model_derived_semantic_description"
-        ],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
+        "unknown_field_count": 6
       },
       {
-        "source_id": "wg-simulation-002",
-        "extractor": "deterministic",
+        "source_id": "wg-corpus-011",
+        "manifest_file": "manifests/wg-corpus-011.json",
         "qualification": "qualifies",
-        "warnings": [],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
+        "unknown_field_count": 6
       },
       {
-        "source_id": "wg-simulation-002",
-        "extractor": "model_assisted",
+        "source_id": "wg-corpus-012",
+        "manifest_file": "manifests/wg-corpus-012.json",
         "qualification": "qualifies",
-        "warnings": [
-          "model_derived_semantic_description"
-        ],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
+        "unknown_field_count": 6
       },
       {
-        "source_id": "wg-game-001",
-        "extractor": "deterministic",
+        "source_id": "wg-corpus-013",
+        "manifest_file": "manifests/wg-corpus-013.json",
         "qualification": "qualifies",
-        "warnings": [],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
+        "unknown_field_count": 6
       },
       {
-        "source_id": "wg-game-001",
-        "extractor": "model_assisted",
+        "source_id": "wg-corpus-014",
+        "manifest_file": "manifests/wg-corpus-014.json",
         "qualification": "qualifies",
-        "warnings": [
-          "model_derived_semantic_description"
-        ],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
+        "unknown_field_count": 6
       },
       {
-        "source_id": "wg-game-002",
-        "extractor": "deterministic",
+        "source_id": "wg-corpus-015",
+        "manifest_file": "manifests/wg-corpus-015.json",
         "qualification": "qualifies",
-        "warnings": [],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
+        "unknown_field_count": 6
       },
       {
-        "source_id": "wg-game-002",
-        "extractor": "model_assisted",
+        "source_id": "wg-corpus-016",
+        "manifest_file": "manifests/wg-corpus-016.json",
         "qualification": "qualifies",
-        "warnings": [],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
+        "unknown_field_count": 7
       },
       {
-        "source_id": "wg-social-001",
-        "extractor": "deterministic",
+        "source_id": "wg-corpus-017",
+        "manifest_file": "manifests/wg-corpus-017.json",
         "qualification": "qualifies",
-        "warnings": [],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
+        "unknown_field_count": 7
       },
       {
-        "source_id": "wg-social-001",
-        "extractor": "model_assisted",
+        "source_id": "wg-corpus-018",
+        "manifest_file": "manifests/wg-corpus-018.json",
         "qualification": "qualifies",
-        "warnings": [
-          "model_derived_semantic_description"
-        ],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
+        "unknown_field_count": 5
       },
       {
-        "source_id": "wg-social-002",
-        "extractor": "deterministic",
+        "source_id": "wg-corpus-019",
+        "manifest_file": "manifests/wg-corpus-019.json",
         "qualification": "qualifies",
-        "warnings": [],
-        "injection_blocks": 0,
-        "unknown_field_count": 2
+        "unknown_field_count": 4
       },
       {
-        "source_id": "wg-social-002",
-        "extractor": "model_assisted",
+        "source_id": "wg-corpus-020",
+        "manifest_file": "manifests/wg-corpus-020.json",
         "qualification": "qualifies",
-        "warnings": [
-          "model_derived_semantic_description"
-        ],
-        "injection_blocks": 0,
-        "unknown_field_count": 2
+        "unknown_field_count": 5
       },
       {
-        "source_id": "wg-hybrid-001",
-        "extractor": "deterministic",
+        "source_id": "wg-corpus-021",
+        "manifest_file": "manifests/wg-corpus-021.json",
         "qualification": "qualifies",
-        "warnings": [],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
+        "unknown_field_count": 5
       },
       {
-        "source_id": "wg-hybrid-001",
-        "extractor": "model_assisted",
+        "source_id": "wg-corpus-022",
+        "manifest_file": "manifests/wg-corpus-022.json",
         "qualification": "qualifies",
-        "warnings": [
-          "model_derived_semantic_description"
-        ],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
+        "unknown_field_count": 4
       },
       {
-        "source_id": "wg-opensource-001",
-        "extractor": "deterministic",
+        "source_id": "wg-corpus-023",
+        "manifest_file": "manifests/wg-corpus-023.json",
         "qualification": "qualifies",
-        "warnings": [],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
+        "unknown_field_count": 5
       },
       {
-        "source_id": "wg-opensource-001",
-        "extractor": "model_assisted",
+        "source_id": "wg-corpus-024",
+        "manifest_file": "manifests/wg-corpus-024.json",
         "qualification": "qualifies",
-        "warnings": [
-          "model_derived_semantic_description"
-        ],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
+        "unknown_field_count": 6
       },
       {
-        "source_id": "wg-negative-001",
-        "extractor": "deterministic",
+        "source_id": "wg-corpus-025",
+        "manifest_file": "manifests/wg-corpus-025.json",
+        "qualification": "qualifies",
+        "unknown_field_count": 5
+      },
+      {
+        "source_id": "wg-corpus-026",
+        "manifest_file": "manifests/wg-corpus-026.json",
         "qualification": "excluded",
-        "warnings": [],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
+        "unknown_field_count": 7
       },
       {
-        "source_id": "wg-negative-001",
-        "extractor": "model_assisted",
+        "source_id": "wg-corpus-027",
+        "manifest_file": "manifests/wg-corpus-027.json",
         "qualification": "excluded",
-        "warnings": [
-          "model_derived_semantic_description"
-        ],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
+        "unknown_field_count": 4
       },
       {
-        "source_id": "wg-negative-002",
-        "extractor": "deterministic",
+        "source_id": "wg-corpus-028",
+        "manifest_file": "manifests/wg-corpus-028.json",
         "qualification": "excluded",
-        "warnings": [],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
+        "unknown_field_count": 6
       },
       {
-        "source_id": "wg-negative-002",
-        "extractor": "model_assisted",
+        "source_id": "wg-corpus-029",
+        "manifest_file": "manifests/wg-corpus-029.json",
         "qualification": "excluded",
-        "warnings": [
-          "model_derived_semantic_description"
-        ],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
+        "unknown_field_count": 4
       },
       {
-        "source_id": "wg-negative-003",
-        "extractor": "deterministic",
+        "source_id": "wg-corpus-030",
+        "manifest_file": "manifests/wg-corpus-030.json",
         "qualification": "excluded",
-        "warnings": [],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
-      },
-      {
-        "source_id": "wg-negative-003",
-        "extractor": "model_assisted",
-        "qualification": "excluded",
-        "warnings": [
-          "model_derived_semantic_description"
-        ],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
-      },
-      {
-        "source_id": "wg-negative-004",
-        "extractor": "deterministic",
-        "qualification": "excluded",
-        "warnings": [],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
-      },
-      {
-        "source_id": "wg-negative-004",
-        "extractor": "model_assisted",
-        "qualification": "excluded",
-        "warnings": [
-          "model_derived_semantic_description"
-        ],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
-      },
-      {
-        "source_id": "wg-negative-005",
-        "extractor": "deterministic",
-        "qualification": "excluded",
-        "warnings": [],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
-      },
-      {
-        "source_id": "wg-negative-005",
-        "extractor": "model_assisted",
-        "qualification": "excluded",
-        "warnings": [
-          "model_derived_semantic_description"
-        ],
-        "injection_blocks": 0,
-        "unknown_field_count": 3
-      },
-      {
-        "source_id": "wg-security-001",
-        "extractor": "deterministic",
-        "qualification": "pending_review",
-        "warnings": [
-          "prompt_injection_phrases_detected"
-        ],
-        "injection_blocks": 7,
-        "unknown_field_count": 3
-      },
-      {
-        "source_id": "wg-security-001",
-        "extractor": "model_assisted",
-        "qualification": "pending_review",
-        "warnings": [
-          "prompt_injection_phrases_detected",
-          "model_derived_semantic_description",
-          "model_output_not_used_for_trust_escalation"
-        ],
-        "injection_blocks": 7,
-        "unknown_field_count": 3
+        "unknown_field_count": 7
       }
     ]
   },
@@ -337,23 +192,23 @@
     "schema_version": "worldgraph-spike-search-v1",
     "approaches": {
       "postgres_fts_trigram": {
-        "avg_latency_ms": 1.233,
+        "avg_latency_ms": 0.669,
         "no_result_rate": 0.0,
-        "relevance_proxy": 1.0,
+        "relevance_proxy": 0.917,
         "operational_complexity": "low",
         "estimated_cost_per_1k_queries_usd": 0.02
       },
       "pgvector_embedding": {
-        "avg_latency_ms": 0.443,
+        "avg_latency_ms": 0.627,
         "no_result_rate": 0.0,
-        "relevance_proxy": 1.0,
+        "relevance_proxy": 0.917,
         "operational_complexity": "medium",
         "estimated_cost_per_1k_queries_usd": 0.18
       },
       "hybrid": {
-        "avg_latency_ms": 1.718,
+        "avg_latency_ms": 1.291,
         "no_result_rate": 0.0,
-        "relevance_proxy": 1.0,
+        "relevance_proxy": 0.917,
         "operational_complexity": "high",
         "estimated_cost_per_1k_queries_usd": 0.22
       }
@@ -363,389 +218,391 @@
         "query_id": "q-interactive-narrative",
         "approach": "postgres_fts_trigram",
         "hit_ids": [
-          "wg-narrative-001",
-          "wg-hybrid-001",
-          "wg-social-002",
-          "wg-social-001",
-          "wg-opensource-001"
+          "wg-corpus-005",
+          "wg-corpus-001",
+          "wg-corpus-002",
+          "wg-corpus-004",
+          "wg-corpus-023"
         ],
-        "top_explain": "fts=15.08,trigram=0.31",
-        "latency_ms": 1.92
+        "top_explain": "fts=11.47,trigram=0.20",
+        "latency_ms": 0.755
       },
       {
         "query_id": "q-spatial-explore",
         "approach": "postgres_fts_trigram",
         "hit_ids": [
-          "wg-spatial-001",
-          "wg-hybrid-001",
-          "wg-game-002",
-          "wg-spatial-002",
-          "wg-game-001"
+          "wg-corpus-006",
+          "wg-corpus-009",
+          "wg-corpus-008",
+          "wg-corpus-020",
+          "wg-corpus-010"
         ],
-        "top_explain": "fts=13.39,trigram=0.27",
-        "latency_ms": 1.708
+        "top_explain": "fts=14.19,trigram=0.27",
+        "latency_ms": 0.808
       },
       {
         "query_id": "q-agent-simulation",
         "approach": "postgres_fts_trigram",
         "hit_ids": [
-          "wg-simulation-001",
-          "wg-opensource-001",
-          "wg-social-001",
-          "wg-simulation-002",
-          "wg-spatial-001"
+          "wg-corpus-011",
+          "wg-corpus-010",
+          "wg-corpus-004",
+          "wg-corpus-024",
+          "wg-corpus-025"
         ],
-        "top_explain": "fts=21.48,trigram=0.24",
-        "latency_ms": 1.655
+        "top_explain": "fts=10.60,trigram=0.18",
+        "latency_ms": 0.674
       },
       {
         "query_id": "q-ai-game-npc",
         "approach": "postgres_fts_trigram",
         "hit_ids": [
-          "wg-game-001",
-          "wg-game-002",
-          "wg-social-001",
-          "wg-narrative-001",
-          "wg-opensource-001"
+          "wg-corpus-016",
+          "wg-corpus-003",
+          "wg-corpus-021",
+          "wg-corpus-020",
+          "wg-corpus-023"
         ],
-        "top_explain": "fts=17.46,trigram=0.20",
-        "latency_ms": 1.115
+        "top_explain": "fts=9.60,trigram=0.16",
+        "latency_ms": 0.699
       },
       {
         "query_id": "q-social-economy",
         "approach": "postgres_fts_trigram",
         "hit_ids": [
-          "wg-social-001",
-          "wg-social-002",
-          "wg-hybrid-001",
-          "wg-simulation-001",
-          "wg-narrative-002"
+          "wg-corpus-025",
+          "wg-corpus-024",
+          "wg-corpus-021",
+          "wg-corpus-023",
+          "wg-corpus-022"
         ],
-        "top_explain": "fts=16.32,trigram=0.18",
-        "latency_ms": 0.999
+        "top_explain": "fts=13.39,trigram=0.21",
+        "latency_ms": 0.811
       },
       {
         "query_id": "q-open-source-deploy",
         "approach": "postgres_fts_trigram",
         "hit_ids": [
-          "wg-opensource-001",
-          "wg-hybrid-001",
-          "wg-spatial-002",
-          "wg-social-002",
-          "wg-game-001"
+          "wg-corpus-006",
+          "wg-corpus-008",
+          "wg-corpus-011",
+          "wg-corpus-023",
+          "wg-corpus-007"
         ],
-        "top_explain": "fts=12.49,trigram=0.13",
-        "latency_ms": 1.008
+        "top_explain": "fts=8.79,trigram=0.09",
+        "latency_ms": 0.575
       },
       {
         "query_id": "q-no-match-engine",
         "approach": "postgres_fts_trigram",
         "hit_ids": [
-          "wg-game-002",
-          "wg-game-001",
-          "wg-simulation-002",
-          "wg-narrative-001",
-          "wg-hybrid-001"
+          "wg-corpus-018",
+          "wg-corpus-003",
+          "wg-corpus-011",
+          "wg-corpus-016",
+          "wg-corpus-019"
         ],
-        "top_explain": "fts=3.08,trigram=0.02",
-        "latency_ms": 0.947
+        "top_explain": "fts=4.20,trigram=0.05",
+        "latency_ms": 0.567
       },
       {
         "query_id": "q-no-match-chatbot",
         "approach": "postgres_fts_trigram",
         "hit_ids": [
-          "wg-opensource-001",
-          "wg-social-001",
-          "wg-game-001",
-          "wg-spatial-001",
-          "wg-narrative-001"
+          "wg-corpus-006",
+          "wg-corpus-020",
+          "wg-corpus-024",
+          "wg-corpus-002",
+          "wg-corpus-021"
         ],
-        "top_explain": "fts=3.40,trigram=0.06",
-        "latency_ms": 0.978
+        "top_explain": "fts=2.39,trigram=0.07",
+        "latency_ms": 0.575
       },
       {
         "query_id": "q-hybrid-story-spatial",
         "approach": "postgres_fts_trigram",
         "hit_ids": [
-          "wg-hybrid-001",
-          "wg-social-002",
-          "wg-game-002",
-          "wg-opensource-001",
-          "wg-social-001"
+          "wg-corpus-005",
+          "wg-corpus-024",
+          "wg-corpus-023",
+          "wg-corpus-010",
+          "wg-corpus-025"
         ],
-        "top_explain": "fts=16.67,trigram=0.32",
-        "latency_ms": 1.006
+        "top_explain": "fts=13.57,trigram=0.20",
+        "latency_ms": 0.613
       },
       {
         "query_id": "q-research-reproducible",
         "approach": "postgres_fts_trigram",
         "hit_ids": [
-          "wg-simulation-002",
-          "wg-opensource-001",
-          "wg-simulation-001",
-          "wg-spatial-002",
-          "wg-game-002"
+          "wg-corpus-010",
+          "wg-corpus-015",
+          "wg-corpus-025",
+          "wg-corpus-012",
+          "wg-corpus-011"
         ],
-        "top_explain": "fts=11.98,trigram=0.18",
-        "latency_ms": 0.993
+        "top_explain": "fts=13.17,trigram=0.23",
+        "latency_ms": 0.617
       },
       {
         "query_id": "q-interactive-narrative",
         "approach": "pgvector_embedding",
         "hit_ids": [
-          "wg-narrative-001",
-          "wg-hybrid-001",
-          "wg-social-001",
-          "wg-opensource-001",
-          "wg-spatial-001"
+          "wg-corpus-005",
+          "wg-corpus-001",
+          "wg-corpus-002",
+          "wg-corpus-004",
+          "wg-corpus-022"
         ],
-        "top_explain": "cosine=0.617",
-        "latency_ms": 0.493
+        "top_explain": "cosine=0.495",
+        "latency_ms": 0.714
       },
       {
         "query_id": "q-spatial-explore",
         "approach": "pgvector_embedding",
         "hit_ids": [
-          "wg-spatial-001",
-          "wg-hybrid-001",
-          "wg-spatial-002",
-          "wg-game-002",
-          "wg-social-002"
+          "wg-corpus-006",
+          "wg-corpus-009",
+          "wg-corpus-008",
+          "wg-corpus-010",
+          "wg-corpus-017"
         ],
-        "top_explain": "cosine=0.556",
-        "latency_ms": 0.46
+        "top_explain": "cosine=0.735",
+        "latency_ms": 0.615
       },
       {
         "query_id": "q-agent-simulation",
         "approach": "pgvector_embedding",
         "hit_ids": [
-          "wg-simulation-001",
-          "wg-opensource-001",
-          "wg-spatial-001",
-          "wg-simulation-002",
-          "wg-social-001"
+          "wg-corpus-024",
+          "wg-corpus-011",
+          "wg-corpus-012",
+          "wg-corpus-025",
+          "wg-corpus-010"
         ],
-        "top_explain": "cosine=0.612",
-        "latency_ms": 0.446
+        "top_explain": "cosine=0.404",
+        "latency_ms": 0.58
       },
       {
         "query_id": "q-ai-game-npc",
         "approach": "pgvector_embedding",
         "hit_ids": [
-          "wg-game-001",
-          "wg-game-002",
-          "wg-opensource-001",
-          "wg-narrative-001",
-          "wg-spatial-001"
+          "wg-corpus-016",
+          "wg-corpus-020",
+          "wg-corpus-003",
+          "wg-corpus-006",
+          "wg-corpus-017"
         ],
-        "top_explain": "cosine=0.502",
-        "latency_ms": 0.459
+        "top_explain": "cosine=0.515",
+        "latency_ms": 0.612
       },
       {
         "query_id": "q-social-economy",
         "approach": "pgvector_embedding",
         "hit_ids": [
-          "wg-social-001",
-          "wg-hybrid-001",
-          "wg-opensource-001",
-          "wg-social-002",
-          "wg-narrative-001"
+          "wg-corpus-025",
+          "wg-corpus-021",
+          "wg-corpus-024",
+          "wg-corpus-022",
+          "wg-corpus-023"
         ],
-        "top_explain": "cosine=0.629",
-        "latency_ms": 0.431
+        "top_explain": "cosine=0.562",
+        "latency_ms": 0.583
       },
       {
         "query_id": "q-open-source-deploy",
         "approach": "pgvector_embedding",
         "hit_ids": [
-          "wg-opensource-001",
-          "wg-hybrid-001",
-          "wg-game-001",
-          "wg-social-002",
-          "wg-spatial-001"
+          "wg-corpus-006",
+          "wg-corpus-008",
+          "wg-corpus-016",
+          "wg-corpus-010",
+          "wg-corpus-020"
         ],
-        "top_explain": "cosine=0.418",
-        "latency_ms": 0.433
+        "top_explain": "cosine=0.408",
+        "latency_ms": 0.615
       },
       {
         "query_id": "q-no-match-engine",
         "approach": "pgvector_embedding",
         "hit_ids": [
-          "wg-game-002",
-          "wg-game-001",
-          "wg-simulation-002"
+          "wg-corpus-016",
+          "wg-corpus-011",
+          "wg-corpus-018",
+          "wg-corpus-003",
+          "wg-corpus-014"
         ],
-        "top_explain": "cosine=0.282",
-        "latency_ms": 0.411
+        "top_explain": "cosine=0.242",
+        "latency_ms": 0.658
       },
       {
         "query_id": "q-no-match-chatbot",
         "approach": "pgvector_embedding",
         "hit_ids": [
-          "wg-opensource-001",
-          "wg-narrative-001",
-          "wg-spatial-001",
-          "wg-social-001",
-          "wg-game-001"
+          "wg-corpus-006",
+          "wg-corpus-020",
+          "wg-corpus-023",
+          "wg-corpus-021",
+          "wg-corpus-024"
         ],
-        "top_explain": "cosine=0.563",
-        "latency_ms": 0.423
+        "top_explain": "cosine=0.212",
+        "latency_ms": 0.764
       },
       {
         "query_id": "q-hybrid-story-spatial",
         "approach": "pgvector_embedding",
         "hit_ids": [
-          "wg-hybrid-001",
-          "wg-spatial-001",
-          "wg-game-001",
-          "wg-game-002",
-          "wg-opensource-001"
+          "wg-corpus-005",
+          "wg-corpus-024",
+          "wg-corpus-010",
+          "wg-corpus-023",
+          "wg-corpus-006"
         ],
-        "top_explain": "cosine=0.681",
-        "latency_ms": 0.453
+        "top_explain": "cosine=0.497",
+        "latency_ms": 0.56
       },
       {
         "query_id": "q-research-reproducible",
         "approach": "pgvector_embedding",
         "hit_ids": [
-          "wg-simulation-002",
-          "wg-simulation-001",
-          "wg-hybrid-001",
-          "wg-game-002",
-          "wg-social-002"
+          "wg-corpus-010",
+          "wg-corpus-012",
+          "wg-corpus-015",
+          "wg-corpus-019",
+          "wg-corpus-005"
         ],
-        "top_explain": "cosine=0.426",
-        "latency_ms": 0.424
+        "top_explain": "cosine=0.553",
+        "latency_ms": 0.57
       },
       {
         "query_id": "q-interactive-narrative",
         "approach": "hybrid",
         "hit_ids": [
-          "wg-narrative-001",
-          "wg-hybrid-001",
-          "wg-social-002",
-          "wg-social-001",
-          "wg-opensource-001"
+          "wg-corpus-005",
+          "wg-corpus-001",
+          "wg-corpus-002",
+          "wg-corpus-004",
+          "wg-corpus-023"
         ],
-        "top_explain": "hybrid fts=15.70 emb=0.617",
-        "latency_ms": 1.545
+        "top_explain": "hybrid fts=11.87 emb=0.495",
+        "latency_ms": 1.257
       },
       {
         "query_id": "q-spatial-explore",
         "approach": "hybrid",
         "hit_ids": [
-          "wg-spatial-001",
-          "wg-hybrid-001",
-          "wg-spatial-002",
-          "wg-game-002",
-          "wg-game-001"
+          "wg-corpus-006",
+          "wg-corpus-009",
+          "wg-corpus-008",
+          "wg-corpus-010",
+          "wg-corpus-020"
         ],
-        "top_explain": "hybrid fts=13.92 emb=0.556",
-        "latency_ms": 1.66
+        "top_explain": "hybrid fts=14.73 emb=0.735",
+        "latency_ms": 1.261
       },
       {
         "query_id": "q-agent-simulation",
         "approach": "hybrid",
         "hit_ids": [
-          "wg-simulation-001",
-          "wg-opensource-001",
-          "wg-social-001",
-          "wg-simulation-002",
-          "wg-spatial-001"
+          "wg-corpus-011",
+          "wg-corpus-010",
+          "wg-corpus-024",
+          "wg-corpus-004",
+          "wg-corpus-025"
         ],
-        "top_explain": "hybrid fts=21.97 emb=0.612",
-        "latency_ms": 1.876
+        "top_explain": "hybrid fts=10.96 emb=0.402",
+        "latency_ms": 1.317
       },
       {
         "query_id": "q-ai-game-npc",
         "approach": "hybrid",
         "hit_ids": [
-          "wg-game-001",
-          "wg-game-002",
-          "wg-social-001",
-          "wg-narrative-001",
-          "wg-opensource-001"
+          "wg-corpus-016",
+          "wg-corpus-003",
+          "wg-corpus-021",
+          "wg-corpus-020",
+          "wg-corpus-004"
         ],
-        "top_explain": "hybrid fts=17.86 emb=0.502",
-        "latency_ms": 1.564
+        "top_explain": "hybrid fts=9.91 emb=0.515",
+        "latency_ms": 1.318
       },
       {
         "query_id": "q-social-economy",
         "approach": "hybrid",
         "hit_ids": [
-          "wg-social-001",
-          "wg-social-002",
-          "wg-hybrid-001",
-          "wg-narrative-002",
-          "wg-opensource-001"
+          "wg-corpus-025",
+          "wg-corpus-021",
+          "wg-corpus-024",
+          "wg-corpus-023",
+          "wg-corpus-022"
         ],
-        "top_explain": "hybrid fts=16.68 emb=0.629",
-        "latency_ms": 2.018
+        "top_explain": "hybrid fts=13.81 emb=0.562",
+        "latency_ms": 1.366
       },
       {
         "query_id": "q-open-source-deploy",
         "approach": "hybrid",
         "hit_ids": [
-          "wg-opensource-001",
-          "wg-hybrid-001",
-          "wg-spatial-002",
-          "wg-social-002",
-          "wg-game-001"
+          "wg-corpus-006",
+          "wg-corpus-008",
+          "wg-corpus-011",
+          "wg-corpus-007",
+          "wg-corpus-023"
         ],
-        "top_explain": "hybrid fts=12.74 emb=0.418",
-        "latency_ms": 1.612
+        "top_explain": "hybrid fts=8.96 emb=0.408",
+        "latency_ms": 1.412
       },
       {
         "query_id": "q-no-match-engine",
         "approach": "hybrid",
         "hit_ids": [
-          "wg-game-002",
-          "wg-game-001",
-          "wg-simulation-002",
-          "wg-narrative-001",
-          "wg-hybrid-001"
+          "wg-corpus-018",
+          "wg-corpus-011",
+          "wg-corpus-003",
+          "wg-corpus-016",
+          "wg-corpus-015"
         ],
-        "top_explain": "hybrid fts=3.12 emb=0.282",
-        "latency_ms": 1.893
+        "top_explain": "hybrid fts=4.29 emb=0.181",
+        "latency_ms": 1.178
       },
       {
         "query_id": "q-no-match-chatbot",
         "approach": "hybrid",
         "hit_ids": [
-          "wg-opensource-001",
-          "wg-narrative-001",
-          "wg-spatial-001",
-          "wg-social-001",
-          "wg-game-001"
+          "wg-corpus-006",
+          "wg-corpus-020",
+          "wg-corpus-024",
+          "wg-corpus-023",
+          "wg-corpus-021"
         ],
-        "top_explain": "hybrid fts=3.52 emb=0.563",
-        "latency_ms": 1.719
+        "top_explain": "hybrid fts=2.52 emb=0.212",
+        "latency_ms": 1.239
       },
       {
         "query_id": "q-hybrid-story-spatial",
         "approach": "hybrid",
         "hit_ids": [
-          "wg-hybrid-001",
-          "wg-social-002",
-          "wg-game-002",
-          "wg-spatial-001",
-          "wg-opensource-001"
+          "wg-corpus-005",
+          "wg-corpus-024",
+          "wg-corpus-023",
+          "wg-corpus-010",
+          "wg-corpus-025"
         ],
-        "top_explain": "hybrid fts=17.31 emb=0.681",
-        "latency_ms": 1.776
+        "top_explain": "hybrid fts=13.97 emb=0.497",
+        "latency_ms": 1.269
       },
       {
         "query_id": "q-research-reproducible",
         "approach": "hybrid",
         "hit_ids": [
-          "wg-simulation-002",
-          "wg-opensource-001",
-          "wg-simulation-001",
-          "wg-game-002",
-          "wg-spatial-002"
+          "wg-corpus-010",
+          "wg-corpus-015",
+          "wg-corpus-012",
+          "wg-corpus-025",
+          "wg-corpus-011"
         ],
-        "top_explain": "hybrid fts=12.34 emb=0.426",
-        "latency_ms": 1.519
+        "top_explain": "hybrid fts=13.64 emb=0.553",
+        "latency_ms": 1.294
       }
     ]
   },
