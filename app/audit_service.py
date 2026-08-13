@@ -82,6 +82,7 @@ ACTION_DISCOVERY_CANDIDATE_ACCEPT = "discovery.candidate.accept"
 ACTION_DISCOVERY_CANDIDATE_REJECT = "discovery.candidate.reject"
 ACTION_DISCOVERY_CANDIDATE_DEFER = "discovery.candidate.defer"
 ACTION_DISCOVERY_CANDIDATE_BULK = "discovery.candidate.bulk"
+ACTION_ENRICHMENT_CONTACTS = "enrichment.contacts"
 
 
 def _is_sensitive_key(key: str) -> bool:
@@ -414,6 +415,25 @@ def record_contact_create(
         actor_context=actor_context,
         action=ACTION_CONTACT_CREATE,
         entity_type="contact",
+        entity_id=entity_id,
+        summary_after=summary_after,
+        repository=repository,
+    )
+
+
+def record_enrichment_contacts(
+    conn: psycopg.Connection,
+    *,
+    actor_context: ActorContext,
+    entity_id: str,
+    summary_after: dict[str, Any] | None = None,
+    repository: AuditEventRepository | None = None,
+) -> dict[str, Any] | None:
+    return record_event(
+        conn,
+        actor_context=actor_context,
+        action=ACTION_ENRICHMENT_CONTACTS,
+        entity_type="company",
         entity_id=entity_id,
         summary_after=summary_after,
         repository=repository,

@@ -174,6 +174,15 @@ Immutable audit rows for company/contact lifecycle mutations store **bounded met
 
 Do not copy free-form notes, raw email addresses, profile URLs, complete funding text, session/CSRF values, or request bodies into lifecycle audit rows.
 
+### Contact enrichment audit payloads
+
+Immutable audit rows for Hunter.io contact enrichment (`enrichment.contacts`)
+store **bounded metadata only**: company domain, `found` count, created
+contact IDs, and `skipped_existing_count`. Each created contact also emits
+`contact.create` with the standard allowlisted after-summary. Contact email
+addresses, the API key, raw Hunter response payloads, and per-email confidence
+scores are never copied into `audit_events`.
+
 ## Admin UI
 
 Authenticated operators can review events at `/admin/audit`:

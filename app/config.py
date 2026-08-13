@@ -54,6 +54,12 @@ class Settings:
     discovery_retry_max_attempts: int = 5
     discovery_retry_base_seconds: float = 1.0
     discovery_retry_cap_seconds: float = 30.0
+    hunter_api_key: str = ""
+
+    @property
+    def hunter_enrichment_configured(self) -> bool:
+        """True when the Hunter.io enrichment action can run."""
+        return bool(self.hunter_api_key.strip())
 
     @property
     def database_configured(self) -> bool:
@@ -194,6 +200,7 @@ def get_settings() -> Settings:
         discovery_retry_cap_seconds=float(
             os.environ.get("DISCOVERY_RETRY_CAP_SECONDS", "30.0")
         ),
+        hunter_api_key=os.environ.get("HUNTER_API_KEY", "").strip(),
         admin_trust_proxy_headers=os.environ.get(
             "ADMIN_TRUST_PROXY_HEADERS", ""
         ).lower()

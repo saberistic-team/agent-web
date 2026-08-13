@@ -63,6 +63,7 @@ from app.admin_preview import (
 )
 from app.config import Settings, get_settings
 from app.crm_service import CrmService
+from app.hunter_enrichment import HunterError
 from app.research_records import ResearchRecordCreate
 from app.repositories.postgres import get_repositories
 
@@ -734,6 +735,7 @@ def admin_company_research(
     request: Request,
     company_id: UUID,
     error: str | None = None,
+    notice: str | None = None,
 ) -> HTMLResponse:
     session = require_admin_session(request)
     settings = get_settings()
@@ -758,6 +760,8 @@ def admin_company_research(
                 csrf_token=csrf_token,
                 admin_username=session.admin_username,
                 error_message=error,
+                notice_message=notice,
+                enrichment_available=settings.hunter_enrichment_configured,
             )
         )
     with db.db_connection(settings.database_url) as conn:
@@ -776,6 +780,8 @@ def admin_company_research(
             csrf_token=csrf_token,
             admin_username=session.admin_username,
             error_message=error,
+            notice_message=notice,
+            enrichment_available=settings.hunter_enrichment_configured,
         )
     )
 
@@ -943,6 +949,46 @@ def admin_company_research_create(
             expires_at=payload.parsed_expires_at(),
         )
     return RedirectResponse(url=f"/admin/companies/{company_id}", status_code=303)
+
+
+@router.post("/companies/{company_id}/enrich-contacts", response_model=None)
+def admin_company_enrich_contacts(
+    request: Request,
+    company_id: UUID,
+    csrf_token: str = Form(..., alias="csrf_token"),
+) -> Response:
+    session = require_admin_session(request)
+    settings = get_settings()
+    _verify_session_csrf(request, session, csrf_token)
+    if not settings.hunter_enrichment_configured:
+        return RedirectResponse(
+            url=f"/admin/companies/{company_id}?error=Hunter.io%20is%20not%20configured",
+            status_code=303,
+        )
+    with db.db_connection(settings.database_url) as conn:
+        try:
+            outcome = _crm.enrich_company_contacts(
+                conn,
+                company_id,
+                actor_context=actor_context_from_request(request, actor=session.admin_username),
+                api_key=settings.hunter_api_key,
+            )
+        except (HunterError, ValueError) as exc:
+            return RedirectResponse(
+                url=f"/admin/companies/{company_id}?error={quote(str(exc))}",
+                status_code=303,
+            )
+    if outcome is None:
+        raise HTTPException(status_code=404, detail="Company not found")
+    notice = (
+        f"Hunter.io found {outcome['found']} emails: "
+        f"{len(outcome['created'])} contacts added, "
+        f"{len(outcome['skipped'])} already in CRM"
+    )
+    return RedirectResponse(
+        url=f"/admin/companies/{company_id}?notice={quote(notice)}",
+        status_code=303,
+    )
 
 
 @router.get("/contacts", response_class=HTMLResponse)

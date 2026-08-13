@@ -45,10 +45,24 @@ name for operator review. Covered by `tests/test_discovery_funding_title.py`.
 
 ## Enrichment (not discovery)
 
-Hunter.io is integrated as **enrichment on accepted companies** (Domain Search
-→ contact emails with source provenance), not as a discovery source — its B2B
-database indexes established companies and under-covers weeks-old startups.
-Configuration: `HUNTER_API_KEY` env var (never committed).
+Hunter.io is integrated as **contact enrichment on CRM companies**, not as a
+discovery source — its B2B database indexes established companies and
+under-covers weeks-old startups.
+
+- Configuration: `HUNTER_API_KEY` env var (never committed; `sync: false` in
+  `render.yaml`). When unset, the action is hidden and the route refuses with
+  a "not configured" notice.
+- Operator action: **Enrich contacts via Hunter.io** on any company page
+  (`/admin/companies/{id}`) — source-agnostic, so manually entered leads,
+  imports, brief conversions, and discovery-accepted companies all work. The
+  company needs a domain (or a website one can be derived from).
+- Behavior: Hunter Domain Search → contacts created with `email_permission =
+  inferred` (public source, no consent implied), position, and a provenance
+  note with the first source URL. Emails already owned by an active contact
+  are skipped; re-running is idempotent. Client: `app/hunter_enrichment.py`
+  (≤512 KB, 10 s, ≤25 contacts per call).
+- Audit: `enrichment.contacts` per run (bounded counts only; emails never
+  stored) plus `contact.create` per created contact.
 
 ## Adding a source
 

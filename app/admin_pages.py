@@ -40,6 +40,7 @@ AUDIT_ACTION_LABELS: dict[str, str] = {
     audit_service.ACTION_DISCOVERY_CANDIDATE_REJECT: "Discovery candidate rejected",
     audit_service.ACTION_DISCOVERY_CANDIDATE_DEFER: "Discovery candidate deferred",
     audit_service.ACTION_DISCOVERY_CANDIDATE_BULK: "Discovery bulk action",
+    audit_service.ACTION_ENRICHMENT_CONTACTS: "Contact enrichment",
     audit_service.ACTION_CONTACT_RESTORE: "Contact restore",
     audit_service.ACTION_RESEARCH_RECORD_CREATE: "Research evidence added",
     audit_service.ACTION_PIPELINE_ACTIVITY_CREATE: "Pipeline activity logged",

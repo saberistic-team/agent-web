@@ -43,6 +43,10 @@ ADMIN_MUTATION_ROUTE_CLASSIFICATIONS: dict[tuple[str, str], tuple[MutationClassi
         "required_immutable_business_audit",
         "Company restore emits company.restore with bounded lifecycle transition.",
     ),
+    ("POST", "/admin/companies/{company_id}/enrich-contacts"): (
+        "required_immutable_business_audit",
+        "Contact enrichment emits enrichment.contacts with bounded outcome summary.",
+    ),
     ("POST", "/admin/companies/{company_id}/research"): (
         "required_immutable_business_audit",
         "Research evidence append emits research_record.create with bounded metadata.",

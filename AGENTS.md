@@ -29,6 +29,9 @@ Always work inside the venv: `source .venv/bin/activate`.
   etc.) or `validate_admin_security_config` rejects it at startup.
 - `FIRST_PARTY_ANALYTICS_ENABLED=true` enables the `POST /api/events` analytics
   endpoint.
+- `HUNTER_API_KEY` enables the Hunter.io contact-enrichment action on company
+  pages (Domain Search → contacts with `email_permission=inferred`). Unset
+  hides the button and disables the route.
 
 ### PostgreSQL (for DB-backed run + contract tests)
 

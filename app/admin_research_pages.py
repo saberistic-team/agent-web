@@ -193,6 +193,8 @@ def render_admin_company_research_page(
     csrf_token: str,
     admin_username: str = "",
     error_message: str | None = None,
+    notice_message: str | None = None,
+    enrichment_available: bool = False,
 ) -> str:
     company_name = html.escape(str(company.get("name", "")))
     company_id = html.escape(str(company["id"]), quote=True)
@@ -220,6 +222,17 @@ def render_admin_company_research_page(
         error_html = (
             f'<p class="form-error" role="alert">{html.escape(error_message)}</p>'
         )
+    notice_html = ""
+    if notice_message:
+        notice_html = (
+            f'<p class="admin-note" role="status">{html.escape(notice_message)}</p>'
+        )
+    enrichment_html = ""
+    if enrichment_available:
+        enrichment_html = f"""<form method="post" action="/admin/companies/{company_id}/enrich-contacts">
+            <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}" />
+            <button class="admin-action admin-action--secondary" type="submit">Enrich contacts via Hunter.io</button>
+          </form>"""
     buying_group_html = render_buying_group_section(contacts, records)
     contact_options = "\n".join(
         f'              <option value="{html.escape(str(contact["id"]), quote=True)}">'
@@ -247,8 +260,10 @@ def render_admin_company_research_page(
           </form>
           {buying_group_html}
           <p><a class="cta" href="/admin/contacts/new">Add contact</a></p>
+          {enrichment_html}
           <h2 class="admin-section-heading">Attach record</h2>
           {error_html}
+          {notice_html}
           <form class="admin-form admin-form--editor research-form" method="post" action="/admin/companies/{company_id}/research">
             {form_body}
           </form>

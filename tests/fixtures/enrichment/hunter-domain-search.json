@@ -1,0 +1,65 @@
+{
+  "data": {
+    "domain": "ledgerflow.example",
+    "disposable": false,
+    "webmail": false,
+    "accept_all": null,
+    "pattern": "{first}.{last}",
+    "organization": "LedgerFlow",
+    "emails": [
+      {
+        "value": "Maya.Chen@ledgerflow.example",
+        "type": "personal",
+        "confidence": 96,
+        "first_name": "Maya",
+        "last_name": "Chen",
+        "position": "Co-Founder & CEO",
+        "seniority": "executive",
+        "department": "executive",
+        "sources": [
+          {
+            "uri": "https://ledgerflow.example/about",
+            "extracted_on": "2026-07-02",
+            "last_seen_on": "2026-08-01",
+            "still_on_page": true
+          }
+        ]
+      },
+      {
+        "value": "info@ledgerflow.example",
+        "type": "generic",
+        "confidence": 72,
+        "first_name": null,
+        "last_name": null,
+        "position": null,
+        "seniority": null,
+        "department": null,
+        "sources": [
+          {
+            "uri": "https://ledgerflow.example/contact",
+            "extracted_on": "2026-06-20",
+            "last_seen_on": "2026-08-05",
+            "still_on_page": true
+          }
+        ]
+      },
+      {
+        "value": "maya.chen@ledgerflow.example",
+        "type": "personal",
+        "confidence": 91,
+        "first_name": "Maya",
+        "last_name": "Chen",
+        "position": "Co-Founder & CEO",
+        "sources": [
+          {
+            "uri": "https://ledgerflow.example/team",
+            "extracted_on": "2026-07-10",
+            "last_seen_on": "2026-08-03",
+            "still_on_page": true
+          }
+        ]
+      }
+    ]
+  },
+  "meta": {"results": 3, "limit": 10, "offset": 0, "params": {"domain": "ledgerflow.example"}}
+}

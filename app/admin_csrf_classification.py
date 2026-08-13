@@ -49,6 +49,10 @@ ADMIN_CSRF_ROUTE_POLICIES: dict[tuple[str, str], tuple[CsrfPolicy, str]] = {
         "session_csrf_required",
         "Company restore requires a session-bound CSRF token in the form body.",
     ),
+    ("POST", "/admin/companies/{company_id}/enrich-contacts"): (
+        "session_csrf_required",
+        "Contact enrichment requires a session-bound CSRF token in the form body.",
+    ),
     ("POST", "/admin/companies/{company_id}/research"): (
         "session_csrf_required",
         "Research append requires a session-bound CSRF token in the form body.",

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Callable
 from uuid import UUID
 
 import psycopg
@@ -53,8 +53,7 @@ from app.crm_lifecycle_audit import (
     record_company_create,
     record_company_update_if_changed,
     record_contact_create,
-    record_contact_update_if_changed,
-)
+    record_contact_update_if_changed,)
 from app.crm_uow import crm_transaction
 from app.patch import UNSET
 from app.linkedin_import import (
@@ -75,6 +74,7 @@ from app.discovery_reconcile_ops import (
     candidate_from_payload,
     candidates_from_payloads,
 )
+from app.hunter_enrichment import HunterContact, fetch_domain_contacts
 from app.linkedin_reconcile import (
     MatchResolution,
     compute_importable_updates,
@@ -971,6 +971,83 @@ class CrmService:
             ),
         ]
         return {"contact": created, "duplicate_warnings": duplicate_warnings}
+
+    def enrich_company_contacts(
+        self,
+        conn: psycopg.Connection,
+        company_id: UUID,
+        *,
+        actor_context: ActorContext,
+        api_key: str,
+        fetcher: Callable[..., list[HunterContact]] = fetch_domain_contacts,
+    ) -> dict[str, Any] | None:
+        """Enrich a company with published contact emails from Hunter.io.
+
+        Source-agnostic: works for any company record with a domain/website,
+        however it entered the CRM (discovery accept, import, brief, manual).
+        Skips emails already owned by an active contact; never overwrites.
+        """
+        company = self._repos.companies.get_by_id(conn, company_id)
+        if company is None:
+            return None
+        domain = company.get("domain")
+        if not domain and company.get("website"):
+            try:
+                domain = normalize_domain(str(company["website"]))
+            except ValueError:
+                domain = None
+        if not domain:
+            raise ValueError("Company has no domain or website to enrich")
+
+        found = fetcher(str(domain), api_key=api_key)
+        created: list[dict[str, Any]] = []
+        skipped: list[str] = []
+        seen: set[str] = set()
+        with crm_transaction(conn):
+            for item in found:
+                if item.email in seen:
+                    continue
+                seen.add(item.email)
+                existing = self._repos.contacts.get_active_by_email(conn, item.email)
+                if existing is not None:
+                    skipped.append(item.email)
+                    continue
+                notes = f"Found via Hunter.io domain search ({domain})."
+                if item.source_urls:
+                    notes += f" Source: {item.source_urls[0]}"
+                contact = ContactCreate(
+                    full_name=item.full_name,
+                    title=item.position,
+                    email=item.email,
+                    email_permission="inferred",
+                    company_id=company_id,
+                    notes=notes,
+                )
+                record = self._repos.contacts.create(conn, **contact.model_dump())
+                record_contact_create(
+                    conn,
+                    actor_context=actor_context,
+                    contact=record,
+                )
+                created.append(record)
+            audit_service.record_enrichment_contacts(
+                conn,
+                actor_context=actor_context,
+                entity_id=str(company_id),
+                summary_after={
+                    "domain": str(domain),
+                    "found": len(found),
+                    "created_contact_ids": [str(record["id"]) for record in created],
+                    "skipped_existing_count": len(skipped),
+                },
+            )
+        return {
+            "company": company,
+            "domain": str(domain),
+            "found": len(found),
+            "created": created,
+            "skipped": skipped,
+        }
 
     def update_contact(
         self,
