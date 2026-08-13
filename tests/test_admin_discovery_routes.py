@@ -197,7 +197,7 @@ def test_discovery_defer_redirects_to_inbox(authenticated_admin: dict[str, Any])
             f"/admin/discovery/inbox/{CANDIDATE_ID}/defer",
             data={
                 "csrf_token": authenticated_admin["csrf_token"],
-                "deferred_until": "2026-08-01T12:00",
+                "deferred_until": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
             },
             cookies=authenticated_admin["cookies"],
         )
