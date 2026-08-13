@@ -196,24 +196,35 @@ Automated coverage: `tests/test_linkedin_import_batches.py`,
 ## Discovery scheduling
 
 Discovery adapters return **candidates only** — they never write canonical CRM
-companies. Scheduling is incremental via per-source checkpoints.
+companies. Scheduling is incremental via per-source checkpoints persisted in
+the `discovery_checkpoints` table.
 
 ### Environment variables
 
-No dedicated cron env vars. Runs use in-process `DiscoverySourceRegistry` with
-fixture or live fetchers. Production scheduling is operator-driven or external
-cron invoking a future `scripts/discovery_run.py` wrapper; until then, run from a
-maintained shell with `DATABASE_URL` unset (discovery does not require DB).
+The Render cron service `agent-web-discovery` (weekly, `render.yaml`) invokes
+`python scripts/discovery_run.py`. It requires `DATABASE_URL` plus
+`DISCOVERY_SCHEDULER_ENABLED=true`; `DISCOVERY_SCHEDULE_INTERVAL_DAYS` gates how
+often a scheduled run is due, and `DISCOVERY_ENABLED_SOURCES` selects adapters
+(default `ycombinator`). Operators can also trigger a run from
+`/admin/discovery` ("Run discovery now").
 
 ### Scheduled run procedure
 
-1. Load enabled sources from registry (see [Source enablement](#source-enablement)).
-2. For each source, pass last `DiscoveryCheckpoint.cursor` (stored in operator
-   notes or future `discovery_checkpoints` table).
-3. Execute `run_adapter(adapter, checkpoint=checkpoint)`.
-4. Review candidates in admin **Discovery** shell; promote approved rows to
-   companies manually or via import.
-5. Persist returned `result.checkpoint.cursor` for the next run.
+1. `scripts/discovery_run.py` exits quietly when the scheduler is disabled or
+   no run is due; otherwise it starts a run under the global advisory lock.
+2. For each enabled source, the orchestrator passes the last persisted
+   `DiscoveryCheckpoint` from `discovery_checkpoints` and executes the adapter
+   with retries.
+3. Run/per-source outcomes land in `discovery_runs` and
+   `discovery_run_sources`; the source checkpoint advances on success.
+4. Normalized candidates are upserted into `discovery_candidates` (review
+   inbox) in the same per-source transaction. Identical evidence refreshes the
+   existing row without resetting operator review state; materially changed
+   evidence creates a new pending row (see
+   `app/discovery/inbox_persistence.py`).
+5. Operators review the inbox at `/admin/discovery/inbox` and accept (create or
+   link a CRM company with provenance), reject (reason + duplicate
+   suppression), or defer candidates there.
 
 YC-specific bounds: [DISCOVERY_YCOMBINATOR.md](DISCOVERY_YCOMBINATOR.md) (6 req/min,
 one page per run, cursor wraps at `nbPages`).
@@ -223,13 +234,19 @@ one page per run, cursor wraps at `nbPages`).
 ```bash
 pytest -q tests/test_discovery_adapters.py tests/test_discovery_yc_adapter.py -m unit
 # Fixture-based; no live network in CI fast job
+pytest -q tests/test_discovery_orchestrator.py tests/test_discovery_inbox_persistence.py -m unit
+# Run → inbox wiring, mocked persistence
+REQUIRE_TEST_DATABASE=1 TEST_DATABASE_URL=... pytest -q tests/pg_contract/test_discovery_inbox_persistence_contract.py
+# Live upsert/dedup/suppression contract against PostgreSQL
 ```
 
 ### Rollback
 
-- Disable source in registry (`disable(source_id)`).
+- Disable source in registry (`disable(source_id)`) or remove it from
+  `DISCOVERY_ENABLED_SOURCES`.
 - Discovery never deletes CRM rows; worst case is stale checkpoint — reset
-  cursor to `0` to restart full cycle.
+  cursor to `0` to restart full cycle. Inbox candidates are review-only;
+  rejecting a candidate suppresses identical evidence in future runs.
 
 ---
 

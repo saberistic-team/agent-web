@@ -22,6 +22,7 @@ from app.discovery.orchestrator import (
 from app.discovery.repository import PostgresDiscoveryRunRepository
 from app.discovery.types import (
     AccessDocumentation,
+    DiscoveryCandidate,
     DiscoveryCheckpoint,
     DiscoveryError,
     DiscoveryRunResult,
@@ -110,6 +111,15 @@ class _FakeRepo(PostgresDiscoveryRunRepository):
 class _FakeConn:
     def commit(self) -> None:
         return None
+
+
+class _FakeInboxRepo:
+    def __init__(self) -> None:
+        self.upserts: list[dict] = []
+
+    def upsert_candidate(self, conn, **kwargs):  # type: ignore[no-untyped-def]
+        self.upserts.append(kwargs)
+        return {"id": uuid4(), "inserted": True, **kwargs}
 
 
 class _FakeLock:
@@ -363,3 +373,127 @@ def test_run_source_with_retries_unknown_source_raises() -> None:
             ),
             sleep=lambda _delay: None,
         )
+
+
+def _candidate(external_id: str, name: str) -> DiscoveryCandidate:
+    return DiscoveryCandidate(
+        external_id=external_id,
+        name=name,
+        domain=f"{name.split()[0].lower()}.example",
+        website=f"https://{name.split()[0].lower()}.example",
+        signals=("source:stub", "category:fintech"),
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_execute_discovery_run_persists_candidates_to_inbox(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _FakeRepo()
+    inbox = _FakeInboxRepo()
+    monkeypatch.setattr(
+        "app.discovery.orchestrator.DiscoveryRunLock",
+        lambda conn: _FakeLock(conn),
+    )
+
+    def handler(_checkpoint: DiscoveryCheckpoint | None) -> DiscoveryRunResult:
+        return DiscoveryRunResult(
+            source_id="stub",
+            candidates=[
+                _candidate("stub:1", "Nimbus Analytics"),
+                _candidate("stub:2", "Ledgerflow"),
+            ],
+            checkpoint=DiscoveryCheckpoint(cursor="1"),
+        )
+
+    registry = DiscoverySourceRegistry()
+    registry.register(_adapter("stub", handler))
+    registry.enable("stub")
+    result = execute_discovery_run(
+        _FakeConn(),
+        registry,
+        trigger_type="manual",
+        actor="operator",
+        correlation_id="corr-inbox",
+        config=DiscoveryRunConfig(retry_max_attempts=1, retry_base_seconds=0.0, retry_cap_seconds=0.0),
+        enabled_sources=["stub"],
+        repo=repo,
+        inbox_repo=inbox,  # type: ignore[arg-type]
+        sleep=lambda _delay: None,
+    )
+    assert result.status == "completed"
+    run_id = repo.runs[-1]["id"]
+    assert len(inbox.upserts) == 2
+    assert {call["external_id"] for call in inbox.upserts} == {"stub:1", "stub:2"}
+    assert all(call["run_id"] == run_id for call in inbox.upserts)
+    assert all(call["source_id"] == "stub" for call in inbox.upserts)
+    assert repo.checkpoints["stub"].cursor == "1"
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_execute_discovery_run_without_candidates_persists_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _FakeRepo()
+    inbox = _FakeInboxRepo()
+    monkeypatch.setattr(
+        "app.discovery.orchestrator.DiscoveryRunLock",
+        lambda conn: _FakeLock(conn),
+    )
+
+    def handler(_checkpoint: DiscoveryCheckpoint | None) -> DiscoveryRunResult:
+        return DiscoveryRunResult(
+            source_id="stub",
+            candidates=[],
+            checkpoint=DiscoveryCheckpoint(cursor="2"),
+        )
+
+    registry = DiscoverySourceRegistry()
+    registry.register(_adapter("stub", handler))
+    registry.enable("stub")
+    result = execute_discovery_run(
+        _FakeConn(),
+        registry,
+        trigger_type="scheduled",
+        actor="scheduler",
+        correlation_id="corr-empty",
+        config=DiscoveryRunConfig(retry_max_attempts=1, retry_base_seconds=0.0, retry_cap_seconds=0.0),
+        enabled_sources=["stub"],
+        repo=repo,
+        inbox_repo=inbox,  # type: ignore[arg-type]
+        sleep=lambda _delay: None,
+    )
+    assert result.status == "completed"
+    assert inbox.upserts == []
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_execute_discovery_run_skipped_source_persists_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _FakeRepo()
+    inbox = _FakeInboxRepo()
+    monkeypatch.setattr(
+        "app.discovery.orchestrator.DiscoveryRunLock",
+        lambda conn: _FakeLock(conn),
+    )
+    registry = DiscoverySourceRegistry()
+    registry.register(_adapter("disabled", lambda _cp: DiscoveryRunResult(source_id="disabled")))
+    result = execute_discovery_run(
+        _FakeConn(),
+        registry,
+        trigger_type="manual",
+        actor="operator",
+        correlation_id="corr-disabled-inbox",
+        config=DiscoveryRunConfig(retry_max_attempts=1, retry_base_seconds=0.0, retry_cap_seconds=0.0),
+        enabled_sources=["disabled"],
+        repo=repo,
+        inbox_repo=inbox,  # type: ignore[arg-type]
+        sleep=lambda _delay: None,
+    )
+    assert result.status == "completed"
+    assert repo.sources[0]["status"] == "skipped"
+    assert inbox.upserts == []

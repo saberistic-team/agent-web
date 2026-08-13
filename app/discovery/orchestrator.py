@@ -10,12 +10,14 @@ from uuid import UUID
 import psycopg
 
 from app.discovery.adapters.registry import DiscoverySourceRegistry
+from app.discovery.inbox_persistence import persist_run_candidates
 from app.discovery.repository import PostgresDiscoveryRunRepository
 from app.discovery.retry import run_with_retries
 from app.discovery.run_lock import DiscoveryRunLock
 from app.discovery.runner import run_adapter
 from app.discovery.safe_errors import safe_discovery_errors, safe_error_message
 from app.discovery.types import DiscoveryCheckpoint, DiscoveryRunResult
+from app.repositories.discovery_inbox_postgres import PostgresDiscoveryInboxRepository
 
 
 @dataclass(frozen=True)
@@ -138,12 +140,14 @@ def execute_discovery_run(
     config: DiscoveryRunConfig,
     enabled_sources: list[str],
     repo: PostgresDiscoveryRunRepository | None = None,
+    inbox_repo: PostgresDiscoveryInboxRepository | None = None,
     sleep: Callable[[float], None] | None = None,
 ) -> DiscoveryOrchestrationResult:
     """Run enabled discovery sources under a global advisory lock."""
     import time
 
     repository = repo or PostgresDiscoveryRunRepository()
+    inbox_repository = inbox_repo or PostgresDiscoveryInboxRepository()
     sleeper = sleep or time.sleep
     lock = DiscoveryRunLock(conn)
 
@@ -232,6 +236,15 @@ def execute_discovery_run(
                 checkpoint=result.checkpoint,
                 errors=safe_errors,
             )
+
+            if result.candidates:
+                persist_run_candidates(
+                    conn,
+                    run_id=run_id,
+                    source_id=source_id,
+                    candidates=result.candidates,
+                    inbox_repo=inbox_repository,
+                )
 
             if _should_advance_checkpoint(result) and result.checkpoint is not None:
                 repository.upsert_checkpoint(

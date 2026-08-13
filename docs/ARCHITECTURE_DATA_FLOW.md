@@ -76,6 +76,7 @@ Data the platform controls and is responsible for protecting:
 | **Audit** | `audit_events` | `app/audit_service.py` | Redacted summaries only |
 | **Admin auth** | `admin_sessions`, `admin_login_flows`, `admin_login_rate_limits` | `app/db.py`, `app/admin_auth.py` | Hashed tokens only |
 | **First-party analytics** | `analytics_events`, `analytics_sessions` | `app/analytics_ingest.py` | Opaque session UUIDs; no brief/email |
+| **Discovery runs + inbox** | `discovery_runs`, `discovery_run_sources`, `discovery_checkpoints`, `discovery_candidates`, `discovery_rejection_suppressions` | `app/discovery/`, `app/repositories/discovery_inbox_postgres.py` | Public source metadata only; no PII |
 | **Schema version** | `schema_migrations` | `app/migrations/` | None |
 
 ### Not first-party canonical data
@@ -85,7 +86,7 @@ Data the platform controls and is responsible for protecting:
 | Payment card details | Stripe | Never stored locally |
 | Email delivery payloads | Resend transit | Templates reference brief id, not full brief in logs |
 | Plausible aggregates | Plausible SaaS | Allowlisted props only; no PII |
-| Raw discovery fetch bodies | Ephemeral in adapter | Discarded after normalization; optional `raw_payload` on candidate |
+| Raw discovery fetch bodies | Ephemeral in adapter | Discarded after normalization; normalized evidence and `raw_payload` persist on inbox candidates |
 | LinkedIn export ZIP | Operator browser | Parsed client-side; only approved rows committed |
 | Render/GitHub secrets | Provider dashboards | Not in repository or exports |
 
@@ -108,9 +109,9 @@ sequenceDiagram
     Admin->>CRM: commit_linkedin_import
     CRM->>DB: import_batches, contacts
     CRM->>Audit: import.batch
-    Op->>Admin: Discovery review → promote
-    Note over Admin,CRM: Adapter candidates in-memory only
-    CRM->>DB: companies (manual create from candidate)
+    Op->>Admin: Discovery review → accept
+    Note over Admin,CRM: Run candidates persist to discovery_candidates inbox
+    CRM->>DB: companies (created/linked on operator accept)
     Op->>CRM: update_scoring_rule / transition_pipeline_stage
     CRM->>Audit: scoring_rule.update / pipeline.update
     Op->>CRM: request_export

@@ -121,16 +121,16 @@ class PostgresDiscoveryInboxRepository:
                 params.append(filters.review_state)
         confidence_sql, confidence_params = _confidence_sql(filters.confidence)
         freshness_sql, freshness_params = _freshness_sql(filters.freshness)
-        clauses.append("NOT EXISTS (")
         clauses.append(
             """
-            SELECT 1 FROM discovery_rejection_suppressions s
-            WHERE s.source_id = discovery_candidates.source_id
-              AND s.external_id = discovery_candidates.external_id
-              AND s.evidence_fingerprint = discovery_candidates.evidence_fingerprint
+            NOT EXISTS (
+                SELECT 1 FROM discovery_rejection_suppressions s
+                WHERE s.source_id = discovery_candidates.source_id
+                  AND s.external_id = discovery_candidates.external_id
+                  AND s.evidence_fingerprint = discovery_candidates.evidence_fingerprint
+            )
             """
         )
-        clauses.append(")")
         where = " AND ".join(clauses) + confidence_sql + freshness_sql
         params.extend(confidence_params)
         params.extend(freshness_params)
@@ -331,6 +331,74 @@ class PostgresDiscoveryInboxRepository:
                     json.dumps(raw_payload) if raw_payload is not None else None,
                     json.dumps(conflicts) if conflicts is not None else None,
                     json.dumps(match_suggestions) if match_suggestions is not None else None,
+                    discovered_at,
+                ),
+            )
+            row = cur.fetchone()
+        return dict(row)
+
+    def upsert_candidate(
+        self,
+        conn: psycopg.Connection,
+        *,
+        run_id: UUID | None,
+        source_id: str,
+        external_id: str,
+        evidence_fingerprint: str,
+        name: str,
+        domain: str | None = None,
+        website: str | None = None,
+        category: str | None = None,
+        confidence: float | None = None,
+        signals: list[str] | None = None,
+        evidence: dict[str, Any] | None = None,
+        raw_payload: dict[str, Any] | None = None,
+        discovered_at: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Insert a run candidate or refresh it when identical evidence recurs.
+
+        Re-seen candidates keep their operator review state (``review_state``,
+        ``reviewed_*``, ``rejection_reason``, ``deferred_until``,
+        ``linked_company_id``); only identity, evidence, and freshness fields
+        are refreshed. The returned row carries an ``inserted`` flag that is
+        True for newly created rows and False for refreshed ones.
+        """
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO discovery_candidates (
+                    run_id, source_id, external_id, evidence_fingerprint,
+                    name, domain, website, category, confidence, signals,
+                    evidence, raw_payload, discovered_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, COALESCE(%s, NOW()))
+                ON CONFLICT (source_id, external_id, evidence_fingerprint) DO UPDATE
+                SET run_id = EXCLUDED.run_id,
+                    name = EXCLUDED.name,
+                    domain = EXCLUDED.domain,
+                    website = EXCLUDED.website,
+                    category = EXCLUDED.category,
+                    confidence = EXCLUDED.confidence,
+                    signals = EXCLUDED.signals,
+                    evidence = EXCLUDED.evidence,
+                    raw_payload = EXCLUDED.raw_payload,
+                    discovered_at = EXCLUDED.discovered_at,
+                    updated_at = NOW()
+                RETURNING *, (xmax = 0) AS inserted
+                """,
+                (
+                    run_id,
+                    source_id,
+                    external_id,
+                    evidence_fingerprint,
+                    name,
+                    domain,
+                    website,
+                    category,
+                    confidence,
+                    signals or [],
+                    json.dumps(evidence) if evidence is not None else None,
+                    json.dumps(raw_payload) if raw_payload is not None else None,
                     discovered_at,
                 ),
             )

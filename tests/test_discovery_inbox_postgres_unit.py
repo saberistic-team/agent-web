@@ -217,3 +217,36 @@ def test_suppression_update_insert_helpers() -> None:
         conn4.cursor.return_value.__enter__.return_value.execute.call_args.args[0]
     )
     assert "discovery_rejection_suppressions" in suppression_sql
+
+
+@pytest.mark.unit
+def test_upsert_candidate_conflicts_without_touching_review_state() -> None:
+    repo = PostgresDiscoveryInboxRepository()
+    row = {"id": CANDIDATE_ID, "name": "Nimbus", "inserted": False}
+    conn = _mock_conn(row)
+    result = repo.upsert_candidate(
+        conn,
+        run_id=RUN_ID,
+        source_id="yc",
+        external_id="yc:1",
+        evidence_fingerprint="fp",
+        name="Nimbus",
+        domain="nimbus.example",
+        website="https://nimbus.example",
+        category="fintech",
+        confidence=0.9,
+        signals=["hiring"],
+        evidence={"snippet": "x"},
+        raw_payload={"raw": True},
+    )
+    assert result == row
+    cur = conn.cursor.return_value.__enter__.return_value
+    sql = str(cur.execute.call_args.args[0])
+    assert "INSERT INTO discovery_candidates" in sql
+    assert "ON CONFLICT (source_id, external_id, evidence_fingerprint) DO UPDATE" in sql
+    assert "RETURNING *, (xmax = 0) AS inserted" in sql
+    assert "review_state" not in sql
+    assert "reviewed_by" not in sql
+    params = cur.execute.call_args.args[1]
+    assert params[0] == RUN_ID
+    assert params[1:4] == ("yc", "yc:1", "fp")
