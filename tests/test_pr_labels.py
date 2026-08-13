@@ -162,12 +162,12 @@ def test_mirror_pr_milestone_copies_from_issue(
 
 
 @pytest.mark.unit
-def test_apply_to_linked_prs_uses_open_prs(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_apply_to_linked_prs_uses_unique_open_pr(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[int, str | None]] = []
 
     monkeypatch.setattr(
-        "pr_labels.linked_open_prs",
-        lambda repo, issue: [{"number": 71}, {"number": 72}],
+        "pr_labels.unique_open_pr_or_none",
+        lambda repo, issue: {"number": 71},
     )
 
     def fake_apply(repo, issue, pr, *, review=None, default_review=None):
@@ -177,16 +177,13 @@ def test_apply_to_linked_prs_uses_open_prs(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr("pr_labels.apply_pr_mirror", fake_apply)
 
     out = apply_to_linked_prs("o/r", 9, review="review:changes-requested")
-    assert out == {71: ["pr-71"], 72: ["pr-72"]}
-    assert calls == [
-        (71, "review:changes-requested"),
-        (72, "review:changes-requested"),
-    ]
+    assert out == {71: ["pr-71"]}
+    assert calls == [(71, "review:changes-requested")]
 
 
 @pytest.mark.unit
 def test_apply_to_linked_prs_explicit_pr(monkeypatch: pytest.MonkeyPatch) -> None:
-    with patch("pr_labels.linked_open_prs") as linked:
+    with patch("pr_labels.unique_open_pr_or_none") as linked:
         with patch(
             "pr_labels.apply_pr_mirror",
             return_value=["review:approved"],

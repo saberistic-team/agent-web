@@ -67,16 +67,10 @@ def resolve_decision(
 
 
 def linked_open_prs(repo: str, issue: int) -> list[dict]:
-    from github_api import linked_open_prs as _linked_open_prs
+    from github_api import unique_open_pr_or_none
 
-    linked = list(_linked_open_prs(repo, issue))
-    owner, name = split_repo(repo)
-    issue_data = api("GET", f"/repos/{owner}/{name}/issues/{issue}")
-    if issue_data.get("pull_request"):
-        pr_num = int(issue_data["number"])
-        if not any(int(p["number"]) == pr_num for p in linked):
-            linked.append(api("GET", f"/repos/{owner}/{name}/pulls/{pr_num}"))
-    return linked
+    pr = unique_open_pr_or_none(repo, issue)
+    return [pr] if pr else []
 
 
 def latest_submitted_review(

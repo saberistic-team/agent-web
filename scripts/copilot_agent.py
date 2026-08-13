@@ -157,28 +157,11 @@ def assign_copilot(
 
 
 def linked_prs(repo: str, issue: int) -> list[dict[str, Any]]:
-    """Prefer intentional issue links; keep Copilot branch-prefix fallback."""
-    from github_api import linked_open_prs, pr_head_ref, pr_links_issue
+    """Return only the strict resolver's single intentional candidate."""
+    from github_api import unique_open_pr_or_none
 
-    intentional = linked_open_prs(repo, issue)
-    if intentional:
-        return intentional
-
-    owner, name = split_repo(repo)
-    prs = api("GET", f"/repos/{owner}/{name}/pulls?state=open&per_page=100") or []
-    out: list[dict[str, Any]] = []
-    for pr in prs:
-        if pr_links_issue(pr, issue):
-            out.append(pr)
-            continue
-        user = ((pr.get("user") or {}).get("login") or "").lower()
-        head = pr_head_ref(pr)
-        # Copilot may open PRs that lack Closes/#(N) but use a recognizable head.
-        if "copilot" in user and (
-            head.startswith(f"copilot/") or f"/{issue}-" in f"/{head}"
-        ):
-            out.append(pr)
-    return out
+    pr = unique_open_pr_or_none(repo, issue)
+    return [pr] if pr else []
 
 
 def wait_for_copilot_pr(

@@ -133,26 +133,17 @@ jobs:
             --issue "${ISSUE}" \
             --mode require
 
-          PRS="$(gh pr list --repo "${{ github.repository }}" \
-            --search "${ISSUE} in:title,body" --state open --json number,body,title \
-            --jq "[.[] | select((.title | contains(\"#${ISSUE}\")) or (.body != null and (.body | contains(\"#${ISSUE}\")))) | .number] | .[]")"
-          # Search index can lag; fall back to listing open PRs and filtering locally.
-          if [[ -z "${PRS}" ]]; then
-            PRS="$(gh pr list --repo "${{ github.repository }}" --state open \
-              --json number,body,title \
-              --jq "[.[] | select((.title | contains(\"#${ISSUE}\")) or (.body != null and (.body | contains(\"#${ISSUE}\")))) | .number] | .[]")"
-          fi
-          if [[ -z "${PRS}" ]]; then
+          if ! RESOLUTION="$(python scripts/resolve_issue_pr.py --repo "${{ github.repository }}" --issue "${ISSUE}")"; then
             gh issue comment "${ISSUE}" --repo "${{ github.repository }}" --body "$(cat <<EOF
           ### gate_merge
           - result: \`fail\`
-          - detail: no open PR linked to #${ISSUE}
+          - detail: no unique open PR linked to #${ISSUE}; resolver: ${RESOLUTION}
           EOF
           )"
             exit 1
           fi
-          while read -r pr; do
-            [[ -z "${pr}" ]] && continue
+          pr="$(python -c 'import json,sys; print(json.load(sys.stdin)["pr_number"])' <<<"${RESOLUTION}")"
+          {
             # Main may move while post-deploy commits land; retry merge a few times.
             merged=0
             for attempt in 1 2 3 4 5; do
@@ -196,7 +187,7 @@ jobs:
               --pr "${pr}" \
               --merge-sha "${MERGE_SHA}" \
               --mode close
-          done <<< "${PRS}"
+          }
           for label in status:new status:queued status:in-progress status:blocked status:needs-review status:failed; do
             gh issue edit "${ISSUE}" --repo "${{ github.repository }}" --remove-label "${label}" 2>/dev/null || true
           done

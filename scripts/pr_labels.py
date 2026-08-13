@@ -13,7 +13,7 @@ import argparse
 import sys
 from typing import Any, Iterable
 
-from github_api import add_labels, api, delete_label, linked_open_prs, split_repo
+from github_api import add_labels, api, delete_label, split_repo, unique_open_pr_or_none
 from milestones import assign_milestone, issue_milestone_number
 
 # Axes that may appear on PRs (mirrors of the linked issue).
@@ -125,7 +125,8 @@ def apply_to_linked_prs(
     if pr is not None:
         targets = [pr]
     else:
-        targets = [int(item["number"]) for item in linked_open_prs(repo, issue)]
+        resolved = unique_open_pr_or_none(repo, issue)
+        targets = [int(resolved["number"])] if resolved else []
     applied: dict[int, list[str]] = {}
     for number in targets:
         applied[number] = apply_pr_mirror(
