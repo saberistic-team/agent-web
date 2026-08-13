@@ -61,6 +61,7 @@ def render_discovery_runs_page(
           <p class="admin-eyebrow">Lead discovery</p>
           <h1 class="admin-title" id="discovery-runs-title">Discovery runs</h1>
         </div>
+        <a class="cta" href="/admin/discovery/inbox">Review inbox</a>
         <form class="admin-form admin-form--compact" method="post" action="/admin/discovery/run">
           <input type="hidden" name="csrf_token" value="{_esc(csrf_token)}" />
           <button class="cta admin-submit" type="submit">Run discovery now</button>
@@ -128,6 +129,7 @@ def render_discovery_run_detail_page(
         <div><dt>Correlation</dt><dd><code>{_esc(run.get("correlation_id"))}</code></dd></div>
       </dl>
       {"<p class='form-error'>" + _esc(run.get("error_message")) + "</p>" if run.get("error_message") else ""}
+      <p><a class="cta" href="/admin/discovery/inbox?run_id={_esc(run["id"])}">Review run candidates</a></p>
       <div class="admin-table-wrap">
         <table class="admin-table">
           <thead>

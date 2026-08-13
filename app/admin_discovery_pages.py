@@ -112,6 +112,7 @@ def render_discovery_inbox_page(
     )
 
     main = f"""<section class="admin-section" aria-labelledby="discovery-inbox-title">
+      <p class="admin-breadcrumb"><a href="/admin/discovery">Discovery runs</a></p>
       {banner_html}
       {status_html}
       <div class="admin-section-head">

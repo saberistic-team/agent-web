@@ -7,6 +7,7 @@ from uuid import uuid4
 import pytest
 
 from app.admin_discovery import render_discovery_run_detail_page, render_discovery_runs_page
+from app.admin_discovery_pages import render_discovery_inbox_page
 
 
 @pytest.mark.unit
@@ -23,6 +24,20 @@ def test_render_discovery_runs_page_empty_state() -> None:
     )
     assert "No discovery runs yet." in html
     assert "Run discovery now" in html
+    assert '<a class="cta" href="/admin/discovery/inbox">Review inbox</a>' in html
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_render_discovery_inbox_page_links_back_to_runs() -> None:
+    html = render_discovery_inbox_page(
+        candidates=[],
+        filters={},
+        filter_metadata={},
+        csrf_token="csrf",
+        admin_username="operator",
+    )
+    assert '<p class="admin-breadcrumb"><a href="/admin/discovery">Discovery runs</a></p>' in html
 
 
 @pytest.mark.unit
@@ -62,3 +77,4 @@ def test_render_discovery_run_detail_serializes_json_errors() -> None:
     assert "upstream down" in html
     assert "Run failed safely" in html
     assert "etag=" in html
+    assert f'href="/admin/discovery/inbox?run_id={run_id}"' in html
