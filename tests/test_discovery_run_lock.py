@@ -46,3 +46,16 @@ def test_discovery_run_lock_not_acquired() -> None:
     assert lock.held is False
     lock.release()
     cur.execute.assert_called_once()
+
+
+@pytest.mark.unit
+@pytest.mark.integration
+def test_discovery_run_lock_supports_dict_rows() -> None:
+    conn = MagicMock()
+    cur = conn.cursor.return_value.__enter__.return_value
+    cur.fetchone.return_value = {"pg_try_advisory_lock": True}
+
+    lock = DiscoveryRunLock(conn)
+
+    assert lock.try_acquire() is True
+    assert lock.held is True
