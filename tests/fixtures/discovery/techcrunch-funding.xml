@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Funding news and analysis | TechCrunch</title>
+    <atom:link href="https://techcrunch.com/tag/funding/feed/" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Serval raises $47M to bring AI agents to IT service management</title>
+      <link>https://techcrunch.com/2025/10/21/serval-raises-47-million-to-bring-ai-agent-to-it-service-management/</link>
+      <guid isPermaLink="false">https://techcrunch.com/?p=3060071</guid>
+      <description>Serval is using agentic AI models to automate IT service management.</description>
+    </item>
+    <item>
+      <title>Meridian raises $17 million to remake the agentic spreadsheet</title>
+      <link>https://techcrunch.com/2026/02/11/meridian-ai-raises-17-million-to-remake-the-agentic-spreadsheet/</link>
+      <guid isPermaLink="false">https://techcrunch.com/?p=3091868</guid>
+      <description>A new company called Meridian.AI has emerged from stealth with an IDE-based approach to agentic financial modeling.</description>
+    </item>
+    <item>
+      <title>The perfect pitch: This NEA partner says every founder should answer these 5 questions</title>
+      <link>https://techcrunch.com/2025/07/19/the-perfect-pitch-this-nea-partner-says-every-founder-should-answer-these-5-questions/</link>
+      <guid isPermaLink="false">https://techcrunch.com/?p=3029244</guid>
+      <description>Tiffany Luck, a partner at NEA, outlined what she looks for in a pitch.</description>
+    </item>
+  </channel>
+</rss>

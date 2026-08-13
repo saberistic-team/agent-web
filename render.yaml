@@ -24,7 +24,7 @@ services:
       - key: DISCOVERY_SCHEDULE_INTERVAL_DAYS
         value: "7"
       - key: DISCOVERY_ENABLED_SOURCES
-        value: ycombinator
+        value: ycombinator,producthunt,techcrunch-funding,crunchbase-news,github
   - type: web
     name: agent-web-hello
     runtime: python

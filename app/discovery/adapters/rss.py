@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import html as html_module
+import re
 import xml.etree.ElementTree as ET
 from typing import Any
 
 from app.discovery.adapters.base import BaseDiscoveryAdapter
+from app.discovery.category import map_suggested_category
 from app.discovery.fetcher import FetchError, FetchPolicy, HttpFetcher
 from app.discovery.normalize import normalize_candidate, observation_from_candidate_field
 from app.discovery.observation import utc_now_iso
@@ -21,11 +24,62 @@ from app.discovery.types import (
 
 _ATOM_NS = "http://www.w3.org/2005/Atom"
 
+_FUNDING_TITLE_PREFIXES = frozenset(
+    {"exclusive", "scoop", "breaking", "watch", "listen", "video", "podcast"}
+)
+_FUNDING_VERBS = frozenset(
+    {
+        "raises", "raised", "lands", "landed", "nabs", "snags", "closes", "closed",
+        "secures", "secured", "gets", "got", "grabs", "bags", "captures", "collects",
+        "scores", "attracts", "receives", "locks", "rakes", "hauls", "picks", "emerges",
+    }
+)
+
+
+def extract_company_from_funding_title(title: str) -> str | None:
+    """Best-effort company name from a funding headline.
+
+    ``"Exclusive: ClearJet raises $25M to build the 'Uber of Cargo'"`` becomes
+    ``"ClearJet"``. Returns None when no funding verb pattern matches so
+    callers can fall back to the raw title; conservative on purpose — the
+    review inbox tolerates a headline-as-name more than a wrong name.
+    """
+    text = title.strip()
+    head, sep, tail = text.partition(":")
+    if sep and head.strip().lower() in _FUNDING_TITLE_PREFIXES:
+        text = tail.strip()
+    tokens = [token.strip(",;\"'") for token in text.split()]
+    tokens = [token for token in tokens if token]
+    for index, token in enumerate(tokens):
+        base = re.sub(r"[^a-z]", "", token.lower())
+        if base not in _FUNDING_VERBS or index == 0:
+            continue
+        name_tokens: list[str] = []
+        for candidate in reversed(tokens[:index]):
+            if "-" in candidate or not (candidate[0].isupper() or candidate[0].isdigit()):
+                break
+            name_tokens.append(candidate)
+            if len(name_tokens) >= 4:
+                break
+        if not name_tokens:
+            return None
+        return " ".join(reversed(name_tokens))
+    return None
+
 
 def _local_name(tag: str) -> str:
     if "}" in tag:
         return tag.rsplit("}", 1)[-1]
     return tag
+
+
+_TAG_RE = re.compile(r"<[^>]+>")
+_WHITESPACE_RE = re.compile(r"\s+")
+
+
+def _html_to_text(value: str) -> str:
+    """Strip markup from escaped-HTML feed content into plain text."""
+    return _WHITESPACE_RE.sub(" ", _TAG_RE.sub(" ", html_module.unescape(value))).strip()
 
 
 def parse_feed_items(body: bytes) -> list[dict[str, Any]]:
@@ -68,17 +122,24 @@ def _element_to_item(element: ET.Element) -> dict[str, Any]:
         name = _local_name(child.tag).lower()
         text = (child.text or "").strip()
         if not text:
+            if name == "link":
+                href = child.attrib.get("href", "").strip()
+                if href and "link" not in fields:
+                    fields["link"] = href
             continue
         fields.setdefault(name, text)
     link = fields.get("link") or fields.get("id") or ""
     title = fields.get("title") or ""
     company = fields.get("company") or title
+    description = fields.get("description") or fields.get("summary") or ""
+    if not description and fields.get("content"):
+        description = _html_to_text(fields["content"])
     return {
         "id": fields.get("guid") or fields.get("id") or link or title,
         "title": title,
         "company": company,
         "link": link,
-        "description": fields.get("description") or fields.get("summary") or "",
+        "description": description,
     }
 
 
@@ -92,9 +153,11 @@ class RssFeedAdapter(BaseDiscoveryAdapter):
         terms: TermsReviewMetadata,
         access: AccessDocumentation,
         feed_url: str,
+        extract_company_names: bool = False,
     ) -> None:
         super().__init__(identity=identity, terms=terms, access=access)
         self.feed_url = feed_url
+        self.extract_company_names = extract_company_names
 
     def _discover(
         self,
@@ -157,10 +220,26 @@ class RssFeedAdapter(BaseDiscoveryAdapter):
         for index, item in enumerate(items[start_index:], start=start_index):
             try:
                 raw_id = str(item.get("id") or item.get("link") or index)
-                company_name = str(item.get("company") or item.get("title") or "").strip()
+                title = str(item.get("title") or "").strip()
+                description = str(item.get("description") or "")
+                company_name = ""
+                if self.extract_company_names and title:
+                    company_name = extract_company_from_funding_title(title) or ""
+                if not company_name:
+                    company_name = str(item.get("company") or title).strip()
                 if not company_name:
                     raise ValueError("feed item missing company name")
                 link = str(item.get("link") or self.feed_url)
+                suggested_category = map_suggested_category(
+                    tags=[title] if title else None,
+                    description=description or None,
+                )
+                signals = [
+                    f"source:{self.identity.source_id}",
+                    f"category:{suggested_category}",
+                ]
+                if title:
+                    signals.append(f"title:{title}")
                 observation = observation_from_candidate_field(
                     source_url=link,
                     raw_source_id=raw_id,
@@ -174,9 +253,9 @@ class RssFeedAdapter(BaseDiscoveryAdapter):
                         source_id=self.identity.source_id,
                         name=company_name,
                         website=link if link.startswith("http") else None,
-                        signals=(str(item.get("title") or ""),) if item.get("title") else (),
+                        signals=signals,
                         observations=[observation],
-                        snippet=str(item.get("description") or "")[:500] or None,
+                        snippet=description[:500] or None,
                         raw_payload=item,
                         external_id=f"{self.identity.source_id}:{raw_id}",
                     )
@@ -212,6 +291,7 @@ def build_rss_adapter(
     feed_url: str,
     documented: bool = False,
     robots_allowed: bool | None = True,
+    extract_company_names: bool = False,
 ) -> RssFeedAdapter:
     """Factory for tests and fixtures."""
     return RssFeedAdapter(
@@ -235,4 +315,5 @@ def build_rss_adapter(
             notes="Public RSS/Atom feed; no authentication.",
         ),
         feed_url=feed_url,
+        extract_company_names=extract_company_names,
     )

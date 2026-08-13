@@ -205,8 +205,8 @@ The Render cron service `agent-web-discovery` (weekly, `render.yaml`) invokes
 `python scripts/discovery_run.py`. It requires `DATABASE_URL` plus
 `DISCOVERY_SCHEDULER_ENABLED=true`; `DISCOVERY_SCHEDULE_INTERVAL_DAYS` gates how
 often a scheduled run is due, and `DISCOVERY_ENABLED_SOURCES` selects adapters
-(default `ycombinator`). Operators can also trigger a run from
-`/admin/discovery` ("Run discovery now").
+(see the source register in [DISCOVERY_SOURCES.md](DISCOVERY_SOURCES.md)).
+Operators can also trigger a run from `/admin/discovery` ("Run discovery now").
 
 ### Scheduled run procedure
 
@@ -253,7 +253,9 @@ REQUIRE_TEST_DATABASE=1 TEST_DATABASE_URL=... pytest -q tests/pg_contract/test_d
 ## Source enablement
 
 Sources register in `DiscoverySourceRegistry` and run only when explicitly
-enabled.
+enabled. Production sources are built by `app/discovery/sources.py`
+(`SOURCE_BUILDERS`) from `DISCOVERY_ENABLED_SOURCES`; the access-review
+register lives in [DISCOVERY_SOURCES.md](DISCOVERY_SOURCES.md).
 
 ### Procedure
 
