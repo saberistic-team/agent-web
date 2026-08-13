@@ -99,6 +99,16 @@ def test_accepted_corpus_manifests_validate_against_manifest_v0() -> None:
 
 
 @pytest.mark.unit
+def test_excluded_manifest_requires_exclusion_reason() -> None:
+    excluded_entry = next(entry for entry in load_corpus() if entry["qualification"] == "excluded")
+    manifest = load_manifest(excluded_entry)
+    del manifest["trust"]["exclusion_reason"]
+
+    with pytest.raises(ManifestValidationError, match="exclusion_reason required"):
+        validate_manifest_v0(manifest)
+
+
+@pytest.mark.unit
 def test_prompt_injection_does_not_escalate_claim_status() -> None:
     entry = next(item for item in load_research_corpus() if item["id"] == "neg-005")
     body = entry["fixture_body"]

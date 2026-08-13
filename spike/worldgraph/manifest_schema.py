@@ -104,7 +104,12 @@ def validate_manifest_v0(manifest: dict[str, Any]) -> None:
         raise ManifestValidationError("trust.claim_status invalid")
 
     exclusion_reason = trust.get("exclusion_reason")
-    if exclusion_reason is not None and _exclusion_reason_value(exclusion_reason) is None:
+    if trust["qualification_status"] == "excluded":
+        if _exclusion_reason_value(exclusion_reason) is None:
+            raise ManifestValidationError(
+                "trust.exclusion_reason required when qualification_status is excluded"
+            )
+    elif exclusion_reason is not None and _exclusion_reason_value(exclusion_reason) is None:
         raise ManifestValidationError("trust.exclusion_reason invalid")
 
     if summary := identity.get("summary"):
