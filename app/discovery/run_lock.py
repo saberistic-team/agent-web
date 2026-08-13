@@ -31,7 +31,8 @@ class DiscoveryRunLock:
                 TRY_ADVISORY_LOCK_SQL,
                 (DISCOVERY_RUN_ADVISORY_LOCK_KEY1, DISCOVERY_RUN_ADVISORY_LOCK_KEY2),
             )
-            acquired = bool(cur.fetchone()[0])
+            row = cur.fetchone()
+            acquired = bool(row["pg_try_advisory_lock"] if isinstance(row, dict) else row[0])
         self._held = acquired
         return acquired
 
