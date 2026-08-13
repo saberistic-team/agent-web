@@ -109,7 +109,7 @@ scale.
 | Field observability | Entry points, identity name, interaction model often observed; model disclosures, moderation contact rarely observed | #200 gap matrix |
 | Addressable supply | ≥20 Worlds minimum exceeded in manual pass | #200 |
 | Journey feasibility | Creator, scout, admin success states defined with trust model | #201 UX_JOURNEYS |
-| Technical feasibility | 12/12 spike corpus extracts; FTS+trigram relevance proxy 1.0 on 10 queries | #204 TECHNICAL_SPIKE |
+| Technical feasibility | 30 accepted corpus manifests validate; FTS+trigram comparison runs on 10 queries | #416 TECHNICAL_SPIKE |
 | Search caution | Weak lexical matches on negative intents — requires score threshold | #204 benchmark |
 
 ### Field validation (not complete)

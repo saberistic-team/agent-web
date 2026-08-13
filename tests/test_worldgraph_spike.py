@@ -19,8 +19,7 @@ def load_research_corpus() -> list[dict]:
     with RESEARCH_CORPUS_PATH.open(encoding="utf-8") as handle:
         return list(json.load(handle)["entries"])
 
-from spike.worldgraph.corpus import load_corpus, load_queries
-from spike.worldgraph.deterministic_extractor import DeterministicExtractor
+from spike.worldgraph.corpus import load_corpus, load_manifest, load_queries
 from spike.worldgraph.fetcher import (
     FetchError,
     enforce_content_type,
@@ -50,17 +49,9 @@ def test_corpus_has_qualifying_and_negative_controls() -> None:
     corpus = load_corpus()
     qualifying = [entry for entry in corpus if entry["qualification"] == "qualifies"]
     negative = [entry for entry in corpus if entry["qualification"] == "excluded"]
-    assert len(corpus) >= 15
-    assert len(qualifying) >= 10
+    assert len(corpus) == 30
+    assert len(qualifying) == 25
     assert len(negative) >= 5
-
-
-@pytest.mark.unit
-def test_corpus_fixture_bundle_covers_all_sources() -> None:
-    bundle_path = REPO_ROOT / "docs/worldgraph/spike/corpus_fixtures.json"
-    bundle = json.loads(bundle_path.read_text(encoding="utf-8"))["fixtures"]
-    for entry in load_corpus():
-        assert entry["fixture"] in bundle, f"missing bundled fixture: {entry['fixture']}"
 
 
 @pytest.mark.unit
@@ -100,42 +91,24 @@ def test_strip_html_to_text_removes_script_tags() -> None:
 
 
 @pytest.mark.unit
-def test_deterministic_extraction_validates_all_corpus_sources() -> None:
-    extractor = DeterministicExtractor()
+def test_accepted_corpus_manifests_validate_against_manifest_v0() -> None:
     for entry in load_corpus():
-        from spike.worldgraph.corpus import read_fixture
-
-        content = read_fixture(entry["fixture"])
-        content_type = "text/html"
-        if entry["fixture"].endswith(".md"):
-            content_type = "text/markdown"
-        elif entry["fixture"].endswith(".json"):
-            content_type = "application/json"
-        result = extractor.extract(
-            source_id=entry["id"],
-            canonical_url=entry["canonical_url"],
-            content_type=content_type,
-            body=content,
-            qualification_hint=entry["qualification"],
-            exclusion_reason=entry.get("exclusion_reason"),
-        )
-        validate_manifest_v0(result.manifest)
-        assert result.manifest["trust"]["qualification_status"] == entry["qualification"]
+        manifest = load_manifest(entry)
+        validate_manifest_v0(manifest)
+        assert manifest["trust"]["qualification_status"] == entry["qualification"]
 
 
 @pytest.mark.unit
 def test_prompt_injection_does_not_escalate_claim_status() -> None:
-    entry = next(item for item in load_corpus() if item["id"] == "wg-security-001")
-    from spike.worldgraph.corpus import read_fixture
-
-    body = read_fixture(entry["fixture"])
+    entry = next(item for item in load_research_corpus() if item["id"] == "neg-005")
+    body = entry["fixture_body"]
     extractor = ModelAssistedExtractor()
     result = extractor.extract(
         source_id=entry["id"],
-        canonical_url=entry["canonical_url"],
+        canonical_url=entry["url"],
         content_type="text/markdown",
         body=body,
-        qualification_hint=entry["qualification"],
+        qualification_hint="pending_review",
     )
     validate_manifest_v0(result.manifest)
     assert result.manifest["trust"]["claim_status"] == "unclaimed"
@@ -159,16 +132,7 @@ def test_sanitize_model_field_redacts_trust_tokens() -> None:
 @pytest.mark.unit
 def test_unknown_fields_remain_unknown_without_verification() -> None:
     entry = load_corpus()[0]
-    from spike.worldgraph.corpus import read_fixture
-
-    result = DeterministicExtractor().extract(
-        source_id=entry["id"],
-        canonical_url=entry["canonical_url"],
-        content_type="text/html",
-        body=read_fixture(entry["fixture"]),
-        qualification_hint=entry["qualification"],
-    )
-    license_field = result.manifest["trust"]["license_status"]
+    license_field = load_manifest(entry)["trust"]["license_status"]
     assert license_field["value"] == "unknown"
     assert license_field["provenance"]["source_kind"] == "unknown"
     assert license_field["provenance"]["verification_status"] == "unverified"
@@ -365,7 +329,8 @@ def test_domain_well_known_and_github_and_email_claim_paths() -> None:
 @pytest.mark.unit
 def test_search_benchmark_runs_on_same_corpus() -> None:
     payload = run_ingestion_benchmark()
-    assert payload["ingestion"]["sources_tested"] >= 15
+    assert payload["ingestion"]["corpus_source"] == "accepted_issue_200"
+    assert payload["ingestion"]["sources_tested"] == 30
     assert "search" in payload
     assert set(payload["search"]["approaches"]) == {
         "postgres_fts_trigram",
@@ -410,7 +375,7 @@ def test_write_results_produces_anonymized_artifact(tmp_path: Path) -> None:
     output = tmp_path / "benchmark_results.json"
     write_results(output)
     payload = json.loads(output.read_text(encoding="utf-8"))
-    assert payload["ingestion"]["sources_tested"] >= 15
+    assert payload["ingestion"]["sources_tested"] == 30
     assert "search" in payload
     assert "recommendation" in payload
     assert payload["recommendation"]["phase_1_pgvector_justified"] is False
@@ -418,15 +383,13 @@ def test_write_results_produces_anonymized_artifact(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_fetch_fixture_uses_local_fixtures() -> None:
-    entry = load_corpus()[0]
-
     def loader(url: str) -> bytes:
         from spike.worldgraph.corpus import read_fixture
 
-        fixture = next(item for item in load_corpus() if item["canonical_url"] == url)["fixture"]
-        return read_fixture(fixture).encode("utf-8")
+        assert url == "https://example.com/spike-fixture"
+        return read_fixture("narrative-scene-alpha.html").encode("utf-8")
 
-    fetched = fetch_fixture(entry["canonical_url"], fixture_loader=loader, skip_dns_validation=True)
+    fetched = fetch_fixture("https://example.com/spike-fixture", fixture_loader=loader, skip_dns_validation=True)
     assert fetched.status_code == 200
     assert fetched.body
 

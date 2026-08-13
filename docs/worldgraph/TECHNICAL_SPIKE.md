@@ -1,34 +1,35 @@
-# WorldGraph technical spike (#204)
+# WorldGraph technical spike (#416 reconciliation of #204)
 
 **Status:** Completed bounded spike. Evidence for implementation architecture only — no
 production routes, migrations, or Render resources ship from this milestone.
 
-**Parent issue:** [#204](https://github.com/saberistic-team/agent-web/issues/204)
+**Parent issue:** [#416](https://github.com/saberistic-team/agent-web/issues/416)
 
 **Related docs:** [ADR_INGESTION_AND_SEARCH.md](./ADR_INGESTION_AND_SEARCH.md),
 [MANIFEST_V0.md](./MANIFEST_V0.md), [MARKET_POSITION.md](./MARKET_POSITION.md),
 [world-manifest-v0.schema.json](./world-manifest-v0.schema.json)
 
-**Last updated:** 2026-07-15
+**Last updated:** 2026-08-13
 
 ---
 
 ## Executive summary
 
-A bounded technical spike against Manifest v0 and an 18-entry research corpus (12
-qualifying sources, 5 negative controls, 1 adversarial security control) demonstrates
+A bounded technical spike against the accepted Manifest v0 ([#199](https://github.com/saberistic-team/agent-web/issues/199)),
+the accepted 30-candidate research corpus ([#200](https://github.com/saberistic-team/agent-web/issues/200)),
+and the reviewed MVP PRD ([#203](https://github.com/saberistic-team/agent-web/issues/203)) demonstrates
 that:
 
 1. **Ingestion** — A bounded fetcher with SSRF blocking, redirect limits, content-type
    caps, and robots awareness can safely process creator-provided public URLs when run
    asynchronously with fixture-backed CI and live-fetch workers.
-2. **Extraction** — Deterministic parsing validates all 18 corpus sources against
-   Manifest v0; a provider-neutral `Extractor` protocol enforces evidence, confidence,
-   and unknown handling. Model-assisted extraction (offline stub) strips prompt-injection
-   markers and never promotes output to verified provenance.
+2. **Extraction** — All 30 accepted corpus manifests validate against Manifest v0;
+   the provider-neutral `Extractor` protocol remains an isolated experimental interface
+   for future source parsing. Model-assisted extraction (offline stub) strips
+   prompt-injection markers and never promotes output to verified provenance.
 3. **Search** — PostgreSQL FTS + trigram proxy, pseudo-embedding retrieval, and hybrid
-   ranking were compared on the same 10 queries × 12 qualifying worlds. FTS+trigram
-   achieved a 1.0 relevance proxy at lower operational cost. **pgvector is not
+   ranking were compared on the same 10 queries × 25 qualifying worlds. FTS+trigram
+   achieved a 0.917 relevance proxy at lower operational cost. **pgvector is not
    justified for Phase 1** at expected corpus scale.
 4. **Verification** — Domain well-known/DNS, GitHub repo ownership, and email magic-link
    fallbacks prototype cleanly with distinct trust levels.
@@ -38,11 +39,18 @@ that:
 
 Throwaway code lives in `spike/worldgraph/` (not imported by `app/main.py`).
 
-**Dependency note:** Canonical Manifest v0 ([#199](https://github.com/saberistic-team/agent-web/issues/199))
-and the full 30-entry research corpus ([#200](https://github.com/saberistic-team/agent-web/issues/200))
-are tracked separately. This spike uses the same `schema_version` and provenance rules as
-#199; see [WORLD_MANIFEST_V0.md](./WORLD_MANIFEST_V0.md) for the authoritative field spec.
-The bounded 18-source corpus here remains sufficient for architecture evidence.
+## Reconciliation from premature PR #206
+
+PR #206 ran before #199, #200, and #203 were accepted. Its provisional 18-source
+fixture catalog (`docs/worldgraph/spike/corpus_sources.json`) and bundled fixture bodies
+remain only as isolated parser/security regression fixtures; they are **not** a research
+corpus and must not be used for architecture or product conclusions. The reproducible
+benchmark now loads every canonical candidate and Manifest v0 artifact from
+`docs/worldgraph/corpus/`, validates them directly, and uses their actual five positive
+categories plus five negative controls. The architecture is also bounded by the accepted
+MVP PRD: private drafts, human review, provenance, creator claims, publish lifecycle,
+and structured discovery are in scope; autonomous crawling, public auto-publication,
+and production implementation remain out of scope.
 
 ---
 
@@ -60,9 +68,9 @@ python -m spike.worldgraph.run_benchmarks
 
 | Artifact | Path |
 |----------|------|
-| Research corpus | `docs/worldgraph/spike/corpus_sources.json` |
-| Supplementary source-type catalog | `docs/worldgraph/research-corpus.json` (SSRF/XSS/injection controls) |
-| Fixture bodies | `docs/worldgraph/spike/corpus_fixtures.json` (bundled offline replay) |
+| Accepted research corpus | `docs/worldgraph/corpus/candidates.json` |
+| Accepted manifests | `docs/worldgraph/corpus/manifests/` |
+| Legacy parser/security fixtures | `docs/worldgraph/spike/corpus_sources.json` + `corpus_fixtures.json` (not benchmark input) |
 | Discovery queries | `docs/worldgraph/spike/queries.json` |
 | Manifest v0 schema | `docs/worldgraph/world-manifest-v0.schema.json` |
 
@@ -73,35 +81,33 @@ comparison; full manifest payloads omitted from the saved artifact).
 
 | Metric | Value |
 |--------|-------|
-| Total entries | 18 |
-| Qualifying sources | 12 |
+| Total entries | 30 |
+| Qualifying sources | 25 |
 | Negative controls (excluded) | 5 |
-| Security control (adversarial) | 1 |
+| Security controls | Isolated regression fixtures; not corpus records |
 
 | Source type | Qualifies | Notes |
 |-------------|-----------|-------|
-| `html_landing` | yes (7) | Title, meta, entry URL, AI role from structured HTML |
-| `repository_readme` | yes (4) | Markdown headings, entry links, persistence hints |
-| `structured_json` | yes (1) | UGC manifest JSON with named fields |
+| `interactive_narrative` | yes (5) | Persistent interactive narrative worlds |
+| `ai_spatial` | yes (5) | AI-generated or AI-reactive spatial worlds |
+| `agent_simulation` | yes (5) | Reproducible agent and simulation worlds |
+| `ai_game_ugc` | yes (5) | AI-enabled game or UGC experiences |
+| `persistent_social` | yes (5) | Persistent social or economic worlds |
 
 **Negative controls:**
 
 | ID | Exclusion reason | Observed |
 |----|------------------|----------|
-| wg-negative-001 | `static_ai_media_only` | `qualification_status=excluded` |
-| wg-negative-002 | `single_purpose_assistant` | `qualification_status=excluded` |
-| wg-negative-003 | `platform_product_not_world` | `qualification_status=excluded` |
-| wg-negative-004 | `foundation_model_not_world` | `qualification_status=excluded` |
-| wg-negative-005 | `no_stable_entry_point` | `qualification_status=excluded` |
-| wg-security-001 | prompt injection | `claim_status=unclaimed`; injection phrases detected |
+| 5 accepted negative controls | static media, assistants, engines, models, and inaccessible demos | `qualification_status=excluded` |
+| Isolated injection fixture | prompt injection | `claim_status=unclaimed`; injection phrases detected |
 
 ### Search results (same corpus, 10 queries)
 
 | Strategy | Avg latency (offline) | No-result rate | Relevance proxy | Est. cost / 1k queries |
 |----------|----------------------|----------------|-----------------|------------------------|
-| `postgres_fts_trigram` | 1.17 ms | 0% | 1.0 | $0.02 |
-| `pgvector_embedding` | 0.59 ms | 0% | 1.0 | $0.18 |
-| `hybrid` | 1.75 ms | 0% | 1.0 | $0.22 |
+| `postgres_fts_trigram` | 0.669 ms | 0% | 0.917 | $0.02 |
+| `pgvector_embedding` | 0.620 ms | 0% | 0.917 | $0.18 |
+| `hybrid` | 1.384 ms | 0% | 0.917 | $0.22 |
 
 Full per-query scores: `docs/worldgraph/spike/benchmark_results.json`.
 
@@ -207,8 +213,8 @@ records or `creator_declared` attestation. Validation enforced by
 ### Prompt injection defense
 
 `detect_injection_phrases()` and `sanitize_model_field()` in `prompt_injection.py`
-strip common instruction-override phrases before the model path. Corpus `wg-security-001`
-proves `claim_status` stays `unclaimed` and verification_status stays `unverified`.
+strip common instruction-override phrases before the model path. An isolated security
+fixture proves `claim_status` stays `unclaimed` and verification_status stays `unverified`.
 Production should also:
 
 - Truncate context windows
@@ -308,7 +314,7 @@ no-result rate exceeds 15% on scout queries.
 Rationale from spike:
 
 - Corpus size MVP ≪ index overhead of HNSW + embedding refresh pipeline
-- FTS+trigram achieved 1.0 relevance proxy on bounded corpus
+- FTS+trigram achieved a 0.917 relevance proxy on the accepted corpus
 - Hybrid adds latency and ops complexity without measurable gain at this scale
 - Operational cost: embedding API ~$0.18/1k queries vs $0.02 for pure SQL
 
@@ -476,7 +482,6 @@ Reverification cron: weekly for published sources; monthly for stale claims.
 | 6 | Cross-world relationship graph | Out of MVP scope? |
 | 7 | Embedding model + dimensions | If Phase 2 pgvector approved |
 | 8 | Creator billing / freemium limits | Product decision |
-| 9 | Full 30-entry corpus alignment | [#200](https://github.com/saberistic-team/agent-web/issues/200) may refine field coverage |
 
 ---
 
@@ -484,8 +489,8 @@ Reverification cron: weekly for published sources; monthly for stale claims.
 
 | Criterion | Evidence |
 |-----------|----------|
-| ≥10 qualifying sources + negative controls | 12 + 5 excluded + 1 adversarial in `corpus_sources.json`; tests pass |
-| Manifest v0 validation | `validate_manifest_v0()` on all 18 sources |
+| ≥10 qualifying sources + negative controls | 25 qualifying + 5 excluded in accepted `docs/worldgraph/corpus/candidates.json`; tests pass |
+| Manifest v0 validation | `validate_manifest_v0()` on all 30 accepted manifests |
 | Evidence or creator-declared fields | Provenance required on every populated field |
 | Missing facts unknown | `unknown_field()` + schema guard |
 | Search compared on same corpus | `benchmark_results.json` |
